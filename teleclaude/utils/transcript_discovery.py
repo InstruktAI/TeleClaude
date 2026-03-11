@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 
 __all__ = [
-    "build_source_identity",
-    "in_session_root",
     "TranscriptCandidate",
+    "build_source_identity",
     "discover_transcripts",
     "extract_project",
     "extract_session_id",
+    "in_session_root",
 ]
 
 

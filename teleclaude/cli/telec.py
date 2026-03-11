@@ -13,18 +13,18 @@ from typing import Any
 
 _BOOT = _t.monotonic()
 
-from instrukt_ai_logging import get_logger  # noqa: E402
+from instrukt_ai_logging import get_logger
 
-from teleclaude import __version__  # noqa: E402
-from teleclaude.cli.api_client import APIError, TelecAPIClient  # noqa: E402
-from teleclaude.cli.models import CreateSessionResult  # noqa: E402
-from teleclaude.cli.session_auth import (  # noqa: E402
+from teleclaude import __version__
+from teleclaude.cli.api_client import APIError, TelecAPIClient
+from teleclaude.cli.models import CreateSessionResult
+from teleclaude.cli.session_auth import (
     clear_current_session_email,
     get_current_session_context,
     read_current_session_email,
     write_current_session_email,
 )
-from teleclaude.cli.tool_commands import (  # noqa: E402
+from teleclaude.cli.tool_commands import (
     handle_agents,
     handle_channels,
     handle_computers,
@@ -38,7 +38,7 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_todo_set_deps,
     handle_todo_work,
 )
-from teleclaude.constants import (  # noqa: E402
+from teleclaude.constants import (
     ENV_ENABLE,
     HUMAN_ROLE_ADMIN,
     HUMAN_ROLE_CONTRIBUTOR,
@@ -51,11 +51,11 @@ from teleclaude.constants import (  # noqa: E402
     ROLE_WORKER,
     WORKTREE_DIR,
 )
-from teleclaude.content_scaffold import _emit_content_dumped, _resolve_author, create_content_inbox_entry  # noqa: E402
-from teleclaude.logging_config import setup_logging  # noqa: E402
-from teleclaude.project_setup import init_project  # noqa: E402
-from teleclaude.slug import normalize_slug  # noqa: E402
-from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton  # noqa: E402
+from teleclaude.content_scaffold import _emit_content_dumped, _resolve_author, create_content_inbox_entry
+from teleclaude.logging_config import setup_logging
+from teleclaude.project_setup import init_project
+from teleclaude.slug import normalize_slug
+from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton
 
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"

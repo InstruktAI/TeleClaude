@@ -1,7 +1,6 @@
 """Provider guidance registry for configuration fields."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 
 @dataclass
@@ -9,23 +8,23 @@ class FieldGuidance:
     """Guidance for a specific configuration field."""
 
     description: str
-    steps: List[str] = field(default_factory=list)
-    url: Optional[str] = None
-    format_example: Optional[str] = None
-    validation_hint: Optional[str] = None
+    steps: list[str] = field(default_factory=list)
+    url: str | None = None
+    format_example: str | None = None
+    validation_hint: str | None = None
 
 
 class GuidanceRegistry:
     """Registry of guidance for configuration fields."""
 
     def __init__(self):
-        self._registry: Dict[str, FieldGuidance] = {}
+        self._registry: dict[str, FieldGuidance] = {}
         self._populate_defaults()
 
     def register(self, field_path: str, guidance: FieldGuidance) -> None:
         self._registry[field_path] = guidance
 
-    def get(self, field_path: str) -> Optional[FieldGuidance]:
+    def get(self, field_path: str) -> FieldGuidance | None:
         return self._registry.get(field_path)
 
     def _populate_defaults(self) -> None:
@@ -285,7 +284,7 @@ _ENV_TO_FIELD: dict[str, str] = {
 }
 
 
-def get_guidance_for_env(env_var_name: str) -> Optional[FieldGuidance]:
+def get_guidance_for_env(env_var_name: str) -> FieldGuidance | None:
     """Look up guidance by env var name via the field-path mapping."""
     field_path = _ENV_TO_FIELD.get(env_var_name)
     if field_path is None:

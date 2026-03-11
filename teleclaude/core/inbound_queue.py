@@ -7,8 +7,8 @@ Per-session workers drain the queue with FIFO ordering, CAS claim, and exponenti
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 
 from instrukt_ai_logging import get_logger
 
@@ -27,15 +27,15 @@ _FETCH_LIMIT = 1  # Process one at a time to preserve FIFO ordering
 TypingCallback = Callable[[str, str], Awaitable[None]]
 DeliverCallback = Callable[[InboundQueueRow], Awaitable[None]]
 
-_manager: Optional[InboundQueueManager] = None
+_manager: InboundQueueManager | None = None
 
 
 def init_inbound_queue_manager(
     deliver_fn: DeliverCallback,
     *,
-    typing_callback: Optional[TypingCallback] = None,
+    typing_callback: TypingCallback | None = None,
     force: bool = False,
-) -> "InboundQueueManager":
+) -> InboundQueueManager:
     """Initialize the global InboundQueueManager singleton."""
     global _manager
     if _manager is not None and not force:
@@ -44,7 +44,7 @@ def init_inbound_queue_manager(
     return _manager
 
 
-def get_inbound_queue_manager() -> "InboundQueueManager":
+def get_inbound_queue_manager() -> InboundQueueManager:
     """Return the global InboundQueueManager singleton."""
     if _manager is None:
         raise RuntimeError("InboundQueueManager not initialized")
@@ -69,7 +69,7 @@ class InboundQueueManager:
         self,
         *,
         deliver_fn: DeliverCallback,
-        typing_callback: Optional[TypingCallback] = None,
+        typing_callback: TypingCallback | None = None,
     ) -> None:
         self._deliver_fn = deliver_fn
         self._typing_callback = typing_callback
@@ -144,7 +144,7 @@ class InboundQueueManager:
         """FIFO drain loop for a single session. Self-terminates when queue is empty."""
         logger.debug("Inbound worker starting for session %s", session_id[:8])
         while True:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             now_iso = now.isoformat()
             lock_cutoff_iso = (now - timedelta(seconds=_LOCK_TIMEOUT_S)).isoformat()
             rows = await db.fetch_inbound_pending(
@@ -169,14 +169,14 @@ class InboundQueueManager:
 
             try:
                 await self._deliver_fn(row)
-                await db.mark_inbound_delivered(row_id, datetime.now(timezone.utc).isoformat())
+                await db.mark_inbound_delivered(row_id, datetime.now(UTC).isoformat())
                 logger.debug("Delivered inbound row %d for session %s", row_id, session_id[:8])
             except SessionMessageRejectedError as exc:
                 error_str = str(exc)
                 await db.mark_inbound_expired(
                     row_id,
                     error=error_str,
-                    now_iso=datetime.now(timezone.utc).isoformat(),
+                    now_iso=datetime.now(UTC).isoformat(),
                 )
                 logger.info(
                     "Inbound row %d expired permanently for session %s: %s",
@@ -197,7 +197,7 @@ class InboundQueueManager:
                 await db.mark_inbound_failed(
                     row_id,
                     error=error_str,
-                    now_iso=datetime.now(timezone.utc).isoformat(),
+                    now_iso=datetime.now(UTC).isoformat(),
                     backoff_seconds=backoff,
                 )
                 # Wait before next iteration to avoid tight retry loops
@@ -213,7 +213,7 @@ class InboundQueueManager:
             except (asyncio.CancelledError, Exception):
                 pass
 
-        count = await db.expire_inbound_for_session(session_id, datetime.now(timezone.utc).isoformat())
+        count = await db.expire_inbound_for_session(session_id, datetime.now(UTC).isoformat())
         if count:
             logger.info("Expired %d pending inbound messages for closed session %s", count, session_id[:8])
 

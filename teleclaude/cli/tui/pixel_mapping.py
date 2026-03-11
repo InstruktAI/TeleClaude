@@ -1,7 +1,6 @@
 """Pixel mapping for TUI animations."""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
 
 # Legacy constants for backward compatibility/initialization
 # Shifted +1 to the right for the Billboard margin (+1 left, +1 right)
@@ -43,26 +42,26 @@ class RenderTarget:
     name: str
     width: int
     height: int
-    letters: List[Tuple[int, int]]  # List of (start_x, end_x) tuples for each letter
+    letters: list[tuple[int, int]]  # List of (start_x, end_x) tuples for each letter
 
     # Cached pixel lists
-    _all_pixels: Optional[List[Tuple[int, int]]] = None
-    _row_pixels: Optional[Dict[int, List[Tuple[int, int]]]] = None
-    _col_pixels: Optional[Dict[int, List[Tuple[int, int]]]] = None
+    _all_pixels: list[tuple[int, int]] | None = None
+    _row_pixels: dict[int, list[tuple[int, int]]] | None = None
+    _col_pixels: dict[int, list[tuple[int, int]]] | None = None
 
-    def get_all_pixels(self) -> List[Tuple[int, int]]:
+    def get_all_pixels(self) -> list[tuple[int, int]]:
         if self._all_pixels is None:
             self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
         return self._all_pixels
 
-    def get_row_pixels(self, row_idx: int) -> List[Tuple[int, int]]:
+    def get_row_pixels(self, row_idx: int) -> list[tuple[int, int]]:
         if self._row_pixels is None:
             self._row_pixels = {}
         if row_idx not in self._row_pixels:
             self._row_pixels[row_idx] = [(x, row_idx) for x in range(self.width)]
         return self._row_pixels[row_idx]
 
-    def get_col_pixels(self, col_idx: int) -> List[Tuple[int, int]]:
+    def get_col_pixels(self, col_idx: int) -> list[tuple[int, int]]:
         if self._col_pixels is None:
             self._col_pixels = {}
         if col_idx not in self._col_pixels:
@@ -74,18 +73,18 @@ class TargetRegistry:
     """Registry for animation render targets."""
 
     def __init__(self):
-        self._targets: Dict[str, RenderTarget] = {}
+        self._targets: dict[str, RenderTarget] = {}
         # Register default targets
         self.register("banner", BIG_BANNER_WIDTH, BIG_BANNER_HEIGHT, BIG_BANNER_LETTERS)
         self.register("logo", LOGO_WIDTH, LOGO_HEIGHT, LOGO_LETTERS)
         self.register("tabs", BIG_BANNER_WIDTH, 3)  # Tab bar (Rows 7-9)
         self.register("header", 200, 10)  # Full width atmospheric canvas
 
-    def register(self, name: str, width: int, height: int, letters: Optional[List[Tuple[int, int]]] = None) -> None:
+    def register(self, name: str, width: int, height: int, letters: list[tuple[int, int]] | None = None) -> None:
         """Register a new render target."""
         self._targets[name] = RenderTarget(name, width, height, letters or [])
 
-    def get(self, name: str) -> Optional[RenderTarget]:
+    def get(self, name: str) -> RenderTarget | None:
         return self._targets.get(name)
 
 
@@ -123,7 +122,7 @@ class PixelMap:
     @staticmethod
     def get_letter_pixels(
         target_arg: bool | str | None = None, letter_idx: int = 0, *, is_big: bool | None = None
-    ) -> List[Tuple[int, int]]:
+    ) -> list[tuple[int, int]]:
         """Get all (x, y) coordinates for a specific letter in the target."""
         if is_big is not None:
             target_name = "banner" if is_big else "logo"
@@ -149,7 +148,7 @@ class PixelMap:
         return pixels
 
     @staticmethod
-    def get_all_pixels(target_arg: bool | str | None = None, *, is_big: bool | None = None) -> List[Tuple[int, int]]:
+    def get_all_pixels(target_arg: bool | str | None = None, *, is_big: bool | None = None) -> list[tuple[int, int]]:
         """Get all (x, y) coordinates for the entire grid of the target."""
         if is_big is not None:
             target_name = "banner" if is_big else "logo"
@@ -167,7 +166,7 @@ class PixelMap:
     @staticmethod
     def get_row_pixels(
         target_arg: bool | str | None = None, row_idx: int = 0, *, is_big: bool | None = None
-    ) -> List[Tuple[int, int]]:
+    ) -> list[tuple[int, int]]:
         """Get all pixels in a specific row of the target."""
         if is_big is not None:
             target_name = "banner" if is_big else "logo"
@@ -185,7 +184,7 @@ class PixelMap:
     @staticmethod
     def get_column_pixels(
         target_arg: bool | str | None = None, col_idx: int = 0, *, is_big: bool | None = None
-    ) -> List[Tuple[int, int]]:
+    ) -> list[tuple[int, int]]:
         """Get all pixels in a specific column of the target."""
         if is_big is not None:
             target_name = "banner" if is_big else "logo"

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -79,7 +79,7 @@ def _write_test_output(
         return
     try:
         rows = []
-        with open(csv_path, "r", encoding="utf-8") as handle:
+        with open(csv_path, encoding="utf-8") as handle:
             header = handle.readline().strip().split(",")
             for line in handle:
                 rows.append(line.strip().split(","))

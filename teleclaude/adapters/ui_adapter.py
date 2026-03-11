@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from instrukt_ai_logging import get_logger
@@ -89,7 +90,7 @@ class UiAdapter(BaseAdapter):
             cls._output_delivery_locks[session_id] = lock
         return lock
 
-    def __init__(self, client: "AdapterClient") -> None:
+    def __init__(self, client: AdapterClient) -> None:
         """Initialize UiAdapter and register event listeners.
 
         Args:
@@ -108,15 +109,15 @@ class UiAdapter(BaseAdapter):
         """Clean up adapter-specific stale resources. Returns count of cleaned items."""
         return 0
 
-    async def ensure_channel(self, session: "Session") -> "Session":
+    async def ensure_channel(self, session: Session) -> Session:
         """Ensure adapter-specific channel exists (default no-op)."""
         return session
 
     async def recover_lane_error(
         self,
-        session: "Session",
+        session: Session,
         error: Exception,
-        task_factory: Callable[["UiAdapter", "Session"], Awaitable[object]],
+        task_factory: Callable[[UiAdapter, Session], Awaitable[object]],
         display_title: str,
     ) -> object | None:
         """Attempt platform-specific recovery from a lane task error.
@@ -126,7 +127,7 @@ class UiAdapter(BaseAdapter):
         """
         raise error
 
-    async def _get_output_message_id(self, session: "Session") -> Optional[str]:
+    async def _get_output_message_id(self, session: Session) -> str | None:
         """Get output_message_id from top-level DB column.
 
         Always re-reads from DB to prevent stale in-memory values when
@@ -140,7 +141,7 @@ class UiAdapter(BaseAdapter):
             session.output_message_id = fresh.output_message_id
         return session.output_message_id
 
-    async def _store_output_message_id(self, session: "Session", message_id: str) -> None:
+    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
         """Store output_message_id in dedicated DB column.
 
         Uses atomic column write (not adapter_metadata blob) to prevent
@@ -154,14 +155,14 @@ class UiAdapter(BaseAdapter):
             message_id,
         )
 
-    async def _get_footer_message_id(self, session: "Session") -> Optional[str]:
+    async def _get_footer_message_id(self, session: Session) -> str | None:
         """Get threaded footer message id from adapter namespace."""
         if self.ADAPTER_KEY == "telegram":
             metadata = session.get_metadata().get_ui().get_telegram()
             return metadata.footer_message_id
         return None
 
-    async def _store_footer_message_id(self, session: "Session", message_id: str) -> None:
+    async def _store_footer_message_id(self, session: Session, message_id: str) -> None:
         """Store threaded footer message id in adapter namespace."""
         if self.ADAPTER_KEY == "telegram":
             metadata = session.get_metadata().get_ui().get_telegram()
@@ -173,7 +174,7 @@ class UiAdapter(BaseAdapter):
                 message_id,
             )
 
-    async def _clear_footer_message_id(self, session: "Session") -> None:
+    async def _clear_footer_message_id(self, session: Session) -> None:
         """Clear threaded footer message id from adapter namespace."""
         if self.ADAPTER_KEY == "telegram":
             metadata = session.get_metadata().get_ui().get_telegram()
@@ -181,7 +182,7 @@ class UiAdapter(BaseAdapter):
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
             logger.debug("Cleared footer_message_id: session=%s", session.session_id[:8])
 
-    async def _get_badge_sent(self, session: "Session") -> bool:
+    async def _get_badge_sent(self, session: Session) -> bool:
         """Check if session badge has been sent."""
         fresh = await db.get_session(session.session_id)
         if fresh:
@@ -196,7 +197,7 @@ class UiAdapter(BaseAdapter):
             return session.get_metadata().get_ui().get_whatsapp().badge_sent
         return False
 
-    async def _set_badge_sent(self, session: "Session", value: bool) -> None:
+    async def _set_badge_sent(self, session: Session, value: bool) -> None:
         """Update session badge sent status."""
         if self.ADAPTER_KEY == "telegram":
             session.get_metadata().get_ui().get_telegram().badge_sent = value
@@ -208,7 +209,7 @@ class UiAdapter(BaseAdapter):
             return
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
-    def _get_char_offset(self, session: "Session") -> int:
+    def _get_char_offset(self, session: Session) -> int:
         """Get adapter-specific char offset."""
         if self.ADAPTER_KEY == "telegram":
             return session.get_metadata().get_ui().get_telegram().char_offset
@@ -218,7 +219,7 @@ class UiAdapter(BaseAdapter):
             return session.get_metadata().get_ui().get_whatsapp().char_offset
         return 0
 
-    async def _set_char_offset(self, session: "Session", value: int) -> None:
+    async def _set_char_offset(self, session: Session, value: int) -> None:
         """Set adapter-specific char offset."""
         if self.ADAPTER_KEY == "telegram":
             session.get_metadata().get_ui().get_telegram().char_offset = value
@@ -230,14 +231,14 @@ class UiAdapter(BaseAdapter):
             return
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
-    async def _cleanup_footer_if_present(self, session: "Session") -> None:
+    async def _cleanup_footer_if_present(self, session: Session) -> None:
         """Delete and clear any tracked threaded footer message."""
         previous_footer_id = await self._get_footer_message_id(session)
         if not previous_footer_id:
             return
         try:
             await self.delete_message(session, previous_footer_id)
-        except Exception as exc:  # noqa: BLE001 - cleanup is best-effort
+        except Exception as exc:
             logger.debug(
                 "Best-effort stale threaded footer delete failed: session=%s message_id=%s err=%s",
                 session.session_id[:8],
@@ -254,17 +255,17 @@ class UiAdapter(BaseAdapter):
         """
         return 0
 
-    async def move_badge_to_bottom(self, session: "Session") -> None:
+    async def move_badge_to_bottom(self, session: Session) -> None:
         """Move the session badge to the absolute bottom of the thread."""
         await self._cleanup_footer_if_present(session)
         await self._send_footer(session)
 
-    async def clear_turn_state(self, session: "Session") -> None:
+    async def clear_turn_state(self, session: Session) -> None:
         """Reset per-turn output state (output_message_id and char_offset)."""
         await self._clear_output_message_id(session)
         await self._set_char_offset(session, 0)
 
-    async def _clear_output_message_id(self, session: "Session") -> None:
+    async def _clear_output_message_id(self, session: Session) -> None:
         """Clear output_message_id in dedicated DB column.
 
         Uses atomic column write (not adapter_metadata blob) to prevent
@@ -279,13 +280,13 @@ class UiAdapter(BaseAdapter):
 
     async def _deliver_output(
         self,
-        session: "Session",
+        session: Session,
         text: str,
         metadata: MessageMetadata,
         multi_message: bool = False,
         status_line: str = "",
         dedupe_by_digest: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Unified output delivery: dedup, edit/send, footer management."""
         lock = self._get_output_delivery_lock(session.session_id)
         async with lock:
@@ -300,13 +301,13 @@ class UiAdapter(BaseAdapter):
 
     async def _deliver_output_unlocked(
         self,
-        session: "Session",
+        session: Session,
         text: str,
         metadata: MessageMetadata,
         multi_message: bool = False,
         status_line: str = "",
         dedupe_by_digest: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Core output delivery logic. Caller must hold the session output lock."""
         display_digest = sha256(text.encode("utf-8")).hexdigest()
 
@@ -330,7 +331,7 @@ class UiAdapter(BaseAdapter):
             await self._send_footer(session, status_line=status_line)
         return new_id
 
-    async def _try_edit_output_message(self, session: "Session", text: str, metadata: MessageMetadata) -> bool:
+    async def _try_edit_output_message(self, session: Session, text: str, metadata: MessageMetadata) -> bool:
         """Try to edit existing output message, clear message_id if edit fails.
 
         Returns:
@@ -415,14 +416,14 @@ class UiAdapter(BaseAdapter):
 
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
-        session: "Session",
+        session: Session,
         output: str,
         started_at: float,
         last_output_changed_at: float,
         is_final: bool = False,
-        exit_code: Optional[int] = None,
+        exit_code: int | None = None,
         render_markdown: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send or edit output message - generic implementation.
 
         Truncates based on self.max_message_size, formats with status line,
@@ -495,11 +496,11 @@ class UiAdapter(BaseAdapter):
 
     async def send_threaded_output(
         self,
-        session: "Session",
+        session: Session,
         text: str,
         multi_message: bool = False,
         _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send or edit threaded output message with smart pagination."""
         # Skip threaded output for adapters that don't use it.
         if not self.THREADED_OUTPUT:
@@ -526,11 +527,11 @@ class UiAdapter(BaseAdapter):
 
     async def _send_threaded_output_unlocked(
         self,
-        session: "Session",
+        session: Session,
         text: str,
         multi_message: bool = False,
         _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Threaded-output core logic. Caller must hold the session output lock."""
         # HARD CLEANUP: Ensure no footer exists in threaded mode.
         await self._cleanup_footer_if_present(session)
@@ -684,7 +685,7 @@ class UiAdapter(BaseAdapter):
         """Build metadata for threaded content messages. Override for platform-specific parse mode."""
         return MessageMetadata()
 
-    async def _send_footer(self, session: "Session", status_line: str = "") -> Optional[str]:
+    async def _send_footer(self, session: Session, status_line: str = "") -> str | None:
         """Send or edit footer message below output."""
         # Disable floating footer for threaded sessions (header strategy).
         if self.THREADED_OUTPUT:
@@ -719,7 +720,7 @@ class UiAdapter(BaseAdapter):
             await self._store_footer_message_id(session, new_id)
         return new_id
 
-    def _build_footer_text(self, session: "Session", status_line: str = "") -> str:
+    def _build_footer_text(self, session: Session, status_line: str = "") -> str:
         """Build footer text with session IDs first and status line last."""
         parts: list[str] = []
         session_lines = self._build_session_id_lines(session)
@@ -738,7 +739,7 @@ class UiAdapter(BaseAdapter):
             return f"```\n{tmux_output}\n```"
         return ""
 
-    def _build_output_metadata(self, _session: "Session", _is_truncated: bool) -> MessageMetadata:
+    def _build_output_metadata(self, _session: Session, _is_truncated: bool) -> MessageMetadata:
         """Build platform-specific metadata for output messages.
 
         Override in subclasses to add inline keyboards, buttons, etc.
@@ -752,14 +753,14 @@ class UiAdapter(BaseAdapter):
         """
         return MessageMetadata()  # Default: no extra metadata
 
-    def _build_footer_metadata(self, _session: "Session") -> MessageMetadata:
+    def _build_footer_metadata(self, _session: Session) -> MessageMetadata:
         """Build platform-specific metadata for footer messages.
 
         Override in subclasses to add download buttons, etc.
         """
         return MessageMetadata()
 
-    def _build_session_id_lines(self, session: "Session") -> str:
+    def _build_session_id_lines(self, session: Session) -> str:
         """Build session ID lines for status footer.
 
         Shows TeleClaude session ID and native agent session ID (if available).
@@ -783,14 +784,14 @@ class UiAdapter(BaseAdapter):
 
         return "\n".join(lines)
 
-    async def _pre_handle_user_input(self, _session: "Session") -> None:
+    async def _pre_handle_user_input(self, _session: Session) -> None:
         """Called before handling user input - cleanup ephemeral messages.
 
         All tracked messages (feedback, user input) cleaned here.
         """
         # User input messages (pending_deletions) cleaned via event handler, not here
 
-    async def send_typing_indicator(self, session: "Session") -> None:
+    async def send_typing_indicator(self, session: Session) -> None:
         """Send platform-specific typing indicator.
 
         Override in subclasses to implement platform typing API.
@@ -803,7 +804,7 @@ class UiAdapter(BaseAdapter):
 
     async def _dispatch_command(
         self,
-        session: "Session",
+        session: Session,
         message_id: str | None,
         metadata: MessageMetadata,
         command_name: str,
@@ -825,7 +826,7 @@ class UiAdapter(BaseAdapter):
                 await db.update_session(
                     session.session_id,
                     last_message_sent=str(text_obj)[:200],
-                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                    last_message_sent_at=datetime.now(UTC).isoformat(),
                 )
 
         if message_id:
@@ -860,7 +861,7 @@ class UiAdapter(BaseAdapter):
             context: Platform-specific metadata (user_id, duration, etc.)
         """
 
-        async def _send_notice(sid: str, message: str, metadata: MessageMetadata) -> Optional[str]:
+        async def _send_notice(sid: str, message: str, metadata: MessageMetadata) -> str | None:
             session = await db.get_session(sid)
             if not session:
                 logger.warning("Session %s not found for message", sid[:8])
@@ -892,7 +893,7 @@ class UiAdapter(BaseAdapter):
     async def get_session_file(
         self,
         _session_id: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Provide platform-specific download UI for session output.
 
         OPTIONAL - Override if platform supports download functionality.

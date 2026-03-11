@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -22,11 +23,11 @@ DEPLOYMENT_FANOUT_CHANNEL = "deployment:version_available"
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Module-level state injected by daemon at startup.
-_get_redis: Callable[[], Awaitable["Redis"]] | None = None
+_get_redis: Callable[[], Awaitable[Redis]] | None = None
 
 
 def configure_deployment_handler(
-    get_redis: Callable[[], Awaitable["Redis"]] | None = None,
+    get_redis: Callable[[], Awaitable[Redis]] | None = None,
 ) -> None:
     """Inject Redis accessor at daemon startup."""
     global _get_redis
@@ -83,7 +84,7 @@ async def handle_deployment_event(event: HookEvent) -> None:
     project_cfg_path = resolve_project_config_path(_PROJECT_ROOT)
     try:
         project_config = load_project_config(project_cfg_path)
-    except Exception as exc:  # noqa: BLE001 - config load failure is non-fatal
+    except Exception as exc:
         logger.error("Deployment handler: failed to load project config: %s", exc)
         return
 
@@ -182,12 +183,12 @@ async def _publish_fanout(version_info: dict) -> None:  # type: ignore[type-arg]
         )
         await redis.xadd(DEPLOYMENT_FANOUT_CHANNEL, {"event": fanout_event.to_json()}, maxlen=1000)
         logger.info("Deployment handler: published version_available to %s", DEPLOYMENT_FANOUT_CHANNEL)
-    except Exception as exc:  # noqa: BLE001 - fan-out is best-effort
+    except Exception as exc:
         logger.warning("Deployment handler: fan-out publish failed: %s", exc)
 
 
 __all__ = [
+    "DEPLOYMENT_FANOUT_CHANNEL",
     "configure_deployment_handler",
     "handle_deployment_event",
-    "DEPLOYMENT_FANOUT_CHANNEL",
 ]

@@ -21,7 +21,7 @@ if sys.platform == "darwin":
         from teleclaude.stt.backends.mlx_parakeet import MLXParakeetBackend
 
         BACKENDS["parakeet"] = MLXParakeetBackend()
-    except Exception:  # noqa: BLE001 - import or config validation failure; skip gracefully
+    except Exception:
         import logging
 
         logging.getLogger(__name__).warning("Parakeet STT backend unavailable", exc_info=True)

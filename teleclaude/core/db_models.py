@@ -6,7 +6,6 @@ These models mirror the SQLite schema for ORM usage.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
@@ -21,49 +20,49 @@ class Session(SQLModel, table=True):
 
     session_id: str = Field(primary_key=True)
     computer_name: str
-    title: Optional[str] = None
-    tmux_session_name: Optional[str] = None
+    title: str | None = None
+    tmux_session_name: str | None = None
     last_input_origin: str = InputOrigin.TELEGRAM.value
-    adapter_metadata: Optional[str] = None
-    session_metadata: Optional[str] = None
-    created_at: Optional[datetime] = None
-    last_activity: Optional[datetime] = None
-    closed_at: Optional[datetime] = None
-    terminal_size: Optional[str] = "80x24"
-    project_path: Optional[str] = None
-    subdir: Optional[str] = None
-    description: Optional[str] = None
-    initiated_by_ai: Optional[bool] = False
-    initiator_session_id: Optional[str] = None
-    output_message_id: Optional[str] = None
-    notification_sent: Optional[int] = 0
-    native_session_id: Optional[str] = None
-    native_log_file: Optional[str] = None
-    active_agent: Optional[str] = None
-    thinking_mode: Optional[str] = None
-    tui_log_file: Optional[str] = None
-    tui_capture_started: Optional[int] = 0
-    last_message_sent: Optional[str] = None
-    last_message_sent_at: Optional[datetime] = None
-    last_output_raw: Optional[str] = None
-    last_output_at: Optional[datetime] = None
-    last_output_summary: Optional[str] = None
-    last_output_digest: Optional[str] = None
-    last_tool_done_at: Optional[datetime] = None
-    last_tool_use_at: Optional[datetime] = None
-    last_checkpoint_at: Optional[datetime] = None
-    working_slug: Optional[str] = None
-    lifecycle_status: Optional[str] = "active"
-    human_email: Optional[str] = None
-    human_role: Optional[str] = None
-    last_memory_extraction_at: Optional[str] = None
-    help_desk_processed_at: Optional[str] = None
-    relay_status: Optional[str] = None
-    relay_discord_channel_id: Optional[str] = None
-    relay_started_at: Optional[str] = None
-    transcript_files: Optional[str] = "[]"
-    char_offset: Optional[int] = 0
-    visibility: Optional[str] = "private"
+    adapter_metadata: str | None = None
+    session_metadata: str | None = None
+    created_at: datetime | None = None
+    last_activity: datetime | None = None
+    closed_at: datetime | None = None
+    terminal_size: str | None = "80x24"
+    project_path: str | None = None
+    subdir: str | None = None
+    description: str | None = None
+    initiated_by_ai: bool | None = False
+    initiator_session_id: str | None = None
+    output_message_id: str | None = None
+    notification_sent: int | None = 0
+    native_session_id: str | None = None
+    native_log_file: str | None = None
+    active_agent: str | None = None
+    thinking_mode: str | None = None
+    tui_log_file: str | None = None
+    tui_capture_started: int | None = 0
+    last_message_sent: str | None = None
+    last_message_sent_at: datetime | None = None
+    last_output_raw: str | None = None
+    last_output_at: datetime | None = None
+    last_output_summary: str | None = None
+    last_output_digest: str | None = None
+    last_tool_done_at: datetime | None = None
+    last_tool_use_at: datetime | None = None
+    last_checkpoint_at: datetime | None = None
+    working_slug: str | None = None
+    lifecycle_status: str | None = "active"
+    human_email: str | None = None
+    human_role: str | None = None
+    last_memory_extraction_at: str | None = None
+    help_desk_processed_at: str | None = None
+    relay_status: str | None = None
+    relay_discord_channel_id: str | None = None
+    relay_started_at: str | None = None
+    transcript_files: str | None = "[]"
+    char_offset: int | None = 0
+    visibility: str | None = "private"
 
 
 class VoiceAssignment(SQLModel, table=True):
@@ -73,9 +72,9 @@ class VoiceAssignment(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
 
     id: str = Field(primary_key=True)
-    service_name: Optional[str] = None
-    voice: Optional[str] = ""
-    assigned_at: Optional[datetime] = None
+    service_name: str | None = None
+    voice: str | None = ""
+    assigned_at: datetime | None = None
 
 
 class PendingMessageDeletion(SQLModel, table=True):
@@ -84,11 +83,11 @@ class PendingMessageDeletion(SQLModel, table=True):
     __tablename__ = "pending_message_deletions"
     __table_args__ = {"extend_existing": True}
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     session_id: str
     message_id: str
     deletion_type: str
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 class SystemSetting(SQLModel, table=True):
@@ -99,7 +98,7 @@ class SystemSetting(SQLModel, table=True):
 
     key: str = Field(primary_key=True)
     value: str
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
 
 
 class AgentAvailability(SQLModel, table=True):
@@ -109,10 +108,10 @@ class AgentAvailability(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
 
     agent: str = Field(primary_key=True)
-    available: Optional[int] = 1
-    unavailable_until: Optional[str] = None
-    degraded_until: Optional[str] = None
-    reason: Optional[str] = None
+    available: int | None = 1
+    unavailable_until: str | None = None
+    degraded_until: str | None = None
+    reason: str | None = None
 
 
 class HookOutbox(SQLModel, table=True):
@@ -121,16 +120,16 @@ class HookOutbox(SQLModel, table=True):
     __tablename__ = "hook_outbox"
     __table_args__ = {"extend_existing": True}
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     session_id: str
     event_type: str
     payload: str
-    created_at: Optional[str] = None
-    next_attempt_at: Optional[str] = None
-    attempt_count: Optional[int] = 0
-    last_error: Optional[str] = None
-    delivered_at: Optional[str] = None
-    locked_at: Optional[str] = None
+    created_at: str | None = None
+    next_attempt_at: str | None = None
+    attempt_count: int | None = 0
+    last_error: str | None = None
+    delivered_at: str | None = None
+    locked_at: str | None = None
 
 
 class InboundQueue(SQLModel, table=True):
@@ -139,24 +138,24 @@ class InboundQueue(SQLModel, table=True):
     __tablename__ = "inbound_queue"
     __table_args__ = {"extend_existing": True}
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     session_id: str
     origin: str
     message_type: str = "text"
     content: str = ""
-    payload_json: Optional[str] = None
-    actor_id: Optional[str] = None
-    actor_name: Optional[str] = None
-    actor_avatar_url: Optional[str] = None
+    payload_json: str | None = None
+    actor_id: str | None = None
+    actor_name: str | None = None
+    actor_avatar_url: str | None = None
     status: str = "pending"
     created_at: str = ""
-    processed_at: Optional[str] = None
+    processed_at: str | None = None
     attempt_count: int = 0
-    next_retry_at: Optional[str] = None
-    last_error: Optional[str] = None
-    locked_at: Optional[str] = None
-    source_message_id: Optional[str] = None
-    source_channel_id: Optional[str] = None
+    next_retry_at: str | None = None
+    last_error: str | None = None
+    locked_at: str | None = None
+    source_message_id: str | None = None
+    source_channel_id: str | None = None
 
 
 class MemoryObservation(SQLModel, table=True):
@@ -165,22 +164,22 @@ class MemoryObservation(SQLModel, table=True):
     __tablename__ = "memory_observations"
     __table_args__ = {"extend_existing": True}
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     memory_session_id: str
     project: str
     type: str
-    title: Optional[str] = None
-    subtitle: Optional[str] = None
-    facts: Optional[str] = None
-    narrative: Optional[str] = None
-    concepts: Optional[str] = None
-    files_read: Optional[str] = None
-    files_modified: Optional[str] = None
-    prompt_number: Optional[int] = None
-    discovery_tokens: Optional[int] = 0
+    title: str | None = None
+    subtitle: str | None = None
+    facts: str | None = None
+    narrative: str | None = None
+    concepts: str | None = None
+    files_read: str | None = None
+    files_modified: str | None = None
+    prompt_number: int | None = None
+    discovery_tokens: int | None = 0
     created_at: str
     created_at_epoch: int
-    identity_key: Optional[str] = None
+    identity_key: str | None = None
 
 
 class MemorySummary(SQLModel, table=True):
@@ -189,14 +188,14 @@ class MemorySummary(SQLModel, table=True):
     __tablename__ = "memory_summaries"
     __table_args__ = {"extend_existing": True}
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     memory_session_id: str
     project: str
-    request: Optional[str] = None
-    investigated: Optional[str] = None
-    learned: Optional[str] = None
-    completed: Optional[str] = None
-    next_steps: Optional[str] = None
+    request: str | None = None
+    investigated: str | None = None
+    learned: str | None = None
+    completed: str | None = None
+    next_steps: str | None = None
     created_at: str
     created_at_epoch: int
 
@@ -209,10 +208,10 @@ class WebhookContract(SQLModel, table=True):
 
     id: str = Field(primary_key=True)
     contract_json: str
-    active: Optional[int] = 1
-    source: Optional[str] = "api"
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    active: int | None = 1
+    source: str | None = "api"
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class WebhookOutbox(SQLModel, table=True):
@@ -221,18 +220,18 @@ class WebhookOutbox(SQLModel, table=True):
     __tablename__ = "webhook_outbox"
     __table_args__ = {"extend_existing": True}
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     contract_id: str
     event_json: str
     target_url: str
-    target_secret: Optional[str] = None
-    status: Optional[str] = "pending"
-    created_at: Optional[str] = None
-    delivered_at: Optional[str] = None
-    attempt_count: Optional[int] = 0
-    next_attempt_at: Optional[str] = None
-    last_error: Optional[str] = None
-    locked_at: Optional[str] = None
+    target_secret: str | None = None
+    status: str | None = "pending"
+    created_at: str | None = None
+    delivered_at: str | None = None
+    attempt_count: int | None = 0
+    next_attempt_at: str | None = None
+    last_error: str | None = None
+    locked_at: str | None = None
 
 
 class SessionListenerRow(SQLModel, table=True):
@@ -257,10 +256,10 @@ class ConversationLinkRow(SQLModel, table=True):
     mode: str
     status: str = "active"
     created_by_session_id: str
-    metadata_json: Optional[str] = None
+    metadata_json: str | None = None
     created_at: str
     updated_at: str
-    closed_at: Optional[str] = None
+    closed_at: str | None = None
 
 
 class Operation(SQLModel, table=True):
@@ -272,21 +271,21 @@ class Operation(SQLModel, table=True):
     operation_id: str = Field(primary_key=True)
     kind: str
     caller_session_id: str
-    client_request_id: Optional[str] = None
+    client_request_id: str | None = None
     cwd: str
-    slug: Optional[str] = None
+    slug: str | None = None
     payload_json: str
     state: str
-    progress_phase: Optional[str] = None
-    progress_decision: Optional[str] = None
-    progress_reason: Optional[str] = None
-    result_text: Optional[str] = None
-    error_text: Optional[str] = None
+    progress_phase: str | None = None
+    progress_decision: str | None = None
+    progress_reason: str | None = None
+    result_text: str | None = None
+    error_text: str | None = None
     created_at: str
     updated_at: str
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    heartbeat_at: Optional[str] = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    heartbeat_at: str | None = None
     attempt_count: int = 0
 
 
@@ -298,10 +297,10 @@ class ConversationLinkMemberRow(SQLModel, table=True):
 
     link_id: str = Field(primary_key=True)
     session_id: str = Field(primary_key=True)
-    participant_name: Optional[str] = None
-    participant_number: Optional[int] = None
-    participant_role: Optional[str] = None
-    computer_name: Optional[str] = None
+    participant_name: str | None = None
+    participant_number: int | None = None
+    participant_role: str | None = None
+    computer_name: str | None = None
     joined_at: str
 
 

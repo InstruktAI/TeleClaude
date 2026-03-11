@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Unified hook receiver for agent CLIs."""
 
-# ruff: noqa: I001
 
 from __future__ import annotations
 
@@ -10,7 +9,7 @@ import json
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -56,25 +55,25 @@ _VENV_PYTHON = _REPO_ROOT / ".venv" / "bin" / "python3"
 if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
 
-from instrukt_ai_logging import configure_logging, get_logger  # noqa: E402
+from instrukt_ai_logging import configure_logging, get_logger
 
 # Ensure local hooks utils and TeleClaude package are importable
 sys.path.append(str(_REPO_ROOT / "teleclaude" / "hooks"))
 sys.path.append(str(_REPO_ROOT))
 
-from teleclaude.config import config  # noqa: E402
-from teleclaude.core.agents import AgentName, get_default_agent  # noqa: E402
-from teleclaude.core import db_models  # noqa: E402
-from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
-from teleclaude.hooks.adapters import get_adapter  # noqa: E402
-from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS, is_internal_user_text  # noqa: E402
-from teleclaude.paths import SESSION_MAP_PATH  # noqa: E402
-from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
+from teleclaude.config import config
+from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS, is_internal_user_text
+from teleclaude.core import db_models
+from teleclaude.core.agents import AgentName, get_default_agent
+from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.hooks.adapters import get_adapter
+from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
     is_checkpoint_disabled,
     set_checkpoint_flag,
 )
+from teleclaude.paths import SESSION_MAP_PATH
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -95,8 +94,8 @@ def _create_sync_engine() -> object:
     @sa_event.listens_for(engine, "connect")
     def _set_sqlite_pragmas(dbapi_connection, _connection_record):
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode = WAL")  # noqa: S608
-        cursor.execute("PRAGMA busy_timeout = 5000")  # noqa: S608
+        cursor.execute("PRAGMA journal_mode = WAL")
+        cursor.execute("PRAGMA busy_timeout = 5000")
         cursor.close()
 
     return engine
@@ -145,7 +144,7 @@ def _maybe_checkpoint_output(
     try:
         with SqlSession(_create_sync_engine()) as db_session:
             row = db_session.get(db_models.Session, session_id)
-    except Exception as exc:  # noqa: BLE001 - fail-open: let stop through on DB errors
+    except Exception as exc:
         logger.debug("Checkpoint eval skipped (db error)", error=str(exc))
         return None
 
@@ -156,12 +155,12 @@ def _maybe_checkpoint_output(
         if value is None:
             return None
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     checkpoint_at = _as_utc(row.last_checkpoint_at)
     message_at = _as_utc(row.last_message_sent_at)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Turn start = most recent input event (real user message or previous checkpoint)
     turn_candidates = [dt for dt in (message_at, checkpoint_at) if dt is not None]
@@ -220,7 +219,7 @@ def _maybe_checkpoint_output(
                 update_row.last_checkpoint_at = now
                 db_session.add(update_row)
                 db_session.commit()
-    except Exception as exc:  # noqa: BLE001 - best-effort DB update
+    except Exception as exc:
         logger.warning("Checkpoint DB update failed: %s", exc)
     logger.info(
         "Checkpoint payload prepared",
@@ -276,9 +275,10 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
     person_header: str | None = None
     if session_id:
         try:
+            from sqlmodel import Session as SqlSession
+
             from teleclaude.core.identity import derive_identity_key
             from teleclaude.core.models import SessionAdapterMetadata
-            from sqlmodel import Session as SqlSession
 
             with SqlSession(_create_sync_engine()) as db_session:
                 row = db_session.get(db_models.Session, session_id)
@@ -294,7 +294,7 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
                         )
                         if person:
                             person_header = _render_person_header(person)
-        except Exception:  # noqa: BLE001 - fail-open: identity/person resolution is best-effort
+        except Exception:
             logger.debug("Identity/person resolution failed for session %s", (session_id or "")[:8])
 
     context = _get_memory_context(project_name, identity_key=identity_key)
@@ -366,7 +366,7 @@ def _enqueue_hook_event(
     data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON.
 ) -> None:
     """Persist hook event to local outbox for durable delivery."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     payload_json = json.dumps(data)
     from sqlmodel import Session as SqlSession
 
@@ -526,7 +526,7 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
     try:
         with SqlSession(_create_sync_engine()) as session:
             row = session.get(db_models.Session, session_id)
-    except Exception as exc:  # noqa: BLE001 - fail-open when DB access is unavailable.
+    except Exception as exc:
         logger.debug(
             "TMUX contract DB lookup skipped (db unavailable)",
             session_id=session_id[:8],
@@ -652,7 +652,7 @@ def _resolve_or_refresh_session_id(
                     new_native_session_id=raw_native_session_id[:8],
                 )
 
-    except Exception as exc:  # noqa: BLE001 - fail-open to preserve hook delivery on partial DB fixtures
+    except Exception as exc:
         logger.debug(
             "Session refresh lookup skipped (db unavailable)",
             agent=agent,
@@ -667,7 +667,8 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
     """Look up the latest non-closed session for a native session id."""
     if not native_session_id:
         return None
-    from sqlmodel import Session as SqlSession, select
+    from sqlmodel import Session as SqlSession
+    from sqlmodel import select
 
     try:
         with SqlSession(_create_sync_engine()) as session:
@@ -679,7 +680,7 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
                 .limit(1)
             )
             row = session.exec(statement).first()
-    except Exception as exc:  # noqa: BLE001 - fail-open in test fixtures / partial DB states
+    except Exception as exc:
         logger.debug(
             "Native session lookup skipped (db unavailable)",
             native_session_id=native_session_id[:8],
@@ -839,7 +840,7 @@ def _emit_receiver_error_best_effort(
                 "retryable": False,
             },
         )
-    except Exception as exc:  # noqa: BLE001 - never crash receiver on best-effort error path
+    except Exception as exc:
         logger.error("Receiver error reporting failed", error=str(exc), code=code)
 
 
@@ -1043,7 +1044,7 @@ def main() -> None:
         checkpoint_reason: str | None = None
         try:
             checkpoint_reason = _maybe_checkpoint_output(teleclaude_session_id, args.agent, raw_data)
-        except Exception as exc:  # noqa: BLE001 - fail-open: never break hooks on checkpoint logic
+        except Exception as exc:
             logger.warning(
                 "Checkpoint eval crashed (ignored)",
                 event_type=event_type,
@@ -1058,7 +1059,7 @@ def main() -> None:
                 sys.exit(0)
 
     data["agent_name"] = args.agent
-    data["received_at"] = datetime.now(timezone.utc).isoformat()
+    data["received_at"] = datetime.now(UTC).isoformat()
 
     _enqueue_hook_event(teleclaude_session_id, event_type, data)
 

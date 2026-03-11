@@ -6,8 +6,9 @@ to avoid code duplication across command handlers.
 
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING
 
 from teleclaude.constants import RELATIVE_CURRENT
 from teleclaude.core.db import db
@@ -97,8 +98,8 @@ def get_output_file(session_id: str) -> Path:
 
 def build_computer_prefix(
     computer_name: str,
-    agent_name: Optional[str] = None,
-    thinking_mode: Optional[str] = None,
+    agent_name: str | None = None,
+    thinking_mode: str | None = None,
     include_computer: bool = True,
 ) -> str:
     """Build the computer prefix portion of a session title.
@@ -129,11 +130,11 @@ def build_session_title(
     computer_name: str,
     short_project: str,
     description: str,
-    initiator_computer: Optional[str] = None,
-    agent_name: Optional[str] = None,
-    thinking_mode: Optional[str] = None,
-    initiator_agent: Optional[str] = None,
-    initiator_mode: Optional[str] = None,
+    initiator_computer: str | None = None,
+    agent_name: str | None = None,
+    thinking_mode: str | None = None,
+    initiator_agent: str | None = None,
+    initiator_mode: str | None = None,
 ) -> str:
     """Build a session title following the standard format.
 
@@ -222,7 +223,7 @@ _AGENT_PREFIX = r"(?:\$\w+|\w+-\w+(?:@\w+)?)"
 _TITLE_PATTERN = re.compile(rf"^([^:]+:\s*{_AGENT_PREFIX}(?:\s*>\s*{_AGENT_PREFIX})?\s*-\s*)(.*)$")
 
 
-def parse_session_title(title: str) -> tuple[Optional[str], Optional[str]]:
+def parse_session_title(title: str) -> tuple[str | None, str | None]:
     """Parse a session title into prefix and description.
 
     Format: "{project}: {prefix} - {description}"
@@ -245,7 +246,7 @@ def update_title_with_agent(
     agent_name: str,
     thinking_mode: str,
     computer_name: str,
-) -> Optional[str]:
+) -> str | None:
     """Update a session title to include agent information.
 
     Replaces "${Computer} - " with "{Agent}-{mode}@{Computer} - " in the title.
@@ -287,13 +288,13 @@ def update_title_with_agent(
 def build_display_title(
     description: str,
     computer_name: str,
-    project_path: Optional[str],
-    subdir: Optional[str] = None,
-    agent_name: Optional[str] = None,
-    thinking_mode: Optional[str] = None,
-    initiator_computer: Optional[str] = None,
-    initiator_agent: Optional[str] = None,
-    initiator_mode: Optional[str] = None,
+    project_path: str | None,
+    subdir: str | None = None,
+    agent_name: str | None = None,
+    thinking_mode: str | None = None,
+    initiator_computer: str | None = None,
+    initiator_agent: str | None = None,
+    initiator_mode: str | None = None,
 ) -> str:
     """Build a display title for UI adapters from a pure description.
 

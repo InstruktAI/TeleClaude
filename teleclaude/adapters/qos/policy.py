@@ -41,7 +41,7 @@ class QoSPolicy:
     rounding_ms: int = 100
 
 
-def telegram_policy(cfg: "TelegramQoSConfig") -> QoSPolicy:
+def telegram_policy(cfg: TelegramQoSConfig) -> QoSPolicy:
     """Build a Telegram QoS policy from config."""
     return QoSPolicy(
         adapter_key="telegram",
@@ -56,7 +56,7 @@ def telegram_policy(cfg: "TelegramQoSConfig") -> QoSPolicy:
     )
 
 
-def discord_policy(cfg: "DiscordQoSConfig") -> QoSPolicy:
+def discord_policy(cfg: DiscordQoSConfig) -> QoSPolicy:
     """Build a Discord QoS policy from config.
 
     Discord starts in coalesce_only mode by default. No hard pacing cap is applied;
@@ -77,7 +77,7 @@ def discord_policy(cfg: "DiscordQoSConfig") -> QoSPolicy:
     )
 
 
-def whatsapp_policy(cfg: "WhatsAppQoSConfig") -> QoSPolicy:
+def whatsapp_policy(cfg: WhatsAppQoSConfig) -> QoSPolicy:
     """Build a WhatsApp QoS policy from config.
 
     WhatsApp policy is disabled until adapter-specific throughput limits are

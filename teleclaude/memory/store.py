@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync memory access
@@ -25,7 +25,7 @@ class MemoryStore:
     async def save_observation(self, inp: ObservationInput) -> ObservationResult:
         """Save an observation via the async database."""
         project = inp.project or DEFAULT_PROJECT
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         title = inp.title or _auto_title(inp.text)
 
         # Get or create manual session for this project
@@ -57,7 +57,7 @@ class MemoryStore:
     def save_observation_sync(self, inp: ObservationInput, db_path: str) -> ObservationResult:
         """Save an observation via sync database access (for hook receiver)."""
         project = inp.project or DEFAULT_PROJECT
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         title = inp.title or _auto_title(inp.text)
         session_id = self._get_or_create_manual_session_sync(project, db_path)
 
@@ -151,7 +151,7 @@ class MemoryStore:
                 return row[0] if isinstance(row, tuple) else row.memory_session_id  # type: ignore[union-attr]
 
             session_id = str(uuid.uuid4())
-            now_epoch = int(datetime.now(timezone.utc).timestamp())
+            now_epoch = int(datetime.now(UTC).timestamp())
             ms = db_models.MemoryManualSession(
                 memory_session_id=session_id,
                 project=project,
@@ -177,7 +177,7 @@ class MemoryStore:
                 return row[0] if isinstance(row, tuple) else str(row)
 
             session_id = str(uuid.uuid4())
-            now_epoch = int(datetime.now(timezone.utc).timestamp())
+            now_epoch = int(datetime.now(UTC).timestamp())
             ms = db_models.MemoryManualSession(
                 memory_session_id=session_id,
                 project=project,

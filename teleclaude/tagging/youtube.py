@@ -6,10 +6,11 @@ import asyncio
 import csv
 import json
 import time
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, cast
+from typing import cast
 
 from aiohttp import ClientSession
 from instrukt_ai_logging import get_logger

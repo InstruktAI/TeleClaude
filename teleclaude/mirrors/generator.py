@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import StructuredMessage, extract_structured_messages
@@ -70,7 +70,7 @@ def generate_mirror_sync(
         return False
 
     existing = get_mirror(source_identity=source_identity, db=db)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
 

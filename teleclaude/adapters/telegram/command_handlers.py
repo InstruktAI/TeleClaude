@@ -39,7 +39,7 @@ class CommandHandlersMixin:
     """
 
     # Abstract properties/attributes (declared for type hints)
-    client: "AdapterClient"
+    client: AdapterClient
     user_whitelist: set[int]
 
     if TYPE_CHECKING:
@@ -60,21 +60,21 @@ class CommandHandlersMixin:
             """Build keyboard with trusted directories."""
             ...
 
-        async def _get_session_from_topic(self, update: Update) -> "Session | None":
+        async def _get_session_from_topic(self, update: Update) -> Session | None:
             """Get session from update's topic."""
             ...
 
-        async def _require_session_from_topic(self, update: Update) -> "Session | None":
+        async def _require_session_from_topic(self, update: Update) -> Session | None:
             """Require session from update's topic, showing error if not found."""
             ...
 
-        async def _pre_handle_user_input(self, session: "Session") -> None:
+        async def _pre_handle_user_input(self, session: Session) -> None:
             """Pre-handle user input (delete old messages)."""
             ...
 
         async def _dispatch_command(
             self,
-            session: "Session",
+            session: Session,
             message_id: str | None,
             metadata: MessageMetadata,
             command_name: str,

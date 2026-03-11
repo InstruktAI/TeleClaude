@@ -3,7 +3,7 @@
 import asyncio
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -47,7 +47,7 @@ logger = get_logger(__name__)
 @dataclass(slots=True)
 class _SpeechJob:
     text: str
-    service_chain: list[tuple[str, Optional[str]]]
+    service_chain: list[tuple[str, str | None]]
     session_id: str
     primary_service: str
 
@@ -59,7 +59,7 @@ class TTSManager:
         """Initialize TTS manager from config."""
         self.tts_config = self._load_tts_config()
         self.enabled = self.tts_config.enabled
-        self._chiptunes_manager: "ChiptunesManager | None" = None
+        self._chiptunes_manager: ChiptunesManager | None = None
         self._audio_focus = AudioFocusCoordinator()
         self._speech_queue: asyncio.Queue[_SpeechJob] | None = None
         self._worker_task: asyncio.Task[None] | None = None
@@ -93,7 +93,7 @@ class TTSManager:
 
         return config.tts
 
-    async def get_random_voice_for_session(self) -> tuple[str, Optional[str]] | None:
+    async def get_random_voice_for_session(self) -> tuple[str, str | None] | None:
         """
         Get a random voice from enabled services, excluding voices already in use
         by active sessions.
@@ -141,7 +141,7 @@ class TTSManager:
         logger.debug("No TTS services with available voices")
         return None
 
-    async def _get_or_assign_voice(self, session_id: str) -> Optional[VoiceConfig]:
+    async def _get_or_assign_voice(self, session_id: str) -> VoiceConfig | None:
         """Get stored voice for session, or assign a new one if none exists.
 
         Args:
@@ -177,7 +177,7 @@ class TTSManager:
         self,
         event_name: str | AgentHookEventType,
         session_id: str,
-        text: Optional[str] = None,
+        text: str | None = None,
     ) -> bool:
         """
         Trigger TTS for an event.
@@ -234,7 +234,7 @@ class TTSManager:
             return False
 
         # Build fallback chain starting with session's assigned service
-        service_chain: list[tuple[str, Optional[str]]] = []
+        service_chain: list[tuple[str, str | None]] = []
 
         # First, add the session's assigned voice
         service_chain.append((voice.service_name, voice.voice))
@@ -256,7 +256,7 @@ class TTSManager:
             if not service_cfg or not service_cfg.enabled:
                 continue
 
-            fallback_voice: Optional[str] = None
+            fallback_voice: str | None = None
             if service_cfg.voices:
                 available = [v for v in service_cfg.voices if (service_name, v.voice_id or v.name) not in voices_in_use]
                 if not available:
@@ -304,7 +304,7 @@ class TTSManager:
             logger.warning("No voice available for TTS speak()", extra={"session_id": session_id[:8]})
             return False
 
-        service_chain: list[tuple[str, Optional[str]]] = [(voice.service_name, voice.voice)]
+        service_chain: list[tuple[str, str | None]] = [(voice.service_name, voice.voice)]
         logger.debug("TTS speak queued (voice %s): %s...", voice.voice, text[:50])
 
         await self._enqueue_speech(text, service_chain, session_id, voice.service_name)
@@ -345,7 +345,7 @@ class TTSManager:
     async def _enqueue_speech(
         self,
         text: str,
-        service_chain: list[tuple[str, Optional[str]]],
+        service_chain: list[tuple[str, str | None]],
         session_id: str,
         primary_service: str,
     ) -> None:
@@ -377,7 +377,7 @@ class TTSManager:
                 await self._run_speech_job(job)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001 - background worker should not crash the daemon
+            except Exception as exc:
                 logger.error("TTS worker failed: %s", exc, extra={"session_id": job.session_id[:8]})
             finally:
                 self._speech_queue.task_done()

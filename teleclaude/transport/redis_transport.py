@@ -15,8 +15,9 @@ import json
 import random
 import ssl
 import time
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Optional, cast
+from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
@@ -101,7 +102,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         redis_meta = adapter_metadata.get_transport().get_redis()
         redis_meta.channel_id = channel_id
 
-    def __init__(self, adapter_client: "AdapterClient", task_registry: "TaskRegistry | None" = None):
+    def __init__(self, adapter_client: AdapterClient, task_registry: TaskRegistry | None = None):
         """Initialize Redis transport.
 
         Args:
@@ -119,14 +120,14 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         self.task_registry = task_registry
 
         # Cache reference (wired by daemon after start via property setter)
-        self._cache: "DaemonCache | None" = None
+        self._cache: DaemonCache | None = None
 
         # Transport state
-        self._message_poll_task: Optional[asyncio.Task[object]] = None
-        self._heartbeat_task: Optional[asyncio.Task[object]] = None
-        self._peer_refresh_task: Optional[asyncio.Task[object]] = None
-        self._connection_task: Optional[asyncio.Task[object]] = None
-        self._reconnect_task: Optional[asyncio.Task[object]] = None
+        self._message_poll_task: asyncio.Task[object] | None = None
+        self._heartbeat_task: asyncio.Task[object] | None = None
+        self._peer_refresh_task: asyncio.Task[object] | None = None
+        self._connection_task: asyncio.Task[object] | None = None
+        self._reconnect_task: asyncio.Task[object] | None = None
         self._running = False
         self._redis_ready = asyncio.Event()
         self._redis_last_error: str | None = None
@@ -150,7 +151,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         self.heartbeat_ttl = 60  # Key expires after 60s
 
         # Track pending new_session requests for response
-        self._pending_new_session_request: Optional[str] = None
+        self._pending_new_session_request: str | None = None
 
         # Track last-seen project digests for peers
         self._peer_digests: dict[str, str] = {}
@@ -171,12 +172,12 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         logger.info("RedisTransport initialized for computer: %s", self.computer_name)
 
     @property
-    def cache(self) -> "DaemonCache | None":
+    def cache(self) -> DaemonCache | None:
         """Get cache reference."""
         return self._cache
 
     @cache.setter
-    def cache(self, value: "DaemonCache | None") -> None:
+    def cache(self, value: DaemonCache | None) -> None:
         """Set cache reference and subscribe to changes."""
         if self._cache:
             self._cache.unsubscribe(self._on_cache_change)
@@ -407,7 +408,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         computer: str,
         data_type: str,
         project_path: str | None,
-    ) -> Optional[Awaitable[None]]:
+    ) -> Awaitable[None] | None:
         if data_type in ("projects", "preparation"):
             return self.pull_remote_projects_with_todos(computer)
         if data_type == "todos":
@@ -618,7 +619,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         logger.info("RedisTransport stopped")
 
-    async def _get_last_processed_message_id(self) -> Optional[str]:
+    async def _get_last_processed_message_id(self) -> str | None:
         """Get last processed Redis message ID from database.
 
         Returns:
@@ -868,7 +869,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                             info.get("computer_name"),
                             last_seen_str,
                         )
-                        last_seen_dt = datetime.now(timezone.utc)
+                        last_seen_dt = datetime.now(UTC)
 
                     computer_name: str = str(info["computer_name"])
 
@@ -1306,7 +1307,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         # Payload with interest advertising
         payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload
             "computer_name": self.computer_name,
-            "last_seen": datetime.now(timezone.utc).isoformat(),
+            "last_seen": datetime.now(UTC).isoformat(),
         }
 
         # Include interest if cache available
@@ -1649,8 +1650,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         computer_name: str,
         command: str,
         metadata: MessageMetadata,
-        session_id: Optional[str] = None,
-        args: Optional[list[str]] = None,
+        session_id: str | None = None,
+        args: list[str] | None = None,
     ) -> str:
         """Send request to remote computer's message stream.
 
@@ -1823,7 +1824,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             raise
 
     async def send_system_command(
-        self, computer_name: str, command: str, args: Optional[dict[str, object]] = None
+        self, computer_name: str, command: str, args: dict[str, object] | None = None
     ) -> str:
         """Send system command to remote computer (not session-specific).
 

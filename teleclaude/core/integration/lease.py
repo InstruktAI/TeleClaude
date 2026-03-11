@@ -6,11 +6,12 @@ import json
 import os
 import time
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Iterator, Literal, TypedDict
+from typing import Literal, TypedDict
 
 
 class IntegrationLeaseError(RuntimeError):

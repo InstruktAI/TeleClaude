@@ -4,10 +4,11 @@ import asyncio
 import os
 import re
 import time
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Awaitable, Callable, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 from instrukt_ai_logging import get_logger
 
@@ -65,7 +66,7 @@ def command_retry(
                     # Check for rate limit (RetryAfter or similar)
                     if hasattr(e, "retry_after"):
                         if attempt < max_retries - 1:
-                            retry_after = getattr(e, "retry_after")  # type: ignore[misc]
+                            retry_after = e.retry_after  # type: ignore[misc]
                             logger.debug(
                                 "%s: Rate limited, retrying in %ss (attempt %d/%d)",
                                 func.__name__,
@@ -212,8 +213,8 @@ def format_completed_status_line(exit_code: int, started_timestamp: float, size_
         Formatted status line
     """
     exit_emoji = "✅" if exit_code == 0 else "❌"
-    started_dt = datetime.fromtimestamp(started_timestamp, tz=timezone.utc)
-    completed_dt = datetime.now(timezone.utc)
+    started_dt = datetime.fromtimestamp(started_timestamp, tz=UTC)
+    completed_dt = datetime.now(UTC)
     started_time = format_local_datetime(started_dt)
     completed_time = format_local_datetime(completed_dt)
     truncation_marker = " | (truncated)" if is_truncated else ""

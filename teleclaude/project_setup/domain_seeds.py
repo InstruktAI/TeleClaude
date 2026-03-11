@@ -27,7 +27,7 @@ def seed_event_domains(_project_root: Path) -> None:
         return
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             raw: dict[str, Any] = (
                 yaml.safe_load(f) or {}
             )  # guard: loose-dict - YAML config is unstructured at the top level

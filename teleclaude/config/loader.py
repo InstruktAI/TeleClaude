@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Type, TypeVar
+from typing import TypeVar
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -34,7 +34,7 @@ def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
                     _warn_unknown_keys(item, f"{path}.{field_name}[{idx}]", config_path)
 
 
-def load_config(path: Path, model_class: Type[T]) -> T:
+def load_config(path: Path, model_class: type[T]) -> T:
     """Load YAML config from ``path`` and validate it with ``model_class``.
 
     Args:
@@ -48,7 +48,7 @@ def load_config(path: Path, model_class: Type[T]) -> T:
         return model_class()
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
     except Exception as e:
         logger.error("Failed to read config file %s: %s", path, e)
@@ -65,7 +65,7 @@ def load_project_config(path: Path) -> ProjectConfig:
     return load_config(path, ProjectConfig)
 
 
-def load_global_config(path: Optional[Path] = None) -> GlobalConfig:
+def load_global_config(path: Path | None = None) -> GlobalConfig:
     """Load global-level configuration."""
     if path is None:
         path = Path("~/.teleclaude/teleclaude.yml").expanduser()

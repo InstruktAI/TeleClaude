@@ -11,18 +11,32 @@ repos:
     language: system
     pass_filenames: true
     require_serial: true
-  - id: lint
-    name: Lint (make lint)
-    entry: make lint
+  # --- Scoped lint hooks (replace monolithic make lint) ---
+  # Each component only triggers when relevant files are staged.
+  - id: guardrails
+    name: Config guardrails
+    entry: ./tools/lint/precommit-hook.sh guardrails
     language: system
     pass_filenames: false
-  - id: test
-    name: Run tests
-    entry: make test
+    always_run: true
+  - id: ruff-check
+    name: Ruff check
+    entry: ./tools/lint/precommit-hook.sh ruff-check
     language: system
+    types: [python]
+    pass_filenames: true
+  - id: pyright
+    name: Pyright type check
+    entry: ./tools/lint/precommit-hook.sh pyright
+    language: system
+    types: [python]
     pass_filenames: false
-    stages:
-    - manual
+  - id: markdown-validate
+    name: Markdown validation
+    entry: ./tools/lint/precommit-hook.sh markdown
+    language: system
+    files: \.(md|yaml)$
+    pass_filenames: false
 - repo: local
   hooks:
   - id: teleclaude-docs-check

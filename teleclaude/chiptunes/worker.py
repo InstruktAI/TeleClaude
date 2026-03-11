@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import random
 import queue
+import random
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
 from teleclaude.chiptunes.player import ChiptunesPlayer
+from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
 
 logger = get_logger(__name__)
 _RSID_MAGIC = b"RSID"

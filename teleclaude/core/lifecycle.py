@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -28,11 +29,11 @@ class DaemonLifecycle:
     def __init__(
         self,
         *,
-        client: "AdapterClient",
-        cache: "DaemonCache",
+        client: AdapterClient,
+        cache: DaemonCache,
         shutdown_event: asyncio.Event,
-        task_registry: "TaskRegistry",
-        runtime_settings: "RuntimeSettings | None" = None,
+        task_registry: TaskRegistry,
+        runtime_settings: RuntimeSettings | None = None,
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
         init_voice_handler: Callable[[], None],
         api_restart_max: int,

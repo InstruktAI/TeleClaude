@@ -1,6 +1,6 @@
 """Mapper module to normalize transport inputs into internal command models."""
 
-from typing import Dict, List, Optional, cast
+from typing import cast
 
 from teleclaude.core.agents import get_default_agent, get_known_agents
 from teleclaude.core.events import parse_command_string
@@ -42,7 +42,7 @@ class CommandMapper:
     """Maps transport-specific payloads to internal command models."""
 
     @staticmethod
-    def _normalize_actor_id(source: str, source_id: object) -> Optional[str]:
+    def _normalize_actor_id(source: str, source_id: object) -> str | None:
         text = str(source_id).strip() if source_id is not None else ""
         if not text:
             return None
@@ -50,8 +50,8 @@ class CommandMapper:
 
     @staticmethod
     def _extract_actor_from_channel_metadata(
-        channel_metadata: Optional[Dict[str, object]], source: str
-    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        channel_metadata: dict[str, object] | None, source: str
+    ) -> tuple[str | None, str | None, str | None]:
         if not channel_metadata:
             return (None, None, None)
 
@@ -96,9 +96,9 @@ class CommandMapper:
     @staticmethod
     def map_telegram_input(
         event: str,
-        args: List[str],
+        args: list[str],
         metadata: MessageMetadata,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> InternalCommand:
         """Map Telegram adapter input to internal command."""
         if event in _KEY_COMMANDS:
@@ -116,10 +116,10 @@ class CommandMapper:
                 origin=InputOrigin.TELEGRAM.value,
                 channel_metadata=metadata.channel_metadata,
                 auto_command=metadata.auto_command,
-                working_slug=cast(Optional[str], metadata.channel_metadata.get("working_slug"))
+                working_slug=cast(str | None, metadata.channel_metadata.get("working_slug"))
                 if metadata.channel_metadata
                 else None,
-                initiator_session_id=cast(Optional[str], metadata.channel_metadata.get("initiator_session_id"))
+                initiator_session_id=cast(str | None, metadata.channel_metadata.get("initiator_session_id"))
                 if metadata.channel_metadata
                 else None,
             )
@@ -171,18 +171,18 @@ class CommandMapper:
         command_str: str,
         *,
         origin: str,
-        session_id: Optional[str] = None,
-        project_path: Optional[str] = None,
-        title: Optional[str] = None,
-        channel_metadata: Optional[Dict[str, object]] = None,
-        launch_intent: Optional[SessionLaunchIntent | Dict[str, object]] = None,
-        initiator: Optional[str] = None,
+        session_id: str | None = None,
+        project_path: str | None = None,
+        title: str | None = None,
+        channel_metadata: dict[str, object] | None = None,
+        launch_intent: SessionLaunchIntent | dict[str, object] | None = None,
+        initiator: str | None = None,
     ) -> InternalCommand:
         """Map Redis inbound message to internal command."""
         cmd_name, args = parse_command_string(command_str)
         if not origin:
             origin = InputOrigin.REDIS.value
-        launch_intent_obj: Optional[SessionLaunchIntent] = None
+        launch_intent_obj: SessionLaunchIntent | None = None
         if isinstance(launch_intent, dict):
             launch_intent_obj = SessionLaunchIntent.from_dict(launch_intent)
         elif isinstance(launch_intent, SessionLaunchIntent):
@@ -293,7 +293,7 @@ class CommandMapper:
     @staticmethod
     def map_api_input(
         command_name: str,
-        payload: Dict[str, object],
+        payload: dict[str, object],
         metadata: MessageMetadata,
     ) -> InternalCommand:
         """Map API input to internal command."""
@@ -338,7 +338,7 @@ class CommandMapper:
 
         if command_name == "keys":
             key = str(payload.get("key", ""))
-            args = cast(List[str], payload.get("args", []))
+            args = cast(list[str], payload.get("args", []))
             return KeysCommand(
                 session_id=session_id,
                 key=key,
@@ -378,7 +378,7 @@ class CommandMapper:
             )
 
         if command_name == "agent":
-            args = cast(List[str], payload.get("args", []))
+            args = cast(list[str], payload.get("args", []))
             agent_name = args[0] if args else get_default_agent()
             return StartAgentCommand(
                 session_id=session_id,
@@ -387,7 +387,7 @@ class CommandMapper:
             )
 
         if command_name == "agent_restart":
-            args = cast(List[str], payload.get("args", []))
+            args = cast(list[str], payload.get("args", []))
             agent_name = args[0] if args else None
             return RestartAgentCommand(
                 session_id=session_id,

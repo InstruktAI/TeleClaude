@@ -5,11 +5,11 @@ import logging
 import os
 import re
 from collections import deque
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, Mapping, Optional, Sequence, cast
+from typing import cast
 
 from teleclaude.constants import CHECKPOINT_RESULT_SNIPPET_MAX_CHARS
 from teleclaude.core.agents import AgentName
@@ -24,8 +24,8 @@ CHECKPOINT_JSONL_TAIL_READ_BYTES = 1_048_576
 def parse_claude_transcript(
     transcript_path: str,
     title: str,
-    since_timestamp: Optional[str] = None,
-    until_timestamp: Optional[str] = None,
+    since_timestamp: str | None = None,
+    until_timestamp: str | None = None,
     tail_chars: int = 2000,
     collapse_tool_results: bool = False,
 ) -> str:
@@ -64,8 +64,8 @@ def parse_claude_transcript(
 def parse_codex_transcript(
     transcript_path: str,
     title: str,
-    since_timestamp: Optional[str] = None,
-    until_timestamp: Optional[str] = None,
+    since_timestamp: str | None = None,
+    until_timestamp: str | None = None,
     tail_chars: int = 2000,
     collapse_tool_results: bool = False,
 ) -> str:
@@ -96,8 +96,8 @@ def parse_codex_transcript(
 def parse_gemini_transcript(
     transcript_path: str,
     title: str,
-    since_timestamp: Optional[str] = None,
-    until_timestamp: Optional[str] = None,
+    since_timestamp: str | None = None,
+    until_timestamp: str | None = None,
     tail_chars: int = 2000,
     collapse_tool_results: bool = False,
 ) -> str:
@@ -169,7 +169,7 @@ def _extract_codex_reasoning_text(
 
 def normalize_transcript_entry_message(
     entry: Mapping[str, object],  # guard: loose-dict - External entry
-) -> Optional[dict[str, object]]:  # guard: loose-dict - Normalized message
+) -> dict[str, object] | None:  # guard: loose-dict - Normalized message
     """Normalize transcript entry variants into a message-like dict.
 
     Supports:
@@ -206,14 +206,14 @@ def normalize_transcript_entry_message(
 
 def iter_assistant_blocks(
     entries: Iterable[Mapping[str, object]],
-) -> Iterator[tuple[dict[str, object], Optional[datetime]]]:  # guard: loose-dict
+) -> Iterator[tuple[dict[str, object], datetime | None]]:  # guard: loose-dict
     """Yield (block, entry_timestamp) for assistant content blocks only.
 
     Applies normalize_transcript_entry_message, role == "assistant" gate,
     and content-is-list check. Callers handle format-specific rendering.
     """
     for entry in entries:
-        entry_dt: Optional[datetime] = None
+        entry_dt: datetime | None = None
         entry_ts_str = entry.get("timestamp")
         if isinstance(entry_ts_str, str):
             entry_dt = _parse_timestamp(entry_ts_str)
@@ -234,8 +234,8 @@ def iter_assistant_blocks(
 
 def _should_skip_entry(
     entry: dict[str, object],  # guard: loose-dict - External entry
-    since_dt: Optional[datetime],
-    until_dt: Optional[datetime],
+    since_dt: datetime | None,
+    until_dt: datetime | None,
 ) -> bool:
     """Check if entry should be skipped based on type and timestamp filters.
 
@@ -262,11 +262,11 @@ def _should_skip_entry(
 def _process_entry(
     entry: dict[str, object],  # guard: loose-dict - External entry
     lines: list[str],
-    last_section: Optional[str],
+    last_section: str | None,
     collapse_tool_results: bool,
     include_thinking: bool = True,
     include_tools: bool = True,
-) -> Optional[str]:  # guard: loose-dict - External entry
+) -> str | None:  # guard: loose-dict - External entry
     """Process a transcript entry and append formatted content to lines.
 
     guard: allow-string-compare
@@ -305,7 +305,7 @@ def _process_entry(
     return last_section
 
 
-def _process_string_content(content: str, time_prefix: str, lines: list[str], last_section: Optional[str]) -> str:
+def _process_string_content(content: str, time_prefix: str, lines: list[str], last_section: str | None) -> str:
     """Process string content (user message).
 
     guard: allow-string-compare
@@ -323,11 +323,11 @@ def _process_list_content(
     role: str,
     time_prefix: str,
     lines: list[str],
-    last_section: Optional[str],
+    last_section: str | None,
     collapse_tool_results: bool,
     include_thinking: bool = True,
     include_tools: bool = True,
-) -> Optional[str]:
+) -> str | None:
     """Process list of content blocks.
 
     guard: allow-string-compare
@@ -367,8 +367,8 @@ def _process_text_block(
     role: str,
     time_prefix: str,
     lines: list[str],
-    last_section: Optional[str],
-) -> Optional[str]:
+    last_section: str | None,
+) -> str | None:
     """Process text block from assistant or user.
 
     guard: allow-string-compare
@@ -396,7 +396,7 @@ def _process_thinking_block(
     block: dict[str, object],  # guard: loose-dict - External block
     time_prefix: str,
     lines: list[str],
-    last_section: Optional[str],
+    last_section: str | None,
 ) -> str:
     """Process thinking block.
 
@@ -412,7 +412,7 @@ def _process_thinking_block(
     return "assistant"
 
 
-def _extract_tool_subject(block: dict[str, object]) -> Optional[str]:  # guard: loose-dict - External block
+def _extract_tool_subject(block: dict[str, object]) -> str | None:  # guard: loose-dict - External block
     """Intelligently extract the 'subject' of a tool call from its arguments.
 
     Prioritizes paths, commands, patterns, and URLs.
@@ -491,8 +491,8 @@ def _process_tool_use_block(
 def render_clean_agent_output(
     transcript_path: str,
     agent_name: AgentName,
-    since_timestamp: Optional[datetime] = None,
-) -> tuple[Optional[str], Optional[datetime]]:
+    since_timestamp: datetime | None = None,
+) -> tuple[str | None, datetime | None]:
     """Render metadata-free markdown for assistant activity.
 
     Used for sequential, incremental output blocks in the UI.
@@ -547,7 +547,7 @@ def render_clean_agent_output(
 
     lines: list[str] = []
     emitted = False
-    last_entry_dt: Optional[datetime] = None
+    last_entry_dt: datetime | None = None
 
     for pb in project_entries(assistant_entries, THREADED_CLEAN_POLICY):
         if pb.role != "assistant":
@@ -615,7 +615,7 @@ def _process_tool_result_block(
     time_prefix: str,
     lines: list[str],
     collapse_tool_results: bool,
-    max_chars: Optional[int] = None,
+    max_chars: int | None = None,
 ) -> str:  # guard: loose-dict - External block
     """Process tool result block.
 
@@ -680,7 +680,7 @@ def _apply_tail_limit_codex(result: str, tail_chars: int) -> str:
     return f"[...truncated, showing last {tail_chars} chars...]\n\n{truncated}"
 
 
-def _parse_timestamp(ts: str) -> Optional[datetime]:
+def _parse_timestamp(ts: str) -> datetime | None:
     """Parse ISO 8601 timestamp string to datetime.
 
     Args:
@@ -698,12 +698,12 @@ def _parse_timestamp(ts: str) -> Optional[datetime]:
         for fmt in ["%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"]:
             try:
                 parsed = datetime.strptime(ts_clean, fmt)
-                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
             except ValueError:
                 continue
         # Fallback: fromisoformat handles most cases
         parsed = datetime.fromisoformat(ts_clean)
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
     except (ValueError, TypeError):
         return None
 
@@ -719,7 +719,7 @@ def _format_timestamp_prefix(dt: datetime) -> str:
     """
     # Convert to local timezone for comparison
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     local_dt = dt.astimezone()
     now = datetime.now().astimezone()
 
@@ -815,8 +815,8 @@ def _format_thinking(text: str) -> str:
 def _render_transcript_from_entries(
     entries: Iterable[dict[str, object]],  # guard: loose-dict - External entries
     title: str,
-    since_timestamp: Optional[str],
-    until_timestamp: Optional[str],
+    since_timestamp: str | None,
+    until_timestamp: str | None,
     tail_chars: int,
     *,
     tail_limit_fn: Callable[[str, int], str] = _apply_tail_limit,
@@ -830,7 +830,7 @@ def _render_transcript_from_entries(
     until_dt = _parse_timestamp(until_timestamp) if until_timestamp else None
 
     lines: list[str] = [f"# {title}", ""]
-    last_section: Optional[str] = None
+    last_section: str | None = None
     emitted = False
 
     for entry in entries:
@@ -923,8 +923,7 @@ def _iter_jsonl_entries_tail(
         if isinstance(entry_value, dict):
             tail.append(cast(dict[str, object], entry_value))  # guard: loose-dict - Parsed JSONL entry
 
-    for entry in tail:
-        yield entry
+    yield from tail
 
 
 def _iter_claude_entries(
@@ -1084,9 +1083,9 @@ def render_agent_output(
     agent_name: AgentName,
     include_tools: bool = False,
     include_tool_results: bool = True,
-    since_timestamp: Optional[datetime] = None,
+    since_timestamp: datetime | None = None,
     include_timestamps: bool = True,
-) -> tuple[Optional[str], Optional[datetime]]:
+) -> tuple[str | None, datetime | None]:
     """Render markdown for assistant activity since the last user boundary or since_timestamp.
 
     Used for sequential, incremental output blocks. No truncation is applied;
@@ -1161,7 +1160,7 @@ def render_agent_output(
 
     lines: list[str] = []
     emitted = False
-    last_entry_dt: Optional[datetime] = None
+    last_entry_dt: datetime | None = None
 
     for pb in project_entries(assistant_entries, render_policy):
         if pb.role != "assistant":
@@ -1219,7 +1218,7 @@ def render_agent_output(
 def get_assistant_messages_since(
     transcript_path: str,
     agent_name: AgentName,
-    since_timestamp: Optional[datetime] = None,
+    since_timestamp: datetime | None = None,
 ) -> list[dict[str, object]]:  # guard: loose-dict - External transcript messages
     """Retrieve assistant message objects from transcript since a timestamp.
 
@@ -1267,7 +1266,7 @@ def get_assistant_messages_since(
     return assistant_messages
 
 
-def _entry_role(entry: Mapping[str, object]) -> Optional[str]:
+def _entry_role(entry: Mapping[str, object]) -> str | None:
     """Return normalized role from an entry's message/payload."""
     message = normalize_transcript_entry_message(entry)
     if isinstance(message, dict):
@@ -1297,10 +1296,10 @@ def _start_index_after_timestamp_or_rotation(
     transcript_path: str,
     agent_name: AgentName,
     mode: str,
-) -> Optional[int]:
+) -> int | None:
     """Return first entry index after cursor; fallback to start for rotation windows."""
     if since_timestamp.tzinfo is None:
-        since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
+        since_timestamp = since_timestamp.replace(tzinfo=UTC)
 
     for i, entry in enumerate(entries):
         entry_ts_str = entry.get("timestamp")
@@ -1308,7 +1307,7 @@ def _start_index_after_timestamp_or_rotation(
             entry_dt = _parse_timestamp(entry_ts_str)
             if entry_dt:
                 if entry_dt.tzinfo is None:
-                    entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+                    entry_dt = entry_dt.replace(tzinfo=UTC)
                 if entry_dt > since_timestamp:
                     return i
 
@@ -1328,7 +1327,7 @@ def _start_index_after_timestamp_or_rotation(
 def count_renderable_assistant_blocks(
     transcript_path: str,
     agent_name: AgentName,
-    since_timestamp: Optional[datetime] = None,
+    since_timestamp: datetime | None = None,
     *,
     include_tools: bool = False,
     include_tool_results: bool = False,
@@ -1363,7 +1362,7 @@ class TranscriptParserInfo:
 
     display_name: str
     file_prefix: str
-    parse: Callable[[str, str, Optional[str], Optional[str], int, bool], str]
+    parse: Callable[[str, str, str | None, str | None, int, bool], str]
 
 
 AGENT_TRANSCRIPT_PARSERS: dict[AgentName, TranscriptParserInfo] = {
@@ -1383,7 +1382,7 @@ def _get_entries_for_agent(
     agent_name: AgentName,
     *,
     tail_entries: int | None = None,
-) -> Optional[list[dict[str, object]]]:  # guard: loose-dict - External entries
+) -> list[dict[str, object]] | None:  # guard: loose-dict - External entries
     """Load and return transcript entries for the given agent type.
 
     Returns None if path doesn't exist or agent type is unknown.
@@ -1401,7 +1400,7 @@ def _get_entries_for_agent(
     return None  # type: ignore[unreachable]  # Defensive fallback
 
 
-def _extract_text_from_content(content: object, role: str) -> Optional[str]:
+def _extract_text_from_content(content: object, role: str) -> str | None:
     """Extract text from message content based on role.
 
     guard: allow-string-compare
@@ -1428,7 +1427,7 @@ def _extract_last_message_by_role(
     agent_name: AgentName,
     target_role: str,
     count: int = 1,
-) -> Optional[str]:
+) -> str | None:
     """Extract the last N messages with the specified role from the transcript.
 
     guard: allow-string-compare
@@ -1475,7 +1474,7 @@ def _extract_last_message_by_role(
 def extract_last_user_message(
     transcript_path: str,
     agent_name: AgentName,
-) -> Optional[str]:
+) -> str | None:
     """Extract the last user message from the transcript.
 
     Args:
@@ -1529,7 +1528,7 @@ def extract_last_agent_message(
     transcript_path: str,
     agent_name: AgentName,
     count: int = 1,
-) -> Optional[str]:
+) -> str | None:
     """Extract the last N assistant/agent text messages from the transcript.
 
     Only extracts actual text content, skipping tool_use and thinking blocks.
@@ -1607,8 +1606,8 @@ def parse_session_transcript(
     title: str,
     *,
     agent_name: AgentName,
-    since_timestamp: Optional[str] = None,
-    until_timestamp: Optional[str] = None,
+    since_timestamp: str | None = None,
+    until_timestamp: str | None = None,
     tail_chars: int = 2000,
     escape_triple_backticks: bool = False,
     collapse_tool_results: bool = False,
@@ -1793,7 +1792,7 @@ class ToolCallRecord:
     )
     had_error: bool = False
     result_snippet: str = ""
-    timestamp: Optional[datetime] = None
+    timestamp: datetime | None = None
 
 
 @dataclass
@@ -2089,7 +2088,7 @@ class StructuredMessage:
     role: str  # "user" | "assistant" | "system"
     type: str  # "text" | "compaction" | "tool_use" | "tool_result" | "thinking"
     text: str
-    timestamp: Optional[str] = None
+    timestamp: str | None = None
     entry_index: int = 0
     file_index: int = 0
 
@@ -2128,7 +2127,7 @@ def extract_structured_messages(
     transcript_path: str,
     agent_name: AgentName,
     *,
-    since: Optional[str] = None,
+    since: str | None = None,
     include_tools: bool = False,
     include_thinking: bool = False,
 ) -> list[StructuredMessage]:
@@ -2155,7 +2154,7 @@ def extract_structured_messages(
 
     for idx, entry in enumerate(entries):
         entry_ts_str = entry.get("timestamp")
-        entry_ts: Optional[str] = None
+        entry_ts: str | None = None
         if isinstance(entry_ts_str, str):
             entry_ts = entry_ts_str
             if since_dt:
@@ -2287,7 +2286,7 @@ def extract_messages_from_chain(
     file_paths: list[str],
     agent_name: AgentName,
     *,
-    since: Optional[str] = None,
+    since: str | None = None,
     include_tools: bool = False,
     include_thinking: bool = False,
 ) -> list[dict[str, object]]:  # guard: loose-dict - API response messages

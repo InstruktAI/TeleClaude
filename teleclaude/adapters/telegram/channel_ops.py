@@ -40,7 +40,7 @@ class ChannelOperationsMixin:
 
     # Abstract properties - implemented by TelegramAdapter
     @property
-    def bot(self) -> "ExtBot[None]":
+    def bot(self) -> ExtBot[None]:
         """Return the Telegram bot instance."""
         raise NotImplementedError
 
@@ -118,7 +118,7 @@ class ChannelOperationsMixin:
 
         try:
             await asyncio.wait_for(event.wait(), timeout=TOPIC_READY_TIMEOUT_S)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._topic_ready_events.pop(topic_id, None)
             logger.warning(
                 "Topic %s (ID: %s) did not emit forum_topic_created within %.1fs; proceeding anyway",

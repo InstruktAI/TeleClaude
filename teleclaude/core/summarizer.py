@@ -2,7 +2,8 @@
 
 import json
 import os
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI

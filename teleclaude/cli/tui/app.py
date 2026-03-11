@@ -60,7 +60,6 @@ from teleclaude.cli.tui.theme import (
     _TELECLAUDE_LIGHT_AGENT_THEME,
     _TELECLAUDE_LIGHT_THEME,
     get_pane_theming_mode_level,
-    get_system_dark_mode,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     get_terminal_background,
     get_tui_inactive_background,
 )

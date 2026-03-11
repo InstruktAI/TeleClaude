@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 
-def get_last_output_summary(session: Session) -> Optional[str]:
+def get_last_output_summary(session: Session) -> str | None:
     """Get the last output text, preferring the LLM summary over raw output."""
     return session.last_output_summary or session.last_output_raw

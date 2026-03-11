@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
 
@@ -41,7 +41,7 @@ def save_favorite(track_name: str, sid_path: str) -> None:
         {
             "track_name": track_name,
             "sid_path": sid_path,
-            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "saved_at": datetime.now(UTC).isoformat(),
         }
     )
 

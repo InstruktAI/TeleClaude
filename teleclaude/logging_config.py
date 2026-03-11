@@ -12,12 +12,11 @@ Example log query: `instrukt-ai-logs teleclaude --since 10m`.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from instrukt_ai_logging import configure_logging
 
 
-def setup_logging(level: Optional[str] = None) -> None:
+def setup_logging(level: str | None = None) -> None:
     """Configure TeleClaude logging.
 
     Args:

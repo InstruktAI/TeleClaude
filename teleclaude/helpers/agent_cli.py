@@ -19,7 +19,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -230,7 +230,7 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
         # Expired temporary unavailability should not block selection.
         if isinstance(unavailable_until, str) and unavailable_until.strip():
             parsed = _parse_iso_utc(unavailable_until)
-            if parsed is not None and parsed <= datetime.now(timezone.utc):
+            if parsed is not None and parsed <= datetime.now(UTC):
                 return True
 
         return False
@@ -261,8 +261,8 @@ def _parse_iso_utc(value: str) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 # CLI agents authenticate via OAuth/account allowance, not API keys.
@@ -609,7 +609,7 @@ def main() -> int:
         )
         print(json.dumps(payload))
         return 0
-    except Exception as exc:  # noqa: BLE001 - CLI error path
+    except Exception as exc:
         payload = {
             "status": "error",
             "agent": args.agent if args.agent else None,

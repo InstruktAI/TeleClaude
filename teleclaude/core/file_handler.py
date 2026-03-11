@@ -9,8 +9,8 @@ Extracted as adapter-agnostic utility following voice_message_handler.py pattern
 """
 
 import re
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Awaitable, Callable, Optional
 
 from instrukt_ai_logging import get_logger
 
@@ -66,7 +66,7 @@ async def handle_file(
     file_path: str,
     filename: str,
     context: FileEventContext,
-    send_message: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
+    send_message: Callable[[str, str, MessageMetadata], Awaitable[str | None]],
 ) -> None:
     """Handle file upload (adapter-agnostic utility).
 

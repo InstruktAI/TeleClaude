@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TypedDict
 
 from teleclaude_events.envelope import EventLevel, EventVisibility
@@ -32,7 +32,7 @@ async def emit_review_approved(
     approved_at: str | None = None,
 ) -> str:
     """Emit review.approved when mark-phase review approved succeeds."""
-    ts = approved_at or datetime.now(timezone.utc).isoformat()
+    ts = approved_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.review.approved",
         source=f"orchestrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
@@ -58,7 +58,7 @@ async def emit_branch_pushed(
     pusher: str = "",
 ) -> str:
     """Emit branch.pushed when a worktree branch is pushed to origin before integration."""
-    ts = pushed_at or datetime.now(timezone.utc).isoformat()
+    ts = pushed_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.branch.pushed",
         source=f"finalizer/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
@@ -86,7 +86,7 @@ async def emit_deployment_started(
     ready_at: str | None = None,
 ) -> str:
     """Emit deployment.started when a finalizer reports FINALIZE_READY."""
-    ts = ready_at or datetime.now(timezone.utc).isoformat()
+    ts = ready_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.deployment.started",
         source=f"orchestrator/{orchestrator_session_id or os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
@@ -114,7 +114,7 @@ async def emit_deployment_completed(
     integrated_at: str | None = None,
 ) -> str:
     """Emit deployment.completed after successful integration to main."""
-    ts = integrated_at or datetime.now(timezone.utc).isoformat()
+    ts = integrated_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.deployment.completed",
         source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
@@ -143,7 +143,7 @@ async def emit_deployment_failed(
     blocked_at: str | None = None,
 ) -> str:
     """Emit deployment.failed when integration is blocked."""
-    ts = blocked_at or datetime.now(timezone.utc).isoformat()
+    ts = blocked_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.deployment.failed",
         source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
@@ -198,7 +198,7 @@ async def emit_integration_candidate_delivered(
     integrated_at: str | None = None,
 ) -> str:
     """Emit integration.candidate.delivered after a candidate is fully integrated."""
-    ts = integrated_at or datetime.now(timezone.utc).isoformat()
+    ts = integrated_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.integration.candidate.delivered",
         source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
@@ -224,7 +224,7 @@ async def emit_integration_candidate_blocked(
     blocked_at: str | None = None,
 ) -> str:
     """Emit integration.candidate.blocked when a candidate cannot be integrated."""
-    ts = blocked_at or datetime.now(timezone.utc).isoformat()
+    ts = blocked_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.integration.candidate.blocked",
         source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",

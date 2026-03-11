@@ -11,10 +11,11 @@ import json
 import logging
 import time
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+from collections.abc import Coroutine, Mapping
+from datetime import UTC, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Coroutine, Mapping, cast
+from typing import Any, cast
 
 import dateparser  # pylint: disable=import-error
 from aiohttp import ClientSession
@@ -204,8 +205,8 @@ def _check_backoff() -> None:
     except (ValueError, OSError):
         BACKOFF_FILE.unlink(missing_ok=True)
         return
-    if datetime.now(timezone.utc) < expires:
-        remaining = int((expires - datetime.now(timezone.utc)).total_seconds())
+    if datetime.now(UTC) < expires:
+        remaining = int((expires - datetime.now(UTC)).total_seconds())
         raise YouTubeBackoffError(
             f"YouTube backoff active — retrying in {remaining}s. "
             f"Previous request triggered a protective response from YouTube."
@@ -215,7 +216,7 @@ def _check_backoff() -> None:
 
 def _trigger_backoff(reason: str) -> None:
     """Activate the circuit breaker."""
-    expires = datetime.now(timezone.utc) + timedelta(seconds=BACKOFF_SECONDS)
+    expires = datetime.now(UTC) + timedelta(seconds=BACKOFF_SECONDS)
     BACKOFF_FILE.parent.mkdir(parents=True, exist_ok=True)
     BACKOFF_FILE.write_text(expires.isoformat(), encoding="utf-8")
     log.warning("YouTube backoff triggered for %ds: %s", BACKOFF_SECONDS, reason)

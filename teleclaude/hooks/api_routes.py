@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -120,7 +120,7 @@ async def create_contract(req: CreateContractRequest) -> ContractResponse:
     if req.ttl_seconds is not None:
         if req.ttl_seconds <= 0:
             raise HTTPException(status_code=422, detail="ttl_seconds must be positive")
-        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=req.ttl_seconds)).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(seconds=req.ttl_seconds)).isoformat()
 
     contract = Contract(
         id=req.id,

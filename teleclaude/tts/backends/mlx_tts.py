@@ -115,7 +115,7 @@ class MLXTTSBackend:
                 if callable(generate_candidate) and callable(load_candidate):
                     generate_audio = generate_candidate
                     load_model = load_candidate
-            except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
+            except Exception as import_error:
                 mlx_audio_import_error = import_error
 
         if load_model is None:

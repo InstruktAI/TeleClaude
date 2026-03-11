@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Iterator
+from collections.abc import Iterator, Mapping
+from typing import TYPE_CHECKING
 
 from teleclaude.utils.transcript import normalize_transcript_entry_message
 
@@ -167,7 +167,7 @@ def convert_session_status(status: str, session_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def convert_projected_block(projected: "ProjectedBlock") -> Iterator[str]:
+def convert_projected_block(projected: ProjectedBlock) -> Iterator[str]:
     """Convert a projected block to SSE events.
 
     The visibility policy has already been applied by the projector — this

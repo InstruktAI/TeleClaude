@@ -442,7 +442,7 @@ async def _bridge_emit(
 ) -> None:
     """Dispatch lifecycle event to the appropriate integration_bridge helper."""
     # Lazy import to avoid circular dependency at module load time
-    from teleclaude.core import integration_bridge as bridge  # noqa: PLC0415
+    from teleclaude.core import integration_bridge as bridge
 
     try:
         if event_type == "integration.started":
@@ -806,7 +806,7 @@ def _do_merge(
         _write_checkpoint(checkpoint_path, checkpoint)
         return True, ""
 
-    rc, _, stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
+    rc, _, _stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
 
     # Guard: squash merge produced no content changes — candidate already integrated.
     # Catches squash merges where ancestry check (above) doesn't fire because
@@ -1146,7 +1146,7 @@ def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
 
 
 async def next_integrate(
-    db: Db,  # noqa: ARG001  # pylint: disable=unused-argument — reserved for future DB-backed state
+    db: Db,  # pylint: disable=unused-argument — reserved for future DB-backed state
     slug: str | None,
     cwd: str,
     caller_session_id: str | None = None,

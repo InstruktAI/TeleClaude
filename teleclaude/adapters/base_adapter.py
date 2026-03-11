@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator, Awaitable, Callable
 from functools import wraps
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncIterator,
-    Awaitable,
-    Callable,
     Protocol,
     runtime_checkable,
 )
@@ -65,7 +63,7 @@ class BaseAdapter(ABC):
     All communication with daemon flows through AdapterClient (not direct).
     """
 
-    client: "AdapterClient"  # Set by subclasses in __init__
+    client: AdapterClient  # Set by subclasses in __init__
     ADAPTER_KEY: str  # Subclasses must define this constant
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
@@ -79,7 +77,7 @@ class BaseAdapter(ABC):
         """
         return MessageMetadata(origin=self.ADAPTER_KEY, **kwargs)  # pyright: ignore[reportArgumentType]
 
-    async def _get_session(self, session_id: str) -> "Session":
+    async def _get_session(self, session_id: str) -> Session:
         """Get session from database, raise if not found.
 
         Args:
@@ -136,7 +134,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def create_channel(
         self,
-        session: "Session",
+        session: Session,
         title: str,
         metadata: ChannelMetadata,
     ) -> str:
@@ -152,7 +150,7 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def update_channel_title(self, session: "Session", title: str) -> bool:
+    async def update_channel_title(self, session: Session, title: str) -> bool:
         """Update channel/topic title.
 
         Args:
@@ -164,7 +162,7 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def close_channel(self, session: "Session") -> bool:
+    async def close_channel(self, session: Session) -> bool:
         """Soft-close channel (can be reopened).
 
         Args:
@@ -175,7 +173,7 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def reopen_channel(self, session: "Session") -> bool:
+    async def reopen_channel(self, session: Session) -> bool:
         """Reopen a closed channel.
 
         Args:
@@ -186,7 +184,7 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def delete_channel(self, session: "Session") -> bool:
+    async def delete_channel(self, session: Session) -> bool:
         """Delete channel/topic (permanent, cannot be reopened).
 
         Args:
@@ -201,7 +199,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def send_message(
         self,
-        session: "Session",
+        session: Session,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
@@ -222,7 +220,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def edit_message(
         self,
-        session: "Session",
+        session: Session,
         message_id: str,
         text: str,
         *,
@@ -243,7 +241,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def delete_message(
         self,
-        session: "Session",
+        session: Session,
         message_id: str,
     ) -> bool:
         """Delete message (if platform supports).
@@ -259,7 +257,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def send_file(
         self,
-        session: "Session",
+        session: Session,
         file_path: str,
         *,
         caption: str | None = None,
@@ -314,7 +312,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def poll_output_stream(
         self,
-        session: "Session",
+        session: Session,
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
         """Poll for output chunks from remote session.

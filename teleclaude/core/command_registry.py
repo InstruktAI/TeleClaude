@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 _command_service: CommandService | None = None
 
 
-def init_command_service(command_service: "CommandService", *, force: bool = False) -> "CommandService":
+def init_command_service(command_service: CommandService, *, force: bool = False) -> CommandService:
     """Initialize the global CommandService singleton."""
     global _command_service
     if _command_service is not None and not force:
@@ -19,7 +19,7 @@ def init_command_service(command_service: "CommandService", *, force: bool = Fal
     return _command_service
 
 
-def get_command_service() -> "CommandService":
+def get_command_service() -> CommandService:
     """Return the global CommandService singleton."""
     if _command_service is None:
         raise RuntimeError("CommandService not initialized")

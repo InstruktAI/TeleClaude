@@ -13,7 +13,7 @@ Storage is SQLite-backed so listeners survive daemon restarts.
 import asyncio
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from instrukt_ai_logging import get_logger
@@ -321,9 +321,9 @@ async def get_stale_targets(max_age_minutes: int = 10) -> list[str]:
     """
     from teleclaude.core.db import db
 
-    threshold = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+    threshold = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
     threshold_iso = threshold.isoformat()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
 
     stale_targets = await db.get_stale_listener_targets(threshold_iso)
 

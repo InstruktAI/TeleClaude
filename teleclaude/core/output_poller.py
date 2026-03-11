@@ -6,9 +6,9 @@ Daemon handles all message sending.
 
 import asyncio
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Optional
 
 from instrukt_ai_logging import get_logger
 
@@ -44,7 +44,7 @@ class OutputChanged(OutputEvent):
 class ProcessExited(OutputEvent):
     """Process exited event."""
 
-    exit_code: Optional[int]
+    exit_code: int | None
     final_output: str
     started_at: float
 

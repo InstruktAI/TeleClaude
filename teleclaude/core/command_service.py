@@ -7,7 +7,8 @@ This service wires required dependencies without using a generic dispatcher.
 from __future__ import annotations
 
 import functools
-from typing import TYPE_CHECKING, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from teleclaude.core.command_handlers import (
     EndSessionHandlerResult,
@@ -58,7 +59,7 @@ class CommandService:
     def __init__(
         self,
         *,
-        client: "AdapterClient",
+        client: AdapterClient,
         start_polling: StartPollingFunc,
         execute_terminal_command: ExecuteTerminalCommandFunc,
         execute_auto_command: ExecuteAutoCommandFunc,

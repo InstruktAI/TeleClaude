@@ -7,9 +7,11 @@ import contextlib
 import importlib
 import os
 import tempfile
+from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import UTC
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -69,7 +71,7 @@ class DiscordAdapter(UiAdapter):
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
 
-    def __init__(self, client: "AdapterClient", *, task_registry: "TaskRegistry | None" = None) -> None:
+    def __init__(self, client: AdapterClient, *, task_registry: TaskRegistry | None = None) -> None:
         super().__init__(client)
         self.client = client
         self.task_registry = task_registry
@@ -137,7 +139,7 @@ class DiscordAdapter(UiAdapter):
 
         try:
             await asyncio.wait_for(self._ready_event.wait(), timeout=20.0)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             if self._gateway_task and self._gateway_task.done():
                 task_exc = self._gateway_task.exception()
                 if task_exc:
@@ -188,7 +190,7 @@ class DiscordAdapter(UiAdapter):
             raise AdapterError(f"{label} is not callable")
         return cast(Callable[..., Awaitable[object]], fn)
 
-    async def ensure_channel(self, session: "Session") -> "Session":
+    async def ensure_channel(self, session: Session) -> Session:
         # Re-read from DB to prevent stale in-memory metadata from concurrent lanes
         fresh = await db.get_session(session.session_id)
         if fresh:
@@ -218,7 +220,7 @@ class DiscordAdapter(UiAdapter):
         refreshed = await db.get_session(session.session_id)
         return refreshed or session
 
-    def _resolve_target_forum(self, session: "Session") -> int | None:
+    def _resolve_target_forum(self, session: Session) -> int | None:
         """Determine which Discord forum this session's thread belongs in."""
         if self._is_customer_session(session):
             return self._help_desk_channel_id
@@ -240,7 +242,7 @@ class DiscordAdapter(UiAdapter):
         )
         return self._all_sessions_channel_id
 
-    def _match_project_forum(self, session: "Session") -> int | None:
+    def _match_project_forum(self, session: Session) -> int | None:
         """Match session project_path to a trusted dir with a discord_forum ID."""
         project_path = session.project_path
         if not project_path:
@@ -294,7 +296,7 @@ class DiscordAdapter(UiAdapter):
             )
         return "help_desk", config.computer.help_desk_dir
 
-    def _build_thread_title(self, session: "Session", target_forum_id: int) -> str:
+    def _build_thread_title(self, session: Session, target_forum_id: int) -> str:
         """Build Discord thread title based on routing target.
 
         Per-project forum: just the session description (project context is implicit).
@@ -311,11 +313,11 @@ class DiscordAdapter(UiAdapter):
         return f"{short_name}: {description}"
 
     @staticmethod
-    def _is_customer_session(session: "Session") -> bool:
+    def _is_customer_session(session: Session) -> bool:
         """Check if session is customer-facing. Based solely on human_role."""
         return session.human_role == "customer"
 
-    def _build_thread_topper(self, session: "Session") -> str:
+    def _build_thread_topper(self, session: Session) -> str:
         """Build metadata header for the first message in a Discord thread."""
         from teleclaude.core.session_utils import get_short_project_name
 
@@ -1148,25 +1150,25 @@ class DiscordAdapter(UiAdapter):
     # Discord uses adapter_metadata instead of the shared DB column
     # to prevent cross-adapter races with Telegram.
 
-    async def _get_output_message_id(self, session: "Session") -> str | None:
+    async def _get_output_message_id(self, session: Session) -> str | None:
         fresh = await db.get_session(session.session_id)
         if fresh:
             return fresh.get_metadata().get_ui().get_discord().output_message_id
         return session.get_metadata().get_ui().get_discord().output_message_id
 
-    async def _store_output_message_id(self, session: "Session", message_id: str) -> None:
+    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
         meta = session.get_metadata().get_ui().get_discord()
         meta.output_message_id = message_id
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
 
-    async def _clear_output_message_id(self, session: "Session") -> None:
+    async def _clear_output_message_id(self, session: Session) -> None:
         meta = session.get_metadata().get_ui().get_discord()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         logger.debug("Cleared discord output_message_id: session=%s", session.session_id[:8])
 
-    async def send_typing_indicator(self, session: "Session") -> None:
+    async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Discord thread."""
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
@@ -1191,14 +1193,14 @@ class DiscordAdapter(UiAdapter):
 
     async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
-        session: "Session",
+        session: Session,
         output: str,
         started_at: float,
         last_output_changed_at: float,
         is_final: bool = False,
-        exit_code: Optional[int] = None,
+        exit_code: int | None = None,
         render_markdown: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Route Discord output update through the QoS scheduler.
 
         For threaded sessions: the base class suppresses send_output_update
@@ -1224,7 +1226,7 @@ class DiscordAdapter(UiAdapter):
         _exit_code = exit_code
         _render_md = render_markdown
 
-        async def _dispatch() -> Optional[str]:
+        async def _dispatch() -> str | None:
             return await UiAdapter.send_output_update(
                 _self, _session, _output, _started_at, _last_changed, _is_final, _exit_code, _render_md
             )
@@ -1300,7 +1302,7 @@ class DiscordAdapter(UiAdapter):
                 topper_message_id,
             )
 
-    async def create_channel(self, session: "Session", title: str, metadata: "ChannelMetadata") -> str:
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         _ = metadata
         if self._client is None:
             raise AdapterError("Discord adapter not started")
@@ -1335,7 +1337,7 @@ class DiscordAdapter(UiAdapter):
 
         raise AdapterError("Discord session has no mapped destination channel")
 
-    async def update_channel_title(self, session: "Session", title: str) -> bool:
+    async def update_channel_title(self, session: Session, title: str) -> bool:
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
@@ -1356,7 +1358,7 @@ class DiscordAdapter(UiAdapter):
             logger.warning("Failed to rename Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
-    async def close_channel(self, session: "Session") -> bool:
+    async def close_channel(self, session: Session) -> bool:
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
@@ -1374,7 +1376,7 @@ class DiscordAdapter(UiAdapter):
             logger.warning("Failed to delete Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
-    async def reopen_channel(self, session: "Session") -> bool:
+    async def reopen_channel(self, session: Session) -> bool:
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
@@ -1392,7 +1394,7 @@ class DiscordAdapter(UiAdapter):
             logger.warning("Failed to reopen Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
-    async def delete_channel(self, session: "Session") -> bool:
+    async def delete_channel(self, session: Session) -> bool:
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
@@ -1439,10 +1441,10 @@ class DiscordAdapter(UiAdapter):
 
     async def send_message(
         self,
-        session: "Session",
+        session: Session,
         text: str,
         *,
-        metadata: "MessageMetadata | None" = None,
+        metadata: MessageMetadata | None = None,
         multi_message: bool = False,
     ) -> str:
         # Reflection suppression: drop own-user reflections silently.
@@ -1469,7 +1471,7 @@ class DiscordAdapter(UiAdapter):
         destination: object,
         text: str,
         *,
-        metadata: "MessageMetadata | None" = None,
+        metadata: MessageMetadata | None = None,
     ) -> str:
         if metadata and metadata.reflection_actor_name:
             webhook_message_id = await self._send_reflection_via_webhook(destination, text, metadata)
@@ -1487,7 +1489,7 @@ class DiscordAdapter(UiAdapter):
         self,
         destination: object,
         text: str,
-        metadata: "MessageMetadata",
+        metadata: MessageMetadata,
     ) -> str | None:
         actor_name = (metadata.reflection_actor_name or "").strip()
         if not actor_name:
@@ -1591,11 +1593,11 @@ class DiscordAdapter(UiAdapter):
 
     async def edit_message(
         self,
-        session: "Session",
+        session: Session,
         message_id: str,
         text: str,
         *,
-        metadata: "MessageMetadata | None" = None,
+        metadata: MessageMetadata | None = None,
     ) -> bool:
         text = self._fit_message_text(text, context="edit_message")
         logger.debug("[DISCORD EDIT] text=%r", text[:100])
@@ -1611,7 +1613,7 @@ class DiscordAdapter(UiAdapter):
             logger.warning("Failed to edit Discord message %s: %s", message_id, exc)
             return False
 
-    async def delete_message(self, session: "Session", message_id: str) -> bool:
+    async def delete_message(self, session: Session, message_id: str) -> bool:
         try:
             message = await self._fetch_destination_message(session, message_id)
         except AdapterError:
@@ -1626,11 +1628,11 @@ class DiscordAdapter(UiAdapter):
 
     async def send_file(
         self,
-        session: "Session",
+        session: Session,
         file_path: str,
         *,
         caption: str | None = None,
-        metadata: "MessageMetadata | None" = None,
+        metadata: MessageMetadata | None = None,
     ) -> str:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -1664,17 +1666,17 @@ class DiscordAdapter(UiAdapter):
         )
         return clipped
 
-    def _build_metadata_for_thread(self) -> "MessageMetadata":
+    def _build_metadata_for_thread(self) -> MessageMetadata:
         from teleclaude.core.models import MessageMetadata
 
         return MessageMetadata(parse_mode=None)
 
-    async def discover_peers(self) -> list["PeerInfo"]:
+    async def discover_peers(self) -> list[PeerInfo]:
         return []
 
     async def poll_output_stream(  # type: ignore[override,misc]
         self,
-        session: "Session",
+        session: Session,
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
         _ = (session, timeout)
@@ -2089,12 +2091,12 @@ class DiscordAdapter(UiAdapter):
 
         # Grace period: ignore events for sessions still initialising.
         if session.created_at:
-            from datetime import datetime, timezone
+            from datetime import datetime
 
             from teleclaude.core.dates import ensure_utc
 
             created_at = ensure_utc(session.created_at)
-            age = (datetime.now(timezone.utc) - created_at).total_seconds()
+            age = (datetime.now(UTC) - created_at).total_seconds()
             if age < 10.0:
                 logger.warning(
                     "Ignoring thread %s for new session %s (age=%.1fs)",
@@ -2358,7 +2360,7 @@ class DiscordAdapter(UiAdapter):
                 )
                 # Continue to next attachment
 
-    async def _resolve_or_create_session(self, message: object) -> "Session | None":
+    async def _resolve_or_create_session(self, message: object) -> Session | None:
         user_id = str(getattr(getattr(message, "author", None), "id", ""))
         if not user_id:
             return None
@@ -2411,7 +2413,7 @@ class DiscordAdapter(UiAdapter):
         channel_id: int | None,
         thread_id: int | None,
         user_id: str,
-    ) -> "Session | None":
+    ) -> Session | None:
         if thread_id is not None:
             thread_sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id)
             if thread_sessions:
@@ -2514,7 +2516,7 @@ class DiscordAdapter(UiAdapter):
         *,
         forum_type: str = "help_desk",
         project_path: str | None = None,
-    ) -> "Session | None":
+    ) -> Session | None:
         author = getattr(message, "author", None)
         display_name = str(
             getattr(author, "display_name", None) or getattr(author, "name", None) or f"discord-{user_id}"
@@ -2551,13 +2553,13 @@ class DiscordAdapter(UiAdapter):
 
     async def _update_session_discord_metadata(
         self,
-        session: "Session",
+        session: Session,
         *,
         user_id: str,
         guild_id: int | None,
         channel_id: int | None,
         thread_id: int | None,
-    ) -> "Session":
+    ) -> Session:
         discord_meta = session.get_metadata().get_ui().get_discord()
         changed = False
 
@@ -2582,9 +2584,9 @@ class DiscordAdapter(UiAdapter):
 
     async def _resolve_destination_channel(
         self,
-        session: "Session",
+        session: Session,
         *,
-        metadata: "MessageMetadata | None" = None,
+        metadata: MessageMetadata | None = None,
     ) -> object:
         if self._client is None:
             raise AdapterError("Discord adapter not started")
@@ -2615,10 +2617,10 @@ class DiscordAdapter(UiAdapter):
 
     async def _fetch_destination_message(
         self,
-        session: "Session",
+        session: Session,
         message_id: str,
         *,
-        metadata: "MessageMetadata | None" = None,
+        metadata: MessageMetadata | None = None,
     ) -> object:
         channel = await self._resolve_destination_channel(session, metadata=metadata)
         fetch_fn = self._require_async_callable(
@@ -2792,7 +2794,7 @@ class DiscordAdapter(UiAdapter):
     # Relay Methods
     # =========================================================================
 
-    async def _forward_to_relay_thread(self, session: "Session", text: str, message: object) -> None:
+    async def _forward_to_relay_thread(self, session: Session, text: str, message: object) -> None:
         """Forward a customer message to the relay Discord thread (relay diversion)."""
         relay_channel_id = session.relay_discord_channel_id
         if not relay_channel_id:
@@ -2809,7 +2811,7 @@ class DiscordAdapter(UiAdapter):
 
             send_fn = self._require_async_callable(getattr(thread, "send", None), label="relay thread send")
             await send_fn(f"**{name}** ({origin}): {text}")
-        except Exception:  # noqa: BLE001 - best-effort relay forwarding
+        except Exception:
             logger.warning("Failed to forward message to relay thread %s", relay_channel_id)
 
     async def _handle_relay_thread_message(self, message: object, text: str) -> None:
@@ -2830,14 +2832,14 @@ class DiscordAdapter(UiAdapter):
         admin_name = getattr(author, "display_name", None) or "Admin"
         await self._deliver_to_customer(session, f"{admin_name}: {text}")
 
-    async def _deliver_to_customer(self, session: "Session", text: str) -> None:
+    async def _deliver_to_customer(self, session: Session, text: str) -> None:
         """Deliver a message to the customer via all UI adapters."""
         from teleclaude.core.models import MessageMetadata
 
         metadata = MessageMetadata()
         try:
             await self.client.send_message(session=session, text=text, metadata=metadata, ephemeral=False)
-        except Exception:  # noqa: BLE001 - best-effort delivery
+        except Exception:
             logger.warning("Failed to deliver relay message to customer session %s", session.session_id[:8])
 
     def _is_agent_tag(self, text: str) -> bool:
@@ -2850,7 +2852,7 @@ class DiscordAdapter(UiAdapter):
                 return True
         return False
 
-    async def _handle_agent_handback(self, session: "Session", _text: str, thread_id: str) -> None:
+    async def _handle_agent_handback(self, session: Session, _text: str, thread_id: str) -> None:
         """Collect relay messages and inject context back into the AI session."""
         messages = await self._collect_relay_messages(thread_id, session.relay_started_at)
         context_block = self._compile_relay_context(messages)
@@ -2872,7 +2874,7 @@ class DiscordAdapter(UiAdapter):
 
     _FORWARDING_PATTERN: str = r"^\*\*(.+?)\*\* \((\w+)\): (.+)"
 
-    async def _collect_relay_messages(self, thread_id: str, since: "datetime | None") -> list[dict[str, str]]:
+    async def _collect_relay_messages(self, thread_id: str, since: datetime | None) -> list[dict[str, str]]:
         """Read all messages from a relay thread since the given timestamp."""
         import re
 

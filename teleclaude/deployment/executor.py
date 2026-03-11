@@ -7,8 +7,9 @@ import json
 import os
 import time
 import tomllib
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -33,15 +34,15 @@ def _read_version_from_pyproject() -> str:
             ver = project.get("version")
             if isinstance(ver, str) and ver:
                 return ver
-    except Exception:  # noqa: BLE001 - version read is best-effort
+    except Exception:
         pass
     return "0.0.0"
 
 
-async def _set_status(redis: "Redis", status_key: str, payload: dict) -> None:  # type: ignore[type-arg]
+async def _set_status(redis: Redis, status_key: str, payload: dict) -> None:  # type: ignore[type-arg]
     try:
         await redis.set(status_key, json.dumps(payload))
-    except Exception as exc:  # noqa: BLE001 - status updates are informational
+    except Exception as exc:
         logger.warning("Failed to update deploy status: %s", exc)
 
 
@@ -49,7 +50,7 @@ async def execute_update(
     channel: str,
     version_info: dict,  # type: ignore[type-arg]
     *,
-    get_redis: Callable[[], Awaitable["Redis"]] | None = None,
+    get_redis: Callable[[], Awaitable[Redis]] | None = None,
 ) -> None:
     """Execute deployment update: pull/checkout → migrate → install → restart.
 
@@ -69,7 +70,7 @@ async def execute_update(
         try:
             redis = await get_redis()
             await _set_status(redis, status_key, payload)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Deploy status update failed: %s", exc)
 
     try:
@@ -157,7 +158,7 @@ async def execute_update(
         )
         try:
             _, install_err = await asyncio.wait_for(install.communicate(), timeout=60.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             try:
                 install.kill()
                 await install.wait()

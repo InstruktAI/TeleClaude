@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Literal, cast
+from typing import Literal, cast
 
 from teleclaude.core.integration.events import (
     BranchPushedPayload,

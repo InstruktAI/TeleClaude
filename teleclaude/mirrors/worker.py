@@ -6,7 +6,7 @@ import asyncio
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 
@@ -93,7 +93,7 @@ class MirrorWorker:
                 transcript_path=str(candidate.path),
                 file_size=file_size,
                 file_mtime=file_mtime,
-                created_at=datetime.now(timezone.utc).isoformat(),
+                created_at=datetime.now(UTC).isoformat(),
             ),
             db=self.db_path,
         )
@@ -127,7 +127,7 @@ class MirrorWorker:
         for candidate in transcripts:
             transcript_path = str(candidate.path)
             try:
-                mtime_dt = datetime.fromtimestamp(candidate.mtime or candidate.path.stat().st_mtime, tz=timezone.utc)
+                mtime_dt = datetime.fromtimestamp(candidate.mtime or candidate.path.stat().st_mtime, tz=UTC)
                 existing = state.get(transcript_path)
                 updated_at = existing[1] if existing else None
                 parsed_updated = self._parse_updated_at(updated_at)

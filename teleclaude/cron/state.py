@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from typing_extensions import TypedDict
@@ -105,7 +105,7 @@ class CronState:
     def mark_success(self, name: str) -> None:
         """Mark job as successfully completed."""
         job = self.get_job(name)
-        job.last_run = datetime.now(timezone.utc)
+        job.last_run = datetime.now(UTC)
         job.last_status = "success"
         job.last_error = None
         self.save()
@@ -113,7 +113,7 @@ class CronState:
     def mark_failed(self, name: str, error: str) -> None:
         """Mark job as failed."""
         job = self.get_job(name)
-        job.last_run = datetime.now(timezone.utc)
+        job.last_run = datetime.now(UTC)
         job.last_status = "failed"
         job.last_error = error
         self.save()

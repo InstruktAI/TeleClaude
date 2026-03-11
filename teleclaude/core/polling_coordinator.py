@@ -6,21 +6,20 @@ Handles polling lifecycle orchestration and event routing to message manager.
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core import session_cleanup, tmux_bridge
-from teleclaude.core import codex_prompt_submit
+from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentOutputPayload,
-    UserPromptSubmitPayload,
 )
 from teleclaude.core.output_poller import (
     DirectoryChanged,
@@ -69,7 +68,7 @@ def _percentile(values: list[float], pct: float) -> float | None:
     if not values:
         return None
     ordered = sorted(values)
-    index = int(round((len(ordered) - 1) * pct))
+    index = round((len(ordered) - 1) * pct)
     index = max(0, min(index, len(ordered) - 1))
     return ordered[index]
 

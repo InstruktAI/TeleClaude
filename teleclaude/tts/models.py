@@ -1,7 +1,6 @@
 """TTS configuration models."""
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -9,7 +8,7 @@ class EventConfig:
     """Configuration for a TTS event."""
 
     enabled: bool
-    message: Optional[str] = None
+    message: str | None = None
 
 
 @dataclass
@@ -17,7 +16,7 @@ class ServiceVoiceConfig:
     """Voice configuration for a specific service."""
 
     name: str
-    voice_id: Optional[str] = None  # ElevenLabs voice ID
+    voice_id: str | None = None  # ElevenLabs voice ID
 
 
 @dataclass

@@ -36,7 +36,7 @@ def _to_color(c: str | int | None) -> str | None:
 
 
 def _scan_entity_at(
-    engine: "AnimationEngine",
+    engine: AnimationEngine,
     entity_z_scan: list[int],
     x: int,
     global_y: int,

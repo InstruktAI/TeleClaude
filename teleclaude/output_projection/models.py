@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, TypeAlias
+from typing import TypeAlias
 
 JsonScalar: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -64,7 +64,7 @@ class ProjectedBlock:
     block_type: str  # "text", "thinking", "tool_use", "tool_result", "compaction"
     block: dict[str, JsonValue]  # original block data (for SSE/markdown serialization)
     role: str  # "assistant", "user", "system"
-    timestamp: Optional[str]  # ISO 8601 entry timestamp
+    timestamp: str | None  # ISO 8601 entry timestamp
     entry_index: int  # position in source entry list
     file_index: int = 0  # position in chain (for multi-file sessions)
 

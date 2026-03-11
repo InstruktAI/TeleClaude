@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -33,7 +33,7 @@ def find_undelivered_reports(
         job_name = report_path.parent.parent.name
         job_state = state.get_job(job_name)
 
-        mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=timezone.utc)
+        mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=UTC)
 
         if job_state.last_notified is None or mtime > job_state.last_notified:
             result.setdefault(job_name, []).append(report_path)

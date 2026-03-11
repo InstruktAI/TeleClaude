@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import mimetypes
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -34,7 +34,7 @@ class WhatsAppAdapter(UiAdapter):
     _MAX_429_RETRIES = 3
     _BASE_429_BACKOFF_SECONDS = 1.0
 
-    def __init__(self, client: "Any") -> None:
+    def __init__(self, client: Any) -> None:
         super().__init__(client)
         self._phone_number_id = config.whatsapp.phone_number_id
         self._access_token = config.whatsapp.access_token
@@ -66,48 +66,48 @@ class WhatsAppAdapter(UiAdapter):
             await self._http.aclose()
             self._http = None
 
-    async def create_channel(self, session: "Session", title: str, metadata: ChannelMetadata) -> str:
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         _ = (title, metadata)
         phone_number = session.get_metadata().get_ui().get_whatsapp().phone_number
         if phone_number:
             return phone_number
         return session.session_id
 
-    async def update_channel_title(self, session: "Session", title: str) -> bool:
+    async def update_channel_title(self, session: Session, title: str) -> bool:
         _ = (session, title)
         return True
 
-    async def close_channel(self, session: "Session") -> bool:
+    async def close_channel(self, session: Session) -> bool:
         session.get_metadata().get_ui().get_whatsapp().closed = True
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         return True
 
-    async def reopen_channel(self, session: "Session") -> bool:
+    async def reopen_channel(self, session: Session) -> bool:
         session.get_metadata().get_ui().get_whatsapp().closed = False
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         return True
 
-    async def delete_channel(self, session: "Session") -> bool:
+    async def delete_channel(self, session: Session) -> bool:
         _ = session
         return True
 
-    async def ensure_channel(self, session: "Session") -> "Session":
+    async def ensure_channel(self, session: Session) -> Session:
         if session.human_role != "customer":
             return session
         return session
 
-    async def _get_output_message_id(self, session: "Session") -> str | None:
+    async def _get_output_message_id(self, session: Session) -> str | None:
         fresh = await db.get_session(session.session_id)
         if fresh:
             return fresh.get_metadata().get_ui().get_whatsapp().output_message_id
         return session.get_metadata().get_ui().get_whatsapp().output_message_id
 
-    async def _store_output_message_id(self, session: "Session", message_id: str) -> None:
+    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
         meta = session.get_metadata().get_ui().get_whatsapp()
         meta.output_message_id = message_id
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
-    async def _clear_output_message_id(self, session: "Session") -> None:
+    async def _clear_output_message_id(self, session: Session) -> None:
         meta = session.get_metadata().get_ui().get_whatsapp()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
@@ -186,8 +186,8 @@ class WhatsAppAdapter(UiAdapter):
         except ValueError:
             return True
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) - ts <= timedelta(hours=24)
+            ts = ts.replace(tzinfo=UTC)
+        return datetime.now(UTC) - ts <= timedelta(hours=24)
 
     async def _send_text_message(self, phone_number: str, text: str) -> str:
         payload: dict[str, object] = {  # guard: loose-dict - Outbound WhatsApp request payload.
@@ -216,7 +216,7 @@ class WhatsAppAdapter(UiAdapter):
 
     async def send_message(
         self,
-        session: "Session",
+        session: Session,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
@@ -242,7 +242,7 @@ class WhatsAppAdapter(UiAdapter):
 
     async def edit_message(
         self,
-        session: "Session",
+        session: Session,
         message_id: str,
         text: str,
         *,
@@ -251,7 +251,7 @@ class WhatsAppAdapter(UiAdapter):
         _ = (session, message_id, text, metadata)
         return False
 
-    async def delete_message(self, session: "Session", message_id: str) -> bool:
+    async def delete_message(self, session: Session, message_id: str) -> bool:
         _ = (session, message_id)
         return False
 
@@ -297,7 +297,7 @@ class WhatsAppAdapter(UiAdapter):
 
     async def send_file(
         self,
-        session: "Session",
+        session: Session,
         file_path: str,
         *,
         caption: str | None = None,
@@ -329,14 +329,14 @@ class WhatsAppAdapter(UiAdapter):
         response = await self._post_json(self._messages_url, payload)
         return self._extract_message_id(response)
 
-    async def discover_peers(self) -> list["PeerInfo"]:
+    async def discover_peers(self) -> list[PeerInfo]:
         return []
 
     async def poll_output_stream(  # type: ignore[override,misc]
         self,
-        session: "Session",
+        session: Session,
         timeout: float = 300.0,
-    ) -> "AsyncIterator[str]":
+    ) -> AsyncIterator[str]:
         _ = (session, timeout)
         raise NotImplementedError("WhatsApp adapter does not support poll_output_stream")
         yield ""  # pragma: no cover
@@ -359,13 +359,13 @@ class WhatsAppAdapter(UiAdapter):
         reserve = max(self.max_message_size - len(suffix), 0)
         return f"{converted[:reserve]}{suffix}" if reserve > 0 else converted[: self.max_message_size]
 
-    def _build_output_metadata(self, _session: "Session", _is_truncated: bool) -> MessageMetadata:
+    def _build_output_metadata(self, _session: Session, _is_truncated: bool) -> MessageMetadata:
         return MessageMetadata(parse_mode=None)
 
     def format_output(self, tmux_output: str) -> str:
         return self._convert_markdown_for_platform(tmux_output)
 
-    async def send_typing_indicator(self, session: "Session") -> None:
+    async def send_typing_indicator(self, session: Session) -> None:
         whatsapp_meta = session.get_metadata().get_ui().get_whatsapp()
         if not whatsapp_meta.last_received_message_id:
             return

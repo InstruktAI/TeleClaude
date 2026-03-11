@@ -89,7 +89,7 @@ class MLXParakeetBackend:
                 load_candidate = getattr(stt_module, "load", None)
                 if callable(load_candidate):
                     load_stt_model = load_candidate
-            except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
+            except Exception as import_error:
                 mlx_audio_import_error = import_error
 
         if load_stt_model is None:

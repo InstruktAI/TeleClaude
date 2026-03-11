@@ -11,11 +11,11 @@ import base64
 import inspect
 import random
 import shlex
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
-from typing import TYPE_CHECKING, Coroutine, cast
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -67,9 +67,9 @@ from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
-    extract_recent_transcript_turns,
     extract_last_agent_message,
     extract_last_user_message_with_timestamp,
+    extract_recent_transcript_turns,
     get_assistant_messages_since,
     render_agent_output,
     render_clean_agent_output,
@@ -283,8 +283,8 @@ def _resolve_hook_actor_name(session: "Session") -> str:
 def _to_utc(ts: datetime) -> datetime:
     """Normalize naive datetimes to UTC for stable comparisons."""
     if ts.tzinfo is None:
-        return ts.replace(tzinfo=timezone.utc)
-    return ts.astimezone(timezone.utc)
+        return ts.replace(tzinfo=UTC)
+    return ts.astimezone(UTC)
 
 
 def _is_codex_input_already_recorded(
@@ -358,7 +358,7 @@ class AgentCoordinator:
                 done.result()
             except asyncio.CancelledError:
                 return
-            except Exception as exc:  # noqa: BLE001 - background task errors are logged and dropped
+            except Exception as exc:
                 logger.error("Background task '%s' failed: %s", label, exc, exc_info=True)
 
                 # Emit error event for user-visible failures (title updates, TTS)
@@ -369,7 +369,7 @@ class AgentCoordinator:
                             TeleClaudeEvents.ERROR,
                             {"message": f"Failed to update session title: {exc}", "severity": "warning"},
                         )
-                    except Exception:  # noqa: BLE001 - don't cascade error event failures
+                    except Exception:
                         pass
 
         task.add_done_callback(_on_done)
@@ -381,7 +381,7 @@ class AgentCoordinator:
 
     def _mark_incremental_noop(self, session_id: str, *, reason: str, signature: str) -> None:
         """Record repeated incremental no-op events with sampled debug logging."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         state = self._incremental_noop_state.get(session_id)
 
         if state and state.signature == signature:
@@ -408,7 +408,7 @@ class AgentCoordinator:
 
     def _clear_incremental_noop(self, session_id: str, *, outcome: str) -> None:
         """Emit a one-time resume log when exiting a no-op suppression window."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         state = self._incremental_noop_state.pop(session_id, None)
         if not state:
             return
@@ -423,7 +423,7 @@ class AgentCoordinator:
 
     def _mark_tool_use_skip(self, session_id: str) -> None:
         """Collapse repeated tool_use skip logs for the same session."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         state = self._tool_use_skip_state.get(session_id)
         signature = "tool_use_already_set"
 
@@ -450,7 +450,7 @@ class AgentCoordinator:
 
     def _clear_tool_use_skip(self, session_id: str) -> None:
         """Clear tool_use skip suppression when a new turn starts recording again."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         state = self._tool_use_skip_state.pop(session_id, None)
         if not state or state.suppressed <= 0:
             return
@@ -486,7 +486,7 @@ class AgentCoordinator:
             message: Optional notification message (notification only)
         """
         try:
-            timestamp = datetime.now(timezone.utc).isoformat()
+            timestamp = datetime.now(UTC).isoformat()
             canonical = serialize_activity_event(
                 session_id=session_id,
                 hook_event_type=event_type,
@@ -539,7 +539,7 @@ class AgentCoordinator:
             last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
         """
         try:
-            timestamp = datetime.now(timezone.utc).isoformat()
+            timestamp = datetime.now(UTC).isoformat()
             canonical = serialize_status_event(
                 session_id=session_id,
                 status=status,
@@ -718,7 +718,7 @@ class AgentCoordinator:
         # and produces a different hash.
 
         # Prepare batched update
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         should_update_last_message = True
         if is_codex_synthetic:
             existing_input = (session.last_message_sent or "").strip()
@@ -813,7 +813,7 @@ class AgentCoordinator:
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         # Emit canonical lifecycle status: accepted → schedule stall detection (R2, R4)
-        now_ts = datetime.now(timezone.utc).isoformat()
+        now_ts = datetime.now(UTC).isoformat()
         self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
         self._schedule_stall_detection(session_id, last_activity_at=now_ts)
 
@@ -878,7 +878,7 @@ class AgentCoordinator:
 
         try:
             new_title = await generate_session_title(recent_turns)
-        except Exception as exc:  # noqa: BLE001 - title update should not break flow
+        except Exception as exc:
             logger.warning("Title summarization failed: %s", exc)
             return
 
@@ -978,7 +978,7 @@ class AgentCoordinator:
                 {
                     "last_output_raw": raw_output,
                     "last_output_summary": summary,
-                    "last_output_at": datetime.now(timezone.utc).isoformat(),
+                    "last_output_at": datetime.now(UTC).isoformat(),
                 }
             )
             logger.debug(
@@ -990,7 +990,7 @@ class AgentCoordinator:
             if summary:
                 try:
                     await self.tts_manager.speak(summary, session_id=session_id)
-                except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
+                except Exception as exc:
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
         # Persist feedback and status to DB (activity events are emitted separately).
@@ -1004,7 +1004,7 @@ class AgentCoordinator:
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
 
         # Emit canonical lifecycle status: completed (R2)
-        now_ts = datetime.now(timezone.utc).isoformat()
+        now_ts = datetime.now(UTC).isoformat()
         self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=now_ts)
 
         # 2. Incremental threaded output (final turn portion)
@@ -1078,7 +1078,7 @@ class AgentCoordinator:
 
         # Output evidence observed → active_output; cancel any pending stall (R4)
         self._cancel_stall_task(session_id)
-        now_ts = datetime.now(timezone.utc).isoformat()
+        now_ts = datetime.now(UTC).isoformat()
         self._emit_status_event(session_id, "active_output", "output_observed", last_activity_at=now_ts)
 
         # DB write is deduped: only record the FIRST tool_use per turn for checkpoint timing
@@ -1087,7 +1087,7 @@ class AgentCoordinator:
             self._mark_tool_use_skip(session_id)
         elif session:
             self._clear_tool_use_skip(session_id)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             await db.update_session(session_id, last_tool_use_at=now.isoformat())
             logger.debug("tool_use recorded for session %s", session_id[:8])
 
@@ -1309,7 +1309,7 @@ class AgentCoordinator:
                 await db.update_session(session_id, **update_kwargs)
 
             return True
-        except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling
+        except Exception as exc:
             logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id[:8]})
 
         return False
@@ -1360,7 +1360,7 @@ class AgentCoordinator:
         message = random.choice(SESSION_START_MESSAGES)
         try:
             await self.tts_manager.speak(message, session_id=session_id)
-        except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
+        except Exception as exc:
             logger.warning("TTS session_start failed: %s", exc)
 
     async def _extract_agent_output(self, session_id: str, payload: AgentStopPayload) -> str | None:
@@ -1408,7 +1408,7 @@ class AgentCoordinator:
         try:
             _title, summary = await summarize_agent_output(raw_output)
             return summary
-        except Exception as exc:  # noqa: BLE001 - summarizer failures should not break stop handling
+        except Exception as exc:
             logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id[:8]})
             return None
 
@@ -1582,7 +1582,7 @@ class AgentCoordinator:
                             ),
                         )
                     delivered += 1
-                except Exception as exc:  # noqa: BLE001 - peer delivery failures must not abort stop lifecycle
+                except Exception as exc:
                     logger.warning(
                         "Linked stop output delivery failed: sender=%s peer=%s target=%s error=%s",
                         sender_session_id[:8],
@@ -1615,5 +1615,5 @@ class AgentCoordinator:
                 include_elapsed_since_turn_start=True,
                 default_agent=AgentName.from_str(get_default_agent()),
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Checkpoint injection failed for session %s: %s", session_id[:8], exc)

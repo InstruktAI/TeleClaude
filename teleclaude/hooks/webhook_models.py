@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ class HookEvent:
         return cls(
             source=source,
             type=type,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             properties=properties or {},
             payload=payload or {},
         )
@@ -71,7 +71,7 @@ class Contract:
     type_criterion: PropertyCriterion | None = None
     properties: dict[str, PropertyCriterion] = field(default_factory=dict)
     active: bool = True
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     expires_at: str | None = None  # ISO 8601 UTC; None = never expires
     source: str = "api"  # "config", "api", "programmatic"
 
@@ -79,7 +79,7 @@ class Contract:
     def is_expired(self) -> bool:
         if self.expires_at is None:
             return False
-        return datetime.now(timezone.utc) >= datetime.fromisoformat(self.expires_at)
+        return datetime.now(UTC) >= datetime.fromisoformat(self.expires_at)
 
     def to_json(self) -> str:
         """Serialize to JSON for DB storage."""

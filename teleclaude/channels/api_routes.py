@@ -51,7 +51,7 @@ class PublishResponse(BaseModel):
 async def publish_to_channel(
     name: str,
     req: PublishRequest,
-    identity: CallerIdentity = Depends(CLEARANCE_CHANNELS_PUBLISH),  # noqa: ARG001
+    identity: CallerIdentity = Depends(CLEARANCE_CHANNELS_PUBLISH),
 ) -> PublishResponse:
     """Publish a message to a named channel."""
     transport = _get_transport()
@@ -63,7 +63,7 @@ async def publish_to_channel(
 @router.get("/")
 async def list_all_channels(
     project: str | None = None,
-    identity: CallerIdentity = Depends(CLEARANCE_CHANNELS_LIST),  # noqa: ARG001
+    identity: CallerIdentity = Depends(CLEARANCE_CHANNELS_LIST),
 ) -> list[ChannelInfo]:
     """List active channels, optionally filtered by project."""
     transport = _get_transport()

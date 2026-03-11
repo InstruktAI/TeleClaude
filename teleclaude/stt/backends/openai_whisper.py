@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from instrukt_ai_logging import get_logger
 from openai import AsyncOpenAI
@@ -14,7 +13,7 @@ class OpenAIWhisperBackend:
     """Cloud STT using OpenAI Whisper API."""
 
     def __init__(self) -> None:
-        self._client: Optional[AsyncOpenAI] = None
+        self._client: AsyncOpenAI | None = None
 
     def _ensure_client(self) -> bool:
         """Lazy-init the OpenAI client on first use."""

@@ -9,17 +9,17 @@ from teleclaude.cli.tui.animations.sprites.ufo import UFO_SPRITE
 
 __all__ = [
     "BIRD_FLOCK",
+    "CAR_SPRITE",
+    "MOON_SPRITE",
+    "SUN_SPRITE",
+    "UFO_SPRITE",
+    "AnimatedSprite",
     "CompositeSprite",
+    "SpriteGroup",
+    "SpriteLayer",
     "get_sky_entities",
     "get_sprite_groups",
     "get_weather_clouds",
-    "MOON_SPRITE",
-    "AnimatedSprite",
-    "SpriteGroup",
-    "SpriteLayer",
-    "SUN_SPRITE",
-    "UFO_SPRITE",
-    "CAR_SPRITE",
 ]
 
 

@@ -7,7 +7,6 @@ that can be used directly in Rich Style objects for Textual rendering.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from teleclaude.cli.tui.color_utils import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.theme import get_agent_color
@@ -120,7 +119,7 @@ class PaletteRegistry:
     def register(self, palette: ColorPalette) -> None:
         self._palettes[palette.name] = palette
 
-    def get(self, name: str) -> Optional[ColorPalette]:
+    def get(self, name: str) -> ColorPalette | None:
         return self._palettes.get(name)
 
 

@@ -7,7 +7,7 @@ Config is loaded at module import time and available globally via:
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
@@ -235,8 +235,8 @@ class TTSConfig:
 
     enabled: bool
     service_priority: list[str] | None = None
-    events: Dict[str, TTSEventConfig] | None = None
-    services: Dict[str, TTSServiceConfig] | None = None
+    events: dict[str, TTSEventConfig] | None = None
+    services: dict[str, TTSServiceConfig] | None = None
 
 
 @dataclass
@@ -253,7 +253,7 @@ class STTConfig:
 
     enabled: bool
     service_priority: list[str] | None = None
-    services: Dict[str, STTServiceConfig] | None = None
+    services: dict[str, STTServiceConfig] | None = None
 
 
 @dataclass
@@ -314,7 +314,7 @@ class Config:
     telegram: TelegramConfig
     discord: DiscordConfig
     creds: CredsConfig
-    agents: Dict[str, AgentConfig]
+    agents: dict[str, AgentConfig]
     default_agent: str
     terminal: TerminalConfig
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
@@ -690,7 +690,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
 
     _validate_known_agent_keys(agents_raw, known_agents)
 
-    agents_registry: Dict[str, AgentConfig] = {}
+    agents_registry: dict[str, AgentConfig] = {}
     for name, protocol in AGENT_PROTOCOL.items():
         # Get user overrides for this agent if any
         val = agents_raw.get(name)

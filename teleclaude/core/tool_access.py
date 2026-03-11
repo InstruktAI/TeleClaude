@@ -30,7 +30,7 @@ def _collect_gated_paths() -> list[str]:
     return list(_walk(CLI_SURFACE))
 
 
-def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[str]:  # noqa: ARG001
+def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[str]:
     """Return set of tool names excluded for this human role.
 
     Derived from CLI_SURFACE CommandAuth entries — human-role filtering only.

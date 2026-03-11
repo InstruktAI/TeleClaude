@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 
 class SpriteLayer(NamedTuple):
@@ -16,9 +16,9 @@ class SpriteLayer(NamedTuple):
       - space → transparent (layer does not contribute at this cell)
     """
 
-    color: Optional[str | list[str]] = "#ffffff"
-    positive: Optional[list[str]] = None
-    negative: Optional[list[str]] = None
+    color: str | list[str] | None = "#ffffff"
+    positive: list[str] | None = None
+    negative: list[str] | None = None
 
 
 _DEFAULT_SPEED_WEIGHTS: list[tuple[float, int]] = [(0.0, 10), (0.4, 30), (0.7, 50), (1.0, 10)]
@@ -45,11 +45,11 @@ class CompositeSprite:
     """
 
     layers: list[SpriteLayer]
-    z_weights: Optional[list[tuple[int, int]]] = field(default_factory=list)
-    y_weights: Optional[list[tuple[int, int, int]]] = field(default_factory=list)
-    speed_weights: Optional[list[tuple[float, int]]] = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
-    speed_fixed: Optional[tuple[float, float]] = None
-    theme: Optional[str] = None  # "dark", "light", or None (both)
+    z_weights: list[tuple[int, int]] | None = field(default_factory=list)
+    y_weights: list[tuple[int, int, int]] | None = field(default_factory=list)
+    speed_weights: list[tuple[float, int]] | None = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
+    speed_fixed: tuple[float, float] | None = None
+    theme: str | None = None  # "dark", "light", or None (both)
 
     def __post_init__(self) -> None:
         if self.speed_fixed is not None and self.speed_weights != list(_DEFAULT_SPEED_WEIGHTS):
@@ -100,9 +100,9 @@ class AnimatedSprite:
     z_weights: list[tuple[int, int]] = field(default_factory=list)
     y_weights: list[tuple[int, int, int]] = field(default_factory=list)
     speed_weights: list[tuple[float, int]] = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
-    speed_fixed: Optional[tuple[float, float]] = None
-    theme: Optional[str] = None  # "dark", "light", or None (both)
-    y_offsets: Optional[list[int]] = None
+    speed_fixed: tuple[float, float] | None = None
+    theme: str | None = None  # "dark", "light", or None (both)
+    y_offsets: list[int] | None = None
 
     def __post_init__(self) -> None:
         if self.speed_fixed is not None and self.speed_weights != list(_DEFAULT_SPEED_WEIGHTS):
@@ -124,8 +124,8 @@ class SpriteGroup:
     """
 
     entries: list[tuple[AnimatedSprite | CompositeSprite, float, tuple[int, int]]]
-    direction: Optional[int] = None
-    theme: Optional[str] = None  # "dark", "light", or None (both)
+    direction: int | None = None
+    theme: str | None = None  # "dark", "light", or None (both)
 
     def __post_init__(self) -> None:
         total = sum(w for _, w, _ in self.entries)

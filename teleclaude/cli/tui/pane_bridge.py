@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import queue
 import threading
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from textual.widget import Widget

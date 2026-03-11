@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from teleclaude.hooks.webhook_models import HookEvent
 
@@ -16,8 +16,8 @@ def _normalize_phone(raw_phone: object) -> str:
 def _to_event_timestamp(raw_timestamp: object) -> str:
     if isinstance(raw_timestamp, str) and raw_timestamp.isdigit():
         unix_seconds = int(raw_timestamp)
-        return datetime.fromtimestamp(unix_seconds, tz=timezone.utc).isoformat()
-    return datetime.now(timezone.utc).isoformat()
+        return datetime.fromtimestamp(unix_seconds, tz=UTC).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _message_type(message: dict[str, object]) -> str:  # guard: loose-dict - Raw webhook message JSON is dynamic.

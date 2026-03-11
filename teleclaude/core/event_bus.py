@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Awaitable, Callable, Literal
+from collections.abc import Awaitable, Callable
+from typing import Literal
 
 from instrukt_ai_logging import get_logger
 from typing_extensions import TypedDict

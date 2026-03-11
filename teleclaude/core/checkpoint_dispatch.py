@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -66,7 +67,7 @@ async def inject_checkpoint_if_needed(
 
     checkpoint_at = fresh.last_checkpoint_at
     message_at = fresh.last_message_sent_at
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     elapsed: float | None = None
     if include_elapsed_since_turn_start:

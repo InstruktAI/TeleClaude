@@ -5,9 +5,10 @@ Provides instant reads for API endpoints and emits change events when data updat
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Callable, Generic, TypeVar
+from datetime import UTC, datetime
+from typing import Generic, TypeVar
 
 from instrukt_ai_logging import get_logger
 
@@ -30,7 +31,7 @@ class CachedItem(Generic[T]):
             cached_at: Timestamp when data was cached (defaults to now)
         """
         self.data = data
-        self.cached_at = cached_at or datetime.now(timezone.utc)
+        self.cached_at = cached_at or datetime.now(UTC)
 
     def is_stale(self, ttl_seconds: int) -> bool:
         """Check if cached item has exceeded its TTL.
@@ -46,7 +47,7 @@ class CachedItem(Generic[T]):
         if ttl_seconds < 0:
             return False  # Negative TTL means infinite (never stale)
 
-        age = (datetime.now(timezone.utc) - self.cached_at).total_seconds()
+        age = (datetime.now(UTC) - self.cached_at).total_seconds()
         return age > ttl_seconds
 
 
@@ -304,7 +305,7 @@ class DaemonCache:
         if existing and self._computers_digest.get(name) == digest:
             # Refresh timestamp without spamming change notifications.
             existing.data = computer
-            existing.cached_at = datetime.now(timezone.utc)
+            existing.cached_at = datetime.now(UTC)
             return
 
         self._computers[name] = CachedItem(computer)

@@ -5,10 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Literal, Mapping, NotRequired, TypedDict, cast
+from typing import Literal, NotRequired, TypedDict, cast
 
 IntegrationEventType = Literal["review_approved", "finalize_ready", "branch_pushed", "integration_blocked"]
 

@@ -41,7 +41,7 @@ def _post_form(url: str, data: dict[str, str], timeout_s: float) -> ApiResponse:
     encoded = urllib.parse.urlencode(data).encode("utf-8")
     req = urllib.request.Request(url, data=encoded, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         body = resp.read().decode("utf-8", errors="replace")
     try:
         return json.loads(body)

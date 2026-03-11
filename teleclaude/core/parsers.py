@@ -5,9 +5,9 @@ TeleClaude events (start, stop, notification, etc.).
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generator, Optional
 
 
 @dataclass
@@ -40,7 +40,7 @@ class LogParser(ABC):
         pass
 
     @abstractmethod
-    def extract_session_id(self, file_path: Path) -> Optional[str]:
+    def extract_session_id(self, file_path: Path) -> str | None:
         """Extract the native session ID from the file (if possible).
 
         Args:

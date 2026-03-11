@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Iterator, Mapping
-from typing import Optional, cast
+from typing import cast
 
 from teleclaude.constants import is_internal_user_text
 from teleclaude.core.agents import AgentName
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 def project_entries(
     entries: Iterable[object],
     policy: VisibilityPolicy,
-    since: Optional[str] = None,
+    since: str | None = None,
     file_index: int = 0,
 ) -> Iterator[ProjectedBlock]:
     """Apply visibility policy to transcript entries, yielding visible projected blocks.
@@ -82,7 +82,7 @@ def project_entries(
 
         # Timestamp filter
         entry_ts_str = entry_map.get("timestamp")
-        entry_ts: Optional[str] = None
+        entry_ts: str | None = None
         if isinstance(entry_ts_str, str):
             entry_ts = entry_ts_str
             if since_dt:
@@ -223,7 +223,7 @@ def project_conversation_chain(
     file_paths: list[str],
     agent_name: AgentName,
     policy: VisibilityPolicy,
-    since: Optional[str] = None,
+    since: str | None = None,
 ) -> list[ProjectedBlock]:
     """Project all entries from a transcript chain through the canonical projection route.
 

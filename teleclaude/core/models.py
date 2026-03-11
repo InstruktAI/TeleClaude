@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
+from typing import TYPE_CHECKING, Optional, Protocol, cast
 
 from teleclaude.constants import FIELD_ADAPTER_METADATA, HUMAN_ROLE_ADMIN
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
@@ -61,15 +61,15 @@ class BaseCommandContext:
 class SessionCommandContext(BaseCommandContext):
     """Context for simple session commands (list_sessions, get_session_data, etc.)."""
 
-    args: List[str] = field(default_factory=list)
+    args: list[str] = field(default_factory=list)
 
 
 @dataclass
 class NewSessionContext(BaseCommandContext):
     """Context for new_session/create_session commands."""
 
-    args: List[str] = field(default_factory=list)
-    title: Optional[str] = None
+    args: list[str] = field(default_factory=list)
+    title: str | None = None
 
 
 @dataclass
@@ -119,25 +119,25 @@ class PeerInfo:  # pylint: disable=too-many-instance-attributes
     status: str  # "online" or "offline"
     last_seen: datetime
     adapter_type: str
-    user: Optional[str] = None
-    host: Optional[str] = None
-    ip: Optional[str] = None
-    role: Optional[str] = None
-    system_stats: Optional[SystemStats] = None
-    tmux_binary: Optional[str] = None
+    user: str | None = None
+    host: str | None = None
+    ip: str | None = None
+    role: str | None = None
+    system_stats: SystemStats | None = None
+    tmux_binary: str | None = None
 
 
 @dataclass
 class TelegramAdapterMetadata:
     """Telegram-specific adapter metadata."""
 
-    topic_id: Optional[int] = None
-    output_message_id: Optional[str] = None
-    footer_message_id: Optional[str] = None
+    topic_id: int | None = None
+    output_message_id: str | None = None
+    footer_message_id: str | None = None
     output_suppressed: bool = False
-    parse_mode: Optional[str] = None
+    parse_mode: str | None = None
     char_offset: int = 0
-    user_id: Optional[int] = None
+    user_id: int | None = None
     badge_sent: bool = False
 
 
@@ -145,14 +145,14 @@ class TelegramAdapterMetadata:
 class DiscordAdapterMetadata:
     """Discord-specific adapter metadata."""
 
-    user_id: Optional[str] = None
-    guild_id: Optional[int] = None
-    channel_id: Optional[int] = None
-    thread_id: Optional[int] = None
-    all_sessions_thread_id: Optional[int] = None
-    output_message_id: Optional[str] = None
-    thread_topper_message_id: Optional[str] = None  # Starter metadata message in thread
-    status_message_id: Optional[str] = None  # Editable status message per thread (R3)
+    user_id: str | None = None
+    guild_id: int | None = None
+    channel_id: int | None = None
+    thread_id: int | None = None
+    all_sessions_thread_id: int | None = None
+    output_message_id: str | None = None
+    thread_topper_message_id: str | None = None  # Starter metadata message in thread
+    status_message_id: str | None = None  # Editable status message per thread (R3)
     badge_sent: bool = False
     char_offset: int = 0
 
@@ -161,13 +161,13 @@ class DiscordAdapterMetadata:
 class WhatsAppAdapterMetadata:
     """WhatsApp-specific adapter metadata."""
 
-    phone_number: Optional[str] = None
-    conversation_id: Optional[str] = None
-    output_message_id: Optional[str] = None
+    phone_number: str | None = None
+    conversation_id: str | None = None
+    output_message_id: str | None = None
     badge_sent: bool = False
     char_offset: int = 0
-    last_customer_message_at: Optional[str] = None
-    last_received_message_id: Optional[str] = None
+    last_customer_message_at: str | None = None
+    last_received_message_id: str | None = None
     closed: bool = False
 
 
@@ -175,9 +175,9 @@ class WhatsAppAdapterMetadata:
 class UiAdapterMetadata:
     """Metadata container for UI adapters."""
 
-    _telegram: Optional[TelegramAdapterMetadata] = None
-    _discord: Optional[DiscordAdapterMetadata] = None
-    _whatsapp: Optional[WhatsAppAdapterMetadata] = None
+    _telegram: TelegramAdapterMetadata | None = None
+    _discord: DiscordAdapterMetadata | None = None
+    _whatsapp: WhatsAppAdapterMetadata | None = None
 
     def get_telegram(self) -> TelegramAdapterMetadata:
         """Get Telegram metadata, initializing if missing."""
@@ -202,21 +202,21 @@ class UiAdapterMetadata:
 class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
     """Redis-specific adapter metadata."""
 
-    channel_id: Optional[str] = None
-    output_stream: Optional[str] = None
-    target_computer: Optional[str] = None
-    native_session_id: Optional[str] = None
-    project_path: Optional[str] = None
-    last_checkpoint_time: Optional[str] = None
-    title: Optional[str] = None
-    channel_metadata: Optional[str] = None  # JSON string
+    channel_id: str | None = None
+    output_stream: str | None = None
+    target_computer: str | None = None
+    native_session_id: str | None = None
+    project_path: str | None = None
+    last_checkpoint_time: str | None = None
+    title: str | None = None
+    channel_metadata: str | None = None  # JSON string
 
 
 @dataclass
 class TransportAdapterMetadata:
     """Metadata container for Transport adapters."""
 
-    _redis: Optional[RedisTransportMetadata] = None
+    _redis: RedisTransportMetadata | None = None
 
     def get_redis(self) -> RedisTransportMetadata:
         """Get Redis metadata, initializing if missing."""
@@ -234,12 +234,12 @@ class SessionAdapterMetadata:
 
     def __init__(
         self,
-        telegram: Optional[TelegramAdapterMetadata] = None,
-        discord: Optional[DiscordAdapterMetadata] = None,
-        whatsapp: Optional[WhatsAppAdapterMetadata] = None,
-        redis: Optional[RedisTransportMetadata] = None,
-        _ui: Optional[UiAdapterMetadata] = None,
-        _transport: Optional[TransportAdapterMetadata] = None,
+        telegram: TelegramAdapterMetadata | None = None,
+        discord: DiscordAdapterMetadata | None = None,
+        whatsapp: WhatsAppAdapterMetadata | None = None,
+        redis: RedisTransportMetadata | None = None,
+        _ui: UiAdapterMetadata | None = None,
+        _transport: TransportAdapterMetadata | None = None,
     ) -> None:
         """Initialize with backward compatibility for adapter shorthand args."""
         if _ui is not None:
@@ -266,7 +266,7 @@ class SessionAdapterMetadata:
         Flattens adapters back to root keys for backward compatibility.
         """
         # manual dict construction to preserve root keys
-        data: Dict[str, JsonValue] = {}
+        data: dict[str, JsonValue] = {}
 
         # UI Adapters (flattened)
         if self._ui._telegram:
@@ -286,10 +286,10 @@ class SessionAdapterMetadata:
     def from_json(cls, raw: str) -> "SessionAdapterMetadata":
         """Deserialize from JSON string, filtering unknown fields per adapter."""
         data_obj: object = json.loads(raw)
-        telegram_metadata: Optional[TelegramAdapterMetadata] = None
-        discord_metadata: Optional[DiscordAdapterMetadata] = None
-        whatsapp_metadata: Optional[WhatsAppAdapterMetadata] = None
-        redis_metadata: Optional[RedisTransportMetadata] = None
+        telegram_metadata: TelegramAdapterMetadata | None = None
+        discord_metadata: DiscordAdapterMetadata | None = None
+        whatsapp_metadata: WhatsAppAdapterMetadata | None = None
+        redis_metadata: RedisTransportMetadata | None = None
 
         if isinstance(data_obj, dict):
             tg_raw = data_obj.get("telegram")
@@ -359,7 +359,7 @@ class SessionAdapterMetadata:
             whatsapp_raw = data_obj.get("whatsapp")
             if isinstance(whatsapp_raw, dict):
 
-                def _get_wa_str(key: str) -> Optional[str]:
+                def _get_wa_str(key: str) -> str | None:
                     val = whatsapp_raw.get(key)
                     return str(val) if val is not None else None
 
@@ -377,12 +377,12 @@ class SessionAdapterMetadata:
             redis_raw = data_obj.get("redis")
             if isinstance(redis_raw, dict):
 
-                def _get_str(key: str) -> Optional[str]:
+                def _get_str(key: str) -> str | None:
                     val = redis_raw.get(key)
                     return str(val) if val is not None else None
 
                 channel_meta_val = redis_raw.get("channel_metadata")
-                channel_meta_str: Optional[str]
+                channel_meta_str: str | None
                 if isinstance(channel_meta_val, dict):
                     channel_meta_str = json.dumps(channel_meta_val)
                 elif channel_meta_val is not None:
@@ -413,7 +413,7 @@ class SessionAdapterMetadata:
 class ChannelMetadata:
     """Per-call metadata for create_channel operations."""
 
-    target_computer: Optional[str] = None
+    target_computer: str | None = None
 
 
 @dataclass
@@ -422,23 +422,23 @@ class MessageMetadata:
 
     reply_markup: Optional["InlineKeyboardMarkup"] = None
     parse_mode: str | None = None
-    message_thread_id: Optional[int] = None
+    message_thread_id: int | None = None
     raw_format: bool = False
-    origin: Optional[str] = None
-    channel_id: Optional[str] = None
-    title: Optional[str] = None
-    project_path: Optional[str] = None
-    subdir: Optional[str] = None
-    channel_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
-    session_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
-    auto_command: Optional[str] = None  # legacy adapter boundary (deprecated)
+    origin: str | None = None
+    channel_id: str | None = None
+    title: str | None = None
+    project_path: str | None = None
+    subdir: str | None = None
+    channel_metadata: dict[str, object] | None = None  # guard: loose-dict
+    session_metadata: dict[str, object] | None = None  # guard: loose-dict
+    auto_command: str | None = None  # legacy adapter boundary (deprecated)
     launch_intent: Optional["SessionLaunchIntent"] = None
     is_transcription: bool = False
-    cleanup_trigger: Optional[str] = None
-    reflection_actor_id: Optional[str] = None
-    reflection_actor_name: Optional[str] = None
-    reflection_actor_avatar_url: Optional[str] = None
-    reflection_origin: Optional[str] = None
+    cleanup_trigger: str | None = None
+    reflection_actor_id: str | None = None
+    reflection_actor_name: str | None = None
+    reflection_actor_avatar_url: str | None = None
+    reflection_origin: str | None = None
 
 
 @dataclass
@@ -446,12 +446,12 @@ class SessionLaunchIntent:
     """Normalized session launch intent (adapter boundary to core)."""
 
     kind: "SessionLaunchKind"
-    agent: Optional[str] = None
-    thinking_mode: Optional[str] = None
-    message: Optional[str] = None
-    native_session_id: Optional[str] = None
+    agent: str | None = None
+    thinking_mode: str | None = None
+    message: str | None = None
+    native_session_id: str | None = None
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "kind": self.kind.value,
             "agent": self.agent,
@@ -461,15 +461,15 @@ class SessionLaunchIntent:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, object]) -> "SessionLaunchIntent":
+    def from_dict(cls, data: dict[str, object]) -> "SessionLaunchIntent":
         if FIELD_KIND not in data or data[FIELD_KIND] is None:
             raise ValueError("launch_intent.kind is required")
         return cls(
             kind=SessionLaunchKind(str(data[FIELD_KIND])),
-            agent=cast(Optional[str], data.get("agent")),
-            thinking_mode=cast(Optional[str], data.get("thinking_mode")),
-            message=cast(Optional[str], data.get("message")),
-            native_session_id=cast(Optional[str], data.get("native_session_id")),
+            agent=cast(str | None, data.get("agent")),
+            thinking_mode=cast(str | None, data.get("thinking_mode")),
+            message=cast(str | None, data.get("message")),
+            native_session_id=cast(str | None, data.get("native_session_id")),
         )
 
 
@@ -521,54 +521,54 @@ class Session:  # pylint: disable=too-many-instance-attributes
     computer_name: str
     tmux_session_name: str
     title: str
-    last_input_origin: Optional[str] = None
+    last_input_origin: str | None = None
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
-    session_metadata: Optional[Dict[str, object]] = None
-    created_at: Optional[datetime] = None
-    last_activity: Optional[datetime] = None
-    closed_at: Optional[datetime] = None
-    project_path: Optional[str] = None
-    subdir: Optional[str] = None
-    description: Optional[str] = None
+    session_metadata: dict[str, object] | None = None
+    created_at: datetime | None = None
+    last_activity: datetime | None = None
+    closed_at: datetime | None = None
+    project_path: str | None = None
+    subdir: str | None = None
+    description: str | None = None
     initiated_by_ai: bool = False
-    initiator_session_id: Optional[str] = None
-    output_message_id: Optional[str] = None
+    initiator_session_id: str | None = None
+    output_message_id: str | None = None
     notification_sent: bool = False
-    native_session_id: Optional[str] = None
-    native_log_file: Optional[str] = None
-    active_agent: Optional[str] = None
-    thinking_mode: Optional[str] = None
-    tui_log_file: Optional[str] = None
+    native_session_id: str | None = None
+    native_log_file: str | None = None
+    active_agent: str | None = None
+    thinking_mode: str | None = None
+    tui_log_file: str | None = None
     tui_capture_started: bool = False
-    last_message_sent: Optional[str] = None
-    last_message_sent_at: Optional[datetime] = None
-    last_output_raw: Optional[str] = None
-    last_output_at: Optional[datetime] = None
-    last_output_summary: Optional[str] = None
-    last_output_digest: Optional[str] = None
-    last_tool_done_at: Optional[datetime] = None
-    last_tool_use_at: Optional[datetime] = None
-    last_checkpoint_at: Optional[datetime] = None
-    working_slug: Optional[str] = None
-    human_email: Optional[str] = None
-    human_role: Optional[str] = HUMAN_ROLE_ADMIN
+    last_message_sent: str | None = None
+    last_message_sent_at: datetime | None = None
+    last_output_raw: str | None = None
+    last_output_at: datetime | None = None
+    last_output_summary: str | None = None
+    last_output_digest: str | None = None
+    last_tool_done_at: datetime | None = None
+    last_tool_use_at: datetime | None = None
+    last_checkpoint_at: datetime | None = None
+    working_slug: str | None = None
+    human_email: str | None = None
+    human_role: str | None = HUMAN_ROLE_ADMIN
     lifecycle_status: str = "active"
-    last_memory_extraction_at: Optional[datetime] = None
-    help_desk_processed_at: Optional[datetime] = None
-    relay_status: Optional[str] = None
-    relay_discord_channel_id: Optional[str] = None
-    relay_started_at: Optional[datetime] = None
+    last_memory_extraction_at: datetime | None = None
+    help_desk_processed_at: datetime | None = None
+    relay_status: str | None = None
+    relay_discord_channel_id: str | None = None
+    relay_started_at: datetime | None = None
     transcript_files: str = "[]"
     char_offset: int = 0
-    visibility: Optional[str] = "private"
+    visibility: str | None = "private"
 
     def get_metadata(self) -> SessionAdapterMetadata:
         """Get session adapter metadata."""
         return self.adapter_metadata
 
-    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert session to dictionary for JSON serialization."""
-        data = cast(Dict[str, object], asdict(self))
+        data = cast(dict[str, object], asdict(self))
         if self.created_at:
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:
@@ -602,7 +602,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, object]) -> "Session":  # guard: loose-dict - Deserialization input
+    def from_dict(cls, data: dict[str, object]) -> "Session":  # guard: loose-dict - Deserialization input
         """Create session from dictionary (from database/JSON)."""
 
         created_at_raw = data.get("created_at")
@@ -651,9 +651,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
             adapter_metadata = SessionAdapterMetadata()
 
         session_metadata_raw = data.get("session_metadata")
-        session_metadata: Optional[Dict[str, object]] = None
+        session_metadata: dict[str, object] | None = None
         if isinstance(session_metadata_raw, dict):
-            session_metadata = cast(Dict[str, object], session_metadata_raw)
+            session_metadata = cast(dict[str, object], session_metadata_raw)
         elif isinstance(session_metadata_raw, str):
             try:
                 session_metadata = json.loads(session_metadata_raw)
@@ -669,7 +669,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
         tui_capture_started_val = data.get("tui_capture_started")
         tui_capture_started = bool(tui_capture_started_val) if tui_capture_started_val is not None else False
 
-        def _get_optional_str(key: str) -> Optional[str]:
+        def _get_optional_str(key: str) -> str | None:
             value = data.get(key)
             return str(value) if value is not None else None
 
@@ -730,11 +730,11 @@ class Session:  # pylint: disable=too-many-instance-attributes
 class Recording:
     """Represents a tmux recording file."""
 
-    recording_id: Optional[int]
+    recording_id: int | None
     session_id: str
     file_path: str
     recording_type: str
-    timestamp: Optional[datetime] = None
+    timestamp: datetime | None = None
 
     def to_dict(self) -> JsonDict:
         """Convert recording to dictionary."""
@@ -754,7 +754,7 @@ class Recording:
         else:
             timestamp = None
         return cls(
-            recording_id=cast(Optional[int], data.get("recording_id")),
+            recording_id=cast(int | None, data.get("recording_id")),
             session_id=str(data.get("session_id", "")),
             file_path=str(data.get("file_path", "")),
             recording_type=str(data.get("recording_type", "")),
@@ -781,7 +781,7 @@ class StartSessionArgs:
     message: str
     agent: str = "claude"
     thinking_mode: ThinkingMode = ThinkingMode.SLOW
-    caller_session_id: Optional[str] = None
+    caller_session_id: str | None = None
     direct: bool = False
 
 
@@ -792,11 +792,11 @@ class RunAgentCommandArgs:
     computer: str
     command: str
     args: str = ""
-    project: Optional[str] = None
+    project: str | None = None
     agent: str = "claude"
     thinking_mode: ThinkingMode = ThinkingMode.SLOW
     subfolder: str = ""
-    caller_session_id: Optional[str] = None
+    caller_session_id: str | None = None
 
 
 @dataclass
@@ -804,15 +804,15 @@ class RedisInboundMessage:
     """Typed Redis message parsed from raw stream entry."""
 
     msg_type: str
-    session_id: Optional[str]
+    session_id: str | None
     command: str
-    channel_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
-    initiator: Optional[str] = None
-    project_path: Optional[str] = None
-    title: Optional[str] = None
-    origin: Optional[str] = None
-    launch_intent: Optional[Dict[str, object]] = None  # guard: loose-dict
-    reply_stream: Optional[str] = None
+    channel_metadata: dict[str, object] | None = None  # guard: loose-dict
+    initiator: str | None = None
+    project_path: str | None = None
+    title: str | None = None
+    origin: str | None = None
+    launch_intent: dict[str, object] | None = None  # guard: loose-dict
+    reply_stream: str | None = None
 
 
 @dataclass
@@ -820,31 +820,31 @@ class SessionSnapshot:
     """Typed session snapshot for list_sessions output."""
 
     session_id: str
-    last_input_origin: Optional[str]
+    last_input_origin: str | None
     title: str
     thinking_mode: str | None
-    active_agent: Optional[str]
+    active_agent: str | None
     status: str
-    project_path: Optional[str] = None
-    subdir: Optional[str] = None
-    created_at: Optional[str] = None
-    last_activity: Optional[str] = None
-    closed_at: Optional[str] = None
-    last_input: Optional[str] = None
-    last_input_at: Optional[str] = None
-    last_output_summary: Optional[str] = None
-    last_output_summary_at: Optional[str] = None
-    last_output_digest: Optional[str] = None
-    native_session_id: Optional[str] = None
-    tmux_session_name: Optional[str] = None
-    initiator_session_id: Optional[str] = None
-    computer: Optional[str] = None
-    human_email: Optional[str] = None
-    human_role: Optional[str] = None
-    visibility: Optional[str] = "private"
-    session_metadata: Optional[Dict[str, object]] = None
+    project_path: str | None = None
+    subdir: str | None = None
+    created_at: str | None = None
+    last_activity: str | None = None
+    closed_at: str | None = None
+    last_input: str | None = None
+    last_input_at: str | None = None
+    last_output_summary: str | None = None
+    last_output_summary_at: str | None = None
+    last_output_digest: str | None = None
+    native_session_id: str | None = None
+    tmux_session_name: str | None = None
+    initiator_session_id: str | None = None
+    computer: str | None = None
+    human_email: str | None = None
+    human_role: str | None = None
+    visibility: str | None = "private"
+    session_metadata: dict[str, object] | None = None
 
-    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
         return {
             "session_id": self.session_id,
             "last_input_origin": self.last_input_origin,
@@ -873,7 +873,7 @@ class SessionSnapshot:
         }
 
     @classmethod
-    def from_db_session(cls, session: "Session", computer: Optional[str] = None) -> "SessionSnapshot":
+    def from_db_session(cls, session: "Session", computer: str | None = None) -> "SessionSnapshot":
         """Create from database Session object."""
         return cls(
             session_id=session.session_id,
@@ -902,7 +902,7 @@ class SessionSnapshot:
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, object]) -> "SessionSnapshot":  # guard: loose-dict
+    def from_dict(cls, data: dict[str, object]) -> "SessionSnapshot":  # guard: loose-dict
         """Create from dict."""
         return cls(
             session_id=str(data["session_id"]),
@@ -935,7 +935,7 @@ class SessionSnapshot:
             human_email=str(data.get("human_email")) if data.get("human_email") else None,
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
-            session_metadata=cast(Optional[Dict[str, object]], data.get("session_metadata")),
+            session_metadata=cast(dict[str, object] | None, data.get("session_metadata")),
         )
 
 
@@ -945,7 +945,7 @@ class AgentStartArgs:
 
     agent_name: str
     thinking_mode: ThinkingMode
-    user_args: List[str]
+    user_args: list[str]
 
 
 @dataclass
@@ -953,8 +953,8 @@ class AgentResumeArgs:
     """Typed arguments for agent resume."""
 
     agent_name: str
-    native_session_id: Optional[str]
-    thinking_mode: Optional[ThinkingMode]
+    native_session_id: str | None
+    thinking_mode: ThinkingMode | None
 
 
 @dataclass
@@ -977,8 +977,8 @@ class MessagePayload:
 
     session_id: str
     text: str
-    project_path: Optional[str] = None
-    title: Optional[str] = None
+    project_path: str | None = None
+    title: str | None = None
 
 
 @dataclass
@@ -987,15 +987,15 @@ class ComputerInfo:
 
     name: str
     status: str
-    user: Optional[str] = None
-    host: Optional[str] = None
-    role: Optional[str] = None
+    user: str | None = None
+    host: str | None = None
+    role: str | None = None
     is_local: bool = False
-    system_stats: Optional[SystemStats] = None
-    tmux_binary: Optional[str] = None
+    system_stats: SystemStats | None = None
+    tmux_binary: str | None = None
 
-    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
-        return cast(Dict[str, object], asdict(self))
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict
+        return cast(dict[str, object], asdict(self))
 
 
 @dataclass
@@ -1004,27 +1004,27 @@ class TodoInfo:
 
     slug: str
     status: str
-    description: Optional[str] = None
+    description: str | None = None
     has_requirements: bool = False
     has_impl_plan: bool = False
-    build_status: Optional[str] = None
-    review_status: Optional[str] = None
-    dor_score: Optional[int] = None
-    deferrals_status: Optional[str] = None
+    build_status: str | None = None
+    review_status: str | None = None
+    dor_score: int | None = None
+    deferrals_status: str | None = None
     findings_count: int = 0
-    files: List[str] = field(default_factory=list)
-    after: List[str] = field(default_factory=list)
-    group: Optional[str] = None
-    delivered_at: Optional[str] = None
-    prepare_phase: Optional[str] = None
-    integration_phase: Optional[str] = None
-    finalize_status: Optional[str] = None
+    files: list[str] = field(default_factory=list)
+    after: list[str] = field(default_factory=list)
+    group: str | None = None
+    delivered_at: str | None = None
+    prepare_phase: str | None = None
+    integration_phase: str | None = None
+    finalize_status: str | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, object]) -> "TodoInfo":  # guard: loose-dict
+    def from_dict(cls, data: dict[str, object]) -> "TodoInfo":  # guard: loose-dict
         """Create from dict with field mapping."""
         dor_score_raw = data.get("dor_score")
-        dor_score: Optional[int]
+        dor_score: int | None
         try:
             dor_score = int(dor_score_raw) if dor_score_raw is not None else None
         except (TypeError, ValueError):
@@ -1036,23 +1036,23 @@ class TodoInfo:
             description=str(data.get("description") or data.get("title") or ""),
             has_requirements=bool(data.get("has_requirements", False)),
             has_impl_plan=bool(data.get("has_impl_plan", False)),
-            build_status=cast(Optional[str], data.get("build_status")),
-            review_status=cast(Optional[str], data.get("review_status")),
+            build_status=cast(str | None, data.get("build_status")),
+            review_status=cast(str | None, data.get("review_status")),
             dor_score=dor_score,
-            deferrals_status=cast(Optional[str], data.get("deferrals_status")),
+            deferrals_status=cast(str | None, data.get("deferrals_status")),
             findings_count=int(data.get("findings_count", 0) or 0),
-            files=[str(f) for f in cast(List[object], data.get("files", []))],
-            after=[str(a) for a in cast(List[object], data.get("after", []))],
-            group=cast(Optional[str], data.get("group")),
-            delivered_at=cast(Optional[str], data.get("delivered_at")),
-            prepare_phase=cast(Optional[str], data.get("prepare_phase")),
-            integration_phase=cast(Optional[str], data.get("integration_phase")),
-            finalize_status=cast(Optional[str], data.get("finalize_status")),
+            files=[str(f) for f in cast(list[object], data.get("files", []))],
+            after=[str(a) for a in cast(list[object], data.get("after", []))],
+            group=cast(str | None, data.get("group")),
+            delivered_at=cast(str | None, data.get("delivered_at")),
+            prepare_phase=cast(str | None, data.get("prepare_phase")),
+            integration_phase=cast(str | None, data.get("integration_phase")),
+            finalize_status=cast(str | None, data.get("finalize_status")),
         )
 
-    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict
         """Convert to dict."""
-        return cast(Dict[str, object], asdict(self))
+        return cast(dict[str, object], asdict(self))
 
 
 @dataclass
@@ -1061,26 +1061,26 @@ class ProjectInfo:
 
     name: str
     path: str
-    description: Optional[str] = None
-    computer: Optional[str] = None
-    todos: List[TodoInfo] = field(default_factory=list)
+    description: str | None = None
+    computer: str | None = None
+    todos: list[TodoInfo] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, object]) -> "ProjectInfo":  # guard: loose-dict
+    def from_dict(cls, data: dict[str, object]) -> "ProjectInfo":  # guard: loose-dict
         """Create from dict with field mapping."""
         # fmt: off
         return cls(
             name=str(data.get("name", "")),
             path=str(data.get("path", "")),
             description=str(data.get("description") or data.get("desc") or ""),
-            computer=cast(Optional[str], data.get("computer")),
-            todos=[TodoInfo.from_dict(t) for t in cast(List[Dict[str, object]], data.get("todos", []))],  # guard: loose-dict
+            computer=cast(str | None, data.get("computer")),
+            todos=[TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))],  # guard: loose-dict
         )
         # fmt: on
 
-    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict
         """Convert to dict."""
-        result = cast(Dict[str, object], asdict(self))
+        result = cast(dict[str, object], asdict(self))
         result["todos"] = [t.to_dict() for t in self.todos]
         return result
 
@@ -1090,6 +1090,6 @@ class CommandPayload:
     """Generic command payload with args."""
 
     session_id: str
-    args: List[str]
-    project_path: Optional[str] = None
-    title: Optional[str] = None
+    args: list[str]
+    project_path: str | None = None
+    title: str | None = None

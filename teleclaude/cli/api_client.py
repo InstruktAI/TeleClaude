@@ -51,7 +51,7 @@ WS_MAX_BACKOFF = 5.0  # Maximum reconnect delay for local unix-socket reconnects
 WS_BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier
 API_CONNECT_RETRY_DELAYS_S = (0.1, 0.3, 0.6)
 
-__all__ = ["TelecAPIClient", "APIError"]
+__all__ = ["APIError", "TelecAPIClient"]
 
 WsPayload: TypeAlias = dict[str, dict[str, str | list[str]]]
 

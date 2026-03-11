@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Callable, Deque, Optional, Tuple
 
 from instrukt_ai_logging import get_logger
 
@@ -26,11 +26,11 @@ class AnimationPriority(IntEnum):
 class AnimationSlot:
     """State for a single animation target."""
 
-    animation: Optional[Animation] = None
+    animation: Animation | None = None
     frame_count: int = 0
     last_update_ms: float = 0
     priority: AnimationPriority = AnimationPriority.PERIODIC
-    queue: Deque[Tuple[Animation, AnimationPriority]] = field(default_factory=lambda: deque(maxlen=5))
+    queue: deque[tuple[Animation, AnimationPriority]] = field(default_factory=lambda: deque(maxlen=5))
     looping: bool = False
 
 
@@ -53,7 +53,7 @@ class AnimationEngine:
         self._animation_mode: str = "periodic"
         self._has_active_animation: bool = False
         # Optional callback when a new animation starts
-        self.on_animation_start: Optional[Callable[[str, Animation], None]] = None
+        self.on_animation_start: Callable[[str, Animation], None] | None = None
 
         # Initialize default targets
         self._ensure_target("banner")

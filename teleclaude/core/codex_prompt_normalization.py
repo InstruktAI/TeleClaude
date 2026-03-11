@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from teleclaude.core.agents import AgentName
 
 _PROMPTS_PREFIX = "/prompts:"
@@ -11,7 +9,7 @@ _PROMPT_PREFIX = "/prompt:"
 _NEXT_PREFIX = "/next-"
 
 
-def normalize_codex_next_command(agent_name: Optional[str], text: str) -> str:
+def normalize_codex_next_command(agent_name: str | None, text: str) -> str:
     """Normalize Codex /next-* commands to the prompts namespace.
 
     Codex custom prompts are invoked with a prompt namespace command. We only

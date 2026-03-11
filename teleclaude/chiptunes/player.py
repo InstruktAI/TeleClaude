@@ -5,8 +5,8 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from instrukt_ai_logging import get_logger
 

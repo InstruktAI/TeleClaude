@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import UTC
 from pathlib import Path
 
 import yaml
@@ -122,7 +123,7 @@ def create_bug_skeleton(
 
     Bug todos skip the prepare phase and start as pending build work.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     validate_slug(slug)
     slug = slug.strip()
@@ -131,7 +132,7 @@ def create_bug_skeleton(
     slug = ensure_unique_slug(todos_root, slug)
     todo_dir = todos_root / slug
 
-    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date = datetime.now(UTC).strftime("%Y-%m-%d")
 
     bug_md = _read_template("bug.md").format(
         description=description,

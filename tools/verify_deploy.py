@@ -16,7 +16,6 @@ Checks:
 import json
 import shutil
 from pathlib import Path
-from typing import List
 
 # Colors
 GREEN = "\033[0;32m"
@@ -62,7 +61,7 @@ def check_file(path: Path, description: str) -> bool:
     return False
 
 
-def check_json_config(path: Path, check_keys: List[str] = []) -> bool:
+def check_json_config(path: Path, check_keys: list[str] = []) -> bool:
     if not path.exists():
         return False
     try:

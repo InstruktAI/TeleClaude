@@ -2,4 +2,4 @@
 
 from teleclaude.types.system import CpuStats, DiskStats, MemoryStats, SystemStats
 
-__all__ = ["SystemStats", "MemoryStats", "DiskStats", "CpuStats"]
+__all__ = ["CpuStats", "DiskStats", "MemoryStats", "SystemStats"]

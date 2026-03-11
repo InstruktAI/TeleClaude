@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
 
@@ -121,7 +122,7 @@ class TmuxPaneManager:
         self._tree_node_has_focus: bool = False
         self._layout_signature: tuple[object, ...] | None = None
         self._bg_signature: tuple[object, ...] | None = None
-        self._session_catalog: dict[str, "SessionInfo"] = {}
+        self._session_catalog: dict[str, SessionInfo] = {}
         # tmux_session_name → pane_id mapping discovered during reload
         self._reload_session_panes: dict[str, str] = {}
         # Non-session panes (doc preview commands) discovered during reload
@@ -252,7 +253,7 @@ class TmuxPaneManager:
                 dead_sessions,
             )
 
-    def update_session_catalog(self, sessions: list["SessionInfo"]) -> None:
+    def update_session_catalog(self, sessions: list[SessionInfo]) -> None:
         """Update the session catalog used for layout lookup."""
         self._session_catalog = {session.session_id: session for session in sessions}
 
@@ -338,7 +339,7 @@ class TmuxPaneManager:
         active_session_id: str | None,
         sticky_session_ids: list[str],
         get_computer_info: Callable[[str], ComputerInfo | None],
-        active_doc_preview: "DocPreviewState | None" = None,
+        active_doc_preview: DocPreviewState | None = None,
         selected_session_id: str | None = None,
         tree_node_has_focus: bool = False,
         focus: bool = True,
@@ -1208,7 +1209,7 @@ class TmuxPaneManager:
 
     def show_sticky_sessions(
         self,
-        sticky_sessions: list["SessionInfo"],
+        sticky_sessions: list[SessionInfo],
         get_computer_info: Callable[[str], ComputerInfo | None],
     ) -> None:
         """Show 1-5 sticky sessions using tmux's fixed layouts.

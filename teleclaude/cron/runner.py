@@ -23,7 +23,7 @@ import importlib
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -87,13 +87,13 @@ def _is_due(
 ) -> bool:
     """Check if a job is due based on its teleclaude.yml schedule config."""
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     if last_run is None:
         return True
 
     if last_run.tzinfo is None:
-        last_run = last_run.replace(tzinfo=timezone.utc)
+        last_run = last_run.replace(tzinfo=UTC)
 
     elapsed = now - last_run
 
@@ -325,14 +325,14 @@ def _scan_and_notify(
         return
 
     for job_name, reports in undelivered.items():
-        latest_mtime = datetime.min.replace(tzinfo=timezone.utc)
+        latest_mtime = datetime.min.replace(tzinfo=UTC)
 
         for report_path in reports:
-            mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=timezone.utc)
+            mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=UTC)
             if mtime > latest_mtime:
                 latest_mtime = mtime
 
-        if latest_mtime > datetime.min.replace(tzinfo=timezone.utc):
+        if latest_mtime > datetime.min.replace(tzinfo=UTC):
             logger.info("marking job reports notified (delivery via event platform)", job=job_name)
             state.mark_notified(job_name, latest_mtime)
 
@@ -398,7 +398,7 @@ def run_due_jobs(
     state = CronState.load()
     python_jobs = discover_jobs()
     schedules = _load_job_schedules()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     results: dict[str, bool] = {}
 
     # Build a unified job list: Python modules + agent jobs from config

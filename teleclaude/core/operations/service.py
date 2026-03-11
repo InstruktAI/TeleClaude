@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from collections.abc import Callable
 from contextvars import ContextVar, Token
-from datetime import datetime, timedelta, timezone
-from typing import Callable
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
@@ -49,13 +49,13 @@ _progress_callback: ContextVar[Callable[[str, str, str], None] | None] = Context
 )
 
 
-def set_operations_service(service: "OperationsService") -> None:
+def set_operations_service(service: OperationsService) -> None:
     """Install the process-wide operations service."""
     global _operations_service
     _operations_service = service
 
 
-def get_operations_service() -> "OperationsService":
+def get_operations_service() -> OperationsService:
     """Return the configured operations service."""
     if _operations_service is None:
         raise HTTPException(status_code=503, detail="operations service not initialized")
@@ -101,7 +101,7 @@ class OperationsService:
 
     async def expire_stale_operations(self) -> int:
         """Mark long-silent running operations stale."""
-        older_than = (datetime.now(timezone.utc) - timedelta(seconds=self._stale_after_s)).isoformat()
+        older_than = (datetime.now(UTC) - timedelta(seconds=self._stale_after_s)).isoformat()
         return await self._db.expire_stale_operations(
             older_than,
             error_text="operation heartbeat expired",
@@ -227,7 +227,7 @@ class OperationsService:
         latest_progress: tuple[str, str, str] | None = None
         progress_tasks: set[asyncio.Task[None]] = set()
         try:
-            now_iso = datetime.now(timezone.utc).isoformat()
+            now_iso = datetime.now(UTC).isoformat()
             claimed = await self._db.claim_operation(operation_id, now_iso)
             if not claimed:
                 return
@@ -260,21 +260,21 @@ class OperationsService:
             await self._db.complete_operation(
                 operation_id,
                 result,
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
             )
         except asyncio.CancelledError:
             await self._db.fail_operation(
                 operation_id,
                 "operation cancelled before completion",
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
                 state="stale",
             )
             raise
-        except Exception as exc:  # noqa: BLE001 - durable background failure record
+        except Exception as exc:
             await self._db.fail_operation(
                 operation_id,
                 f"{type(exc).__name__}: {exc}",
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
             )
             logger.exception("Background operation failed for %s", operation_id)
         finally:
@@ -297,7 +297,7 @@ class OperationsService:
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=self._heartbeat_interval_s)
             except TimeoutError:
-                await self._db.touch_operation(operation_id, datetime.now(timezone.utc).isoformat())
+                await self._db.touch_operation(operation_id, datetime.now(UTC).isoformat())
 
     async def _record_progress(self, operation_id: str, phase: str, decision: str, reason: str) -> None:
         await self._db.update_operation_progress(
@@ -305,7 +305,7 @@ class OperationsService:
             phase=phase,
             decision=decision,
             reason=reason,
-            now_iso=datetime.now(timezone.utc).isoformat(),
+            now_iso=datetime.now(UTC).isoformat(),
         )
 
     def _serialize_operation(self, operation: Operation) -> SerializedOperation:

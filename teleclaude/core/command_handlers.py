@@ -9,9 +9,10 @@ import functools
 import os
 import shlex
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Awaitable, Callable, Optional, TypeVar, cast
+from typing import TypeVar, cast
 
 import psutil
 from instrukt_ai_logging import get_logger
@@ -120,7 +121,7 @@ def with_session(
         if not hasattr(cmd, "session_id"):
             raise ValueError(f"Object {type(cmd).__name__} missing session_id")
 
-        session_id = str(getattr(cmd, "session_id"))
+        session_id = str(getattr(cmd, "session_id"))  # noqa: B009 — cmd is typed as object, getattr is intentional
         session = await db.get_session(session_id)
         if session is None:
             raise RuntimeError(f"Session {session_id} not found - this should not happen")
@@ -296,10 +297,10 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
 
     if cmd.channel_metadata:
         # subfolder/slug/initiator_id can also be in metadata, but command fields take precedence
-        subfolder = subfolder or cast(Optional[str], cmd.channel_metadata.get("subfolder"))
-        working_slug = working_slug or cast(Optional[str], cmd.channel_metadata.get("working_slug"))
+        subfolder = subfolder or cast(str | None, cmd.channel_metadata.get("subfolder"))
+        working_slug = working_slug or cast(str | None, cmd.channel_metadata.get("working_slug"))
         initiator_session_id = initiator_session_id or cast(
-            Optional[str], cmd.channel_metadata.get("initiator_session_id")
+            str | None, cmd.channel_metadata.get("initiator_session_id")
         )
 
     # Origin provenance must reflect the actual source of this session creation.
@@ -310,8 +311,8 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         parent_session = await db.get_session(initiator_session_id)
 
     # Resolve identity
-    metadata_human_email: Optional[str] = None
-    metadata_human_role: Optional[str] = None
+    metadata_human_email: str | None = None
+    metadata_human_role: str | None = None
     if cmd.channel_metadata:
         raw_email = cmd.channel_metadata.get("human_email")
         raw_role = cmd.channel_metadata.get("human_role")
@@ -437,7 +438,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
                     initiator_session_id[:8],
                     session_id[:8],
                 )
-            except Exception as exc:  # noqa: BLE001 - listener failure should not block session creation
+            except Exception as exc:
                 logger.warning(
                     "Listener registration failed: caller=%s target=%s error=%s",
                     initiator_session_id[:8],
@@ -828,7 +829,7 @@ async def handle_voice(
         session_id: str,
         message: str,
         metadata: MessageMetadata,
-    ) -> Optional[str]:
+    ) -> str | None:
         session = await db.get_session(session_id)
         if not session:
             logger.warning("Session %s not found for voice status", session_id[:8])
@@ -908,7 +909,7 @@ async def handle_file(
         session_id: str,
         message: str,
         metadata: MessageMetadata,
-    ) -> Optional[str]:
+    ) -> str | None:
         session = await db.get_session(session_id)
         if not session:
             logger.warning("Session %s not found for file notice", session_id[:8])
@@ -1004,7 +1005,7 @@ async def deliver_inbound(
     await db.update_session(
         session_id,
         last_message_sent=message_text[:200],
-        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+        last_message_sent_at=datetime.now(UTC).isoformat(),
         last_input_origin=row["origin"],
     )
 
@@ -1635,7 +1636,7 @@ async def start_agent(
     session: Session,
     cmd: StartAgentCommand,
     client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> None:
     """Start a generic AI agent in session with optional arguments.
 
@@ -1734,7 +1735,7 @@ async def start_agent(
         active_agent=agent_name,
         thinking_mode=start_args.thinking_mode.value,
         last_message_sent=truncated_prompt,
-        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+        last_message_sent_at=datetime.now(UTC).isoformat(),
     )
 
     # Execute command WITH polling (agents are long-running)
@@ -1746,7 +1747,7 @@ async def resume_agent(
     session: Session,
     cmd: ResumeAgentCommand,
     client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> None:
     """Resume a generic AI agent session.
 
@@ -1825,7 +1826,7 @@ async def agent_restart(
     session: Session,
     cmd: RestartAgentCommand,
     client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> tuple[bool, str | None]:
     """Restart an AI agent in the session by resuming the native session.
 
@@ -1985,7 +1986,7 @@ async def run_agent_command(
     session: Session,
     cmd: RunAgentCommand,
     client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> None:
     """Send a slash command directly to the running agent."""
     if not cmd.command:
@@ -2015,7 +2016,7 @@ async def run_agent_command(
     await db.update_session(
         session.session_id,
         last_message_sent=command_text[:200],
-        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+        last_message_sent_at=datetime.now(UTC).isoformat(),
         last_input_origin=cmd.origin,
     )
 

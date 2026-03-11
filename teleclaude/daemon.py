@@ -9,10 +9,11 @@ import os
 import signal
 import sys
 import time
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Callable, Coroutine, Literal, Optional, TextIO, cast
+from typing import Literal, TextIO, cast
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -51,13 +52,13 @@ from teleclaude.core.lifecycle import DaemonLifecycle
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.session_utils import (
     get_output_file,
     get_short_project_name,
     resolve_working_dir,
     split_project_path_and_subdir,
 )
+from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todo_watcher import TodoWatcher
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -291,7 +292,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # PID file for locking - use project root
         project_root = Path(__file__).parent.parent
         self.pid_file = project_root / "teleclaude.pid"
-        self.pid_file_handle: Optional[TextIO] = None  # Will hold the locked file handle
+        self.pid_file_handle: TextIO | None = None  # Will hold the locked file handle
 
         # Note: tmux_bridge and db are functional modules (no instantiation)
         # UI output management is now handled by UiAdapter (base class for Telegram, Slack, etc.)
@@ -511,7 +512,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not samples:
             return None
         ordered = sorted(samples)
-        index = int(round((len(ordered) - 1) * pct))
+        index = round((len(ordered) - 1) * pct)
         index = max(0, min(index, len(ordered) - 1))
         return ordered[index]
 
@@ -595,11 +596,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         except ValueError:
             return
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
+            created_at = created_at.replace(tzinfo=UTC)
         else:
-            created_at = created_at.astimezone(timezone.utc)
+            created_at = created_at.astimezone(UTC)
 
-        lag_s = max(0.0, (datetime.now(timezone.utc) - created_at).total_seconds())
+        lag_s = max(0.0, (datetime.now(UTC) - created_at).total_seconds())
         self._hook_outbox_lag_samples_s.append(lag_s)
         overflow = len(self._hook_outbox_lag_samples_s) - HOOK_OUTBOX_MAX_LAG_SAMPLES
         if overflow > 0:
@@ -865,7 +866,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """
         try:
             while not self.shutdown_event.is_set():
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 now_iso = now.isoformat()
                 lock_cutoff = (now - timedelta(seconds=HOOK_OUTBOX_LOCK_TTL_S)).isoformat()
                 rows = await db.fetch_hook_outbox_batch(now_iso, HOOK_OUTBOX_BATCH_SIZE, lock_cutoff)
@@ -1019,7 +1020,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
             attempt = int(row.get("attempt_count", 0)) + 1
             delay = self._hook_outbox_backoff(attempt)
-            retry_at = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+            retry_at = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
             await db.mark_hook_outbox_failed(
                 row_id=row_id or row["id"],
                 attempt_count=attempt,
@@ -1058,7 +1059,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 if row is None:
                     try:
                         await asyncio.wait_for(queue_state.notify.wait(), timeout=HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         async with queue_state.lock:
                             if not queue_state.pending:
                                 break
@@ -1121,7 +1122,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 return
 
             delay = self._hook_outbox_backoff(attempt)
-            next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+            next_attempt = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
             logger.error(
                 "Hook outbox dispatch failed (retrying)",
                 row_id=row_id,
@@ -1215,7 +1216,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             restored = await db.get_session(ctx.session_id)
             if restored and not restored.closed_at:
                 await db.update_session(ctx.session_id, lifecycle_status="active")
-                timestamp = datetime.now(timezone.utc).isoformat()
+                timestamp = datetime.now(UTC).isoformat()
                 canonical = serialize_status_event(
                     session_id=ctx.session_id,
                     status="error",
@@ -1279,13 +1280,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 await db.update_session(
                     session_id,
                     last_message_sent=auto_command[:200],
-                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                    last_message_sent_at=datetime.now(UTC).isoformat(),
                 )
             else:
                 await db.update_session(
                     session_id,
                     last_message_sent=auto_command[:200],
-                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                    last_message_sent_at=datetime.now(UTC).isoformat(),
                     last_input_origin=session.last_input_origin,
                 )
 
@@ -1337,7 +1338,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await db.update_session(
                 session_id,
                 lifecycle_status="closed",
-                closed_at=datetime.now(timezone.utc),
+                closed_at=datetime.now(UTC),
             )
             return
 
@@ -1388,7 +1389,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         await db.update_session(
             session_id,
             last_message_sent=message[:200],
-            last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+            last_message_sent_at=datetime.now(UTC).isoformat(),
         )
 
         logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
@@ -1773,7 +1774,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self,
         session_id: str,
         command: str,
-        _message_id: Optional[str] = None,
+        _message_id: str | None = None,
         start_polling: bool = True,
     ) -> bool:
         """Execute command in tmux and start polling if needed.
@@ -1962,7 +1963,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
 
             def _ingest_callback(canonical_type: str, payload: object) -> list[tuple[str, str, str]]:
-                from typing import Mapping
+                from collections.abc import Mapping
 
                 if not isinstance(payload, Mapping):
                     return []
@@ -2195,7 +2196,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if isinstance(redis_adapter, RedisTransport):
                 try:
                     redis_client = await redis_adapter._get_redis()
-                except Exception as exc:  # noqa: BLE001 - keep service startup resilient
+                except Exception as exc:
                     logger.error(
                         "Failed to start channel subscription worker due to redis error",
                         error=str(exc),
@@ -2265,11 +2266,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                                 logger.debug("Deployment fanout: skipping self-originated message")
                                 continue
                             await dispatcher.dispatch(event)
-                        except Exception as exc:  # noqa: BLE001
+                        except Exception as exc:
                             logger.warning("Deployment fanout: dispatch failed: %s", exc)
             except asyncio.CancelledError:
                 break
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("Deployment fanout consumer error: %s", exc)
                 await asyncio.sleep(5)
         logger.info("Deployment fanout consumer stopped")

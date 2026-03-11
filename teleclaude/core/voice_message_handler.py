@@ -9,8 +9,9 @@ Refactored to be adapter-agnostic utility that accepts generic callbacks.
 """
 
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -52,7 +53,7 @@ def _get_service_chain() -> list[tuple[str, STTBackend]]:
     return list(BACKENDS.items())
 
 
-def init_voice_handler(api_key: Optional[str] = None) -> None:
+def init_voice_handler(api_key: str | None = None) -> None:
     """Initialize voice handler.
 
     Kept for backward compatibility with daemon lifecycle.
@@ -69,7 +70,7 @@ def init_voice_handler(api_key: Optional[str] = None) -> None:
 
 async def transcribe_voice(
     audio_file_path: str,
-    language: Optional[str] = None,
+    language: str | None = None,
 ) -> str:
     """Transcribe audio file using STT backend chain.
 
@@ -105,9 +106,9 @@ async def transcribe_voice(
 
 async def transcribe_voice_with_retry(
     audio_file_path: str,
-    language: Optional[str] = None,
+    language: str | None = None,
     max_retries: int = 1,
-) -> tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """Transcribe audio with retry logic.
 
     Args:
@@ -119,7 +120,7 @@ async def transcribe_voice_with_retry(
         Tuple of (transcribed text, error reason). On success: (text, None).
         On failure: (None, reason).
     """
-    last_error: Optional[str] = None
+    last_error: str | None = None
     for attempt in range(max_retries + 1):
         try:
             text = await transcribe_voice(audio_file_path, language)
@@ -142,9 +143,9 @@ async def handle_voice(
     session_id: str,
     audio_path: str,
     context: VoiceEventContext,
-    send_message: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
-    delete_message: Optional[Callable[[str, str], Awaitable[None]]] = None,
-) -> Optional[str]:
+    send_message: Callable[[str, str, MessageMetadata], Awaitable[str | None]],
+    delete_message: Callable[[str, str], Awaitable[None]] | None = None,
+) -> str | None:
     """Handle voice message (adapter-agnostic utility).
 
     Args:

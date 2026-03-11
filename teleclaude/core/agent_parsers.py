@@ -4,8 +4,9 @@
 
 import json
 import time
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator, Optional, cast
+from typing import cast
 
 from instrukt_ai_logging import get_logger
 
@@ -25,14 +26,14 @@ class CodexParser(LogParser):
         """
         return file_path.suffix == ".jsonl"
 
-    def extract_session_id(self, file_path: Path) -> Optional[str]:
+    def extract_session_id(self, file_path: Path) -> str | None:
         """Extract native session ID from file.
 
         guard: allow-string-compare
         """
         # Scan for session_meta to avoid missing it if not the first line yet.
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 for line in f:
                     if not line.strip():
                         continue

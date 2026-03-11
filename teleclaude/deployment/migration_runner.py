@@ -165,7 +165,7 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
 
     try:
         applied = _load_state(MIGRATION_STATE_FILE)
-    except Exception:  # noqa: BLE001
+    except Exception:
         result["error"] = f"Failed to load migration state: {traceback.format_exc()}"
         return result
 
@@ -179,7 +179,7 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
         try:
             module = _load_migration_module(migration_path)
             already_applied = _as_bool(module.check(), migration_name, "check")
-        except Exception:  # noqa: BLE001
+        except Exception:
             result["error"] = f"Migration failed: {migration_name}\n{traceback.format_exc()}"
             return result
 
@@ -191,14 +191,14 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
             migrated = _as_bool(module.migrate(), migration_name, "migrate")
             if not migrated:
                 raise RuntimeError(f"Migration returned False: {migration_name}")
-        except Exception:  # noqa: BLE001
+        except Exception:
             result["error"] = f"Migration failed: {migration_name}\n{traceback.format_exc()}"
             return result
 
         applied.add(migration_name)
         try:
             _write_state(MIGRATION_STATE_FILE, applied)
-        except Exception:  # noqa: BLE001
+        except Exception:
             result["error"] = f"Failed to persist state after {migration_name}\n{traceback.format_exc()}"
             return result
 
@@ -207,4 +207,4 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
     return result
 
 
-__all__ = ["discover_migrations", "run_migrations", "MIGRATION_STATE_FILE", "MIGRATIONS_DIR"]
+__all__ = ["MIGRATIONS_DIR", "MIGRATION_STATE_FILE", "discover_migrations", "run_migrations"]

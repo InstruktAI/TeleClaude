@@ -8,9 +8,9 @@ from teleclaude.project_setup.sync import install_docs_watch, sync_project_artif
 
 __all__ = [
     "init_project",
-    "setup_git_filters",
-    "update_gitattributes",
-    "install_precommit_hook",
-    "sync_project_artifacts",
     "install_docs_watch",
+    "install_precommit_hook",
+    "setup_git_filters",
+    "sync_project_artifacts",
+    "update_gitattributes",
 ]

@@ -19,9 +19,9 @@ async def up(db: aiosqlite.Connection) -> None:
         "relay_started_at",
     ):
         if col not in column_names:
-            await db.execute(f"ALTER TABLE sessions ADD COLUMN {col} TEXT")  # noqa: S608
+            await db.execute(f"ALTER TABLE sessions ADD COLUMN {col} TEXT")
     await db.commit()
 
 
-async def down(db: aiosqlite.Connection) -> None:  # noqa: ARG001
+async def down(db: aiosqlite.Connection) -> None:
     """Relay columns cannot be dropped in SQLite."""

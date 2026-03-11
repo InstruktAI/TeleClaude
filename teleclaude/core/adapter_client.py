@@ -6,7 +6,8 @@ a clean, unified interface for the daemon and API tools.
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, Awaitable, Callable, Literal, Optional, cast
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -64,8 +65,8 @@ class AdapterClient:
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
         self.is_shutting_down = False
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
-        self.agent_event_handler: Callable[["AgentEventContext"], Awaitable[None]] | None = None
-        self.agent_coordinator: "AgentCoordinator | None" = None
+        self.agent_event_handler: Callable[[AgentEventContext], Awaitable[None]] | None = None
+        self.agent_coordinator: AgentCoordinator | None = None
         # Per-session lock for channel provisioning (prevents concurrent ensure_channel races)
         self._channel_ensure_locks: dict[str, asyncio.Lock] = {}
 
@@ -543,9 +544,9 @@ class AdapterClient:
         started_at: float,
         last_output_changed_at: float,
         is_final: bool = False,
-        exit_code: Optional[int] = None,
+        exit_code: int | None = None,
         render_markdown: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send output update to all UI adapters.
 
         Args:
@@ -896,7 +897,7 @@ class AdapterClient:
         self,
         event: str,
         payload: dict[str, object],  # guard: loose-dict - Event payload
-    ) -> Optional[str]:
+    ) -> str | None:
         """Format event as human-readable text for UI adapters.
 
         Returns formatted text or None if event should not be broadcast.
@@ -917,7 +918,7 @@ class AdapterClient:
         session: "Session",
         title: str,
         last_input_origin: str,
-        target_computer: Optional[str] = None,
+        target_computer: str | None = None,
     ) -> str:
         """Create channels in all adapters for new session.
 
@@ -1033,7 +1034,7 @@ class AdapterClient:
             raise ValueError(f"Session {session_id[:8]} missing after channel creation")
         return refreshed
 
-    async def get_output_message_id(self, session_id: str) -> Optional[str]:
+    async def get_output_message_id(self, session_id: str) -> str | None:
         """Get output message ID for session.
 
         Args:
@@ -1079,7 +1080,7 @@ class AdapterClient:
         computer_name: str,
         command: str,
         metadata: MessageMetadata,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> str:
         """Send request to remote computer via transport adapter.
 

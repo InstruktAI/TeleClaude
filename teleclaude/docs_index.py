@@ -9,18 +9,19 @@ Called by ``telec sync``.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
+from typing import NotRequired
 
 import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import TypedDict
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, SNIPPET_VISIBILITY_VALUES, TYPE_SUFFIX
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
-from teleclaude.snippet_validation import load_domains  # noqa: F401 — re-exported for callers
+from teleclaude.snippet_validation import load_domains
 
 __all__ = ["DEFAULT_ROLE", "ROLE_LEVELS", "ROLE_RANK", "load_domains"]
 

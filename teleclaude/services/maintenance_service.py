@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -61,7 +61,7 @@ class MaintenanceService:
                 await session_cleanup.cleanup_orphan_tmux_sessions()
                 await session_cleanup.cleanup_orphan_workspaces()
                 await db.cleanup_stale_voice_assignments()
-                cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+                cutoff_iso = (datetime.now(UTC) - timedelta(hours=72)).isoformat()
                 await db.cleanup_inbound(cutoff_iso)
                 try:
                     await get_operations_service().expire_stale_operations()
@@ -185,7 +185,7 @@ class MaintenanceService:
             )
 
     async def _cleanup_inactive_sessions(self) -> None:
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=72)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=72)
         sessions = await db.list_sessions(include_closed=True, include_headless=True)
 
         for session in sessions:
@@ -203,7 +203,7 @@ class MaintenanceService:
                     logger.info(
                         "Purging old closed session %s (closed %s ago)",
                         session.session_id[:8],
-                        datetime.now(timezone.utc) - session.closed_at,
+                        datetime.now(UTC) - session.closed_at,
                     )
                     await session_cleanup.terminate_session(
                         session.session_id,
@@ -219,7 +219,7 @@ class MaintenanceService:
                 logger.info(
                     "Cleaning up inactive session %s (inactive for %s)",
                     session.session_id[:8],
-                    datetime.now(timezone.utc) - session.last_activity,
+                    datetime.now(UTC) - session.last_activity,
                 )
                 await session_cleanup.terminate_session(
                     session.session_id,
@@ -240,7 +240,7 @@ class MaintenanceService:
 
         Session termination is handled separately by _cleanup_inactive_sessions.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         idle_threshold = timedelta(seconds=COMPACTION_IDLE_THRESHOLD_S)
         sessions = await db.get_active_sessions()
 

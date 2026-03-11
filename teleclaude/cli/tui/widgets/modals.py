@@ -530,7 +530,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
             return
         self._do_create()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:  # noqa: ARG002
+    def on_input_submitted(self, event: Input.Submitted) -> None:
         """Enter while in an Input field submits the form."""
         self._do_create()
 

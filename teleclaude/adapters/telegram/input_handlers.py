@@ -10,7 +10,7 @@ import asyncio
 import tempfile
 import traceback
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -64,7 +64,7 @@ class InputHandlersMixin:
     """
 
     # Abstract properties/attributes (declared for type hints)
-    client: "AdapterClient"
+    client: AdapterClient
     user_whitelist: set[int]
     _processed_voice_messages: set[str]
     _topic_ready_events: dict[int, asyncio.Event]
@@ -76,13 +76,13 @@ class InputHandlersMixin:
             """Create adapter metadata."""
             ...
 
-        async def _get_session_from_topic(self, update: Update) -> "Session | None":
+        async def _get_session_from_topic(self, update: Update) -> Session | None:
             """Get session from update's topic."""
             ...
 
         async def _dispatch_command(
             self,
-            session: "Session",
+            session: Session,
             message_id: str | None,
             metadata: MessageMetadata,
             command_name: str,
@@ -452,7 +452,7 @@ Usage:
 
         if session.created_at:
             created_at = ensure_utc(session.created_at)
-            session_age = (datetime.now(timezone.utc) - created_at).total_seconds()
+            session_age = (datetime.now(UTC) - created_at).total_seconds()
             if session_age < 10.0:
                 logger.warning(
                     "Ignoring topic_closed for new session %s (age=%.1fs)",

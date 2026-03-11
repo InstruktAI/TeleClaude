@@ -125,7 +125,7 @@ class Intent:
     """State transition request."""
 
     type: IntentType
-    payload: "IntentPayload" = field(default_factory=lambda: cast(IntentPayload, {}))
+    payload: IntentPayload = field(default_factory=lambda: cast(IntentPayload, {}))
 
 
 class IntentPayload(TypedDict, total=False):

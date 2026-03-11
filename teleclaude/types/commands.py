@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionLaunchIntent
@@ -30,9 +30,9 @@ class InternalCommand:
     """Base class for all internal commands."""
 
     command_type: CommandType
-    request_id: Optional[str] = None
+    request_id: str | None = None
 
-    def to_payload(self) -> Dict[str, object]:
+    def to_payload(self) -> dict[str, object]:
         """Return payload dict for adapter event dispatch."""
         return {}
 
@@ -43,31 +43,31 @@ class CreateSessionCommand(InternalCommand):
 
     project_path: str
     origin: str
-    title: Optional[str] = None
-    subdir: Optional[str] = None
-    working_slug: Optional[str] = None
-    initiator_session_id: Optional[str] = None
+    title: str | None = None
+    subdir: str | None = None
+    working_slug: str | None = None
+    initiator_session_id: str | None = None
     skip_listener_registration: bool = False
-    channel_metadata: Optional[Dict[str, object]] = None
+    channel_metadata: dict[str, object] | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
-    auto_command: Optional[str] = None
-    session_metadata: Optional[Dict[str, object]] = None  # Generic metadata injection
+    auto_command: str | None = None
+    session_metadata: dict[str, object] | None = None  # Generic metadata injection
 
     def __init__(
         self,
         *,
         project_path: str,
         origin: str,
-        title: Optional[str] = None,
-        subdir: Optional[str] = None,
-        working_slug: Optional[str] = None,
-        initiator_session_id: Optional[str] = None,
+        title: str | None = None,
+        subdir: str | None = None,
+        working_slug: str | None = None,
+        initiator_session_id: str | None = None,
         skip_listener_registration: bool = False,
-        channel_metadata: Optional[Dict[str, object]] = None,
+        channel_metadata: dict[str, object] | None = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
-        auto_command: Optional[str] = None,
-        session_metadata: Optional[Dict[str, object]] = None,
-        request_id: Optional[str] = None,
+        auto_command: str | None = None,
+        session_metadata: dict[str, object] | None = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.CREATE_SESSION, request_id=request_id)
         self.project_path = project_path
@@ -82,8 +82,8 @@ class CreateSessionCommand(InternalCommand):
         self.auto_command = auto_command
         self.session_metadata = session_metadata
 
-    def to_payload(self) -> Dict[str, object]:
-        args: List[str] = [self.title] if self.title else []
+    def to_payload(self) -> dict[str, object]:
+        args: list[str] = [self.title] if self.title else []
         return {"session_id": "", "args": args}
 
 
@@ -94,7 +94,7 @@ class StartAgentCommand(InternalCommand):
     session_id: str
     agent_name: str
     thinking_mode: str = "slow"
-    args: List[str] = field(default_factory=list)
+    args: list[str] = field(default_factory=list)
 
     def __init__(
         self,
@@ -102,8 +102,8 @@ class StartAgentCommand(InternalCommand):
         session_id: str,
         agent_name: str,
         thinking_mode: str = "slow",
-        args: Optional[List[str]] = None,
-        request_id: Optional[str] = None,
+        args: list[str] | None = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.START_AGENT, request_id=request_id)
         self.session_id = session_id
@@ -111,7 +111,7 @@ class StartAgentCommand(InternalCommand):
         self.thinking_mode = thinking_mode
         self.args = args or []
 
-    def to_payload(self) -> Dict[str, object]:
+    def to_payload(self) -> dict[str, object]:
         args = [self.agent_name] + list(self.args)
         return {"session_id": self.session_id, "args": args}
 
@@ -121,24 +121,24 @@ class ResumeAgentCommand(InternalCommand):
     """Intent to resume an agent in an existing session."""
 
     session_id: str
-    agent_name: Optional[str] = None
-    native_session_id: Optional[str] = None
+    agent_name: str | None = None
+    native_session_id: str | None = None
 
     def __init__(
         self,
         *,
         session_id: str,
-        agent_name: Optional[str] = None,
-        native_session_id: Optional[str] = None,
-        request_id: Optional[str] = None,
+        agent_name: str | None = None,
+        native_session_id: str | None = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.RESUME_AGENT, request_id=request_id)
         self.session_id = session_id
         self.agent_name = agent_name
         self.native_session_id = native_session_id
 
-    def to_payload(self) -> Dict[str, object]:
-        args: List[str] = []
+    def to_payload(self) -> dict[str, object]:
+        args: list[str] = []
         if self.agent_name:
             args.append(self.agent_name)
         if self.native_session_id:
@@ -153,11 +153,11 @@ class ProcessMessageCommand(InternalCommand):
     session_id: str
     text: str
     origin: str
-    actor_id: Optional[str] = None
-    actor_name: Optional[str] = None
-    actor_avatar_url: Optional[str] = None
-    source_message_id: Optional[str] = None  # Platform message ID for inbound dedup
-    source_channel_id: Optional[str] = None  # Platform channel ID for additional context
+    actor_id: str | None = None
+    actor_name: str | None = None
+    actor_avatar_url: str | None = None
+    source_message_id: str | None = None  # Platform message ID for inbound dedup
+    source_channel_id: str | None = None  # Platform channel ID for additional context
 
     def __init__(
         self,
@@ -165,12 +165,12 @@ class ProcessMessageCommand(InternalCommand):
         session_id: str,
         text: str,
         origin: str,
-        actor_id: Optional[str] = None,
-        actor_name: Optional[str] = None,
-        actor_avatar_url: Optional[str] = None,
-        request_id: Optional[str] = None,
-        source_message_id: Optional[str] = None,
-        source_channel_id: Optional[str] = None,
+        actor_id: str | None = None,
+        actor_name: str | None = None,
+        actor_avatar_url: str | None = None,
+        request_id: str | None = None,
+        source_message_id: str | None = None,
+        source_channel_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
@@ -182,8 +182,8 @@ class ProcessMessageCommand(InternalCommand):
         self.source_message_id = source_message_id
         self.source_channel_id = source_channel_id
 
-    def to_payload(self) -> Dict[str, object]:
-        payload: Dict[str, object] = {"session_id": self.session_id, "text": self.text, "origin": self.origin}
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {"session_id": self.session_id, "text": self.text, "origin": self.origin}
         if self.actor_id is not None:
             payload["actor_id"] = self.actor_id
         if self.actor_name is not None:
@@ -199,27 +199,27 @@ class HandleVoiceCommand(InternalCommand):
 
     session_id: str
     file_path: str
-    duration: Optional[float] = None
-    message_id: Optional[str] = None
-    message_thread_id: Optional[int] = None
-    origin: Optional[str] = None
-    actor_id: Optional[str] = None
-    actor_name: Optional[str] = None
-    actor_avatar_url: Optional[str] = None
+    duration: float | None = None
+    message_id: str | None = None
+    message_thread_id: int | None = None
+    origin: str | None = None
+    actor_id: str | None = None
+    actor_name: str | None = None
+    actor_avatar_url: str | None = None
 
     def __init__(
         self,
         *,
         session_id: str,
         file_path: str,
-        duration: Optional[float] = None,
-        message_id: Optional[str] = None,
-        message_thread_id: Optional[int] = None,
-        origin: Optional[str] = None,
-        actor_id: Optional[str] = None,
-        actor_name: Optional[str] = None,
-        actor_avatar_url: Optional[str] = None,
-        request_id: Optional[str] = None,
+        duration: float | None = None,
+        message_id: str | None = None,
+        message_thread_id: int | None = None,
+        origin: str | None = None,
+        actor_id: str | None = None,
+        actor_name: str | None = None,
+        actor_avatar_url: str | None = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_VOICE, request_id=request_id)
         self.session_id = session_id
@@ -232,8 +232,8 @@ class HandleVoiceCommand(InternalCommand):
         self.actor_name = actor_name
         self.actor_avatar_url = actor_avatar_url
 
-    def to_payload(self) -> Dict[str, object]:
-        payload: Dict[str, object] = {
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
             "session_id": self.session_id,
             "file_path": self.file_path,
         }
@@ -261,7 +261,7 @@ class HandleFileCommand(InternalCommand):
     session_id: str
     file_path: str
     filename: str
-    caption: Optional[str] = None
+    caption: str | None = None
     file_size: int = 0
 
     def __init__(
@@ -270,9 +270,9 @@ class HandleFileCommand(InternalCommand):
         session_id: str,
         file_path: str,
         filename: str,
-        caption: Optional[str] = None,
+        caption: str | None = None,
         file_size: int = 0,
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_FILE, request_id=request_id)
         self.session_id = session_id
@@ -281,8 +281,8 @@ class HandleFileCommand(InternalCommand):
         self.caption = caption
         self.file_size = file_size
 
-    def to_payload(self) -> Dict[str, object]:
-        payload: Dict[str, object] = {
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
             "session_id": self.session_id,
             "file_path": self.file_path,
             "filename": self.filename,
@@ -299,22 +299,22 @@ class KeysCommand(InternalCommand):
 
     session_id: str
     key: str
-    args: List[str] = field(default_factory=list)
+    args: list[str] = field(default_factory=list)
 
     def __init__(
         self,
         *,
         session_id: str,
         key: str,
-        args: Optional[List[str]] = None,
-        request_id: Optional[str] = None,
+        args: list[str] | None = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.KEYS, request_id=request_id)
         self.session_id = session_id
         self.key = key
         self.args = args or []
 
-    def to_payload(self) -> Dict[str, object]:
+    def to_payload(self) -> dict[str, object]:
         return {"session_id": self.session_id, "args": list(self.args)}
 
 
@@ -334,7 +334,7 @@ class RunAgentCommand(InternalCommand):
         command: str,
         args: str = "",
         origin: str,
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.RUN_AGENT_COMMAND, request_id=request_id)
         self.session_id = session_id
@@ -342,7 +342,7 @@ class RunAgentCommand(InternalCommand):
         self.args = args
         self.origin = origin
 
-    def to_payload(self) -> Dict[str, object]:
+    def to_payload(self) -> dict[str, object]:
         return {"session_id": self.session_id, "command": self.command, "args": self.args, "origin": self.origin}
 
 
@@ -351,21 +351,21 @@ class RestartAgentCommand(InternalCommand):
     """Intent to restart an agent in the session."""
 
     session_id: str
-    agent_name: Optional[str] = None
+    agent_name: str | None = None
 
     def __init__(
         self,
         *,
         session_id: str,
-        agent_name: Optional[str] = None,
-        request_id: Optional[str] = None,
+        agent_name: str | None = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.RESTART_AGENT, request_id=request_id)
         self.session_id = session_id
         self.agent_name = agent_name
 
-    def to_payload(self) -> Dict[str, object]:
-        args: List[str] = []
+    def to_payload(self) -> dict[str, object]:
+        args: list[str] = []
         if self.agent_name:
             args.append(self.agent_name)
         return {"session_id": self.session_id, "args": args}
@@ -376,18 +376,18 @@ class GetSessionDataCommand(InternalCommand):
     """Intent to fetch session transcript data."""
 
     session_id: str
-    since_timestamp: Optional[str] = None
-    until_timestamp: Optional[str] = None
+    since_timestamp: str | None = None
+    until_timestamp: str | None = None
     tail_chars: int = 5000
 
     def __init__(
         self,
         *,
         session_id: str,
-        since_timestamp: Optional[str] = None,
-        until_timestamp: Optional[str] = None,
+        since_timestamp: str | None = None,
+        until_timestamp: str | None = None,
         tail_chars: int = 5000,
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.GET_SESSION_DATA, request_id=request_id)
         self.session_id = session_id
@@ -395,8 +395,8 @@ class GetSessionDataCommand(InternalCommand):
         self.until_timestamp = until_timestamp
         self.tail_chars = tail_chars
 
-    def to_payload(self) -> Dict[str, object]:
-        payload: Dict[str, object] = {"session_id": self.session_id}
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {"session_id": self.session_id}
         if self.since_timestamp is not None:
             payload["since_timestamp"] = self.since_timestamp
         if self.until_timestamp is not None:
@@ -415,12 +415,12 @@ class CloseSessionCommand(InternalCommand):
         self,
         *,
         session_id: str,
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.CLOSE_SESSION, request_id=request_id)
         self.session_id = session_id
 
-    def to_payload(self) -> Dict[str, object]:
+    def to_payload(self) -> dict[str, object]:
         return {"session_id": self.session_id, "args": []}
 
 
@@ -429,18 +429,18 @@ class SystemCommand(InternalCommand):
     """Intent to perform a system-level operation (list sessions, list projects, etc.)."""
 
     command: str
-    args: List[str] = field(default_factory=list)
-    data: Optional[Dict[str, object]] = None
-    session_id: Optional[str] = None
+    args: list[str] = field(default_factory=list)
+    data: dict[str, object] | None = None
+    session_id: str | None = None
 
     def __init__(
         self,
         *,
         command: str,
-        args: Optional[List[str]] = None,
-        data: Optional[Dict[str, object]] = None,
-        session_id: Optional[str] = None,
-        request_id: Optional[str] = None,
+        args: list[str] | None = None,
+        data: dict[str, object] | None = None,
+        session_id: str | None = None,
+        request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.SYSTEM, request_id=request_id)
         self.command = command
@@ -448,8 +448,8 @@ class SystemCommand(InternalCommand):
         self.data = data
         self.session_id = session_id
 
-    def to_payload(self) -> Dict[str, object]:
-        payload: Dict[str, object] = {"command": self.command, "args": self.args}
+    def to_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {"command": self.command, "args": self.args}
         if self.session_id is not None:
             payload["session_id"] = self.session_id
         if self.data is not None:

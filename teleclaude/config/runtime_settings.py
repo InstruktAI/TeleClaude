@@ -71,8 +71,8 @@ class RuntimeSettings:
     def __init__(
         self,
         settings_path: Path,
-        tts_manager: "TTSManager",
-        chiptunes_manager: "ChiptunesManager | None" = None,
+        tts_manager: TTSManager,
+        chiptunes_manager: ChiptunesManager | None = None,
     ) -> None:
         self._settings_path = settings_path
         self._tts_manager = tts_manager

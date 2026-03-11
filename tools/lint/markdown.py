@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 import frontmatter
 
@@ -20,8 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import TAXONOMY_TYPES  # noqa: E402
-from teleclaude.snippet_validation import (  # noqa: E402
+from teleclaude.constants import TAXONOMY_TYPES
+from teleclaude.snippet_validation import (
     expected_snippet_id_for_path,
     load_domains,
     validate_snippet_id_format,

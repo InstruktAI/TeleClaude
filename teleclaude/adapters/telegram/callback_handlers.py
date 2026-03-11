@@ -10,7 +10,7 @@ import tempfile
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
@@ -91,8 +91,8 @@ class CallbackHandlersMixin:
     """
 
     # Abstract properties/attributes (declared for type hints)
-    client: "AdapterClient"
-    trusted_dirs: list["TrustedDir"]
+    client: AdapterClient
+    trusted_dirs: list[TrustedDir]
     user_whitelist: set[int]
     computer_name: str
 
@@ -117,7 +117,7 @@ class CallbackHandlersMixin:
             message_thread_id: int,
             file_path: str,
             filename: str,
-            caption: Optional[str] = None,
+            caption: str | None = None,
         ) -> Message:
             """Send document with retry logic."""
             ...
@@ -196,8 +196,8 @@ class CallbackHandlersMixin:
         query: object,
         text: str,
         *,
-        parse_mode: Optional[str] = None,
-        reply_markup: Optional[InlineKeyboardMarkup] = None,
+        parse_mode: str | None = None,
+        reply_markup: InlineKeyboardMarkup | None = None,
     ) -> None:
         """Edit callback message with retry and benign-error tolerance."""
         from telegram import CallbackQuery
@@ -218,8 +218,8 @@ class CallbackHandlersMixin:
         query: object,
         text: str,
         *,
-        parse_mode: Optional[str] = None,
-        reply_markup: Optional[InlineKeyboardMarkup] = None,
+        parse_mode: str | None = None,
+        reply_markup: InlineKeyboardMarkup | None = None,
     ) -> None:
         """Internal retry-protected callback message edit."""
         from telegram import CallbackQuery

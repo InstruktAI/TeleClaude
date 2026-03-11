@@ -1,9 +1,9 @@
 """API request/response models for API server."""
 
-from typing import TYPE_CHECKING, Dict, Literal, Union
+from typing import TYPE_CHECKING, Literal, NotRequired
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
@@ -159,7 +159,7 @@ class PersonDTO(BaseModel):  # type: ignore[explicit-any]
     name: str
     email: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
-    expertise: Dict[str, Union[str, Dict[str, str]]] | None = None
+    expertise: dict[str, str | dict[str, str]] | None = None
     proficiency: Literal["novice", "intermediate", "advanced", "expert"] | None = None  # deprecated
 
 

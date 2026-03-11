@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, Optional
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -23,11 +24,11 @@ CUSTOMER_ROLE = "customer"
 class IdentityContext:
     """Resolved identity for a human interacting with the system."""
 
-    person_name: Optional[str] = None
-    person_email: Optional[str] = None
-    person_role: Optional[str] = None
-    platform: Optional[str] = None
-    platform_user_id: Optional[str] = None
+    person_name: str | None = None
+    person_email: str | None = None
+    person_role: str | None = None
+    platform: str | None = None
+    platform_user_id: str | None = None
 
 
 class IdentityResolver:
@@ -102,7 +103,7 @@ class IdentityResolver:
                 if normalized_phone:
                     self._by_whatsapp_phone[normalized_phone] = person
 
-    def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> Optional[IdentityContext]:
+    def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> IdentityContext | None:
         """Resolve identity from origin and metadata.
 
         Args:
@@ -202,7 +203,7 @@ def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
     return None
 
 
-_resolver_instance: Optional[IdentityResolver] = None
+_resolver_instance: IdentityResolver | None = None
 
 
 def get_identity_resolver() -> IdentityResolver:

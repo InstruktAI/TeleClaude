@@ -35,7 +35,7 @@ _tts_manager: TTSManager | None = None
 
 def _get_tts_manager() -> TTSManager:
     """Get or create TTS manager instance (lazy import to avoid circular dependency)."""
-    global _tts_manager  # noqa: PLW0603 - singleton pattern
+    global _tts_manager
     if _tts_manager is None:
         from teleclaude.tts.manager import TTSManager
 

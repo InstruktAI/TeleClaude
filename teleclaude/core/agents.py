@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from enum import Enum
-from typing import Optional
 
 from teleclaude.config import AgentConfig, config
 
@@ -19,7 +18,7 @@ class AgentName(str, Enum):
     GEMINI = "gemini"
 
     @classmethod
-    def from_str(cls, value: str) -> "AgentName":
+    def from_str(cls, value: str) -> AgentName:
         """Convert a string to AgentName, raising ValueError on unknown values."""
         normalized = value.strip().lower()
         for member in cls:
@@ -117,10 +116,10 @@ def _get_agent_config(agent: str) -> AgentConfig:
 
 def get_agent_command(
     agent: str,
-    thinking_mode: Optional[str] = "slow",
-    exec: bool = False,  # noqa: A003 - follows public API naming
+    thinking_mode: str | None = "slow",
+    exec: bool = False,
     resume: bool = False,
-    native_session_id: Optional[str] = None,
+    native_session_id: str | None = None,
     interactive: bool = False,
     profile: str = "default",
 ) -> str:

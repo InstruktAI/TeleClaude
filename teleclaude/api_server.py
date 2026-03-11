@@ -14,10 +14,11 @@ import shlex
 import socket
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Literal
 
 import fastapi
 import uvicorn
@@ -246,13 +247,13 @@ class APIServer:
     def __init__(
         self,
         client: AdapterClient,
-        cache: "DaemonCache | None" = None,
-        task_registry: "TaskRegistry | None" = None,
+        cache: DaemonCache | None = None,
+        task_registry: TaskRegistry | None = None,
         socket_path: str | None = None,
-        runtime_settings: "RuntimeSettings | None" = None,
+        runtime_settings: RuntimeSettings | None = None,
     ) -> None:
         self.client = client
-        self._cache: "DaemonCache | None" = None  # Initialize private variable
+        self._cache: DaemonCache | None = None  # Initialize private variable
         self.task_registry = task_registry
         self.runtime_settings = runtime_settings
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
@@ -332,12 +333,12 @@ class APIServer:
         return MessageMetadata(origin=InputOrigin.API.value, **kwargs)
 
     @property
-    def cache(self) -> "DaemonCache | None":
+    def cache(self) -> DaemonCache | None:
         """Get cache reference."""
         return self._cache
 
     @cache.setter
-    def cache(self, value: "DaemonCache | None") -> None:
+    def cache(self, value: DaemonCache | None) -> None:
         """Set cache reference and subscribe to changes."""
         if self._cache:
             self._cache.unsubscribe(self._on_cache_change)
@@ -391,7 +392,7 @@ class APIServer:
         self.cache.remove_session(context.session_id)
 
         # Broadcast canonical closed status (R2) to WS clients — validated via contract
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         canonical = serialize_status_event(
             session_id=context.session_id,
             status="closed",
@@ -525,12 +526,12 @@ class APIServer:
 
         @self.app.get("/sessions")
         async def list_sessions(  # pyright: ignore
-            request: "Request",
+            request: Request,
             computer: str | None = None,
             include_closed: bool = Query(False, alias="closed"),
             all_sessions: bool = Query(False, alias="all"),
             job: str | None = Query(None, alias="job"),
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_LIST),  # noqa: ARG001
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_LIST),
         ) -> list[SessionDTO]:
             """List sessions from local storage and remote cache.
 
@@ -594,7 +595,7 @@ class APIServer:
         @self.app.post("/sessions")
         async def create_session(  # pyright: ignore
             request: CreateSessionRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_START),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_START),
         ) -> CreateSessionResponseDTO:
             """Create new local session.
 
@@ -838,10 +839,10 @@ class APIServer:
 
         @self.app.delete("/sessions/{session_id}")
         async def end_session(  # pyright: ignore
-            request: "Request",
+            request: Request,
             session_id: str,
-            computer: str = Query(...),  # noqa: ARG001 - For API consistency, only local sessions supported
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_END),  # noqa: ARG001
+            computer: str = Query(...),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_END),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """End session - local sessions only (remote management uses RPC transport)."""
             from teleclaude.api.session_access import check_session_access
@@ -888,11 +889,11 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/message")
         async def send_message_endpoint(  # pyright: ignore
-            http_request: "Request",
+            http_request: Request,
             session_id: str,
             request: SendMessageRequest,
-            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_SEND),  # noqa: ARG001
+            computer: str | None = Query(None),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_SEND),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send message to session."""
             from teleclaude.api.session_access import check_session_access
@@ -1077,11 +1078,11 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/keys")
         async def send_keys_endpoint(  # pyright: ignore
-            http_request: "Request",
+            http_request: Request,
             session_id: str,
             request: KeysRequest,
-            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_KEYS),  # noqa: ARG001
+            computer: str | None = Query(None),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_KEYS),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send key command to session."""
             from teleclaude.api.session_access import check_session_access
@@ -1105,11 +1106,11 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/voice")
         async def send_voice_endpoint(  # pyright: ignore
-            http_request: "Request",
+            http_request: Request,
             session_id: str,
             request: VoiceInputRequest,
-            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_VOICE),  # noqa: ARG001
+            computer: str | None = Query(None),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_VOICE),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send voice input to session."""
             from teleclaude.api.session_access import check_session_access
@@ -1137,7 +1138,7 @@ class APIServer:
         @self.app.post("/sessions/self/file")
         async def send_file_endpoint(  # pyright: ignore
             request: FileUploadRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_FILE),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_FILE),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send file input to session."""
             session_id = identity.session_id
@@ -1162,9 +1163,9 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/agent-restart")
         async def agent_restart(  # pyright: ignore
-            http_request: "Request",
+            http_request: Request,
             session_id: str,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_AGENT_RESTART),  # noqa: ARG001
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_AGENT_RESTART),
         ) -> dict[str, str]:
             """Restart agent in session (preserves conversation via --resume)."""
             from teleclaude.api.session_access import check_session_access
@@ -1199,10 +1200,10 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/revive")
         async def revive_session(  # pyright: ignore
-            http_request: "Request",
+            http_request: Request,
             session_id: str,
             agent: str | None = Query(None, description="When provided, session_id is a native agent session ID"),
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_REVIVE),  # noqa: ARG001
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_REVIVE),
         ) -> CreateSessionResponseDTO:
             """Revive a session by TeleClaude or native session ID."""
             from teleclaude.api.session_access import check_session_access
@@ -1261,13 +1262,13 @@ class APIServer:
 
         @self.app.get("/sessions/{session_id}/messages")
         async def get_session_messages(  # pyright: ignore
-            request: "Request",
+            request: Request,
             session_id: str,
             since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
             include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
             include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
             tail_chars: int = Query(10000, description="Fallback char budget for tmux/session tail output"),
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_TAIL),  # noqa: ARG001
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_TAIL),
         ) -> SessionMessagesDTO:
             """Get structured messages from a session's transcript files."""
             from teleclaude.api.session_access import check_session_access
@@ -1368,7 +1369,7 @@ class APIServer:
         @self.app.post("/sessions/run")
         async def run_session(  # pyright: ignore
             request: RunSessionRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_RUN),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_RUN),
         ) -> CreateSessionResponseDTO:
             """Run a slash command on a new agent session.
 
@@ -1459,7 +1460,7 @@ class APIServer:
         @self.app.post("/sessions/{session_id}/unsubscribe")
         async def unsubscribe_session(  # pyright: ignore
             session_id: str,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_UNSUBSCRIBE),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_UNSUBSCRIBE),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Stop receiving notifications from a session without ending it.
 
@@ -1477,7 +1478,7 @@ class APIServer:
         @self.app.post("/sessions/self/result")
         async def send_result_endpoint(  # pyright: ignore
             request: SendResultRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_RESULT),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_RESULT),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send a formatted result to the session's user as a separate message.
 
@@ -1529,7 +1530,7 @@ class APIServer:
         @self.app.post("/sessions/self/widget")
         async def render_widget_endpoint(  # pyright: ignore
             request: RenderWidgetRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_WIDGET),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_WIDGET),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Render a rich widget expression and send text summary to the session's user.
 
@@ -1600,7 +1601,7 @@ class APIServer:
         @self.app.post("/sessions/self/escalate")
         async def escalate_session(  # pyright: ignore
             request: EscalateRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_ESCALATE),
+            identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_ESCALATE),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Escalate a customer session to an admin via Discord.
 
@@ -1608,7 +1609,7 @@ class APIServer:
             and activates relay mode on the session. Only available for customer
             sessions. Requires dual-factor caller identity.
             """
-            from datetime import datetime, timezone
+            from datetime import datetime
 
             from teleclaude.adapters.discord_adapter import DiscordAdapter
 
@@ -1634,7 +1635,7 @@ class APIServer:
                     context_summary=request.context_summary,
                     session_id=session_id,
                 )
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 await db.update_session(
                     session_id,
                     relay_status="active",
@@ -1648,7 +1649,7 @@ class APIServer:
 
         @self.app.get("/computers")
         async def list_computers(  # pyright: ignore[reportUnusedFunction]
-            identity: "CallerIdentity" = Depends(CLEARANCE_COMPUTERS_LIST),  # noqa: ARG001
+            identity: CallerIdentity = Depends(CLEARANCE_COMPUTERS_LIST),
         ) -> list[ComputerDTO]:
             """List available computers (local + cached remote computers)."""
             try:
@@ -1687,7 +1688,7 @@ class APIServer:
         @self.app.get("/projects")
         async def list_projects(  # pyright: ignore
             computer: str | None = None,
-            identity: "CallerIdentity" = Depends(CLEARANCE_PROJECTS_LIST),  # noqa: ARG001
+            identity: CallerIdentity = Depends(CLEARANCE_PROJECTS_LIST),
         ) -> list[ProjectDTO]:
             """List projects (local + cached remote projects).
 
@@ -1787,7 +1788,7 @@ class APIServer:
 
         @self.app.get("/agents/availability")
         async def get_agent_availability(  # pyright: ignore[reportUnusedFunction]
-            identity: "CallerIdentity" = Depends(CLEARANCE_AGENTS_AVAILABILITY),  # noqa: ARG001
+            identity: CallerIdentity = Depends(CLEARANCE_AGENTS_AVAILABILITY),
         ) -> dict[str, AgentAvailabilityDTO]:
             """Get agent availability."""
             from teleclaude.core.db import db
@@ -1824,14 +1825,14 @@ class APIServer:
         async def set_agent_status(  # pyright: ignore
             agent: str,
             request: AgentStatusRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_AGENTS_STATUS),  # noqa: ARG001
+            identity: CallerIdentity = Depends(CLEARANCE_AGENTS_STATUS),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Set agent dispatch status (available/unavailable/degraded).
 
             Marks an agent as available, unavailable (with optional expiry), or degraded.
             Use clear=true to reset to available. Requires admin clearance.
             """
-            from datetime import datetime, timedelta, timezone
+            from datetime import datetime, timedelta
 
             from teleclaude.core.agents import normalize_agent_name
 
@@ -1857,7 +1858,7 @@ class APIServer:
                         degraded_until: str | None = None
                         if request.duration_minutes is not None:
                             degraded_until = (
-                                datetime.now(timezone.utc) + timedelta(minutes=request.duration_minutes)
+                                datetime.now(UTC) + timedelta(minutes=request.duration_minutes)
                             ).isoformat()
                         await db.mark_agent_degraded(
                             agent_name,
@@ -1870,7 +1871,7 @@ class APIServer:
                         minutes = request.duration_minutes or 30
                         expiry = (
                             request.unavailable_until
-                            or (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
+                            or (datetime.now(UTC) + timedelta(minutes=minutes)).isoformat()
                         )
                         await db.mark_agent_unavailable(agent_name, expiry, request.reason)
 
@@ -2071,7 +2072,7 @@ class APIServer:
         @self.app.post("/jobs/{name}/run")
         async def run_job(  # pyright: ignore[reportUnusedFunction]
             name: str,
-            background_tasks: "fastapi.BackgroundTasks",
+            background_tasks: fastapi.BackgroundTasks,
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Run a scheduled job immediately (fire-and-forget)."""
             from fastapi.concurrency import run_in_threadpool
@@ -2611,15 +2612,15 @@ class APIServer:
                     project_path = project_val
             else:
                 if hasattr(data, "computer"):
-                    computer_val = getattr(data, "computer")
+                    computer_val = getattr(data, "computer")  # noqa: B009
                     if isinstance(computer_val, str):
                         computer = computer_val
                 if hasattr(data, "path"):
-                    path_val = getattr(data, "path")
+                    path_val = getattr(data, "path")  # noqa: B009
                     if isinstance(path_val, str):
                         project_path = path_val
                 if event == "computer_updated" and computer is None and hasattr(data, "name"):
-                    name_val = getattr(data, "name")
+                    name_val = getattr(data, "name")  # noqa: B009
                     if isinstance(name_val, str):
                         computer = name_val
 
@@ -2679,7 +2680,7 @@ class APIServer:
         event: str,
         payload: dict[str, object],  # guard: loose-dict - WS payload
         *,
-        targets: list["WebSocket"] | None = None,
+        targets: list[WebSocket] | None = None,
     ) -> None:
         """Send a WS payload to connected clients. If targets is given, only those clients receive it."""
         clients = targets if targets is not None else list(self._ws_clients)
@@ -2825,9 +2826,9 @@ class APIServer:
         self,
         notification_id: int,
         event_type: str,
-        level: int,  # noqa: ARG002
+        level: int,
         was_created: bool,
-        is_meaningful: bool,  # noqa: ARG002
+        is_meaningful: bool,
     ) -> None:
         """Push a notification event to subscribed WebSocket clients."""
         if self._event_db is None:
@@ -3113,7 +3114,7 @@ class APIServer:
         if self.server_task:
             try:
                 await asyncio.wait_for(self.server_task, timeout=API_STOP_TIMEOUT_S)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Timed out stopping API server; cancelling task")
                 self.server_task.cancel()
                 try:
@@ -3138,7 +3139,7 @@ class APIServer:
         if self._tcp_server_task:
             try:
                 await asyncio.wait_for(self._tcp_server_task, timeout=API_STOP_TIMEOUT_S)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Timed out stopping TCP server; cancelling task")
                 self._tcp_server_task.cancel()
                 try:

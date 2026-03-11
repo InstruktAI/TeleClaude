@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from teleclaude_events.lifecycle import LifecycleManager
 
 
-def _get_lifecycle_manager() -> "LifecycleManager":
+def _get_lifecycle_manager() -> LifecycleManager:
     """Build a LifecycleManager from global config."""
     from teleclaude.config.loader import load_global_config
     from teleclaude_events.lifecycle import LifecycleManager

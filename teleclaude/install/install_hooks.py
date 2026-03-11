@@ -11,8 +11,9 @@ import os
 import re
 import shlex
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Dict, Mapping
+from typing import Any
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
@@ -92,7 +93,7 @@ def _extract_receiver_script(command: str | list[object]) -> str | None:
     return None
 
 
-def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Dict[str, Any]:
+def merge_hooks(existing_hooks: dict[str, Any], new_hooks: dict[str, Any]) -> dict[str, Any]:
     """Idempotently merge new hooks into existing hooks configuration.
 
     Deduplicates by receiver script path so old hook entries are replaced.
@@ -170,7 +171,7 @@ def _build_hook_map(
     agent: str,
     event_args: Mapping[str, AgentHookEventType],
     include_metadata: bool = False,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Build hook definitions for an agent.
 
     Args:
@@ -180,9 +181,9 @@ def _build_hook_map(
         event_args: Mapping of event names to event arguments
         include_metadata: If True, add name and description fields (for Gemini)
     """
-    hooks: Dict[str, Dict[str, Any]] = {}
+    hooks: dict[str, dict[str, Any]] = {}
     for event_name, event_arg in event_args.items():
-        hook_def: Dict[str, Any] = {
+        hook_def: dict[str, Any] = {
             "type": "command",
             "command": _build_hook_command(receiver_invocation, agent, event_arg),
         }
@@ -197,7 +198,7 @@ def _build_hook_map(
 
 def _filter_receiver_handled_events(
     event_args: Mapping[str, AgentHookEventType],
-) -> Dict[str, AgentHookEventType]:
+) -> dict[str, AgentHookEventType]:
     """Filter to event mappings that receiver forwards by contract."""
     return {
         event_name: event_arg
@@ -206,7 +207,7 @@ def _filter_receiver_handled_events(
     }
 
 
-def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
+def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
     """Return TeleClaude hook definitions for Claude Code."""
     return _build_hook_map(
         receiver_invocation,
@@ -215,7 +216,7 @@ def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> Dict[st
     )
 
 
-def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> Dict[str, Dict[str, Any]]:
+def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
     """Return TeleClaude hook definitions for Gemini CLI."""
     # Installer contract:
     # - Tool lane comes only from BeforeTool/AfterTool.
@@ -232,13 +233,13 @@ def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> Dict[st
     )
 
 
-def _prune_agent_hooks(existing_hooks: Dict[str, Any], allowed_events: set[str]) -> Dict[str, Any]:
+def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str]) -> dict[str, Any]:
     """Remove TeleClaude receiver hooks from unused events.
 
     Keep TeleClaude hooks only for allowed_events.
     Preserve all non-TeleClaude hooks.
     """
-    pruned: Dict[str, Any] = {}
+    pruned: dict[str, Any] = {}
 
     for event, blocks in existing_hooks.items():
         if not isinstance(blocks, list):

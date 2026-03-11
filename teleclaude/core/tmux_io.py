@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import string
 from signal import Signals
-from typing import Optional
 
 from instrukt_ai_logging import get_logger
 
@@ -24,7 +23,7 @@ _BRACKETED_PASTE_START = "\x1b[200~"
 _BRACKETED_PASTE_END = "\x1b[201~"
 
 
-def wrap_bracketed_paste(text: str, active_agent: Optional[str] = None) -> str:
+def wrap_bracketed_paste(text: str, active_agent: str | None = None) -> str:
     if not text:
         return text
     text = normalize_codex_next_command(active_agent, text)
@@ -52,7 +51,7 @@ async def _revive_headless_and_send(
     text: str,
     *,
     send_enter: bool,
-    active_agent: Optional[str],
+    active_agent: str | None,
     working_dir: str,
 ) -> bool:
     """Create a tmux session for a headless session on the fly and send text to it.
@@ -115,7 +114,7 @@ async def _send_to_tmux(
     text: str,
     *,
     send_enter: bool,
-    active_agent: Optional[str] = None,
+    active_agent: str | None = None,
     working_dir: str,
 ) -> bool:
     tmux_name = session.tmux_session_name
@@ -144,7 +143,7 @@ async def process_text(
     text: str,
     *,
     send_enter: bool = True,
-    active_agent: Optional[str] = None,
+    active_agent: str | None = None,
     working_dir: str,
 ) -> bool:
     return await _send_to_tmux(

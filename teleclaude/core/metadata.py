@@ -3,7 +3,6 @@
 Provides Pydantic models for type-safe event metadata across adapters.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -19,18 +18,18 @@ class AdapterMetadata(BaseModel):  # type: ignore[explicit-any]
     origin: str = Field(..., description="Origin (InputOrigin.*.value)")
 
     # Optional common fields
-    user_id: Optional[str] = Field(None, description="Platform user ID (if human)")
-    message_id: Optional[str] = Field(None, description="Platform message ID")
-    last_input_origin: Optional[str] = Field(
+    user_id: str | None = Field(None, description="Platform user ID (if human)")
+    message_id: str | None = Field(None, description="Platform message ID")
+    last_input_origin: str | None = Field(
         None, description="Entry point that initiated or last interacted with the session"
     )
-    target_computer: Optional[str] = Field(None, description="Target computer for AI-to-AI sessions")
+    target_computer: str | None = Field(None, description="Target computer for AI-to-AI sessions")
 
     # Platform-specific data (nested dicts)
-    telegram: Optional[dict[str, object]] = Field(  # guard: loose-dict - Adapter-specific metadata
+    telegram: dict[str, object] | None = Field(  # guard: loose-dict - Adapter-specific metadata
         None, description="Telegram-specific data"
     )
-    redis: Optional[dict[str, object]] = Field(  # guard: loose-dict - Adapter-specific metadata
+    redis: dict[str, object] | None = Field(  # guard: loose-dict - Adapter-specific metadata
         None, description="Redis-specific data"
     )
 

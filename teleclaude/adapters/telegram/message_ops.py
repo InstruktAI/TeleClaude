@@ -9,7 +9,7 @@ import hashlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from telegram import (
@@ -47,8 +47,8 @@ class EditContext:
 
     message_id: str
     text: str
-    reply_markup: Optional[object] = None
-    parse_mode: Optional[str] = None
+    reply_markup: object | None = None
+    parse_mode: str | None = None
 
 
 class MessageOperationsMixin:
@@ -67,7 +67,7 @@ class MessageOperationsMixin:
 
     # Abstract properties - implemented by TelegramAdapter
     @property
-    def bot(self) -> "ExtBot[None]":
+    def bot(self) -> ExtBot[None]:
         """Return the Telegram bot instance."""
         raise NotImplementedError
 
@@ -91,7 +91,7 @@ class MessageOperationsMixin:
     # =========================================================================
 
     @staticmethod
-    def _content_hash(text: str, parse_mode: Optional[str], reply_markup: object | None) -> str:
+    def _content_hash(text: str, parse_mode: str | None, reply_markup: object | None) -> str:
         """Fast content fingerprint for skipping no-op edits."""
         h = hashlib.sha256(text.encode())
         if parse_mode:
@@ -100,7 +100,7 @@ class MessageOperationsMixin:
             h.update(str(reply_markup).encode())
         return h.hexdigest()
 
-    def _truncate_for_platform(self, text: str, parse_mode: Optional[str], max_chars: int) -> str:
+    def _truncate_for_platform(self, text: str, parse_mode: str | None, max_chars: int) -> str:
         """Last-mile safety net: enforce Telegram API byte/char limit.
 
         Upstream code (ui_adapter) fits content within a char budget.
@@ -127,7 +127,7 @@ class MessageOperationsMixin:
 
     async def send_message(
         self,
-        session: "Session",
+        session: Session,
         text: str,
         *,
         metadata: MessageMetadata | None = None,
@@ -189,7 +189,7 @@ class MessageOperationsMixin:
         topic_id: int,
         formatted_text: str,
         reply_markup: object,
-        parse_mode: Optional[str],
+        parse_mode: str | None,
     ) -> Message:
         """Internal method with retry logic for sending messages.
 
@@ -227,7 +227,7 @@ class MessageOperationsMixin:
         message_thread_id: int,
         file_path: str,
         filename: str,
-        caption: Optional[str] = None,
+        caption: str | None = None,
     ) -> Message:
         """Internal method with retry logic for sending documents.
 
@@ -251,7 +251,7 @@ class MessageOperationsMixin:
                 raise
 
     async def edit_message(
-        self, session: "Session", message_id: str, text: str, *, metadata: MessageMetadata | None = None
+        self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
     ) -> bool:
         """Edit an existing message with automatic retry on rate limits and network errors.
 
@@ -379,7 +379,7 @@ class MessageOperationsMixin:
             self._pending_edits.pop(message_id, None)
 
     @command_retry(max_retries=3, max_timeout=60.0)
-    async def _edit_message_with_retry(self, _session: "Session", ctx: EditContext) -> None:
+    async def _edit_message_with_retry(self, _session: Session, ctx: EditContext) -> None:
         """Internal method with retry logic for editing messages.
 
         Reads from mutable EditContext - always uses latest data even if updated during retry wait.
@@ -396,7 +396,7 @@ class MessageOperationsMixin:
             reply_markup=markup,
         )
 
-    async def delete_message(self, session: "Session", message_id: str) -> bool:
+    async def delete_message(self, session: Session, message_id: str) -> bool:
         """Delete a message in the session's topic."""
         self._ensure_started()
 
@@ -431,11 +431,11 @@ class MessageOperationsMixin:
 
     async def send_file(
         self,
-        session: "Session",
+        session: Session,
         file_path: str,
         *,
         caption: str | None = None,
-        metadata: MessageMetadata | None = None,  # noqa: ARG002 - Required by interface
+        metadata: MessageMetadata | None = None,
     ) -> str:
         """Send file to session's topic."""
         self._ensure_started()
@@ -489,10 +489,10 @@ class MessageOperationsMixin:
     @command_retry(max_retries=3, max_timeout=15.0)
     async def _send_general_message_with_retry(
         self,
-        message_thread_id: Optional[int],
+        message_thread_id: int | None,
         text: str,
-        parse_mode: Optional[str],
-        reply_markup: Optional[object],
+        parse_mode: str | None,
+        reply_markup: object | None,
     ) -> Message:
         """Internal method with retry logic for general-topic messages."""
         return await self.bot.send_message(
@@ -568,8 +568,8 @@ class MessageOperationsMixin:
         self,
         message_id: str,
         text: str,
-        parse_mode: Optional[str],
-        reply_markup: Optional[InlineKeyboardMarkup],
+        parse_mode: str | None,
+        reply_markup: InlineKeyboardMarkup | None,
     ) -> None:
         """Internal method with retry logic for general-topic edits."""
         await self.bot.edit_message_text(

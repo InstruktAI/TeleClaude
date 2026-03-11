@@ -7,7 +7,7 @@ import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Literal, Optional, Union, cast
+from typing import Literal, Union, cast
 
 # Event bus carries internal events (not user commands).
 EventType = Literal[
@@ -335,7 +335,7 @@ class TeleClaudeEvents:
 ErrorSeverity = Literal["warning", "error", "critical"]
 
 
-def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
+def parse_command_string(command_str: str) -> tuple[str | None, list[str]]:
     """Parse command string into event name and arguments.
 
     Used by adapters that receive raw command strings (e.g., Redis, API API).
@@ -393,7 +393,7 @@ class FileEventContext:
     session_id: str
     file_path: str = ""
     filename: str = ""
-    caption: Optional[str] = None
+    caption: str | None = None
     file_size: int = 0
 
 
@@ -403,10 +403,10 @@ class VoiceEventContext:
 
     session_id: str
     file_path: str = ""
-    duration: Optional[float] = None
-    message_id: Optional[str] = None
-    message_thread_id: Optional[int] = None
-    origin: Optional[str] = None
+    duration: float | None = None
+    message_id: str | None = None
+    message_thread_id: int | None = None
+    origin: str | None = None
 
 
 @dataclass(frozen=True)
@@ -502,11 +502,11 @@ class ErrorEventContext:
 
     session_id: str | None
     message: str
-    source: Optional[str] = None
-    details: Optional[Mapping[str, object]] = None
+    source: str | None = None
+    details: Mapping[str, object] | None = None
     severity: ErrorSeverity = "error"
     retryable: bool = False
-    code: Optional[str] = None
+    code: str | None = None
 
 
 # Union of all event context types (for adapter_client handler signatures)

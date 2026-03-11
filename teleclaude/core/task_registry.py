@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Coroutine, TypeVar
+from collections.abc import Coroutine
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 

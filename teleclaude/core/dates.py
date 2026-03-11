@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, tzinfo
+from datetime import UTC, datetime, tzinfo
 
 from instrukt_ai_logging import get_logger
 
@@ -28,7 +28,7 @@ def format_local_datetime(dt: datetime, *, include_date: bool = False) -> str:
     """
     # Ensure timezone-aware
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
 
     local_tz = get_local_timezone()
     local_dt = dt.astimezone(local_tz)
@@ -41,8 +41,8 @@ def format_local_datetime(dt: datetime, *, include_date: bool = False) -> str:
 def ensure_utc(value: datetime) -> datetime:
     """Return a timezone-aware UTC datetime."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def parse_iso_datetime(value: object) -> datetime | None:

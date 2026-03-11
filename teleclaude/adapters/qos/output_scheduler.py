@@ -27,8 +27,8 @@ import asyncio
 import math
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, Optional
 
 from instrukt_ai_logging import get_logger
 
@@ -58,7 +58,7 @@ class QoSPayload:
     """
 
     session_id: str
-    factory: Callable[[], Awaitable[Optional[str]]]
+    factory: Callable[[], Awaitable[str | None]]
     is_final: bool = False
     enqueued_at: float = field(default_factory=time.monotonic)
 
@@ -143,7 +143,7 @@ class OutputQoSScheduler:
     # Enqueueing
     # ------------------------------------------------------------------
 
-    def enqueue(self, session_id: str, factory: Callable[[], Awaitable[Optional[str]]], is_final: bool = False) -> None:
+    def enqueue(self, session_id: str, factory: Callable[[], Awaitable[str | None]], is_final: bool = False) -> None:
         """Enqueue an output payload for the given session.
 
         For non-final payloads: replaces any existing pending payload (latest-only

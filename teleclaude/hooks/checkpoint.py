@@ -9,10 +9,10 @@ import logging
 import re
 import shlex
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Mapping, Optional
 
 from typing_extensions import TypedDict
 
@@ -74,7 +74,7 @@ class CheckpointContext:
 
     agent_name: AgentName
     project_path: str = ""
-    working_slug: Optional[str] = None
+    working_slug: str | None = None
 
 
 @dataclass
@@ -92,7 +92,7 @@ class CheckpointResult:
 # ---------------------------------------------------------------------------
 
 
-def _get_uncommitted_files(project_path: str) -> Optional[list[str]]:
+def _get_uncommitted_files(project_path: str) -> list[str] | None:
     """Run git diff --name-only HEAD to get uncommitted changed files.
 
     Returns None if git is unavailable or the command fails (fail-open).
@@ -153,7 +153,7 @@ def _get_uncommitted_files(project_path: str) -> Optional[list[str]]:
         return None
 
 
-def _transcript_observability(transcript_path: Optional[str]) -> TranscriptObservability:
+def _transcript_observability(transcript_path: str | None) -> TranscriptObservability:
     """Return lightweight transcript-path observability fields for logging."""
     if not transcript_path:
         return {
@@ -860,7 +860,7 @@ def _extract_plan_file_paths(plan_text: str) -> set[str]:
     paths: set[str] = set()
     in_table = False
     for line in plan_text.splitlines():
-        if "Files to Change" in line or "File" in line and "Change" in line:
+        if "Files to Change" in line or ("File" in line and "Change" in line):
             in_table = True
             continue
         if in_table:
@@ -890,7 +890,7 @@ def _dedupe_strings(items: list[str]) -> list[str]:
     return deduped
 
 
-def _compute_log_since_window(elapsed_since_turn_start_s: Optional[float]) -> str:
+def _compute_log_since_window(elapsed_since_turn_start_s: float | None) -> str:
     """Compute `instrukt-ai-logs --since` window from elapsed turn time.
 
     Uses minute granularity, rounded up, with a conservative 2-minute minimum.
@@ -1072,12 +1072,12 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 
 
 def get_checkpoint_content(
-    transcript_path: Optional[str],
+    transcript_path: str | None,
     agent_name: AgentName,
     project_path: str,
-    working_slug: Optional[str] = None,
-    elapsed_since_turn_start_s: Optional[float] = None,
-) -> Optional[str]:
+    working_slug: str | None = None,
+    elapsed_since_turn_start_s: float | None = None,
+) -> str | None:
     """Build context-aware checkpoint content for both hook and codex routes.
 
     Top-level entry point that orchestrates git diff, transcript extraction,

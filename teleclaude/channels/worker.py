@@ -72,8 +72,8 @@ def _matches_filter(
 
 
 async def run_subscription_worker(
-    redis: "Redis",
-    subscriptions: list["ChannelSubscription"],
+    redis: Redis,
+    subscriptions: list[ChannelSubscription],
     *,
     shutdown_event: asyncio.Event | None = None,
 ) -> None:
@@ -97,7 +97,7 @@ async def run_subscription_worker(
     for sub in subscriptions:
         try:
             await ensure_consumer_group(redis, sub.channel, _WORKER_GROUP)
-        except Exception:  # noqa: BLE001 - skip broken channels, keep others alive
+        except Exception:
             logger.warning("Failed to create consumer group for %s", sub.channel)
 
     logger.info("Channel subscription worker started", subscription_count=len(subscriptions))
@@ -116,7 +116,7 @@ async def run_subscription_worker(
                     count=10,
                     block_ms=0,
                 )
-            except Exception:  # noqa: BLE001 - resilient polling
+            except Exception:
                 logger.warning("Channel consume error on %s", sub.channel, exc_info=True)
                 continue
 
@@ -125,7 +125,7 @@ async def run_subscription_worker(
                     continue
                 try:
                     await _dispatch_to_target(sub.target, msg["payload"])
-                except Exception:  # noqa: BLE001 - never crash the worker on a single dispatch
+                except Exception:
                     logger.warning("Dispatch failed for message %s on %s", msg["id"], sub.channel, exc_info=True)
 
         try:

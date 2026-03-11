@@ -6,7 +6,8 @@ import hashlib
 import hmac
 import inspect
 import json
-from typing import Awaitable, Callable, cast
+from collections.abc import Awaitable, Callable
+from typing import cast
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from instrukt_ai_logging import get_logger

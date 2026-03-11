@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 _REQUIRED_READS_HEADER = re.compile(r"^##\s+required reads\s*$", re.IGNORECASE)
 _HEADER_LINE = re.compile(r"^#{1,6}\s+")

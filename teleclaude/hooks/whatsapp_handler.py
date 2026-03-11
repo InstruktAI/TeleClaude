@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -112,7 +112,7 @@ async def download_whatsapp_media(
     media_dir.mkdir(parents=True, exist_ok=True)
 
     extension = mimetypes.guess_extension(mime_type or "") or ".bin"
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     filename = f"{phone_number}_{timestamp}_{media_id[:12]}{extension}"
     output_path = media_dir / filename
     output_path.write_bytes(media_response.content)

@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-from collections.abc import Awaitable, Callable, Coroutine
-from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
+from typing import TYPE_CHECKING, cast
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -114,7 +114,7 @@ class TelegramAdapter(
         "key_right",
     ]
 
-    def __init__(self, client: "AdapterClient") -> None:
+    def __init__(self, client: AdapterClient) -> None:
         """Initialize Telegram adapter.
 
         Args:
@@ -150,7 +150,7 @@ class TelegramAdapter(
         if not self.computer_name:
             raise ValueError("computer.name is required in config.yml")
         self.is_master = config.computer.is_master
-        self.app: Optional[TelegramApp] = None
+        self.app: TelegramApp | None = None
         self._processed_voice_messages: set[str] = set()  # Track processed voice message IDs with edit state
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
         self._last_edit_hash: dict[str, str] = {}  # message_id -> content hash (skip no-op edits)
@@ -170,19 +170,19 @@ class TelegramAdapter(
     # Telegram uses adapter_metadata instead of the shared DB column
     # to prevent cross-adapter races with Discord.
 
-    async def _get_output_message_id(self, session: "Session") -> str | None:
+    async def _get_output_message_id(self, session: Session) -> str | None:
         fresh = await db.get_session(session.session_id)
         if fresh:
             return fresh.get_metadata().get_ui().get_telegram().output_message_id
         return session.get_metadata().get_ui().get_telegram().output_message_id
 
-    async def _store_output_message_id(self, session: "Session", message_id: str) -> None:
+    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
         meta = session.get_metadata().get_ui().get_telegram()
         meta.output_message_id = message_id
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         logger.debug("Stored telegram output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
 
-    async def _clear_output_message_id(self, session: "Session") -> None:
+    async def _clear_output_message_id(self, session: Session) -> None:
         meta = session.get_metadata().get_ui().get_telegram()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
@@ -208,7 +208,7 @@ class TelegramAdapter(
                 exc,
             )
 
-    async def send_typing_indicator(self, session: "Session") -> None:
+    async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Telegram topic."""
         topic_id = session.get_metadata().get_ui().get_telegram().topic_id
         if not topic_id:
@@ -526,7 +526,7 @@ class TelegramAdapter(
         # Dispatch — process_message enqueues for durable delivery
         await gcs().process_message(cmd)
 
-    async def delete_message(self, session: "Session | str", message_id: str) -> bool:
+    async def delete_message(self, session: Session | str, message_id: str) -> bool:
         """Delete a message by session or session_id."""
         if isinstance(session, str):
             session_obj = await db.get_session(session)
@@ -607,7 +607,7 @@ class TelegramAdapter(
             raise AdapterError("Telegram adapter not started - call start() first")
         return self.app.bot
 
-    def _is_message_from_trusted_bot(self, message: "TelegramMessage") -> bool:
+    def _is_message_from_trusted_bot(self, message: TelegramMessage) -> bool:
         """Check if message is from a trusted bot (for AI-to-AI communication).
 
         Args:
@@ -632,7 +632,7 @@ class TelegramAdapter(
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
-    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:  # noqa: ARG002
+    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:
         """Check if a forum topic was created by this bot.
 
         Uses the reply_to_message on the topic close event, which references
@@ -701,11 +701,11 @@ class TelegramAdapter(
             display_output = truncate_markdown_v2(display_output, self.max_message_size, "")
         return display_output
 
-    def _build_output_metadata(self, _session: "Session", _is_truncated: bool) -> MessageMetadata:
+    def _build_output_metadata(self, _session: Session, _is_truncated: bool) -> MessageMetadata:
         """Build Telegram output metadata with MarkdownV2 parse_mode."""
         return MessageMetadata(parse_mode="MarkdownV2")
 
-    def _build_footer_metadata(self, session: "Session") -> MessageMetadata:
+    def _build_footer_metadata(self, session: Session) -> MessageMetadata:
         """Build Telegram footer metadata with download button when applicable."""
         metadata = MessageMetadata(parse_mode=None)
         if session.native_log_file:
@@ -933,7 +933,7 @@ class TelegramAdapter(
             await self.app.stop()
             await self.app.shutdown()
 
-    async def _pre_handle_user_input(self, session: "Session") -> None:
+    async def _pre_handle_user_input(self, session: Session) -> None:
         """UI adapter pre-handler: Delete ephemeral messages from previous interaction.
 
         Called by AdapterClient BEFORE processing new user input.
@@ -967,7 +967,7 @@ class TelegramAdapter(
                     logger.warning("Failed to delete message %s: %s", msg_id, e)
             await db.clear_pending_deletions(session.session_id)
 
-    async def _post_handle_user_input(self, session: "Session", message_id: str) -> None:
+    async def _post_handle_user_input(self, session: Session, message_id: str) -> None:
         """UI adapter post-handler: Track current message for next cleanup.
 
         Called by AdapterClient AFTER processing user input.
@@ -988,14 +988,14 @@ class TelegramAdapter(
 
     async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
-        session: "Session",
+        session: Session,
         output: str,
         started_at: float,
         last_output_changed_at: float,
         is_final: bool = False,
-        exit_code: Optional[int] = None,
+        exit_code: int | None = None,
         render_markdown: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Route Telegram output update through the QoS scheduler.
 
         When QoS is off, delegates directly to the parent implementation.
@@ -1023,7 +1023,7 @@ class TelegramAdapter(
         _exit_code = exit_code
         _render_md = render_markdown
 
-        async def _dispatch() -> Optional[str]:
+        async def _dispatch() -> str | None:
             return await UiAdapter.send_output_update(
                 _self, _session, _output, _started_at, _last_changed, _is_final, _exit_code, _render_md
             )
@@ -1033,10 +1033,10 @@ class TelegramAdapter(
 
     async def send_threaded_output(  # type: ignore[override]
         self,
-        session: "Session",
+        session: Session,
         text: str,
         multi_message: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Route Telegram threaded output through the QoS scheduler.
 
         Threaded output payloads are coalesced (latest-only) so that only the
@@ -1053,7 +1053,7 @@ class TelegramAdapter(
         _text = text
         _multi = multi_message
 
-        async def _dispatch() -> Optional[str]:
+        async def _dispatch() -> str | None:
             return await UiAdapter.send_threaded_output(_self, _session, _text, _multi, MARKDOWN_V2_INITIAL_STATE)
 
         # Threaded output chunks are non-final (the coordinator handles completion separately).
@@ -1181,7 +1181,7 @@ class TelegramAdapter(
         await db.set_system_setting(setting_key, new_msg_id)
         logger.info("Created new menu message %s in general topic", new_msg_id)
 
-    async def _get_session_from_topic(self, update: Update) -> Optional[Session]:
+    async def _get_session_from_topic(self, update: Update) -> Session | None:
         """Get session from current topic (silent - no feedback on failure).
 
         Returns:
@@ -1230,7 +1230,7 @@ class TelegramAdapter(
 
         return session
 
-    async def _require_session_from_topic(self, update: Update) -> Optional[Session]:
+    async def _require_session_from_topic(self, update: Update) -> Session | None:
         """Get session from topic, with error feedback if not found.
 
         Use this for commands that MUST have a session context.
@@ -1307,7 +1307,7 @@ class TelegramAdapter(
         return []
 
     async def send_message_to_topic(
-        self, topic_id: Optional[int], text: str, parse_mode: Optional[str] = "Markdown"
+        self, topic_id: int | None, text: str, parse_mode: str | None = "Markdown"
     ) -> Message:
         """Send a message to a specific topic or General topic.
 
@@ -1342,7 +1342,7 @@ class TelegramAdapter(
 
     async def poll_output_stream(  # type: ignore[override,misc]
         self,
-        session: "Session",
+        session: Session,
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
         """Poll for output chunks (not implemented for Telegram).

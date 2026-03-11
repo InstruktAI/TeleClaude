@@ -14,8 +14,8 @@ from __future__ import annotations
 import os
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 import frontmatter
 import yaml
@@ -29,8 +29,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import ROLE_VALUES, SNIPPET_VISIBILITY_VALUES, TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
-from teleclaude.snippet_validation import (  # noqa: E402
+from teleclaude.constants import ROLE_VALUES, SNIPPET_VISIBILITY_VALUES, TAXONOMY_TYPES, TYPE_SUFFIX
+from teleclaude.snippet_validation import (
     expected_snippet_id_for_path,
     load_domains,
     validate_inline_ref_format,
@@ -980,7 +980,7 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
                     if not os.path.exists(item_path):
                         continue
                     try:
-                        with open(item_path, "r") as f:
+                        with open(item_path) as f:
                             post = frontmatter.load(f)
                         validate_artifact(post, item_path, kind=kind, project_root=project_root)
                     except Exception as e:

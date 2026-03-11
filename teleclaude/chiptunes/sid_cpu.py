@@ -59,7 +59,7 @@ class SIDInterceptMMU(MMU):  # type: ignore[misc]
 class SIDDriver:
     """Loads a SID tune into 64KB RAM and drives init/play cycles."""
 
-    def __init__(self, header: "SIDHeader") -> None:
+    def __init__(self, header: SIDHeader) -> None:
         if not _py65emu_available:
             raise ImportError(
                 "py65emu is required for SID playback. Install it with: pip install 'teleclaude[chiptunes]'"

@@ -4,9 +4,9 @@ import json
 import os
 import tempfile
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
@@ -124,7 +124,7 @@ class Db:
             if isinstance(row.adapter_metadata, str) and row.adapter_metadata
             else SessionAdapterMetadata()
         )
-        session_metadata: Optional[dict[str, object]] = None  # guard: loose-dict
+        session_metadata: dict[str, object] | None = None  # guard: loose-dict
         if row.session_metadata:
             try:
                 session_metadata = json.loads(row.session_metadata)
@@ -185,8 +185,8 @@ class Db:
             db_path: Path to SQLite database file
         """
         self.db_path = db_path
-        self._engine: Optional[AsyncEngine] = None
-        self._sessionmaker: Optional[object] = None
+        self._engine: AsyncEngine | None = None
+        self._sessionmaker: object | None = None
         self.conn: aiosqlite.Connection | None = None
         self._temp_db_path: str | None = None
 
@@ -213,7 +213,7 @@ class Db:
         await self.conn.execute("PRAGMA busy_timeout = 5000")  # noqa: raw-sql
 
         schema_path = Path(__file__).parent / "schema.sql"
-        with open(schema_path, "r", encoding="utf-8") as f:
+        with open(schema_path, encoding="utf-8") as f:
             schema_sql = f.read()
 
         await self.conn.executescript(schema_sql)  # noqa: raw-sql
@@ -336,19 +336,19 @@ class Db:
         tmux_session_name: str,
         last_input_origin: str,
         title: str,
-        adapter_metadata: Optional[SessionAdapterMetadata] = None,
-        session_metadata: Optional[dict[str, object]] = None,  # guard: loose-dict
-        project_path: Optional[str] = None,
-        subdir: Optional[str] = None,
-        description: Optional[str] = None,
-        session_id: Optional[str] = None,
-        working_slug: Optional[str] = None,
-        initiator_session_id: Optional[str] = None,
-        human_email: Optional[str] = None,
-        human_role: Optional[str] = None,
+        adapter_metadata: SessionAdapterMetadata | None = None,
+        session_metadata: dict[str, object] | None = None,  # guard: loose-dict
+        project_path: str | None = None,
+        subdir: str | None = None,
+        description: str | None = None,
+        session_id: str | None = None,
+        working_slug: str | None = None,
+        initiator_session_id: str | None = None,
+        human_email: str | None = None,
+        human_role: str | None = None,
         lifecycle_status: str = "active",
-        active_agent: Optional[str] = None,
-        thinking_mode: Optional[str] = None,
+        active_agent: str | None = None,
+        thinking_mode: str | None = None,
         emit_session_started: bool = True,
     ) -> Session:
         """Create a new session.
@@ -379,7 +379,7 @@ class Db:
             Created Session object
         """
         session_id = session_id or str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         session = Session(
             session_id=session_id,
@@ -450,7 +450,7 @@ class Db:
         subdir: str | None,
     ) -> Session:
         """Create a headless session (no tmux)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         tmux_session_name = ""
 
         session = Session(
@@ -500,7 +500,7 @@ class Db:
 
         return session
 
-    async def get_session(self, session_id: str) -> Optional[Session]:
+    async def get_session(self, session_id: str) -> Session | None:
         """Get session by ID.
 
         Args:
@@ -515,7 +515,7 @@ class Db:
                 return None
             return self._to_core_session(row)
 
-    async def get_session_field(self, session_id: str, field: str) -> Optional[object]:
+    async def get_session_field(self, session_id: str, field: str) -> object | None:
         """Get a single field from a session by ID.
 
         Args:
@@ -536,7 +536,7 @@ class Db:
 
     async def get_session_by_field(
         self, field: str, value: object, *, include_initializing: bool = False
-    ) -> Optional[Session]:
+    ) -> Session | None:
         """Get session by field value.
 
         Args:
@@ -563,12 +563,12 @@ class Db:
 
     async def list_sessions(
         self,
-        computer_name: Optional[str] = None,
-        last_input_origin: Optional[str] = None,
+        computer_name: str | None = None,
+        last_input_origin: str | None = None,
         include_closed: bool = False,
         include_initializing: bool = False,
         include_headless: bool = False,
-        initiator_session_id: Optional[str] = None,
+        initiator_session_id: str | None = None,
     ) -> list[Session]:
         """List sessions with optional filters.
 
@@ -675,7 +675,7 @@ class Db:
                         updates[attr_name] = value
 
                 if updates:
-                    now = datetime.now(timezone.utc)
+                    now = datetime.now(UTC)
                     if (
                         SessionField.LAST_MESSAGE_SENT.value in updates
                         and SessionField.LAST_MESSAGE_SENT_AT.value not in updates
@@ -727,7 +727,7 @@ class Db:
             return
         await self.update_session(
             session_id,
-            closed_at=datetime.now(timezone.utc),
+            closed_at=datetime.now(UTC),
             lifecycle_status="closed",
         )
         event_bus.emit(
@@ -741,11 +741,11 @@ class Db:
         Args:
             session_id: Session ID
         """
-        await self.update_session(session_id, last_activity=datetime.now(timezone.utc))
+        await self.update_session(session_id, last_activity=datetime.now(UTC))
 
     # State management functions (DB-backed via ux_state)
 
-    async def get_output_message_id(self, session_id: str) -> Optional[str]:
+    async def get_output_message_id(self, session_id: str) -> str | None:
         """Get output message ID for session.
 
         Args:
@@ -757,7 +757,7 @@ class Db:
         session = await self.get_session(session_id)
         return session.output_message_id if session else None
 
-    async def set_output_message_id(self, session_id: str, message_id: Optional[str]) -> None:
+    async def set_output_message_id(self, session_id: str, message_id: str | None) -> None:
         """Set output message ID for session.
 
         Args:
@@ -860,7 +860,7 @@ class Db:
                 SessionLifecycleContext(session_id=session_id),
             )
 
-    async def count_sessions(self, computer_name: Optional[str] = None) -> int:
+    async def count_sessions(self, computer_name: str | None = None) -> int:
         """Count sessions with optional filters.
 
         Args:
@@ -1006,7 +1006,7 @@ class Db:
         session = await self.get_session(session_id)
         return bool(session.notification_sent) if session else False
 
-    async def get_system_setting(self, key: str) -> Optional[str]:
+    async def get_system_setting(self, key: str) -> str | None:
         """Get system setting value by key.
 
         Args:
@@ -1046,7 +1046,7 @@ class Db:
         """
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stmt = sqlite_insert(db_models.VoiceAssignment).values(
             id=voice_id,
             service_name=voice.service_name,
@@ -1066,7 +1066,7 @@ class Db:
             await db_session.commit()
         logger.debug("Assigned voice '%s' from service '%s' to %s", voice.voice, voice.service_name, voice_id[:8])
 
-    async def get_voice(self, voice_id: str) -> Optional[VoiceConfig]:
+    async def get_voice(self, voice_id: str) -> VoiceConfig | None:
         """Get voice assignment by ID.
 
         Args:
@@ -1122,7 +1122,7 @@ class Db:
 
         from sqlalchemy import delete
 
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
         stmt = delete(db_models.VoiceAssignment).where(db_models.VoiceAssignment.assigned_at < cutoff)
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
@@ -1154,7 +1154,7 @@ class Db:
             unavailable_until = row.unavailable_until
             if unavailable_until is not None:
                 parsed_until = self._parse_iso_datetime(unavailable_until)
-                if parsed_until and parsed_until < datetime.now(timezone.utc):
+                if parsed_until and parsed_until < datetime.now(UTC):
                     row.available = 1
                     row.unavailable_until = None
                     row.degraded_until = None
@@ -1172,7 +1172,7 @@ class Db:
             degraded_until = row.degraded_until
             if degraded_until is not None:
                 parsed_degraded = self._parse_iso_datetime(degraded_until)
-                if parsed_degraded and parsed_degraded < datetime.now(timezone.utc):
+                if parsed_degraded and parsed_degraded < datetime.now(UTC):
                     row.degraded_until = None
                     if row.reason and row.reason.startswith("degraded"):
                         row.reason = None
@@ -1276,7 +1276,7 @@ class Db:
         """
         from sqlalchemy import and_, or_, update
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.AgentAvailability)
             .where(
@@ -1308,7 +1308,7 @@ class Db:
         payload: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     ) -> int:
         """Persist a hook event in the outbox for durable delivery."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         payload_json = json.dumps(payload)
         async with self._session() as db_session:
             row = db_models.HookOutbox(
@@ -1424,7 +1424,7 @@ class Db:
         """Mark a hook outbox row delivered (optionally capturing last error)."""
         from sqlalchemy import update
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.HookOutbox)
             .where(db_models.HookOutbox.id == row_id)
@@ -1475,7 +1475,7 @@ class Db:
         source_channel_id: str | None = None,
     ) -> int | None:
         """Persist an inbound message in the queue. Returns row ID or None on dedup skip."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         row = db_models.InboundQueue(
             session_id=session_id,
             origin=origin,
@@ -1580,7 +1580,7 @@ class Db:
 
         dt = parse_iso_datetime(now_iso)
         if dt is None:
-            dt = datetime.now(timezone.utc)
+            dt = datetime.now(UTC)
         next_retry = (dt + timedelta(seconds=backoff_seconds)).isoformat()
 
         stmt = (
@@ -1710,7 +1710,7 @@ class Db:
         state: str,
     ) -> db_models.Operation:
         """Insert a durable operation row."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         row = db_models.Operation(
             operation_id=operation_id,
             kind=kind,
@@ -1889,7 +1889,7 @@ class Db:
         """Mark queued/running operations stale, typically after daemon restart."""
         from sqlalchemy import update
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.Operation)
             .where(db_models.Operation.state.in_(["queued", "running"]))
@@ -1910,7 +1910,7 @@ class Db:
         """Mark long-silent running operations stale."""
         from sqlalchemy import or_, update
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.Operation)
             .where(db_models.Operation.state == "running")
@@ -1936,7 +1936,7 @@ class Db:
 
     async def upsert_webhook_contract(self, contract_id: str, contract_json: str, source: str = "api") -> None:
         """Insert or update a webhook contract."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self._session() as db_session:
             existing = await db_session.get(db_models.WebhookContract, contract_id)
             if existing:
@@ -1961,7 +1961,7 @@ class Db:
         """Deactivate a webhook contract. Returns True if found."""
         from sqlalchemy import update
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.WebhookContract)
             .where(db_models.WebhookContract.id == contract_id)
@@ -1989,7 +1989,7 @@ class Db:
         self, contract_id: str, event_json: str, target_url: str, target_secret: str | None = None
     ) -> int:
         """Add an event to the webhook outbox for external delivery."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self._session() as db_session:
             row = db_models.WebhookOutbox(
                 contract_id=contract_id,
@@ -2046,7 +2046,7 @@ class Db:
         """Mark a webhook delivery as successful."""
         from sqlalchemy import update
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.WebhookOutbox)
             .where(db_models.WebhookOutbox.id == row_id)
@@ -2093,7 +2093,7 @@ class Db:
         """Upsert a listener row. Returns True if newly inserted, False if already existed."""
         from sqlalchemy.exc import IntegrityError
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         async with self._session() as db_session:
             # Check for existing
             from sqlmodel import select
@@ -2238,7 +2238,7 @@ class Db:
         metadata_json: str | None = None,
     ) -> db_models.ConversationLinkRow:
         """Create a new conversation link row."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         link = db_models.ConversationLinkRow(
             link_id=str(uuid.uuid4()),
             mode=mode,
@@ -2337,7 +2337,7 @@ class Db:
         """Create or update link membership metadata."""
         from sqlmodel import select
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         stmt = select(db_models.ConversationLinkMemberRow).where(
             db_models.ConversationLinkMemberRow.link_id == link_id,
             db_models.ConversationLinkMemberRow.session_id == session_id,
@@ -2381,7 +2381,7 @@ class Db:
         """Update link lifecycle status."""
         from sqlalchemy import update
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         closed_at = now if status == "closed" else None
         stmt = (
             update(db_models.ConversationLinkRow)

@@ -9,9 +9,9 @@ import json
 import logging
 import sys
 import time
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Iterable
 
 from aiohttp import ClientSession
 from instrukt_ai_logging import configure_logging, get_logger

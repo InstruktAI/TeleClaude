@@ -15,7 +15,6 @@ import termios
 import time
 from pathlib import Path
 from signal import SIGINT, SIGKILL, SIGTERM, Signals
-from typing import Dict, List, Optional
 
 import psutil
 from instrukt_ai_logging import get_logger
@@ -100,7 +99,7 @@ async def wait_with_timeout(
     """
     try:
         await asyncio.wait_for(process.wait(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "%s timeout after %.1fs, killing process %d",
             operation,
@@ -110,7 +109,7 @@ async def wait_with_timeout(
         try:
             process.kill()
             await asyncio.wait_for(process.wait(), timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
         except ProcessLookupError:
             pass  # Process already terminated
@@ -143,7 +142,7 @@ async def communicate_with_timeout(
     """
     try:
         return await asyncio.wait_for(process.communicate(input_data), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "%s timeout after %.1fs, killing process %d",
             operation,
@@ -153,7 +152,7 @@ async def communicate_with_timeout(
         try:
             process.kill()
             await asyncio.wait_for(process.wait(), timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
         except ProcessLookupError:
             pass  # Process already terminated
@@ -218,8 +217,8 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
 async def _create_tmux_session(
     name: str,
     working_dir: str,
-    session_id: Optional[str] = None,
-    env_vars: Optional[Dict[str, str]] = None,
+    session_id: str | None = None,
+    env_vars: dict[str, str] | None = None,
 ) -> bool:
     """Create a new tmux session.
 
@@ -237,7 +236,7 @@ async def _create_tmux_session(
         True if successful, False otherwise
     """
     try:
-        effective_env_vars: Dict[str, str] = dict(env_vars) if env_vars else {}
+        effective_env_vars: dict[str, str] = dict(env_vars) if env_vars else {}
 
         # Prevent oh-my-zsh last-working-dir plugin from overriding our -c directory.
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
@@ -409,8 +408,8 @@ async def ensure_tmux_session(
     name: str,
     *,
     working_dir: str = "~",
-    session_id: Optional[str] = None,
-    env_vars: Optional[Dict[str, str]] = None,
+    session_id: str | None = None,
+    env_vars: dict[str, str] | None = None,
 ) -> bool:
     """Ensure a tmux session exists, creating it if missing.
 
@@ -438,7 +437,7 @@ async def ensure_tmux_session(
         return False
 
 
-async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bool:
+async def update_tmux_session(session_name: str, env_vars: dict[str, str]) -> bool:
     """Update environment variables in an existing tmux session.
 
     Uses tmux setenv to update environment variables. Note: Only NEW processes
@@ -481,10 +480,10 @@ async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bo
 async def send_keys(
     session_name: str,
     text: str,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
     working_dir: str = "~",
     send_enter: bool = True,
-    active_agent: Optional[str] = None,
+    active_agent: str | None = None,
 ) -> bool:
     """Send keys (text) to a tmux session, creating a new session if needed.
 
@@ -530,7 +529,7 @@ async def send_keys_existing_tmux(
     text: str,
     *,
     send_enter: bool = True,
-    active_agent: Optional[str] = None,
+    active_agent: str | None = None,
 ) -> bool:
     """Send keys to an existing tmux session (do not auto-create).
 
@@ -611,7 +610,7 @@ def pid_is_alive(pid: int) -> bool:
     return True
 
 
-async def get_pane_tty(session_name: str) -> Optional[str]:
+async def get_pane_tty(session_name: str) -> str | None:
     """Get tty path for the tmux pane backing a session."""
     try:
         cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_tty}"]
@@ -636,7 +635,7 @@ async def get_pane_tty(session_name: str) -> Optional[str]:
         return None
 
 
-async def get_pane_pid(session_name: str) -> Optional[int]:
+async def get_pane_pid(session_name: str) -> int | None:
     """Get shell PID for the tmux pane backing a session."""
     try:
         cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_pid}"]
@@ -666,7 +665,7 @@ async def _send_keys_tmux(
     session_name: str,
     text: str,
     send_enter: bool,
-    active_agent: Optional[str],
+    active_agent: str | None,
 ) -> bool:
     """Send keys to tmux (session must already exist)."""
     # Gemini CLI can't handle '!' character - escape it
@@ -1085,7 +1084,7 @@ async def kill_session(session_name: str) -> bool:
         return False
 
 
-async def list_tmux_sessions() -> List[str]:
+async def list_tmux_sessions() -> list[str]:
     """List all tmux sessions.
 
     Returns:
@@ -1183,7 +1182,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
         raise
 
 
-async def get_current_command(session_name: str) -> Optional[str]:
+async def get_current_command(session_name: str) -> str | None:
     """Get the current foreground command running in a tmux pane.
 
     Uses tmux's #{pane_current_command} variable to detect interactive apps.
@@ -1269,7 +1268,7 @@ async def is_pane_dead(session_name: str) -> bool:
         raise
 
 
-async def get_session_pane_id(session_name: str) -> Optional[str]:
+async def get_session_pane_id(session_name: str) -> str | None:
     """Get the pane ID for a session (for pipe-pane).
 
     Args:
@@ -1339,7 +1338,7 @@ async def stop_pipe_pane(session_name: str) -> bool:
         return False
 
 
-async def get_pane_title(session_name: str) -> Optional[str]:
+async def get_pane_title(session_name: str) -> str | None:
     """Get the pane title for a tmux session.
 
     Args:
@@ -1368,7 +1367,7 @@ async def get_pane_title(session_name: str) -> Optional[str]:
         return None
 
 
-async def get_current_directory(session_name: str) -> Optional[str]:
+async def get_current_directory(session_name: str) -> str | None:
     """Get the current working directory for a tmux session.
 
     Args:

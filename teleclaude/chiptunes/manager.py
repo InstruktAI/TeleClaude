@@ -11,8 +11,8 @@ from instrukt_ai_logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
 from teleclaude.chiptunes.worker import _Worker
+from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
 
 logger = get_logger(__name__)
 

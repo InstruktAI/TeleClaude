@@ -6,10 +6,11 @@ import json
 import os
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from teleclaude.core.integration.authorization import (
     CutoverResolution,

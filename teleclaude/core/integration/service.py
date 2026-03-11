@@ -7,8 +7,9 @@ file-based event store replay.  The file store is no longer used.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal
 
 from teleclaude.core.integration.events import (
     IntegrationEvent,

@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from collections.abc import Awaitable, Sequence
 from pathlib import Path
-from typing import Awaitable, Sequence, TypedDict
+from typing import TypedDict
 
 import httpx
 

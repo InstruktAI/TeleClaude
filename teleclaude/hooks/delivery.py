@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import httpx
@@ -60,7 +60,7 @@ class WebhookDeliveryWorker:
         """Main delivery loop."""
         while not shutdown_event.is_set():
             try:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 now_iso = now.isoformat()
                 rows = await db.fetch_webhook_batch(WEBHOOK_BATCH_SIZE, now_iso)
 
@@ -95,7 +95,7 @@ class WebhookDeliveryWorker:
             return
 
         delay = compute_backoff(attempt)
-        next_at = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+        next_at = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
         await db.mark_webhook_failed(row_id, reason, attempt, next_at)
         logger.warning("Webhook transient failure: row=%s status=%s retry_in=%.1fs", row_id, reason, delay)
 

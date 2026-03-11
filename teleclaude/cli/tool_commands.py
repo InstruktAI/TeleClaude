@@ -770,7 +770,7 @@ def handle_todo_prepare(args: list[str]) -> None:
 
     # Handle --invalidate-check as a pure local mechanical operation (no API call)
     if "--invalidate-check" in args:
-        from teleclaude.core.next_machine.core import invalidate_stale_preparations  # noqa: PLC0415
+        from teleclaude.core.next_machine.core import invalidate_stale_preparations
 
         changed_paths: list[str] = []
         for idx, arg in enumerate(args):

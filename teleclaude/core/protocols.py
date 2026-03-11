@@ -1,6 +1,7 @@
 """Protocol definitions for adapter capabilities."""
 
-from typing import AsyncIterator, Optional, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Protocol, runtime_checkable
 
 from teleclaude.core.models import MessageMetadata
 
@@ -24,7 +25,7 @@ class RemoteExecutionProtocol(Protocol):
         computer_name: str,
         command: str,
         metadata: MessageMetadata,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> str:
         """Send request to remote computer via transport layer.
 

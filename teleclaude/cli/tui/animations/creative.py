@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import colorsys
 import math
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.base import Animation, Spectrum
@@ -68,8 +68,8 @@ class NeonFlicker(Animation):
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self._initialized = False
-        self._states: List[str] = []
-        self._timers: List[int] = []
+        self._states: list[str] = []
+        self._timers: list[int] = []
         self._main_color: str = "#00ffff"
 
     def _lazy_init(self, num_letters: int) -> None:
@@ -128,7 +128,7 @@ class Plasma(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
+        self._params: dict[str, Any] | None = None  # guard: loose-dict - animation state; shape varies per subclass
 
     def _lazy_init(self) -> None:
         if self._params is not None:
@@ -171,7 +171,7 @@ class Glitch(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
+        self._params: dict[str, Any] | None = None  # guard: loose-dict - animation state; shape varies per subclass
 
     def _lazy_init(self) -> None:
         if self._params is not None:
@@ -222,7 +222,7 @@ class EQBars(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
+        self._params: dict[str, Any] | None = None  # guard: loose-dict - animation state; shape varies per subclass
         self._gradient_lut: list[str] = []  # pre-computed hex colors indexed by from_bottom
 
     def _lazy_init(self, num: int) -> None:
@@ -293,7 +293,7 @@ class LavaLamp(Animation):
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         # guard: loose-dict - blob state; shape defined at lazy init
-        self._blobs: Optional[List[dict[str, Any]]] = None
+        self._blobs: list[dict[str, Any]] | None = None
         self._w = 0
         self._h = 0
 
@@ -368,7 +368,7 @@ class ColorSweep(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
+        self._params: dict[str, Any] | None = None  # guard: loose-dict - animation state; shape varies per subclass
 
     def _lazy_init(self) -> None:
         if self._params is not None:
@@ -461,7 +461,7 @@ class LaserScan(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._glow: Optional[str] = None
+        self._glow: str | None = None
 
     def _lazy_init(self) -> None:
         if self._glow is not None:

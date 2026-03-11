@@ -42,9 +42,9 @@ if sys.platform == "darwin":
                     try:
                         BACKENDS[service_name] = MLXTTSBackend(service_name, service_cfg.model, service_cfg.params)
                         logger.info("Registered MLX TTS backend: %s (model=%s)", service_name, service_cfg.model)
-                    except Exception:  # noqa: BLE001 - config or model validation failure; skip gracefully
+                    except Exception:
                         logger.warning("MLX TTS backend '%s' failed to initialize", service_name, exc_info=True)
-    except Exception:  # noqa: BLE001 - mlx_audio or config not available
+    except Exception:
         logger.warning("MLX TTS backends unavailable", exc_info=True)
 
 

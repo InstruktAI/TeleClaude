@@ -18,10 +18,10 @@ from teleclaude.output_projection.models import (
 )
 
 __all__ = [
-    "VisibilityPolicy",
+    "PERMISSIVE_POLICY",
+    "THREADED_CLEAN_POLICY",
+    "WEB_POLICY",
     "ProjectedBlock",
     "TerminalLiveProjection",
-    "WEB_POLICY",
-    "THREADED_CLEAN_POLICY",
-    "PERMISSIVE_POLICY",
+    "VisibilityPolicy",
 ]

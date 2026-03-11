@@ -70,7 +70,7 @@ def _load_raw_config(
     """Load raw YAML config."""
     if not path.exists():
         return {}
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
@@ -183,7 +183,7 @@ def handle_patch(args: list[str]) -> None:
 
     # Read patch data
     if from_file:
-        with open(from_file, "r", encoding="utf-8") as f:
+        with open(from_file, encoding="utf-8") as f:
             patch_data = yaml.safe_load(f)
     elif patch_yaml:
         patch_data = yaml.safe_load(patch_yaml)

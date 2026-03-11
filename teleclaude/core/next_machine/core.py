@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import threading
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from enum import Enum
 from pathlib import Path
 from time import perf_counter
@@ -1113,7 +1113,7 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
         if input_path.exists():
             grounding_dict["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
         grounding_dict["valid"] = True
-        grounding_dict["last_grounded_at"] = datetime.now(timezone.utc).isoformat()
+        grounding_dict["last_grounded_at"] = datetime.now(UTC).isoformat()
         grounding_dict["invalidation_reason"] = ""
         grounding_dict["changed_paths"] = []
         state["grounding"] = grounding_dict  # type: ignore[assignment]
@@ -1165,7 +1165,7 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
         "status": "ready",
         "branch": slug,
         "sha": branch_head,
-        "ready_at": datetime.now(timezone.utc).isoformat(),
+        "ready_at": datetime.now(UTC).isoformat(),
         "worker_session_id": worker_session_id.strip(),
     }
     write_phase_state(worktree_cwd, slug, state)
@@ -1187,7 +1187,7 @@ def _mark_finalize_handed_off(
         **finalize,
         "status": "handed_off",
         "handoff_session_id": handoff_session_id,
-        "handed_off_at": datetime.now(timezone.utc).isoformat(),
+        "handed_off_at": datetime.now(UTC).isoformat(),
     }
     write_phase_state(worktree_cwd, slug, state)
     return state
@@ -2679,11 +2679,11 @@ def _compute_prep_inputs_digest(cwd: str, slug: str) -> str:
     for label, path in sorted(candidates, key=lambda item: item[0]):
         digest.update(label.encode("utf-8"))
         exists = path.exists()
-        digest.update((b"1" if exists else b"0"))
+        digest.update(b"1" if exists else b"0")
         if not exists:
             continue
         is_executable = os.access(path, os.X_OK)
-        digest.update((b"1" if is_executable else b"0"))
+        digest.update(b"1" if is_executable else b"0")
         if path.is_file():
             digest.update(_file_sha256(path).encode("utf-8"))
     return digest.hexdigest()
@@ -2716,7 +2716,7 @@ def _write_worktree_prep_state(cwd: str, slug: str, inputs_digest: str) -> None:
     payload = {
         "version": _PREP_STATE_VERSION,
         "inputs_digest": inputs_digest,
-        "prepared_at": datetime.now(timezone.utc).isoformat(),
+        "prepared_at": datetime.now(UTC).isoformat(),
     }
     state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -2910,8 +2910,8 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
 
 def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
     """Fire-and-forget lifecycle event emission for prepare state machine."""
-    from teleclaude_events.envelope import EventLevel  # noqa: PLC0415
-    from teleclaude_events.producer import emit_event  # noqa: PLC0415
+    from teleclaude_events.envelope import EventLevel
+    from teleclaude_events.producer import emit_event
 
     async def _emit() -> None:
         try:
@@ -3261,7 +3261,7 @@ def _prepare_step_grounding_check(
     if input_path.exists():
         current_input_digest = hashlib.sha256(input_path.read_bytes()).hexdigest()
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # First grounding: capture state and transition to PREPARED
     if not base_sha:
@@ -3466,7 +3466,7 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
     Returns {"invalidated": ["slug-a", ...]} for each invalidated slug.
     """
     invalidated: list[str] = []
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     changed_set = set(changed_paths)
 
     for slug in load_roadmap_slugs(cwd):

@@ -46,10 +46,10 @@ _registered_people_count_cache: int = 0
 # In-memory session cache for verify_caller (avoids DB hit per authenticated request)
 _SESSION_CACHE_TTL = 30.0  # seconds
 _SESSION_CACHE_MAX = 256
-_session_cache: dict[str, tuple[float, "Session"]] = {}
+_session_cache: dict[str, tuple[float, Session]] = {}
 
 
-def _get_cached_session(session_id: str) -> "Session | None":
+def _get_cached_session(session_id: str) -> Session | None:
     """Get session from cache if present and not expired."""
     entry = _session_cache.get(session_id)
     if entry is None:
@@ -61,7 +61,7 @@ def _get_cached_session(session_id: str) -> "Session | None":
     return session
 
 
-def _put_cached_session(session_id: str, session: "Session") -> None:
+def _put_cached_session(session_id: str, session: Session) -> None:
     """Store session in cache with eviction when full."""
     if len(_session_cache) >= _SESSION_CACHE_MAX:
         # Evict oldest entry
@@ -130,7 +130,7 @@ def _requires_terminal_login() -> bool:
     return _registered_people_count_cache > 1
 
 
-def _derive_session_system_role(session: "Session") -> str | None:
+def _derive_session_system_role(session: Session) -> str | None:
     """Derive system role from daemon-owned session state.
 
     Priority:

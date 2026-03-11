@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -14,13 +14,13 @@ class AgentDispatchConfig(BaseModel):
 
 class JobWhenConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    every: Optional[str] = None  # e.g. "10m", "2h", "1d"
-    at: Optional[Union[str, List[str]]] = None  # "HH:MM" or list of times
-    weekdays: List[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = []
+    every: str | None = None  # e.g. "10m", "2h", "1d"
+    at: str | list[str] | None = None  # "HH:MM" or list of times
+    weekdays: list[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = []
 
     @field_validator("every")
     @classmethod
-    def validate_every_format(cls, v: Optional[str]) -> Optional[str]:
+    def validate_every_format(cls, v: str | None) -> str | None:
         """Validate duration format and enforce minimum of 1 minute."""
         if v is None:
             return v
@@ -38,7 +38,7 @@ class JobWhenConfig(BaseModel):
 
     @field_validator("at")
     @classmethod
-    def validate_at_format(cls, v: Optional[Union[str, List[str]]]) -> Optional[Union[str, List[str]]]:
+    def validate_at_format(cls, v: str | list[str] | None) -> str | list[str] | None:
         """Validate HH:MM time format for 'at' values."""
         if v is None:
             return v
@@ -62,7 +62,7 @@ class JobWhenConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_mode(self) -> "JobWhenConfig":
+    def validate_mode(self) -> JobWhenConfig:
         # Exactly one scheduling mode is allowed.
         if bool(self.every) == bool(self.at):
             raise ValueError("Specify exactly one of 'every' or 'at'")
@@ -76,31 +76,31 @@ class JobScheduleConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     category: Literal["subscription", "system"] = "subscription"
     # Preferred scheduling contract.
-    when: Optional[JobWhenConfig] = None
+    when: JobWhenConfig | None = None
     # Legacy schedule fields remain supported as a fallback.
-    schedule: Optional[Literal["hourly", "daily", "weekly", "monthly"]] = None
+    schedule: Literal["hourly", "daily", "weekly", "monthly"] | None = None
     preferred_hour: int = Field(default=6, ge=0, le=23)
     preferred_weekday: int = Field(default=0, ge=0, le=6)
     preferred_day: int = Field(default=1, ge=1, le=31)
 
     # Execution config
-    type: Optional[str] = None
-    script: Optional[str] = None
-    job: Optional[str] = None
-    agent: Optional[str] = "claude"
-    thinking_mode: Optional[str] = "fast"
-    message: Optional[str] = None
-    timeout: Optional[int] = None
+    type: str | None = None
+    script: str | None = None
+    job: str | None = None
+    agent: str | None = "claude"
+    thinking_mode: str | None = "fast"
+    message: str | None = None
+    timeout: int | None = None
 
 
 class BusinessConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    domains: Dict[str, str] = {}
+    domains: dict[str, str] = {}
 
 
 class GitConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    checkout_root: Optional[str] = None
+    checkout_root: str | None = None
 
 
 class IntegratorCutoverConfig(BaseModel):
@@ -110,7 +110,7 @@ class IntegratorCutoverConfig(BaseModel):
     rollback_on_incomplete_parity: bool = True
 
     @model_validator(mode="after")
-    def validate_cutover_enablement(self) -> "IntegratorCutoverConfig":
+    def validate_cutover_enablement(self) -> IntegratorCutoverConfig:
         if self.enabled and not self.parity_evidence_accepted:
             raise ValueError(
                 "integrator.cutover.enabled requires parity_evidence_accepted=true; "
@@ -131,10 +131,10 @@ class PersonEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
     name: str
     email: str
-    username: Optional[str] = None
+    username: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
-    expertise: Optional[Dict[str, Union[ProficiencyLevel, Dict[str, ProficiencyLevel]]]] = None
-    proficiency: Optional[ProficiencyLevel] = None  # deprecated — use expertise
+    expertise: dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]] | None = None
+    proficiency: ProficiencyLevel | None = None  # deprecated — use expertise
 
 
 class TelegramCreds(BaseModel):
@@ -156,9 +156,9 @@ class WhatsAppCreds(BaseModel):
 
 class CredsConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    telegram: Optional[TelegramCreds] = None
-    discord: Optional[DiscordCreds] = None
-    whatsapp: Optional[WhatsAppCreds] = None
+    telegram: TelegramCreds | None = None
+    discord: DiscordCreds | None = None
+    whatsapp: WhatsAppCreds | None = None
 
 
 class SubscriptionNotification(BaseModel):
@@ -176,48 +176,48 @@ class Subscription(BaseModel):
 class JobSubscription(Subscription):
     type: Literal["job"] = "job"
     job: str
-    when: Optional[JobWhenConfig] = None
+    when: JobWhenConfig | None = None
 
 
 class YoutubeSubscription(Subscription):
     type: Literal["youtube"] = "youtube"
     source: str
-    tags: List[str] = []
+    tags: list[str] = []
 
 
 SubscriptionEntry = Annotated[
-    Union[JobSubscription, YoutubeSubscription],
+    JobSubscription | YoutubeSubscription,
     Field(discriminator="type"),
 ]
 
 
 class InboundSourceConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    path: Optional[str] = None
-    verify_token: Optional[str] = None
-    secret: Optional[str] = None
-    normalizer: Optional[str] = None
+    path: str | None = None
+    verify_token: str | None = None
+    secret: str | None = None
+    normalizer: str | None = None
 
 
 class SubscriptionContractConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    source: Optional[Dict[str, Any]] = None
-    type: Optional[Dict[str, Any]] = None
+    source: dict[str, Any] | None = None
+    type: dict[str, Any] | None = None
     # Additional property criteria as extra fields
 
 
 class SubscriptionTargetConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    handler: Optional[str] = None
-    url: Optional[str] = None
-    secret: Optional[str] = None
+    handler: str | None = None
+    url: str | None = None
+    secret: str | None = None
 
 
 class SubscriptionConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str
-    contract: Dict[str, Any] = {}  # guard: loose-dict - Config YAML contract is unstructured
-    target: Dict[str, Any] = {}  # guard: loose-dict - Config YAML target is unstructured
+    contract: dict[str, Any] = {}  # guard: loose-dict - Config YAML contract is unstructured
+    target: dict[str, Any] = {}  # guard: loose-dict - Config YAML target is unstructured
 
 
 class ChannelSubscription(BaseModel):
@@ -225,14 +225,14 @@ class ChannelSubscription(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     channel: str
-    filter: Optional[Dict[str, Any]] = None  # guard: loose-dict - Subscription filter is intentionally unstructured
-    target: Dict[str, Any] = {}  # guard: loose-dict - Subscription target (notification or project+command)
+    filter: dict[str, Any] | None = None  # guard: loose-dict - Subscription filter is intentionally unstructured
+    target: dict[str, Any] = {}  # guard: loose-dict - Subscription target (notification or project+command)
 
 
 class HooksConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    inbound: Dict[str, InboundSourceConfig] = {}
-    subscriptions: List[SubscriptionConfig] = []
+    inbound: dict[str, InboundSourceConfig] = {}
+    subscriptions: list[SubscriptionConfig] = []
 
 
 class DeploymentConfig(BaseModel):
@@ -241,7 +241,7 @@ class DeploymentConfig(BaseModel):
     pinned_minor: str = ""
 
     @model_validator(mode="after")
-    def validate_stable_requires_pinned_minor(self) -> "DeploymentConfig":
+    def validate_stable_requires_pinned_minor(self) -> DeploymentConfig:
         if self.channel == "stable" and not self.pinned_minor:
             raise ValueError("pinned_minor is required and must be non-empty when channel=stable")
         return self
@@ -249,14 +249,14 @@ class DeploymentConfig(BaseModel):
 
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    project_name: Optional[str] = None
-    description: Optional[str] = None
+    project_name: str | None = None
+    description: str | None = None
     business: BusinessConfig = BusinessConfig()
     hooks: HooksConfig = HooksConfig()
-    jobs: Dict[str, JobScheduleConfig] = {}
+    jobs: dict[str, JobScheduleConfig] = {}
     git: GitConfig = GitConfig()
     integrator: IntegratorConfig = IntegratorConfig()
-    channel_subscriptions: List[ChannelSubscription] = []
+    channel_subscriptions: list[ChannelSubscription] = []
     deployment: DeploymentConfig = DeploymentConfig()
 
     @model_validator(mode="before")
@@ -272,10 +272,10 @@ class ProjectConfig(BaseModel):
 
 
 class GlobalConfig(ProjectConfig):
-    people: List[PersonEntry] = []
-    subscriptions: List[SubscriptionEntry] = []
-    interests: List[str] = []
-    event_domains: Optional[DomainsConfig] = None
+    people: list[PersonEntry] = []
+    subscriptions: list[SubscriptionEntry] = []
+    interests: list[str] = []
+    event_domains: DomainsConfig | None = None
 
     @field_validator("interests", mode="before")
     @classmethod
@@ -300,9 +300,9 @@ class GlobalConfig(ProjectConfig):
 class PersonConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     creds: CredsConfig = CredsConfig()
-    subscriptions: List[SubscriptionEntry] = []
-    interests: List[str] = []
-    invite_token: Optional[str] = None
+    subscriptions: list[SubscriptionEntry] = []
+    interests: list[str] = []
+    invite_token: str | None = None
 
     @field_validator("interests", mode="before")
     @classmethod

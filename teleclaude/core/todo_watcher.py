@@ -143,7 +143,7 @@ class TodoWatcher:
                 try:
                     project_path, hint = await asyncio.wait_for(queue.get(), timeout=0.5)
                     pending[project_path] = (time.monotonic(), hint)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
 
                 # Process items past the debounce window

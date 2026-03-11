@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 discord = importlib.import_module("discord")
 

@@ -23,8 +23,8 @@ else
 fi
 
 if [ -n "$py_files" ]; then
-  echo "Running ruff import-sort (fix)"
-  ruff check --select I --fix $py_files
+  echo "Running ruff auto-fix (safe fixes only)"
+  ruff check --fix $py_files
 
   echo "Running ruff format"
   ruff format $py_files

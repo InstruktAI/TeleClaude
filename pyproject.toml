@@ -109,17 +109,32 @@ indent-style = "space"
 
 [tool.ruff.lint]
 select = [
-  "E",  # pycodestyle errors
-  "F",  # pyflakes
-  "I",  # import sorting
+  "E",    # pycodestyle errors
+  "F",    # pyflakes
+  "I",    # import sorting
+  "C90",  # mccabe complexity
+  "B",    # flake8-bugbear (real bugs: mutable defaults, broad exceptions, unreachable code)
+  "UP",   # pyupgrade (modernize syntax for target Python version)
+  "RUF",  # ruff-specific rules (unused noqa, mutable class vars, ambiguous unicode)
 ]
 ignore = [
-  "E501", # line-too-long (formatter handles this in practice)
+  "E501",   # line-too-long (formatter handles this in practice)
+  "B008",   # function-call-in-default-argument — false positive on FastAPI Depends()
+  "UP007",  # non-pep604-annotation — Optional[X] is still readable and widely used
+  # guard: ratchet-down — temporarily ignored due to existing tech debt, re-enable as violations are fixed
+  "UP042",  # replace-str-enum — 37 violations, needs StrEnum migration pass
+  "RUF012", # mutable-class-default — 30 violations, needs ClassVar annotation pass
+  "RUF005", # collection-literal-concatenation — 13 violations, cosmetic
+  "RUF006", # asyncio-dangling-task — 9 violations, needs careful manual review
+  "B905",   # zip-without-explicit-strict — 9 violations, needs review
 ]
 extend-select = [
   "F403", # import * used; unable to detect undefined names
   "F405", # name may be undefined, or defined from star imports
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B018", "F841", "E402"]  # Allow unused variables and sys.path imports in tests
@@ -127,6 +142,45 @@ extend-select = [
 "jobs/**" = ["E402"]  # Jobs need sys.path manipulation before imports
 "cron/**" = ["E402"]  # Cron entrypoints need sys.path manipulation before imports
 "teleclaude/helpers/agent_cli.py" = ["E402"]  # Needs sys.path for standalone execution
+# guard: ratchet-down — existing complexity violations, must decompose over time
+"teleclaude/api_server.py" = ["C901"]
+"teleclaude/cli/telec.py" = ["C901", "B904", "E402"]
+"teleclaude/cli/tui/state.py" = ["C901"]
+"teleclaude/cli/tui/pane_manager.py" = ["C901"]
+"teleclaude/cli/tui/animations/base.py" = ["C901", "RUF001", "RUF002", "RUF003"]
+"teleclaude/cli/tui/widgets/banner.py" = ["C901"]
+"teleclaude/cli/tui/widgets/box_tab_bar.py" = ["C901"]
+"teleclaude/context_selector.py" = ["C901"]
+"teleclaude/core/agent_coordinator.py" = ["C901"]
+"teleclaude/core/command_handlers.py" = ["C901"]
+"teleclaude/core/next_machine/core.py" = ["C901"]
+"teleclaude/core/output_poller.py" = ["C901"]
+"teleclaude/core/roadmap.py" = ["C901"]
+"teleclaude/cron/runner.py" = ["C901"]
+"teleclaude/daemon.py" = ["C901"]
+"teleclaude/docs_index.py" = ["C901"]
+"teleclaude/entrypoints/youtube_sync_subscriptions.py" = ["C901"]
+"teleclaude/helpers/youtube_helper.py" = ["C901"]
+"teleclaude/hooks/receiver.py" = ["C901", "E402"]
+"teleclaude/output_projection/conversation_projector.py" = ["C901"]
+"teleclaude/resource_validation.py" = ["C901", "E402"]
+"teleclaude/utils/markdown.py" = ["C901"]
+"teleclaude/utils/transcript.py" = ["C901"]
+"teleclaude/adapters/telegram/input_handlers.py" = ["C901"]
+"teleclaude/api/streaming.py" = ["C901"]
+"teleclaude/adapters/base_adapter.py" = ["B027"]  # Intentional non-abstract base methods
+# guard: ratchet-down — B904 (raise from), B023 (loop vars), E402 (import order), RUF001-003 (unicode)
+"teleclaude/cli/config_cli.py" = ["B904"]
+"teleclaude/cli/tool_client.py" = ["B904"]
+"teleclaude/cli/tool_commands.py" = ["B904"]
+"teleclaude/core/integration/lease.py" = ["B904"]
+"teleclaude/core/tmux_bridge.py" = ["B904"]
+"teleclaude/core/codex_prompt_submit.py" = ["B023", "RUF001", "RUF002", "RUF003"]
+"teleclaude/chiptunes/sid_cpu.py" = ["RUF001", "RUF002", "RUF003"]
+"teleclaude/chiptunes/sid_parser.py" = ["RUF001", "RUF002", "RUF003"]
+"teleclaude/cli/tui/animations/sprites/cars.py" = ["RUF001", "RUF002", "RUF003"]
+"tools/verify_deploy.py" = ["RUF001", "RUF002", "RUF003", "B006", "UP035"]
+"tools/lint/markdown.py" = ["E402"]
 
 [tool.mypy]
 # MAXIMUM STRICTNESS - No Any, no untyped dict/list, no isinstance abuse

@@ -12,7 +12,7 @@ This can happen when:
 
 import asyncio
 import shutil
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
@@ -219,7 +219,7 @@ async def emit_recently_closed_session_events(
     if seconds <= 0:
         return 0
 
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
+    cutoff = datetime.now(UTC) - timedelta(seconds=seconds)
     sessions = await db.list_sessions(
         include_closed=True,
         include_initializing=True,
@@ -271,7 +271,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
 
     # Don't flag sessions that are still being created (race condition guard)
     if session.created_at:
-        session_age = (datetime.now(timezone.utc) - ensure_utc(session.created_at)).total_seconds()
+        session_age = (datetime.now(UTC) - ensure_utc(session.created_at)).total_seconds()
         if session_age < 10.0:
             logger.debug("Session %s is too young (%.1fs), skipping stale check", session_id[:8], session_age)
             return False

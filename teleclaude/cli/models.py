@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypeAlias, Union
+from typing import TypeAlias
 
 from teleclaude.api_models import (
     AgentActivityEventDTO as AgentActivityEvent,
@@ -91,59 +91,47 @@ from teleclaude.api_models import (
 
 __all__ = [
     "AgentActivityEvent",
-    "SessionLifecycleStatusEvent",
     "AgentAvailabilityInfo",
+    "ChiptunesCommandReceiptInfo",
+    "ChiptunesStateEvent",
+    "ChiptunesStatusInfo",
+    "ChiptunesTrackEvent",
     "ComputerInfo",
     "CreateSessionResult",
+    "ErrorEvent",
     "JobInfo",
+    "JsonObject",
+    "JsonValue",
     "ProjectInfo",
+    "ProjectWithTodosInfo",
     "ProjectsInitialData",
     "ProjectsInitialEvent",
-    "ProjectWithTodosInfo",
-    "ErrorEvent",
     "RefreshData",
     "RefreshEvent",
     "SessionClosedData",
     "SessionClosedEvent",
-    "SessionsInitialData",
-    "SessionsInitialEvent",
     "SessionInfo",
+    "SessionLifecycleStatusEvent",
     "SessionStartedEvent",
     "SessionUpdatedEvent",
+    "SessionsInitialData",
+    "SessionsInitialEvent",
     "SettingsInfo",
-    "ChiptunesCommandReceiptInfo",
-    "ChiptunesStatusInfo",
-    "ChiptunesStateEvent",
-    "ChiptunesTrackEvent",
     "SettingsPatchInfo",
+    "SubscribeData",
+    "SubscribeRequest",
     "TTSSettingsPatchInfo",
     "TodoInfo",
-    "JsonValue",
-    "JsonObject",
-    "WsEvent",
-    "SubscribeData",
     "UnsubscribeData",
-    "SubscribeRequest",
     "UnsubscribeRequest",
+    "WsEvent",
 ]
 
 JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 JsonObject: TypeAlias = dict[str, JsonValue]
 
 
-WsEvent: TypeAlias = Union[
-    SessionsInitialEvent,
-    ProjectsInitialEvent,
-    SessionStartedEvent,
-    SessionUpdatedEvent,
-    SessionClosedEvent,
-    SessionLifecycleStatusEvent,
-    RefreshEvent,
-    ErrorEvent,
-    AgentActivityEvent,
-    ChiptunesStateEvent,
-    ChiptunesTrackEvent,
-]
+WsEvent: TypeAlias = SessionsInitialEvent | ProjectsInitialEvent | SessionStartedEvent | SessionUpdatedEvent | SessionClosedEvent | SessionLifecycleStatusEvent | RefreshEvent | ErrorEvent | AgentActivityEvent | ChiptunesStateEvent | ChiptunesTrackEvent
 
 
 # Subscribe/Unsubscribe requests (not DTOs, strictly for CLI -> Server)

@@ -14,7 +14,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from typing import Optional
 
 from rich.style import Style
 from textual.theme import Theme
@@ -41,14 +40,14 @@ class ThemeMode:
     LIGHT = "light"
 
 
-def _get_tmux_socket_path() -> Optional[str]:
+def _get_tmux_socket_path() -> str | None:
     tmux_env = os.environ.get("TMUX")
     if not tmux_env:
         return None
     return tmux_env.split(",", 1)[0] or None
 
 
-def _get_tmux_appearance_mode() -> Optional[str]:
+def _get_tmux_appearance_mode() -> str | None:
     tmux_bin = config.computer.tmux_binary
     socket_path = _get_tmux_socket_path()
     cmd = [tmux_bin]
@@ -65,14 +64,14 @@ def _get_tmux_appearance_mode() -> Optional[str]:
     return None
 
 
-def _get_env_appearance_mode() -> Optional[str]:
+def _get_env_appearance_mode() -> str | None:
     mode = (os.environ.get("APPEARANCE_MODE") or "").strip().lower()
     if mode in {ThemeMode.DARK, ThemeMode.LIGHT}:
         return mode
     return None
 
 
-def _get_system_appearance_mode() -> Optional[str]:
+def _get_system_appearance_mode() -> str | None:
     if sys.platform != "darwin":
         return None
     try:
@@ -134,7 +133,7 @@ def get_current_mode() -> bool:
 
 def refresh_mode() -> None:
     """Re-probe system appearance and rebuild all mode-dependent color tables."""
-    global _is_dark_mode, _terminal_bg_cache  # noqa: PLW0603
+    global _is_dark_mode, _terminal_bg_cache
     _is_dark_mode = _detect_dark_mode()
     _terminal_bg_cache = None
     _build_rich_colors()
@@ -296,7 +295,7 @@ blend_colors = blend
 
 def get_terminal_background() -> str:
     """Get terminal's background color (hex), with mode-safe baseline and hint blending."""
-    global _terminal_bg_cache  # noqa: PLW0603
+    global _terminal_bg_cache
     if _terminal_bg_cache:
         return _terminal_bg_cache
     mode_default_bg = "#000000" if _is_dark_mode else _LIGHT_MODE_PAPER_BG
@@ -334,7 +333,7 @@ _tui_focused: bool = True
 
 def set_tui_focused(focused: bool) -> None:
     """Update TUI focus state. Called by app._watch_app_focus()."""
-    global _tui_focused  # noqa: PLW0603
+    global _tui_focused
     _tui_focused = focused
 
 
@@ -577,7 +576,7 @@ def should_apply_paint_pane_theming(level: int | None = None) -> bool:
 
 
 def set_pane_theming_mode(mode: str | None) -> None:
-    global _PANE_THEMING_MODE_OVERRIDE  # noqa: PLW0603
+    global _PANE_THEMING_MODE_OVERRIDE
     if not mode:
         _PANE_THEMING_MODE_OVERRIDE = None  # type: ignore[reportConstantRedefinition]
         return
@@ -615,7 +614,7 @@ _agent_rich_colors: dict[str, dict[str, str]] = {}
 
 def _build_rich_colors() -> None:
     """Rebuild Rich color tables for current dark/light mode from AGENT_PALETTE."""
-    global _agent_rich_colors  # noqa: PLW0603
+    global _agent_rich_colors
     _agent_rich_colors = AGENT_PALETTE[_mode_key()]
 
 
