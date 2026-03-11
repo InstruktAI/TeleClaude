@@ -19,9 +19,6 @@
   - mesh-architecture
   - mesh-trust-model
   description: 'Services as events: local contracts, mesh publish, transactional capabilities'
-- slug: event-alpha-container
-  group: event-platform
-  description: Docker sidecar sandbox for experimental/alpha cartridges
 - slug: event-mesh-distribution
   group: event-platform
   after:
