@@ -30,6 +30,7 @@ Research third-party documentation and capture findings in the docs index.
 ## Steps
 
 - Execute the research procedure for the provided brief.
+- When consolidated docs and web search are insufficient (e.g., JavaScript-rendered SPAs, structured data extraction), fall back to Firecrawl MCP tools (`firecrawl_scrape`, `firecrawl_extract`).
 - Update the index with findings.
 
 ## Discipline

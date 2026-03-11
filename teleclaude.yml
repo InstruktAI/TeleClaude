@@ -3,6 +3,7 @@ project_name: TeleClaude
 business:
   domains:
     software-development: docs
+    creative: docs
 
 jobs:
   help_desk_intelligence:

@@ -59,6 +59,29 @@ If no references are provided, ask for them. Even one reference dramatically
 narrows the interpretation space. "Show me one website that feels like what
 you want" is more productive than twenty questions about color preferences.
 
+**Reference sourcing guidance for the human:**
+
+When looking for visual references, use sites that curate specific design
+dimensions rather than browsing generically:
+
+- **Hero sections**: [Threed.ai](https://threed.ai) / similar hero-focused
+  galleries — curated 3D and animated hero patterns.
+- **Interaction design**: [Web Interactions Gallery](https://webinteractions.gallery)
+  — motion, micro-interactions, scroll-driven animations.
+- **Color-driven discovery**: [Realtime Colors](https://realtimecolors.com) —
+  find real websites filtered by color palette, useful for matching brand
+  direction to existing examples.
+- **Component inspiration**: [CLUI](https://clui.com) — daily UI component
+  updates and patterns.
+- **Full-page screenshots**: GoFullPage (Chrome extension) — capture entire
+  pages for reference analysis.
+
+Keep references to 2-3 images maximum. More than three dramatically different
+references confuse the synthesis — the agent cannot hold contradictory visual
+languages and will average them into something generic. Pick references that
+share a common thread (similar mood, spatial rhythm, or color temperature)
+even if they differ in detail.
+
 ### 3. Dialogue: sense the vision
 
 This is the creative core. The procedure is conversational, not mechanical.
