@@ -69,12 +69,12 @@ def extract_session_id(path: Path, agent: AgentName) -> str:
     """Derive a session identifier from an agent transcript path."""
     stem = path.stem
     if agent == AgentName.CLAUDE:
-        return stem[:12]
+        return stem
     if agent == AgentName.GEMINI:
-        return stem.replace("session-", "")[:12]
+        return stem.replace("session-", "")
     if agent == AgentName.CODEX:
         return stem.split("_", 1)[0]
-    return stem[:12]
+    return stem
 
 
 def extract_project(path: Path, agent: AgentName) -> str:

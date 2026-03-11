@@ -63,13 +63,6 @@ def _coerce_remote_rows(payload: object) -> list[RemoteMirrorRow]:
     return rows
 
 
-def truncate_display(text: str, max_len: int = 70) -> str:
-    """Truncate text to max length."""
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 3] + "..."
-
-
 def find_transcript(agents: Sequence[AgentName], session_id: str) -> tuple[Path, AgentName] | None:
     """Find a transcript file by session ID prefix across agents."""
     needle = session_id.lower()
@@ -93,30 +86,15 @@ def _print_results(search_term: str, results: list[dict[str, str]], *, show_comp
         return
     results = results[:limit]
     print(f"\nSearch results for '{search_term}' ({len(results)} found):\n")
-    if show_computer:
-        print(
-            f"{'#':>4} | {'Date/Time':<17} | {'Computer':<12} | {'Agent':<8}"
-            f" | {'Project':<20} | {'Topic':<70} | {'Session':<12}"
-        )
-        print("-" * 156)
-    else:
-        print(f"{'#':>4} | {'Date/Time':<17} | {'Agent':<8} | {'Project':<20} | {'Topic':<70} | {'Session':<12}")
-        print("-" * 140)
 
     for index, entry in enumerate(results, start=1):
+        parts = [f"{index:>4}", entry["timestamp"]]
         if show_computer:
-            row = (
-                f"{index:>4} | {entry['timestamp']:<17} | {entry['computer']:<12} | {entry['agent']:<8}"
-                f" | {entry['project']:<20} | {truncate_display(entry['topic'], 70):<70} | {entry['session_id']:<12}"
-            )
-        else:
-            row = (
-                f"{index:>4} | {entry['timestamp']:<17} | {entry['agent']:<8}"
-                f" | {entry['project']:<20} | {truncate_display(entry['topic'], 70):<70} | {entry['session_id']:<12}"
-            )
-        print(row)
+            parts.append(entry["computer"])
+        parts += [entry["agent"], entry["project"], entry["topic"], entry["session_id"]]
+        print(" | ".join(parts))
 
-    print("\n" + "-" * 80)
+    print()
     shown_agents = {entry["agent"] for entry in results}
     for agent_str in sorted(shown_agents):
         meta = AGENT_PROTOCOL.get(agent_str)

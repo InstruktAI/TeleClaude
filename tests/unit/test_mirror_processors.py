@@ -103,7 +103,7 @@ async def test_process_mirror_event_generates_mirror_with_context_and_defaults(
     await processors.process_mirror_event(MirrorEvent(session_id="sess-1", transcript_path=None))
 
     generate_mirror.assert_awaited_once_with(
-        session_id="sess-1",
+        session_id="from-context",
         source_identity="claude:teleclaude/from-context.jsonl",
         transcript_path="/tmp/.claude/projects/teleclaude/from-context.jsonl",
         agent_name=processors.AgentName.CLAUDE,

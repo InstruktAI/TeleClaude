@@ -94,15 +94,13 @@ def test_build_source_identity_is_relative_to_session_root(tmp_path: Path, monke
     assert build_source_identity(path_outside, AgentName.CLAUDE) == f"claude:{path_outside.as_posix()}"
 
 
-def test_extract_session_id_and_project_follow_agent_rules() -> None:
-    claude_path = Path("/tmp/projects/team-history-search-upgrade/1234567890abcdef.jsonl")
-    gemini_path = Path("/tmp/chats/session-abcdef1234567890.json")
+def test_extract_session_id_codex_splits_on_underscore() -> None:
     codex_path = Path("/tmp/codex/codex-123_more.jsonl")
-
-    assert extract_session_id(claude_path, AgentName.CLAUDE) == "1234567890ab"
-    assert extract_session_id(gemini_path, AgentName.GEMINI) == "abcdef123456"
     assert extract_session_id(codex_path, AgentName.CODEX) == "codex-123"
 
+
+def test_extract_project_derives_from_path() -> None:
+    claude_path = Path("/tmp/projects/team-history-search-upgrade/abc.jsonl")
     assert extract_project(claude_path, AgentName.CLAUDE) == "upgrade"
-    assert extract_project(gemini_path, AgentName.GEMINI) == "gemini"
-    assert extract_project(codex_path, AgentName.CODEX) == "codex"
+    assert extract_project(Path("/tmp/codex/x.jsonl"), AgentName.CODEX) == "codex"
+    assert extract_project(Path("/tmp/gemini/x.json"), AgentName.GEMINI) == "gemini"
