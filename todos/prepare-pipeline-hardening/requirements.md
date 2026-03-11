@@ -1,5 +1,10 @@
 # Requirements: prepare-pipeline-hardening
 
+> Note: `input.md` currently contains no substantive source text. Unless a
+> statement is explicitly attributed to repository artifacts, the substantive
+> content below is [inferred] from the slug, current prepare-state docs/code,
+> and observed repo history.
+
 ## Goal
 
 Fix four concrete problems in the prepare pipeline:
@@ -52,7 +57,8 @@ Four observed failures motivate this work:
 - Auto-remediation boundary: factual corrections vs scope expansions.
 
 **Artifact lifecycle and statefulness**
-- state.yaml as sole authority on artifact lifecycle (not file existence).
+- Durable lifecycle metadata in state.yaml, rather than inferring lifecycle
+  solely from file existence.
 - Digest-based staleness detection with invalidation cascade.
 - Per-phase audit trail with timestamps and structured findings.
 - Helper functions for atomic bookkeeping (no raw state writes by agents).
@@ -81,8 +87,8 @@ Four observed failures motivate this work:
 - The orchestration loop — it still calls `telec todo prepare` and dispatches
   what is returned. [inferred]
 - New CLI subcommands. [inferred]
-- The machine's routing logic — it continues to route based on file existence
-  and state fields. No content judgments added. [inferred]
+- The machine's routing remains mechanical and free of content judgments.
+  [inferred]
 
 ## Requirements
 
@@ -101,8 +107,8 @@ and uses it to determine the verdict:
   approach problems. Escalates to the orchestrator, who routes to the drafter,
   opens drafter-reviewer conversation, or escalates to human.
 
-Findings are recorded as structured entries in state.yaml (id, severity,
-status, summary). The reviewer determines the verdict based on the highest
+Findings are recorded as structured entries in state.yaml with stable
+identifiers, severity, status, and summaries. The reviewer determines the verdict based on the highest
 unresolved severity:
 - All trivial and resolved → APPROVE.
 - Substantive unresolved → NEEDS_WORK.
@@ -148,36 +154,31 @@ This is a **procedure change for reviewers**, not a machine change.
 
 ### Artifact lifecycle and statefulness
 
-#### R5: state.yaml as sole lifecycle authority
+#### R5: state.yaml as durable lifecycle authority
 
-State.yaml is the sole authority on artifact lifecycle — not file existence on
-disk. Each tracked artifact (input, requirements, implementation_plan, demo)
-has a lifecycle entry recording:
+State.yaml is the durable authority on artifact lifecycle, rather than
+inferring lifecycle solely from file existence on disk. Each tracked artifact
+(input, requirements, implementation plan, demo) records metadata covering its
+current digest, when it was produced, when downstream phases consumed it, and
+whether upstream changes invalidated it.
 
-- **digest**: content hash of the file on disk.
-- **consumed_at / consumed_by / consumed_digest**: when a downstream phase
-  consumed this artifact, which phase consumed it, and the hash at that time.
-- **derived_at / derived_by**: when and by which phase the artifact was produced.
-- **invalidated_at**: set when an upstream artifact changed, cascading staleness.
-
-**Ghost artifact protection:** If a file exists on disk but `derived_at` is
-null in state.yaml, the machine treats it as not produced. This is a field
-check — the same mechanical pattern as file-existence checking, but richer.
+**Ghost artifact protection:** If a file exists on disk but its lifecycle
+metadata does not show it as produced, the machine treats it as not produced.
 Aborted sessions cannot leave phantom artifacts that confuse routing.
 
-**Who writes lifecycle fields:** Workers call helper functions (R8) after
-producing or consuming artifacts. The machine never writes lifecycle fields
-except for staleness invalidation (R6).
+**Who writes lifecycle metadata:** Workers use shared bookkeeping helpers after
+producing or consuming artifacts. The machine only performs the mechanical
+staleness invalidation described in R6.
 
 #### R6: Staleness detection and invalidation cascade
 
 On every `telec todo prepare` call, the machine recomputes artifact digests
-from disk and compares against recorded digests. If an upstream artifact's
-current digest differs from its `consumed_digest`, all downstream artifacts
-are marked `invalidated_at`. The machine returns a re-grounding instruction
-for the earliest invalidated phase.
+from disk and compares against the recorded digest from the last downstream
+consumption. If an upstream artifact changed, all downstream artifacts are
+marked stale. The machine returns a re-grounding instruction for the earliest
+invalidated phase.
 
-The cascade order: input → requirements → implementation_plan → demo. A change
+The cascade order: input → requirements → implementation plan → demo. A change
 to input invalidates everything downstream. A change to requirements
 invalidates the plan and demo but not input.
 
@@ -185,40 +186,30 @@ This is mechanical hash comparison — no content judgment.
 
 #### R7: Per-phase audit trail
 
-Each phase has its own audit record: `started_at` and `completed_at`
-timestamps. Review phases additionally carry `verdict`, `rounds`, and
-structured `findings` (each with id, severity, status, summary).
+Each phase has its own audit record with start/end timestamps. Review phases
+additionally carry verdict, rounds, and structured finding records.
 
 The machine stamps `started_at` when it produces a dispatch instruction and
 `completed_at` when it reads the returned verdict. This is bookkeeping.
 
-The existing `prepare_phase` field remains the routing field. The `phases`
-dict is the audit trail — richer bookkeeping for observability and debugging,
-not a replacement for `prepare_phase`. [inferred]
+The existing `prepare_phase` field remains the routing field. The audit trail is
+additional bookkeeping for observability and debugging, not a replacement for
+`prepare_phase`. [inferred]
 
 #### R8: Helper functions for atomic bookkeeping
 
-Agents do not write raw lifecycle fields. They call helpers:
-
-- `mark_artifact_produced(slug, artifact_name)` — hashes the file, sets digest
-  and derived_at atomically.
-- `mark_artifact_consumed(slug, artifact_name, consumed_by)` — records
-  consumed_at, consumed_by, consumed_digest.
-- `check_artifact_staleness(slug)` — compares current digests against recorded
-  digests, returns invalidation cascade if stale.
-- `record_finding(slug, phase, severity, summary)` — appends structured finding.
-- `resolve_finding(slug, phase, finding_id)` — marks finding as resolved.
+Agents do not write lifecycle or review bookkeeping ad hoc. Shared helpers
+handle artifact production, artifact consumption, staleness detection, and
+finding record/resolution atomically.
 
 These helpers are the mechanical guarantee that bookkeeping happens. Workers
-call them. The machine calls `check_artifact_staleness()` on each prepare
-invocation.
+call them. The machine invokes the staleness check on each prepare invocation.
 
 #### R9: Schema migration
 
-Existing todos with schema_version 1 continue to work. `read_phase_state()`
-deep-merges defaults for the new nested structures. A `schema_version: 2`
-field distinguishes old from new. The machine handles both schemas
-transparently — no manual migration step required.
+Existing todos continue to work. Schema versioning and default-merge behavior
+handle both the old and new state shapes transparently — no manual migration
+step required.
 
 ### Split inheritance
 
@@ -292,8 +283,8 @@ All events registered in the event vocabulary spec.
 #### R14: Backward compatibility
 
 [inferred] Existing todos without lifecycle fields in state.yaml continue to
-work. Schema_version 1 todos are handled transparently by `read_phase_state()`
-deep-merging defaults.
+work. Older state shapes are handled transparently by the existing default-merge
+read path.
 
 #### R15: Documentation updates
 
@@ -322,19 +313,19 @@ split behavior changes.
 
 ### Artifact lifecycle
 
-- [ ] input.md lifecycle shows `consumed_at` and `consumed_digest` after
-      discovery consumes it.
+- [ ] input.md lifecycle metadata records consumption after discovery consumes
+      it.
 - [ ] Modifying input.md after consumption triggers invalidation cascade —
       requirements, plan, demo marked invalidated, machine routes to
       re-grounding.
-- [ ] requirements.md on disk with no `derived_at` in state.yaml is treated
-      as not produced (ghost artifact protection).
-- [ ] `mark_artifact_produced()`, `mark_artifact_consumed()`,
-      `check_artifact_staleness()` helpers exist and are used by all workers.
-- [ ] Each phase has started_at, completed_at in state.yaml. Review phases
-      have verdict, rounds, structured findings.
-- [ ] Schema_version 1 todos continue to work — `read_phase_state()`
-      deep-merges defaults.
+- [ ] requirements.md on disk with no produced lifecycle metadata is treated as
+      not produced (ghost artifact protection).
+- [ ] Shared artifact lifecycle bookkeeping helpers exist and are used by all
+      workers.
+- [ ] Each phase has start/end audit metadata in state.yaml. Review phases have
+      verdict, rounds, and structured findings.
+- [ ] Older todos continue to work through schema-version compatibility and
+      default-merge behavior.
 
 ### Split inheritance
 
@@ -364,7 +355,7 @@ split behavior changes.
 ## Constraints
 
 - The prepare state machine remains stateless — it derives routing from
-  state.yaml fields and file existence on disk. No in-memory state between
+  durable metadata and current files on disk, with no in-memory state between
   calls. The richer schema does not change this invariant. [inferred]
 - The machine never reads artifact content or judges quality. All content
   decisions belong to workers. [inferred]
