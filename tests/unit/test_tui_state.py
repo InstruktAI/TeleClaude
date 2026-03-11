@@ -172,7 +172,7 @@ def test_agent_activity_tool_done_signals_timer_reset() -> None:
 def test_set_animation_mode() -> None:
     """SET_ANIMATION_MODE intent should update animation mode if valid."""
     state = TuiState()
-    assert state.animation_mode == "periodic"
+    assert state.animation_mode == "off"
 
     # Valid modes
     reduce_state(state, Intent(IntentType.SET_ANIMATION_MODE, {"mode": "party"}))

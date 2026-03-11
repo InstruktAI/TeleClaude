@@ -86,7 +86,7 @@ class TuiState:
     sessions: SessionViewState = field(default_factory=SessionViewState)
     preparation: PreparationViewState = field(default_factory=PreparationViewState)
     config: ConfigViewState = field(default_factory=ConfigViewState)
-    animation_mode: Literal["off", "periodic", "party"] = "periodic"  # "off", "periodic", "party"
+    animation_mode: Literal["off", "periodic", "party"] = "off"  # "off", "periodic", "party"
 
 
 class IntentType(str, Enum):

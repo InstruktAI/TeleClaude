@@ -78,7 +78,7 @@ def test_load_missing_file_seeds_status_bar_defaults(monkeypatch, tmp_path) -> N
 
     loaded = state_store.load_state()
 
-    assert loaded["status_bar"]["animation_mode"] == "periodic"
+    assert loaded["status_bar"]["animation_mode"] == "off"
     assert loaded["status_bar"]["pane_theming_mode"] == "off"
 
 
@@ -91,7 +91,7 @@ def test_load_namespaced_state_fills_missing_status_bar_defaults(monkeypatch, tm
     state_path.write_text(json.dumps({"sessions": {}, "status_bar": {}}), encoding="utf-8")
     loaded = state_store.load_state()
 
-    assert loaded["status_bar"]["animation_mode"] == "periodic"
+    assert loaded["status_bar"]["animation_mode"] == "off"
     assert loaded["status_bar"]["pane_theming_mode"] == "highlight2"
 
 

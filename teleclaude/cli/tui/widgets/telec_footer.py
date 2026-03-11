@@ -165,7 +165,7 @@ class TelecFooter(Widget):
     chiptunes_pending_command_id = reactive("")
     chiptunes_pending_action = reactive("")
     chiptunes_favorited = reactive(False)
-    animation_mode = reactive("periodic")
+    animation_mode = reactive("off")
     pane_theming_mode = reactive("off")
     persistence_key = "status_bar"
 

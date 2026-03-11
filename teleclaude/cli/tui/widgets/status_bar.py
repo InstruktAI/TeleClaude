@@ -33,7 +33,7 @@ class StatusBar(TelecMixin, Widget):
     """
 
     tts_enabled = reactive(False)
-    animation_mode = reactive("periodic")
+    animation_mode = reactive("off")
     pane_theming_mode = reactive("off")
     persistence_key = "status_bar"
 

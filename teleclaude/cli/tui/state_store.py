@@ -29,7 +29,7 @@ _FLAT_FORMAT_KEYS = (
 def _normalize_animation_mode(value: object) -> str:
     if isinstance(value, str) and value in {"off", "periodic", "party"}:
         return value
-    return "periodic"
+    return "off"
 
 
 def _normalize_pane_theming_mode(value: object) -> str:
