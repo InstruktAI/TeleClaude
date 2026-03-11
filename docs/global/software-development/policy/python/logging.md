@@ -95,6 +95,14 @@ Changes target path to: `$INSTRUKT_AI_LOG_ROOT/{app}/{app}.log`
 - Entire payloads in production (use TRACE if needed)
 - Success/failure of every minor operation (aggregate instead)
 
+**Identifier integrity:**
+
+- Never truncate UUIDs or identifiers in log fields or format strings. Use the full value.
+- Correct: `logger.info("session started", session_id=session_id)`
+- Wrong: `logger.info("session started", session_id=session_id[:8])`
+- Applies to all ID variables: `session_id`, `native_session_id`, `operation_id`, `voice_id`,
+  `message_id`, and any future identifier.
+
 1. Configure logging once at process start with `configure_logging(...)`.
 2. Use structured key/value logging via the shared logger.
 3. Set `{ENV_PREFIX}_LOG_LEVEL` and third-party log filters as needed.

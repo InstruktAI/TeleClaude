@@ -78,3 +78,11 @@ Recovery outcome:
 - TMUX route trusts marker content by contract; it does not validate DB session existence.
 - Native fields may be missing in some events; logic must handle that safely.
 - This file is only useful if kept in sync with receiver + mapping code behavior.
+
+**Identity representation invariant:** The full UUID must be used in every context where a
+session ID appears — log fields, structured log kwargs, message bodies, notification text,
+error strings, exception messages, and API response bodies. Truncation (`[:8]`, `[:12]`, or
+any other slice) is never permitted on session, operation, or native IDs. The only permitted
+exception: tmux session name labels (`tc_{session_id[:8]}`), which are UI display identifiers
+and are never used as API keys or lookup values. Reviewers must reject any diff that introduces
+`[:8]` or similar truncation on an identifier variable.
