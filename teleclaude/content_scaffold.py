@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import ssl
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
+import redis
 import yaml
 
+from teleclaude.config import config
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 logger = logging.getLogger(__name__)
@@ -57,11 +61,19 @@ def _emit_content_dumped(  # pyright: ignore[reportUnusedFunction]  # used by te
     Guarded: prints a warning and continues if Redis is unavailable.
     """
     try:
-        import json
+        if not config.redis.enabled:
+            return
 
-        import redis
+        kwargs: dict[str, object] = {
+            "decode_responses": False,
+            "socket_connect_timeout": 2,
+        }
+        if config.redis.url.startswith("rediss://"):
+            kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
+        if config.redis.password:
+            kwargs["password"] = config.redis.password
 
-        r = redis.Redis(host="localhost", port=6379, db=0, socket_connect_timeout=2)
+        r = redis.Redis.from_url(config.redis.url, **kwargs)
         payload: _EventPayload = {
             "event": "content.dumped",
             "inbox_path": inbox_path,
