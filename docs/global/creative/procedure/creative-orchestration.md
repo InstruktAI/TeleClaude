@@ -3,7 +3,7 @@ id: 'creative/procedure/creative-orchestration'
 type: 'procedure'
 domain: 'creative'
 scope: 'global'
-description: 'Drive the creative state machine: dispatch workers, park at human gates, advance through design system and visual artifact phases.'
+description: 'Drive the creative state machine: dispatch workers, park at human gates, advance through design spec and visual artifact phases.'
 ---
 
 # Creative Orchestration — Procedure
@@ -30,7 +30,7 @@ between the stateless machine and the interactive creative process.
 1. `todos/roadmap.yaml` exists.
 2. Target slug is active and flagged for creative work.
 3. `todos/{slug}/input.md` exists with human thinking.
-4. The human is available for interactive participation (design system
+4. The human is available for interactive participation (design spec
    confirmation and visual review require human presence).
 
 ## Steps
@@ -45,28 +45,28 @@ The machine returns one of the following instruction types:
 
 #### DESIGN_DISCOVERY_REQUIRED
 
-`design-system.md` does not exist. The human needs to participate in design
+`design-spec.md` does not exist. The human needs to participate in design
 discovery.
 
 **Action**: open an interactive session. This is not a background dispatch — the
 human participates directly. The session follows the design discovery procedure:
-dialogue, reference analysis, synthesis, and writing `design-system.md`.
+dialogue, reference analysis, synthesis, and writing `design-spec.md`.
 
 The orchestrator may run this session itself (if the human is present in the
 current conversation) or dispatch a dedicated discovery session that the human
 joins.
 
-After `design-system.md` is written, call the machine again.
+After `design-spec.md` is written, call the machine again.
 
 #### DESIGN_SYSTEM_PENDING_CONFIRMATION
 
-`design-system.md` exists but the human has not confirmed it.
+`design-spec.md` exists but the human has not confirmed it.
 
-**Action**: present the design system to the human. Highlight any `[proposed]`
+**Action**: present the design spec to the human. Highlight any `[proposed]`
 values that need their input. Ask for one of:
 
 - **Confirm**: mark `creative.design_system.confirmed: true` in `state.yaml`.
-- **Revise**: collect feedback, update `design-system.md`, present again.
+- **Revise**: collect feedback, update `design-spec.md`, present again.
 
 Do not advance until the human explicitly confirms. This is a blocking gate.
 
@@ -90,10 +90,10 @@ Select the agent based on the agent characteristics concept. Gemini is the
 default choice for creative/visual work. Claude or Codex are alternatives
 when the visual design requires more structural rigor.
 
-**Multi-agent bake-off** (when the human requests it or the design system
+**Multi-agent bake-off** (when the human requests it or the design spec
 indicates high creative ambiguity):
 
-Dispatch 2-3 agents in parallel, each with the same design system constraint.
+Dispatch 2-3 agents in parallel, each with the same design spec constraint.
 Each agent writes to `todos/{slug}/visuals/{agent-name}/`.
 
 ```
@@ -155,7 +155,7 @@ CHECK_APPROVAL. The human reviews again. This loop continues until approval.
 
 Track iteration count in `state.yaml` (`creative.visuals.iteration_count`).
 If iterations exceed 3 without convergence, surface this to the human —
-the design system may need refinement rather than the visuals.
+the design spec may need refinement rather than the visuals.
 
 #### CREATIVE_COMPLETE
 
@@ -163,10 +163,10 @@ Terminal state. All creative artifacts are confirmed and approved.
 
 **Action**:
 - End all creative worker sessions.
-- Report to the human: design system confirmed, visuals approved, ready for
+- Report to the human: design spec confirmed, visuals approved, ready for
   prepare phase.
 - The todo can now enter the prepare machine. Requirements discovery will
-  reference both `design-system.md` and the approved visuals.
+  reference both `design-spec.md` and the approved visuals.
 
 #### BLOCKER
 
@@ -211,7 +211,7 @@ defaults, no "assuming approval." The human decides.
 
 ## Outputs
 
-1. Confirmed `todos/{slug}/design-system.md`.
+1. Confirmed `todos/{slug}/design-spec.md`.
 2. Approved visual artifacts in `todos/{slug}/visuals/`.
 3. Updated `state.yaml` with creative phase completion markers.
 4. All worker sessions ended on completion.
@@ -227,9 +227,9 @@ defaults, no "assuming approval." The human decides.
 3. If cherry-picking from a bake-off produces visual inconsistency (e.g.,
    Gemini's hero with Claude's footer in different visual registers),
    dispatch a harmonization pass where one agent reviews the merged set
-   against the design system and smooths transitions.
-4. If the design system changes after visuals are approved, the orchestrator
-   must re-validate. Diff the design system tokens against the visual
+   against the design spec and smooths transitions.
+4. If the design spec changes after visuals are approved, the orchestrator
+   must re-validate. Diff the design spec tokens against the visual
    artifact CSS custom properties. If they diverge, the visuals need
    iteration — mark `creative.visuals.approved: false` and re-enter the
    approval loop.

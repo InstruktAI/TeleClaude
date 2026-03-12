@@ -3,14 +3,14 @@ id: 'creative/spec/visual-artifact'
 type: 'spec'
 domain: 'creative'
 scope: 'global'
-description: 'Interchange format for visual artifacts: self-contained HTML+CSS files with CSS-only animations, constrained by a design system.'
+description: 'Interchange format for visual artifacts: self-contained HTML+CSS files with CSS-only animations, constrained by a design spec.'
 ---
 
 # Visual Artifact — Spec
 
 ## Required reads
 
-@~/.teleclaude/docs/creative/spec/design-system.md
+@~/.teleclaude/docs/creative/spec/design-spec.md
 
 ## What it is
 
@@ -25,8 +25,8 @@ Astro, Next.js, etc.). The artifact captures what things look like and how they 
 The builder adds the wiring: routing, data, state, server rendering.
 
 Visual artifacts live in `todos/{slug}/visuals/` alongside other todo artifacts.
-They are constrained by `todos/{slug}/design-system.md` — every visual choice in
-the artifact must trace back to the design system.
+They are constrained by `todos/{slug}/design-spec.md` — every visual choice in
+the artifact must trace back to the design spec.
 
 ## Canonical fields
 
@@ -164,9 +164,9 @@ what to use instead.
 
 ### Design system fidelity
 
-Every visual choice must trace to `design-system.md`:
+Every visual choice must trace to `design-spec.md`:
 
-- Colors: use CSS custom properties that map to the design system palette.
+- Colors: use CSS custom properties that map to the design spec palette.
   Define them at the top of `<style>`:
 
   ```css
@@ -174,17 +174,17 @@ Every visual choice must trace to `design-system.md`:
     --primary: #1a1a2e;
     --accent: #e94560;
     --text: #eaeaea;
-    /* ... all from design-system.md */
+    /* ... all from design-spec.md */
   }
   ```
 
 - Typography: font families, sizes, weights, and line heights from the design
-  system's type scale.
-- Spacing: values from the design system's spacing scale.
-- Motion: easing curves and durations from the design system's transition vocabulary.
+  spec's type scale.
+- Spacing: values from the design spec's spacing scale.
+- Motion: easing curves and durations from the design spec's transition vocabulary.
 
-If a value does not exist in the design system, the creative agent must not invent
-it. Either propose an addition to the design system (marked `[proposed]` in the
+If a value does not exist in the design spec, the creative agent must not invent
+it. Either propose an addition to the design spec (marked `[proposed]` in the
 artifact) or use the closest existing value.
 
 ### Accessibility baseline
@@ -228,7 +228,7 @@ artifact) or use the closest existing value.
 - Visual artifacts intentionally exclude responsive behavior beyond basic
   viewport meta. The builder implements full responsive design during
   translation. The artifact represents the primary (desktop) viewport unless
-  the design system specifies mobile-first.
+  the design spec specifies mobile-first.
 - The `file://` rendering constraint means no server-side features (no
   fetch, no dynamic routing, no SSR). This is intentional — the artifact
   is a visual reference, not a running application.

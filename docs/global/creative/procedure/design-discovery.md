@@ -3,21 +3,21 @@ id: 'creative/procedure/design-discovery'
 type: 'procedure'
 domain: 'creative'
 scope: 'global'
-description: 'Translate human visual thinking into a grounded design system document through structured dialogue and reference analysis.'
+description: 'Translate human visual thinking into a grounded design spec through structured dialogue and reference analysis.'
 ---
 
 # Design Discovery — Procedure
 
 ## Required reads
 
-@~/.teleclaude/docs/creative/spec/design-system.md
+@~/.teleclaude/docs/creative/spec/design-spec.md
 
 ## Goal
 
-Produce a concrete design system document (`design-system.md`) as a todo artifact
-from human visual intent. The document must be specific enough that any builder
-agent — regardless of which AI model — produces a cohesive, distinctive result
-that the human recognizes as *their* vision, not a generic interpretation.
+Produce a concrete design spec (`design-spec.md`) as a todo artifact from human
+visual intent. The document must be specific enough that any builder agent —
+regardless of which AI model — produces a cohesive, distinctive result that the
+human recognizes as *their* vision, not a generic interpretation.
 
 This procedure bridges the gap between "I want something beautiful" and a language
 artifact that constrains and guides implementation. It is the creative equivalent
@@ -28,7 +28,7 @@ coherent.
 
 1. A todo exists with `input.md` containing the human's initial thinking.
 2. The human is available for dialogue (this is an interactive procedure).
-3. The design system spec (`creative/spec/design-system`) is loaded for reference.
+3. The design spec schema (`creative/spec/design-spec`) is loaded for reference.
 4. If visual references exist (URLs, screenshots, repos), they are accessible.
 
 ## Steps
@@ -118,7 +118,7 @@ Key areas to cover through dialogue:
 ### 4. Analyze and synthesize
 
 After dialogue converges, synthesize the findings into structured design
-decisions. For each section of the design system spec:
+decisions. For each section of the design spec schema:
 
 - Map the human's expressed intent to concrete values.
 - Where the human expressed a direction but not specifics (e.g., "warm colors"),
@@ -128,9 +128,9 @@ decisions. For each section of the design system spec:
 - Flag any sections where the human's intent is still ambiguous — these are
   explicit gaps, not things to silently fill.
 
-### 5. Write the design system document
+### 5. Write the design spec
 
-Write `todos/{slug}/design-system.md` following the design system spec schema.
+Write `todos/{slug}/design-spec.md` following the design spec schema.
 Every canonical section must be present. The document must:
 
 - Be self-contained: a builder reading only this document and `input.md` should
@@ -142,7 +142,7 @@ Every canonical section must be present. The document must:
 
 ### 6. Validate with the human
 
-Present the complete design system document to the human. Walk through each
+Present the complete design spec to the human. Walk through each
 section, highlighting:
 
 - Proposed values that need confirmation or revision.
@@ -153,20 +153,20 @@ Iterate until the human confirms the document captures their vision.
 
 ### 7. Update todo state
 
-Once the design system is confirmed:
+Once the design spec is confirmed:
 
-- The `design-system.md` artifact exists in the todo folder.
+- The `design-spec.md` artifact exists in the todo folder.
 - Update `input.md` if the discovery dialogue surfaced new intent that
   supersedes the original input.
 - The todo is now ready for requirements discovery, which can reference
-  the design system as a grounding artifact.
+  the design spec as a grounding artifact.
 
 ## Outputs
 
-1. `todos/{slug}/design-system.md` — the concrete design system instance,
-   following the `creative/spec/design-system` schema.
+1. `todos/{slug}/design-spec.md` — the concrete design spec instance,
+   following the `creative/spec/design-spec` schema.
 2. Updated `todos/{slug}/input.md` if discovery surfaced new or revised intent.
-3. Human confirmation that the design system captures their vision.
+3. Human confirmation that the design spec captures their vision.
 
 ## Recovery
 
@@ -180,6 +180,6 @@ Once the design system is confirmed:
    wins unconditionally. The agent's role is to articulate options with
    rationale, not to override aesthetic judgment.
 4. If no visual references are available and the human's description is too
-   abstract for concrete values, write the design system with explicit
+   abstract for concrete values, write the design spec with explicit
    `[TBD — needs reference]` markers rather than inventing values that may
    miss the mark.

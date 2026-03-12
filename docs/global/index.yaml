@@ -2,7 +2,7 @@ project_root: /Users/Morriz/.teleclaude
 snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
 - id: creative/design/creative-machine
-  description: 'State machine architecture for the creative lifecycle: design system
+  description: 'State machine architecture for the creative lifecycle: design spec
     discovery through visual artifact approval.'
   type: design
   scope: global
@@ -12,7 +12,7 @@ snippets:
   source_project: TeleClaude
 - id: creative/policy/visual-constraints
   description: 'Rules governing visual artifact production: CSS-only animations, design
-    system fidelity, no external dependencies.'
+    spec fidelity, no external dependencies.'
   type: policy
   scope: global
   path: docs/creative/policy/visual-constraints.md
@@ -21,7 +21,7 @@ snippets:
   source_project: TeleClaude
 - id: creative/procedure/creative-orchestration
   description: 'Drive the creative state machine: dispatch workers, park at human
-    gates, advance through design system and visual artifact phases.'
+    gates, advance through design spec and visual artifact phases.'
   type: procedure
   scope: global
   path: docs/creative/procedure/creative-orchestration.md
@@ -29,8 +29,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: creative/procedure/design-discovery
-  description: Translate human visual thinking into a grounded design system document
-    through structured dialogue and reference analysis.
+  description: Translate human visual thinking into a grounded design spec through
+    structured dialogue and reference analysis.
   type: procedure
   scope: global
   path: docs/creative/procedure/design-discovery.md
@@ -39,25 +39,25 @@ snippets:
   source_project: TeleClaude
 - id: creative/procedure/visual-drafting
   description: Produce self-contained HTML+CSS visual artifacts from a confirmed design
-    system document.
+    spec.
   type: procedure
   scope: global
   path: docs/creative/procedure/visual-drafting.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: creative/spec/design-system
-  description: Schema for design system documents that anchor visual identity and
-    constrain agent-generated UI.
+- id: creative/spec/design-spec
+  description: Schema for design specification artifacts that anchor visual identity
+    and constrain agent-generated UI.
   type: spec
   scope: global
-  path: docs/creative/spec/design-system.md
+  path: docs/creative/spec/design-spec.md
   role: member
   visibility: internal
   source_project: TeleClaude
 - id: creative/spec/visual-artifact
   description: 'Interchange format for visual artifacts: self-contained HTML+CSS files
-    with CSS-only animations, constrained by a design system.'
+    with CSS-only animations, constrained by a design spec.'
   type: spec
   scope: global
   path: docs/creative/spec/visual-artifact.md
@@ -376,6 +376,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/procedure/brainstorming
+  description: Refine ideas into explicit, approved designs through focused questioning
+    and trade-off analysis before writing implementation code.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/brainstorming.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/doc-snippet-authoring
   description: Author documentation snippets according to the taxonomy and schema.
   type: procedure
@@ -435,15 +444,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/skill-authoring.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/socratic-design-refinement
-  description: Refine ideas into explicit, approved designs through focused questioning
-    and trade-off analysis before writing implementation code.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/socratic-design-refinement.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -774,88 +774,21 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle-overview
-  description: Deterministic software development lifecycle with prepare, build, review,
-    fix, finalize, demo, and maintenance phases. Serial workflow managed by Orchestrator.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle-overview.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/bugs-fix
-  description: Bug fix phase. Investigate, document, fix, and verify a reported bug
-    in a worktree.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/bugs-fix.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/build
-  description: Build phase. Execute implementation plan tasks, commit per task, and
-    manage deferrals.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/build.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/deferrals
-  description: Process deferrals, create new todos, and mark deferrals as processed.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/deferrals.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/demo
-  description: Create demo.md artifacts during build and present them to celebrate
-    delivery.
-  type: procedure
-  scope: project
-  path: docs/software-development/procedure/lifecycle/demo.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/documentation/sync-docs
-  description: Sync docs and indexes after documentation changes.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/documentation/sync-docs.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/documentation/sync-docstrings
-  description: Update inline docstrings and comments to match current code behavior.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/finalize
-  description: 'Finalize phase. Two-stage finalize: worker prepare, orchestrator apply.'
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/finalize.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/fix-review
-  description: Fix phase. Address review findings with minimal changes and re-verify.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/fix-review.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/integration
+- id: software-development/procedure/lifecycle/integrate
   description: Integration phase. Drive the integration state machine, handle squash
     commits, conflicts, push rejections, and lease contention.
   type: procedure
   scope: domain
-  path: docs/software-development/procedure/lifecycle/integration.md
+  path: docs/software-development/procedure/lifecycle/integrate.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/overview
+  description: 'Software development lifecycle. Three-stage model: prepare, work,
+    integrate.'
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/overview.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -868,21 +801,75 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/refine-input
+- id: software-development/procedure/lifecycle/prepare/discipline
+  description: Behavioral primer for preparation work. Activates quality discipline
+    before the agent acts.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/prepare/discipline.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/prepare/discovery
+  description: Requirements discovery phase for next-prepare. Produces requirements
+    from input using solo or triangulated discovery.
+  type: procedure
+  scope: global
+  path: docs/software-development/procedure/lifecycle/prepare/discovery.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/prepare/overview
+  description: Prepare stage overview. Orchestrator loop driving the prepare state
+    machine through discovery, review, drafting, gate, and grounding phases.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/prepare/overview.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/prepare/plan-draft
+  description: Plan drafting phase for next-prepare. Produces implementation plans
+    from approved requirements and splits the work when planning shows it is not atomic.
+  type: procedure
+  scope: global
+  path: docs/software-development/procedure/lifecycle/prepare/plan-draft.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/prepare/readiness-gate
+  description: Gate phase for next-prepare. Performs formal DOR validation on the
+    complete artifact set and is the only phase allowed to drive readiness decisions.
+  type: procedure
+  scope: global
+  path: docs/software-development/procedure/lifecycle/prepare/readiness-gate.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/prepare/refine-input
   description: Refine input phase. Capture evolving human thinking about a todo and
     crystallize it into input.md, then invalidate grounding.
   type: procedure
   scope: domain
-  path: docs/software-development/procedure/lifecycle/refine-input.md
+  path: docs/software-development/procedure/lifecycle/prepare/refine-input.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/review
-  description: Review phase. Verify requirements, code quality, tests, and deliver
-    verdict with findings.
+- id: software-development/procedure/lifecycle/prepare/review-plan
+  description: Plan review phase. Validate implementation-plan.md against policies,
+    DoD gates, and review lane expectations.
   type: procedure
   scope: domain
-  path: docs/software-development/procedure/lifecycle/review.md
+  path: docs/software-development/procedure/lifecycle/prepare/review-plan.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/prepare/review-requirements
+  description: Requirements review phase. Validate requirements.md against quality
+    standard and write verdict to state.yaml.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/prepare/review-requirements.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -901,6 +888,93 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/review-requirements.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/bug-fix
+  description: Bug fix phase. Investigate, document, fix, and verify a reported bug
+    in a worktree.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/bug-fix.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/build
+  description: Build phase. Execute implementation plan tasks, commit per task, and
+    manage deferrals.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/build.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/deferrals
+  description: Process deferrals, create new todos, and mark deferrals as processed.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/deferrals.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/demo
+  description: Create demo.md artifacts during build and present them to celebrate
+    delivery.
+  type: procedure
+  scope: project
+  path: docs/software-development/procedure/lifecycle/work/demo.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/finalize
+  description: 'Finalize phase. Two-stage finalize: worker prepare, orchestrator apply.'
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/finalize.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/fix-review
+  description: Fix phase. Address review findings with minimal changes and re-verify.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/fix-review.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/overview
+  description: Work stage overview. Build, review, fix, finalize cycle driven by the
+    work state machine.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/overview.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/principle-violation-hunt
+  description: Hunt for code that violates documented design principles. Surface structural
+    issues that a surface review would miss.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/review
+  description: Review phase. Verify requirements, code quality, tests, and deliver
+    verdict with findings.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/review.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/work/silent-failure-audit
+  description: Audit error handling paths to identify silent failures, inadequate
+    logging, and inappropriate fallback behavior.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -948,15 +1022,6 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/maintenance/maintenance-cadence
-  description: Weekly and monthly maintenance cadence for small teams that need high
-    stability with low process overhead.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/maintenance-cadence.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
 - id: software-development/procedure/maintenance/next-prepare
   description: Orchestration procedure for next-prepare. Calls the prepare state machine
     in a loop, dispatching workers as instructed until the todo is prepared.
@@ -990,42 +1055,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/software-development/procedure/maintenance/next-prepare-gate.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/maintenance/overview
-  description: 'Maintenance operating model: practical rules for stability, backlog
-    quality, and continuous operational learning.'
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/overview.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/maintenance/release-and-stabilization-rhythm
-  description: Small-team release rhythm that prioritizes stability with lightweight
-    checks and clear rollback triggers.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/release-and-stabilization-rhythm.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/preparation-discipline
-  description: Behavioral primer for preparation work. Activates quality discipline
-    before the agent acts.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/preparation-discipline.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/principle-violation-hunt
-  description: Hunt for code that violates documented design principles. Surface structural
-    issues that a surface review would miss.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/principle-violation-hunt.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -1096,15 +1125,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/vite.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/silent-failure-audit
-  description: Audit error handling paths to identify silent failures, inadequate
-    logging, and inappropriate fallback behavior.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/silent-failure-audit.md
   role: member
   visibility: internal
   source_project: TeleClaude

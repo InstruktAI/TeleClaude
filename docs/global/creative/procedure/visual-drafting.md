@@ -3,7 +3,7 @@ id: 'creative/procedure/visual-drafting'
 type: 'procedure'
 domain: 'creative'
 scope: 'global'
-description: 'Produce self-contained HTML+CSS visual artifacts from a confirmed design system document.'
+description: 'Produce self-contained HTML+CSS visual artifacts from a confirmed design spec.'
 ---
 
 # Visual Drafting — Procedure
@@ -12,30 +12,30 @@ description: 'Produce self-contained HTML+CSS visual artifacts from a confirmed 
 
 @~/.teleclaude/docs/creative/spec/visual-artifact.md
 @~/.teleclaude/docs/creative/policy/visual-constraints.md
-@~/.teleclaude/docs/creative/spec/design-system.md
+@~/.teleclaude/docs/creative/spec/design-spec.md
 
 ## Goal
 
 Produce visual artifacts — self-contained HTML+CSS files — that faithfully express
-a confirmed design system for a specific project. The artifacts are visual references
+a confirmed design spec for a specific project. The artifacts are visual references
 that a builder will translate into the target framework.
 
 The creative agent's job is visual thinking in code: layout, color, typography,
 spatial rhythm, and motion. Not application logic, not component architecture,
-not responsiveness. Pure visual expression within the design system's boundaries.
+not responsiveness. Pure visual expression within the design spec's boundaries.
 
 ## Preconditions
 
-1. `todos/{slug}/design-system.md` exists and is confirmed by the human.
+1. `todos/{slug}/design-spec.md` exists and is confirmed by the human.
 2. `todos/{slug}/input.md` exists with project context.
-3. Reference images or screenshots are available if the design system references them.
+3. Reference images or screenshots are available if the design spec references them.
 4. The visual artifact spec and visual constraints policy are loaded.
 
 ## Steps
 
-### 1. Absorb the design system
+### 1. Absorb the design spec
 
-Read `todos/{slug}/design-system.md` completely. Internalize:
+Read `todos/{slug}/design-spec.md` completely. Internalize:
 
 - The CSS custom properties you will define (colors, fonts, spacing).
 - The motion vocabulary — which animation techniques are specified, what
@@ -60,34 +60,34 @@ For a one-page scroller, typical sections might be:
 - `cta.html` — the call to action, the resolution.
 - `footer.html` — navigation, links, legal.
 
-The actual sections come from the input and design system. Do not invent sections
+The actual sections come from the input and design spec. Do not invent sections
 the human did not ask for. If the input says "three sections," produce three files.
 
 ### 3. Build the CSS foundation first
 
-Start each file by defining the design system tokens as CSS custom properties:
+Start each file by defining the design spec tokens as CSS custom properties:
 
 ```css
 :root {
-  /* Colors — from design-system.md section 3 */
+  /* Colors — from design-spec.md section 3 */
   --primary: #...;
   --accent: #...;
   --bg: #...;
   --text: #...;
 
-  /* Typography — from design-system.md section 4 */
+  /* Typography — from design-spec.md section 4 */
   --font-heading: '...', sans-serif;
   --font-body: '...', sans-serif;
   --font-mono: '...', monospace;
 
-  /* Spacing — from design-system.md section 5 */
+  /* Spacing — from design-spec.md section 5 */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 32px;
   --space-xl: 64px;
 
-  /* Motion — from design-system.md section 6 */
+  /* Motion — from design-spec.md section 6 */
   --ease-default: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 150ms;
   --duration-normal: 300ms;
@@ -95,7 +95,7 @@ Start each file by defining the design system tokens as CSS custom properties:
 }
 ```
 
-Every value here must be traceable to the design system document. Copy the exact
+Every value here must be traceable to the design spec document. Copy the exact
 values — do not approximate, round, or "improve" them.
 
 ### 4. Layer the visual design
@@ -103,16 +103,16 @@ values — do not approximate, round, or "improve" them.
 Build each section in this order:
 
 1. **Structure**: semantic HTML elements, content hierarchy, placeholder copy
-   that matches the design system's content tone.
+   that matches the design spec's content tone.
 2. **Typography**: apply font families, sizes, weights, line heights from the
-   design system's type scale. Get the text feeling right before touching color.
+   design spec's type scale. Get the text feeling right before touching color.
 3. **Spacing**: apply the spacing scale. Establish the spatial rhythm between
    elements. This is where the section starts to breathe (or feel dense, per
-   the design system's intent).
+   the design spec's intent).
 4. **Color**: apply the palette. Background, text, accents, borders. Check
    contrast ratios as you go.
 5. **Motion**: add CSS animations last. Scroll-driven reveals, hover transitions,
-   decorative keyframe loops. Follow the design system's motion philosophy —
+   decorative keyframe loops. Follow the design spec's motion philosophy —
    if it says "animation is rare and meaningful," use restraint.
 
 This layering order prevents the common failure where agents produce something
@@ -148,7 +148,7 @@ Add the `prefers-reduced-motion` override at the end of every file.
 
 ### 6. Annotate non-CSS motion
 
-If the design system specifies motion that CSS cannot express, add `data-motion-*`
+If the design spec specifies motion that CSS cannot express, add `data-motion-*`
 attributes to the relevant elements. Include the best possible CSS approximation
 in the stylesheet so the artifact still demonstrates the intent visually.
 
@@ -157,13 +157,13 @@ in the stylesheet so the artifact still demonstrates the intent visually.
 Before delivering, check each artifact against:
 
 - [ ] Opens in browser via `file://` — no errors, no blank sections.
-- [ ] Every color value matches a design system custom property.
-- [ ] Every font, size, and weight matches the design system type scale.
-- [ ] Spacing follows the design system scale — no magic numbers.
+- [ ] Every color value matches a design spec custom property.
+- [ ] Every font, size, and weight matches the design spec type scale.
+- [ ] Spacing follows the design spec scale — no magic numbers.
 - [ ] Animations use only CSS — no `<script>` tags anywhere.
 - [ ] `prefers-reduced-motion` media query present and functional.
 - [ ] Semantic HTML — correct element choices, logical source order.
-- [ ] Placeholder copy matches the design system's content tone.
+- [ ] Placeholder copy matches the design spec's content tone.
 - [ ] No external dependencies — no CDN links, no remote resources.
 - [ ] File is under ~500 lines (split if larger).
 
@@ -191,10 +191,10 @@ If this is a multi-agent bake-off, place artifacts in a named subfolder:
 
 ## Recovery
 
-1. If the design system lacks values needed for a section (e.g., no shadow
+1. If the design spec lacks values needed for a section (e.g., no shadow
    definition but a card design implies shadows), mark the gap with
    `[proposed]` in a CSS comment and use a reasonable value. The human
-   resolves whether to add it to the design system.
+   resolves whether to add it to the design spec.
 2. If CSS scroll-driven animations produce unexpected behavior in a specific
    browser, simplify to basic opacity/transform transitions as a fallback.
    Note the limitation in a comment.

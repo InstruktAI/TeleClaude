@@ -3,7 +3,7 @@ id: 'creative/design/creative-machine'
 type: 'design'
 domain: 'creative'
 scope: 'global'
-description: 'State machine architecture for the creative lifecycle: design system discovery through visual artifact approval.'
+description: 'State machine architecture for the creative lifecycle: design spec discovery through visual artifact approval.'
 ---
 
 # Creative Machine — Design
@@ -12,7 +12,7 @@ description: 'State machine architecture for the creative lifecycle: design syst
 
 The creative machine orchestrates the creative lifecycle — from human visual intent
 to approved visual artifacts — as a stateless state machine. It is separate from the
-prepare machine (Phase A) and runs before it. Its output (`design-system.md` and
+prepare machine (Phase A) and runs before it. Its output (`design-spec.md` and
 approved `visuals/`) becomes a precondition for requirements discovery.
 
 The creative machine handles a fundamentally different interaction pattern than
@@ -30,13 +30,13 @@ from filesystem artifacts and `state.yaml`.
 
 - `todos/{slug}/input.md` — human thinking and project context.
 - `todos/{slug}/state.yaml` — creative phase tracking.
-- `todos/{slug}/design-system.md` — produced during the design discovery phase.
+- `todos/{slug}/design-spec.md` — produced during the design discovery phase.
 - `todos/{slug}/visuals/` — produced during the visual drafting phase.
 - Reference images, screenshots, URLs provided by the human.
 
 **Outputs:**
 
-- Confirmed `todos/{slug}/design-system.md`.
+- Confirmed `todos/{slug}/design-spec.md`.
 - Approved visual artifacts in `todos/{slug}/visuals/`.
 - Updated `state.yaml` with creative phase completion markers.
 - The todo is ready to enter the prepare machine.
@@ -45,10 +45,10 @@ from filesystem artifacts and `state.yaml`.
 
 - **Stateless derivation**: all state derived from filesystem artifacts. The machine
   checks what exists and what is confirmed, then returns the next instruction.
-- **Human gates are blocking**: the machine cannot advance past design system
+- **Human gates are blocking**: the machine cannot advance past design spec
   confirmation or visual approval without explicit human signal.
 - **Design system precedes visuals**: visual drafting cannot begin until the design
-  system is confirmed. The design system is the hard constraint for all visual output.
+  system is confirmed. The design spec is the hard constraint for all visual output.
 - **Artifact immutability**: the machine never modifies artifacts directly. It
   dispatches workers or returns instructions for the orchestrator.
 - **Creative phase is optional**: not every todo requires creative work. The machine
@@ -62,8 +62,8 @@ from filesystem artifacts and `state.yaml`.
 ```mermaid
 stateDiagram-v2
     [*] --> CheckDesignSystem
-    CheckDesignSystem --> DesignDiscovery: design-system.md missing
-    CheckDesignSystem --> CheckConfirmation: design-system.md exists
+    CheckDesignSystem --> DesignDiscovery: design-spec.md missing
+    CheckDesignSystem --> CheckConfirmation: design-spec.md exists
     DesignDiscovery --> CheckConfirmation: artifact written
     CheckConfirmation --> WaitForHuman_DS: not confirmed
     CheckConfirmation --> CheckVisuals: confirmed
@@ -83,7 +83,7 @@ stateDiagram-v2
 
 #### CHECK_DESIGN_SYSTEM
 
-Check whether `todos/{slug}/design-system.md` exists.
+Check whether `todos/{slug}/design-spec.md` exists.
 
 - Exists → transition to CHECK_CONFIRMATION.
 - Missing → return `DESIGN_DISCOVERY_REQUIRED` instruction.
@@ -95,11 +95,11 @@ This session requires the human in the loop — it is a dialogue, not a
 background worker. The orchestrator opens a session and the human
 participates directly.
 
-After `design-system.md` is written, call the machine again.
+After `design-spec.md` is written, call the machine again.
 
 #### CHECK_CONFIRMATION
 
-Check `state.yaml` for design system confirmation:
+Check `state.yaml` for design spec confirmation:
 
 ```yaml
 creative:
@@ -114,8 +114,8 @@ creative:
 
 #### DESIGN_SYSTEM_PENDING_CONFIRMATION
 
-The design system exists but the human has not confirmed it. The machine
-parks. The orchestrator presents the design system to the human and waits
+The design spec exists but the human has not confirmed it. The machine
+parks. The orchestrator presents the design spec to the human and waits
 for their signal. When the human confirms:
 
 - Set `creative.design_system.confirmed: true` in `state.yaml`.
@@ -123,7 +123,7 @@ for their signal. When the human confirms:
 
 When the human requests changes:
 
-- The orchestrator updates `design-system.md` based on feedback (or
+- The orchestrator updates `design-spec.md` based on feedback (or
   dispatches a discovery session for substantial rework).
 - Call the machine again (loops back to CHECK_CONFIRMATION).
 
@@ -137,7 +137,7 @@ Check whether `todos/{slug}/visuals/` contains HTML files.
 #### VISUAL_DRAFTS_REQUIRED
 
 Dispatch one or more creative agents running the visual drafting procedure.
-Each agent receives `design-system.md` as the constraint document.
+Each agent receives `design-spec.md` as the constraint document.
 
 **Single agent**: dispatch one creative agent. Output goes to
 `todos/{slug}/visuals/`.
@@ -193,10 +193,10 @@ After revision, call the machine again (loops back to CHECK_APPROVAL).
 
 Terminal state. All creative artifacts are confirmed and approved.
 
-- `design-system.md` is confirmed.
+- `design-spec.md` is confirmed.
 - `visuals/` contains approved HTML+CSS artifacts.
 - The todo is ready for the prepare machine (requirements discovery can
-  reference both the design system and the visual artifacts).
+  reference both the design spec and the visual artifacts).
 
 The orchestrator ends all creative worker sessions and reports completion.
 
@@ -230,7 +230,7 @@ creative:
   applies (reference-driven triangulation). If still stuck, the machine parks
   with a `NEEDS_DECISION` blocker.
 - **Creative agent produces invalid artifacts**: artifacts violating the visual
-  constraints policy (JavaScript present, design system values not matching,
+  constraints policy (JavaScript present, design spec values not matching,
   external dependencies). The orchestrator rejects the artifacts and re-dispatches
   with explicit constraint reminders.
 - **Human never signals**: the machine parks indefinitely at a human gate. The
@@ -241,6 +241,6 @@ creative:
   sections from which agent, and a final creative agent merges them into a
   cohesive set.
 - **Design system changes after visual approval**: if the human updates
-  `design-system.md` after visuals are approved, the visuals may be stale.
-  The machine should re-check design system fidelity and return
+  `design-spec.md` after visuals are approved, the visuals may be stale.
+  The machine should re-check design spec fidelity and return
   `VISUAL_ITERATION_REQUIRED` if tokens have diverged.

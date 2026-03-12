@@ -3,7 +3,7 @@ id: 'creative/policy/visual-constraints'
 type: 'policy'
 domain: 'creative'
 scope: 'global'
-description: 'Rules governing visual artifact production: CSS-only animations, design system fidelity, no external dependencies.'
+description: 'Rules governing visual artifact production: CSS-only animations, design spec fidelity, no external dependencies.'
 ---
 
 # Visual Constraints — Policy
@@ -39,14 +39,14 @@ description: 'Rules governing visual artifact production: CSS-only animations, d
 
 - Every color, font family, font size, spacing value, border radius, shadow,
   and easing curve in a visual artifact must trace to the corresponding
-  `design-system.md`.
-- Inventing visual values not in the design system is a contract violation.
+  `design-spec.md`.
+- Inventing visual values not in the design spec is a contract violation.
   If a needed value does not exist, the agent marks it `[proposed]` in the
   artifact and notes the gap — the human decides whether to add it to the
-  design system.
-- CSS custom properties at the top of `<style>` must mirror the design system
+  design spec.
+- CSS custom properties at the top of `<style>` must mirror the design spec
   palette and tokens exactly. This is the fidelity bridge — the builder
-  verifies by comparing custom property values to the design system document.
+  verifies by comparing custom property values to the design spec document.
 
 ### Artifact boundaries
 
@@ -72,7 +72,7 @@ description: 'Rules governing visual artifact production: CSS-only animations, d
 ### Multi-agent production
 
 - When multiple agents produce competing visual drafts (bake-off), each
-  agent works from the same `design-system.md`. The design system is the
+  agent works from the same `design-spec.md`. The design spec is the
   shared constraint — variations are in layout, spatial rhythm, and motion
   choreography, not in visual identity.
 - Each agent's output goes to a named subfolder: `todos/{slug}/visuals/{agent}/`.
@@ -85,7 +85,7 @@ description: 'Rules governing visual artifact production: CSS-only animations, d
 
 - CSS-only animations eliminate JavaScript dependencies, reduce maintenance
   surface, and keep artifacts renderable in any browser without a build step.
-- Design system fidelity prevents creative drift where agents invent random
+- Design spec fidelity prevents creative drift where agents invent random
   colors, fonts, and styles that produce visually incoherent results.
 - Self-contained files ensure the artifact format has zero maintenance cost —
   no versioning, no dependency updates, no scaffold to manage.
@@ -100,17 +100,17 @@ description: 'Rules governing visual artifact production: CSS-only animations, d
 ## Enforcement
 
 - Creative machine review step: the human opens artifacts in a browser and
-  validates visual fidelity, animation behavior, and design system compliance.
+  validates visual fidelity, animation behavior, and design spec compliance.
 - Builders must not use visual artifacts as production code. The translation
   step is mandatory.
-- Agents violating the no-JavaScript rule or the design system fidelity rule
+- Agents violating the no-JavaScript rule or the design spec fidelity rule
   produce invalid artifacts that must be regenerated.
 
 ## Exceptions
 
-- If a visual effect is physically impossible in CSS and the design system
+- If a visual effect is physically impossible in CSS and the design spec
   explicitly requires it (e.g., a WebGL particle system specified in the
   motion vocabulary), the agent may include a minimal `<script>` block with
   an inline comment explaining why CSS is insufficient. This exception
-  requires explicit human approval in the design system document — agents
+  requires explicit human approval in the design spec document — agents
   must not self-grant JavaScript exceptions.

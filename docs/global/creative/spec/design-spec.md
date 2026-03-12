@@ -1,33 +1,33 @@
 ---
-id: 'creative/spec/design-system'
+id: 'creative/spec/design-spec'
 type: 'spec'
 domain: 'creative'
 scope: 'global'
-description: 'Schema for design system documents that anchor visual identity and constrain agent-generated UI.'
+description: 'Schema for design specification artifacts that anchor visual identity and constrain agent-generated UI.'
 ---
 
-# Design System — Spec
+# Design Spec — Spec
 
 ## What it is
 
-A design system document is the authoritative visual anchor for a product or website.
+A design specification is the authoritative visual anchor for a product or website.
 It captures the complete visual language — identity, tokens, motion, spatial rhythm,
 and content tone — in prose and structured values that any agent can build from without
 guessing.
 
-The design system is not a wireframe, not code, and not a mood board. It is a language
+A design spec is not a wireframe, not code, and not a mood board. It is a language
 artifact that sits between human visual intent and implementation. It is the hard
 constraint: every generated UI variation must stay within its boundaries. An agent that
-invents colors, fonts, or motion patterns not in the design system is violating the
+invents colors, fonts, or motion patterns not in the design spec is violating the
 contract.
 
-In the todo workflow, a concrete design system instance lives as a todo artifact
-(e.g., `todos/{slug}/design-system.md`) alongside `input.md` and `requirements.md`.
+In the todo workflow, a concrete design spec lives as a todo artifact
+(`todos/{slug}/design-spec.md`) alongside `input.md` and `requirements.md`.
 The design discovery procedure produces it; the builder consumes it.
 
 ## Canonical fields
 
-Every design system document must include the following sections. Sections may be
+Every design spec must include the following sections. Sections may be
 minimal for early-stage projects but must never be omitted — an explicit "TBD" is
 better than a missing section.
 
@@ -98,7 +98,7 @@ better than a missing section.
 
 ### 7. Component patterns
 
-- **Component vocabulary**: the UI primitives this design system uses.
+- **Component vocabulary**: the UI primitives this design spec uses.
   Buttons, cards, navigation, forms, modals — with their visual treatment
   described (not implemented).
 - **State treatments**: how components look in hover, active, disabled, focus,
@@ -118,7 +118,7 @@ better than a missing section.
 
 ## Allowed values
 
-- `domain`: always `creative` for design system specs.
+- `domain`: always `creative` for design specs.
 - `scope`: `global` for the schema itself; concrete instances are todo artifacts
   (not snippets) scoped to their work item.
 - Sections may contain subsections beyond what is listed here — the canonical
@@ -126,13 +126,13 @@ better than a missing section.
 
 ## Known caveats
 
-- A design system document is a living artifact during the design discovery phase.
+- A design spec is a living artifact during the design discovery phase.
   It stabilizes before implementation begins but may evolve across product iterations.
-- The design system constrains visual output but does not prescribe implementation
-  technology. A builder may implement the same design system in React, Astro, vanilla
+- The design spec constrains visual output but does not prescribe implementation
+  technology. A builder may implement the same design spec in React, Astro, vanilla
   HTML, or any other stack.
-- Color values in the design system are the source of truth. If code diverges from
-  the documented values, the design system wins and the code is the bug.
+- Color values in the design spec are the source of truth. If code diverges from
+  the documented values, the design spec wins and the code is the bug.
 - For scroll-driven or animation-heavy sites, section 6 (Motion and animation) is
   the most critical section. Underspecifying motion produces generic parallax instead
   of distinctive spatial storytelling.
