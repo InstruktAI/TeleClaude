@@ -26,9 +26,13 @@ class _DummyTimer:
 
 class _DummyTask:
     def __init__(self, coro: object) -> None:
+        self.cancelled = False
         close = getattr(coro, "close", None)
         if callable(close):
             close()
+
+    def cancel(self) -> None:
+        self.cancelled = True
 
 
 def _optional_motion_sprites() -> set[object]:
@@ -112,6 +116,44 @@ def test_animation_mode_controls_banner_cadence_not_ambient_scene(
     assert (app._periodic_trigger is not None) is expect_periodic
     assert (app._activity_trigger is not None) is expect_activity
     assert app._animation_timer is timer
+
+
+@pytest.mark.unit
+def test_animation_mode_reuses_header_sky_across_banner_mode_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = TelecApp(api=MagicMock())
+    timer = _DummyTimer()
+
+    monkeypatch.setattr(app, "set_interval", lambda _seconds, _callback: timer)
+    monkeypatch.setattr("teleclaude.cli.tui.app.asyncio.ensure_future", lambda coro: _DummyTask(coro))
+
+    app._start_animation_mode("party")
+    initial_sky = app._animation_engine._targets["header"].animation
+
+    assert isinstance(initial_sky, GlobalSky)
+    assert initial_sky.show_extra_motion is True
+
+    app._start_animation_mode("periodic")
+    periodic_sky = app._animation_engine._targets["header"].animation
+
+    assert periodic_sky is initial_sky
+    assert isinstance(periodic_sky, GlobalSky)
+    assert periodic_sky.show_extra_motion is True
+
+    app._start_animation_mode("off")
+    off_sky = app._animation_engine._targets["header"].animation
+
+    assert off_sky is initial_sky
+    assert isinstance(off_sky, GlobalSky)
+    assert off_sky.show_extra_motion is False
+
+    app._start_animation_mode("periodic")
+    resumed_sky = app._animation_engine._targets["header"].animation
+
+    assert resumed_sky is initial_sky
+    assert isinstance(resumed_sky, GlobalSky)
+    assert resumed_sky.show_extra_motion is True
 
 
 @pytest.mark.unit

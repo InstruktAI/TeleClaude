@@ -36,6 +36,7 @@ class SkyEntity(TypedDict):
     z: int
     next_speed_change: int
     fixed_speed: bool
+    optional_motion: bool
 
 
 if TYPE_CHECKING:
@@ -123,7 +124,13 @@ class GlobalSky(Animation):
             return True
         return theme == ("dark" if is_dark_mode() else "light")
 
-    def _spawn_group_entities(self, group: SpriteGroup, entities: list[SkyEntity]) -> None:
+    def _spawn_group_entities(
+        self,
+        group: SpriteGroup,
+        entities: list[SkyEntity],
+        *,
+        optional_motion: bool = False,
+    ) -> None:
         """Spawn entities for a single SpriteGroup, respecting group direction and theme."""
         group_dir = group.direction if group.direction is not None else self.rng.choice([-1, 1])
         group_theme = group.theme
@@ -132,7 +139,7 @@ class GlobalSky(Animation):
                 continue
             n = self.rng.randint(lo, hi)
             for _ in range(n):
-                entities.append(self._spawn_sky_entity(sprite, direction=group_dir))
+                entities.append(self._spawn_sky_entity(sprite, direction=group_dir, optional_motion=optional_motion))
 
     def _spawn_initial_entities(self) -> list[SkyEntity]:
         """Spawn sky entities: standalone sprites + non-cloud groups + weather clouds."""
@@ -149,7 +156,7 @@ class GlobalSky(Animation):
                 entities.append(self._spawn_sky_entity(sprite))
         if self.show_extra_motion:
             for group in get_optional_motion_groups():
-                self._spawn_group_entities(group, entities)
+                self._spawn_group_entities(group, entities, optional_motion=True)
 
         cloud_group = get_weather_clouds(self._weather)
         self._spawn_group_entities(cloud_group, entities)
@@ -191,7 +198,13 @@ class GlobalSky(Animation):
         vals = [v for v, _ in sprite.speed_weights]
         return all(v > 0 for v in vals) or all(v < 0 for v in vals)
 
-    def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite, direction: int | None = None) -> SkyEntity:
+    def _spawn_sky_entity(
+        self,
+        sprite: CompositeSprite | AnimatedSprite,
+        direction: int | None = None,
+        *,
+        optional_motion: bool = False,
+    ) -> SkyEntity:
         """Spawn a sky entity from any CompositeSprite or AnimatedSprite.
 
         Direction override chain:
@@ -223,6 +236,7 @@ class GlobalSky(Animation):
                 "z": z_level,
                 "next_speed_change": 0,
                 "fixed_speed": True,
+                "optional_motion": optional_motion,
             }
 
         initial_speed = self._pick_weighted_float(sprite.speed_weights)
@@ -238,7 +252,23 @@ class GlobalSky(Animation):
             "z": z_level,
             "next_speed_change": self.rng.randint(80, 300),
             "fixed_speed": False,
+            "optional_motion": optional_motion,
         }
+
+    def set_extra_motion(self, enabled: bool) -> None:
+        """Enable or disable optional moving sprites without rebuilding ambient sky."""
+        from teleclaude.cli.tui.animations.sprites import get_optional_motion_groups
+
+        if self.show_extra_motion == enabled:
+            return
+
+        self.show_extra_motion = enabled
+        if not enabled:
+            self._sky_entities = [entity for entity in self._sky_entities if not entity["optional_motion"]]
+            return
+
+        for group in get_optional_motion_groups():
+            self._spawn_group_entities(group, self._sky_entities, optional_motion=True)
 
     def force_spawn(self, sprite: object | None = None) -> None:
         """Force a sky entity to appear immediately.
@@ -247,6 +277,8 @@ class GlobalSky(Animation):
             sprite: A specific sprite instance, SpriteGroup, or None for random.
         """
         if isinstance(sprite, SpriteGroup):
+            from teleclaude.cli.tui.animations.sprites import get_optional_motion_groups
+
             # Pick a random entry from the group, respect group direction
             entries = sprite.entries
             if entries:
@@ -256,7 +288,14 @@ class GlobalSky(Animation):
                     k=1,
                 )[0]
                 group_dir = sprite.direction if sprite.direction is not None else self.rng.choice([-1, 1])
-                self._sky_entities.append(self._spawn_sky_entity(chosen_sprite, direction=group_dir))
+                is_optional_motion = any(group is sprite for group in get_optional_motion_groups())
+                self._sky_entities.append(
+                    self._spawn_sky_entity(
+                        chosen_sprite,
+                        direction=group_dir,
+                        optional_motion=is_optional_motion,
+                    )
+                )
             return
         if sprite is not None:
             self._sky_entities.append(self._spawn_sky_entity(sprite))

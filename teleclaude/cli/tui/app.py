@@ -1210,25 +1210,14 @@ class TelecApp(App[str | None]):
 
     def _start_animation_mode(self, mode: str) -> None:
         """Configure ambient sky and banner cadence for the given mode."""
-        from teleclaude.cli.tui.animation_colors import palette_registry
-        from teleclaude.cli.tui.animation_engine import AnimationPriority
         from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
-        from teleclaude.cli.tui.animations.general import GlobalSky
 
         self._stop_banner_animation()
 
         self._animation_engine.is_enabled = True
         self._animation_engine.animation_mode = mode
 
-        self._animation_engine.stop_target("header")
-        sky = GlobalSky(
-            palette=palette_registry.get("spectrum"),
-            is_big=True,
-            duration_seconds=3600,
-            show_extra_motion=mode != "off",
-        )
-        self._animation_engine.play(sky, priority=AnimationPriority.PERIODIC, target="header")
-        self._animation_engine.set_looping("header", True)
+        self._ensure_header_sky(show_extra_motion=mode != "off")
 
         if mode in ("periodic", "party"):
             interval = 10 if mode == "party" else 60
@@ -1242,6 +1231,32 @@ class TelecApp(App[str | None]):
         if self._animation_timer is None:
             # Start the render tick timer (~250ms — balances smoothness vs terminal output volume)
             self._animation_timer = self.set_interval(0.25, self._animation_tick)
+
+    def _ensure_header_sky(
+        self,
+        *,
+        show_extra_motion: bool,
+    ) -> None:
+        from teleclaude.cli.tui.animation_colors import palette_registry
+        from teleclaude.cli.tui.animation_engine import AnimationPriority
+        from teleclaude.cli.tui.animations.general import GlobalSky
+
+        header_slot = self._animation_engine._targets.get("header")
+        existing = header_slot.animation if header_slot is not None else None
+        if isinstance(existing, GlobalSky):
+            existing.set_extra_motion(show_extra_motion)
+            existing.animation_mode = self._animation_engine.animation_mode
+            self._animation_engine.set_looping("header", True)
+            return
+
+        sky = GlobalSky(
+            palette=palette_registry.get("spectrum"),
+            is_big=True,
+            duration_seconds=3600,
+            show_extra_motion=show_extra_motion,
+        )
+        self._animation_engine.play(sky, priority=AnimationPriority.PERIODIC, target="header")
+        self._animation_engine.set_looping("header", True)
 
     def _stop_banner_animation(self) -> None:
         """Stop banner/logo effects while leaving the ambient sky scene intact."""
