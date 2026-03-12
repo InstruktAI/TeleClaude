@@ -40,8 +40,8 @@ requirements_review:
   findings_count: 2
   rounds: 1
 plan_review:
-  verdict: ''
-  reviewed_at: '2026-03-12T00:00:00Z'
+  verdict: needs_work
+  reviewed_at: '2026-03-12T16:35:20Z'
   findings_count: 5
   rounds: 2
 dor:
