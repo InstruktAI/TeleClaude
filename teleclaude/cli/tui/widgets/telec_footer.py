@@ -424,6 +424,8 @@ class TelecFooter(Widget):
         if button_id == "footer-play":
             self.post_message(SettingsChanged("chiptunes_play_pause", None))
             return
+        if not self.chiptunes_loaded:
+            return
         if button_id == "footer-prev":
             self.post_message(SettingsChanged("chiptunes_prev", None))
             return

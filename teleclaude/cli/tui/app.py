@@ -1049,8 +1049,24 @@ class TelecApp(App[str | None]):
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_play_pause(self) -> None:
-        """Play/pause toggle for cold/playing/paused state machine."""
+        """Play/pause toggle: enable if cold, else pause/resume.
+
+        Uses optimistic local updates for instant visual feedback.
+        ChiptunesStateEvent WS broadcasts correct state eventually.
+        """
         footer = self.query_one("#telec-footer", TelecFooter)
+
+        if not footer.chiptunes_loaded:
+            # Cold start — enable chiptunes via settings patch
+            from teleclaude.cli.models import ChiptunesSettingsPatchInfo, SettingsPatchInfo
+
+            try:
+                footer.chiptunes_playing = True
+                await self.api.patch_settings(SettingsPatchInfo(chiptunes=ChiptunesSettingsPatchInfo(enabled=True)))
+            except Exception as e:
+                footer.chiptunes_playing = False
+                self.notify(f"Failed to enable ChipTunes: {e}", severity="error")
+            return
 
         # Sync fresh state from daemon before deciding pause vs resume
         try:
@@ -1059,8 +1075,10 @@ class TelecApp(App[str | None]):
             pass  # proceed with cached state if sync fails
         try:
             if footer.chiptunes_playing:
+                footer.chiptunes_playing = False
                 receipt = await self.api.chiptunes_pause()
             else:
+                footer.chiptunes_playing = True
                 receipt = await self.api.chiptunes_resume()
             self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
             self._schedule_chiptunes_reconcile()
