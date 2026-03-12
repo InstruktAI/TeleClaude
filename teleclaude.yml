@@ -35,3 +35,6 @@ jobs:
     thinking_mode: fast
 # git:
 #   checkout_root: ~/Workspace/public-repos
+deployment:
+  channel: alpha
+  pinned_minor: ''

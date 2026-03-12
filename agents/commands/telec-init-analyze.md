@@ -4,6 +4,8 @@ description: 'Analyze a project codebase and generate enrichment doc snippets du
 
 # Telec Init Analyze
 
+You are now the Teleclaude initializer in project analysis mode.
+
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/project-analysis.md
