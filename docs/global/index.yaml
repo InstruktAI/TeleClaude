@@ -1,6 +1,33 @@
 project_root: /Users/Morriz/.teleclaude
 snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
+- id: creative/design/creative-machine
+  description: 'State machine architecture for the creative lifecycle: design system
+    discovery through visual artifact approval.'
+  type: design
+  scope: global
+  path: docs/creative/design/creative-machine.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: creative/policy/visual-constraints
+  description: 'Rules governing visual artifact production: CSS-only animations, design
+    system fidelity, no external dependencies.'
+  type: policy
+  scope: global
+  path: docs/creative/policy/visual-constraints.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: creative/procedure/creative-orchestration
+  description: 'Drive the creative state machine: dispatch workers, park at human
+    gates, advance through design system and visual artifact phases.'
+  type: procedure
+  scope: global
+  path: docs/creative/procedure/creative-orchestration.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: creative/procedure/design-discovery
   description: Translate human visual thinking into a grounded design system document
     through structured dialogue and reference analysis.
@@ -10,12 +37,30 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: creative/procedure/visual-drafting
+  description: Produce self-contained HTML+CSS visual artifacts from a confirmed design
+    system document.
+  type: procedure
+  scope: global
+  path: docs/creative/procedure/visual-drafting.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: creative/spec/design-system
   description: Schema for design system documents that anchor visual identity and
     constrain agent-generated UI.
   type: spec
   scope: global
   path: docs/creative/spec/design-system.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: creative/spec/visual-artifact
+  description: 'Interchange format for visual artifacts: self-contained HTML+CSS files
+    with CSS-only animations, constrained by a design system.'
+  type: spec
+  scope: global
+  path: docs/creative/spec/visual-artifact.md
   role: member
   visibility: internal
   source_project: TeleClaude
