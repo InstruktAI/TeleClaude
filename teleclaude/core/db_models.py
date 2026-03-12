@@ -51,6 +51,7 @@ class Session(SQLModel, table=True):
     last_tool_done_at: datetime | None = None
     last_tool_use_at: datetime | None = None
     last_checkpoint_at: datetime | None = None
+    turn_triggered_by_linked_output: bool = False
     working_slug: str | None = None
     lifecycle_status: str | None = "active"
     human_email: str | None = None

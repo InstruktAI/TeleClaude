@@ -786,6 +786,11 @@ class AgentCoordinator:
                 }
             )
 
+        # Track what triggered this turn for echo suppression in handle_agent_stop.
+        # Set unconditionally — deliver_inbound's eager writes must not control this.
+        _linked_prefix_check = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
+        update_kwargs["turn_triggered_by_linked_output"] = prompt_text.strip().startswith(_linked_prefix_check)
+
         # Single DB update for all fields
         await db.update_session(session_id, **update_kwargs)
         logger.debug(
@@ -1045,12 +1050,7 @@ class AgentCoordinator:
         # loops: A fans to B, B acknowledges, B's acknowledgment fans back to A,
         # A acknowledges, repeat forever.  Linked output is observational
         # (one-way push); the recipient's response should not bounce back.
-        _linked_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
-        _is_linked_echo = (
-            session is not None
-            and (session.last_input_origin or "").strip().lower() == InputOrigin.REDIS.value
-            and (session.last_message_sent or "").startswith(_linked_prefix)
-        )
+        _is_linked_echo = session is not None and session.turn_triggered_by_linked_output
         if _is_linked_echo:
             logger.debug(
                 "Suppressing linked fan-out for session %s (turn triggered by linked output)",
@@ -1058,6 +1058,10 @@ class AgentCoordinator:
             )
         if link_output and link_output.strip() and not _is_linked_echo:
             await self._fanout_linked_stop_output(session_id, link_output, source_computer=source_computer)
+
+        # Clear the flag after fan-out decision so it doesn't persist across turns.
+        if session is not None and session.turn_triggered_by_linked_output:
+            await db.update_session(session_id, turn_triggered_by_linked_output=False)
 
         # 4. Notify local listeners (worker orchestration mode)
         title_raw = payload.raw.get("title")
