@@ -3,136 +3,231 @@
 Tests the turn_triggered_by_linked_output flag that separates queue-drain state
 (deliver_inbound) from agent-processing state (user_prompt_submit) for accurate
 echo suppression in handle_agent_stop.
-
-The coordinator module has heavy import-time dependencies (config, DB, transport).
-These tests verify the behavioral contracts of the echo suppression logic without
-importing the full module — testing the data flow and decision rules directly.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import cast
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
+from teleclaude.core.agent_coordinator import AgentCoordinator
+from teleclaude.core.events import AgentEventContext, AgentStopPayload, UserPromptSubmitPayload
+from teleclaude.core.models import Session
+from teleclaude.core.origins import InputOrigin
 
 # ---------------------------------------------------------------------------
-# Constants mirroring production code
+# Helpers
 # ---------------------------------------------------------------------------
 
 LINKED_PREFIX = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
 
 
-# ---------------------------------------------------------------------------
-# Flag derivation logic (mirrors handle_user_prompt_submit)
-# ---------------------------------------------------------------------------
-
-
-def _derive_linked_flag(prompt_text: str) -> bool:
-    """Reproduce the flag derivation from handle_user_prompt_submit."""
-    return prompt_text.strip().startswith(LINKED_PREFIX)
-
-
-def _should_suppress_fanout(session_exists: bool, flag_value: bool) -> bool:
-    """Reproduce the echo suppression decision from handle_agent_stop."""
-    return session_exists and flag_value
-
-
-# ---------------------------------------------------------------------------
-# Tests: flag derivation (handle_user_prompt_submit behavior)
-# ---------------------------------------------------------------------------
-
-
-def test_flag_true_for_linked_output_message():
-    """Linked output prefix in prompt text must produce a True flag."""
-    prompt = f"{LINKED_PREFIX}reviewer (sess-002):\nHere is my review."
-    assert _derive_linked_flag(prompt) is True
-
-
-def test_flag_true_for_linked_output_with_leading_whitespace():
-    """Leading whitespace before the linked prefix must still be recognized."""
-    prompt = f"  {LINKED_PREFIX}reviewer (sess-002):\nHere is my review."
-    assert _derive_linked_flag(prompt) is True
-
-
-def test_flag_false_for_direct_conversation_message():
-    """A normal direct conversation message must produce a False flag."""
-    prompt = "Please fix the import error in module X."
-    assert _derive_linked_flag(prompt) is False
-
-
-def test_flag_false_for_empty_prompt():
-    """An empty prompt must produce a False flag."""
-    assert _derive_linked_flag("") is False
-
-
-def test_flag_false_for_partial_prefix():
-    """A prompt that partially matches the prefix must not trigger."""
-    prompt = f"{TELECLAUDE_SYSTEM_PREFIX} Some other system message"
-    assert _derive_linked_flag(prompt) is False
-
-
-def test_flag_false_for_prefix_in_body():
-    """The linked prefix appearing mid-message (not at start) must not trigger."""
-    prompt = f"FYI: {LINKED_PREFIX}reviewer (sess-002):\nsome text"
-    assert _derive_linked_flag(prompt) is False
-
-
-# ---------------------------------------------------------------------------
-# Tests: echo suppression decision (handle_agent_stop behavior)
-# ---------------------------------------------------------------------------
-
-
-def test_fanout_proceeds_when_flag_false():
-    """Fan-out must proceed when the flag says this was a direct trigger."""
-    assert _should_suppress_fanout(session_exists=True, flag_value=False) is False
-
-
-def test_fanout_suppressed_when_flag_true():
-    """Fan-out must be suppressed when the flag says linked-output trigger."""
-    assert _should_suppress_fanout(session_exists=True, flag_value=True) is True
-
-
-def test_fanout_proceeds_when_no_session():
-    """Fan-out decision must not suppress when session is None."""
-    assert _should_suppress_fanout(session_exists=False, flag_value=True) is False
-
-
-# ---------------------------------------------------------------------------
-# Tests: the core bug scenario — poisoned state from deliver_inbound
-# ---------------------------------------------------------------------------
-
-
-def test_direct_trigger_not_poisoned_by_deliver_inbound_state():
-    """Core bug scenario: deliver_inbound eagerly wrote linked output to
-    last_message_sent, but the agent was actually triggered by a direct
-    conversation message. The flag must reflect the actual trigger (False),
-    and fan-out must proceed."""
-    # Simulate: deliver_inbound wrote linked output to DB (poisoned state)
-    db_last_message_sent = f"{LINKED_PREFIX}someone (sess-X):\npoisoned"
-    db_last_input_origin = "redis"
-
-    # But user_prompt_submit fires with the REAL trigger: a direct message
-    actual_prompt = "Please fix the import error in module X."
-
-    # Flag derivation uses the actual prompt, not the DB state
-    flag = _derive_linked_flag(actual_prompt)
-    assert flag is False, "Flag must reflect the actual prompt, not DB state"
-
-    # Echo suppression uses the flag, not last_message_sent
-    suppressed = _should_suppress_fanout(session_exists=True, flag_value=flag)
-    assert suppressed is False, "Fan-out must proceed for direct conversation triggers"
-
-    # Verify the old (buggy) logic WOULD have suppressed this
-    _old_buggy_check = db_last_input_origin.strip().lower() == "redis" and (db_last_message_sent or "").startswith(
-        LINKED_PREFIX
+def _make_session(
+    *,
+    session_id: str = "sess-001",
+    turn_triggered_by_linked_output: bool = False,
+    last_message_sent: str | None = None,
+    last_input_origin: str = InputOrigin.TERMINAL.value,
+    lifecycle_status: str = "active",
+    active_agent: str = "claude",
+) -> Session:
+    """Build a real core Session with the fields echo suppression reads."""
+    return Session(
+        session_id=session_id,
+        computer_name="test-computer",
+        tmux_session_name=f"teleclaude-{session_id}",
+        title="Test",
+        turn_triggered_by_linked_output=turn_triggered_by_linked_output,
+        last_message_sent=last_message_sent,
+        last_message_sent_at=datetime.now(UTC),
+        last_input_origin=last_input_origin,
+        lifecycle_status=lifecycle_status,
+        active_agent=active_agent,
     )
-    assert _old_buggy_check is True, "Old logic would have incorrectly suppressed fan-out"
 
 
-def test_linked_trigger_correctly_suppresses():
-    """When the agent genuinely processes linked output, suppression is correct."""
-    actual_prompt = f"{LINKED_PREFIX}reviewer (sess-002):\nHere is my review."
+def _make_coordinator() -> AgentCoordinator:
+    """Build a real AgentCoordinator with mocked dependencies."""
+    client = MagicMock()
+    client.break_threaded_turn = AsyncMock()
+    client.broadcast_user_input = AsyncMock()
+    tts = MagicMock()
+    tts.speak = AsyncMock()
+    headless = MagicMock()
+    coord = AgentCoordinator(client, tts, headless)
+    return coord
 
-    flag = _derive_linked_flag(actual_prompt)
-    assert flag is True
 
-    suppressed = _should_suppress_fanout(session_exists=True, flag_value=flag)
-    assert suppressed is True, "Fan-out must be suppressed for linked-output triggers"
+def _make_prompt_context(session_id: str, prompt_text: str) -> AgentEventContext:
+    """Build an AgentEventContext carrying a UserPromptSubmitPayload."""
+    payload = UserPromptSubmitPayload(prompt=prompt_text, raw={"prompt": prompt_text})
+    return AgentEventContext(session_id=session_id, data=cast(object, payload), event_type="user_prompt_submit")
+
+
+def _make_stop_context(session_id: str) -> AgentEventContext:
+    """Build an AgentEventContext carrying an AgentStopPayload."""
+    payload = AgentStopPayload(raw={})
+    return AgentEventContext(session_id=session_id, data=cast(object, payload), event_type="agent_stop")
+
+
+# ---------------------------------------------------------------------------
+# handle_user_prompt_submit: flag set correctly in DB
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_prompt_submit_sets_flag_true_for_linked_output():
+    """handle_user_prompt_submit must persist turn_triggered_by_linked_output=True
+    when the prompt is a linked output message."""
+    session = _make_session()
+    linked_text = f"{LINKED_PREFIX}reviewer (sess-002):\nHere is my review."
+
+    db_mock = MagicMock()
+    db_mock.get_session = AsyncMock(return_value=session)
+    db_mock.update_session = AsyncMock()
+    db_mock.set_notification_flag = AsyncMock()
+
+    coord = _make_coordinator()
+    context = _make_prompt_context("sess-001", linked_text)
+
+    with patch("teleclaude.core.agent_coordinator.db", db_mock):
+        await coord.handle_user_prompt_submit(context)
+
+    # Find the update_session call that sets the flag
+    calls = db_mock.update_session.call_args_list
+    flag_values = [
+        c.kwargs.get("turn_triggered_by_linked_output") for c in calls if "turn_triggered_by_linked_output" in c.kwargs
+    ]
+    assert True in flag_values, f"Expected True in flag values, got: {flag_values}"
+
+
+@pytest.mark.asyncio
+async def test_prompt_submit_sets_flag_false_for_direct_message():
+    """handle_user_prompt_submit must persist turn_triggered_by_linked_output=False
+    when the prompt is a direct conversation (not linked output)."""
+    session = _make_session(
+        last_message_sent=f"{LINKED_PREFIX}someone:\npoisoned by deliver_inbound",
+        last_input_origin=InputOrigin.REDIS.value,
+    )
+    direct_text = "Please fix the import error in module X."
+
+    db_mock = MagicMock()
+    db_mock.get_session = AsyncMock(return_value=session)
+    db_mock.update_session = AsyncMock()
+    db_mock.set_notification_flag = AsyncMock()
+
+    coord = _make_coordinator()
+    context = _make_prompt_context("sess-001", direct_text)
+
+    with patch("teleclaude.core.agent_coordinator.db", db_mock):
+        await coord.handle_user_prompt_submit(context)
+
+    calls = db_mock.update_session.call_args_list
+    flag_values = [
+        c.kwargs.get("turn_triggered_by_linked_output") for c in calls if "turn_triggered_by_linked_output" in c.kwargs
+    ]
+    assert False in flag_values, f"Expected False in flag values, got: {flag_values}"
+
+
+# ---------------------------------------------------------------------------
+# handle_agent_stop: echo suppression uses the flag
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stop_fanout_proceeds_when_flag_false():
+    """handle_agent_stop must call _fanout_linked_stop_output when the turn was
+    triggered by a direct conversation (flag=False), even if deliver_inbound
+    poisoned last_message_sent with linked output content."""
+    session = _make_session(
+        turn_triggered_by_linked_output=False,
+        last_message_sent=f"{LINKED_PREFIX}someone:\npoisoned by deliver_inbound",
+        last_input_origin=InputOrigin.REDIS.value,
+    )
+
+    db_mock = MagicMock()
+    db_mock.get_session = AsyncMock(return_value=session)
+    db_mock.update_session = AsyncMock()
+
+    coord = _make_coordinator()
+    context = _make_stop_context("sess-001")
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db", db_mock),
+        patch.object(coord, "_extract_agent_output", new_callable=AsyncMock, return_value="some output"),
+        patch.object(coord, "_summarize_output", new_callable=AsyncMock, return_value="summary"),
+        patch.object(coord, "_maybe_send_incremental_output", new_callable=AsyncMock),
+        patch.object(coord, "_fanout_linked_stop_output", new_callable=AsyncMock) as fanout_mock,
+        patch.object(coord, "_notify_session_listener", new_callable=AsyncMock),
+        patch.object(coord, "_forward_stop_to_initiator", new_callable=AsyncMock),
+        patch.object(coord, "_maybe_inject_checkpoint", new_callable=AsyncMock),
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+    ):
+        await coord.handle_agent_stop(context)
+
+    fanout_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_stop_fanout_suppressed_when_flag_true():
+    """handle_agent_stop must NOT call _fanout_linked_stop_output when the turn
+    was triggered by linked output (flag=True)."""
+    session = _make_session(turn_triggered_by_linked_output=True)
+
+    db_mock = MagicMock()
+    db_mock.get_session = AsyncMock(return_value=session)
+    db_mock.update_session = AsyncMock()
+
+    coord = _make_coordinator()
+    context = _make_stop_context("sess-001")
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db", db_mock),
+        patch.object(coord, "_extract_agent_output", new_callable=AsyncMock, return_value="some output"),
+        patch.object(coord, "_summarize_output", new_callable=AsyncMock, return_value="summary"),
+        patch.object(coord, "_maybe_send_incremental_output", new_callable=AsyncMock),
+        patch.object(coord, "_fanout_linked_stop_output", new_callable=AsyncMock) as fanout_mock,
+        patch.object(coord, "_notify_session_listener", new_callable=AsyncMock),
+        patch.object(coord, "_forward_stop_to_initiator", new_callable=AsyncMock),
+        patch.object(coord, "_maybe_inject_checkpoint", new_callable=AsyncMock),
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+    ):
+        await coord.handle_agent_stop(context)
+
+    fanout_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stop_clears_flag_after_suppression():
+    """handle_agent_stop must reset turn_triggered_by_linked_output to False
+    after using it for the fan-out decision."""
+    session = _make_session(turn_triggered_by_linked_output=True)
+
+    db_mock = MagicMock()
+    db_mock.get_session = AsyncMock(return_value=session)
+    db_mock.update_session = AsyncMock()
+
+    coord = _make_coordinator()
+    context = _make_stop_context("sess-001")
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db", db_mock),
+        patch.object(coord, "_extract_agent_output", new_callable=AsyncMock, return_value="some output"),
+        patch.object(coord, "_summarize_output", new_callable=AsyncMock, return_value="summary"),
+        patch.object(coord, "_maybe_send_incremental_output", new_callable=AsyncMock),
+        patch.object(coord, "_fanout_linked_stop_output", new_callable=AsyncMock),
+        patch.object(coord, "_notify_session_listener", new_callable=AsyncMock),
+        patch.object(coord, "_forward_stop_to_initiator", new_callable=AsyncMock),
+        patch.object(coord, "_maybe_inject_checkpoint", new_callable=AsyncMock),
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+    ):
+        await coord.handle_agent_stop(context)
+
+    clear_calls = [
+        c for c in db_mock.update_session.call_args_list if c.kwargs.get("turn_triggered_by_linked_output") is False
+    ]
+    assert len(clear_calls) >= 1, "Flag must be reset to False after fan-out decision"

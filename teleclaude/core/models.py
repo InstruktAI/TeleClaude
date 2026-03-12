@@ -557,6 +557,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     last_tool_done_at: datetime | None = None
     last_tool_use_at: datetime | None = None
     last_checkpoint_at: datetime | None = None
+    turn_triggered_by_linked_output: bool = False
     working_slug: str | None = None
     human_email: str | None = None
     human_role: str | None = HUMAN_ROLE_ADMIN

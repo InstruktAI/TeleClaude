@@ -126,9 +126,7 @@ class Db:
             try:
                 _raw = json.loads(row.session_metadata)
                 if isinstance(_raw, dict):
-                    session_metadata = SessionMetadata(
-                        **{k: v for k, v in _raw.items() if k in {"system_role", "job"}}
-                    )
+                    session_metadata = SessionMetadata(**{k: v for k, v in _raw.items() if k in {"system_role", "job"}})
             except json.JSONDecodeError:
                 pass
 
@@ -163,6 +161,9 @@ class Db:
             last_tool_done_at=Db._coerce_datetime(row.last_tool_done_at),
             last_tool_use_at=Db._coerce_datetime(row.last_tool_use_at),
             last_checkpoint_at=Db._coerce_datetime(row.last_checkpoint_at),
+            turn_triggered_by_linked_output=bool(row.turn_triggered_by_linked_output)
+            if hasattr(row, "turn_triggered_by_linked_output")
+            else False,
             last_output_summary=row.last_output_summary,
             last_output_digest=row.last_output_digest,
             working_slug=row.working_slug,
