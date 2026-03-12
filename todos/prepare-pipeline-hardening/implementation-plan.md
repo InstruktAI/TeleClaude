@@ -14,7 +14,7 @@ procedure/spec doc snippet updates.
 
 ---
 
-## Task 1: Extend `DEFAULT_STATE` schema with lifecycle and findings fields
+## [x] Task 1: Extend `DEFAULT_STATE` schema with lifecycle and findings fields
 
 **What:** Add new fields to `DEFAULT_STATE` in
 `teleclaude/core/next_machine/core.py` (~line 912):
@@ -82,7 +82,7 @@ instead of `merged.update(state)` for those keys.
 
 ---
 
-## Task 2: Add artifact lifecycle helper functions
+## [x] Task 2: Add artifact lifecycle helper functions
 
 **What:** Add a new module `teleclaude/core/next_machine/prepare_helpers.py` with:
 
@@ -159,7 +159,7 @@ module avoids growing the 4168-line `core.py` further.
 
 ---
 
-## Task 3: Wire staleness check, `additional_context`, and `format_tool_call`
+## [x] Task 3: Wire staleness check, `additional_context`, and `format_tool_call`
 
 **What:** Three changes wired together in this task:
 
@@ -255,7 +255,7 @@ of generic "redo this phase" instructions.
 
 ---
 
-## Task 4: Ghost artifact protection in phase derivation
+## [x] Task 4: Ghost artifact protection in phase derivation
 
 **What:** Update `_derive_prepare_phase()` (~line 2967) to consult
 `state.artifacts.<name>.produced_at` alongside file existence. If a file exists on
@@ -280,7 +280,7 @@ lifecycle record. The machine must not route based on phantom files.
 
 ---
 
-## Task 5: Review step handlers — structured findings and severity-based verdict
+## [x] Task 5: Review step handlers — structured findings and severity-based verdict
 
 **What:** Update `_prepare_step_requirements_review()` (~line 3063) and
 `_prepare_step_plan_review()` (~line 3159):
@@ -363,7 +363,7 @@ content interpretation.
 
 ---
 
-## Task 6: Audit trail stamping in phase handlers
+## [x] Task 6: Audit trail stamping in phase handlers
 
 **What:** In each prepare step handler, call `stamp_audit(state, phase, "started_at",
 now)` when entering the phase and `stamp_audit(state, phase, "completed_at", now)`
@@ -384,7 +384,7 @@ analytics. The audit trail is additional to — not a replacement for — the
 
 ---
 
-## Task 7: Split inheritance — children inherit parent phase
+## [x] Task 7: Split inheritance — children inherit parent phase
 
 **What:** Update `split_todo()` in `teleclaude/todo_scaffold.py` (~line 159):
 
@@ -432,7 +432,7 @@ next phase, not at discovery.
 
 ---
 
-## Task 8: Register new events in event vocabulary
+## [x] Task 8: Register new events in event vocabulary
 
 **What:** Add 8 new event registrations in
 `teleclaude/events/schemas/software_development.py` under the "Prepare lifecycle
@@ -477,7 +477,7 @@ without polling state.yaml.
 
 ---
 
-## Task 9: Update procedure and spec doc snippets
+## [x] Task 9: Update procedure and spec doc snippets
 
 **What:** Update the following doc snippets to reflect the new behaviors:
 
@@ -541,7 +541,7 @@ at build time via `telec docs index`.
 
 ---
 
-## Task 10: Integration tests for schema migration and cross-cutting behavior
+## [x] Task 10: Integration tests for schema migration and cross-cutting behavior
 
 **What:** Add tests in `tests/unit/` verifying:
 
@@ -582,7 +582,7 @@ cross-cutting correctness checks that span multiple tasks.
 
 ---
 
-## Task 11: Referenced path existence check after plan drafting
+## [x] Task 11: Referenced path existence check after plan drafting
 
 **What:** In the prepare dispatch loop (`next_prepare()` in `core.py`), after
 the plan drafting phase completes and before advancing to plan review: read
@@ -616,7 +616,7 @@ one conditional in the same code path. The missing paths flow as structured
 
 ---
 
-## Task 12: Implement `--additional-context` CLI flag for `telec sessions run`
+## [x] Task 12: Implement `--additional-context` CLI flag for `telec sessions run`
 
 **What:** Thread `additional_context` through the session launch stack:
 
@@ -683,7 +683,7 @@ field at each layer.
 
 ---
 
-## Task 13: Update `demo.md` for user-visible CLI and dispatch changes
+## Task 13: Update `demo.md` for user-visible CLI and dispatch changes [x]
 
 **What:** Update `todos/prepare-pipeline-hardening/demo.md` to add validation
 sections for the three user-visible behaviors introduced by this todo:

@@ -292,6 +292,7 @@ def format_tool_call(
     next_call: str = "",
     completion_args: str | None = None,
     pre_dispatch: str = "",
+    additional_context: str = "",
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
     raw_command = command.lstrip("/")
@@ -314,6 +315,12 @@ def format_tool_call(
 
 """
 
+    _escaped_ctx = additional_context.replace("\n", "\\n") if additional_context else ""
+    additional_context_flag = f' --additional-context "{_escaped_ctx}"' if additional_context else ""
+    additional_context_block = (
+        f"\nADDITIONAL CONTEXT FOR WORKER:\n{additional_context}\n" if additional_context else ""
+    )
+
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 Execute these steps in order (FOLLOW TO THE LETTER!):
@@ -324,8 +331,8 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 Based on the above guidance and the work item details, select the best agent and thinking mode.
 
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
-
-telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"
+{additional_context_block}
+telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"{additional_context_flag}
 Legacy dispatch marker: command="{formatted_command}" subfolder="{subfolder}"
 Save the returned session_id.
 Command metadata: command="{formatted_command}" args="{args}" subfolder="{subfolder}".
@@ -910,6 +917,7 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
 
 # Valid phases and statuses for state.yaml
 DEFAULT_STATE: dict[str, StateValue] = {
+    "schema_version": 2,
     "phase": ItemPhase.PENDING.value,
     PhaseName.BUILD.value: PhaseStatus.PENDING.value,
     PhaseName.REVIEW.value: PhaseStatus.PENDING.value,
@@ -936,12 +944,43 @@ DEFAULT_STATE: dict[str, StateValue] = {
         "reviewed_at": "",
         "findings_count": 0,
         "rounds": 0,
+        "baseline_commit": "",
+        "findings": [],
     },
     "plan_review": {
         "verdict": "",
         "reviewed_at": "",
         "findings_count": 0,
         "rounds": 0,
+        "baseline_commit": "",
+        "findings": [],
+    },
+    "artifacts": {
+        "input": {"digest": "", "produced_at": "", "stale": False},
+        "requirements": {"digest": "", "produced_at": "", "stale": False},
+        "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
+    },
+    "audit": {
+        "input_assessment": {"started_at": "", "completed_at": ""},
+        "triangulation": {"started_at": "", "completed_at": ""},
+        "requirements_review": {
+            "started_at": "",
+            "completed_at": "",
+            "baseline_commit": "",
+            "verdict": "",
+            "rounds": 0,
+            "findings": [],
+        },
+        "plan_drafting": {"started_at": "", "completed_at": ""},
+        "plan_review": {
+            "started_at": "",
+            "completed_at": "",
+            "baseline_commit": "",
+            "verdict": "",
+            "rounds": 0,
+            "findings": [],
+        },
+        "gate": {"started_at": "", "completed_at": ""},
     },
 }
 
@@ -951,11 +990,45 @@ def get_state_path(cwd: str, slug: str) -> Path:
     return Path(cwd) / "todos" / slug / "state.yaml"
 
 
+# Nested keys that require deep-merge to preserve sub-key defaults from v2 schema
+_DEEP_MERGE_KEYS = frozenset({"requirements_review", "plan_review", "grounding", "artifacts", "audit"})
+
+
+def _deep_merge_state(defaults: dict[str, StateValue], persisted: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Recursively merge persisted state onto defaults for nested dict keys.
+
+    For keys in _DEEP_MERGE_KEYS: merge sub-dicts recursively so that sub-keys
+    introduced in v2 DEFAULT_STATE are added to older persisted state shapes.
+    For all other keys: persisted wins outright (shallow update behaviour).
+    """
+    result = copy.deepcopy(defaults)
+    for key, value in persisted.items():
+        if key in _DEEP_MERGE_KEYS:
+            default_val = result.get(key)
+            if isinstance(default_val, dict) and isinstance(value, dict):
+                # Recurse one level: merge nested dicts
+                merged_nested: dict[str, StateValue] = copy.deepcopy(default_val)
+                for nested_key, nested_val in value.items():
+                    if isinstance(merged_nested.get(nested_key), dict) and isinstance(nested_val, dict):
+                        inner: dict[str, StateValue] = copy.deepcopy(merged_nested[nested_key])  # type: ignore[arg-type]
+                        inner.update(nested_val)
+                        merged_nested[nested_key] = inner
+                    else:
+                        merged_nested[nested_key] = nested_val
+                result[key] = merged_nested
+            else:
+                result[key] = value
+        else:
+            result[key] = value
+    return result
+
+
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state.yaml from worktree (falls back to state.json for backward compat).
 
     Returns default state if file doesn't exist.
     Migrates missing 'phase' field from existing build/dor state.
+    Performs deep-merge for nested dict keys so v2 sub-key defaults are always present.
     """
     state_path = get_state_path(cwd, slug)
     # Backward compat: try state.json if state.yaml doesn't exist
@@ -976,9 +1049,8 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     else:
         logger.warning("Ignoring non-mapping phase state for %s/%s", cwd, slug)
         state = {}
-    # Merge with defaults for any missing keys
-    merged = copy.deepcopy(DEFAULT_STATE)
-    merged.update(state)
+    # Deep-merge: preserves v2 nested sub-key defaults that are absent in older persisted state
+    merged = _deep_merge_state(copy.deepcopy(DEFAULT_STATE), state)
     merged["finalize"] = _normalize_finalize_state(state.get("finalize"))
 
     # Migration: derive phase from existing fields when missing from persisted state
@@ -1066,7 +1138,7 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
 
 # Valid prepare sub-phases that accept verdicts via mark-phase
 _PREPARE_VERDICT_PHASES = ("requirements_review", "plan_review")
-_PREPARE_VERDICT_VALUES = ("approve", "needs_work")
+_PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 
 # Valid prepare_phase values for direct phase advancement
 _PREPARE_PHASE_VALUES = tuple(p.value for p in PreparePhase)
@@ -2964,10 +3036,38 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
 # =============================================================================
 
 
+def _is_artifact_produced_v2(state: dict[str, StateValue], artifact_key: str) -> bool:
+    """Check whether a v2 lifecycle record confirms the artifact was properly produced.
+
+    For v1 state (no schema_version), always returns True so file-existence is
+    the sole signal (backward compatibility).
+    """
+    schema_version = state.get("schema_version")
+    if not isinstance(schema_version, int) or schema_version < 2:
+        return True  # v1: file-existence wins
+    artifacts = state.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        return False
+    entry = artifacts.get(artifact_key, {})
+    if not isinstance(entry, dict):
+        return False
+    produced_at = entry.get("produced_at", "")
+    return isinstance(produced_at, str) and bool(produced_at)
+
+
 def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:
-    """Derive the initial prepare phase from artifact existence when no durable phase is set."""
+    """Derive the initial prepare phase from artifact existence when no durable phase is set.
+
+    For v2 state, ghost artifact protection (R5) means a file on disk without a
+    corresponding produced_at lifecycle record is treated as not produced.
+    For v1 state, file existence is the sole signal (backward compat).
+    """
     has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
+
+    # Ghost artifact protection (R5)
+    if has_requirements and not _is_artifact_produced_v2(state, "requirements"):
+        has_requirements = False
 
     if has_input and not has_requirements:
         return PreparePhase.INPUT_ASSESSMENT
@@ -2976,16 +3076,20 @@ def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> 
 
     req_review = state.get("requirements_review", {})
     req_verdict = (isinstance(req_review, dict) and req_review.get("verdict")) or ""
-    if not req_verdict or req_verdict == "needs_work":
+    if not req_verdict or req_verdict in ("needs_work", "needs_decision"):
         return PreparePhase.REQUIREMENTS_REVIEW
 
     has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
+    # Ghost artifact protection for plan
+    if has_plan and not _is_artifact_produced_v2(state, "implementation_plan"):
+        has_plan = False
+
     if not has_plan:
         return PreparePhase.PLAN_DRAFTING
 
     plan_review = state.get("plan_review", {})
     plan_verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
-    if not plan_verdict or plan_verdict == "needs_work":
+    if not plan_verdict or plan_verdict in ("needs_work", "needs_decision"):
         return PreparePhase.PLAN_REVIEW
 
     dor = state.get("dor", {})
@@ -3008,7 +3112,17 @@ async def _prepare_step_input_assessment(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """INPUT_ASSESSMENT: choose requirements strategy and produce requirements."""
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+
+    _now = datetime.now(UTC).isoformat()
+    stamp_audit(state, "input_assessment", "started_at", _now)  # type: ignore[arg-type]
+
     if check_file_has_content(cwd, f"todos/{slug}/requirements.md"):
+        # Emit input_consumed event before transitioning (R13)
+        from teleclaude.core.next_machine.prepare_helpers import record_input_consumed
+
+        await asyncio.to_thread(record_input_consumed, cwd, slug)
+        stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
         state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return True, ""  # loop
@@ -3067,14 +3181,37 @@ async def _prepare_step_requirements_review(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """REQUIREMENTS_REVIEW: awaiting review verdict."""
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+
+    stamp_audit(state, "requirements_review", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+
     req_review = state.get("requirements_review", {})
     verdict = (isinstance(req_review, dict) and req_review.get("verdict")) or ""
 
     if verdict == "approve":
+        stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "requirements_review", "verdict", "approve")  # type: ignore[arg-type]
         state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
         return True, ""  # loop
+
+    if verdict == "needs_decision":
+        # Architectural blocker — requires human decision before proceeding
+        findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
+        findings_list = findings if isinstance(findings, list) else []
+        open_count = sum(
+            1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
+        )
+        state["prepare_phase"] = PreparePhase.BLOCKED.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        return False, (
+            f"BLOCKED: {slug} requirements have {open_count} unresolved architectural finding(s) "
+            f"requiring human decision. See todos/{slug}/requirements-review-findings.md.\n\n"
+            f"Before acting, load the relevant worker role:\n"
+            f"  telec docs index\n"
+            f"Then use telec docs get to load the procedure for the role you are assuming."
+        )
 
     if verdict == "needs_work":
         if isinstance(req_review, dict):
@@ -3095,14 +3232,36 @@ async def _prepare_step_requirements_review(
                 f"  telec docs index\n"
                 f"Then use telec docs get to load the procedure for the role you are assuming."
             )
-        # Loop back to TRIANGULATION with findings
+        # Count-and-pointer pattern: no file content injection (R2)
+        findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
+        findings_list = findings if isinstance(findings, list) else []
+        open_count = sum(
+            1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
+        )
+        findings_note = (
+            f"Requirements need revision: {open_count} unresolved finding(s). "
+            f"See todos/{slug}/requirements-review-findings.md."
+        )
+        stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "requirements_review", "verdict", "needs_work")  # type: ignore[arg-type]
+        stamp_audit(state, "requirements_review", "rounds", rounds)  # type: ignore[arg-type]
+        state["requirements_review"] = req_review  # type: ignore[assignment]
         state["prepare_phase"] = PreparePhase.TRIANGULATION.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
-        # Attach findings if present
-        findings_path = Path(cwd) / "todos" / slug / "requirements-review-findings.md"
-        findings_note = ""
-        if findings_path.exists():
-            findings_note = f"\n\nReview findings:\n{read_text_sync(findings_path)}"
+        # Compute diff context for re-dispatch (I-2)
+        from teleclaude.core.next_machine.prepare_helpers import (
+            compute_artifact_diff,
+            compute_todo_folder_diff,
+        )
+        base_sha = (isinstance(req_review, dict) and req_review.get("baseline_commit")) or ""
+        req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", str(base_sha))
+        folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
+        additional_context = "\n\n".join(filter(None, [req_diff, folder_diff])) or ""
+        # Emit scoped re-review event (I-3)
+        _emit_prepare_event(
+            "domain.software-development.prepare.review_scoped",
+            {"slug": slug, "finding_ids": [f.get("id", "") for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"]},
+        )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
             command=SlashCommand.NEXT_PREPARE_DISCOVERY,
@@ -3110,11 +3269,21 @@ async def _prepare_step_requirements_review(
             project=cwd,
             guidance=guidance,
             subfolder="",
-            note=f"Requirements need revision based on review feedback.{findings_note}",
+            note=findings_note,
             next_call=f"telec todo prepare {slug}",
+            additional_context=additional_context,
         )
 
-    # No verdict yet — dispatch reviewer
+    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
+    rc, head_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
+    if rc == 0 and head_sha.strip():
+        req_review_dict = state.get("requirements_review", {})
+        if not isinstance(req_review_dict, dict):
+            req_review_dict = {}
+        req_review_dict["baseline_commit"] = head_sha.strip()
+        state["requirements_review"] = req_review_dict  # type: ignore[assignment]
+        stamp_audit(state, "requirements_review", "baseline_commit", head_sha.strip())  # type: ignore[arg-type]
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         command=SlashCommand.NEXT_REVIEW_REQUIREMENTS,
@@ -3134,7 +3303,37 @@ async def _prepare_step_plan_drafting(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_DRAFTING: implementation-plan.md needed."""
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+
+    stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+
     if check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md"):
+        # R16: check that all referenced_paths exist before advancing to plan review
+        grounding = state.get("grounding", {})
+        referenced_paths: list[str] = []
+        if isinstance(grounding, dict):
+            rp = grounding.get("referenced_paths", [])
+            referenced_paths = [p for p in (rp if isinstance(rp, list) else []) if isinstance(p, str)]
+        missing_paths = [p for p in referenced_paths if not Path(cwd, p).exists()]
+        if missing_paths:
+            guidance = await compose_agent_guidance(db)
+            missing_list = "\n".join(f"- {p}" for p in missing_paths)
+            return False, format_tool_call(
+                command=SlashCommand.NEXT_PREPARE_DRAFT,
+                args=slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder="",
+                note=(
+                    f"FIX MODE: todos/{slug}/implementation-plan.md references {len(missing_paths)} "
+                    f"path(s) that do not exist in the codebase. Correct the paths or remove "
+                    f"references to non-existent files, then rewrite implementation-plan.md."
+                ),
+                next_call=f"telec todo prepare {slug}",
+                additional_context=f"Missing referenced paths:\n{missing_list}",
+            )
+
+        stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
         state["prepare_phase"] = PreparePhase.PLAN_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
@@ -3163,14 +3362,37 @@ async def _prepare_step_plan_review(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_REVIEW: awaiting plan review verdict."""
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+
+    stamp_audit(state, "plan_review", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+
     plan_review = state.get("plan_review", {})
     verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
 
     if verdict == "approve":
+        stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "plan_review", "verdict", "approve")  # type: ignore[arg-type]
         state["prepare_phase"] = PreparePhase.GATE.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
         return True, ""  # loop
+
+    if verdict == "needs_decision":
+        # Architectural blocker — requires human decision before proceeding
+        findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
+        findings_list = findings if isinstance(findings, list) else []
+        open_count = sum(
+            1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
+        )
+        state["prepare_phase"] = PreparePhase.BLOCKED.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        return False, (
+            f"BLOCKED: {slug} plan has {open_count} unresolved architectural finding(s) "
+            f"requiring human decision. See todos/{slug}/plan-review-findings.md.\n\n"
+            f"Before acting, load the relevant worker role:\n"
+            f"  telec docs index\n"
+            f"Then use telec docs get to load the procedure for the role you are assuming."
+        )
 
     if verdict == "needs_work":
         if isinstance(plan_review, dict):
@@ -3191,13 +3413,36 @@ async def _prepare_step_plan_review(
                 f"  telec docs index\n"
                 f"Then use telec docs get to load the procedure for the role you are assuming."
             )
-        # Loop back to PLAN_DRAFTING with findings
+        # Count-and-pointer pattern: no file content injection (R2)
+        findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
+        findings_list = findings if isinstance(findings, list) else []
+        open_count = sum(
+            1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
+        )
+        findings_note = (
+            f"Implementation plan needs revision: {open_count} unresolved finding(s). "
+            f"See todos/{slug}/plan-review-findings.md."
+        )
+        stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "plan_review", "verdict", "needs_work")  # type: ignore[arg-type]
+        stamp_audit(state, "plan_review", "rounds", rounds)  # type: ignore[arg-type]
+        state["plan_review"] = plan_review  # type: ignore[assignment]
         state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
-        findings_path = Path(cwd) / "todos" / slug / "plan-review-findings.md"
-        findings_note = ""
-        if findings_path.exists():
-            findings_note = f"\n\nReview findings:\n{read_text_sync(findings_path)}"
+        # Compute diff context for re-dispatch (I-2)
+        from teleclaude.core.next_machine.prepare_helpers import (
+            compute_artifact_diff,
+            compute_todo_folder_diff,
+        )
+        base_sha = (isinstance(plan_review, dict) and plan_review.get("baseline_commit")) or ""
+        plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", str(base_sha))
+        folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
+        additional_context = "\n\n".join(filter(None, [plan_diff, folder_diff])) or ""
+        # Emit scoped re-review event (I-3)
+        _emit_prepare_event(
+            "domain.software-development.prepare.review_scoped",
+            {"slug": slug, "finding_ids": [f.get("id", "") for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"]},
+        )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
             command=SlashCommand.NEXT_PREPARE_DRAFT,
@@ -3205,11 +3450,21 @@ async def _prepare_step_plan_review(
             project=cwd,
             guidance=guidance,
             subfolder="",
-            note=f"Implementation plan needs revision based on review feedback.{findings_note}",
+            note=findings_note,
             next_call=f"telec todo prepare {slug}",
+            additional_context=additional_context,
         )
 
-    # No verdict yet — dispatch reviewer
+    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
+    rc, head_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
+    if rc == 0 and head_sha.strip():
+        plan_review_dict = state.get("plan_review", {})
+        if not isinstance(plan_review_dict, dict):
+            plan_review_dict = {}
+        plan_review_dict["baseline_commit"] = head_sha.strip()
+        state["plan_review"] = plan_review_dict  # type: ignore[assignment]
+        stamp_audit(state, "plan_review", "baseline_commit", head_sha.strip())  # type: ignore[arg-type]
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         command=SlashCommand.NEXT_REVIEW_PLAN,
@@ -3566,6 +3821,35 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         # Dispatch loop
         for _iter in range(_PREPARE_LOOP_LIMIT):
             state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+
+            # Artifact staleness check (R6): run before routing
+            from teleclaude.core.next_machine.prepare_helpers import (
+                check_artifact_staleness,
+            )
+
+            stale_artifacts = await asyncio.to_thread(check_artifact_staleness, cwd, resolved_slug)
+            if stale_artifacts:
+                earliest = stale_artifacts[0] if stale_artifacts else ""
+                # Map earliest stale artifact to phase to re-run
+                _phase_map = {
+                    "input": PreparePhase.INPUT_ASSESSMENT,
+                    "requirements": PreparePhase.PLAN_DRAFTING,
+                    "implementation_plan": PreparePhase.PLAN_REVIEW,
+                }
+                stale_phase = _phase_map.get(earliest, PreparePhase.INPUT_ASSESSMENT)
+                state["prepare_phase"] = stale_phase.value
+                await asyncio.to_thread(write_phase_state, cwd, resolved_slug, state)
+                _emit_prepare_event(
+                    "domain.software-development.prepare.artifact_invalidated",
+                    {"slug": resolved_slug, "stale_artifacts": stale_artifacts, "reason": "digest_mismatch"},
+                )
+                logger.info(
+                    "ARTIFACT_STALENESS slug=%s stale=%s routing_to=%s",
+                    resolved_slug,
+                    stale_artifacts,
+                    stale_phase.value,
+                )
+
             # Resolve current phase
             raw_phase = str(state.get("prepare_phase", "")).strip()
             try:

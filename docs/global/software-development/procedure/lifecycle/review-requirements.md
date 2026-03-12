@@ -74,11 +74,39 @@ Anything inferred from codebase or documentation rather than explicitly stated
 in `input.md` is marked `[inferred]`. If inferences are unmarked, the human
 cannot distinguish what they said from what the system assumed.
 
-### 3. Auto-remediate localized findings
+### 3. Classify findings by severity
 
-Default behavior is to act in place. If a finding is localized, high-confidence,
-and does not alter human intent, the reviewer should fix `requirements.md`
-directly in this same pass instead of handing it back.
+Assign each finding a severity level before routing:
+
+- **trivial** — localized, high-confidence fix with no intent change (e.g., adding a
+  missing `[inferred]` marker, tightening vague verification wording). Auto-remediation
+  allowed inline.
+- **substantive** — scope or intent ambiguity the reviewer cannot resolve unilaterally
+  (missing requirement, wrong constraint, missing verification path). Routes to
+  `needs_work` — the discovery worker must address it.
+- **architectural** — unresolved design decision or systemic contradiction requiring human
+  input before the work can proceed. Routes to `needs_decision` and blocks the machine.
+
+Record findings in `state.yaml` under `requirements_review.findings`:
+
+```yaml
+findings:
+  - id: "req-01"
+    severity: "substantive"   # trivial | substantive | architectural
+    summary: "R3 missing verification path for edge case X"
+    status: "open"            # open | resolved
+    resolved_at: ""
+```
+
+The `findings` list in `state.yaml` is the authoritative record. The markdown file
+`todos/{slug}/requirements-review-findings.md` is the human-readable reference — write it
+when unresolved findings exist, remove it when all are resolved.
+
+### 4. Auto-remediate trivial findings
+
+Default behavior is to act in place for **trivial** findings only. If a finding is
+localized, high-confidence, and does not alter human intent, fix `requirements.md`
+directly in this same pass and mark the finding `resolved`.
 
 Allowed in-place fixes:
 
@@ -89,7 +117,7 @@ Allowed in-place fixes:
 - Removing implementation leakage (replacing specific paths/fields/counts
   with references to governing specs).
 
-Not allowed — route via `needs_work` instead:
+Not allowed — assign `substantive` or `architectural` severity instead:
 
 - Adding new scope items.
 - Adding new success criteria.
@@ -101,31 +129,27 @@ Not allowed — route via `needs_work` instead:
 The boundary: auto-remediation fixes what exists. It does not expand what
 the requirements cover.
 
-### 4. Write verdict
+### 5. Write verdict
 
 Update `todos/{slug}/state.yaml`:
 
 ```yaml
 requirements_review:
-  verdict: "approve" | "needs_work"
+  verdict: "approve" | "needs_work" | "needs_decision"
   reviewed_at: "<now ISO8601>"
   findings_count: <n>
+  findings: [...]
 ```
 
-Verdict rules:
+Verdict rules (based on highest severity of unresolved findings):
 
-- `approve` only when unresolved Critical and unresolved Important findings are both zero.
-- `needs_work` when any unresolved Critical or Important finding remains.
-- Suggestion findings may remain unresolved under `approve`.
+- `approve` — all findings resolved (trivial findings auto-remediated, none remain open).
+- `needs_work` — one or more `substantive` findings remain unresolved. The discovery
+  worker will be re-dispatched to address them.
+- `needs_decision` — one or more `architectural` findings remain unresolved. The machine
+  sets `prepare_phase` to BLOCKED and notifies the human.
 
-If unresolved findings exist, write them to
-`todos/{slug}/requirements-review-findings.md` with severity levels
-(Critical, Important, Suggestion) following the same format as code review findings.
-
-If no unresolved findings remain, remove stale `requirements-review-findings.md`
-if present.
-
-### 5. Commit and report
+### 6. Commit and report
 
 Commit the verdict and any findings. Report:
 
@@ -144,7 +168,9 @@ Findings: {count}
 
 ## Recovery
 
-- If unresolved Critical or Important findings remain after auto-remediation,
-  mark `needs_work` with specific gaps listed.
+- If unresolved `substantive` findings remain after auto-remediation, mark `needs_work`
+  with specific gaps listed. The machine re-dispatches the discovery worker.
+- If unresolved `architectural` findings remain, mark `needs_decision`. The machine
+  blocks and surfaces the decision to the human.
 - If requirements are missing critical context or intent is ambiguous, do not
-  invent intent; mark `needs_work`.
+  invent intent; classify as `substantive` or `architectural` and route accordingly.

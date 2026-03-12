@@ -58,6 +58,19 @@ fresh draft:
 - Skip the atomicity decision (step 2); proceed directly to updating the plan tasks
   affected by findings, then write the updated artifacts (step 5).
 
+When dispatched via re-dispatch (FIX MODE or requirements stale), the startup
+frontmatter may contain an `additional_context` block. This block carries:
+
+- For `needs_work` re-dispatch: the count of unresolved findings plus the git diff
+  of `implementation-plan.md` since the review baseline — shows exactly what was
+  written and what the reviewer auto-remediated.
+- For requirements-stale re-dispatch: the git diff of `requirements.md` since the
+  last grounding SHA.
+- For missing path list (R16): a formatted list of file paths referenced in the plan
+  that do not exist in the codebase.
+
+Use `additional_context` to focus fixes. Do not re-derive content that is not in scope.
+
 ### 2. Decide whether the todo is atomic
 
 **This step is mandatory and must produce an explicit verdict before any plan

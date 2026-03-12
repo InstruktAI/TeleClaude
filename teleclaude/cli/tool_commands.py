@@ -400,6 +400,9 @@ def handle_sessions_run(args: list[str]) -> None:
         elif args[i] == "--detach":
             body["detach"] = True
             i += 1
+        elif args[i] == "--additional-context" and i + 1 < len(args):
+            body["additional_context"] = args[i + 1]
+            i += 2
         else:
             i += 1
 

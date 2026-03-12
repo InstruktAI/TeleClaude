@@ -592,6 +592,7 @@ class RunSessionRequest(BaseModel):  # type: ignore[explicit-any]
     subfolder: str = ""
     thinking_mode: Literal["fast", "med", "slow"] = "slow"
     detach: bool = False
+    additional_context: str = ""
 
 
 class SendResultRequest(BaseModel):  # type: ignore[explicit-any]

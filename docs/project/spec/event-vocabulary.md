@@ -112,6 +112,22 @@ All built-in event types are registered in `teleclaude.events/schemas/` and wire
 into `register_all()` in `teleclaude.events/schemas/__init__.py`. Domain-specific
 cartridges may register additional types in the same catalog.
 
+### Prepare lifecycle events (software-development domain)
+
+The `domain.software-development.prepare.*` family covers every observable transition
+in the prepare state machine. All events carry `slug` as a payload field unless noted.
+
+| Event type | Level | Description | Key payload fields |
+|---|---|---|---|
+| `prepare.phase_skipped` | WORKFLOW | Phase skipped via split inheritance | `slug`, `phase`, `reason` |
+| `prepare.input_consumed` | WORKFLOW | Input consumed by discovery, requirements production started | `slug` |
+| `prepare.artifact_produced` | WORKFLOW | Artifact written and lifecycle-tracked in state | `slug`, `artifact`, `digest` |
+| `prepare.artifact_invalidated` | OPERATIONAL | Upstream change cascaded staleness to artifact | `slug`, `artifact` |
+| `prepare.finding_recorded` | WORKFLOW | Finding recorded by reviewer with severity and summary | `slug`, `finding_id`, `severity`, `summary` |
+| `prepare.finding_resolved` | WORKFLOW | Finding resolved via auto-remediation or human action | `slug`, `finding_id`, `resolution_method` |
+| `prepare.review_scoped` | WORKFLOW | Scoped re-review dispatched targeting open findings | `slug`, `finding_ids` |
+| `prepare.split_inherited` | WORKFLOW | Child todo inherited parent's approved prepare phase | `parent_slug`, `child_slug`, `inherited_phase` |
+
 ### Expansion Joint
 
 `EventEnvelope` accepts additional fields beyond its declared schema via

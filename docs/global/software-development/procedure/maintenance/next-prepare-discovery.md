@@ -97,6 +97,11 @@ artifact quality policy. In particular:
 - **Grounding**: verify against the domain specs loaded in step 1, not against
   general knowledge. Requirements that reference non-existent APIs, wrong schema
   fields, or incorrect conventions are defective.
+- **Independent claim verification**: for any measurable or quantitative claim
+  (performance thresholds, capacity limits, timeout values, size budgets), verify
+  the value independently against the codebase or specs before writing it into
+  requirements. Do not transcribe unverified numbers from `input.md` — human
+  thinking may be aspirational, not grounded.
 - **Review-awareness**: apply the DoD-driven review-awareness rule from the
   preparation artifact quality policy. Walk each DoD section and verify that the
   requirements reflect the implications.

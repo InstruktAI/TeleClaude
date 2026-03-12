@@ -59,12 +59,19 @@ After review, call `telec todo prepare [slug]` again.
 
 #### PLAN DRAFTING REQUIRED
 
-Requirements are approved but `implementation-plan.md` does not exist.
+Requirements are approved but `implementation-plan.md` does not exist or is stale.
 Dispatch `next-prepare-draft` to a worker session. The draft agent grounds the
 approved requirements, decides whether the work is atomic, and either:
 
 - writes `implementation-plan.md` and `demo.md`, or
 - splits the todo into dependent child work items and updates the holder breakdown.
+
+The dispatch note includes `additional_context` when:
+- Requirements were modified (stale re-draft) — contains the requirements diff since
+  the grounding baseline.
+- Plan review returned `needs_work` — contains the unresolved finding count, a pointer
+  to the findings file, and the plan diff since review baseline.
+- Referenced paths do not exist — contains a formatted list of missing file paths.
 
 After the plan is written or the split is materialized, call
 `telec todo prepare [slug]` again.
@@ -76,6 +83,15 @@ to validate the plan against policies, DoD gates, and review lane expectations.
 The reviewer writes a verdict to `state.yaml`.
 
 After review, call `telec todo prepare [slug]` again.
+
+#### INPUT ASSESSMENT / STALENESS CASCADE
+
+On every invocation, the machine checks artifact digests before routing:
+- `input.md` digest changed → marks `requirements` and `implementation_plan` stale,
+  reverts phase to discovery, emits `prepare.artifact_invalidated` per stale artifact.
+- `requirements.md` digest changed → marks `implementation_plan` stale, reverts phase
+  to plan drafting.
+- No digest changes → staleness check is a no-op, routing proceeds normally.
 
 #### GROUNDING CHECK
 
@@ -96,10 +112,28 @@ Call `telec todo prepare [slug]` again.
 Terminal state. The todo is ready for build. Sync to worktree if needed.
 End all worker sessions and end yourself.
 
+#### BLOCKED
+
+The machine set `prepare_phase` to BLOCKED due to architectural findings in a review
+(`needs_decision` verdict). One or more findings in `requirements_review.findings` or
+`plan_review.findings` have `severity: "architectural"` and require human decision
+before the machine can proceed. Read `todos/{slug}/requirements-review-findings.md`
+or `todos/{slug}/plan-review-findings.md` for specifics. Surface the blocker to the
+human and stop.
+
 #### BLOCKER
 
 The machine encountered a condition it cannot resolve (missing input, human
 decision needed, superseded todo). Report the blocker and stop.
+
+#### SPLIT INHERITANCE
+
+When `telec todo split` creates child todos, children skip phases already approved
+by the parent. The machine records skipped phases in `state.yaml.audit` with
+`status: "skipped"` and `reason: "inherited_from_parent"`. Children with
+`plan_review.verdict == "approve"` start at `prepared` — no further prepare work
+is needed; they proceed directly to build. Children with only
+`requirements_review.verdict == "approve"` start at `plan_drafting`.
 
 ### 3. Supervision
 

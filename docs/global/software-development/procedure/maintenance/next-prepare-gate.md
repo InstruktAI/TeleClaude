@@ -115,6 +115,12 @@ caller verifies the commit exists, not the file state on disk.
 Go idle. Your caller will read the committed verdict and may open a direct
 conversation if quality needs iteration.
 
+When re-dispatched after a `needs_work` verdict, the startup frontmatter may contain
+an `additional_context` block with the full diff of the todo folder since the gate
+baseline commit (`compute_todo_folder_diff`). Use this diff to understand exactly
+what changed across all artifacts since the last gate run. Focus validation on the
+changed areas rather than re-running the full gate from scratch.
+
 ## Outputs
 
 1. Finalized `state.yaml` gate verdict.

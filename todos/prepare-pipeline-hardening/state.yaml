@@ -1,15 +1,15 @@
-phase: pending
-build: pending
-review: pending
+phase: in_progress
+build: complete
+review: approved
 deferrals_processed: false
 finalize:
   status: pending
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: aa0c37243cb5a92a3262c4b39fa8c5e9f4d72aa4
 unresolved_findings: []
 resolved_findings: []
 prepare_phase: prepared
