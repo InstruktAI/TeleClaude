@@ -29,6 +29,7 @@ class EventBus:
 
     def __init__(self) -> None:
         self._handlers: dict[EventType, list[EventHandler]] = {}
+        self._pending_tasks: set[asyncio.Task[object]] = set()
 
     def subscribe(self, event: EventType, handler: EventHandler) -> None:
         """Subscribe a handler to an event."""
@@ -50,7 +51,9 @@ class EventBus:
 
         loop = asyncio.get_running_loop()
         for handler in handlers:
-            loop.create_task(handler(event, context))
+            task = loop.create_task(handler(event, context))
+            self._pending_tasks.add(task)
+            task.add_done_callback(self._pending_tasks.discard)
 
 
 event_bus = EventBus()

@@ -64,6 +64,7 @@ class Pipeline:
         self._cartridges = cartridges
         self._context = context
         self._domain_runner = domain_runner
+        self._pending_fanout_tasks: set[asyncio.Task[None]] = set()
 
     def register(self, cartridge: Cartridge) -> None:
         """Append a cartridge to the end of the processing chain."""
@@ -78,10 +79,12 @@ class Pipeline:
 
         # Fan out to domain pipelines after system pipeline completes (fire-and-forget)
         if current is not None and self._domain_runner is not None:
-            asyncio.create_task(
+            task = asyncio.create_task(
                 self._run_domain_pipelines(current),
                 name="domain_pipeline_fanout",
             )
+            self._pending_fanout_tasks.add(task)
+            task.add_done_callback(self._pending_fanout_tasks.discard)
 
         return current
 
