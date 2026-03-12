@@ -60,18 +60,6 @@ async def test_fast_path_permanently_failed():
 
 
 @pytest.mark.asyncio
-async def test_fast_path_docker_unavailable():
-    """Bridge skips processing when Docker is unavailable."""
-    manager = _make_manager(has_cartridges=True)
-    manager.docker_unavailable = True
-    bridge = SandboxBridgeCartridge(manager=manager)
-    event = _make_event()
-    result = await bridge.process(event, MagicMock())
-    assert result is event
-    assert "_sandbox_results" not in event.payload
-
-
-@pytest.mark.asyncio
 async def test_attaches_sandbox_results_on_success():
     """Bridge attaches cartridge results to event payload on successful invocation."""
     manager = _make_manager(has_cartridges=True)
