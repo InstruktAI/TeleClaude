@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: agent-session-auth
+  date: '2026-03-12'
+  commit: 02a7da425980
 - slug: prepare-pipeline-hardening
   date: '2026-03-12'
   commit: dbf4379eb446
