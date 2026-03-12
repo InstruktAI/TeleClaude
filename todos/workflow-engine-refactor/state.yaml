@@ -15,9 +15,9 @@ resolved_findings: []
 prepare_phase: plan_review
 grounding:
   valid: true
-  base_sha: ded68c712c55b1b9d97d513cf4dba835e02a1ba0
+  base_sha: 80432307676bbb8c4fb6db1b9486082ead40533c
   input_digest: dd354e2baacb14038a21edd5443ea9a24ede52ad497a1a62739c41e93ba5ad43
-  last_grounded_at: '2026-03-12T12:00:00Z'
+  last_grounded_at: '2026-03-12T19:30:00Z'
   invalidation_reason: null
   referenced_paths:
   - teleclaude/core/next_machine/core.py
@@ -30,8 +30,13 @@ grounding:
   - teleclaude/core/db.py
   - teleclaude/core/integration_bridge.py
   - teleclaude/constants.py
+  - teleclaude/config/__init__.py
+  - teleclaude.yml
+  - docs/project/spec/teleclaude-config.md
   - workflows/prepare.yaml
   - workflows/work.yaml
+  - languages/python/baseline.md
+  - languages/typescript/baseline.md
   - tests/unit/core/next_machine/test_prepare_equivalence.py
   - tests/unit/core/next_machine/test_work_equivalence.py
   - tests/unit/core/next_machine/test_workflow_engine.py
@@ -41,9 +46,9 @@ requirements_review:
   findings_count: 5
 plan_review:
   verdict: needs_work
-  reviewed_at: '2026-03-12T18:12:20Z'
-  findings_count: 3
-  rounds: 1
+  reviewed_at: '2026-03-12T18:36:18Z'
+  findings_count: 4
+  rounds: 2
 kind: todo
 dor:
   last_assessed_at: null
