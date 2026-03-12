@@ -939,7 +939,7 @@ def _step_committed(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """COMMITTED: delivery bookkeeping on repo root (roadmap deliver, demo), then push from integration worktree."""
+    """COMMITTED: push from integration worktree first, then bookkeeping on repo root."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "COMMITTED phase has no candidate key")
@@ -947,42 +947,6 @@ def _step_committed(
     checkpoint.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
     _write_checkpoint(checkpoint_path, checkpoint)
     _mirror_integration_phase(cwd, key.slug, IntegrationPhase.DELIVERY_BOOKKEEPING.value)
-
-    # Delivery bookkeeping runs on repo root — operational metadata, not delivery content
-    is_bug = _is_bug_slug(cwd, key.slug)
-    if not is_bug:
-        from teleclaude.core.next_machine.core import deliver_to_delivered
-
-        if not deliver_to_delivered(cwd, key.slug):
-            logger.warning("deliver_to_delivered failed for %s (not in roadmap or delivered)", key.slug)
-
-    demo_path = Path(cwd) / "todos" / key.slug / "demo.md"
-    if demo_path.exists():
-        result = subprocess.run(
-            ["telec", "todo", "demo", "create", key.slug],
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-        )
-        if result.returncode != 0:
-            logger.warning("telec todo demo create %s failed: %s", key.slug, result.stderr.strip())
-
-    # Stage only bookkeeping files on repo root (not git add -A which sweeps dirty main)
-    _run_git(["add", "todos/roadmap.yaml", "todos/delivered.yaml"], cwd=cwd)
-    rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=cwd)
-    if rc != 0:  # staged changes exist
-        _run_git(
-            [
-                "commit",
-                "-m",
-                (
-                    f"chore({key.slug}): delivery bookkeeping\n\n"
-                    "🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
-                    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-                ),
-            ],
-            cwd=cwd,
-        )
 
     return True, ""  # loop into DELIVERY_BOOKKEEPING → push
 
@@ -1053,10 +1017,42 @@ def _step_push_succeeded(
     queue: IntegrationQueue,
     cwd: str,
 ) -> tuple[bool, str]:
-    """PUSH_SUCCEEDED: cleanup worktree, branch, todo dir; restart daemon."""
+    """PUSH_SUCCEEDED: sync repo root with pushed origin/main, run delivery bookkeeping, then cleanup."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
+
+    # Sync repo root with origin/main (now contains the squash commit)
+    rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
+    if rc != 0:
+        logger.warning("repo root pull failed after push: %s", stderr.strip())
+        # Non-fatal: bookkeeping will still work on repo root, just with stale HEAD.
+        # The entry-point pull on next `telec todo integrate` call will catch divergence.
+
+    # Delivery bookkeeping on repo root — operational metadata, not delivery content
+    is_bug = _is_bug_slug(cwd, key.slug)
+    if not is_bug:
+        from teleclaude.core.next_machine.core import deliver_to_delivered
+
+        if not deliver_to_delivered(cwd, key.slug):
+            logger.warning("deliver_to_delivered failed for %s (not in roadmap or delivered)", key.slug)
+
+    # Stage only bookkeeping files (not git add -A which sweeps dirty main)
+    _run_git(["add", "todos/roadmap.yaml", "todos/delivered.yaml"], cwd=cwd)
+    rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=cwd)
+    if rc != 0:  # staged changes exist
+        _run_git(
+            [
+                "commit",
+                "-m",
+                (
+                    f"chore({key.slug}): delivery bookkeeping\n\n"
+                    "🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
+                    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
+                ),
+            ],
+            cwd=cwd,
+        )
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
@@ -1112,6 +1108,11 @@ def _do_cleanup(
             ],
             cwd=cwd,
         )
+
+    # Push bookkeeping + cleanup commits to origin/main so repo root stays in sync
+    rc, _, stderr = _run_git(["push", "origin", "main"], cwd=cwd)
+    if rc != 0:
+        logger.warning("repo root push after cleanup failed: %s", stderr.strip())
 
     _emit_lifecycle_event(
         "integration.candidate.delivered",

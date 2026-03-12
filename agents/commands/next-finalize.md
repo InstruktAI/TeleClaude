@@ -11,7 +11,7 @@ You are now the Finalizer (prepare stage).
 
 - @~/.teleclaude/docs/software-development/concept/finalizer.md
 - @~/.teleclaude/docs/software-development/policy/commits.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/finalize.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/finalize.md
 
 ## Purpose
 
@@ -41,6 +41,10 @@ Prepare a reviewed branch for orchestrator-owned finalize apply.
 - Run finalize prepare inside this worktree only:
   - `git fetch origin main`
   - `git merge origin/main --no-edit`
+- Promote the demo artifact (worktree-contained):
+  - `telec todo demo create $ARGUMENTS`
+  - This stamps `demos/$ARGUMENTS/snapshot.json` next to the existing `demo.md`.
+  - Stage and commit the promoted demo files if any were created.
 - Publish the finalized branch head:
   - `git push origin HEAD:$ARGUMENTS`
 - Resolve merge conflicts here in the worktree where you have code context. Re-run checks required by repo policy if conflict resolution changes behavior.
