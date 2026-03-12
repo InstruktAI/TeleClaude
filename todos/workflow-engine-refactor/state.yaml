@@ -1,10 +1,53 @@
-kind: todo
+phase: pending
 build: pending
 review: pending
 deferrals_processed: false
+finalize:
+  status: pending
 breakdown:
   assessed: false
   todos: []
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: plan_review
+grounding:
+  valid: true
+  base_sha: ebbfe0ff7f04aeb2c2bf675cc23af77b80b37df9
+  input_digest: dd354e2baacb14038a21edd5443ea9a24ede52ad497a1a62739c41e93ba5ad43
+  last_grounded_at: '2026-03-12T12:00:00Z'
+  invalidation_reason: null
+  referenced_paths:
+  - agents/commands/next-workflow.md
+  - languages/python/baseline.md
+  - languages/typescript/baseline.md
+  - teleclaude/core/agents.py
+  - teleclaude/core/db.py
+  - teleclaude/core/next_machine/core.py
+  - teleclaude/core/next_machine/engine.py
+  - teleclaude/core/next_machine/__init__.py
+  - teleclaude/core/next_machine/prepare.py
+  - teleclaude/core/next_machine/validators.py
+  - teleclaude/core/next_machine/work.py
+  - teleclaude/constants.py
+  - teleclaude/core/integration_bridge.py
+  - tests/unit/core/next_machine/test_prepare_equivalence.py
+  - tests/unit/core/next_machine/test_work_equivalence.py
+  - tests/unit/core/next_machine/test_workflow_engine.py
+  - workflows/prepare.yaml
+  - workflows/work.yaml
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-12T17:30:23Z'
+  findings_count: 5
+plan_review:
+  verdict: needs_work
+  reviewed_at: '2026-03-12T17:54:49Z'
+  findings_count: 3
+  rounds: 0
+kind: todo
 dor:
   last_assessed_at: null
   score: 0
@@ -14,20 +57,4 @@ dor:
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-requirements_review:
-  verdict: approve
-  reviewed_at: '2026-03-12T17:30:23Z'
-  findings_count: 5
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []
 schema_version: 1
-grounding:
-  valid: true
-  base_sha: dde3944e4ba9d3f8f8a1b573f7575cc61eae73ab
-  input_digest: dd354e2baacb14038a21edd5443ea9a24ede52ad497a1a62739c41e93ba5ad43
-  last_grounded_at: '2026-03-12T12:00:00Z'
-  invalidation_reason: null
-prepare_phase: requirements_review
