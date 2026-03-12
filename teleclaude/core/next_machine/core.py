@@ -517,7 +517,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
         results.append(f"GATE FAILED: make test (error: {exc})")
 
     # Gate 2: Demo structure validation
-    if check_file_exists(worktree_cwd, f"todos/{slug}/bug.md"):
+    if is_bug_todo(worktree_cwd, slug):
         results.append("GATE SKIPPED: demo validate (bug workflow)")
     else:
         try:
@@ -677,12 +677,15 @@ def check_file_has_content(cwd: str, relative_path: str) -> bool:
     return not _is_scaffold_template(content)
 
 
-def verify_artifacts(worktree_cwd: str, slug: str, phase: str) -> tuple[bool, str]:
+def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool = False) -> tuple[bool, str]:
     """Mechanically verify artifacts for a given phase.
 
     Checks presence and completeness of artifacts for build or review phase.
     Does not replace functional gates (make test, demo validate) — complements
     them with artifact presence and consistency checks.
+
+    When is_bug=True, checks bug.md instead of implementation-plan.md and
+    quality-checklist.md (bugs don't have those artifacts).
 
     Returns:
         (passed: bool, report: str) where report lists each check with PASS/FAIL.
@@ -733,22 +736,37 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str) -> tuple[bool, st
             results.append(f"FAIL: state.yaml is not parseable: {exc}")
 
     if phase == PhaseName.BUILD.value:
-        # Check: implementation-plan.md exists and all checkboxes are [x]
-        plan_path = todo_base / "implementation-plan.md"
-        if not plan_path.exists():
-            all_passed = False
-            results.append("FAIL: implementation-plan.md does not exist")
-        else:
-            content = plan_path.read_text(encoding="utf-8")
-            unchecked = re.findall(r"^\s*-\s*\[ \]", content, re.MULTILINE)
-            if unchecked:
+        if is_bug:
+            # Bug builds: check bug.md exists and has content
+            bug_path = todo_base / "bug.md"
+            if not bug_path.exists():
                 all_passed = False
-                results.append(
-                    f"FAIL: implementation-plan.md has {len(unchecked)} unchecked task(s) "
-                    f"(all must be [x] before review)"
-                )
+                results.append("FAIL: bug.md does not exist")
             else:
-                results.append("PASS: implementation-plan.md — all tasks checked [x]")
+                content = bug_path.read_text(encoding="utf-8")
+                stripped = content.strip()
+                if not stripped or stripped.startswith("<!--") and stripped.endswith("-->"):
+                    all_passed = False
+                    results.append("FAIL: bug.md is empty or contains only a template comment")
+                else:
+                    results.append("PASS: bug.md exists and has content")
+        else:
+            # Regular builds: check implementation-plan.md exists and all checkboxes are [x]
+            plan_path = todo_base / "implementation-plan.md"
+            if not plan_path.exists():
+                all_passed = False
+                results.append("FAIL: implementation-plan.md does not exist")
+            else:
+                content = plan_path.read_text(encoding="utf-8")
+                unchecked = re.findall(r"^\s*-\s*\[ \]", content, re.MULTILINE)
+                if unchecked:
+                    all_passed = False
+                    results.append(
+                        f"FAIL: implementation-plan.md has {len(unchecked)} unchecked task(s) "
+                        f"(all must be [x] before review)"
+                    )
+                else:
+                    results.append("PASS: implementation-plan.md — all tasks checked [x]")
 
         # Check: build commits exist on worktree branch beyond merge-base with main
         try:
@@ -784,24 +802,25 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str) -> tuple[bool, st
             all_passed = False
             results.append(f"FAIL: could not verify commits: {exc}")
 
-        # Check: quality-checklist.md Build Gates section has at least one [x]
-        checklist_path = todo_base / "quality-checklist.md"
-        if not checklist_path.exists():
-            all_passed = False
-            results.append("FAIL: quality-checklist.md does not exist")
-        else:
-            content = checklist_path.read_text(encoding="utf-8")
-            build_section = _extract_checklist_section(content, "Build Gates")
-            if build_section is None:
+        if not is_bug:
+            # Check: quality-checklist.md Build Gates section has at least one [x]
+            checklist_path = todo_base / "quality-checklist.md"
+            if not checklist_path.exists():
                 all_passed = False
-                results.append("FAIL: quality-checklist.md missing '## Build Gates' section")
+                results.append("FAIL: quality-checklist.md does not exist")
             else:
-                checked = re.findall(r"^\s*-\s*\[x\]", build_section, re.MULTILINE | re.IGNORECASE)
-                if not checked:
+                content = checklist_path.read_text(encoding="utf-8")
+                build_section = _extract_checklist_section(content, "Build Gates")
+                if build_section is None:
                     all_passed = False
-                    results.append("FAIL: quality-checklist.md Build Gates — no checked items")
+                    results.append("FAIL: quality-checklist.md missing '## Build Gates' section")
                 else:
-                    results.append(f"PASS: quality-checklist.md Build Gates — {len(checked)} checked item(s)")
+                    checked = re.findall(r"^\s*-\s*\[x\]", build_section, re.MULTILINE | re.IGNORECASE)
+                    if not checked:
+                        all_passed = False
+                        results.append("FAIL: quality-checklist.md Build Gates — no checked items")
+                    else:
+                        results.append(f"PASS: quality-checklist.md Build Gates — {len(checked)} checked item(s)")
 
     elif phase == PhaseName.REVIEW.value:
         # Check: review-findings.md exists and is not a scaffold template
@@ -827,24 +846,25 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str) -> tuple[bool, st
                 verdict = "APPROVE" if has_approve else "REQUEST CHANGES"
                 results.append(f"PASS: review-findings.md verdict: {verdict}")
 
-        # Check: quality-checklist.md Review Gates section has at least one [x]
-        checklist_path = todo_base / "quality-checklist.md"
-        if not checklist_path.exists():
-            all_passed = False
-            results.append("FAIL: quality-checklist.md does not exist")
-        else:
-            content = checklist_path.read_text(encoding="utf-8")
-            review_section = _extract_checklist_section(content, "Review Gates")
-            if review_section is None:
+        if not is_bug:
+            # Check: quality-checklist.md Review Gates section has at least one [x]
+            checklist_path = todo_base / "quality-checklist.md"
+            if not checklist_path.exists():
                 all_passed = False
-                results.append("FAIL: quality-checklist.md missing '## Review Gates' section")
+                results.append("FAIL: quality-checklist.md does not exist")
             else:
-                checked = re.findall(r"^\s*-\s*\[x\]", review_section, re.MULTILINE | re.IGNORECASE)
-                if not checked:
+                content = checklist_path.read_text(encoding="utf-8")
+                review_section = _extract_checklist_section(content, "Review Gates")
+                if review_section is None:
                     all_passed = False
-                    results.append("FAIL: quality-checklist.md Review Gates — no checked items")
+                    results.append("FAIL: quality-checklist.md missing '## Review Gates' section")
                 else:
-                    results.append(f"PASS: quality-checklist.md Review Gates — {len(checked)} checked item(s)")
+                    checked = re.findall(r"^\s*-\s*\[x\]", review_section, re.MULTILINE | re.IGNORECASE)
+                    if not checked:
+                        all_passed = False
+                        results.append("FAIL: quality-checklist.md Review Gates — no checked items")
+                    else:
+                        results.append(f"PASS: quality-checklist.md Review Gates — {len(checked)} checked item(s)")
 
     else:
         all_passed = False
@@ -1610,8 +1630,9 @@ def slug_in_roadmap(cwd: str, slug: str) -> bool:
 
 
 def is_bug_todo(cwd: str, slug: str) -> bool:
-    """Check if a todo is a bug (has bug.md)."""
-    return check_file_exists(cwd, f"todos/{slug}/bug.md")
+    """Check if a todo is a bug (kind='bug' in state.yaml)."""
+    state = read_phase_state(cwd, slug)
+    return state.get("kind") == "bug"
 
 
 # =============================================================================
@@ -3721,17 +3742,20 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         return format_stash_debt(resolved_slug, len(stash_entries))
 
     # 3. Validate preconditions
-    # Bugs skip requirements.md and implementation-plan.md checks (they use bug.md instead)
+    # Bugs use bug.md; regular todos use requirements.md + implementation-plan.md
     precondition_root = cwd
     worktree_path = Path(cwd) / WORKTREE_DIR / resolved_slug
-    if (
-        worktree_path.exists()
-        and check_file_has_content(str(worktree_path), f"todos/{resolved_slug}/requirements.md")
-        and check_file_has_content(str(worktree_path), f"todos/{resolved_slug}/implementation-plan.md")
-    ):
-        precondition_root = str(worktree_path)
-
     is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
+    if worktree_path.exists():
+        if is_bug:
+            if check_file_has_content(str(worktree_path), f"todos/{resolved_slug}/bug.md"):
+                precondition_root = str(worktree_path)
+        elif (
+            check_file_has_content(str(worktree_path), f"todos/{resolved_slug}/requirements.md")
+            and check_file_has_content(str(worktree_path), f"todos/{resolved_slug}/implementation-plan.md")
+        ):
+            precondition_root = str(worktree_path)
+
     if not is_bug:
         has_requirements = check_file_has_content(precondition_root, f"todos/{resolved_slug}/requirements.md")
         has_impl_plan = check_file_has_content(precondition_root, f"todos/{resolved_slug}/implementation-plan.md")
@@ -3741,6 +3765,15 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 "NOT_PREPARED",
                 f"todos/{resolved_slug} is missing requirements or implementation plan.",
                 next_call=f"Call telec todo prepare {resolved_slug} to complete preparation.",
+            )
+    else:
+        has_bug_md = check_file_has_content(precondition_root, f"todos/{resolved_slug}/bug.md")
+        if not has_bug_md:
+            _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "invalid_bug")
+            return format_error(
+                "INVALID_BUG",
+                f"todos/{resolved_slug} has kind='bug' but bug.md is missing or empty.",
+                next_call=f"Recreate with: telec bugs create {resolved_slug}",
             )
     _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "run", "validated")
 
@@ -4059,8 +4092,9 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
         # Artifact verification: check implementation plan checkboxes, commits, quality checklist.
         verify_started = perf_counter()
+        is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
         artifacts_passed, artifacts_output = await asyncio.to_thread(
-            verify_artifacts, worktree_cwd, resolved_slug, PhaseName.BUILD.value
+            verify_artifacts, worktree_cwd, resolved_slug, PhaseName.BUILD.value, is_bug=is_bug
         )
         if not artifacts_passed:
             artifact_log_detail = (

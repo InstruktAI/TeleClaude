@@ -2474,7 +2474,7 @@ def _demo_create(slug: str, project_root: Path) -> None:
 
 def _handle_todo_verify_artifacts(args: list[str]) -> None:
     """Handle telec todo verify-artifacts <slug> --phase <build|review>."""
-    from teleclaude.core.next_machine.core import verify_artifacts
+    from teleclaude.core.next_machine.core import is_bug_todo, verify_artifacts
 
     slug: str | None = None
     phase: str | None = None
@@ -2510,7 +2510,8 @@ def _handle_todo_verify_artifacts(args: list[str]) -> None:
         print(f"Invalid phase: {phase!r} (expected 'build' or 'review')")
         raise SystemExit(1)
 
-    passed, report = verify_artifacts(cwd, slug, phase)
+    is_bug = is_bug_todo(cwd, slug)
+    passed, report = verify_artifacts(cwd, slug, phase, is_bug=is_bug)
     print(report)
     raise SystemExit(0 if passed else 1)
 

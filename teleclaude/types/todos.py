@@ -34,6 +34,7 @@ class BreakdownState(BaseModel):
 class TodoState(BaseModel):
     """Canonical state for a TeleClaude work item."""
 
+    kind: str = "todo"  # "todo" | "bug"
     build: str = "pending"
     review: str = "pending"
     deferrals_processed: bool = False

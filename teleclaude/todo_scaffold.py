@@ -28,6 +28,7 @@ _DEFAULT_STATE = TodoState(
 
 
 _BUG_STATE = TodoState(
+    kind="bug",
     build="pending",
     review="pending",
     deferrals_processed=False,
