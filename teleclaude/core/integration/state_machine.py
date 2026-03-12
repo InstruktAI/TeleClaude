@@ -517,6 +517,14 @@ def _dispatch_sync(
             "Resolve the divergence (merge or reset to origin/main) before re-running integration.",
         )
 
+    # Reset session-scoped counters on fresh entry so they reflect only this
+    # run's work, not accumulated totals from previous integrator sessions.
+    initial_checkpoint = _read_checkpoint(checkpoint_path)
+    if initial_checkpoint.phase == IntegrationPhase.IDLE.value:
+        initial_checkpoint.items_processed = 0
+        initial_checkpoint.items_blocked = 0
+        _write_checkpoint(checkpoint_path, initial_checkpoint)
+
     for _iter in range(_LOOP_LIMIT):
         checkpoint = _read_checkpoint(checkpoint_path)
 
