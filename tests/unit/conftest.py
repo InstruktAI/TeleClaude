@@ -8,7 +8,15 @@ isolation — they are fully mocked. Override with lightweight stubs.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
+
+# Override the integration config path set by the top-level conftest.
+# Unit tests run against the worktree root config.yml, which always exists.
+_worktree_root = Path(__file__).resolve().parents[2]
+os.environ["TELECLAUDE_CONFIG_PATH"] = str(_worktree_root / "config.yml")
 
 
 @pytest.fixture(autouse=True)

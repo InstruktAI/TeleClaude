@@ -169,6 +169,7 @@ class Db:
             working_slug=row.working_slug,
             human_email=row.human_email,
             human_role=row.human_role,
+            principal=row.principal if hasattr(row, "principal") else None,
             lifecycle_status=row.lifecycle_status or "active",
             last_memory_extraction_at=Db._coerce_datetime(row.last_memory_extraction_at),
             help_desk_processed_at=Db._coerce_datetime(row.help_desk_processed_at),
@@ -348,6 +349,7 @@ class Db:
         initiator_session_id: str | None = None,
         human_email: str | None = None,
         human_role: str | None = None,
+        principal: str | None = None,
         lifecycle_status: str = "active",
         active_agent: str | None = None,
         thinking_mode: str | None = None,
@@ -400,6 +402,7 @@ class Db:
             initiator_session_id=initiator_session_id,
             human_email=human_email,
             human_role=human_role,
+            principal=principal,
             lifecycle_status=lifecycle_status,
             active_agent=active_agent,
             thinking_mode=thinking_mode,
@@ -422,6 +425,7 @@ class Db:
             initiator_session_id=session.initiator_session_id,
             human_email=session.human_email,
             human_role=session.human_role,
+            principal=session.principal,
             lifecycle_status=session.lifecycle_status,
             active_agent=session.active_agent,
             thinking_mode=session.thinking_mode,
@@ -2416,6 +2420,70 @@ class Db:
                 closed += 1
         return closed
 
+    # ------------------------------------------------------------------
+    # Session token ledger
+    # ------------------------------------------------------------------
+
+    async def issue_session_token(self, session_id: str, principal: str, role: str) -> str:
+        """Issue a new session token and store it in the ledger.
+
+        Returns the token string (UUID).
+        """
+        token = str(uuid.uuid4())
+        now = datetime.now(UTC)
+        issued_at = now.isoformat()
+        expires_at = (now + timedelta(hours=24)).isoformat()
+        record = db_models.SessionToken(
+            token=token,
+            session_id=session_id,
+            principal=principal,
+            role=role,
+            issued_at=issued_at,
+            expires_at=expires_at,
+            revoked_at=None,
+        )
+        async with self._session() as db_session:
+            db_session.add(record)
+            await db_session.commit()
+        return token
+
+    async def validate_session_token(self, token: str) -> db_models.SessionToken | None:
+        """Validate a token against the ledger.
+
+        Returns the SessionToken record if valid (not expired, not revoked), else None.
+        """
+        from sqlmodel import select
+
+        stmt = select(db_models.SessionToken).where(db_models.SessionToken.token == token)
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            record = result.first()
+
+        if record is None:
+            return None
+
+        now_iso = datetime.now(UTC).isoformat()
+        if record.expires_at < now_iso:
+            return None
+        if record.revoked_at is not None:
+            return None
+        return record
+
+    async def revoke_session_tokens(self, session_id: str) -> None:
+        """Revoke all active tokens for a session (called on session close)."""
+        from sqlalchemy import update
+
+        now_iso = datetime.now(UTC).isoformat()
+        stmt = (
+            update(db_models.SessionToken)
+            .where(db_models.SessionToken.session_id == session_id)
+            .where(db_models.SessionToken.revoked_at.is_(None))  # type: ignore[union-attr]
+            .values(revoked_at=now_iso)
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
 
 def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | None:
     """Sync helper for session_id lookups in standalone scripts.
@@ -2502,6 +2570,29 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
             if "no such table" in str(exc).lower():
                 return None
             raise
+
+
+def resolve_session_principal(session: "Session") -> tuple[str, str]:
+    """Resolve the (principal, role) pair for a session at token issuance time.
+
+    Rules:
+    - Inherited principal (session.principal set by parent): reuse it with the
+      session's human_role (preserving the identity chain across agent spawns).
+    - Human session (human_email present): principal="human:<email>", role=human_role or "admin"
+    - System/job session: principal="system:<session_id>", role="admin"
+
+    The full session_id is used as the stable identifier for system principals
+    to ensure traceability without truncation.
+    """
+    if session.principal:
+        return session.principal, session.human_role or HUMAN_ROLE_ADMIN
+    if session.human_email:
+        principal = f"human:{session.human_email}"
+        role = session.human_role or HUMAN_ROLE_ADMIN
+        return principal, role
+    # System/job session — use full session_id as the stable identifier.
+    principal = f"system:{session.session_id}"
+    return principal, HUMAN_ROLE_ADMIN
 
 
 # Module-level singleton instance (initialized on first import)

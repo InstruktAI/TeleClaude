@@ -32,7 +32,7 @@ from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_registry import init_command_service
 from teleclaude.core.command_service import CommandService
-from teleclaude.core.db import HookOutboxRow, db
+from teleclaude.core.db import HookOutboxRow, db, resolve_session_principal
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -1326,6 +1326,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         voice_env_vars = get_voice_env_vars(voice) if voice else {}
         env_vars = voice_env_vars.copy()
         working_dir = resolve_working_dir(session.project_path, session.subdir)
+
+        # Issue a session token and inject it as TELEC_SESSION_TOKEN into the tmux env.
+        # This gives every agent session a daemon-issued credential before the process starts.
+        # Child sessions inherit the parent principal so the full agent chain shares one identity.
+        principal, role = resolve_session_principal(session)
+        session_token = await db.issue_session_token(session_id, principal, role)
+        env_vars["TELEC_SESSION_TOKEN"] = session_token
 
         created = await tmux_bridge.ensure_tmux_session(
             name=session.tmux_session_name,

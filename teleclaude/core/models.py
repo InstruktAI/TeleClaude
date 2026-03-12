@@ -561,6 +561,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     working_slug: str | None = None
     human_email: str | None = None
     human_role: str | None = HUMAN_ROLE_ADMIN
+    principal: str | None = None
     lifecycle_status: str = "active"
     last_memory_extraction_at: datetime | None = None
     help_desk_processed_at: datetime | None = None

@@ -313,24 +313,31 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     # Resolve identity
     metadata_human_email: str | None = None
     metadata_human_role: str | None = None
+    metadata_principal: str | None = None
     if cmd.channel_metadata:
         raw_email = cmd.channel_metadata.get("human_email")
         raw_role = cmd.channel_metadata.get("human_role")
+        raw_principal = cmd.channel_metadata.get("principal")
         if isinstance(raw_email, str) and raw_email.strip():
             metadata_human_email = raw_email.strip()
         if isinstance(raw_role, str) and raw_role.strip():
             metadata_human_role = raw_role.strip().lower()
+        if isinstance(raw_principal, str) and raw_principal.strip():
+            metadata_principal = raw_principal.strip()
 
     identity = get_identity_resolver().resolve(origin, cmd.channel_metadata or {})
     human_email = identity.person_email if identity and identity.person_email else metadata_human_email
     human_role = identity.person_role if identity and identity.person_role else metadata_human_role
 
     # Handle parent session identity inheritance
+    principal: str | None = metadata_principal
     if parent_session:
         if not human_email and parent_session.human_email:
             human_email = parent_session.human_email
         if not human_role and parent_session.human_role:
             human_role = parent_session.human_role
+        if not principal and parent_session.principal:
+            principal = parent_session.principal
     if not human_role and origin not in {"api", "web"}:
         human_role = HUMAN_ROLE_ADMIN
 
@@ -412,6 +419,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         initiator_session_id=initiator_session_id,
         human_email=human_email,
         human_role=human_role,
+        principal=principal,
         lifecycle_status="initializing",
         session_metadata=metadata_from_cmd,
         active_agent=launch.agent if launch else None,
