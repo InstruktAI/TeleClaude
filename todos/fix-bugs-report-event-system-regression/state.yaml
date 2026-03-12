@@ -1,4 +1,5 @@
-build: pending
+kind: bug
+build: complete
 review: pending
 deferrals_processed: false
 breakdown:
