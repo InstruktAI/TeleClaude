@@ -2552,14 +2552,27 @@ def _file_contents_match(src: Path, dst: Path) -> bool:
 
 
 def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = None) -> int:
-    """Copy orchestrator-owned planning files from main repo into a slug worktree."""
+    """Copy orchestrator-owned planning files from main repo into a slug worktree.
+
+    Entries in *extra_files* that end with ``/`` are treated as directories —
+    every file underneath is synced recursively.
+    """
     main_root = Path(cwd)
     worktree_root = Path(cwd) / WORKTREE_DIR / slug
     if not worktree_root.exists():
         return 0
-    files = ["todos/roadmap.yaml"]
+    files: list[str] = ["todos/roadmap.yaml"]
     if extra_files:
-        files.extend(extra_files)
+        for entry in extra_files:
+            if entry.endswith("/"):
+                # Expand directory into individual files
+                src_dir = main_root / entry
+                if src_dir.is_dir():
+                    for child in src_dir.rglob("*"):
+                        if child.is_file():
+                            files.append(str(child.relative_to(main_root)))
+            else:
+                files.append(entry)
     copied = 0
     for rel in files:
         if _sync_file(main_root, worktree_root, rel):
@@ -2801,6 +2814,98 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
 
     logger.info("Created worktree at %s", worktree_path)
     return True
+
+
+def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
+    """Best-effort: commit and push todo artifacts to origin/main.
+
+    Worktrees are created from origin/main. Todo artifacts scaffolded locally
+    (e.g. by ``telec bugs report`` or ``telec todo create``) must be committed
+    and pushed so the worktree includes them.
+
+    This is best-effort. The critical safety net is ``sync_main_to_worktree``
+    which copies the todo folder directly into the worktree regardless.
+
+    Returns:
+        Tuple of (action_taken, reason).
+    """
+    local_todo = Path(cwd) / "todos" / slug
+    if not local_todo.exists() or not any(local_todo.iterdir()):
+        return False, "no_local_artifacts"
+
+    try:
+        repo = Repo(cwd)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return False, "not_a_repo"
+
+    # Fetch to check against current remote state
+    try:
+        repo.git.fetch("origin", "main")
+    except GitCommandError as exc:
+        logger.warning("fetch origin main failed during todo remote sync: %s", exc)
+        return False, "fetch_skipped"
+
+    # Check if the todo folder already exists on origin/main
+    try:
+        output = repo.git.ls_tree("origin/main", "--", f"todos/{slug}")
+        if output.strip():
+            return False, "already_on_remote"
+    except GitCommandError:
+        pass  # ls-tree errors if path doesn't exist — means not on remote
+
+    # Todo exists locally but not on remote — commit and push
+    todo_rel = f"todos/{slug}"
+
+    # Commit if there are uncommitted todo artifacts
+    status_output = repo.git.status("--porcelain", "--", todo_rel)
+    if status_output.strip():
+        commit_paths = [todo_rel]
+        # Include roadmap.yaml if dirty (may have been updated by auto-add)
+        roadmap_status = repo.git.status("--porcelain", "--", "todos/roadmap.yaml")
+        if roadmap_status.strip():
+            commit_paths.append("todos/roadmap.yaml")
+
+        msg = (
+            f"chore(todos): scaffold {slug}\n\n"
+            "Automated pre-worktree housekeeping: local todo artifacts must exist on\n"
+            "origin/main before worktree creation so workers find them.\n\n"
+            "\U0001f916 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
+            "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
+        )
+        try:
+            repo.git.add("--", *commit_paths)
+            repo.git.commit("-m", msg, "--only", "--", *commit_paths)
+        except GitCommandError as exc:
+            logger.warning("Failed to commit todo artifacts for %s: %s", slug, exc)
+            return False, "commit_skipped"
+
+    # Push — try direct first, then reconcile with rebase if diverged
+    try:
+        repo.git.push("origin", "main")
+        logger.info("Pushed todo artifacts for %s to origin/main", slug)
+        return True, "committed_and_pushed"
+    except GitCommandError:
+        pass
+
+    # Push failed (likely non-fast-forward) — try pull --rebase then push
+    try:
+        repo.git.pull("--rebase", "origin", "main")
+        repo.git.push("origin", "main")
+        logger.info("Rebased and pushed todo artifacts for %s to origin/main", slug)
+        return True, "rebased_and_pushed"
+    except GitCommandError as exc:
+        # Abort rebase if it's stuck
+        try:
+            repo.git.rebase("--abort")
+        except GitCommandError:
+            pass
+        logger.warning(
+            "Could not push todo artifacts for %s to origin/main (non-fatal, "
+            "sync_main_to_worktree will copy files directly): %s",
+            slug,
+            exc,
+        )
+        return False, "push_deferred"
 
 
 def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
@@ -3800,6 +3905,15 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
             )
 
+    # 3c. Ensure todo artifacts exist on origin/main before worktree creation.
+    # Worktrees branch from origin/main — locally scaffolded artifacts (bugs, todos)
+    # must be committed and pushed so the worktree includes them.
+    # This is best-effort; sync_main_to_worktree copies files directly as safety net.
+    remote_sync_started = perf_counter()
+    sync_ok, sync_reason = await asyncio.to_thread(_ensure_todo_on_remote_main, cwd, resolved_slug)
+    sync_decision = "run" if sync_ok else "skip"
+    _log_next_work_phase(phase_slug, "ensure_remote_artifacts", remote_sync_started, sync_decision, sync_reason)
+
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / resolved_slug)
     ensure_started = perf_counter()
     slug_lock = await _get_slug_single_flight_lock(cwd, resolved_slug)
@@ -3834,7 +3948,9 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 cwd,
                 worktree_cwd,
             )
-            main_sync_copied = await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+            main_sync_copied = await asyncio.to_thread(
+                sync_main_to_worktree, cwd, resolved_slug, [f"todos/{resolved_slug}/"]
+            )
             sync_decision = "run" if main_sync_copied > 0 else "skip"
             sync_reason = f"copied main={main_sync_copied}" if main_sync_copied > 0 else "unchanged_inputs"
             _log_next_work_phase(phase_slug, "sync", sync_started, sync_decision, sync_reason)
