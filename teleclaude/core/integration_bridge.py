@@ -7,7 +7,6 @@ session spawn/wake helper used by the integration trigger cartridge.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import UTC, datetime
@@ -260,77 +259,40 @@ async def spawn_integrator_session(
 ) -> _SpawnResult | None:
     """Spawn or wake the singleton integrator session.
 
-    Checks if an integrator session is already running. If not, spawns one
-    via ``telec sessions start`` with the integrator system role. The
-    integrator drains the durable queue itself, so the wake-up command stays
-    generic and does not target a specific slug. If one is already running,
-    the candidate is already queued and the running integrator will drain it.
+    Checks if an integrator session is already running via the DB directly.
+    If not, spawns one using the internal CommandService (no CLI subprocess).
+    The integrator drains the durable queue itself, so the wake-up command
+    stays generic and does not target a specific slug. If one is already
+    running, the candidate is already queued and the running integrator will
+    drain it.
 
     Returns session info dict on spawn, or None if integrator already active.
     """
-    import asyncio
+    from teleclaude.constants import JobRole, SlashCommand
+    from teleclaude.core.command_registry import get_command_service
+    from teleclaude.core.db import db
 
+    # Guard: skip spawn if an integrator session is already active.
     try:
-        result = await asyncio.to_thread(_spawn_integrator_sync, slug, branch, sha)
-        return result
-    except Exception:
-        logger.exception("Failed to spawn integrator session for %s", slug)
-        return None
-
-
-def _spawn_integrator_sync(slug: str, branch: str, sha: str) -> _SpawnResult | None:
-    """Synchronous helper — check for running integrator and spawn if needed."""
-    import subprocess
-
-    # Check if an integrator session is already running via structured job filter.
-    try:
-        list_result = subprocess.run(
-            ["telec", "sessions", "list", "--all", "--job", "integrator"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if list_result.returncode != 0:
-            logger.warning(
-                "Integrator guard check failed (exit %d); proceeding to spawn. stderr: %s",
-                list_result.returncode,
-                (list_result.stderr or "").strip() or "(empty)",
-            )
-        else:
-            sessions = json.loads(list_result.stdout)
-            if sessions:
-                logger.info("Integrator session already running; candidate %s queued for drain", slug)
-                return None
-    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
-        logger.warning("Could not check for running integrator sessions")
-
-    # Spawn a new queue-draining integrator session with parity evidence for main push authorization.
-    project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
-    spawn_env = os.environ.copy()
-    spawn_env["TELECLAUDE_INTEGRATOR_PARITY_EVIDENCE"] = "accepted"
-    try:
-        start_result = subprocess.run(
-            [
-                "telec",
-                "sessions",
-                "run",
-                "--command",
-                "/next-integrate",
-                "--project",
-                project_path,
-                "--detach",
-            ],
-            env=spawn_env,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if start_result.returncode == 0:
-            logger.info("Spawned integrator session for %s", slug)
-            return _SpawnResult(status="spawned", slug=slug)
-        else:
-            logger.error("Failed to spawn integrator: %s", start_result.stderr or start_result.stdout)
+        sessions = await db.list_sessions()
+        if any(
+            s.session_metadata and s.session_metadata.job == JobRole.INTEGRATOR
+            for s in sessions
+        ):
+            logger.info("Integrator session already running; candidate %s queued for drain", slug)
             return None
-    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+    except Exception:
+        logger.warning("Could not check for running integrator sessions; proceeding to spawn")
+
+    project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
+    try:
+        await get_command_service().run_slash_command(
+            SlashCommand.NEXT_INTEGRATE,
+            project_path,
+            detach=True,
+        )
+        logger.info("Spawned integrator session for %s", slug)
+        return _SpawnResult(status="spawned", slug=slug)
+    except Exception as exc:
         logger.error("Integrator spawn failed: %s", exc)
         return None

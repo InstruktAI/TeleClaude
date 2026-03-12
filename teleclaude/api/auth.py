@@ -138,13 +138,10 @@ def _derive_session_system_role(session: Session) -> str | None:
     2. Worker heuristic: sessions with a `working_slug` are worker sessions.
     3. Otherwise unknown (treated as non-worker for system-role restrictions).
     """
-    metadata = session.session_metadata
-    if isinstance(metadata, dict):
-        raw_role = metadata.get("system_role")
-        if isinstance(raw_role, str):
-            normalized = raw_role.strip().lower()
-            if normalized in {ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}:
-                return normalized
+    if session.session_metadata and session.session_metadata.system_role:
+        normalized = session.session_metadata.system_role.strip().lower()
+        if normalized in {ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}:
+            return normalized
 
     return ROLE_WORKER if session.working_slug else ROLE_ORCHESTRATOR
 

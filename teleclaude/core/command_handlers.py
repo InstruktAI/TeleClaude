@@ -293,7 +293,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     subfolder = cmd.subdir
     working_slug = cmd.working_slug
     initiator_session_id = cmd.initiator_session_id
-    metadata_from_cmd = cmd.session_metadata or {}
+    metadata_from_cmd = cmd.session_metadata
 
     if cmd.channel_metadata:
         # subfolder/slug/initiator_id can also be in metadata, but command fields take precedence

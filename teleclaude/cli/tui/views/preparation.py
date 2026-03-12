@@ -36,6 +36,7 @@ from teleclaude.cli.tui.widgets.modals import (
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
+from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
 
 
@@ -907,7 +908,7 @@ class PreparationView(Widget, can_focus=True):
         self._open_session_modal(
             computer=computer,
             project_path=project_path,
-            default_message=self._next_command("next-prepare", slug),
+            default_message=self._next_command(SlashCommand.NEXT_PREPARE, slug),
         )
 
     def action_start_work(self) -> None:
@@ -937,7 +938,7 @@ class PreparationView(Widget, can_focus=True):
         self._open_session_modal(
             computer=computer,
             project_path=project_path,
-            default_message=self._next_command("next-work", slug),
+            default_message=self._next_command(SlashCommand.NEXT_WORK, slug),
         )
 
     # --- Click handlers ---

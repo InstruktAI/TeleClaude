@@ -78,6 +78,39 @@ class SystemCommand(str, Enum):
     EXIT = "exit"
 
 
+class SlashCommand(str, Enum):
+    """Canonical slash commands dispatched to agent sessions."""
+
+    NEXT_BUILD = "next-build"
+    NEXT_BUGS_FIX = "next-bugs-fix"
+    NEXT_REVIEW_BUILD = "next-review-build"
+    NEXT_REVIEW_PLAN = "next-review-plan"
+    NEXT_REVIEW_REQUIREMENTS = "next-review-requirements"
+    NEXT_FIX_REVIEW = "next-fix-review"
+    NEXT_FINALIZE = "next-finalize"
+    NEXT_PREPARE_DISCOVERY = "next-prepare-discovery"
+    NEXT_PREPARE_DRAFT = "next-prepare-draft"
+    NEXT_PREPARE_GATE = "next-prepare-gate"
+    NEXT_PREPARE = "next-prepare"
+    NEXT_WORK = "next-work"
+    NEXT_INTEGRATE = "next-integrate"
+
+
+class JobRole(str, Enum):
+    """Canonical job roles for sessions spawned by slash commands."""
+
+    BUILDER = "builder"
+    FIXER = "fixer"
+    REVIEWER = "reviewer"
+    FINALIZER = "finalizer"
+    DISCOVERER = "discoverer"
+    DRAFTER = "drafter"
+    GATE_CHECKER = "gate-checker"
+    PREPARE_ORCHESTRATOR = "prepare-orchestrator"
+    WORK_ORCHESTRATOR = "work-orchestrator"
+    INTEGRATOR = "integrator"
+
+
 class Platform(str, Enum):
     DARWIN = "darwin"
 

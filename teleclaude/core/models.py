@@ -416,6 +416,14 @@ class ChannelMetadata:
     target_computer: str | None = None
 
 
+@dataclass(frozen=True)
+class SessionMetadata:
+    """Typed metadata for slash-command-spawned sessions."""
+
+    system_role: str | None = None  # ROLE_* constant
+    job: str | None = None  # JobRole value
+
+
 @dataclass
 class MessageMetadata:
     """Per-call metadata for message operations."""
@@ -430,7 +438,7 @@ class MessageMetadata:
     project_path: str | None = None
     subdir: str | None = None
     channel_metadata: dict[str, object] | None = None  # guard: loose-dict
-    session_metadata: dict[str, object] | None = None  # guard: loose-dict
+    session_metadata: "SessionMetadata | None" = None
     auto_command: str | None = None  # legacy adapter boundary (deprecated)
     launch_intent: Optional["SessionLaunchIntent"] = None
     is_transcription: bool = False
@@ -523,7 +531,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     title: str
     last_input_origin: str | None = None
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
-    session_metadata: dict[str, object] | None = None
+    session_metadata: SessionMetadata | None = None
     created_at: datetime | None = None
     last_activity: datetime | None = None
     closed_at: datetime | None = None
@@ -598,7 +606,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
         else:
             data["adapter_metadata"] = adapter_meta.to_json()
         if self.session_metadata:
-            data["session_metadata"] = self.session_metadata
+            data["session_metadata"] = asdict(self.session_metadata)
         return data
 
     @classmethod
@@ -651,12 +659,15 @@ class Session:  # pylint: disable=too-many-instance-attributes
             adapter_metadata = SessionAdapterMetadata()
 
         session_metadata_raw = data.get("session_metadata")
-        session_metadata: dict[str, object] | None = None
+        session_metadata: SessionMetadata | None = None
+        _sm_fields = {"system_role", "job"}
         if isinstance(session_metadata_raw, dict):
-            session_metadata = cast(dict[str, object], session_metadata_raw)
+            session_metadata = SessionMetadata(**{k: v for k, v in session_metadata_raw.items() if k in _sm_fields})
         elif isinstance(session_metadata_raw, str):
             try:
-                session_metadata = json.loads(session_metadata_raw)
+                _raw = json.loads(session_metadata_raw)
+                if isinstance(_raw, dict):
+                    session_metadata = SessionMetadata(**{k: v for k, v in _raw.items() if k in _sm_fields})
             except json.JSONDecodeError:
                 pass
 
@@ -842,7 +853,7 @@ class SessionSnapshot:
     human_email: str | None = None
     human_role: str | None = None
     visibility: str | None = "private"
-    session_metadata: dict[str, object] | None = None
+    session_metadata: SessionMetadata | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
         return {
@@ -869,7 +880,7 @@ class SessionSnapshot:
             "human_email": self.human_email,
             "human_role": self.human_role,
             "visibility": self.visibility,
-            "session_metadata": self.session_metadata,
+            "session_metadata": asdict(self.session_metadata) if self.session_metadata else None,
         }
 
     @classmethod
@@ -904,6 +915,10 @@ class SessionSnapshot:
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "SessionSnapshot":  # guard: loose-dict
         """Create from dict."""
+        sm_raw = data.get("session_metadata")
+        sm: SessionMetadata | None = None
+        if isinstance(sm_raw, dict):
+            sm = SessionMetadata(**{k: v for k, v in sm_raw.items() if k in {"system_role", "job"}})
         return cls(
             session_id=str(data["session_id"]),
             last_input_origin=str(data.get("last_input_origin")) if data.get("last_input_origin") else None,
@@ -935,7 +950,7 @@ class SessionSnapshot:
             human_email=str(data.get("human_email")) if data.get("human_email") else None,
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
-            session_metadata=cast(dict[str, object] | None, data.get("session_metadata")),
+            session_metadata=sm,
         )
 
 

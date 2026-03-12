@@ -30,7 +30,7 @@ from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config as app_config
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.integration_bridge import emit_branch_pushed, emit_deployment_started, emit_review_approved
@@ -2994,7 +2994,7 @@ async def _prepare_step_input_assessment(
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command="next-prepare-discovery",
+        command=SlashCommand.NEXT_PREPARE_DISCOVERY,
         args=slug,
         project=cwd,
         guidance=guidance,
@@ -3026,7 +3026,7 @@ async def _prepare_step_triangulation(
     _emit_prepare_event("domain.software-development.prepare.triangulation_started", {"slug": slug})
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command="next-prepare-discovery",
+        command=SlashCommand.NEXT_PREPARE_DISCOVERY,
         args=slug,
         project=cwd,
         guidance=guidance,
@@ -3084,7 +3084,7 @@ async def _prepare_step_requirements_review(
             findings_note = f"\n\nReview findings:\n{read_text_sync(findings_path)}"
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
-            command="next-prepare-discovery",
+            command=SlashCommand.NEXT_PREPARE_DISCOVERY,
             args=slug,
             project=cwd,
             guidance=guidance,
@@ -3096,7 +3096,7 @@ async def _prepare_step_requirements_review(
     # No verdict yet — dispatch reviewer
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command="next-review-requirements",
+        command=SlashCommand.NEXT_REVIEW_REQUIREMENTS,
         args=slug,
         project=cwd,
         guidance=guidance,
@@ -3121,7 +3121,7 @@ async def _prepare_step_plan_drafting(
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command="next-prepare-draft",
+        command=SlashCommand.NEXT_PREPARE_DRAFT,
         args=slug,
         project=cwd,
         guidance=guidance,
@@ -3179,7 +3179,7 @@ async def _prepare_step_plan_review(
             findings_note = f"\n\nReview findings:\n{read_text_sync(findings_path)}"
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
-            command="next-prepare-draft",
+            command=SlashCommand.NEXT_PREPARE_DRAFT,
             args=slug,
             project=cwd,
             guidance=guidance,
@@ -3191,7 +3191,7 @@ async def _prepare_step_plan_review(
     # No verdict yet — dispatch reviewer
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command="next-review-plan",
+        command=SlashCommand.NEXT_REVIEW_PLAN,
         args=slug,
         project=cwd,
         guidance=guidance,
@@ -3221,7 +3221,7 @@ async def _prepare_step_gate(
     # Dispatch gate worker to run DOR assessment
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command="next-prepare-gate",
+        command=SlashCommand.NEXT_PREPARE_GATE,
         args=slug,
         project=cwd,
         guidance=guidance,
@@ -3372,7 +3372,7 @@ async def _prepare_step_re_grounding(
     changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
     guidance = await compose_agent_guidance(db)
     result = format_tool_call(
-        command="next-prepare-draft",
+        command=SlashCommand.NEXT_PREPARE_DRAFT,
         args=slug,
         project=cwd,
         guidance=guidance,
@@ -3525,7 +3525,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         if not resolved_slug:
             guidance = await compose_agent_guidance(db)
             return format_tool_call(
-                command="next-prepare-draft",
+                command=SlashCommand.NEXT_PREPARE_DRAFT,
                 args="",
                 project=cwd,
                 guidance=guidance,
@@ -3977,7 +3977,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             return format_error("NO_AGENTS", str(exc))
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_fix_review")
         return format_tool_call(
-            command="next-fix-review",
+            command=SlashCommand.NEXT_FIX_REVIEW,
             args=resolved_slug,
             project=cwd,
             guidance=guidance,
@@ -4020,7 +4020,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             if is_bug:
                 _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
                 return format_tool_call(
-                    command="next-bugs-fix",
+                    command=SlashCommand.NEXT_BUGS_FIX,
                     args=resolved_slug,
                     project=cwd,
                     guidance=guidance,
@@ -4030,7 +4030,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 )
             _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
             return format_tool_call(
-                command="next-build",
+                command=SlashCommand.NEXT_BUILD,
                 args=resolved_slug,
                 project=cwd,
                 guidance=guidance,
@@ -4099,7 +4099,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             return format_error("NO_AGENTS", str(exc))
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_review")
         return format_tool_call(
-            command="next-review-build",
+            command=SlashCommand.NEXT_REVIEW_BUILD,
             args=resolved_slug,
             project=cwd,
             guidance=guidance,
@@ -4117,7 +4117,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             return format_error("NO_AGENTS", str(exc))
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_defer")
         return format_tool_call(
-            command="next-defer",
+            command="next-defer",  # not a SlashCommand; deferred to runtime resolution
             args=resolved_slug,
             project=cwd,
             guidance=guidance,
@@ -4156,7 +4156,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
     return format_tool_call(
-        command="next-finalize",
+        command=SlashCommand.NEXT_FINALIZE,
         args=resolved_slug,
         project=cwd,
         guidance=guidance,
