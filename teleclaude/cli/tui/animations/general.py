@@ -59,9 +59,10 @@ class GlobalSky(Animation):
     _SKY_BASE_LIGHT = "#87CEEB"
     _SKY_TARGET_LIGHT = "#DAF3FF"  # lighter blue at bottom
 
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, *args, show_extra_motion: bool = True, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
         super().__init__(*args, **kwargs)
+        self.show_extra_motion = show_extra_motion
         self.width = 400
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
@@ -135,20 +136,22 @@ class GlobalSky(Animation):
 
     def _spawn_initial_entities(self) -> list[SkyEntity]:
         """Spawn sky entities: standalone sprites + non-cloud groups + weather clouds."""
-        from teleclaude.cli.tui.animations.sprites import get_sky_entities, get_sprite_groups, get_weather_clouds
+        from teleclaude.cli.tui.animations.sprites import (
+            get_optional_motion_groups,
+            get_sky_entities,
+            get_weather_clouds,
+        )
 
         entities: list[SkyEntity] = []
         # Standalone sprites (15% chance each)
         for sprite in get_sky_entities():
             if self._theme_matches(sprite) and self.rng.random() < 0.15:
                 entities.append(self._spawn_sky_entity(sprite))
-        # Non-cloud sprite groups (birds, etc.)
+        if self.show_extra_motion:
+            for group in get_optional_motion_groups():
+                self._spawn_group_entities(group, entities)
+
         cloud_group = get_weather_clouds(self._weather)
-        for group in get_sprite_groups():
-            if group is cloud_group:
-                continue
-            self._spawn_group_entities(group, entities)
-        # Weather-specific clouds
         self._spawn_group_entities(cloud_group, entities)
         return entities
 
@@ -303,7 +306,6 @@ class GlobalSky(Animation):
         if not hasattr(self, "_buffer"):
             self._buffer = RenderBuffer()
         buffer = self._buffer
-        is_party = self.animation_mode == "party"
 
         # Refresh terminal width every ~100 frames (~15s at 250ms tick)
         if frame - self._term_width_frame >= 100:
@@ -328,8 +330,7 @@ class GlobalSky(Animation):
         if self.dark_mode:
             # 2. Stars at Z10 (behind clouds)
             for star in self.stars:
-                speed = star["speed"] * (2.5 if is_party else 1.0)
-                twinkle = (math.sin(frame * speed + star["phase"]) + 1.0) / 2.0
+                twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0
                 if twinkle > 0.88:
                     buffer.add_pixel(Z10, star["pos"][0], star["pos"][1], star["char"])
 

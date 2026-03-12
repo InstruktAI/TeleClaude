@@ -17,6 +17,7 @@ __all__ = [
     "CompositeSprite",
     "SpriteGroup",
     "SpriteLayer",
+    "get_optional_motion_groups",
     "get_sky_entities",
     "get_sprite_groups",
     "get_weather_clouds",
@@ -46,6 +47,14 @@ def get_sprite_groups() -> list[SpriteGroup]:
 
     module = sys.modules[__name__]
     return [obj for name in __all__ if isinstance(obj := getattr(module, name, None), SpriteGroup)]
+
+
+_OPTIONAL_MOTION_GROUPS = [BIRD_FLOCK, CAR_SPRITE, UFO_SPRITE]
+
+
+def get_optional_motion_groups() -> list[SpriteGroup]:
+    """Sprite groups that are disabled in peace mode."""
+    return list(_OPTIONAL_MOTION_GROUPS)
 
 
 # Weather name → cloud SpriteGroup mapping

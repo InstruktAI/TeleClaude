@@ -85,8 +85,6 @@ class FocusContext:
 
 
 RELOAD_EXIT = "__RELOAD__"
-ANIMATION_IDLE_TIMEOUT_S = 120.0
-ANIMATION_IDLE_CHECK_S = 15.0
 
 
 class TelecApp(App[str | None]):
@@ -195,10 +193,7 @@ class TelecApp(App[str | None]):
         self._periodic_trigger: object | None = None
         self._activity_trigger: object | None = None
         self._animation_timer: object | None = None
-        self._animation_idle_timer: object | None = None
         self._animation_requested_mode: str = "off"
-        self._animation_runtime_paused = False
-        self._last_user_interaction_at = _t.monotonic()
 
     def get_css_variables(self) -> dict[str, str]:
         """Override CSS variables to inject the correct background for focus state.
@@ -234,6 +229,10 @@ class TelecApp(App[str | None]):
         from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
         theme.set_tui_focused(focus)
+        self._refresh_focus_sensitive_widgets(SessionRow, TodoRow)
+
+    def _refresh_focus_sensitive_widgets(self, SessionRow: type[object], TodoRow: type[object]) -> None:
+        """Refresh widgets whose colors depend on the current haze state."""
         self.refresh_css(animate=False)
 
         # Force full Screen repaint so $background change reaches all content
@@ -248,11 +247,6 @@ class TelecApp(App[str | None]):
             widget.refresh()
         for widget in self.query(TodoRow):
             widget.refresh()
-
-        if focus:
-            self._register_user_interaction()
-        else:
-            self._pause_animation_runtime()
 
     def compose(self) -> ComposeResult:
         logger.trace("[PERF] compose START t=%.3f", _t.monotonic())
@@ -315,7 +309,6 @@ class TelecApp(App[str | None]):
 
         self._animation_requested_mode = status_bar.animation_mode
         self._apply_animation_runtime()
-        self._animation_idle_timer = self.set_interval(ANIMATION_IDLE_CHECK_S, self._check_animation_idle)
 
         # Switch to starting tab
         tab_ids = {1: "sessions", 2: "preparation", 3: "jobs", 4: "config"}
@@ -1216,27 +1209,28 @@ class TelecApp(App[str | None]):
     # --- Animation management ---
 
     def _start_animation_mode(self, mode: str) -> None:
-        """Configure animation engine and triggers for the given mode."""
-        self._stop_animation()
-
-        if mode == "off":
-            return
-
+        """Configure ambient sky and banner cadence for the given mode."""
+        from teleclaude.cli.tui.animation_colors import palette_registry
+        from teleclaude.cli.tui.animation_engine import AnimationPriority
         from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
+        from teleclaude.cli.tui.animations.general import GlobalSky
+
+        self._stop_banner_animation()
 
         self._animation_engine.is_enabled = True
         self._animation_engine.animation_mode = mode
 
+        self._animation_engine.stop_target("header")
+        sky = GlobalSky(
+            palette=palette_registry.get("spectrum"),
+            is_big=True,
+            duration_seconds=3600,
+            show_extra_motion=mode != "off",
+        )
+        self._animation_engine.play(sky, priority=AnimationPriority.PERIODIC, target="header")
+        self._animation_engine.set_looping("header", True)
+
         if mode in ("periodic", "party"):
-            # Always ensure GlobalSky is running on the header in active modes
-            from teleclaude.cli.tui.animation_colors import palette_registry
-            from teleclaude.cli.tui.animation_engine import AnimationPriority
-            from teleclaude.cli.tui.animations.general import GlobalSky
-
-            sky = GlobalSky(palette=palette_registry.get("spectrum"), is_big=True, duration_seconds=3600)
-            self._animation_engine.play(sky, priority=AnimationPriority.PERIODIC, target="header")
-            self._animation_engine.set_looping("header", True)
-
             interval = 10 if mode == "party" else 60
             trigger = PeriodicTrigger(self._animation_engine, interval_sec=interval)
             trigger.task = asyncio.ensure_future(trigger.start())
@@ -1245,17 +1239,25 @@ class TelecApp(App[str | None]):
         if mode == "party":
             self._activity_trigger = ActivityTrigger(self._animation_engine)
 
-        # Start the render tick timer (~250ms — balances smoothness vs terminal output volume)
-        self._animation_timer = self.set_interval(0.25, self._animation_tick)
+        if self._animation_timer is None:
+            # Start the render tick timer (~250ms — balances smoothness vs terminal output volume)
+            self._animation_timer = self.set_interval(0.25, self._animation_tick)
 
-    def _stop_animation(self) -> None:
-        """Stop engine, triggers, and render timer."""
+    def _stop_banner_animation(self) -> None:
+        """Stop banner/logo effects while leaving the ambient sky scene intact."""
         from teleclaude.cli.tui.animation_triggers import PeriodicTrigger
 
         if isinstance(self._periodic_trigger, PeriodicTrigger):
             self._periodic_trigger.stop()
         self._periodic_trigger = None
         self._activity_trigger = None
+
+        self._animation_engine.stop_target("banner")
+        self._animation_engine.stop_target("logo")
+
+    def _stop_animation(self) -> None:
+        """Stop all animation output, including the ambient sky scene."""
+        self._stop_banner_animation()
 
         self._animation_engine.stop()
         self._animation_engine.is_enabled = False
@@ -1272,57 +1274,8 @@ class TelecApp(App[str | None]):
             pass
 
     def _apply_animation_runtime(self) -> None:
-        """Start or stop animation output based on focus and recent interaction."""
-        if self._animation_requested_mode == "off":
-            self._animation_runtime_paused = False
-            self._stop_animation()
-            return
-
-        if self._should_pause_animation():
-            self._pause_animation_runtime()
-            return
-
-        self._resume_animation_runtime()
-
-    def _should_pause_animation(self, *, now: float | None = None) -> bool:
-        if not self.app_focus:
-            return True
-        current = _t.monotonic() if now is None else now
-        return (current - self._last_user_interaction_at) >= ANIMATION_IDLE_TIMEOUT_S
-
-    def _pause_animation_runtime(self) -> None:
-        """Suspend terminal animation output without changing the chosen mode."""
-        if self._animation_requested_mode == "off":
-            self._animation_runtime_paused = False
-            self._stop_animation()
-            return
-        if self._animation_runtime_paused:
-            return
-        self._animation_runtime_paused = True
-        self._stop_animation()
-
-    def _resume_animation_runtime(self) -> None:
-        """Resume terminal animation output for the chosen mode."""
-        if self._animation_requested_mode == "off":
-            self._animation_runtime_paused = False
-            return
-        if not self._animation_runtime_paused and self._animation_timer is not None:
-            return
-        self._animation_runtime_paused = False
+        """Apply the selected mode without focus-based or idle-based pausing."""
         self._start_animation_mode(self._animation_requested_mode)
-
-    def _register_user_interaction(self) -> None:
-        """Refresh the idle timer and resume animation output if needed."""
-        self._last_user_interaction_at = _t.monotonic()
-        if self.app_focus:
-            self._resume_animation_runtime()
-
-    def _check_animation_idle(self) -> None:
-        """Pause animation output after prolonged local inactivity."""
-        if self._animation_requested_mode == "off":
-            return
-        if self._should_pause_animation():
-            self._pause_animation_runtime()
 
     def _handle_exception(self, error: Exception) -> None:
         """Log unhandled exceptions BEFORE Rich's traceback renderer can crash on them."""
@@ -1356,13 +1309,9 @@ class TelecApp(App[str | None]):
     def _cycle_animation(self, new_mode: str) -> None:
         """Set animation mode, reconfigure engine, and update status bar."""
         self._animation_requested_mode = new_mode
-        self._last_user_interaction_at = _t.monotonic()
         self._apply_animation_runtime()
         status_bar = self.query_one("#telec-footer", TelecFooter)
         status_bar.animation_mode = new_mode
-
-    def on_key(self, _event: object) -> None:
-        self._register_user_interaction()
 
     def _activate_config_guided_mode(self) -> None:
         """Start guided mode in ConfigView after initial mount and data load."""
@@ -1489,10 +1438,6 @@ class TelecApp(App[str | None]):
 
     async def action_quit(self) -> None:
         self._stop_animation()
-        timer = self._animation_idle_timer
-        if timer is not None and hasattr(timer, "stop"):
-            timer.stop()  # type: ignore[union-attr]
-        self._animation_idle_timer = None
         self._cancel_state_save_timer()
         self._save_state_sync()
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)

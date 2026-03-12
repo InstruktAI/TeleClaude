@@ -54,19 +54,17 @@ class FooterActionButton(Static, can_focus=False):
 
     def __init__(self, icon: str, **kwargs: object) -> None:
         super().__init__("", markup=False, **kwargs)
-        self.icon = icon
+        self._initial_icon = icon
 
     def on_mount(self) -> None:
-        self.update(self._render_icon())
+        self.icon = self._initial_icon
 
     def watch_icon(self, _value: str) -> None:
-        if self.is_mounted:
-            self.update(self._render_icon())
+        self.update(self._render_icon())
 
     def watch_disabled(self, disabled: bool) -> None:
         self.set_class(disabled, "-disabled")
-        if self.is_mounted:
-            self.update(self._render_icon())
+        self.update(self._render_icon())
 
     def _render_icon(self) -> Text:
         style = Style(dim=True) if self.disabled else Style(color=get_neutral_color("highlight"), bold=True)

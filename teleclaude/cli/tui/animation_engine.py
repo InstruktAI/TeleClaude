@@ -140,6 +140,27 @@ class AnimationEngine:
             buf.clear()
         self._has_active_animation = False
 
+    def stop_target(self, target: str) -> None:
+        """Stop one render target without tearing down the rest of the scene."""
+        slot = self._targets.get(target)
+        if slot is None:
+            return
+
+        slot.animation = None
+        slot.frame_count = 0
+        slot.last_update_ms = 0
+        slot.queue.clear()
+        slot.looping = False
+
+        front = self._buffers_front.get(target)
+        if front is not None:
+            front.clear()
+        back = self._buffers_back.get(target)
+        if back is not None:
+            back.clear()
+
+        self._has_active_animation = any(existing.animation is not None for existing in self._targets.values())
+
     def set_looping(self, target: str, looping: bool) -> None:
         if target in self._targets:
             self._targets[target].looping = looping
