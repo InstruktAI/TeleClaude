@@ -81,7 +81,7 @@ Design spec is confirmed. No art exists yet.
 **Action**: dispatch an artist agent to generate mood board images.
 
 ```
-telec sessions run --command "/next-creative-art" --args "{slug}"
+telec sessions run --command "/next-create-art" --args "{slug}"
   --project "{project}" --agent "gemini" --mode "slow"
 ```
 
@@ -141,7 +141,7 @@ following the visual drafting procedure.
 **Single agent dispatch**:
 
 ```
-telec sessions run --command "/next-creative-draft" --args "{slug}"
+telec sessions run --command "/next-create-html" --args "{slug}"
   --project "{project}" --agent "<selection>" --mode "<selection>"
 ```
 
@@ -158,11 +158,11 @@ Each agent writes to `todos/{slug}/html/{agent-name}/`.
 
 ```
 # Parallel dispatch
-telec sessions run --command "/next-creative-draft" --args "{slug}"
+telec sessions run --command "/next-create-html" --args "{slug}"
   --agent gemini --mode slow
-telec sessions run --command "/next-creative-draft" --args "{slug}"
+telec sessions run --command "/next-create-html" --args "{slug}"
   --agent claude --mode slow
-telec sessions run --command "/next-creative-draft" --args "{slug}"
+telec sessions run --command "/next-create-html" --args "{slug}"
   --agent codex --mode slow
 ```
 
