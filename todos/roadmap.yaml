@@ -32,7 +32,6 @@
     mitigation'
 - slug: dependency-health-guardrails
 - slug: ucap-slo-hardening
-- slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
 - slug: session-runtime-overhaul
@@ -151,5 +150,5 @@
   group: refactor-large-files
   description: 'Decompose peripherals: transport, utils, hooks, helpers, validation
     (6 files, ~9,066 lines)'
-- slug: prepare-pipeline-hardening
 - slug: workflow-engine-refactor
+- slug: fix-bugs-report-event-system-regression

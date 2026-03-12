@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: prepare-pipeline-hardening
+  date: '2026-03-12'
+  commit: dbf4379eb446
 - slug: event-alpha-container
   date: '2026-03-11'
   commit: 8873144fb35e
