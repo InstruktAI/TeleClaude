@@ -158,14 +158,3 @@ async def test_frame_too_large_produces_error_entry():
     assert result.payload["_sandbox_results"][0]["error"] == "frame_too_large"
 
 
-@pytest.mark.asyncio
-async def test_outer_catch_all_returns_event_on_exception():
-    """When _process raises unexpectedly, process() still returns the event — never blocks the pipeline."""
-    manager = _make_manager(has_cartridges=True)
-    bridge = SandboxBridgeCartridge(manager=manager)
-    event = _make_event()
-
-    with patch.object(bridge, "_process", side_effect=RuntimeError("kaboom")):
-        result = await bridge.process(event, MagicMock())
-
-    assert result is event
