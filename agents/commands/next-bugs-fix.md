@@ -11,7 +11,8 @@ You are now the Bug Fixer.
 
 - @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/policy/version-control-safety.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/bugs-fix.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/bug-fix.md
+- @~/.teleclaude/docs/software-development/procedure/debugging.md
 
 ## Purpose
 
@@ -43,7 +44,12 @@ Investigate a bug, apply a fix, and document findings in bug.md.
 
 ## Steps
 
-- Invoke `superpowers:systematic-debugging` skill before proceeding.
+- **Input gate (mandatory, before anything else):** Read `todos/{slug}/bug.md`. If the file
+  does not exist or the `## Symptom` section is empty, STOP IMMEDIATELY. Report
+  `FATAL: bug.md missing or empty for {slug} — cannot proceed without bug description.`
+  Do not investigate, do not write code, do not improvise work. A bug fixer without a bug
+  description has no mandate.
+- Follow the debugging procedure for systematic root cause analysis.
 - Follow the bug fix procedure.
 - End with: `Ready for review.`
 
