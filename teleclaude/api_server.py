@@ -47,6 +47,7 @@ from teleclaude.api.auth import (
     CLEARANCE_SESSIONS_VOICE,
     CLEARANCE_SESSIONS_WIDGET,
     CallerIdentity,
+    verify_caller,
 )
 from teleclaude.api_models import (
     AgentActivityEventDTO,
@@ -519,6 +520,21 @@ class APIServer:
         async def health() -> dict[str, str]:  # pyright: ignore
             """Health check endpoint."""
             return {"status": "ok"}
+
+        @self.app.get("/auth/whoami")
+        async def auth_whoami(  # pyright: ignore
+            identity: CallerIdentity = Depends(verify_caller),
+        ) -> dict[str, str | None]:
+            """Return the resolved principal for the calling session.
+
+            Agent sessions (X-Session-Token) return their token principal.
+            Terminal/TUI sessions return their email-based identity.
+            """
+            if identity.principal:
+                return {"principal": identity.principal, "role": identity.principal_role}
+            if identity.human_role:
+                return {"principal": None, "role": identity.human_role}
+            return {"principal": None, "role": None}
 
         @self.app.get("/sessions")
         async def list_sessions(  # pyright: ignore
@@ -1424,6 +1440,9 @@ class APIServer:
             if working_slug:
                 channel_metadata = channel_metadata or {}
                 channel_metadata["working_slug"] = working_slug
+            if identity.principal:
+                channel_metadata = channel_metadata or {}
+                channel_metadata["principal"] = identity.principal
 
             try:
                 slash_cmd = SlashCommand(normalized_cmd)

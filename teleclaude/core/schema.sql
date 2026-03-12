@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     relay_started_at TEXT,
     human_email TEXT,
     human_role TEXT,
+    principal TEXT,  -- Inherited agent principal (e.g. "system:<session_id>") for child session lineage
     transcript_files TEXT DEFAULT '[]'  -- JSON array of transcript file paths (chain for multi-file sessions)
     -- No unique constraint on (computer_name, tmux_session_name): tmux enforces
     -- its own name uniqueness, and headless sessions have NULL tmux_session_name.
@@ -315,3 +316,17 @@ CREATE INDEX IF NOT EXISTS idx_operations_owner_state
 
 CREATE INDEX IF NOT EXISTS idx_operations_state_heartbeat
     ON operations(state, heartbeat_at);
+
+-- Session token ledger for agent session authentication
+CREATE TABLE IF NOT EXISTS session_tokens (
+    token TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    principal TEXT NOT NULL,       -- "human:<email>" or "system:<stable-id>"
+    role TEXT NOT NULL,            -- authorization role (e.g. "admin", "worker")
+    issued_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_session_tokens_session ON session_tokens(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_tokens_expires ON session_tokens(expires_at);

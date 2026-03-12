@@ -56,6 +56,7 @@ class Session(SQLModel, table=True):
     lifecycle_status: str | None = "active"
     human_email: str | None = None
     human_role: str | None = None
+    principal: str | None = None
     last_memory_extraction_at: str | None = None
     help_desk_processed_at: str | None = None
     relay_status: str | None = None
@@ -314,3 +315,18 @@ class MemoryManualSession(SQLModel, table=True):
     memory_session_id: str = Field(primary_key=True)
     project: str
     created_at_epoch: int
+
+
+class SessionToken(SQLModel, table=True):
+    """session_tokens table — agent session authentication ledger."""
+
+    __tablename__ = "session_tokens"
+    __table_args__ = {"extend_existing": True}
+
+    token: str = Field(primary_key=True)
+    session_id: str
+    principal: str          # "human:<email>" or "system:<stable-id>"
+    role: str               # authorization role (e.g. "admin", "worker")
+    issued_at: str
+    expires_at: str
+    revoked_at: str | None = None

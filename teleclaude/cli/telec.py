@@ -996,6 +996,8 @@ def is_command_allowed(
     command_path: str,
     system_role: str | None,
     human_role: str | None,
+    principal: str | None = None,
+    principal_role: str | None = None,
 ) -> bool:
     """Check whether a caller is authorized to run a CLI command.
 
@@ -1003,7 +1005,9 @@ def is_command_allowed(
 
     - system_role=None (non-session callers like TUI/terminal) is treated as
       orchestrator for the system-role check.
-    - human_role=None denies all human-role-gated commands (fail closed).
+    - human_role=None denies all human-role-gated commands (fail closed),
+      UNLESS a valid principal is present — token-authenticated agent sessions
+      use principal_role as their effective human role.
     - Unknown command paths return False (fail closed).
     - Admin bypasses the human-role allow-list for all commands except those
       with an explicit exclude_human containing HUMAN_ROLE_ADMIN.
@@ -1018,18 +1022,24 @@ def is_command_allowed(
     if effective_system not in auth.system:
         return False
 
-    if human_role is None:
+    # Determine the effective human role.
+    # Token-authenticated agent sessions: fall back to principal_role when human_role absent.
+    effective_human_role = human_role
+    if effective_human_role is None and principal is not None:
+        effective_human_role = principal_role
+
+    if effective_human_role is None:
         return False
 
     # Admin exclusion check (e.g., sessions escalate explicitly blocks admin).
-    if human_role == HUMAN_ROLE_ADMIN and human_role in auth.exclude_human:
+    if effective_human_role == HUMAN_ROLE_ADMIN and effective_human_role in auth.exclude_human:
         return False
 
     # Admin bypasses the human allow-list (unless excluded above).
-    if human_role == HUMAN_ROLE_ADMIN:
+    if effective_human_role == HUMAN_ROLE_ADMIN:
         return True
 
-    return human_role in auth.human
+    return effective_human_role in auth.human
 
 
 # Derived constants for completion (from schema)
@@ -3821,6 +3831,32 @@ def _handle_whoami(args: list[str]) -> None:
         print(_usage("auth", "whoami"))
         raise SystemExit(1)
 
+    # Agent session path: resolve principal from daemon via session token.
+    session_token = os.environ.get("TELEC_SESSION_TOKEN")
+    if session_token:
+
+        async def _resolve_principal() -> None:
+            api = TelecAPIClient()
+            await api.connect()
+            try:
+                data = await api.get_auth_whoami()
+            finally:
+                await api.close()
+            principal = data.get("principal")
+            role = data.get("role")
+            if principal:
+                print(f"Principal: {principal}")
+            if role:
+                print(f"Role: {role}")
+
+        try:
+            asyncio.run(_resolve_principal())
+        except Exception as exc:
+            print(f"Error resolving principal: {exc}")
+            raise SystemExit(1) from exc
+        return
+
+    # Terminal/TUI path: read email from TTY auth file.
     context = get_current_session_context()
     if context is None:
         print("Error: no terminal session detected (TTY unavailable).")

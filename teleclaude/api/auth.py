@@ -27,6 +27,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from teleclaude.cli.telec import is_command_allowed
 from teleclaude.config.loader import load_global_config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLES, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER
+from teleclaude.core import db_models
 from teleclaude.core.db import db
 
 if TYPE_CHECKING:
@@ -47,6 +48,11 @@ _registered_people_count_cache: int = 0
 _SESSION_CACHE_TTL = 30.0  # seconds
 _SESSION_CACHE_MAX = 256
 _session_cache: dict[str, tuple[float, Session]] = {}
+
+# In-memory token cache to avoid repeated ledger lookups on hot paths
+_TOKEN_CACHE_TTL = 30.0  # seconds — matches session cache TTL
+_TOKEN_CACHE_MAX = 256
+_token_cache: dict[str, tuple[float, db_models.SessionToken]] = {}
 
 
 def _get_cached_session(session_id: str) -> Session | None:
@@ -73,6 +79,33 @@ def _put_cached_session(session_id: str, session: Session) -> None:
 def invalidate_session_cache(session_id: str) -> None:
     """Invalidate a specific session from the auth cache (call on session update/close)."""
     _session_cache.pop(session_id, None)
+
+
+def _get_cached_token(token: str) -> db_models.SessionToken | None:
+    """Get token record from cache if present and not expired."""
+    entry = _token_cache.get(token)
+    if entry is None:
+        return None
+    ts, record = entry
+    if time.monotonic() - ts > _TOKEN_CACHE_TTL:
+        _token_cache.pop(token, None)
+        return None
+    return record
+
+
+def _put_cached_token(token: str, record: db_models.SessionToken) -> None:
+    """Store token record in cache with eviction when full."""
+    if len(_token_cache) >= _TOKEN_CACHE_MAX:
+        oldest_key = min(_token_cache, key=lambda k: _token_cache[k][0])
+        _token_cache.pop(oldest_key, None)
+    _token_cache[token] = (time.monotonic(), record)
+
+
+def invalidate_token_cache(session_id: str) -> None:
+    """Invalidate all cached tokens for a session (call on session close)."""
+    stale = [t for t, (_, rec) in _token_cache.items() if getattr(rec, "session_id", None) == session_id]
+    for t in stale:
+        _token_cache.pop(t, None)
 
 
 def _normalize_email(value: object) -> str | None:
@@ -154,10 +187,13 @@ class CallerIdentity:
     system_role: str | None  # e.g. "worker" or None (orchestrator/admin)
     human_role: str | None  # e.g. "admin", "member", etc.
     tmux_session_name: str | None  # for diagnostic use only
+    principal: str | None = None        # "human:<email>" or "system:<id>" (token-auth only)
+    principal_role: str | None = None   # role carried with the token (token-auth only)
 
 
 async def verify_caller(
     request: Request,
+    x_session_token: Annotated[str | None, Header()] = None,
     x_caller_session_id: Annotated[str | None, Header()] = None,
     x_telec_email: Annotated[str | None, Header()] = None,
     x_web_user_email: Annotated[str | None, Header()] = None,
@@ -177,6 +213,33 @@ async def verify_caller(
         HTTPException(401): Missing or unknown session_id.
         HTTPException(403): Tmux cross-check mismatch (session_id forgery attempt).
     """
+    # Token path: agent sessions present TELEC_SESSION_TOKEN via X-Session-Token header.
+    # This takes priority over the legacy dual-factor path so daemon-spawned agents
+    # can authenticate even when human_role is absent.
+    if x_session_token:
+        token_record = _get_cached_token(x_session_token)
+        if token_record is None:
+            token_record = await db.validate_session_token(x_session_token)
+            if token_record is not None:
+                _put_cached_token(x_session_token, token_record)
+        if not token_record:
+            raise HTTPException(status_code=401, detail="invalid or expired session token")
+        session = _get_cached_session(token_record.session_id)
+        if session is None:
+            session = await db.get_session(token_record.session_id)
+            if not session:
+                raise HTTPException(status_code=401, detail="unknown session")
+            _put_cached_session(token_record.session_id, session)
+        system_role = _derive_session_system_role(session)
+        return CallerIdentity(
+            session_id=token_record.session_id,
+            system_role=system_role,
+            human_role=session.human_role,
+            tmux_session_name=session.tmux_session_name,
+            principal=token_record.principal,
+            principal_role=token_record.role,
+        )
+
     if not x_caller_session_id:
         # Terminal/TUI mode without daemon session marker:
         # - tmux contexts may use telec login email mapping (tc_tui bridge)
@@ -236,7 +299,13 @@ async def verify_caller(
 
 def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
     """Check if a tool (mapped from endpoint) is denied for this identity."""
-    return not is_command_allowed(tool_name, identity.system_role, identity.human_role)
+    return not is_command_allowed(
+        tool_name,
+        identity.system_role,
+        identity.human_role,
+        principal=identity.principal,
+        principal_role=identity.principal_role,
+    )
 
 
 def require_clearance(tool_name: str):

@@ -371,6 +371,12 @@ class TelecAPIClient:
     def _build_identity_headers(self) -> dict[str, str]:
         """Build caller identity headers for daemon-side auth checks."""
         headers: dict[str, str] = {}
+
+        # Agent sessions: send daemon-issued token first (takes priority on the server side).
+        token = os.environ.get("TELEC_SESSION_TOKEN")
+        if token:
+            headers["x-session-token"] = token
+
         session_id = self._read_caller_session_id()
         if session_id:
             headers["x-caller-session-id"] = session_id
@@ -586,6 +592,18 @@ class TelecAPIClient:
             json_body=payload,
         )
         return resp.status_code == 200
+
+    async def get_auth_whoami(self) -> dict[str, str | None]:
+        """Resolve the calling session's principal via the daemon.
+
+        Returns:
+            Dict with 'principal' and 'role' keys.
+
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("GET", "/auth/whoami")
+        return resp.json()  # type: ignore[no-any-return]
 
     async def get_agent_availability(self) -> dict[str, AgentAvailabilityInfo]:
         """Get agent availability status.

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.auth import invalidate_token_cache
 from teleclaude.core import tmux_bridge
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
@@ -161,6 +162,13 @@ async def _terminate_session_inner(
         logger.debug("Session %s already closed; proceeding with cleanup", session_id)
 
     logger.info("Terminating session %s (%s)", session_id, reason)
+
+    # Revoke session tokens early so any in-flight CLI calls with the old token are rejected.
+    try:
+        await db.revoke_session_tokens(session_id)
+        invalidate_token_cache(session_id)
+    except Exception as exc:
+        logger.error("Failed to revoke tokens for session %s: %s", session_id, exc)
 
     if not already_closed:
         await db.update_session(session_id, lifecycle_status="closing")
