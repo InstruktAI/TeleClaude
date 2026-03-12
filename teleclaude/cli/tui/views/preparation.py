@@ -908,7 +908,7 @@ class PreparationView(Widget, can_focus=True):
         self._open_session_modal(
             computer=computer,
             project_path=project_path,
-            default_message=self._next_command(SlashCommand.NEXT_PREPARE, slug),
+            default_message=self._next_command(SlashCommand.NEXT_PREPARE.value, slug),
         )
 
     def action_start_work(self) -> None:
@@ -938,7 +938,7 @@ class PreparationView(Widget, can_focus=True):
         self._open_session_modal(
             computer=computer,
             project_path=project_path,
-            default_message=self._next_command(SlashCommand.NEXT_WORK, slug),
+            default_message=self._next_command(SlashCommand.NEXT_WORK.value, slug),
         )
 
     # --- Click handlers ---
