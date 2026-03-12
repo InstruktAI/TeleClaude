@@ -94,7 +94,7 @@ when the visual design requires more structural rigor.
 indicates high creative ambiguity):
 
 Dispatch 2-3 agents in parallel, each with the same design spec constraint.
-Each agent writes to `todos/{slug}/visuals/{agent-name}/`.
+Each agent writes to `todos/{slug}/html/{agent-name}/`.
 
 ```
 # Parallel dispatch
@@ -117,27 +117,27 @@ they can open them in a browser:
 
 ```
 Open in your browser:
-  todos/{slug}/visuals/hero.html
-  todos/{slug}/visuals/features.html
-  todos/{slug}/visuals/story.html
+  todos/{slug}/html/hero.html
+  todos/{slug}/html/features.html
+  todos/{slug}/html/story.html
 ```
 
 For bake-offs, list all agent versions:
 
 ```
-Version A (Gemini):  todos/{slug}/visuals/gemini/hero.html
-Version B (Claude):  todos/{slug}/visuals/claude/hero.html
-Version C (Codex):   todos/{slug}/visuals/codex/hero.html
+Version A (Gemini):  todos/{slug}/html/gemini/hero.html
+Version B (Claude):  todos/{slug}/html/claude/hero.html
+Version C (Codex):   todos/{slug}/html/codex/hero.html
 ```
 
 Collect the human's response:
 
 - **Approve**: mark `creative.visuals.approved: true` in `state.yaml`.
   For bake-offs, record `selected_version` and promote the winner's files
-  to the top-level `visuals/` folder.
+  to the top-level `html/` folder.
 - **Cherry-pick** (bake-off): the human selects specific sections from
   different agents. Dispatch a creative agent to merge the selected sections
-  into a cohesive set in `todos/{slug}/visuals/`.
+  into a cohesive set in `todos/{slug}/html/`.
 - **Iterate**: collect specific feedback and call the machine again (it
   returns VISUAL_ITERATION_REQUIRED).
 
@@ -212,7 +212,7 @@ defaults, no "assuming approval." The human decides.
 ## Outputs
 
 1. Confirmed `todos/{slug}/design-spec.md`.
-2. Approved visual artifacts in `todos/{slug}/visuals/`.
+2. Approved visual artifacts in `todos/{slug}/html/`.
 3. Updated `state.yaml` with creative phase completion markers.
 4. All worker sessions ended on completion.
 5. The todo is ready for the prepare machine.

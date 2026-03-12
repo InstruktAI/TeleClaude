@@ -169,10 +169,10 @@ Before delivering, check each artifact against:
 
 ### 8. Write to the todo folder
 
-Place all artifacts in `todos/{slug}/visuals/`:
+Place all artifacts in `todos/{slug}/html/`:
 
 ```
-todos/{slug}/visuals/
+todos/{slug}/html/
   hero.html
   features.html
   story.html
@@ -181,12 +181,12 @@ todos/{slug}/visuals/
 ```
 
 If this is a multi-agent bake-off, place artifacts in a named subfolder:
-`todos/{slug}/visuals/{agent-name}/`.
+`todos/{slug}/html/{agent-name}/`.
 
 ## Outputs
 
-1. Visual artifact HTML files in `todos/{slug}/visuals/`.
-2. Any generated or referenced assets in `todos/{slug}/visuals/assets/`.
+1. Visual artifact HTML files in `todos/{slug}/html/`.
+2. Any generated or referenced assets in `todos/{slug}/html/assets/`.
 3. All artifacts passing the self-review checklist.
 
 ## Recovery

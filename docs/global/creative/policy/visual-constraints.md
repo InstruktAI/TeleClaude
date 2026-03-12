@@ -75,10 +75,10 @@ description: 'Rules governing visual artifact production: CSS-only animations, d
   agent works from the same `design-spec.md`. The design spec is the
   shared constraint — variations are in layout, spatial rhythm, and motion
   choreography, not in visual identity.
-- Each agent's output goes to a named subfolder: `todos/{slug}/visuals/{agent}/`.
+- Each agent's output goes to a named subfolder: `todos/{slug}/html/{agent}/`.
   The human reviews all versions and selects the winner or cherry-picks
   sections across versions.
-- The selected artifacts are promoted to `todos/{slug}/visuals/` (top level)
+- The selected artifacts are promoted to `todos/{slug}/html/` (top level)
   as the canonical reference for the builder.
 
 ## Rationale
@@ -95,7 +95,7 @@ description: 'Rules governing visual artifact production: CSS-only animations, d
 ## Scope
 
 - Applies to all agents producing visual artifacts in the creative phase.
-- Applies to all visual artifact files in `todos/{slug}/visuals/`.
+- Applies to all visual artifact files in `todos/{slug}/html/`.
 
 ## Enforcement
 

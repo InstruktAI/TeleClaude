@@ -24,7 +24,7 @@ sees what the human approved, and translates it into the target framework (React
 Astro, Next.js, etc.). The artifact captures what things look like and how they move.
 The builder adds the wiring: routing, data, state, server rendering.
 
-Visual artifacts live in `todos/{slug}/visuals/` alongside other todo artifacts.
+Visual artifacts live in `todos/{slug}/html/` alongside other todo artifacts.
 They are constrained by `todos/{slug}/design-spec.md` — every visual choice in
 the artifact must trace back to the design spec.
 
@@ -35,7 +35,7 @@ the artifact must trace back to the design spec.
 Each visual artifact is a single `.html` file:
 
 ```
-todos/{slug}/visuals/
+todos/{slug}/html/
   hero.html
   features.html
   story.html

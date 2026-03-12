@@ -13,7 +13,7 @@ description: 'State machine architecture for the creative lifecycle: design spec
 The creative machine orchestrates the creative lifecycle — from human visual intent
 to approved visual artifacts — as a stateless state machine. It is separate from the
 prepare machine (Phase A) and runs before it. Its output (`design-spec.md` and
-approved `visuals/`) becomes a precondition for requirements discovery.
+approved `html/`) becomes a precondition for requirements discovery.
 
 The creative machine handles a fundamentally different interaction pattern than
 prepare. Prepare dispatches agents and waits for artifacts. The creative machine
@@ -31,13 +31,13 @@ from filesystem artifacts and `state.yaml`.
 - `todos/{slug}/input.md` — human thinking and project context.
 - `todos/{slug}/state.yaml` — creative phase tracking.
 - `todos/{slug}/design-spec.md` — produced during the design discovery phase.
-- `todos/{slug}/visuals/` — produced during the visual drafting phase.
+- `todos/{slug}/html/` — produced during the visual drafting phase.
 - Reference images, screenshots, URLs provided by the human.
 
 **Outputs:**
 
 - Confirmed `todos/{slug}/design-spec.md`.
-- Approved visual artifacts in `todos/{slug}/visuals/`.
+- Approved visual artifacts in `todos/{slug}/html/`.
 - Updated `state.yaml` with creative phase completion markers.
 - The todo is ready to enter the prepare machine.
 
@@ -68,7 +68,7 @@ stateDiagram-v2
     CheckConfirmation --> WaitForHuman_DS: not confirmed
     CheckConfirmation --> CheckVisuals: confirmed
     WaitForHuman_DS --> CheckConfirmation: human signals
-    CheckVisuals --> VisualDrafting: visuals/ missing or empty
+    CheckVisuals --> VisualDrafting: html/ missing or empty
     CheckVisuals --> CheckApproval: visuals exist
     VisualDrafting --> CheckApproval: artifacts written
     CheckApproval --> WaitForHuman_V: not approved
@@ -129,7 +129,7 @@ When the human requests changes:
 
 #### CHECK_VISUALS
 
-Check whether `todos/{slug}/visuals/` contains HTML files.
+Check whether `todos/{slug}/html/` contains HTML files.
 
 - Contains `.html` files → transition to CHECK_APPROVAL.
 - Empty or missing → return `VISUAL_DRAFTS_REQUIRED`.
@@ -140,10 +140,10 @@ Dispatch one or more creative agents running the visual drafting procedure.
 Each agent receives `design-spec.md` as the constraint document.
 
 **Single agent**: dispatch one creative agent. Output goes to
-`todos/{slug}/visuals/`.
+`todos/{slug}/html/`.
 
 **Multi-agent bake-off**: dispatch N agents (potentially different AI models).
-Each agent's output goes to `todos/{slug}/visuals/{agent-name}/`. The human
+Each agent's output goes to `todos/{slug}/html/{agent-name}/`. The human
 reviews all versions and selects.
 
 After artifacts are written, call the machine again.
@@ -173,7 +173,7 @@ and review.
 When the human approves:
 
 - Set `creative.visuals.approved: true` in `state.yaml`.
-- For bake-offs: promote the selected version's files to `todos/{slug}/visuals/`
+- For bake-offs: promote the selected version's files to `todos/{slug}/html/`
   (top level) and remove the agent subfolders.
 - Call the machine again.
 
@@ -194,7 +194,7 @@ After revision, call the machine again (loops back to CHECK_APPROVAL).
 Terminal state. All creative artifacts are confirmed and approved.
 
 - `design-spec.md` is confirmed.
-- `visuals/` contains approved HTML+CSS artifacts.
+- `html/` contains approved HTML+CSS artifacts.
 - The todo is ready for the prepare machine (requirements discovery can
   reference both the design spec and the visual artifacts).
 
