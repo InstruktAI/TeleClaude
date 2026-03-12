@@ -9,7 +9,7 @@ coordination cost exceeds the session-size benefit. The requirements are detaile
 enough (exact field names, event names, cascade logic, per-step context
 specifications) that execution is mechanical.
 
-Estimated change: ~350 lines of new/changed Python across 3-4 files, plus
+Estimated change: ~400 lines of new/changed Python across 5-6 files, plus
 procedure/spec doc snippet updates.
 
 ---
@@ -17,14 +17,15 @@ procedure/spec doc snippet updates.
 ## Task 1: Extend `DEFAULT_STATE` schema with lifecycle and findings fields
 
 **What:** Add new fields to `DEFAULT_STATE` in
-`teleclaude/core/next_machine/core.py` (~line 896):
+`teleclaude/core/next_machine/core.py` (~line 912):
 
-- `artifacts` dict — per-artifact lifecycle metadata:
+- `artifacts` dict — per-artifact lifecycle metadata (no `consumed_at` — digest
+  comparison is sufficient for staleness; consumption tracking adds dead schema):
   ```python
   "artifacts": {
-      "input": {"digest": "", "produced_at": "", "consumed_at": "", "stale": False},
-      "requirements": {"digest": "", "produced_at": "", "consumed_at": "", "stale": False},
-      "implementation_plan": {"digest": "", "produced_at": "", "consumed_at": "", "stale": False},
+      "input": {"digest": "", "produced_at": "", "stale": False},
+      "requirements": {"digest": "", "produced_at": "", "stale": False},
+      "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
   }
   ```
 - `audit` dict — per-phase timing:
@@ -54,19 +55,30 @@ procedure/spec doc snippet updates.
 - `schema_version` bumped from 1 to 2 at the top level.
 
 **Why:** R5 (lifecycle authority), R7 (audit trail), R1 (finding severity), R9, R17
-(schema migration). All downstream tasks depend on these fields existing. The
-default-merge in `read_phase_state()` already handles missing keys, so existing
-todos get empty defaults transparently — no migration step needed beyond the
-version bump.
+(schema migration). All downstream tasks depend on these fields existing.
+
+The existing `read_phase_state()` uses a shallow `merged.update(state)` at line
+~980. This is insufficient for nested dicts: a v1 `requirements_review: {verdict:
+"approve", findings_count: 2, rounds: 1}` completely replaces the DEFAULT_STATE
+counterpart, losing the new `baseline_commit` and `findings` sub-keys. Task 1 must
+also implement a deep-merge for nested state dicts.
+
+Add a private helper `_deep_merge_state(defaults: dict, persisted: dict) -> dict`
+adjacent to `read_phase_state` that recursively merges nested dicts instead of
+overwriting them. Apply it to these nested keys: `requirements_review`,
+`plan_review`, `grounding`, `artifacts`, `audit`. Use it in `read_phase_state`
+instead of `merged.update(state)` for those keys.
 
 **Verification:**
-- Existing `read_phase_state()` call on a v1 `state.yaml` returns merged state
-  with all new fields defaulted.
-- Write a unit test: `read_phase_state` on v1 state merges v2 defaults correctly.
-- Write a unit test: `read_phase_state` on v2 state preserves all fields.
+- Unit test (TDD first): `read_phase_state` on a v1 `state.yaml` returns merged
+  state with all v2 nested sub-keys defaulted (e.g., `requirements_review.findings`,
+  `requirements_review.baseline_commit`, `artifacts.input.produced_at`).
+- Unit test: `read_phase_state` on a v2 state with partially populated nested dicts
+  preserves all non-default sub-keys.
+- Unit test: `read_phase_state` on v2 state preserves all fields unchanged.
 
 **Referenced files:**
-- `teleclaude/core/next_machine/core.py` (lines 896-930)
+- `teleclaude/core/next_machine/core.py` (lines 912-950, 960-985)
 
 ---
 
@@ -78,10 +90,12 @@ version bump.
    SHA-256 of `todos/{slug}/{artifact_name}`. Returns the hex digest, or empty
    string if the file doesn't exist.
 
-2. `record_artifact_digest(cwd, slug, artifact_name)` — calls `artifact_digest`,
-   writes the result to `state.yaml.artifacts.<name>.digest`. Emits
+2. `record_artifact_produced(cwd, slug, artifact_name)` — calls `artifact_digest`,
+   writes the result to `state.yaml.artifacts.<name>.digest`, and also writes
+   `state.yaml.artifacts.<name>.produced_at` with a UTC timestamp. Emits
    `prepare.artifact_produced` event. Workers call this after producing any
-   artifact.
+   artifact. Both `digest` and `produced_at` are written atomically in one
+   `write_phase_state` call.
 
 3. `check_artifact_staleness(cwd, slug)` — for each tracked artifact (input,
    requirements, implementation_plan) in cascade order, calls `artifact_digest`
@@ -114,16 +128,17 @@ All functions use `read_phase_state` / `write_phase_state` for atomic state
 mutations.
 
 **Why:** R8 (generic digest helper for bookkeeping), R17 (worker re-dispatch
-context). One helper computes a SHA for any artifact — the same function is used
-for recording after production and for checking before routing. Workers call
-`record_artifact_digest`. The machine calls `check_artifact_staleness` on every
-prepare invocation (Task 3). The diff helpers use the same `_run_git_prepare`
+context). `record_artifact_produced` is the single write point — one function,
+one call, writes both `digest` and `produced_at`. This makes ghost artifact
+protection (Task 4) unambiguous: if `produced_at` is empty, the artifact was
+never properly recorded. The diff helpers use the same `_run_git_prepare`
 infrastructure already used for codebase grounding. Extracting to a separate
 module avoids growing the 4168-line `core.py` further.
 
 **Verification:**
 - Unit test: `artifact_digest` returns correct SHA for a known file.
-- Unit test: `record_artifact_digest` writes digest to state.yaml.
+- Unit test: `record_artifact_produced` writes both `digest` and `produced_at`
+  to state.yaml in one call.
 - Unit test: `check_artifact_staleness` detects mismatch and returns stale list
   in cascade order.
 - Unit test: `record_finding` / `resolve_finding` produce correct state mutations.
@@ -143,7 +158,7 @@ module avoids growing the 4168-line `core.py` further.
 
 ### 3a. Artifact staleness in the dispatch loop
 
-In `next_prepare()` (~line 3506), after reading state and before the
+In `next_prepare()` (~line 3525), after reading state and before the
 phase dispatch, call `check_artifact_staleness(cwd, slug)`. If stale artifacts
 are returned:
 
@@ -167,17 +182,18 @@ The existing grounding check is not modified.
 
 ### 3b. `additional_context` in `format_tool_call`
 
-Add `additional_context: str = ""` parameter to `format_tool_call()` (~line
-289). When non-empty, it is included in the dispatch instruction as:
+Add `additional_context: str = ""` parameter to `format_tool_call()` (~line 285).
+When non-empty, it is included in the dispatch instruction as:
 
 ```
 ADDITIONAL CONTEXT FOR WORKER:
 {additional_context}
 ```
 
-This appears between the dispatch metadata and the timer step. The orchestrator
-passes it to `telec sessions run --additional-context "..."`. Worker commands
-receive it as startup frontmatter.
+This appears between the dispatch metadata and the timer step. The rendered
+`telec sessions run` call in the output includes `--additional-context
+"{additional_context}"` when non-empty. The `--additional-context` CLI flag is
+implemented in Task 12.
 
 ### 3c. Per-step context computation
 
@@ -213,19 +229,19 @@ of generic "redo this phase" instructions.
 - Unit test: no modifications → no staleness, phase routing proceeds normally,
   no `additional_context`.
 - Unit test: `format_tool_call` with non-empty `additional_context` includes it
-  in output.
+  in output and includes `--additional-context` in rendered `telec sessions run`.
 - Unit test: `format_tool_call` with empty `additional_context` omits the block.
 - Existing grounding check tests continue to pass (not modified).
 
 **Referenced files:**
-- `teleclaude/core/next_machine/core.py` (lines 289-386, lines 3506-3575)
+- `teleclaude/core/next_machine/core.py` (lines 285-386, lines 3525-3595)
 - `teleclaude/core/next_machine/prepare_helpers.py`
 
 ---
 
 ## Task 4: Ghost artifact protection in phase derivation
 
-**What:** Update `_derive_prepare_phase()` (~line 2948) to consult
+**What:** Update `_derive_prepare_phase()` (~line 2967) to consult
 `state.artifacts.<name>.produced_at` alongside file existence. If a file exists on
 disk but has no `produced_at` in lifecycle metadata AND the state has
 `schema_version >= 2`, the function treats it as not produced.
@@ -238,25 +254,26 @@ existence is the only signal. This ensures backward compatibility (R14).
 lifecycle record. The machine must not route based on phantom files.
 
 **Verification:**
-- Unit test: v2 state with `requirements.md` on disk but no `produced_at` →
-  phase is `INPUT_ASSESSMENT`, not `REQUIREMENTS_REVIEW`.
+- Unit test (TDD first): v2 state with `requirements.md` on disk but no
+  `produced_at` → phase is `INPUT_ASSESSMENT`, not `REQUIREMENTS_REVIEW`.
 - Unit test: v1 state with `requirements.md` on disk → phase is
   `REQUIREMENTS_REVIEW` (backward compat).
 
 **Referenced files:**
-- `teleclaude/core/next_machine/core.py` (lines 2948-2977)
+- `teleclaude/core/next_machine/core.py` (lines 2967-2996)
 
 ---
 
 ## Task 5: Review step handlers — structured findings and severity-based verdict
 
-**What:** Update `_prepare_step_requirements_review()` (~line 3044) and
-`_prepare_step_plan_review()` (~line 3140):
+**What:** Update `_prepare_step_requirements_review()` (~line 3063) and
+`_prepare_step_plan_review()` (~line 3159):
 
 1. When dispatching a reviewer (first dispatch or re-review), record
    `baseline_commit` = current `HEAD` SHA in the review dict. This is the diff
    anchor for R17 — all subsequent `compute_artifact_diff` calls use it.
-2. When reading state, extract the `findings` list from the review dict.
+2. When reading state, extract the `findings` list from the review dict using
+   `.get("findings", [])` — safe for both v1 states (no `findings` key) and v2.
 3. Compute unresolved findings: `[f for f in findings if f["status"] == "open"]`.
 4. Determine verdict from the highest unresolved severity:
    - No unresolved → APPROVE (auto-remediation closed the loop, R2).
@@ -302,9 +319,10 @@ content interpretation.
 - Unit test: scoped re-review includes artifact diff + finding IDs in
   `additional_context`.
 - Unit test: no markdown file content appears in any machine output.
+- Unit test: v1 state without `findings` key does not raise KeyError.
 
 **Referenced files:**
-- `teleclaude/core/next_machine/core.py` (lines 3044-3108, lines 3140-3203)
+- `teleclaude/core/next_machine/core.py` (lines 3063-3127, lines 3159-3222)
 
 ---
 
@@ -331,7 +349,7 @@ analytics. The audit trail is additional to — not a replacement for — the
 
 ## Task 7: Split inheritance — children inherit parent phase
 
-**What:** Update `split_todo()` in `teleclaude/todo_scaffold.py` (~line 157):
+**What:** Update `split_todo()` in `teleclaude/todo_scaffold.py` (~line 159):
 
 1. Read parent state before splitting.
 2. Determine parent's highest approved phase:
@@ -366,7 +384,7 @@ next phase, not at discovery.
 - Unit test: skipped phases have `status: "skipped"` audit entries.
 
 **Referenced files:**
-- `teleclaude/todo_scaffold.py` (lines 157-250)
+- `teleclaude/todo_scaffold.py` (lines 159-260)
 
 ---
 
@@ -438,13 +456,16 @@ without polling state.yaml.
 5. `docs/project/spec/event-vocabulary.md` — add the 8 new prepare events to
    the event families table and document their payload fields.
 
+6. `docs/project/spec/telec-cli-surface.md` — add `--additional-context` to the
+   `sessions run` command description and flag list.
+
 **Why:** R15 (documentation updates). All affected procedures, specs, and
 policies must reflect the new behaviors. The builder resolves doc snippet paths
 at build time via `telec docs index`.
 
 **Verification:**
 - Each updated snippet passes `telec sync --validate-only`.
-- Cross-reference: every new behavior in Tasks 1-8 has a corresponding
+- Cross-reference: every new behavior in Tasks 1-8, 11-12 has a corresponding
   documentation mention.
 
 **Referenced files:**
@@ -453,6 +474,7 @@ at build time via `telec docs index`.
 - `docs/global/software-development/procedure/maintenance/next-prepare-discovery.md`
 - `docs/global/software-development/procedure/lifecycle/prepare.md`
 - `docs/project/spec/event-vocabulary.md`
+- `docs/project/spec/telec-cli-surface.md`
 
 ---
 
@@ -462,7 +484,8 @@ at build time via `telec docs index`.
 
 1. **Schema migration**: a v1 `state.yaml` (no `artifacts`, no `audit`, no
    `findings` in reviews) read through `read_phase_state()` returns a complete v2
-   state with all defaults populated.
+   state with all defaults populated — including nested sub-keys like
+   `requirements_review.findings` and `artifacts.input.produced_at`.
 
 2. **Ghost artifact protection**: file exists on disk + v2 state with no
    `produced_at` → phase derivation skips the file.
@@ -473,8 +496,8 @@ at build time via `telec docs index`.
 4. **Split inheritance**: end-to-end test through `split_todo()` with a parent
    at various approval stages.
 
-5. **Staleness cascade**: modify input after consumption → requirements and plan
-   stale. Modify requirements after consumption → only plan stale.
+5. **Staleness cascade**: modify input after production → requirements and plan
+   stale. Modify requirements after production → only plan stale.
 
 6. **Review efficiency**: findings with mixed severities → correct verdict and
    dispatch behavior.
@@ -525,24 +548,92 @@ one conditional in the same code path. The missing paths flow as structured
   to validate).
 
 **Referenced files:**
-- `teleclaude/core/next_machine/core.py` (lines 3506-3575, plan drafting
+- `teleclaude/core/next_machine/core.py` (lines 3525-3595, plan drafting
   completion transition)
+
+---
+
+## Task 12: Implement `--additional-context` CLI flag for `telec sessions run`
+
+**What:** Thread `additional_context` through the session launch stack:
+
+1. **`teleclaude/api_models.py`** (~line 582): add `additional_context: str = ""`
+   to `RunSessionRequest`. This is the API boundary field.
+
+2. **`teleclaude/api_server.py`** (~line 1406): in `run_session`, after building
+   `full_command`, append `additional_context` when non-empty:
+   ```python
+   if request.additional_context:
+       full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
+   ```
+   This injects the context into the startup message the worker receives verbatim.
+   Quote the combined string before passing to `auto_command`.
+
+3. **`teleclaude/cli/tool_commands.py`** (~line 372): in `handle_sessions_run`,
+   add `--additional-context` to the arg-parsing loop:
+   ```python
+   elif args[i] == "--additional-context" and i + 1 < len(args):
+       body["additional_context"] = args[i + 1]
+       i += 2
+   ```
+
+4. **`teleclaude/cli/telec.py`** (~line 257): add the flag to the `sessions run`
+   `CommandDef`:
+   ```python
+   Flag("--additional-context", desc="Additional context for the worker, appended to startup message"),
+   ```
+
+5. **`teleclaude/core/next_machine/core.py`** (`format_tool_call`, ~line 285):
+   add `additional_context: str = ""` parameter. When non-empty, render it in the
+   `telec sessions run` call:
+   ```
+   telec sessions run --command "..." --args "..." ... --additional-context "{additional_context}"
+   ```
+   and include the `ADDITIONAL CONTEXT FOR WORKER:` block in the output text
+   between dispatch metadata and the timer step.
+
+**Why:** R17 (worker re-dispatch context). Without this flag, the `additional_context`
+computed by the step handlers (Task 3) has no delivery channel. The flag
+closes the loop: `format_tool_call` renders it → orchestrator reads the
+dispatch instruction and passes `--additional-context` → `telec sessions run`
+appends it to the startup message → the worker reads it as part of the command
+frontmatter. The full chain is the existing session launch path plus one new
+field at each layer.
+
+**Verification:**
+- Unit test: `RunSessionRequest` with non-empty `additional_context` → appended
+  to the startup message sent to the worker.
+- Unit test: `RunSessionRequest` with empty `additional_context` → startup
+  message unchanged (no "ADDITIONAL CONTEXT:" block).
+- Unit test: `format_tool_call` with non-empty `additional_context` includes
+  `--additional-context` in rendered `telec sessions run` command.
+- Unit test: `format_tool_call` with empty `additional_context` omits the flag.
+
+**Referenced files:**
+- `teleclaude/api_models.py` (line 582)
+- `teleclaude/api_server.py` (line ~1406)
+- `teleclaude/cli/tool_commands.py` (line ~372)
+- `teleclaude/cli/telec.py` (line ~257)
+- `teleclaude/core/next_machine/core.py` (line 285)
 
 ---
 
 ## Dependency order
 
 Tasks 1 → 2 → 3 (schema → helpers → wiring + format_tool_call + per-step
-context). Task 4 depends on Task 1. Tasks 5-6 depend on Tasks 1-3 (review
-handlers use diff helpers and `additional_context` from Task 3). Task 7 depends
-on Tasks 1-2. Task 8 can proceed in parallel with Tasks 4-7. Task 9 depends on
-Tasks 1-8 (documents what was built). Task 10 is written test-first per TDD
-policy — the tests for each task are written as part of that task, but Task 10
-covers the cross-cutting integration tests that span multiple tasks. Task 11
-depends on Task 3 (wired into the same dispatch loop, uses `additional_context`).
+context). Task 3 also depends on Task 12 (format_tool_call renders the
+`--additional-context` flag that Task 12 adds to the CLI). Task 4 depends on
+Task 1. Tasks 5-6 depend on Tasks 1-3 (review handlers use diff helpers and
+`additional_context` from Task 3). Task 7 depends on Tasks 1-2. Task 8 can
+proceed in parallel with Tasks 4-7. Task 9 depends on Tasks 1-8 (documents
+what was built). Task 10 is written test-first per TDD policy — the tests for
+each task are written as part of that task, but Task 10 covers the
+cross-cutting integration tests that span multiple tasks. Task 11 depends on
+Task 3 (wired into the same dispatch loop, uses `additional_context`). Task 12
+can be developed in parallel with Tasks 1-2 since it touches different files.
 
-Recommended build order: 1 → 2 → 3 → [4, 5, 6, 7, 8, 11 in parallel where
-possible] → 9 → 10 (integration tests).
+Recommended build order: [1, 12 in parallel] → 2 → 3 → [4, 5, 6, 7, 8, 11 in
+parallel where possible] → 9 → 10 (integration tests).
 
 Per TDD policy, each task starts with a failing test before writing production
 code. Task 10 is the integration test sweep at the end.
@@ -561,7 +652,7 @@ code. Task 10 is the integration test sweep at the end.
 | R6 (staleness cascade) | 2, 3 | Unit test: digest-based cascade |
 | R7 (audit trail) | 1, 6 | Unit test: timestamps populated after cycle |
 | R8 (helper functions) | 2 | Unit test: helpers produce correct state |
-| R9 (schema migration) | 1, 10 | Unit test: v1 → v2 merge |
+| R9 (schema migration) | 1, 10 | Unit test: v1 → v2 deep merge |
 | R10 (split inheritance) | 7 | Unit test: children inherit phase |
 | R11 (phase skip observability) | 7 | Unit test: skipped audit entries |
 | R12 (verification hardening) | 9 | Procedure doc update |
@@ -569,4 +660,4 @@ code. Task 10 is the integration test sweep at the end.
 | R14 (backward compat) | 1, 4, 10 | Unit test: v1 state behavior preserved |
 | R15 (documentation) | 9 | Snippet validation |
 | R16 (path existence check) | 11 | Unit test: missing paths → re-draft instruction |
-| R17 (worker re-dispatch context) | 2, 3, 5, 11 | Unit test: per-step additional_context computed and passed |
+| R17 (worker re-dispatch context) | 2, 3, 5, 11, 12 | Unit test: per-step additional_context computed and passed |

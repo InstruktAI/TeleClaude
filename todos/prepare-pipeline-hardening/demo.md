@@ -73,7 +73,7 @@ print('PASS: all findings resolved → verdict determination yields APPROVE')
 # Verify digest-based staleness cascade
 python3 -c "
 from teleclaude.core.next_machine.prepare_helpers import (
-    record_artifact_produced, record_artifact_consumed, check_artifact_staleness
+    record_artifact_produced, check_artifact_staleness
 )
 import yaml, tempfile
 from pathlib import Path
@@ -87,16 +87,14 @@ todo_dir.mkdir(parents=True)
 (todo_dir / 'requirements.md').write_text('requirements content')
 (todo_dir / 'state.yaml').write_text(yaml.dump({'schema_version': 2}))
 
-# Record production and consumption
+# Record production (writes both digest and produced_at)
 record_artifact_produced(str(tmp), 'test-slug', 'input')
-record_artifact_consumed(str(tmp), 'test-slug', 'input', 'input_assessment')
 record_artifact_produced(str(tmp), 'test-slug', 'requirements')
-record_artifact_consumed(str(tmp), 'test-slug', 'requirements', 'requirements_review')
 
-# Modify input after consumption
+# Modify input after recording
 (todo_dir / 'input.md').write_text('modified input')
 
-# Check staleness
+# Check staleness — input changed, so requirements and plan are stale
 stale = check_artifact_staleness(str(tmp), 'test-slug')
 assert 'requirements' in stale, f'requirements should be stale, got {stale}'
 print(f'PASS: input change cascaded staleness to: {stale}')
@@ -150,10 +148,12 @@ R1, R2, and R3.
 
 ### Step 3: Artifact lifecycle tracking
 
-Show `record_artifact_produced` writing lifecycle metadata to state.yaml. Then
-modify the source artifact and run `check_artifact_staleness` to demonstrate the
-digest-based cascade. Explain how this replaces the previous file-existence-only
-approach and protects against ghost artifacts (R5, R6).
+Show `record_artifact_produced` writing both `digest` and `produced_at` to
+state.yaml in one atomic call. Then modify the source artifact and run
+`check_artifact_staleness` to demonstrate the digest-based cascade. Explain how
+this replaces the previous file-existence-only approach and protects against ghost
+artifacts (R5, R6). Note: there is no `consumed_at` — digest comparison alone is
+sufficient for staleness detection.
 
 ### Step 4: Split inheritance
 

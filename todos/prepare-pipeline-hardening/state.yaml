@@ -12,10 +12,10 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: plan_review
+prepare_phase: plan_drafting
 grounding:
   valid: true
-  base_sha: 9410a89c9216184bcd73f8e2957a4f8cc4a58974
+  base_sha: 18e93856feab5ed547fa7cc574b2c95bcda0b0a5
   input_digest: ''
   last_grounded_at: '2026-03-11T17:30:00Z'
   invalidation_reason: null
@@ -24,21 +24,26 @@ grounding:
   - teleclaude/todo_scaffold.py
   - teleclaude/events/schemas/software_development.py
   - teleclaude/core/next_machine/prepare_helpers.py
+  - teleclaude/api_models.py
+  - teleclaude/api_server.py
+  - teleclaude/cli/tool_commands.py
+  - teleclaude/cli/telec.py
   - docs/global/software-development/procedure/lifecycle/review-requirements.md
   - docs/global/software-development/procedure/lifecycle/review-plan.md
   - docs/global/software-development/procedure/maintenance/next-prepare-discovery.md
   - docs/global/software-development/procedure/lifecycle/prepare.md
   - docs/project/spec/event-vocabulary.md
+  - docs/project/spec/telec-cli-surface.md
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-11T16:35:53Z'
   findings_count: 2
   rounds: 1
 plan_review:
-  verdict: needs_work
+  verdict: ''
   reviewed_at: '2026-03-12T00:00:00Z'
   findings_count: 5
-  rounds: 1
+  rounds: 2
 dor:
   last_assessed_at: ''
   score: 0
