@@ -1,5 +1,6 @@
 """API request/response models for API server."""
 
+import dataclasses
 from typing import TYPE_CHECKING, Literal, NotRequired
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -147,7 +148,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
             human_email=session.human_email,
             human_role=session.human_role,
             visibility=session.visibility or "private",
-            session_metadata=session.session_metadata,
+            session_metadata=dataclasses.asdict(session.session_metadata) if session.session_metadata else None,
         )
 
 

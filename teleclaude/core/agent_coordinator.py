@@ -185,12 +185,6 @@ def _coerce_nonempty_str(value: object) -> str | None:
 
 def _resolve_hook_actor_name(session: "Session") -> str:
     """Resolve actor label for hook-reflected user input."""
-    metadata = session.session_metadata if isinstance(session.session_metadata, Mapping) else {}
-    for key in ("actor_name", "user_name", "display_name", "username", "name"):
-        resolved = _coerce_nonempty_str(metadata.get(key))
-        if resolved:
-            return resolved
-
     ui_meta = session.get_metadata().get_ui()
     telegram_user_id = ui_meta.get_telegram().user_id
     discord_user_id = ui_meta.get_discord().user_id
@@ -258,11 +252,6 @@ def _resolve_hook_actor_name(session: "Session") -> str:
     human_email = _coerce_nonempty_str(session.human_email)
     if human_email:
         return human_email
-
-    for key in ("actor_id", "user_id"):
-        resolved = _coerce_nonempty_str(metadata.get(key))
-        if resolved:
-            return resolved
 
     if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
         return f"telegram:{telegram_user_id}"

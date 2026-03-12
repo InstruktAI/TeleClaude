@@ -5,7 +5,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import SessionLaunchIntent
+    from teleclaude.core.models import SessionLaunchIntent, SessionMetadata
 
 
 class CommandType(str, Enum):
@@ -51,7 +51,7 @@ class CreateSessionCommand(InternalCommand):
     channel_metadata: dict[str, object] | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
     auto_command: str | None = None
-    session_metadata: dict[str, object] | None = None  # Generic metadata injection
+    session_metadata: Optional["SessionMetadata"] = None
 
     def __init__(
         self,
@@ -66,7 +66,7 @@ class CreateSessionCommand(InternalCommand):
         channel_metadata: dict[str, object] | None = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
         auto_command: str | None = None,
-        session_metadata: dict[str, object] | None = None,
+        session_metadata: Optional["SessionMetadata"] = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.CREATE_SESSION, request_id=request_id)

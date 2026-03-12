@@ -1,5 +1,6 @@
 """Database manager for TeleClaude - handles session persistence and retrieval."""
 
+import dataclasses
 import json
 import os
 import tempfile
@@ -21,7 +22,7 @@ from teleclaude.core.event_bus import event_bus
 from . import db_models
 from .dates import ensure_utc, parse_iso_datetime
 from .events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from .models import Session, SessionAdapterMetadata, SessionField
+from .models import Session, SessionAdapterMetadata, SessionField, SessionMetadata
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -99,15 +100,11 @@ class Db:
 
     @staticmethod
     def _serialize_session_metadata(
-        value: dict[str, object] | str | None,  # guard: loose-dict
+        value: SessionMetadata | None,
     ) -> str | None:
         if value is None:
             return None
-        if isinstance(value, str):
-            return value
-        if isinstance(value, dict):
-            return json.dumps(value)
-        return str(value)
+        return json.dumps(dataclasses.asdict(value))
 
     @staticmethod
     def _coerce_datetime(value: datetime | str | None) -> datetime | None:
@@ -124,10 +121,14 @@ class Db:
             if isinstance(row.adapter_metadata, str) and row.adapter_metadata
             else SessionAdapterMetadata()
         )
-        session_metadata: dict[str, object] | None = None  # guard: loose-dict
+        session_metadata: SessionMetadata | None = None
         if row.session_metadata:
             try:
-                session_metadata = json.loads(row.session_metadata)
+                _raw = json.loads(row.session_metadata)
+                if isinstance(_raw, dict):
+                    session_metadata = SessionMetadata(
+                        **{k: v for k, v in _raw.items() if k in {"system_role", "job"}}
+                    )
             except json.JSONDecodeError:
                 pass
 
@@ -337,7 +338,7 @@ class Db:
         last_input_origin: str,
         title: str,
         adapter_metadata: SessionAdapterMetadata | None = None,
-        session_metadata: dict[str, object] | None = None,  # guard: loose-dict
+        session_metadata: SessionMetadata | None = None,
         project_path: str | None = None,
         subdir: str | None = None,
         description: str | None = None,

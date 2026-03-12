@@ -7,9 +7,17 @@ This service wires required dependencies without using a generic dispatcher.
 from __future__ import annotations
 
 import functools
+import shlex
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from teleclaude.constants import (
+    ROLE_INTEGRATOR,
+    ROLE_ORCHESTRATOR,
+    ROLE_WORKER,
+    JobRole,
+    SlashCommand,
+)
 from teleclaude.core.command_handlers import (
     EndSessionHandlerResult,
     SessionDataPayload,
@@ -44,6 +52,25 @@ from teleclaude.types.commands import (
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+
+
+# Maps slash commands to (system_role, job_role) pairs.
+# Used both by run_slash_command() internally and exported for api_server.py.
+COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
+    SlashCommand.NEXT_BUILD: (ROLE_WORKER, JobRole.BUILDER),
+    SlashCommand.NEXT_BUGS_FIX: (ROLE_WORKER, JobRole.FIXER),
+    SlashCommand.NEXT_REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.NEXT_REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.NEXT_REVIEW_REQUIREMENTS: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.NEXT_FIX_REVIEW: (ROLE_WORKER, JobRole.FIXER),
+    SlashCommand.NEXT_FINALIZE: (ROLE_WORKER, JobRole.FINALIZER),
+    SlashCommand.NEXT_PREPARE_DISCOVERY: (ROLE_WORKER, JobRole.DISCOVERER),
+    SlashCommand.NEXT_PREPARE_DRAFT: (ROLE_WORKER, JobRole.DRAFTER),
+    SlashCommand.NEXT_PREPARE_GATE: (ROLE_WORKER, JobRole.GATE_CHECKER),
+    SlashCommand.NEXT_PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
+    SlashCommand.NEXT_WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
+    SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
+}
 
 
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
@@ -127,3 +154,42 @@ class CommandService:
 
     async def end_session(self, cmd: CloseSessionCommand) -> EndSessionHandlerResult:
         return await end_session(cmd, self.client)
+
+    async def run_slash_command(
+        self,
+        command: SlashCommand,
+        project_path: str,
+        *,
+        detach: bool = True,
+        thinking_mode: str = "slow",
+        agent: str = "claude",
+    ) -> dict[str, str]:
+        """Spawn a new agent session for a slash command without a caller session identity.
+
+        Used for daemon-internal spawning (e.g. integration_bridge) where no
+        human caller session is available.  The session_metadata is derived from
+        COMMAND_ROLE_MAP so auth can identify system_role and job.
+        """
+        from teleclaude.core.command_mapper import CommandMapper
+        from teleclaude.core.models import MessageMetadata, SessionMetadata
+        from teleclaude.core.origins import InputOrigin
+
+        role_info = COMMAND_ROLE_MAP.get(command)
+        session_meta = (
+            SessionMetadata(system_role=role_info[0], job=role_info[1].value) if role_info else None
+        )
+        full_command = f"/{command.value}"
+        auto_command = f"agent_then_message {agent} {thinking_mode} {shlex.quote(full_command)}"
+        metadata = MessageMetadata(
+            origin=InputOrigin.API.value,
+            title=full_command,
+            project_path=project_path,
+            session_metadata=session_meta,
+            auto_command=auto_command,
+        )
+        cmd = CommandMapper.map_api_input(
+            "new_session",
+            {"skip_listener_registration": detach},
+            metadata,
+        )
+        return await self.create_session(cmd)

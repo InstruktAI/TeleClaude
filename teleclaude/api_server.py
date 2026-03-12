@@ -88,11 +88,12 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.config import config
-from teleclaude.constants import API_SOCKET_PATH, format_system_message
+from teleclaude.constants import API_SOCKET_PATH, SlashCommand, format_system_message
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
@@ -111,6 +112,7 @@ from teleclaude.core.models import (
     ProjectInfo,
     SessionLaunchIntent,
     SessionLaunchKind,
+    SessionMetadata,
     SessionSnapshot,
     TodoInfo,
 )
@@ -141,7 +143,12 @@ API_WATCH_INTERVAL_S = float(os.getenv("API_WATCH_INTERVAL_S", "5"))
 API_WATCH_LAG_THRESHOLD_MS = float(os.getenv("API_WATCH_LAG_THRESHOLD_MS", "250"))
 API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S", "1"))
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
-WORKER_LIFECYCLE_COMMANDS = {"next-build", "next-review-build", "next-fix-review", "next-finalize"}
+WORKER_LIFECYCLE_COMMANDS = {
+    SlashCommand.NEXT_BUILD,
+    SlashCommand.NEXT_REVIEW_BUILD,
+    SlashCommand.NEXT_FIX_REVIEW,
+    SlashCommand.NEXT_FINALIZE,
+}
 API_WS_CONTROL_EVENTS = frozenset(
     {
         "agent_activity",
@@ -158,21 +165,6 @@ API_WS_CONTROL_EVENTS = frozenset(
 )
 API_WS_REPLACEABLE_EVENTS = frozenset({"chiptunes_state", "chiptunes_track", "refresh"})
 
-COMMAND_ROLE_MAP: dict[str, tuple[str, str]] = {
-    "next-build": ("worker", "builder"),
-    "next-bugs-fix": ("worker", "fixer"),
-    "next-review-build": ("worker", "reviewer"),
-    "next-review-plan": ("worker", "reviewer"),
-    "next-review-requirements": ("worker", "reviewer"),
-    "next-fix-review": ("worker", "fixer"),
-    "next-finalize": ("worker", "finalizer"),
-    "next-prepare-discovery": ("worker", "discoverer"),
-    "next-prepare-draft": ("worker", "drafter"),
-    "next-prepare-gate": ("worker", "gate-checker"),
-    "next-prepare": ("orchestrator", "prepare-orchestrator"),
-    "next-work": ("orchestrator", "work-orchestrator"),
-    "next-integrate": ("integrator", "integrator"),
-}
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 PatchBodyScalar = str | int | float | bool | None
@@ -587,8 +579,8 @@ class APIServer:
                 if job:
                     merged = [
                         s for s in merged
-                        if isinstance(s.session_metadata, dict)
-                        and s.session_metadata.get("job") == job
+                        if s.session_metadata is not None
+                        and s.session_metadata.job == job
                     ]
 
                 return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
@@ -633,12 +625,19 @@ class APIServer:
                 channel_metadata = channel_metadata or {}
                 channel_metadata["initiator_session_id"] = identity.session_id
 
+            incoming_meta = request.metadata
+            request_session_meta: SessionMetadata | None = None
+            if incoming_meta:
+                request_session_meta = SessionMetadata(
+                    system_role=str(incoming_meta.get("system_role") or "") or None,
+                    job=str(incoming_meta.get("job") or "") or None,
+                )
             metadata = self._metadata(
                 title=request.title or "Untitled",
                 project_path=request.project_path,
                 subdir=request.subdir,
                 channel_metadata=channel_metadata,
-                session_metadata=request.metadata,
+                session_metadata=request_session_meta,
                 # launch_intent and auto_command logic will be simplified or moved
             )
 
@@ -1424,10 +1423,14 @@ class APIServer:
                 channel_metadata = channel_metadata or {}
                 channel_metadata["working_slug"] = working_slug
 
-            role_info = COMMAND_ROLE_MAP.get(normalized_cmd)
-            session_meta: dict[str, str] | None = None
+            try:
+                slash_cmd = SlashCommand(normalized_cmd)
+            except ValueError:
+                slash_cmd = None
+            role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
+            session_meta: SessionMetadata | None = None
             if role_info:
-                session_meta = {"system_role": role_info[0], "job": role_info[1]}
+                session_meta = SessionMetadata(system_role=role_info[0], job=role_info[1].value)
 
             metadata = self._metadata(
                 title=full_command,
