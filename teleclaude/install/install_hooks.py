@@ -348,20 +348,29 @@ def _configure_json_agent_hooks(
     print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
 
 
-CLAUDE_MCP_SERVERS: dict[str, dict[str, object]] = {
-    "firecrawl": {
-        "command": "bash",
-        "args": ["-c", "npx -y @dotenvx/dotenvx run --env-file $HOME/.teleclaude/.env -- npx -y firecrawl-mcp"],
-    },
-}
+def _load_managed_mcp_servers(repo_root: Path) -> dict[str, dict[str, object]]:
+    """Load managed MCP servers from the repository source-of-truth file."""
+    settings = _load_json_settings(repo_root / "mcp.json", label="Managed MCP")
+    if settings is None:
+        return {}
+
+    mcp_servers = settings.get("mcpServers", {})
+    if not isinstance(mcp_servers, dict):
+        return {}
+
+    return {
+        name: spec
+        for name, spec in mcp_servers.items()
+        if isinstance(name, str) and isinstance(spec, dict)
+    }
 
 
-def _ensure_claude_mcp_servers(claude_json_path: Path) -> None:
-    """Ensure managed MCP servers exist in ~/.claude.json."""
-    if not claude_json_path.exists():
+def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, dict[str, object]], label: str) -> None:
+    """Ensure managed MCP servers exist in a JSON agent settings file."""
+    if not settings_path.exists():
         return
 
-    settings = _load_json_settings(claude_json_path, label="Claude MCP")
+    settings = _load_json_settings(settings_path, label=label)
     if settings is None:
         return
 
@@ -370,35 +379,37 @@ def _ensure_claude_mcp_servers(claude_json_path: Path) -> None:
         mcp_servers = {}
 
     changed = False
-    for name, spec in CLAUDE_MCP_SERVERS.items():
+    for name, spec in mcp_servers_spec.items():
         if mcp_servers.get(name) != spec:
             mcp_servers[name] = spec
             changed = True
 
     if changed:
         settings["mcpServers"] = mcp_servers
-        with open(claude_json_path, "w") as f:
+        with open(settings_path, "w") as f:
             json.dump(settings, f, indent=2)
-        print(f"Claude MCP servers updated in {claude_json_path}")
+        print(f"{label} MCP servers updated in {settings_path}")
     else:
-        print(f"Claude MCP servers already configured in {claude_json_path}")
+        print(f"{label} MCP servers already configured in {settings_path}")
 
 
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
     repo_root = resolve_main_repo_root(repo_root)
+    managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     _configure_json_agent_hooks(
         repo_root,
         "claude",
         Path.home() / ".claude" / "settings.json",
         _claude_hook_map,
     )
-    _ensure_claude_mcp_servers(Path.home() / ".claude.json")
+    _ensure_json_mcp_servers(Path.home() / ".claude.json", managed_mcp_servers, "Claude")
 
 
 def configure_gemini(repo_root: Path) -> None:
     """Configure Gemini CLI hooks."""
     repo_root = resolve_main_repo_root(repo_root)
+    managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     _configure_json_agent_hooks(
         repo_root,
         "gemini",
@@ -406,6 +417,7 @@ def configure_gemini(repo_root: Path) -> None:
         _gemini_hook_map,
         enable_hooks_flag=True,
     )
+    _ensure_json_mcp_servers(Path.home() / ".gemini" / "settings.json", managed_mcp_servers, "Gemini")
 
 
 def configure_codex(repo_root: Path) -> None:
@@ -486,10 +498,9 @@ def configure_codex(repo_root: Path) -> None:
         notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
         content = f"# Codex CLI configuration\n\n{notify_line}\n"
 
-    # Phase 2 (mcp-migration-agent-config): stop injecting MCP server config
-    # and scrub any legacy TeleClaude MCP section from existing Codex config.
+    managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     content = _remove_codex_mcp_config(content)
-    content = _ensure_codex_mcp_servers(content)
+    content = _ensure_codex_mcp_servers(content, managed_mcp_servers)
     content = _apply_codex_settings_overrides(content)
     config_path.write_text(content)
     print(f"Codex hooks and settings configured in {config_path}")
@@ -541,16 +552,7 @@ def _remove_codex_mcp_config(content: str) -> str:
     return content.rstrip() + "\n" if content.strip() else ""
 
 
-CODEX_MCP_SERVERS: dict[str, dict[str, object]] = {
-    "firecrawl": {
-        "command": "bash",
-        "args": ["-c", "npx -y @dotenvx/dotenvx run --env-file $HOME/.teleclaude/.env -- npx -y firecrawl-mcp"],
-        "type": "stdio",
-    },
-}
-
-
-def _ensure_codex_mcp_servers(content: str) -> str:
+def _ensure_codex_mcp_servers(content: str, mcp_servers_spec: dict[str, dict[str, object]]) -> str:
     """Ensure managed MCP server sections exist in Codex TOML config."""
     try:
         config = tomllib.loads(content)
@@ -559,7 +561,9 @@ def _ensure_codex_mcp_servers(content: str) -> str:
 
     existing_mcp = config.get("mcp_servers", {})
 
-    for name, spec in CODEX_MCP_SERVERS.items():
+    for name, base_spec in mcp_servers_spec.items():
+        spec = dict(base_spec)
+        spec["type"] = "stdio"
         if name in existing_mcp and existing_mcp[name] == spec:
             continue
 

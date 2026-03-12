@@ -11,7 +11,7 @@ type: 'policy'
 
 - **Allowed lifecycle commands:** `make restart`, `make status`.
 - **Allowed checks:** `make status`, `instrukt-ai-logs teleclaude --since <window> --grep <str>`.
-- **Allowed setup command:** `telec init` (docs sync/watchers + hooks).
+- **Allowed setup commands:** `telec init`, `make init`, `make install` (docs sync/watchers + hooks).
 - **Conditional (only when a restart is insufficient):** `make stop`, `make start`.
 - **Disallowed (only for humans):** `bin/daemon-control.sh`, `bin/init.sh`, `launchctl`, `systemctl`, direct service bootout/bootstrap/unload/load.
 - Never modify host-level service configuration without explicit approval.

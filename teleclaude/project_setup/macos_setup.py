@@ -19,7 +19,7 @@ def is_macos() -> bool:
     return sys.platform == "darwin"
 
 
-def install_launchers(project_root: Path, skip_build: bool = False) -> None:
+def install_launchers(project_root: Path, skip_build: bool = True) -> None:
     """Install launcher bundles into ``~/Applications`` on macOS.
 
     Idempotent: existing target bundles are replaced.
