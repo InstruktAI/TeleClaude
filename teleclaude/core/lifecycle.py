@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -62,17 +63,20 @@ class DaemonLifecycle:
         if self._started:
             logger.warning("Lifecycle startup already completed; skipping")
             return
+        startup_started_at = time.perf_counter()
         await db.initialize()
-        logger.info("Database initialized")
+        logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)
 
         db.set_client(self.client)
         operations_service = OperationsService(db=db, task_registry=self.task_registry)
         set_operations_service(operations_service)
+        operations_started_at = time.perf_counter()
         await operations_service.start()
-        await self._warm_local_sessions_cache()
-        await self._warm_local_projects_cache()
+        logger.info("Operations service started in %.3fs", time.perf_counter() - operations_started_at)
 
-        await self.client.start()
+        session_warm_started_at = time.perf_counter()
+        await self._warm_local_sessions_cache()
+        logger.info("Local session cache warm completed in %.3fs", time.perf_counter() - session_warm_started_at)
 
         self.api_server = APIServer(
             self.client,
@@ -80,9 +84,18 @@ class DaemonLifecycle:
             task_registry=self.task_registry,
             runtime_settings=self.runtime_settings,
         )
+        api_started_at = time.perf_counter()
         await self.api_server.start()
         self.api_server.set_on_server_exit(self.handle_api_server_exit)
-        logger.info("API server started and cache wired")
+        logger.info("API server started and cache wired in %.3fs", time.perf_counter() - api_started_at)
+
+        project_warm_started_at = time.perf_counter()
+        await self._warm_local_projects_cache()
+        logger.info("Local project cache warm completed in %.3fs", time.perf_counter() - project_warm_started_at)
+
+        adapter_start_started_at = time.perf_counter()
+        await self.client.start()
+        logger.info("Adapter startup completed in %.3fs", time.perf_counter() - adapter_start_started_at)
 
         redis_transport_cache = self.client.adapters.get("redis")
         if redis_transport_cache and hasattr(redis_transport_cache, "cache"):
@@ -98,6 +111,7 @@ class DaemonLifecycle:
         logger.info("Inbound queue manager started")
 
         self._started = True
+        logger.info("Lifecycle startup completed in %.3fs", time.perf_counter() - startup_started_at)
 
     async def _warm_local_sessions_cache(self) -> None:
         """Seed cache with current local sessions for initial UI state."""
