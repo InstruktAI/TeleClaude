@@ -26,7 +26,9 @@ The builder adds the wiring: routing, data, state, server rendering.
 
 Visual artifacts live in `todos/{slug}/html/` alongside other todo artifacts.
 They are constrained by `todos/{slug}/design-spec.md` — every visual choice in
-the artifact must trace back to the design spec.
+the artifact must trace back to the design spec. They are informed by the approved
+art in `todos/{slug}/art/` — the mood board images provide compositional intent
+that the frontender translates into HTML+CSS.
 
 ## Canonical fields
 

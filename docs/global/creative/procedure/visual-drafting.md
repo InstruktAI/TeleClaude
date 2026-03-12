@@ -3,7 +3,7 @@ id: 'creative/procedure/visual-drafting'
 type: 'procedure'
 domain: 'creative'
 scope: 'global'
-description: 'Produce self-contained HTML+CSS visual artifacts from a confirmed design spec.'
+description: 'Produce self-contained HTML+CSS visual artifacts from approved art and a confirmed design spec.'
 ---
 
 # Visual Drafting — Procedure
@@ -16,26 +16,32 @@ description: 'Produce self-contained HTML+CSS visual artifacts from a confirmed 
 
 ## Goal
 
-Produce visual artifacts — self-contained HTML+CSS files — that faithfully express
-a confirmed design spec for a specific project. The artifacts are visual references
+Produce visual artifacts — self-contained HTML+CSS files — that translate approved
+art into code, constrained by the design spec. The artifacts are visual references
 that a builder will translate into the target framework.
 
-The creative agent's job is visual thinking in code: layout, color, typography,
+The frontender's job is visual thinking in code: layout, color, typography,
 spatial rhythm, and motion. Not application logic, not component architecture,
-not responsiveness. Pure visual expression within the design spec's boundaries.
+not responsiveness. Pure visual expression within the design spec's boundaries,
+guided by the compositional intent of the approved art.
 
 ## Preconditions
 
 1. `todos/{slug}/design-spec.md` exists and is confirmed by the human.
-2. `todos/{slug}/input.md` exists with project context.
-3. Reference images or screenshots are available if the design spec references them.
+2. `todos/{slug}/art/` contains approved mood board images.
+3. `todos/{slug}/input.md` exists with project context.
 4. The visual artifact spec and visual constraints policy are loaded.
 
 ## Steps
 
-### 1. Absorb the design spec
+### 1. Absorb the inputs
 
-Read `todos/{slug}/design-spec.md` completely. Internalize:
+**Read the approved art** in `todos/{slug}/art/`. Study the mood board images
+for compositional intent: layout direction, spatial rhythm, color temperature,
+visual weight distribution, and emotional register. The art is your primary
+creative reference — it shows what the human approved visually.
+
+**Read `todos/{slug}/design-spec.md`** completely. Internalize:
 
 - The CSS custom properties you will define (colors, fonts, spacing).
 - The motion vocabulary — which animation techniques are specified, what
@@ -44,8 +50,11 @@ Read `todos/{slug}/design-spec.md` completely. Internalize:
 - The emotional register — this guides every micro-decision about spacing,
   contrast, and visual weight.
 
-Read `todos/{slug}/input.md` for the content arc — what sections exist, what
+**Read `todos/{slug}/input.md`** for the content arc — what sections exist, what
 the storytelling structure is, what the human wants the viewer to experience.
+
+The art gives you the visual direction. The design spec gives you the exact values.
+The input gives you the content structure. All three are required.
 
 ### 2. Plan the section breakdown
 

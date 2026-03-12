@@ -3,7 +3,7 @@ id: 'creative/procedure/creative-orchestration'
 type: 'procedure'
 domain: 'creative'
 scope: 'global'
-description: 'Drive the creative state machine: dispatch workers, park at human gates, advance through design spec and visual artifact phases.'
+description: 'Drive the creative state machine: dispatch workers, park at human gates, advance through design spec, art generation, and visual artifact phases.'
 ---
 
 # Creative Orchestration — Procedure
@@ -20,10 +20,11 @@ Drive the creative state machine by calling it in a loop. Each call returns an
 instruction. Execute it, then call again. Repeat until the machine returns
 CREATIVE_COMPLETE or a blocker.
 
-The creative orchestrator is the human-facing coordinator. It translates machine
-instructions into actions: dispatching creative agents, presenting artifacts to the
-human, collecting approval signals, and advancing the machine. It is the bridge
-between the stateless machine and the interactive creative process.
+The creative orchestrator (creator) is the human-facing coordinator. It translates
+machine instructions into actions: facilitating design discovery, dispatching the
+artist, dispatching frontender(s), presenting artifacts to the human, collecting
+approval signals, and advancing the machine. It is the bridge between the stateless
+machine and the interactive creative process.
 
 ## Preconditions
 
@@ -31,7 +32,7 @@ between the stateless machine and the interactive creative process.
 2. Target slug is active and flagged for creative work.
 3. `todos/{slug}/input.md` exists with human thinking.
 4. The human is available for interactive participation (design spec
-   confirmation and visual review require human presence).
+   confirmation, art review, and visual review require human presence).
 
 ## Steps
 
@@ -49,35 +50,93 @@ The machine returns one of the following instruction types:
 discovery.
 
 **Action**: open an interactive session. This is not a background dispatch — the
-human participates directly. The session follows the design discovery procedure:
-dialogue, reference analysis, synthesis, and writing `design-spec.md`.
+human participates directly. The creator presents reference sites, collects
+images the human provides (saved to `todos/{slug}/input/`), and facilitates
+the dialogue that produces `design-spec.md`.
 
-The orchestrator may run this session itself (if the human is present in the
+The creator may run this session itself (if the human is present in the
 current conversation) or dispatch a dedicated discovery session that the human
 joins.
 
 After `design-spec.md` is written, call the machine again.
 
-#### DESIGN_SYSTEM_PENDING_CONFIRMATION
+#### DESIGN_SPEC_PENDING_CONFIRMATION
 
 `design-spec.md` exists but the human has not confirmed it.
 
 **Action**: present the design spec to the human. Highlight any `[proposed]`
 values that need their input. Ask for one of:
 
-- **Confirm**: mark `creative.design_system.confirmed: true` in `state.yaml`.
+- **Confirm**: mark `creative.design_spec.confirmed: true` in `state.yaml`.
 - **Revise**: collect feedback, update `design-spec.md`, present again.
 
 Do not advance until the human explicitly confirms. This is a blocking gate.
 
 After confirmation, call the machine again.
 
+#### ART_GENERATION_REQUIRED
+
+Design spec is confirmed. No art exists yet.
+
+**Action**: dispatch an artist agent to generate mood board images.
+
+```
+telec sessions run --command "/next-creative-art" --args "{slug}"
+  --project "{project}" --agent "gemini" --mode "slow"
+```
+
+Gemini is the default artist because it is natively multimodal — it reads
+reference images and generates images in the same conversation using Nano
+Banana. The artist session stays open for iteration; it is not fire-and-forget.
+
+The artist receives:
+- `design-spec.md` as the constraint document.
+- `input.md` for context and content direction.
+- `input/` for any reference images the human provided.
+
+The artist uses the `image-generator` meta-skill to select the appropriate
+engine. Output goes to `todos/{slug}/art/`.
+
+After images are written, call the machine again.
+
+#### ART_PENDING_APPROVAL
+
+Art images exist but are not approved.
+
+**Action**: present the images to the human. Provide file paths. Optionally
+send them via messaging (Discord/Telegram) if the human requests it.
+
+```
+Review the mood board:
+  todos/{slug}/art/hero-mood.png
+  todos/{slug}/art/palette-exploration.png
+  todos/{slug}/art/composition-study.png
+```
+
+Collect the human's response:
+
+- **Approve**: mark `creative.art.approved: true` in `state.yaml`.
+- **Iterate**: collect specific feedback, relay to the artist session.
+
+#### ART_ITERATION_REQUIRED
+
+The human reviewed the art and wants changes.
+
+**Action**: send the feedback to the artist agent (still in session). The
+artist generates revised images, potentially switching engines via the
+`image-generator` meta-skill if the feedback implies a different style direction.
+
+After revision, call the machine again. The machine loops back to
+CHECK_ART_APPROVAL. The human reviews again.
+
+Track iteration count in `state.yaml` (`creative.art.iteration_count`).
+
 #### VISUAL_DRAFTS_REQUIRED
 
-Design system is confirmed. Visual artifacts do not exist yet.
+Art is approved. Visual artifacts do not exist yet.
 
-**Action**: dispatch creative agent(s) to produce visual artifacts following the
-visual drafting procedure.
+**Action**: dispatch frontender agent(s) to produce HTML+CSS visual artifacts
+following the visual drafting procedure.
 
 **Single agent dispatch**:
 
@@ -86,14 +145,15 @@ telec sessions run --command "/next-creative-draft" --args "{slug}"
   --project "{project}" --agent "<selection>" --mode "<selection>"
 ```
 
-Select the agent based on the agent characteristics concept. Gemini is the
-default choice for creative/visual work. Claude or Codex are alternatives
-when the visual design requires more structural rigor.
+The frontender is multimodal — it reads the approved art images for
+compositional intent and uses the design spec for exact values. Select
+the agent based on agent characteristics. Any agent can be a frontender;
+the role is about translating images + spec into code.
 
 **Multi-agent bake-off** (when the human requests it or the design spec
 indicates high creative ambiguity):
 
-Dispatch 2-3 agents in parallel, each with the same design spec constraint.
+Dispatch 2-3 agents in parallel, each with the same design spec and art.
 Each agent writes to `todos/{slug}/html/{agent-name}/`.
 
 ```
@@ -136,7 +196,7 @@ Collect the human's response:
   For bake-offs, record `selected_version` and promote the winner's files
   to the top-level `html/` folder.
 - **Cherry-pick** (bake-off): the human selects specific sections from
-  different agents. Dispatch a creative agent to merge the selected sections
+  different agents. Dispatch a frontender to merge the selected sections
   into a cohesive set in `todos/{slug}/html/`.
 - **Iterate**: collect specific feedback and call the machine again (it
   returns VISUAL_ITERATION_REQUIRED).
@@ -145,28 +205,29 @@ Collect the human's response:
 
 The human reviewed and wants changes.
 
-**Action**: dispatch a creative agent with the human's feedback as context.
+**Action**: dispatch a frontender with the human's feedback as context.
 The agent reads the existing artifacts, applies changes, and writes updated
 files. The same agent that produced the original is preferred for continuity,
 but any agent can iterate if the original is unavailable.
 
 After revision, call the machine again. The machine loops back to
-CHECK_APPROVAL. The human reviews again. This loop continues until approval.
+CHECK_VISUAL_APPROVAL. The human reviews again. This loop continues until
+approval.
 
 Track iteration count in `state.yaml` (`creative.visuals.iteration_count`).
 If iterations exceed 3 without convergence, surface this to the human —
-the design spec may need refinement rather than the visuals.
+the design spec or art may need refinement rather than the visuals.
 
 #### CREATIVE_COMPLETE
 
 Terminal state. All creative artifacts are confirmed and approved.
 
 **Action**:
-- End all creative worker sessions.
-- Report to the human: design spec confirmed, visuals approved, ready for
-  prepare phase.
+- End all creative worker sessions (artist, frontender(s)).
+- Report to the human: design spec confirmed, art approved, visuals approved,
+  ready for prepare phase.
 - The todo can now enter the prepare machine. Requirements discovery will
-  reference both `design-spec.md` and the approved visuals.
+  reference `design-spec.md`, the approved art, and the visual artifacts.
 
 #### BLOCKER
 
@@ -179,7 +240,8 @@ folder contains the evidence trail.
 
 After dispatching creative workers:
 
-1. Set a heartbeat timer (5 minutes for visual drafting).
+1. Set a heartbeat timer (5 minutes for art generation, 5 minutes for visual
+   drafting).
 2. Wait for worker notification.
 3. On notification: call the machine again to advance.
 4. If the worker stalls (heartbeat fires with no progress), tail the worker
@@ -188,9 +250,10 @@ After dispatching creative workers:
 
 ### 4. Human gate management
 
-At human gates (DESIGN_SYSTEM_PENDING_CONFIRMATION and VISUALS_PENDING_APPROVAL),
-the orchestrator does not set a heartbeat. It parks and waits for the human.
-The human's input arrives as a message in the conversation.
+At human gates (DESIGN_SPEC_PENDING_CONFIRMATION, ART_PENDING_APPROVAL,
+and VISUALS_PENDING_APPROVAL), the orchestrator does not set a heartbeat.
+It parks and waits for the human. The human's input arrives as a message
+in the conversation.
 
 When the human's input arrives:
 
@@ -212,10 +275,11 @@ defaults, no "assuming approval." The human decides.
 ## Outputs
 
 1. Confirmed `todos/{slug}/design-spec.md`.
-2. Approved visual artifacts in `todos/{slug}/html/`.
-3. Updated `state.yaml` with creative phase completion markers.
-4. All worker sessions ended on completion.
-5. The todo is ready for the prepare machine.
+2. Approved art in `todos/{slug}/art/`.
+3. Approved visual artifacts in `todos/{slug}/html/`.
+4. Updated `state.yaml` with creative phase completion markers.
+5. All worker sessions ended on completion.
+6. The todo is ready for the prepare machine.
 
 ## Recovery
 
@@ -224,12 +288,13 @@ defaults, no "assuming approval." The human decides.
 2. If the human's feedback is ambiguous ("make it better"), ask a clarifying
    question before dispatching a revision. Do not guess — the iteration
    will waste a round and erode trust.
-3. If cherry-picking from a bake-off produces visual inconsistency (e.g.,
+3. If the artist's engine produces unusable output, the artist switches
+   engines via the `image-generator` meta-skill. If all engines fail,
+   record the blocker with the `art/` contents as evidence.
+4. If cherry-picking from a bake-off produces visual inconsistency (e.g.,
    Gemini's hero with Claude's footer in different visual registers),
    dispatch a harmonization pass where one agent reviews the merged set
    against the design spec and smooths transitions.
-4. If the design spec changes after visuals are approved, the orchestrator
-   must re-validate. Diff the design spec tokens against the visual
-   artifact CSS custom properties. If they diverge, the visuals need
-   iteration — mark `creative.visuals.approved: false` and re-enter the
-   approval loop.
+5. If the design spec changes after art or visuals are approved, the
+   orchestrator must re-validate. Mark the affected downstream phase as
+   unapproved and re-enter the appropriate approval loop.

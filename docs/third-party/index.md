@@ -23,6 +23,7 @@
 @docs/third-party/discord/bot-api.md
 @docs/third-party/discord/gateway-delivery-guarantees.md
 @docs/third-party/discord/message-formatting.md
+@docs/third-party/image-generation/landscape.md
 @docs/third-party/gemini-cli/commands.md
 @docs/third-party/gemini-cli/hooks.md
 @docs/third-party/gemini-cli/permissions.md
