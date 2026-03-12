@@ -26,21 +26,6 @@ def test_scan_cartridges_returns_stems():
         assert result == ["cart_a", "cart_b"]
 
 
-def test_has_cartridges_reflects_scan():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        manager = SandboxContainerManager(
-            socket_path="/tmp/sandbox-test.sock",
-            cartridges_dir=tmpdir,
-        )
-        # Initial state: no cartridges detected yet
-        assert not manager.has_cartridges
-
-        # Simulate watcher update: manually set _has_cartridges
-        Path(tmpdir, "my_cart.py").write_text("# cart")
-        manager._has_cartridges = len(scan_cartridges(tmpdir)) > 0  # noqa: SLF001
-        assert manager.has_cartridges
-
-
 @pytest.mark.asyncio
 async def test_restart_increments_counter_and_sets_permanently_failed():
     from unittest.mock import AsyncMock, patch

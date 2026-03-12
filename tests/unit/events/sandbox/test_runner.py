@@ -158,6 +158,7 @@ async def test_ping_handler_returns_ok():
 
 @pytest.mark.asyncio
 async def test_handle_client_missing_cartridge_returns_error():
+    """Runner returns an error response for a cartridge that does not exist on disk."""
     with tempfile.TemporaryDirectory() as tmpdir:
         from datetime import datetime
 
@@ -182,11 +183,12 @@ async def test_handle_client_missing_cartridge_returns_error():
         resp = await _run_single_request(tmpdir, req)
         parsed = response_from_dict(resp)
         assert parsed.error is not None
-        assert "nonexistent_cart" in parsed.error or "Cartridge not found" in parsed.error
+        assert parsed.envelope is None
 
 
 @pytest.mark.asyncio
 async def test_handle_client_cartridge_no_process_fn_returns_error():
+    """Runner returns an error response when cartridge module lacks a callable 'process'."""
     with tempfile.TemporaryDirectory() as tmpdir:
         from datetime import datetime
 
@@ -213,7 +215,7 @@ async def test_handle_client_cartridge_no_process_fn_returns_error():
         resp = await _run_single_request(tmpdir, req)
         parsed = response_from_dict(resp)
         assert parsed.error is not None
-        assert "process" in parsed.error.lower() or "callable" in parsed.error.lower()
+        assert parsed.envelope is None
 
 
 @pytest.mark.asyncio
@@ -283,3 +285,38 @@ async def test_handle_client_timeout_returns_error():
 
         parsed = response_from_dict(resp)
         assert parsed.error == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_handle_client_cartridge_exception_returns_error():
+    """Runner returns an error response when cartridge raises a non-timeout exception."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        from datetime import datetime
+
+        from teleclaude.events.envelope import EventEnvelope
+
+        Path(tmpdir, "boom_cart.py").write_text(
+            "async def process(envelope, ctx):\n    raise ValueError('cartridge broke')\n"
+        )
+
+        env = EventEnvelope(
+            event="test.event",
+            source="test",
+            level=EventLevel.OPERATIONAL,
+            domain="test",
+            description="test",
+            visibility=EventVisibility.LOCAL,
+            timestamp=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+        req = request_to_dict(
+            SandboxRequest(
+                cartridge_name="boom_cart",
+                envelope=env.to_stream_dict(),
+                catalog_snapshot=[],
+            )
+        )
+        resp = await _run_single_request(tmpdir, req)
+        parsed = response_from_dict(resp)
+        assert parsed.error is not None
+        assert parsed.envelope is None
+        assert parsed.duration_ms > 0

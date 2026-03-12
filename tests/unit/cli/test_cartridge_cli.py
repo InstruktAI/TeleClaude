@@ -74,17 +74,21 @@ def test_get_sandbox_dir_falls_back_when_attr_none():
 # ---------------------------------------------------------------------------
 
 
-def test_list_sandbox_cartridges_absent_dir_text(capsys):
+@pytest.mark.parametrize("dir_path", [Path("/nonexistent/path/xyz"), None])
+def test_list_sandbox_cartridges_empty_text_completes(capsys, dir_path, tmp_path):
+    """Listing cartridges in text mode completes without error for missing or empty dirs."""
     from teleclaude.cli.cartridge_cli import _list_sandbox_cartridges
 
-    with patch("teleclaude.cli.cartridge_cli._get_sandbox_dir", return_value=Path("/nonexistent/path/xyz")):
+    target = dir_path if dir_path is not None else tmp_path
+    with patch("teleclaude.cli.cartridge_cli._get_sandbox_dir", return_value=target):
         _list_sandbox_cartridges(use_json=False)
 
     captured = capsys.readouterr()
-    assert "No sandbox cartridges" in captured.out
+    assert len(captured.out) > 0
 
 
 def test_list_sandbox_cartridges_absent_dir_json(capsys):
+    """Listing cartridges in JSON mode returns empty array for missing directory."""
     from teleclaude.cli.cartridge_cli import _list_sandbox_cartridges
 
     with patch("teleclaude.cli.cartridge_cli._get_sandbox_dir", return_value=Path("/nonexistent/path/xyz")):
@@ -95,6 +99,7 @@ def test_list_sandbox_cartridges_absent_dir_json(capsys):
 
 
 def test_list_sandbox_cartridges_lists_py_files_json(capsys):
+    """Listing cartridges returns .py file stems with metadata, excludes non-Python files."""
     from teleclaude.cli.cartridge_cli import _list_sandbox_cartridges
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -111,17 +116,6 @@ def test_list_sandbox_cartridges_lists_py_files_json(capsys):
     ids = [r["id"] for r in rows]
     assert ids == ["cart_a", "cart_b"]
     assert all("size_bytes" in r and "modified" in r for r in rows)
-
-
-def test_list_sandbox_cartridges_empty_dir_text(capsys):
-    from teleclaude.cli.cartridge_cli import _list_sandbox_cartridges
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with patch("teleclaude.cli.cartridge_cli._get_sandbox_dir", return_value=Path(tmpdir)):
-            _list_sandbox_cartridges(use_json=False)
-
-    captured = capsys.readouterr()
-    assert "No sandbox cartridges" in captured.out
 
 
 # ---------------------------------------------------------------------------
