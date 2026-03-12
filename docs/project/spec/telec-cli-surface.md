@@ -31,6 +31,13 @@ subcommands:
         description: 'Retrieve session messages (transcript chain with unified tmux/session-data fallback).'
       run:
         description: 'Run an agent command in a new session.'
+        flags:
+          --command: 'Slash command to run (e.g. /next-build).'
+          --project: 'Project directory path.'
+          --args: 'Command arguments.'
+          --agent: 'Agent: claude, gemini, codex.'
+          --mode: 'Thinking mode: fast, med, slow.'
+          --additional-context: 'Extra context injected into the worker startup frontmatter (e.g., artifact diffs for re-dispatch).'
       end:
         description: 'End a session.'
       unsubscribe:
@@ -124,6 +131,13 @@ subcommands:
         args:
           - slug: 'string (optional)'
         flags:
+          --project-root: 'Project root (default: cwd).'
+      split:
+        description: 'Split a todo into child items. Children inherit the parent approved prepare phase: requirements-approved → children start at plan_drafting; plan-approved → children start at prepared (ready for build).'
+        args:
+          - slug: 'string'
+        flags:
+          --into: 'Space-separated child slugs.'
           --project-root: 'Project root (default: cwd).'
       remove:
         args:

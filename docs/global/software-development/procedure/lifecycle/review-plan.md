@@ -111,20 +111,36 @@ Check the plan against:
 
 Policy violations are Critical findings.
 
-### 8. Auto-remediate localized findings
+### 8. Classify and auto-remediate findings
 
-Default behavior is to act in place. If a finding is localized, high-confidence,
-and does not change intent, the reviewer should fix the plan directly in this
-same pass instead of handing it back.
+Assign each finding a severity level before routing:
 
-Localized means all of the following are true:
+- **trivial** — localized fix with no intent change (missing rationale on a straightforward
+  task, vague verification wording). Auto-remediation allowed inline.
+- **substantive** — task gaps, missing review-lane coverage, grounding errors the drafter
+  must address. Routes to `needs_work`.
+- **architectural** — design contradiction or systemic scope issue requiring human decision.
+  Routes to `needs_decision` and blocks the machine.
+
+Record findings in `state.yaml` under `plan_review.findings`:
+
+```yaml
+findings:
+  - id: "plan-01"
+    severity: "substantive"   # trivial | substantive | architectural
+    summary: "Task T3 has no verification step"
+    status: "open"            # open | resolved
+    resolved_at: ""
+```
+
+Auto-remediate **trivial** findings inline. Localized means all of the following are true:
 
 - No requirement intent changes.
 - No new architectural decision is introduced.
 - Scope stays within the reviewed plan/demo artifacts and related grounding metadata.
 - The reviewer can fully validate the fix from current context.
 
-Not allowed — route via `needs_work` instead:
+Not allowed — assign `substantive` or `architectural` severity instead:
 
 - Adding new tasks not traceable to requirements.
 - Changing scope or splitting the todo.
@@ -136,20 +152,22 @@ Update `todos/{slug}/state.yaml`:
 
 ```yaml
 plan_review:
-  verdict: "approve" | "needs_work"
+  verdict: "approve" | "needs_work" | "needs_decision"
   reviewed_at: "<now ISO8601>"
   findings_count: <n>
+  findings: [...]
 ```
 
-Verdict rules:
+Verdict rules (based on highest severity of unresolved findings):
 
-- `approve` only when unresolved Critical and unresolved Important findings are both zero.
-- `needs_work` when any unresolved Critical or Important finding remains.
-- Suggestion findings may remain unresolved under `approve`.
+- `approve` — all findings resolved (trivial findings auto-remediated, none remain open).
+- `needs_work` — one or more `substantive` findings remain unresolved. The plan drafter
+  will be re-dispatched to address them.
+- `needs_decision` — one or more `architectural` findings remain unresolved. The machine
+  sets `prepare_phase` to BLOCKED and notifies the human.
 
 If unresolved findings exist, write them to `todos/{slug}/plan-review-findings.md`
-with severity levels (Critical, Important, Suggestion) following the same format
-as code review findings.
+as the human-readable reference.
 
 If no unresolved findings remain, remove stale `plan-review-findings.md` if present.
 
@@ -172,8 +190,11 @@ Findings: {count}
 
 ## Recovery
 
-- If unresolved Critical or Important findings remain after auto-remediation,
-  mark `needs_work`. The state machine will dispatch the plan drafter again
-  with the findings.
-- If requirements themselves are the problem (plan is correct but requirements
-  are wrong), flag as blocker — requirements must be re-reviewed first.
+- If unresolved `substantive` findings remain after auto-remediation, mark `needs_work`.
+  The state machine will dispatch the plan drafter again with the unresolved count and
+  a pointer to the findings file.
+- If unresolved `architectural` findings remain, mark `needs_decision`. The machine blocks
+  and surfaces the decision to the human.
+- If requirements themselves are the problem (plan is correct but requirements are wrong),
+  assign `architectural` severity — requirements must be re-reviewed before the plan can
+  proceed.

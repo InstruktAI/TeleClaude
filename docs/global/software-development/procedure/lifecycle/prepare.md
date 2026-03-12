@@ -35,6 +35,10 @@ is concrete enough) or triangulated with a complementary partner (when ambiguity
 hidden assumptions, or unresolved architectural tension remain). Either path converges
 to produce `requirements.md`.
 
+At the `input_assessment → requirements_review` transition, the machine records
+`prepare.input_consumed` once — marking that the input has been handed off to the
+discovery worker and requirements production has started.
+
 ### 3. Requirements review
 
 `requirements.md` is reviewed for completeness, testability, grounding, and
@@ -57,15 +61,41 @@ The complete artifact set is validated as a coherent whole. Cross-artifact fidel
 DOR gate compliance, and review-readiness preview. This is the only phase that
 can authorize readiness transition.
 
-### 7. Grounding check (idempotent)
+### 7. Artifact staleness cascade (idempotent)
 
-When all artifacts exist and are approved, the state machine verifies freshness:
-referenced file paths are diffed against current main, input.md digest is checked,
-policy docs are checked. If everything matches: PREPARED. If stale: re-grounding
-dispatches an agent to update the plan.
+The machine tracks artifact digests in `state.yaml.artifacts` for `input`, `requirements`,
+and `implementation_plan`. On every invocation, it checks:
+
+- If `input.md` changed since last recorded digest → cascade: both `requirements` and
+  `implementation_plan` are marked stale, phase reverts to discovery.
+- If `requirements.md` changed → cascade: `implementation_plan` is marked stale, phase
+  reverts to plan drafting.
+- If no changes → no staleness, phase routing proceeds normally.
+
+### 8. Grounding check (idempotent)
+
+When all artifacts exist and are approved and digests are current, the machine verifies
+referenced file freshness: referenced file paths are diffed against current main. If
+everything matches: PREPARED. If stale: re-grounding dispatches an agent to update the
+plan.
 
 This makes `telec todo prepare` safe to call at any time — first call creates,
 subsequent calls verify and heal.
+
+### 9. Split inheritance
+
+When a todo is split via `telec todo split`, children inherit the parent's highest
+approved prepare phase:
+
+- Parent `requirements_review.verdict == "approve"` → child starts at `plan_drafting`
+  with parent `requirements.md` copied and requirements verdict inherited.
+- Parent `plan_review.verdict == "approve"` → child starts at `prepared` (fully
+  ready for build) with both artifacts copied and both verdicts inherited.
+- Parent with no approvals → child starts at discovery (normal flow).
+
+Skipped phases are recorded in `state.yaml.audit.<phase>` with
+`status: "skipped"` and `reason: "inherited_from_parent"`. Events `prepare.split_inherited`
+and `prepare.phase_skipped` are emitted per child.
 
 ## Outputs
 
@@ -86,10 +116,18 @@ are consumed by automation (invalidation checks, notifications).
 |---|---|
 | Input refined | `prepare.input_refined` |
 | Discovery dispatched | `prepare.discovery_started` |
+| Input consumed (→ requirements_review) | `prepare.input_consumed` |
 | Requirements written | `prepare.requirements_drafted` |
 | Requirements approved | `prepare.requirements_approved` |
 | Plan written | `prepare.plan_drafted` |
 | Plan approved | `prepare.plan_approved` |
+| Artifact written and tracked | `prepare.artifact_produced` |
+| Artifact stale (cascade) | `prepare.artifact_invalidated` |
+| Finding recorded by reviewer | `prepare.finding_recorded` |
+| Finding resolved | `prepare.finding_resolved` |
+| Scoped re-review dispatched | `prepare.review_scoped` |
+| Phase skipped via inheritance | `prepare.phase_skipped` |
+| Child inherits parent phase | `prepare.split_inherited` |
 | Grounding invalidated | `prepare.grounding_invalidated` |
 | Re-grounding completed | `prepare.regrounded` |
 | Preparation complete | `prepare.completed` |

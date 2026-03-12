@@ -266,6 +266,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--subfolder", desc="Subdirectory within the project"),
                     Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
+                    Flag("--additional-context", desc="Additional context for the worker, appended to startup message"),
                 ],
                 notes=[
                     "Creates a fresh session and runs the slash command as the first agent message.",
@@ -557,7 +558,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--phase", desc="Phase: build, review, prepare, requirements_review, plan_review"),
                     Flag(
                         "--status",
-                        desc="Work: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work; Prepare lifecycle: prepared, gate, etc.",
+                        desc="Work: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work/needs_decision; Prepare lifecycle: prepared, gate, etc.",
                     ),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
@@ -613,6 +614,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Scaffolds children, cleans parent artifacts, sets container state.",
+                    "Children inherit parent's approved prepare phase: if requirements were approved, children start at plan_drafting; if the plan was approved, children start at prepared (ready for build).",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),

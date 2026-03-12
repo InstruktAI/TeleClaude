@@ -1404,6 +1404,8 @@ class APIServer:
             normalized_cmd = request.command.lstrip("/")
             normalized_args = request.args.strip()
             full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
+            if request.additional_context:
+                full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
             quoted_command = shlex.quote(full_command)
             auto_command = f"agent_then_message {effective_agent} {request.thinking_mode} {quoted_command}"
 

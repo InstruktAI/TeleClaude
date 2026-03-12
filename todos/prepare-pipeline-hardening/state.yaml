@@ -1,0 +1,60 @@
+phase: in_progress
+build: complete
+review: approved
+deferrals_processed: false
+finalize:
+  status: pending
+breakdown:
+  assessed: false
+  todos: []
+review_round: 2
+max_review_rounds: 3
+review_baseline_commit: aa0c37243cb5a92a3262c4b39fa8c5e9f4d72aa4
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: prepared
+grounding:
+  valid: true
+  base_sha: dde3944e4ba9d3f8f8a1b573f7575cc61eae73ab
+  input_digest: 6e42ed42023e14889db60e178115d491dd4f2fa3d220f4a9982691a08fff23bb
+  referenced_paths:
+  - teleclaude/core/next_machine/core.py
+  - teleclaude/todo_scaffold.py
+  - teleclaude/events/schemas/software_development.py
+  - teleclaude/api_models.py
+  - teleclaude/api_server.py
+  - teleclaude/cli/tool_commands.py
+  - teleclaude/cli/telec.py
+  - teleclaude/api/todo_routes.py
+  - docs/global/software-development/procedure/lifecycle/review-requirements.md
+  - docs/global/software-development/procedure/lifecycle/review-plan.md
+  - docs/global/software-development/procedure/maintenance/next-prepare-discovery.md
+  - docs/global/software-development/procedure/lifecycle/prepare.md
+  - docs/project/spec/event-vocabulary.md
+  - docs/project/spec/telec-cli-surface.md
+  - docs/global/software-development/procedure/maintenance/next-prepare-draft.md
+  - docs/global/software-development/procedure/maintenance/next-prepare-gate.md
+  - docs/global/software-development/procedure/maintenance/next-prepare.md
+  last_grounded_at: '2026-03-12T17:09:56.464631+00:00'
+  invalidated_at: ''
+  invalidation_reason: null
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-11T16:35:53Z'
+  findings_count: 2
+  rounds: 1
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-12T17:30:00Z'
+  findings_count: 0
+  rounds: 3
+dor:
+  last_assessed_at: '2026-03-12T18:00:00Z'
+  score: 9
+  status: pass
+  schema_version: 1
+  blockers: []
+  actions_taken:
+    requirements_updated: false
+    implementation_plan_updated: false
+schema_version: 1

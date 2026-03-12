@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -156,6 +156,83 @@ def create_bug_skeleton(
     return todo_dir
 
 
+def _emit_prepare_event(event_type: str, payload: dict[str, object]) -> None:
+    """Fire-and-forget prepare lifecycle event (mirrors core helper)."""
+    from teleclaude.core.next_machine.core import _emit_prepare_event as _core_emit
+
+    _core_emit(event_type, payload)
+
+
+def _inherit_parent_phase(
+    *,
+    project_root: Path,
+    parent_slug: str,
+    child_slug: str,
+    child_dir: Path,
+    parent_req_review: dict[str, object],
+    parent_plan_review: dict[str, object],
+    req_approved: bool,
+    plan_approved: bool,
+    parent_requirements_path: Path,
+    parent_plan_path: Path,
+) -> None:
+    """Apply parent approved phase inheritance to a child todo (R10, R11)."""
+    from teleclaude.core.next_machine.core import read_phase_state, write_phase_state
+
+    now = datetime.now(UTC).isoformat()
+    child_state = read_phase_state(str(project_root), child_slug)
+
+    # Determine inherited phase and skipped phases
+    if plan_approved:
+        inherited_phase = "prepared"
+        skipped_phases = ["input_assessment", "triangulation", "requirements_review", "plan_drafting", "plan_review", "gate"]
+    else:
+        # req_approved only
+        inherited_phase = "plan_drafting"
+        skipped_phases = ["input_assessment", "triangulation", "requirements_review"]
+
+    # Copy parent artifacts
+    if req_approved and parent_requirements_path.exists():
+        (child_dir / "requirements.md").write_text(
+            parent_requirements_path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    if plan_approved and parent_plan_path.exists():
+        (child_dir / "implementation-plan.md").write_text(
+            parent_plan_path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+
+    # Set inherited verdicts
+    if req_approved:
+        child_state["requirements_review"] = dict(parent_req_review)  # type: ignore[assignment]
+    if plan_approved:
+        child_state["plan_review"] = dict(parent_plan_review)  # type: ignore[assignment]
+
+    # Set phase
+    child_state["prepare_phase"] = inherited_phase
+
+    # Record skipped audit entries
+    audit = child_state.get("audit")
+    if not isinstance(audit, dict):
+        audit = {}
+        child_state["audit"] = audit  # type: ignore[assignment]
+    for phase in skipped_phases:
+        audit[phase] = {"status": "skipped", "reason": "inherited_from_parent", "skipped_at": now}
+
+    write_phase_state(str(project_root), child_slug, child_state)
+
+    # Emit split_inherited event (R11)
+    _emit_prepare_event(
+        "domain.software-development.prepare.split_inherited",
+        {"parent_slug": parent_slug, "child_slug": child_slug, "inherited_phase": inherited_phase},
+    )
+    # Emit phase_skipped per skipped phase
+    for phase in skipped_phases:
+        _emit_prepare_event(
+            "domain.software-development.prepare.phase_skipped",
+            {"slug": child_slug, "phase": phase, "reason": "inherited_from_parent"},
+        )
+
+
 def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> list[Path]:
     """Split a todo into child items (container transition).
 
@@ -199,6 +276,15 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
     if parent_input_path.exists():
         parent_input_content = parent_input_path.read_text(encoding="utf-8")
 
+    # Determine parent's highest approved phase for inheritance (R10)
+    parent_req_review = state.get("requirements_review", {})
+    parent_plan_review = state.get("plan_review", {})
+    req_approved = isinstance(parent_req_review, dict) and parent_req_review.get("verdict") == "approve"
+    plan_approved = isinstance(parent_plan_review, dict) and parent_plan_review.get("verdict") == "approve"
+
+    parent_requirements_path = parent_dir / "requirements.md"
+    parent_plan_path = parent_dir / "implementation-plan.md"
+
     # Scaffold children — grouped under parent, seeded with parent context
     created: list[Path] = []
     for child in child_slugs:
@@ -209,6 +295,21 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
             seed_input=parent_input_content,
         )
         created.append(child_dir)
+
+        # Inherit parent approved phase if applicable (R10, R11)
+        if req_approved or plan_approved:
+            _inherit_parent_phase(
+                project_root=project_root,
+                parent_slug=parent_slug,
+                child_slug=child,
+                child_dir=child_dir,
+                parent_req_review=parent_req_review if isinstance(parent_req_review, dict) else {},
+                parent_plan_review=parent_plan_review if isinstance(parent_plan_review, dict) else {},
+                req_approved=req_approved,
+                plan_approved=plan_approved,
+                parent_requirements_path=parent_requirements_path,
+                parent_plan_path=parent_plan_path,
+            )
 
     # Clean parent builder artifacts — keep only input.md and state.yaml
     keep = {"input.md", "state.yaml"}
