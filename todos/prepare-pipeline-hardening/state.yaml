@@ -12,7 +12,7 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: plan_drafting
+prepare_phase: plan_review
 grounding:
   valid: true
   base_sha: 18e93856feab5ed547fa7cc574b2c95bcda0b0a5
@@ -23,7 +23,6 @@ grounding:
   - teleclaude/core/next_machine/core.py
   - teleclaude/todo_scaffold.py
   - teleclaude/events/schemas/software_development.py
-  - teleclaude/core/next_machine/prepare_helpers.py
   - teleclaude/api_models.py
   - teleclaude/api_server.py
   - teleclaude/cli/tool_commands.py
@@ -44,9 +43,9 @@ requirements_review:
   findings_count: 2
   rounds: 1
 plan_review:
-  verdict: ''
-  reviewed_at: '2026-03-12T16:35:20Z'
-  findings_count: 5
+  verdict: needs_work
+  reviewed_at: '2026-03-12T16:57:17Z'
+  findings_count: 1
   rounds: 3
 dor:
   last_assessed_at: ''

@@ -323,6 +323,10 @@ lifecycle record. The machine must not route based on phantom files.
    `core.py` (line 33) and uses it at line 142 for API validation — adding
    the value here transitively fixes the API endpoint. No change needed in
    `todo_routes.py`.
+10. Update the `telec todo mark-phase` help text in `teleclaude/cli/telec.py`
+    so the `--status` description includes `needs_decision` alongside the
+    existing prepare verdicts. The accepted surface changed, so the help output
+    must change with it.
 
 The machine reads structured finding metadata from state.yaml (counts, severity
 levels) and routes based on that. It does not read or interpret finding content
@@ -349,9 +353,13 @@ content interpretation.
   `needs_decision` to `mark_prepare_verdict` does not raise `ValueError`.
 - Unit test: the `/todos/mark-phase` API endpoint accepts `needs_decision` verdict
   without 422 error (validates via `_PREPARE_VERDICT_VALUES`).
+- Verify `telec todo mark-phase --help` (or the `CommandDef` surface in
+  `teleclaude/cli/telec.py`) documents `needs_decision` as an allowed prepare
+  verdict.
 
 **Referenced files:**
 - `teleclaude/core/next_machine/core.py` (lines 1069, 3063-3127, lines 3159-3222)
+- `teleclaude/cli/telec.py`
 
 ---
 
@@ -397,6 +405,9 @@ analytics. The audit trail is additional to — not a replacement for — the
 4. Emit `prepare.split_inherited` event per child with parent slug, child slug,
    and inherited phase.
 5. Emit `prepare.phase_skipped` event for each skipped phase per child.
+6. Update the `telec todo split` help text in `teleclaude/cli/telec.py` so the
+   command description/notes explain that children inherit approved parent
+   state instead of always restarting from discovery.
 
 **Why:** R10 (split inherits parent state), R11 (phase skip observability). This
 prevents the 8x ceremony problem: children of an approved parent start at the
@@ -413,9 +424,11 @@ next phase, not at discovery.
 - Unit test: parent with only input.md → children start at discovery (current
   behavior preserved).
 - Unit test: skipped phases have `status: "skipped"` audit entries.
+- Verify `telec todo split --help` reflects the inherited-approval behavior.
 
 **Referenced files:**
 - `teleclaude/todo_scaffold.py` (lines 159-260)
+- `teleclaude/cli/telec.py`
 
 ---
 
