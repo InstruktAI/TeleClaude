@@ -15,38 +15,35 @@ resolved_findings: []
 prepare_phase: plan_review
 grounding:
   valid: true
-  base_sha: ebbfe0ff7f04aeb2c2bf675cc23af77b80b37df9
+  base_sha: ded68c712c55b1b9d97d513cf4dba835e02a1ba0
   input_digest: dd354e2baacb14038a21edd5443ea9a24ede52ad497a1a62739c41e93ba5ad43
   last_grounded_at: '2026-03-12T12:00:00Z'
   invalidation_reason: null
   referenced_paths:
-  - agents/commands/next-workflow.md
-  - languages/python/baseline.md
-  - languages/typescript/baseline.md
-  - teleclaude/core/agents.py
-  - teleclaude/core/db.py
   - teleclaude/core/next_machine/core.py
   - teleclaude/core/next_machine/engine.py
   - teleclaude/core/next_machine/__init__.py
   - teleclaude/core/next_machine/prepare.py
   - teleclaude/core/next_machine/validators.py
   - teleclaude/core/next_machine/work.py
-  - teleclaude/constants.py
+  - teleclaude/core/agents.py
+  - teleclaude/core/db.py
   - teleclaude/core/integration_bridge.py
+  - teleclaude/constants.py
+  - workflows/prepare.yaml
+  - workflows/work.yaml
   - tests/unit/core/next_machine/test_prepare_equivalence.py
   - tests/unit/core/next_machine/test_work_equivalence.py
   - tests/unit/core/next_machine/test_workflow_engine.py
-  - workflows/prepare.yaml
-  - workflows/work.yaml
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-12T17:30:23Z'
   findings_count: 5
 plan_review:
   verdict: needs_work
-  reviewed_at: '2026-03-12T17:54:49Z'
+  reviewed_at: '2026-03-12T18:12:20Z'
   findings_count: 3
-  rounds: 0
+  rounds: 1
 kind: todo
 dor:
   last_assessed_at: null

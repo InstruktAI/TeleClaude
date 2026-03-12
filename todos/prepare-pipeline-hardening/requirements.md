@@ -78,6 +78,10 @@ Four observed failures motivate this work:
 - Events for every state transition, artifact lifecycle change, and review
   finding action.
 
+**Worker re-dispatch context**
+- Re-dispatched workers receive per-step `additional_context` with precise
+  diffs, not generic "redo this phase" instructions.
+
 **Documentation**
 - All affected procedures, policies, specs, and CLI help text updated.
 
@@ -129,13 +133,13 @@ This is a **procedure change for reviewers**, not a machine change.
 #### R3: Scoped re-reviews
 
 When a review returns NEEDS_WORK with unresolved findings, the machine's
-instruction block includes the unresolved finding descriptions from state.yaml.
+instruction note reports the unresolved count and points to the findings file.
+The worker reads the file itself. The machine never reads markdown content to
+inject into notes.
+
 The re-reviewer verifies only those findings against the updated artifact. It
 does not re-read the full artifact, re-check all policies, or produce new
 findings outside the original scope.
-
-The machine's role: read structured findings from state.yaml, include them in
-the instruction block. Data forwarding, not interpretation.
 
 #### R4: Auto-remediation boundary
 
@@ -158,31 +162,41 @@ This is a **procedure change for reviewers**, not a machine change.
 
 State.yaml is the durable authority on artifact lifecycle, rather than
 inferring lifecycle solely from file existence on disk. Each tracked artifact
-(input, requirements, implementation plan, demo) records metadata covering its
-current digest, when it was produced, when downstream phases consumed it, and
-whether upstream changes invalidated it.
+(input, requirements, implementation plan) records its current digest in
+state.yaml.
 
 **Ghost artifact protection:** If a file exists on disk but its lifecycle
 metadata does not show it as produced, the machine treats it as not produced.
 Aborted sessions cannot leave phantom artifacts that confuse routing.
 
-**Who writes lifecycle metadata:** Workers use shared bookkeeping helpers after
-producing or consuming artifacts. The machine only performs the mechanical
-staleness invalidation described in R6.
+**Who writes digests:** Workers use a shared helper after producing an
+artifact. The helper computes the SHA and writes it to state.yaml. One
+generic helper, applicable to any artifact.
 
 #### R6: Staleness detection and invalidation cascade
 
-On every `telec todo prepare` call, the machine recomputes artifact digests
-from disk and compares against the recorded digest from the last downstream
-consumption. If an upstream artifact changed, all downstream artifacts are
-marked stale. The machine returns a re-grounding instruction for the earliest
-invalidated phase.
+On every `telec todo prepare` call, before phase routing, the machine
+recomputes the SHA of each tracked artifact on disk and compares it against
+the recorded digest in state.yaml. If an artifact's SHA differs from what
+was recorded, that artifact has changed and everything downstream is stale.
 
-The cascade order: input → requirements → implementation plan → demo. A change
-to input invalidates everything downstream. A change to requirements
-invalidates the plan and demo but not input.
+The cascade order: input → requirements → implementation plan. A change to
+input invalidates requirements and plan. A change to requirements invalidates
+the plan.
 
-This is mechanical hash comparison — no content judgment.
+When staleness is detected, the machine routes back to the phase that
+corresponds to the earliest changed artifact. The note reports which
+artifacts are stale and points to state.yaml.
+
+This is a generic mechanism — one helper that takes any artifact name,
+computes its SHA, and compares. The same helper is used both when recording
+a digest (after production) and when checking for staleness (before routing).
+
+This check is separate from the existing codebase grounding check, which
+runs at the end of prepare and detects whether referenced source files
+changed between commits. Both checks are complementary: artifact staleness
+detects internal changes to todo files, codebase grounding detects external
+changes to the code the plan references.
 
 #### R7: Per-phase audit trail
 
@@ -196,14 +210,15 @@ The existing `prepare_phase` field remains the routing field. The audit trail is
 additional bookkeeping for observability and debugging, not a replacement for
 `prepare_phase`. [inferred]
 
-#### R8: Helper functions for atomic bookkeeping
+#### R8: Generic helper for artifact digest bookkeeping
 
-Agents do not write lifecycle or review bookkeeping ad hoc. Shared helpers
-handle artifact production, artifact consumption, staleness detection, and
-finding record/resolution atomically.
+One generic helper handles artifact digests: compute SHA of a file, write
+it to state.yaml under the artifact's entry. Workers call it after producing
+an artifact. The machine calls it in check mode (compare, don't write) on
+every prepare invocation for staleness detection.
 
-These helpers are the mechanical guarantee that bookkeeping happens. Workers
-call them. The machine invokes the staleness check on each prepare invocation.
+The same helper also serves finding bookkeeping: record a finding, resolve
+a finding, each as a structured state.yaml mutation.
 
 #### R9: Schema migration
 
@@ -278,6 +293,69 @@ Existing events enriched:
 
 All events registered in the event vocabulary spec.
 
+### Plan grounding validation
+
+#### R16: Referenced path existence check
+
+After plan drafting completes and `referenced_paths` are written to
+`state.yaml.grounding`, the state machine validates that every referenced path
+exists on disk. Non-existent paths are a mechanical rejection — the machine
+returns the list of missing paths to the drafter for correction, without
+advancing to plan review.
+
+This is the same class of mechanical check as ghost artifact protection (R5)
+and staleness detection (R6): a fact check on the filesystem, not a content
+judgment. The drafter produced paths; the machine verifies they resolve.
+
+### Worker re-dispatch context
+
+#### R17: Additional context for re-dispatched workers
+
+When the machine re-dispatches a worker due to staleness, review findings, or
+path validation failure, it computes the most specific context available and
+passes it as `additional_context` in the command arguments. The orchestrator
+forwards this verbatim to the worker via `telec sessions run`. Workers receive
+precise scope rather than generic "redo this phase" instructions, preserving
+valuable prior work.
+
+The machine computes context mechanically — git diffs between known SHAs scoped
+to specific files. No content judgment, no markdown reading. The same
+`_run_git_prepare` helper used for codebase grounding produces the diffs.
+
+Per-step context the machine extracts:
+
+- **Discovery re-dispatch (input stale)**: `git diff {base_sha}..HEAD --
+  todos/{slug}/input.md` — exactly what changed in the input since last
+  recording.
+- **Discovery re-dispatch (review NEEDS_WORK)**: unresolved finding count +
+  pointer to findings file + `git diff {baseline_commit}..HEAD --
+  todos/{slug}/requirements.md` — what the discovery worker wrote and what the
+  reviewer changed.
+- **Plan draft re-dispatch (requirements stale)**: `git diff {base_sha}..HEAD
+  -- todos/{slug}/requirements.md` — what changed in the approved requirements
+  since the plan was grounded.
+- **Plan draft re-dispatch (review NEEDS_WORK)**: unresolved finding count +
+  pointer to findings file + `git diff {baseline_commit}..HEAD --
+  todos/{slug}/implementation-plan.md` — what the drafter wrote and what the
+  reviewer changed.
+- **Plan draft re-dispatch (path existence failure, R16)**: list of
+  non-existent paths from `referenced_paths`.
+- **Scoped re-review dispatch**: `git diff {baseline_commit}..HEAD --
+  todos/{slug}/{artifact}` + finding IDs to verify — the fix diff scoped to
+  the artifact under review.
+- **Re-grounding dispatch**: `git diff {base_sha}..HEAD -- {changed_paths}` —
+  existing behavior, enriched with the path list.
+- **Gate re-dispatch**: `git diff {base_sha}..HEAD -- todos/{slug}/` — full
+  todo folder diff showing all artifact changes since last grounding.
+
+First-time dispatches (fresh discovery, first review, first draft, first gate)
+carry no `additional_context` — the standard note suffices.
+
+The `additional_context` flows through the existing dispatch surface:
+`format_tool_call` includes it in the dispatch instruction, the orchestrator
+passes it via `telec sessions run --additional-context`, and worker commands
+receive it as part of their startup frontmatter.
+
 ### Backward compatibility and documentation
 
 #### R14: Backward compatibility
@@ -302,8 +380,8 @@ split behavior changes.
 
 - [ ] Reviewer that auto-remediates all findings produces APPROVE — no fix
       worker dispatched, no re-review.
-- [ ] Reviewer that leaves substantive finding unresolved produces NEEDS_WORK
-      with finding text in the machine's instruction block for scoped re-review.
+- [ ] Reviewer that leaves substantive finding unresolved produces NEEDS_WORK.
+      Machine note reports unresolved count and points to the findings file.
 - [ ] Scoped re-review verifies only the specified findings — does not produce
       new findings outside scope.
 - [ ] Architectural finding produces NEEDS_DECISION escalated to orchestrator.
@@ -313,15 +391,15 @@ split behavior changes.
 
 ### Artifact lifecycle
 
-- [ ] input.md lifecycle metadata records consumption after discovery consumes
-      it.
-- [ ] Modifying input.md after consumption triggers invalidation cascade —
-      requirements, plan, demo marked invalidated, machine routes to
-      re-grounding.
+- [ ] Each tracked artifact (input, requirements, implementation plan) has a
+      SHA digest recorded in state.yaml after production.
+- [ ] On every prepare call, the machine compares on-disk SHAs against
+      recorded digests. Changed artifact → downstream cascade → re-route.
+- [ ] Modifying input.md triggers invalidation of requirements and plan.
+- [ ] Modifying requirements.md triggers invalidation of plan.
 - [ ] requirements.md on disk with no produced lifecycle metadata is treated as
       not produced (ghost artifact protection).
-- [ ] Shared artifact lifecycle bookkeeping helpers exist and are used by all
-      workers.
+- [ ] One generic digest helper used for both recording and checking.
 - [ ] Each phase has start/end audit metadata in state.yaml. Review phases have
       verdict, rounds, and structured findings.
 - [ ] Older todos continue to work through schema-version compatibility and
@@ -347,6 +425,34 @@ split behavior changes.
 - [ ] `prepare.artifact_invalidated` emitted on cascade.
 - [ ] `prepare.split_inherited` emitted when child inherits parent state.
 - [ ] All new events registered in event vocabulary spec.
+
+### Plan grounding
+
+- [ ] After plan drafting, `referenced_paths` with non-existent files cause
+      mechanical rejection back to drafter — plan review is not entered.
+- [ ] Drafter receives the list of missing paths in the machine's instruction.
+
+### Worker re-dispatch context
+
+- [ ] Re-dispatched discovery worker receives `git diff` of input.md changes as
+      `additional_context`.
+- [ ] Re-dispatched discovery worker (NEEDS_WORK) receives finding count +
+      pointer + `git diff` of requirements.md changes.
+- [ ] Re-dispatched plan drafter (requirements stale) receives `git diff` of
+      requirements.md changes.
+- [ ] Re-dispatched plan drafter (NEEDS_WORK) receives finding count + pointer +
+      `git diff` of implementation-plan.md changes.
+- [ ] Re-dispatched plan drafter (path existence failure) receives list of
+      missing paths.
+- [ ] Scoped re-review receives `git diff` of artifact changes since review
+      baseline + finding IDs.
+- [ ] Re-grounding dispatch includes `git diff` of changed source paths.
+- [ ] Gate re-dispatch includes `git diff` of full todo folder.
+- [ ] First-time dispatches carry no `additional_context`.
+- [ ] `format_tool_call` accepts and includes `additional_context` in dispatch
+      output.
+- [ ] `telec sessions run` accepts `--additional-context` and passes it to
+      worker commands.
 
 ### Documentation
 

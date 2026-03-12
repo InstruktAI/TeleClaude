@@ -12,13 +12,11 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: gate
+prepare_phase: prepared
 grounding:
   valid: true
-  base_sha: 18e93856feab5ed547fa7cc574b2c95bcda0b0a5
-  input_digest: ''
-  last_grounded_at: '2026-03-11T17:30:00Z'
-  invalidation_reason: null
+  base_sha: dde3944e4ba9d3f8f8a1b573f7575cc61eae73ab
+  input_digest: 6e42ed42023e14889db60e178115d491dd4f2fa3d220f4a9982691a08fff23bb
   referenced_paths:
   - teleclaude/core/next_machine/core.py
   - teleclaude/todo_scaffold.py
@@ -37,6 +35,9 @@ grounding:
   - docs/global/software-development/procedure/maintenance/next-prepare-draft.md
   - docs/global/software-development/procedure/maintenance/next-prepare-gate.md
   - docs/global/software-development/procedure/maintenance/next-prepare.md
+  last_grounded_at: '2026-03-12T17:09:56.464631+00:00'
+  invalidated_at: ''
+  invalidation_reason: null
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-11T16:35:53Z'
