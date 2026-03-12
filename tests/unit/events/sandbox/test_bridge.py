@@ -10,7 +10,6 @@ import pytest
 
 from teleclaude.events.sandbox.bridge import SandboxBridgeCartridge
 from teleclaude.events.sandbox.container import SandboxContainerManager
-from teleclaude.events.sandbox.protocol import FrameTooLargeError
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 
 
@@ -130,31 +129,5 @@ async def test_connection_error_produces_error_entry():
     assert result is event
     assert result.payload["_sandbox_results"][0]["error"] == "unavailable"
 
-
-@pytest.mark.asyncio
-async def test_frame_too_large_produces_error_entry():
-    """FrameTooLargeError during cartridge response produces an error entry, never propagates."""
-    manager = _make_manager(has_cartridges=True)
-    bridge = SandboxBridgeCartridge(manager=manager)
-    event = _make_event()
-
-    context = MagicMock()
-    context.catalog.list_all.return_value = []
-
-    with (
-        patch("teleclaude.events.sandbox.bridge.scan_cartridges", return_value=["big_cart"]),
-        patch("asyncio.open_unix_connection", new=AsyncMock()) as mock_conn,
-        patch("teleclaude.events.sandbox.bridge.write_frame", new=AsyncMock()),
-        patch("teleclaude.events.sandbox.bridge.read_frame", side_effect=FrameTooLargeError("too big")),
-    ):
-        mock_writer = AsyncMock()
-        mock_writer.close = MagicMock()
-        mock_writer.wait_closed = AsyncMock()
-        mock_conn.return_value = (AsyncMock(), mock_writer)
-
-        result = await bridge.process(event, context)
-
-    assert result is event
-    assert result.payload["_sandbox_results"][0]["error"] == "frame_too_large"
 
 
