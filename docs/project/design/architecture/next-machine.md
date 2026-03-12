@@ -75,7 +75,7 @@ stateDiagram-v2
 - **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by the singleton integrator's lease system.
 - **Conditional Prep**: Worktree prep is required on new worktree creation or prep-input drift; unchanged known-good worktrees skip prep.
 - **Per-Repo+Slug Single-Flight**: Concurrent `/todos/work` calls for the same slug share one ensure/prep/sync critical section only within the same project root.
-- **Conditional Sync**: Main-to-worktree sync mirrors only shared planning inputs needed for orchestration. Today that means `todos/roadmap.yaml`, copied only when content differs.
+- **Remote Prerequisite**: Todo artifacts must exist on `origin/main` before worktree creation. `_ensure_todo_on_remote_main` commits and pushes scaffolded artifacts; failure is a hard error.
 - **Phase Observability**: `/todos/work` emits per-phase timing logs with stable `NEXT_WORK_PHASE` markers.
 
 ## Primary flows
@@ -120,26 +120,26 @@ flowchart TD
     Fix --> DispatchFixer[Dispatch fixer AI]
 ```
 
-### Worktree Prep and Sync Policy
+### Worktree Prep Policy
 
-For each `/todos/work` request, Next Machine applies deterministic prep/sync decisions:
+For each `/todos/work` request, Next Machine applies deterministic prep decisions:
 
-1. **Ensure worktree exists**
+1. **Ensure todo artifacts on origin/main**
+   - `_ensure_todo_on_remote_main` commits and pushes scaffolded artifacts.
+   - If push fails after rebase fallback, the request returns a hard error.
+   - Worktrees branch from `origin/main` — this is the single source of truth.
+2. **Ensure worktree exists**
    - If missing: create `trees/{slug}` and branch.
-2. **Prep decision**
+3. **Prep decision**
    - Run prep when:
      - worktree was newly created
      - prep-state marker is missing/corrupt
      - prep input digest changed (`tools/worktree-prepare.sh`, dependency manifests/lockfiles)
    - Skip prep when inputs are unchanged and previous prep succeeded.
-3. **Single-flight**
-   - Ensure/prep/sync is guarded by a per-repo+slug async lock.
+4. **Single-flight**
+   - Ensure/prep is guarded by a per-repo+slug async lock.
    - Same-slug concurrent calls in the same repo wait and reuse resulting ready state.
    - Same-slug calls in different repos run independently.
-4. **Sync decision**
-   - `sync_main_to_worktree` compares source/destination file contents before copying.
-   - The only mirrored file is `todos/roadmap.yaml`.
-   - Slug todo artifacts (`state.yaml`, `requirements.md`, `implementation-plan.md`, `review-findings.md`, `dor-report.md`, etc.) are branch-owned and are not synced from main into the worktree.
 
 ### `/todos/work` Phase Logs
 
@@ -148,7 +148,6 @@ For each `/todos/work` request, Next Machine applies deterministic prep/sync dec
 - `NEXT_WORK_PHASE slug=<slug> phase=slug_resolution ...`
 - `NEXT_WORK_PHASE slug=<slug> phase=preconditions ...`
 - `NEXT_WORK_PHASE slug=<slug> phase=ensure_prepare ...`
-- `NEXT_WORK_PHASE slug=<slug> phase=sync ...`
 - `NEXT_WORK_PHASE slug=<slug> phase=gate_execution ...`
 - `NEXT_WORK_PHASE slug=<slug> phase=dispatch_decision ...`
 
@@ -160,7 +159,7 @@ Each entry includes:
 
 For the worktree setup boundary specifically:
 
-- `next_work()` emits context logs before entering the combined ensure/sync section so failures can be pinned to worktree setup vs later phases.
+- `next_work()` emits context logs before entering the ensure section so failures can be pinned to worktree setup vs later phases.
 - Unexpected exceptions in `ensure_prepare` are surfaced as `reason=unexpected_<ExceptionType>` instead of disappearing behind a generic API 500.
 
 ### 3. Dependency Resolution

@@ -41,7 +41,6 @@ from teleclaude.core.next_machine.core import (
     mark_prepare_phase,
     mark_prepare_verdict,
     save_roadmap,
-    sync_main_planning_to_all_worktrees,
 )
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
@@ -278,7 +277,6 @@ async def todo_set_deps(  # pyright: ignore
             break
 
     save_roadmap(cwd, entries)
-    sync_main_planning_to_all_worktrees(cwd)
 
     msg = f"dependencies set for '{slug}': {', '.join(after)}" if after else f"dependencies cleared for '{slug}'"
     return {"result": f"OK: {msg}"}

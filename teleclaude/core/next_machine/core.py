@@ -2583,22 +2583,6 @@ async def write_text_async(path: Path, content: str) -> None:
     await asyncio.to_thread(write_text_sync, path, content)
 
 
-def _sync_file(src_root: Path, dst_root: Path, relative_path: str) -> bool:
-    """Copy one file from src root to dst root if source exists.
-
-    Returns True when a copy happened, False when source is missing or unchanged.
-    """
-    src = src_root / relative_path
-    dst = dst_root / relative_path
-    if not src.exists():
-        return False
-    if dst.exists() and _file_contents_match(src, dst):
-        return False
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst)
-    return True
-
-
 def _file_sha256(path: Path) -> str:
     """Return sha256 digest for a file."""
     digest = hashlib.sha256()
@@ -2606,60 +2590,6 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(8192), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _file_contents_match(src: Path, dst: Path) -> bool:
-    """Return True when src and dst bytes are identical."""
-    try:
-        src_stat = src.stat()
-        dst_stat = dst.stat()
-    except OSError:
-        return False
-    if src_stat.st_size != dst_stat.st_size:
-        return False
-    try:
-        return _file_sha256(src) == _file_sha256(dst)
-    except OSError:
-        return False
-
-
-def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = None) -> int:
-    """Copy orchestrator-owned planning files from main repo into a slug worktree.
-
-    Entries in *extra_files* that end with ``/`` are treated as directories —
-    every file underneath is synced recursively.
-    """
-    main_root = Path(cwd)
-    worktree_root = Path(cwd) / WORKTREE_DIR / slug
-    if not worktree_root.exists():
-        return 0
-    files: list[str] = ["todos/roadmap.yaml"]
-    if extra_files:
-        for entry in extra_files:
-            if entry.endswith("/"):
-                # Expand directory into individual files
-                src_dir = main_root / entry
-                if src_dir.is_dir():
-                    for child in src_dir.rglob("*"):
-                        if child.is_file():
-                            files.append(str(child.relative_to(main_root)))
-            else:
-                files.append(entry)
-    copied = 0
-    for rel in files:
-        if _sync_file(main_root, worktree_root, rel):
-            copied += 1
-    return copied
-
-
-def sync_main_planning_to_all_worktrees(cwd: str) -> None:
-    """Propagate main planning files to every existing worktree."""
-    trees_root = Path(cwd) / WORKTREE_DIR
-    if not trees_root.exists():
-        return
-    for entry in trees_root.iterdir():
-        if entry.is_dir():
-            sync_main_to_worktree(cwd, entry.name)
 
 
 def _dirty_paths(repo: Repo) -> list[str]:
@@ -2889,14 +2819,12 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
 
 
 def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
-    """Best-effort: commit and push todo artifacts to origin/main.
+    """Commit and push todo artifacts to origin/main.
 
     Worktrees are created from origin/main. Todo artifacts scaffolded locally
     (e.g. by ``telec bugs report`` or ``telec todo create``) must be committed
-    and pushed so the worktree includes them.
-
-    This is best-effort. The critical safety net is ``sync_main_to_worktree``
-    which copies the todo folder directly into the worktree regardless.
+    and pushed so the worktree includes them. This is a hard prerequisite —
+    if push fails, the caller must surface the error.
 
     Returns:
         Tuple of (action_taken, reason).
@@ -2972,8 +2900,7 @@ def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
         except GitCommandError:
             pass
         logger.warning(
-            "Could not push todo artifacts for %s to origin/main (non-fatal, "
-            "sync_main_to_worktree will copy files directly): %s",
+            "Could not push todo artifacts for %s to origin/main: %s",
             slug,
             exc,
         )
@@ -3593,8 +3520,6 @@ async def _prepare_step_gate(
     dor_score = dor.get("score") if isinstance(dor, dict) else None
 
     if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
-        # I4: sync before writing phase — sync failure won't leave state pointing at unsynced worktree
-        await asyncio.to_thread(sync_main_to_worktree, cwd, slug)
         state["prepare_phase"] = PreparePhase.GROUNDING_CHECK.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return True, ""  # loop
@@ -4013,13 +3938,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     slug_resolution_started = perf_counter()
 
     # 1. Resolve slug - only ready items when no explicit slug
-    # Prefer worktree-local planning state when explicit slug worktree exists.
-    deps_cwd = cwd
-    if slug:
-        maybe_worktree = Path(cwd) / WORKTREE_DIR / slug
-        if (maybe_worktree / "todos" / "roadmap.yaml").exists():
-            deps_cwd = str(maybe_worktree)
-    deps = await asyncio.to_thread(load_roadmap_deps, deps_cwd)
+    deps = await asyncio.to_thread(load_roadmap_deps, cwd)
 
     resolved_slug: str
     if slug:
@@ -4031,7 +3950,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             await asyncio.to_thread(add_to_roadmap, cwd, slug)
             logger.info("AUTO_ROADMAP_ADD slug=%s machine=work", slug)
             # Reload deps after roadmap change
-            deps = await asyncio.to_thread(load_roadmap_deps, deps_cwd)
+            deps = await asyncio.to_thread(load_roadmap_deps, cwd)
 
         # Holder resolution: if slug is a container with children, route to first runnable child
         if not is_bug:
@@ -4192,11 +4111,19 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     # 3c. Ensure todo artifacts exist on origin/main before worktree creation.
     # Worktrees branch from origin/main — locally scaffolded artifacts (bugs, todos)
     # must be committed and pushed so the worktree includes them.
-    # This is best-effort; sync_main_to_worktree copies files directly as safety net.
+    # This is a hard prerequisite: if artifacts can't reach origin/main, the
+    # worktree won't have them and the worker will fail.
     remote_sync_started = perf_counter()
     sync_ok, sync_reason = await asyncio.to_thread(_ensure_todo_on_remote_main, cwd, resolved_slug)
     sync_decision = "run" if sync_ok else "skip"
     _log_next_work_phase(phase_slug, "ensure_remote_artifacts", remote_sync_started, sync_decision, sync_reason)
+    if not sync_ok and sync_reason == "push_deferred":
+        return format_error(
+            "REMOTE_SYNC_FAILED",
+            f"Todo artifacts for {resolved_slug} could not be pushed to origin/main. "
+            "Worktrees branch from origin/main — workers won't find the artifacts.",
+            next_call="Resolve git conflicts on main, push manually, then retry.",
+        )
 
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / resolved_slug)
     ensure_started = perf_counter()
@@ -4208,11 +4135,11 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             phase_slug,
         )
 
-    # 4. Ensure worktree exists + conditional prep + conditional sync in single-flight window.
+    # 4. Ensure worktree exists + conditional prep in single-flight window.
     try:
         async with slug_lock:
             logger.info(
-                "next_work entering ensure/sync boundary slug=%s cwd=%s worktree_path=%s",
+                "next_work entering ensure boundary slug=%s cwd=%s worktree_path=%s",
                 resolved_slug,
                 cwd,
                 worktree_cwd,
@@ -4224,20 +4151,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             _log_next_work_phase(
                 phase_slug, "ensure_prepare", ensure_started, ensure_decision, ensure_result.prep_reason
             )
-
-            sync_started = perf_counter()
-            logger.info(
-                "next_work entering sync boundary slug=%s cwd=%s worktree_path=%s",
-                resolved_slug,
-                cwd,
-                worktree_cwd,
-            )
-            main_sync_copied = await asyncio.to_thread(
-                sync_main_to_worktree, cwd, resolved_slug, [f"todos/{resolved_slug}/"]
-            )
-            sync_decision = "run" if main_sync_copied > 0 else "skip"
-            sync_reason = f"copied main={main_sync_copied}" if main_sync_copied > 0 else "unchanged_inputs"
-            _log_next_work_phase(phase_slug, "sync", sync_started, sync_decision, sync_reason)
     except RuntimeError as exc:
         logger.error(
             "next_work worktree preparation failed for slug=%s cwd=%s worktree_path=%s: %s",
