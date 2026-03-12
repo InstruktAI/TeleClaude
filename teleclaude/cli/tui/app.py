@@ -130,7 +130,6 @@ class TelecApp(App[str | None]):
             group=Binding.Group("Views", compact=True),
             show=False,
         ),
-        Binding("r", "refresh", "Refresh", key_display="r"),
         Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
         Binding("a", "cycle_animation", "Cycle Anim", key_display="a"),
         Binding("u", "spawn_ufo", "UFO", key_display="u", show=False),
@@ -1364,11 +1363,6 @@ class TelecApp(App[str | None]):
 
     def on_key(self, _event: object) -> None:
         self._register_user_interaction()
-
-    # --- Refresh ---
-
-    def action_refresh(self) -> None:
-        self._refresh_data()
 
     def _activate_config_guided_mode(self) -> None:
         """Start guided mode in ConfigView after initial mount and data load."""

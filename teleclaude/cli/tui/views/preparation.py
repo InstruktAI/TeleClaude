@@ -76,7 +76,9 @@ class PreparationView(Widget, can_focus=True):
         Binding("b", "new_bug", "Bug"),
         Binding("p", "prepare", "Prep"),
         Binding("s", "start_work", "Start"),
+        Binding("r", "refine", "Refine"),
         Binding("R", "remove_todo", "Remove"),
+        Binding("f", "freeze", "Freeze"),
         Binding("shift+up", "move_todo_up", "Move Up", key_display="Shift+↑"),
         Binding("shift+down", "move_todo_down", "Move Down", key_display="Shift+↓"),
     ]
@@ -638,6 +640,8 @@ class PreparationView(Widget, can_focus=True):
                 "preview_file",
                 "prepare",
                 "start_work",
+                "refine",
+                "freeze",
                 "move_todo_up",
                 "move_todo_down",
             }:
@@ -647,7 +651,7 @@ class PreparationView(Widget, can_focus=True):
             return True
 
         if isinstance(item, ProjectHeader):
-            if action in {"remove_todo", "activate", "preview_file", "new_project", "move_todo_up", "move_todo_down"}:
+            if action in {"remove_todo", "activate", "preview_file", "new_project", "refine", "freeze", "move_todo_up", "move_todo_down"}:
                 return False
             return True
 
@@ -660,7 +664,7 @@ class PreparationView(Widget, can_focus=True):
             return True
 
         if isinstance(item, TodoFileRow):
-            if action in {"new_todo", "new_bug", "new_project", "move_todo_up", "move_todo_down"}:
+            if action in {"new_todo", "new_bug", "new_project", "freeze", "move_todo_up", "move_todo_down"}:
                 return False
             return True
 
@@ -939,6 +943,51 @@ class PreparationView(Widget, can_focus=True):
             computer=computer,
             project_path=project_path,
             default_message=self._next_command(SlashCommand.NEXT_WORK.value, slug),
+        )
+
+    def action_refine(self) -> None:
+        """r: open session modal prefilled with /next-refine-input [slug]."""
+        context = self._resolve_cursor_context()
+        if not context:
+            return
+        computer, project_path, slug = context
+        self._open_session_modal(
+            computer=computer,
+            project_path=project_path,
+            default_message=self._next_command(SlashCommand.NEXT_REFINE_INPUT.value, slug),
+        )
+
+    def action_freeze(self) -> None:
+        """f: freeze a todo to the icebox."""
+        from teleclaude.core.next_machine.core import freeze_to_icebox
+
+        row = self._current_todo_row()
+        slug = row.slug if row else None
+        if not slug:
+            return
+
+        project_path = self._slug_to_project_path.get(slug, "")
+        if not project_path:
+            return
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            try:
+                if freeze_to_icebox(project_path, slug):
+                    self.app.notify(f"Frozen '{slug}' to icebox")
+                    self.app._refresh_data()  # type: ignore[attr-defined]
+                else:
+                    self.app.notify(f"Failed to freeze '{slug}'", severity="error")
+            except (ValueError, RuntimeError, FileNotFoundError) as exc:
+                self.app.notify(str(exc), severity="error")
+
+        self.app.push_screen(
+            ConfirmModal(
+                title="Freeze Todo",
+                message=f"Freeze '{slug}' to icebox?",
+            ),
+            _on_confirm,
         )
 
     # --- Click handlers ---

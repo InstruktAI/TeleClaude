@@ -92,6 +92,7 @@ class SlashCommand(str, Enum):
     NEXT_PREPARE_DRAFT = "next-prepare-draft"
     NEXT_PREPARE_GATE = "next-prepare-gate"
     NEXT_PREPARE = "next-prepare"
+    NEXT_REFINE_INPUT = "next-refine-input"
     NEXT_WORK = "next-work"
     NEXT_INTEGRATE = "next-integrate"
 
