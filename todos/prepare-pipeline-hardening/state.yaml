@@ -28,22 +28,26 @@ grounding:
   - teleclaude/api_server.py
   - teleclaude/cli/tool_commands.py
   - teleclaude/cli/telec.py
+  - teleclaude/api/todo_routes.py
   - docs/global/software-development/procedure/lifecycle/review-requirements.md
   - docs/global/software-development/procedure/lifecycle/review-plan.md
   - docs/global/software-development/procedure/maintenance/next-prepare-discovery.md
   - docs/global/software-development/procedure/lifecycle/prepare.md
   - docs/project/spec/event-vocabulary.md
   - docs/project/spec/telec-cli-surface.md
+  - docs/global/software-development/procedure/maintenance/next-prepare-draft.md
+  - docs/global/software-development/procedure/maintenance/next-prepare-gate.md
+  - docs/global/software-development/procedure/maintenance/next-prepare.md
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-11T16:35:53Z'
   findings_count: 2
   rounds: 1
 plan_review:
-  verdict: needs_work
+  verdict: ''
   reviewed_at: '2026-03-12T16:35:20Z'
   findings_count: 5
-  rounds: 2
+  rounds: 3
 dor:
   last_assessed_at: ''
   score: 0

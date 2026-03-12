@@ -124,6 +124,13 @@ instead of `merged.update(state)` for those keys.
    `git diff {base_sha}..HEAD -- todos/{slug}/` and returns the diff. Used for
    gate re-dispatch context.
 
+9. `record_input_consumed(cwd, slug)` — computes the current SHA of
+   `todos/{slug}/input.md` and emits `prepare.input_consumed` event with
+   `{"phase": "input_assessment", "digest": <sha>}`. Called by
+   `_prepare_step_input_assessment` immediately before transitioning to
+   `requirements_review` when requirements.md is found to be produced. Does not
+   modify state.yaml — it is a pure observation event.
+
 All functions use `read_phase_state` / `write_phase_state` for atomic state
 mutations.
 
@@ -213,7 +220,14 @@ the helpers from Task 2. The machine extracts the most specific diff it can:
 
 First-time dispatches pass `additional_context=""` — no extra context needed.
 
-**Why:** R6 (staleness detection), R17 (worker re-dispatch context). The cascade
+Additionally, in `_prepare_step_input_assessment`: when requirements.md is found
+to be produced (i.e., `artifacts.requirements.produced_at` is non-empty, or for
+v1 states, `requirements.md` exists), call `record_input_consumed(cwd, slug)`
+immediately before transitioning to `requirements_review`. This is the single
+emission point for `prepare.input_consumed` (R13). The step handler already
+handles this transition — this adds one helper call at that junction.
+
+**Why:** R6 (staleness detection), R17 (worker re-dispatch context), R13 (input_consumed event). The cascade
 runs on every prepare invocation — mechanical SHA comparison, no content
 judgment. The per-step context uses the same `_run_git_prepare` infrastructure
 already in place for codebase grounding. Workers receive precise scope instead
@@ -231,10 +245,12 @@ of generic "redo this phase" instructions.
 - Unit test: `format_tool_call` with non-empty `additional_context` includes it
   in output and includes `--additional-context` in rendered `telec sessions run`.
 - Unit test: `format_tool_call` with empty `additional_context` omits the block.
+- Unit test: `_prepare_step_input_assessment` emits `prepare.input_consumed` when
+  transitioning to requirements_review (requirements found produced).
 - Existing grounding check tests continue to pass (not modified).
 
 **Referenced files:**
-- `teleclaude/core/next_machine/core.py` (lines 285-386, lines 3525-3595)
+- `teleclaude/core/next_machine/core.py` (lines 285-386, lines 3004-3031, lines 3525-3595)
 - `teleclaude/core/next_machine/prepare_helpers.py`
 
 ---
@@ -299,6 +315,15 @@ lifecycle record. The machine must not route based on phantom files.
    HEAD), then compute `additional_context` using the artifact diff + unresolved
    finding IDs. The re-reviewer receives the exact changes to verify.
 
+9. **Add `needs_decision` to `_PREPARE_VERDICT_VALUES`** at line 1069:
+   ```python
+   _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
+   ```
+   `teleclaude/api/todo_routes.py` imports `_PREPARE_VERDICT_VALUES` from
+   `core.py` (line 33) and uses it at line 142 for API validation — adding
+   the value here transitively fixes the API endpoint. No change needed in
+   `todo_routes.py`.
+
 The machine reads structured finding metadata from state.yaml (counts, severity
 levels) and routes based on that. It does not read or interpret finding content
 from markdown files. Severity classification is the reviewer's job (R1).
@@ -320,9 +345,13 @@ content interpretation.
   `additional_context`.
 - Unit test: no markdown file content appears in any machine output.
 - Unit test: v1 state without `findings` key does not raise KeyError.
+- Unit test: `_PREPARE_VERDICT_VALUES` includes `needs_decision` — passing
+  `needs_decision` to `mark_prepare_verdict` does not raise `ValueError`.
+- Unit test: the `/todos/mark-phase` API endpoint accepts `needs_decision` verdict
+  without 422 error (validates via `_PREPARE_VERDICT_VALUES`).
 
 **Referenced files:**
-- `teleclaude/core/next_machine/core.py` (lines 3063-3127, lines 3159-3222)
+- `teleclaude/core/next_machine/core.py` (lines 1069, 3063-3127, lines 3159-3222)
 
 ---
 
@@ -378,7 +407,9 @@ next phase, not at discovery.
   `prepare_phase=plan_drafting`, requirements_review verdict=approve,
   requirements.md copied.
 - Unit test: parent with approved plan → children have
-  `prepare_phase=gate`, both review verdicts copied, all artifacts copied.
+  `prepare_phase=prepared`, both review verdicts copied, all artifacts copied.
+  (`PREPARED = "prepared"` is the phase indicating prepare is complete and the
+  todo is ready for build — the gate was already passed by the parent.)
 - Unit test: parent with only input.md → children start at discovery (current
   behavior preserved).
 - Unit test: skipped phases have `status: "skipped"` audit entries.
@@ -457,7 +488,23 @@ without polling state.yaml.
    the event families table and document their payload fields.
 
 6. `docs/project/spec/telec-cli-surface.md` — add `--additional-context` to the
-   `sessions run` command description and flag list.
+   `sessions run` command description and flag list. Also update the `todo split`
+   command description to reflect that children inherit parent approval state.
+
+7. `docs/global/software-development/procedure/maintenance/next-prepare-draft.md` —
+   add note that re-dispatched draft workers receive `additional_context` in their
+   startup frontmatter containing the requirements diff or missing path list.
+
+8. `docs/global/software-development/procedure/maintenance/next-prepare-gate.md` —
+   add note that gate re-dispatch includes `additional_context` with the full todo
+   folder diff.
+
+9. `docs/global/software-development/procedure/maintenance/next-prepare.md` —
+   update the lifecycle state machine overview to reflect: artifact staleness
+   cascade, split inheritance (children skip phases already approved by parent),
+   `BLOCKED` phase for `NEEDS_DECISION` architectural findings, and
+   `record_input_consumed` emission at the input_assessment → requirements_review
+   transition.
 
 **Why:** R15 (documentation updates). All affected procedures, specs, and
 policies must reflect the new behaviors. The builder resolves doc snippet paths
@@ -465,7 +512,7 @@ at build time via `telec docs index`.
 
 **Verification:**
 - Each updated snippet passes `telec sync --validate-only`.
-- Cross-reference: every new behavior in Tasks 1-8, 11-12 has a corresponding
+- Cross-reference: every new behavior in Tasks 1-8, 11-13 has a corresponding
   documentation mention.
 
 **Referenced files:**
@@ -475,6 +522,9 @@ at build time via `telec docs index`.
 - `docs/global/software-development/procedure/lifecycle/prepare.md`
 - `docs/project/spec/event-vocabulary.md`
 - `docs/project/spec/telec-cli-surface.md`
+- `docs/global/software-development/procedure/maintenance/next-prepare-draft.md`
+- `docs/global/software-development/procedure/maintenance/next-prepare-gate.md`
+- `docs/global/software-development/procedure/maintenance/next-prepare.md`
 
 ---
 
@@ -618,6 +668,48 @@ field at each layer.
 
 ---
 
+---
+
+## Task 13: Update `demo.md` for user-visible CLI and dispatch changes
+
+**What:** Update `todos/prepare-pipeline-hardening/demo.md` to add validation
+sections for the three user-visible behaviors introduced by this todo:
+
+1. **BLOCKED output**: Show that an architectural finding in state.yaml produces
+   the BLOCKED string output from `next_prepare()` with count and file pointer.
+   ```bash
+   # Simulate architectural finding in state, run next_prepare,
+   # verify output contains "BLOCKED:" and the findings file pointer.
+   ```
+
+2. **`--additional-context` CLI flag**: Show that `telec sessions run
+   --additional-context "..."` is accepted and that the worker's startup message
+   includes the context block. Demonstrate via the `RunSessionRequest` model.
+
+3. **`prepare.input_consumed` event emission**: Show the event fires when
+   `_prepare_step_input_assessment` transitions to requirements_review. The
+   event carries `phase` and `digest` payload fields.
+
+Also add a "Step 7: BLOCKED escalation path" to the Guided Presentation
+section describing how an architectural finding surfaces to the orchestrator.
+
+**Why:** R13 (event coverage — demo now shows input_consumed emission), R17
+(demo shows `--additional-context` flag end-to-end), R1 (demo shows BLOCKED
+output for architectural findings). The plan reviewer cited missing demo
+coverage for Tasks 3, 5, 11, and 12 as an I-class finding — completing `demo.md`
+satisfies the review-plan DoD gate requirement for demo coverage of user-facing
+changes.
+
+**Verification:**
+- `telec todo demo validate prepare-pipeline-hardening` passes.
+- Demo sections for BLOCKED output, `--additional-context`, and
+  `prepare.input_consumed` are all present and runnable.
+
+**Referenced files:**
+- `todos/prepare-pipeline-hardening/demo.md`
+
+---
+
 ## Dependency order
 
 Tasks 1 → 2 → 3 (schema → helpers → wiring + format_tool_call + per-step
@@ -631,9 +723,10 @@ each task are written as part of that task, but Task 10 covers the
 cross-cutting integration tests that span multiple tasks. Task 11 depends on
 Task 3 (wired into the same dispatch loop, uses `additional_context`). Task 12
 can be developed in parallel with Tasks 1-2 since it touches different files.
+Task 13 depends on Tasks 5, 12 (demo covers what they built).
 
 Recommended build order: [1, 12 in parallel] → 2 → 3 → [4, 5, 6, 7, 8, 11 in
-parallel where possible] → 9 → 10 (integration tests).
+parallel where possible] → 9 → 10 (integration tests) → 13 (demo).
 
 Per TDD policy, each task starts with a failing test before writing production
 code. Task 10 is the integration test sweep at the end.
@@ -656,8 +749,8 @@ code. Task 10 is the integration test sweep at the end.
 | R10 (split inheritance) | 7 | Unit test: children inherit phase |
 | R11 (phase skip observability) | 7 | Unit test: skipped audit entries |
 | R12 (verification hardening) | 9 | Procedure doc update |
-| R13 (event coverage) | 8 | Unit test: all events registered |
+| R13 (event coverage) | 2, 3, 8 | Unit test: all events registered; input_consumed emitted at transition |
 | R14 (backward compat) | 1, 4, 10 | Unit test: v1 state behavior preserved |
 | R15 (documentation) | 9 | Snippet validation |
 | R16 (path existence check) | 11 | Unit test: missing paths → re-draft instruction |
-| R17 (worker re-dispatch context) | 2, 3, 5, 11, 12 | Unit test: per-step additional_context computed and passed |
+| R17 (worker re-dispatch context) | 2, 3, 5, 11, 12, 13 | Unit test: per-step additional_context computed and passed; demo validates |
