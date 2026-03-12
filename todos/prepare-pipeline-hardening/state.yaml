@@ -48,10 +48,12 @@ plan_review:
   findings_count: 0
   rounds: 3
 dor:
-  last_assessed_at: ''
-  score: 0
-  status: pending
+  last_assessed_at: '2026-03-12T18:00:00Z'
+  score: 9
+  status: pass
   schema_version: 1
   blockers: []
-  actions_taken: {}
+  actions_taken:
+    requirements_updated: false
+    implementation_plan_updated: false
 schema_version: 1
