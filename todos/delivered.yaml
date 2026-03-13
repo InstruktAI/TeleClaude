@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-integration-delivery-bookkeeping-commits
+  date: '2026-03-13'
+  commit: 29b3b6d652ad
 - slug: rlf-peripherals
   date: '2026-03-13'
   commit: d804720dd946
@@ -199,10 +202,10 @@
   date: '2026-02-27'
   commit: 31e708481c83
   children:
-    - deployment-versioning
-    - deployment-channels
-    - deployment-migrations
-    - deployment-cleanup
+  - deployment-versioning
+  - deployment-channels
+  - deployment-migrations
+  - deployment-cleanup
 - slug: deployment-cleanup
   date: '2026-02-27'
   commit: 5543233d
@@ -246,9 +249,9 @@
   date: '2026-02-26'
   commit: 92dd3c7d8cb0
   children:
-    - mcp-migration-telec-commands
-    - mcp-migration-agent-config
-    - mcp-migration-delete-mcp
+  - mcp-migration-telec-commands
+  - mcp-migration-agent-config
+  - mcp-migration-delete-mcp
 - slug: mcp-migration-delete-mcp
   date: '2026-02-25'
   commit: ca23644eed6e6145e9569b608e32a09b60e399cb
@@ -361,20 +364,20 @@
   date: '2026-02-21'
   commit: 24339f34fc12
   children:
-    - web-interface-1
-    - web-interface-2
-    - web-interface-3
-    - web-interface-4
+  - web-interface-1
+  - web-interface-2
+  - web-interface-3
+  - web-interface-4
 - slug: release-automation
   date: '2026-02-21'
   commit: e20dbc9fee64
   children:
-    - release-manifests
-    - release-workflow-foundation
-    - release-lane-claude
-    - release-lane-codex
-    - release-lane-gemini
-    - release-arbiter
+  - release-manifests
+  - release-workflow-foundation
+  - release-lane-claude
+  - release-lane-codex
+  - release-lane-gemini
+  - release-arbiter
 - slug: pane-state-reconciliation
   date: '2026-02-21'
   commit: 02802843
