@@ -94,7 +94,7 @@ async def test_prompt_submit_sets_flag_true_for_linked_output():
     coord = _make_coordinator()
     context = _make_prompt_context("sess-001", linked_text)
 
-    with patch("teleclaude.core.agent_coordinator.db", db_mock):
+    with patch("teleclaude.core.agent_coordinator._coordinator.db", db_mock):
         await coord.handle_user_prompt_submit(context)
 
     # Find the update_session call that sets the flag
@@ -123,7 +123,7 @@ async def test_prompt_submit_sets_flag_false_for_direct_message():
     coord = _make_coordinator()
     context = _make_prompt_context("sess-001", direct_text)
 
-    with patch("teleclaude.core.agent_coordinator.db", db_mock):
+    with patch("teleclaude.core.agent_coordinator._coordinator.db", db_mock):
         await coord.handle_user_prompt_submit(context)
 
     calls = db_mock.update_session.call_args_list
@@ -157,7 +157,8 @@ async def test_stop_fanout_proceeds_when_flag_false():
     context = _make_stop_context("sess-001")
 
     with (
-        patch("teleclaude.core.agent_coordinator.db", db_mock),
+        patch("teleclaude.core.agent_coordinator._coordinator.db", db_mock),
+        patch("teleclaude.core.agent_coordinator._fanout.db", db_mock),
         patch.object(coord, "_extract_agent_output", new_callable=AsyncMock, return_value="some output"),
         patch.object(coord, "_summarize_output", new_callable=AsyncMock, return_value="summary"),
         patch.object(coord, "_maybe_send_incremental_output", new_callable=AsyncMock),
@@ -165,7 +166,7 @@ async def test_stop_fanout_proceeds_when_flag_false():
         patch.object(coord, "_notify_session_listener", new_callable=AsyncMock),
         patch.object(coord, "_forward_stop_to_initiator", new_callable=AsyncMock),
         patch.object(coord, "_maybe_inject_checkpoint", new_callable=AsyncMock),
-        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+        patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
     ):
         await coord.handle_agent_stop(context)
 
@@ -186,7 +187,8 @@ async def test_stop_fanout_suppressed_when_flag_true():
     context = _make_stop_context("sess-001")
 
     with (
-        patch("teleclaude.core.agent_coordinator.db", db_mock),
+        patch("teleclaude.core.agent_coordinator._coordinator.db", db_mock),
+        patch("teleclaude.core.agent_coordinator._fanout.db", db_mock),
         patch.object(coord, "_extract_agent_output", new_callable=AsyncMock, return_value="some output"),
         patch.object(coord, "_summarize_output", new_callable=AsyncMock, return_value="summary"),
         patch.object(coord, "_maybe_send_incremental_output", new_callable=AsyncMock),
@@ -194,7 +196,7 @@ async def test_stop_fanout_suppressed_when_flag_true():
         patch.object(coord, "_notify_session_listener", new_callable=AsyncMock),
         patch.object(coord, "_forward_stop_to_initiator", new_callable=AsyncMock),
         patch.object(coord, "_maybe_inject_checkpoint", new_callable=AsyncMock),
-        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+        patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
     ):
         await coord.handle_agent_stop(context)
 
@@ -215,7 +217,8 @@ async def test_stop_clears_flag_after_suppression():
     context = _make_stop_context("sess-001")
 
     with (
-        patch("teleclaude.core.agent_coordinator.db", db_mock),
+        patch("teleclaude.core.agent_coordinator._coordinator.db", db_mock),
+        patch("teleclaude.core.agent_coordinator._fanout.db", db_mock),
         patch.object(coord, "_extract_agent_output", new_callable=AsyncMock, return_value="some output"),
         patch.object(coord, "_summarize_output", new_callable=AsyncMock, return_value="summary"),
         patch.object(coord, "_maybe_send_incremental_output", new_callable=AsyncMock),
@@ -223,7 +226,7 @@ async def test_stop_clears_flag_after_suppression():
         patch.object(coord, "_notify_session_listener", new_callable=AsyncMock),
         patch.object(coord, "_forward_stop_to_initiator", new_callable=AsyncMock),
         patch.object(coord, "_maybe_inject_checkpoint", new_callable=AsyncMock),
-        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+        patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
     ):
         await coord.handle_agent_stop(context)
 

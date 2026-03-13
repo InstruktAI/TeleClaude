@@ -159,7 +159,16 @@ class PreparationViewActionsMixin:
             return True
 
         if isinstance(item, ProjectHeader):
-            if action in {"remove_todo", "activate", "preview_file", "new_project", "refine", "freeze", "move_todo_up", "move_todo_down"}:
+            if action in {
+                "remove_todo",
+                "activate",
+                "preview_file",
+                "new_project",
+                "refine",
+                "freeze",
+                "move_todo_up",
+                "move_todo_down",
+            }:
                 return False
             return True
 

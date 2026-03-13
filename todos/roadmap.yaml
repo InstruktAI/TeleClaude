@@ -122,3 +122,8 @@
 - slug: rlf-peripherals
 - slug: rlf-core-data-pylint
 - slug: rlf-core-machines
+- slug: lint-baseline-fix
+  after:
+  - rlf-core-infra
+  description: 'Restore make lint to passing: fix pre-existing mypy/pyright baseline
+    failures'

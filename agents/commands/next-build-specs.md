@@ -13,13 +13,6 @@ You are now the Test Spec Builder.
 - @~/.teleclaude/docs/software-development/policy/test-structure.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 
-## Language context
-
-You MUST use `telec docs index | grep '{language}'` to surface language-specific required reads,
-and use `telec docs get {snippet_id}` to read them ALL — they contain mandatory language idioms.
-Discover the project's test framework, runner commands, expected-failure mechanism, and file patterns
-from the codebase (package config, Makefile, existing tests).
-
 ## Purpose
 
 Write executable test specifications (expected-failure-marked tests) from approved requirements.
@@ -37,7 +30,7 @@ Write executable test specifications (expected-failure-marked tests) from approv
 
 ## Steps
 
-- Load language-specific testing docs (see Language context above)
+- Use `telec docs index | grep '{language}'` to surface language-specific required reads, then `telec docs get {snippet_id}` to read them ALL — they contain mandatory language idioms. Discover the project's test framework, runner commands, expected-failure mechanism, and file patterns from the codebase (package config, Makefile, existing tests).
 - Read requirements.md thoroughly
 - For each behavioral requirement, write test(s) that assert the expected behavior
 - Mark every test with the project's expected-failure mechanism (discover from codebase)

@@ -135,7 +135,8 @@ class PaneLayoutMixin:
     def _build_session_specs(self) -> list[SessionPaneSpec]:
         session_specs: list[SessionPaneSpec] = list(self._sticky_specs)  # type: ignore[attr-defined]
         if self._active_spec and not any(  # type: ignore[attr-defined]
-            spec.session_id == self._active_spec.session_id for spec in session_specs  # type: ignore[attr-defined]
+            spec.session_id == self._active_spec.session_id
+            for spec in session_specs  # type: ignore[attr-defined]
         ):
             session_specs.append(self._active_spec)  # type: ignore[attr-defined]
         if len(session_specs) > 5:

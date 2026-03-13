@@ -138,29 +138,29 @@ stateDiagram-v2
 flowchart TD
     Start(["telec todo prepare [slug]"])
 
-    DerivePhase{"Durable phase\nin state.yaml?"}
-    Derive["Derive phase from\nartifact existence"]
+    DerivePhase{"Durable phase<br/>in state.yaml?"}
+    Derive["Derive phase from<br/>artifact existence"]
 
-    InputAssess{"requirements.md\nexists?"}
+    InputAssess{"requirements.md<br/>exists?"}
 
-    Triangulate["Dispatch\nnext-prepare-discovery"]
-    ReqExists{"requirements_review\nverdict?"}
-    DispatchReqReview["Dispatch\nnext-review-requirements"]
+    Triangulate["Dispatch<br/>next-prepare-discovery"]
+    ReqExists{"requirements_review<br/>verdict?"}
+    DispatchReqReview["Dispatch<br/>next-review-requirements"]
 
-    CheckRounds1{"Review rounds\n< max (3)?"}
+    CheckRounds1{"Review rounds<br/>< max (3)?"}
 
-    PlanExists{"implementation-plan.md\nexists?"}
-    DispatchDraft["Dispatch\nnext-prepare-draft"]
+    PlanExists{"implementation-plan.md<br/>exists?"}
+    DispatchDraft["Dispatch<br/>next-prepare-draft"]
 
-    PlanReview{"plan_review\nverdict?"}
-    DispatchPlanReview["Dispatch\nnext-review-plan"]
-    CheckRounds2{"Review rounds\n< max (3)?"}
+    PlanReview{"plan_review<br/>verdict?"}
+    DispatchPlanReview["Dispatch<br/>next-review-plan"]
+    CheckRounds2{"Review rounds<br/>< max (3)?"}
 
-    Gate{"DOR score\n>= 8?"}
-    DispatchGate["Dispatch\nnext-prepare-gate"]
+    Gate{"DOR score<br/>>= 8?"}
+    DispatchGate["Dispatch<br/>next-prepare-gate"]
 
-    GroundingCheck{"Grounding\nfresh?"}
-    ReGround["Dispatch\nnext-prepare-draft\n(with diff)"]
+    GroundingCheck{"Grounding<br/>fresh?"}
+    ReGround["Dispatch<br/>next-prepare-draft<br/>(with diff)"]
 
     Prepared(["PREPARED"])
     Blocked(["BLOCKED"])
@@ -181,11 +181,11 @@ flowchart TD
     CheckRounds1 -->|"Yes"| Triangulate
     CheckRounds1 -->|"No"| Blocked
 
-    TestSpecExists{"test specs\nexist?"}
-    DispatchTestSpec["Dispatch\nnext-prepare-test-spec"]
-    TestSpecReview{"test_spec_review\nverdict?"}
-    DispatchTestSpecReview["Dispatch\nnext-review-test-spec"]
-    CheckRoundsTS{"Review rounds\n< max (3)?"}
+    TestSpecExists{"test specs<br/>exist?"}
+    DispatchTestSpec["Dispatch<br/>next-prepare-test-spec"]
+    TestSpecReview{"test_spec_review<br/>verdict?"}
+    DispatchTestSpecReview["Dispatch<br/>next-review-test-spec"]
+    CheckRoundsTS{"Review rounds<br/>< max (3)?"}
 
     TestSpecExists -->|"No"| DispatchTestSpec
     TestSpecExists -->|"Yes"| TestSpecReview
@@ -311,16 +311,16 @@ flowchart LR
     end
 
     subgraph "Staleness Checks"
-        C1{"input.md digest\nchanged?"}
-        C2{"Referenced files\nchanged since\nbase_sha?"}
+        C1{"input.md digest<br/>changed?"}
+        C2{"Referenced files<br/>changed since<br/>base_sha?"}
     end
 
     Valid --> C1
     Valid --> C2
-    C1 -->|"Yes"| Stale["RE_GROUNDING\n(invalidated)"]
+    C1 -->|"Yes"| Stale["RE_GROUNDING<br/>(invalidated)"]
     C2 -->|"Yes"| Stale
     C1 -->|"No"| C2
-    C2 -->|"No"| Fresh["PREPARED\n(grounding valid)"]
+    C2 -->|"No"| Fresh["PREPARED<br/>(grounding valid)"]
 ```
 
 Invalidation triggers:
