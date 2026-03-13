@@ -166,8 +166,8 @@ _H = Flag("--help", "-h", "Show usage information", hidden=True)
 # Auth shorthand constants — used in CLI_SURFACE auth fields
 # =============================================================================
 
-_SYS_ORCH = frozenset({ROLE_ORCHESTRATOR})
-_SYS_ALL = frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR})
+_SYS_ORCH = frozenset({ROLE_ORCHESTRATOR, ROLE_INTEGRATOR})
+_SYS_ALL = frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR})
 _SYS_INTG = frozenset({ROLE_INTEGRATOR})
 
 _HR_ADMIN = frozenset()  # admin implicit; no other human roles
