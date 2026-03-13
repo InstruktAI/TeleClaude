@@ -52,7 +52,6 @@ HUMAN_ROLE_NEWCOMER = "newcomer"
 HUMAN_ROLE_CUSTOMER = "customer"
 HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER)
 
-ROLE_VALUES = ("public", "member", "admin")
 SNIPPET_VISIBILITY_PUBLIC = "public"
 SNIPPET_VISIBILITY_INTERNAL = "internal"
 SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTERNAL)
@@ -95,6 +94,8 @@ class SlashCommand(str, Enum):
     NEXT_REFINE_INPUT = "next-refine-input"
     NEXT_WORK = "next-work"
     NEXT_INTEGRATE = "next-integrate"
+    NEXT_BUILD_SPECS = "next-build-specs"
+    NEXT_REVIEW_SPECS = "next-review-specs"
     NEXT_CREATE_ART = "next-create-art"
     NEXT_CREATE_HTML = "next-create-html"
 
@@ -112,6 +113,8 @@ class JobRole(str, Enum):
     PREPARE_ORCHESTRATOR = "prepare-orchestrator"
     WORK_ORCHESTRATOR = "work-orchestrator"
     CREATE_ORCHESTRATOR = "create-orchestrator"
+    SPEC_BUILDER = "spec-builder"
+    SPEC_REVIEWER = "spec-reviewer"
     ARTIST = "artist"
     FRONTENDER = "frontender"
     INTEGRATOR = "integrator"

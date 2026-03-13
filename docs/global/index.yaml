@@ -1,13 +1,20 @@
-project_root: /Users/Morriz/.teleclaude
-snippets_root: /Users/Morriz/.teleclaude/docs
+project_root: ~/.teleclaude
+snippets_root: ~/.teleclaude/docs
 snippets:
+- id: creative/concept/image-generation
+  description: "Image generation capability \u2014 text-to-image, editing, and iteration.\
+    \ Backend-agnostic with pluggable implementations."
+  type: concept
+  scope: global
+  path: docs/creative/concept/image-generation.md
+  visibility: internal
+  source_project: TeleClaude
 - id: creative/design/creative-machine
-  description: 'State machine architecture for the creative lifecycle: design spec
-    discovery through visual artifact approval.'
+  description: 'State machine architecture for the creative lifecycle: input capture,
+    design spec, art generation, and visual artifact approval.'
   type: design
   scope: global
   path: docs/creative/design/creative-machine.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: creative/policy/visual-constraints
@@ -16,16 +23,14 @@ snippets:
   type: policy
   scope: global
   path: docs/creative/policy/visual-constraints.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: creative/procedure/creative-orchestration
   description: 'Drive the creative state machine: dispatch workers, park at human
-    gates, advance through design spec and visual artifact phases.'
+    gates, advance through design spec, art generation, and visual artifact phases.'
   type: procedure
   scope: global
   path: docs/creative/procedure/creative-orchestration.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: creative/procedure/design-discovery
@@ -34,16 +39,30 @@ snippets:
   type: procedure
   scope: global
   path: docs/creative/procedure/design-discovery.md
-  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: creative/procedure/image-generation/nano-banana
+  description: Generate images using the Nano Banana helper script. Text-to-image,
+    image editing, and multi-turn iteration via Gemini.
+  type: procedure
+  scope: global
+  path: docs/creative/procedure/image-generation/nano-banana.md
+  visibility: internal
+  source_project: TeleClaude
+- id: creative/procedure/lifecycle/overview
+  description: "Creative lifecycle overview. Optional pre-stage: design spec, art\
+    \ generation, visual artifacts \u2014 feeding into the software development lifecycle."
+  type: procedure
+  scope: global
+  path: docs/creative/procedure/lifecycle/overview.md
   visibility: internal
   source_project: TeleClaude
 - id: creative/procedure/visual-drafting
-  description: Produce self-contained HTML+CSS visual artifacts from a confirmed design
-    spec.
+  description: Produce self-contained HTML+CSS visual artifacts from approved art
+    and a confirmed design spec.
   type: procedure
   scope: global
   path: docs/creative/procedure/visual-drafting.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: creative/spec/design-spec
@@ -52,7 +71,6 @@ snippets:
   type: spec
   scope: global
   path: docs/creative/spec/design-spec.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: creative/spec/visual-artifact
@@ -61,7 +79,6 @@ snippets:
   type: spec
   scope: global
   path: docs/creative/spec/visual-artifact.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/concept/agent-characteristics
@@ -69,7 +86,6 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/agent-characteristics.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/concept/ai-to-ai-coordination
@@ -78,7 +94,6 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/ai-to-ai-coordination.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/concept/documentation-snippets
@@ -86,7 +101,6 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/documentation-snippets.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/concept/memory-tiers
@@ -95,7 +109,6 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/memory-tiers.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/concept/normalized-agent-artifacts
@@ -104,7 +117,6 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/normalized-agent-artifacts.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/concept/orchestrator
@@ -113,7 +125,6 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/orchestrator.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/concept/skill-taxonomy
@@ -122,7 +133,6 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/skill-taxonomy.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/policy/ai-agent-security
@@ -132,7 +142,6 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/ai-agent-security.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/policy/artifact-scope
@@ -141,7 +150,6 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/artifact-scope.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/policy/autonomy
@@ -149,7 +157,6 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/autonomy.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/policy/conflict-resolution
@@ -158,7 +165,6 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/conflict-resolution.md
-  role: member
   visibility: public
   source_project: TeleClaude
 - id: general/policy/context-retrieval
@@ -167,7 +173,6 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/context-retrieval.md
-  role: member
   visibility: public
   source_project: TeleClaude
 - id: general/policy/heartbeat
@@ -176,7 +181,6 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/heartbeat.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/policy/orchestrator-jurisdiction
@@ -185,7 +189,6 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/orchestrator-jurisdiction.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/policy/referencing-doc-snippets
@@ -193,7 +196,6 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/referencing-doc-snippets.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/agent-shorthand
@@ -202,7 +204,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/agent-shorthand.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/attunement
@@ -212,7 +213,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/attunement.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/autonomy
@@ -221,7 +221,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/autonomy.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/breath
@@ -230,7 +229,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/breath.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/calibration
@@ -239,7 +237,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/calibration.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/continuity
@@ -248,7 +245,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/continuity.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/evolution
@@ -257,7 +253,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/evolution.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/expansion
@@ -266,7 +261,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/expansion.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/explicit-inference
@@ -275,7 +269,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/explicit-inference.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/grounding
@@ -284,7 +277,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/grounding.md
-  role: member
   visibility: public
   source_project: TeleClaude
 - id: general/principle/intent-first-documentation
@@ -292,7 +284,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/intent-first-documentation.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/parallel-work
@@ -301,7 +292,6 @@ snippets:
   type: principle
   scope: domain
   path: docs/general/principle/parallel-work.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/priming
@@ -309,7 +299,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/priming.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/proprioception
@@ -318,7 +307,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/proprioception.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/session-lifecycle
@@ -328,7 +316,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/session-lifecycle.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/principle/stewardship
@@ -337,7 +324,6 @@ snippets:
   type: principle
   scope: global
   path: docs/general/principle/stewardship.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/agent-artifact-authoring
@@ -346,7 +332,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/agent-artifact-authoring.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/agent-direct-conversation
@@ -355,7 +340,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/agent-direct-conversation.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/agent-job-hygiene
@@ -364,7 +348,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/agent-job-hygiene.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/ai-to-ai-troubleshooting
@@ -373,7 +356,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/ai-to-ai-troubleshooting.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/brainstorming
@@ -382,7 +364,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/brainstorming.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/doc-snippet-authoring
@@ -390,7 +371,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/doc-snippet-authoring.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/gathering
@@ -399,7 +379,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/gathering.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/job-authoring
@@ -407,7 +386,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/job-authoring.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/memory-management
@@ -416,7 +394,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/memory-management.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/orchestration
@@ -425,7 +402,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/orchestration.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/peer-discussion
@@ -435,7 +411,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/peer-discussion.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/skill-authoring
@@ -444,7 +419,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/skill-authoring.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/tool-spec-authoring
@@ -453,7 +427,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/tool-spec-authoring.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/youtube-research
@@ -463,7 +436,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/youtube-research.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/spec/agent-artifacts
@@ -471,7 +443,6 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/agent-artifacts.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/spec/history-log
@@ -479,7 +450,6 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/history-log.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/spec/snippet-authoring-schema
@@ -488,7 +458,6 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/snippet-authoring-schema.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/spec/third-party-docs
@@ -496,7 +465,6 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/third-party-docs.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: general/spec/tools/telec-cli
@@ -505,7 +473,6 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/tools/telec-cli.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/agent-invocation-modes
@@ -514,7 +481,6 @@ snippets:
   type: concept
   scope: global
   path: docs/software-development/concept/agent-invocation-modes.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/architect
@@ -523,16 +489,14 @@ snippets:
   type: concept
   scope: domain
   path: docs/software-development/concept/architect.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/builder
   description: Tactical implementation. Follow architecture, write code matching requirements,
-    pragmatic autonomy, tests after implementation.
+    pragmatic autonomy, satisfy test specifications.
   type: concept
   scope: domain
   path: docs/software-development/concept/builder.md
-  role: member
   visibility: public
   source_project: TeleClaude
 - id: software-development/concept/finalizer
@@ -541,7 +505,6 @@ snippets:
   type: concept
   scope: domain
   path: docs/software-development/concept/finalizer.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/fixer
@@ -549,7 +512,6 @@ snippets:
   type: concept
   scope: domain
   path: docs/software-development/concept/fixer.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/researcher
@@ -557,7 +519,6 @@ snippets:
   type: concept
   scope: domain
   path: docs/software-development/concept/researcher.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/reviewer
@@ -566,7 +527,6 @@ snippets:
   type: concept
   scope: domain
   path: docs/software-development/concept/reviewer.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/tester
@@ -575,7 +535,6 @@ snippets:
   type: concept
   scope: domain
   path: docs/software-development/concept/tester.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/backward-compatibility-hygiene
@@ -584,7 +543,6 @@ snippets:
   type: policy
   scope: global
   path: docs/software-development/policy/backward-compatibility-hygiene.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/code-quality
@@ -593,7 +551,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/code-quality.md
-  role: member
   visibility: public
   source_project: TeleClaude
 - id: software-development/policy/code-quality-practices
@@ -601,7 +558,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/code-quality-practices.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/commits
@@ -610,7 +566,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/commits.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/definition-of-done
@@ -619,7 +574,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/definition-of-done.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/definition-of-ready
@@ -628,7 +582,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/definition-of-ready.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/linting-requirements
@@ -637,7 +590,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/linting-requirements.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/preparation-artifact-quality
@@ -646,7 +598,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/preparation-artifact-quality.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/python/core
@@ -655,7 +606,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/python/core.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/python/logging
@@ -664,7 +614,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/python/logging.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/regression-zero-tolerance
@@ -673,7 +622,6 @@ snippets:
   type: policy
   scope: global
   path: docs/software-development/policy/regression-zero-tolerance.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/security-awareness
@@ -683,7 +631,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/security-awareness.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/test-structure
@@ -692,7 +639,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/test-structure.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/testing
@@ -701,7 +647,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/testing.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/typescript/core
@@ -710,7 +655,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/typescript/core.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/version-control-safety
@@ -718,7 +662,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/version-control-safety.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/principle/architecture-boundary-purity
@@ -727,7 +670,6 @@ snippets:
   type: principle
   scope: domain
   path: docs/software-development/principle/architecture-boundary-purity.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/principle/design-fundamentals
@@ -736,7 +678,6 @@ snippets:
   type: principle
   scope: domain
   path: docs/software-development/principle/design-fundamentals.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/principle/failure-modes
@@ -745,7 +686,6 @@ snippets:
   type: principle
   scope: domain
   path: docs/software-development/principle/failure-modes.md
-  role: member
   visibility: public
   source_project: TeleClaude
 - id: software-development/procedure/agent-artifacts-quickstart
@@ -753,7 +693,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/agent-artifacts-quickstart.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
@@ -762,7 +701,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/bugs-handling.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/debugging
@@ -771,7 +709,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/debugging.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/integrate
@@ -780,7 +717,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/integrate.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/overview
@@ -789,7 +725,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/overview.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare
@@ -798,7 +733,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/discipline
@@ -807,7 +741,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/discipline.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/discovery
@@ -816,7 +749,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/software-development/procedure/lifecycle/prepare/discovery.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/overview
@@ -825,7 +757,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/overview.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/plan-draft
@@ -834,7 +765,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/software-development/procedure/lifecycle/prepare/plan-draft.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/readiness-gate
@@ -843,7 +773,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/software-development/procedure/lifecycle/prepare/readiness-gate.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/refine-input
@@ -852,7 +781,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/refine-input.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/review-plan
@@ -861,7 +789,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/review-plan.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/review-requirements
@@ -870,7 +797,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/review-requirements.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/review-plan
@@ -879,7 +805,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/review-plan.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/review-requirements
@@ -888,7 +813,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/review-requirements.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/bug-fix
@@ -897,7 +821,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/bug-fix.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/build
@@ -906,7 +829,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/build.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/deferrals
@@ -914,7 +836,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/deferrals.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/demo
@@ -923,7 +844,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/software-development/procedure/lifecycle/work/demo.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/finalize
@@ -931,7 +851,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/finalize.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/fix-review
@@ -939,7 +858,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/fix-review.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/overview
@@ -948,7 +866,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/overview.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/principle-violation-hunt
@@ -957,7 +874,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/review
@@ -966,7 +882,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/review.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/work/silent-failure-audit
@@ -975,7 +890,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/backlog-hygiene
@@ -983,7 +897,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/maintenance/backlog-hygiene.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/bug-intake-and-triage
@@ -992,7 +905,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/maintenance/bug-intake-and-triage.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/deprecation-and-transition-plan
@@ -1001,7 +913,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/maintenance/deprecation-and-transition-plan.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/incident-log
@@ -1010,7 +921,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/maintenance/incident-log.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/log-bug-hunter
@@ -1019,7 +929,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/maintenance/log-bug-hunter.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/next-prepare
@@ -1028,7 +937,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/software-development/procedure/maintenance/next-prepare.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/next-prepare-discovery
@@ -1037,7 +945,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/software-development/procedure/maintenance/next-prepare-discovery.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/next-prepare-draft
@@ -1046,7 +953,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/software-development/procedure/maintenance/next-prepare-draft.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/next-prepare-gate
@@ -1055,7 +961,6 @@ snippets:
   type: procedure
   scope: global
   path: docs/software-development/procedure/maintenance/next-prepare-gate.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/project-analysis
@@ -1065,7 +970,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/project-analysis.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/research/tech-stack-documentation
@@ -1075,7 +979,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/research/tech-stack-documentation.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/research/third-party-research
@@ -1084,7 +987,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/research/third-party-research.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/python
@@ -1093,7 +995,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/python.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript
@@ -1101,7 +1002,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript-platforms/next-js
@@ -1109,7 +1009,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/next-js.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript-platforms/node-js
@@ -1117,7 +1016,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/node-js.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript-platforms/vite
@@ -1125,7 +1023,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/vite.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/spec/hook-event-normalization-contract
@@ -1134,7 +1031,6 @@ snippets:
   type: spec
   scope: domain
   path: docs/software-development/spec/hook-event-normalization-contract.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/spec/init-scaffolding
@@ -1144,7 +1040,6 @@ snippets:
   type: spec
   scope: domain
   path: docs/software-development/spec/init-scaffolding.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/spec/runtime-operations-truth
@@ -1153,7 +1048,6 @@ snippets:
   type: spec
   scope: domain
   path: docs/software-development/spec/runtime-operations-truth.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/spec/session-identity-truth
@@ -1162,6 +1056,5 @@ snippets:
   type: spec
   scope: domain
   path: docs/software-development/spec/session-identity-truth.md
-  role: member
   visibility: internal
   source_project: TeleClaude

@@ -212,3 +212,64 @@ def get_identity_resolver() -> IdentityResolver:
     if _resolver_instance is None:
         _resolver_instance = IdentityResolver()
     return _resolver_instance
+
+
+def resolve_cli_caller_role() -> str | None:
+    """Resolve the effective human role for the current CLI caller.
+
+    Three paths (tried in order):
+    1. Env var: TELECLAUDE_PRINCIPAL_ROLE injected at session bootstrap.
+    2. TTY auth: terminal human logged in via ``telec auth login``.
+    3. Daemon API: dual-factor auth (session_id + tmux session name).
+
+    Returns the effective human role, or None if unidentifiable.
+    """
+    import os
+
+    # Path 1: env var injected at bootstrap
+    env_role = os.environ.get("TELECLAUDE_PRINCIPAL_ROLE")
+    if env_role:
+        return env_role
+
+    # Path 2: TTY auth file → IdentityResolver
+    from teleclaude.cli.session_auth import read_current_session_email
+
+    email = read_current_session_email()
+    if email:
+        resolver = get_identity_resolver()
+        person = resolver._by_email.get(email.lower())
+        if person:
+            return resolver._normalize_role(person.role)
+
+    # Path 3: daemon API — works for any TeleClaude-managed session
+    return _resolve_role_via_daemon()
+
+
+def _resolve_role_via_daemon() -> str | None:
+    """Query the daemon API for this session's human_role via dual-factor auth."""
+    import asyncio
+    import os
+
+    # Only attempt if we have a session ID (indicates a TeleClaude-managed session)
+    tmpdir = os.environ.get("TMPDIR", "")
+    if not tmpdir:
+        return None
+    session_id_path = Path(tmpdir) / "teleclaude_session_id"
+    if not session_id_path.exists():
+        return None
+
+    try:
+        from teleclaude.cli.api_client import TelecAPIClient
+
+        async def _fetch() -> str | None:
+            api = TelecAPIClient()
+            await api.connect()
+            try:
+                data = await api.get_auth_whoami()
+            finally:
+                await api.close()
+            return data.get("role")
+
+        return asyncio.run(_fetch())
+    except Exception:
+        return None

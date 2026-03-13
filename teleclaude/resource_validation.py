@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import ROLE_VALUES, SNIPPET_VISIBILITY_VALUES, TAXONOMY_TYPES, TYPE_SUFFIX
+from teleclaude.constants import SNIPPET_VISIBILITY_VALUES, TAXONOMY_TYPES, TYPE_SUFFIX
 from teleclaude.snippet_validation import (
     expected_snippet_id_for_path,
     load_domains,
@@ -358,10 +358,6 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
             snippet_id=parsed_id.value(),
         )
 
-    raw_role = meta.get("role")
-    if raw_role is not None:
-        if not isinstance(raw_role, str) or raw_role not in ROLE_VALUES:
-            _warn("snippet_invalid_role_value", path=str(path), value=str(raw_role))
     raw_visibility = meta.get("visibility")
     if raw_visibility is not None:
         if not isinstance(raw_visibility, str) or raw_visibility not in SNIPPET_VISIBILITY_VALUES:
@@ -583,10 +579,6 @@ def _validate_snippet_sections(
             if not isinstance(meta.get(field), str) or not meta.get(field):
                 _warn("snippet_missing_frontmatter_field", path=str(path), field=field)
 
-    role_val = meta.get("role")
-    if role_val is not None:
-        if not isinstance(role_val, str) or role_val not in ROLE_VALUES:
-            _warn("snippet_invalid_role_value", path=str(path), value=str(role_val))
     visibility_val = meta.get("visibility")
     if visibility_val is not None:
         if not isinstance(visibility_val, str) or visibility_val not in SNIPPET_VISIBILITY_VALUES:

@@ -2043,6 +2043,9 @@ def _handle_docs_index(args: list[str]) -> None:
             print(_usage("docs", "index"))
             raise SystemExit(1)
 
+    from teleclaude.core.identity import resolve_cli_caller_role
+
+    effective_role = resolve_cli_caller_role()
     output = build_context_output(
         areas=areas,
         project_root=project_root,
@@ -2050,6 +2053,7 @@ def _handle_docs_index(args: list[str]) -> None:
         baseline_only=baseline_only,
         include_third_party=third_party,
         domains=domains,
+        effective_human_role=effective_role,
     )
     print(output)
 
@@ -2080,6 +2084,9 @@ def _handle_docs_get(args: list[str]) -> None:
         print(_usage("docs", "get"))
         raise SystemExit(1)
 
+    from teleclaude.core.identity import resolve_cli_caller_role
+
+    effective_role = resolve_cli_caller_role()
     output = build_context_output(
         areas=[],
         project_root=project_root,
@@ -2087,6 +2094,7 @@ def _handle_docs_get(args: list[str]) -> None:
         baseline_only=False,
         include_third_party=False,
         domains=None,
+        effective_human_role=effective_role,
     )
     print(output)
 

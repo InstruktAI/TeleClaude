@@ -1333,6 +1333,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         principal, role = resolve_session_principal(session)
         session_token = await db.issue_session_token(session_id, principal, role)
         env_vars["TELEC_SESSION_TOKEN"] = session_token
+        env_vars["TELECLAUDE_PRINCIPAL"] = principal
+        env_vars["TELECLAUDE_PRINCIPAL_ROLE"] = role
 
         created = await tmux_bridge.ensure_tmux_session(
             name=session.tmux_session_name,

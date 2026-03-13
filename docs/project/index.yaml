@@ -4,17 +4,15 @@ snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
   type: concept
-  scope: global
+  scope: project
   path: docs/project/concept/ai-worker.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/concept/master-bot
   description: The role of the master bot in a multi-computer Telegram supergroup.
   type: concept
-  scope: global
+  scope: project
   path: docs/project/concept/master-bot.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/adapter-client
@@ -23,7 +21,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/adapter-client.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/agent-activity-streaming-target
@@ -32,7 +29,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/agent-activity-streaming-target.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/api-server
@@ -41,7 +37,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/api-server.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/cache
@@ -50,7 +45,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/cache.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/cache-system
@@ -58,7 +52,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/cache-system.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/checkpoint-system
@@ -67,7 +60,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/checkpoint-system.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/context-index
@@ -76,7 +68,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/context-index.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/context-selection
@@ -85,7 +76,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/context-selection.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/daemon
@@ -93,7 +83,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/daemon.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/database
@@ -102,7 +91,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/database.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/deployment-pipeline
@@ -110,7 +98,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/deployment-pipeline.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/feature-flags
@@ -118,7 +105,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/feature-flags.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/help-desk-platform
@@ -127,7 +113,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/help-desk-platform.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/hook-service
@@ -136,7 +121,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/hook-service.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/integration-state-machine
@@ -145,7 +129,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/integration-state-machine.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/jobs-runner
@@ -154,7 +137,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/jobs-runner.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/layer-ownership
@@ -163,7 +145,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/layer-ownership.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/lifecycle-state-machines
@@ -172,7 +153,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/lifecycle-state-machines.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/memory-system
@@ -181,7 +161,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/memory-system.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/next-machine
@@ -189,7 +168,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/next-machine.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/operation-receipts
@@ -198,7 +176,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/operation-receipts.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/outbox
@@ -206,7 +183,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/outbox.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/output-delivery
@@ -215,7 +191,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/output-delivery.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/output-polling
@@ -223,7 +198,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/output-polling.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/output-sizing
@@ -232,7 +206,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/output-sizing.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/performance-tuning
@@ -242,7 +215,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/performance-tuning.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/prepare-state-machine
@@ -251,7 +223,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/prepare-state-machine.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/redis-transport
@@ -260,7 +231,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/redis-transport.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/session-lifecycle
@@ -268,7 +238,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/session-lifecycle.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/session-listeners
@@ -277,16 +246,14 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/session-listeners.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/system-overview
   description: High-level architectural blueprint of TeleClaude components and data
     flow.
   type: design
-  scope: global
+  scope: project
   path: docs/project/design/architecture/system-overview.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/telegram-adapter
@@ -295,7 +262,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/telegram-adapter.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/tmux-management
@@ -303,7 +269,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/tmux-management.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/tts-system
@@ -312,7 +277,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/tts-system.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/tui-state-layout
@@ -321,7 +285,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/tui-state-layout.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/ui-adapter
@@ -330,7 +293,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/ui-adapter.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/web-api-facade
@@ -339,7 +301,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/web-api-facade.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/web-interface
@@ -347,7 +308,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/web-interface.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/work-state-machine
@@ -356,7 +316,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/work-state-machine.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/cli-authorization-matrix
@@ -365,7 +324,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/cli-authorization-matrix.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/ux/session-highlight
@@ -373,7 +331,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/ux/session-highlight.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/ux/session-highlight/implementation-plan
@@ -381,7 +338,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/ux/session-highlight/implementation-plan.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/ux/session-preview-sticky
@@ -389,7 +345,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/ux/session-preview-sticky.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/design/ux/tui-animations
@@ -398,7 +353,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/ux/tui-animations.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/adapter-boundaries
@@ -406,7 +360,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/adapter-boundaries.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/agent-artifact-governance
@@ -414,7 +367,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/agent-artifact-governance.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/agent-service-control
@@ -423,7 +375,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/agent-service-control.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/bin-bootstrap-boundary
@@ -432,7 +383,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/bin-bootstrap-boundary.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/cache-contract
@@ -440,7 +390,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/cache-contract.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/daemon-availability
@@ -448,7 +397,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/daemon-availability.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/data-modeling
@@ -456,7 +404,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/data-modeling.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/feature-flag-usage
@@ -464,15 +411,13 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/feature-flag-usage.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/master-bot-registration
   description: Policy for Telegram command registration in multi-computer setups.
   type: policy
-  scope: global
+  scope: project
   path: docs/project/policy/master-bot-registration.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/scripts-standalone-execution
@@ -481,7 +426,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/scripts-standalone-execution.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/single-database
@@ -490,7 +434,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/single-database.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/telegram-command-registration
@@ -499,7 +442,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/telegram-command-registration.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/ux-message-cleanup
@@ -507,7 +449,6 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/ux-message-cleanup.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/add-adapter
@@ -515,7 +456,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/add-adapter.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/add-telegram-command
@@ -523,7 +463,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/add-telegram-command.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/agent-artifact-distribution
@@ -531,7 +470,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/agent-artifact-distribution.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/ai-to-ai-operations
@@ -539,7 +477,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/ai-to-ai-operations.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/deploy
@@ -548,7 +485,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/deploy.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/host-health-checks
@@ -556,7 +492,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/host-health-checks.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/member-onboarding
@@ -565,7 +500,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/member-onboarding.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/multi-computer-setup
@@ -573,7 +507,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/multi-computer-setup.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/out-of-band-telegram-alerts
@@ -581,7 +514,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/out-of-band-telegram-alerts.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/restart-daemon
@@ -589,7 +521,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/restart-daemon.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/rsync-development
@@ -597,7 +528,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/rsync-development.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/runner-operations
@@ -605,7 +535,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/runner-operations.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/service-management
@@ -613,7 +542,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/service-management.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/ssh-agent-deployments
@@ -621,15 +549,13 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/ssh-agent-deployments.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/ssh-agent-keychain
   description: Procedure for configuring persistent SSH agent access for the daemon.
   type: procedure
-  scope: global
+  scope: project
   path: docs/project/procedure/ssh-agent-keychain.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/troubleshooting
@@ -637,7 +563,6 @@ snippets:
   type: procedure
   scope: project
   path: docs/project/procedure/troubleshooting.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/agent-artifact-automation
@@ -645,7 +570,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/agent-artifact-automation.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/cache-ttl-matrix
@@ -653,7 +577,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/cache-ttl-matrix.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/command-contracts
@@ -662,7 +585,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/command-contracts.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/command-surface
@@ -670,7 +592,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/command-surface.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/demo-artifact
@@ -678,7 +599,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/demo-artifact.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/event-vocabulary
@@ -686,7 +606,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/event-vocabulary.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/git-docs-filter
@@ -695,7 +614,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/git-docs-filter.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/hook-normalized-events
@@ -704,7 +622,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/hook-normalized-events.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/identity-and-auth
@@ -713,7 +630,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/identity-and-auth.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/inbound-queue
@@ -722,7 +638,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/inbound-queue.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/integration-orchestrator
@@ -731,7 +646,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/integration-orchestrator.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/log-bug-hunter
@@ -740,7 +654,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/log-bug-hunter.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/memory-review
@@ -749,7 +662,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/memory-review.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/next-prepare
@@ -758,7 +670,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/next-prepare.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/next-prepare-discovery
@@ -767,7 +678,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/next-prepare-discovery.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/next-prepare-draft
@@ -776,7 +686,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/next-prepare-draft.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/next-prepare-gate
@@ -785,7 +694,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/next-prepare-gate.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
@@ -794,7 +702,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/messaging
@@ -803,7 +710,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/messaging.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/release-inspector-prompt
@@ -811,7 +717,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/release-inspector-prompt.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/release-report-schema
@@ -819,7 +724,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/release-report-schema.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/runtime-operations-truth
@@ -828,7 +732,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/runtime-operations-truth.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/session-identity-truth
@@ -837,7 +740,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/session-identity-truth.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/session-output-routing
@@ -846,7 +748,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/session-output-routing.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/telec-cli-surface
@@ -854,7 +755,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/telec-cli-surface.md
-  role: member
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/teleclaude-config
@@ -863,6 +763,5 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/teleclaude-config.md
-  role: member
   visibility: internal
   source_project: TeleClaude

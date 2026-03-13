@@ -479,8 +479,7 @@ def build_context_output(
     domains: list[str] | None = None,
     list_projects: bool = False,
     projects: list[str] | None = None,
-    caller_role: str | None = None,
-    human_role: str | None = None,
+    effective_human_role: str | None = None,
     test_agent: str | None = None,
     test_mode: str | None = None,
     test_request: str | None = None,
@@ -607,12 +606,9 @@ def build_context_output(
     requested_ids = {sid.strip() for sid in (snippet_ids or []) if sid.strip()}
 
     def _include_snippet(snippet: SnippetMeta) -> bool:
-        resolved_role = (caller_role or "").strip().lower()
-        if human_role and not resolved_role:
-            resolved_role = human_role.strip().lower()
-        if not resolved_role:
-            resolved_role = "admin"
-        if resolved_role != "admin" and snippet.visibility != "public":
+        if not effective_human_role:
+            return False
+        if effective_human_role != "admin" and snippet.visibility != "public":
             return False
         if global_snippets_root in snippet.path.parents:
             if snippet.snippet_id.startswith("general/"):

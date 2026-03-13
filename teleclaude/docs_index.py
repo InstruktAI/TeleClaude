@@ -23,14 +23,9 @@ from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, SNIPPET_VISIBILITY
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.snippet_validation import load_domains
 
-__all__ = ["DEFAULT_ROLE", "ROLE_LEVELS", "ROLE_RANK", "load_domains"]
+__all__ = ["load_domains"]
 
 logger = get_logger(__name__)
-
-# Role hierarchy: the minimum role required to see a snippet.
-ROLE_LEVELS = ("public", "member", "admin")
-ROLE_RANK: dict[str, int] = {level: i for i, level in enumerate(ROLE_LEVELS)}
-DEFAULT_ROLE = "member"
 
 _H1_LINE = re.compile(r"^#\s+")
 
@@ -109,7 +104,6 @@ class SnippetEntry(TypedDict):
     scope: str
     path: str
     source_project: NotRequired[str]
-    role: NotRequired[str]
     visibility: NotRequired[str]
 
 
@@ -573,12 +567,6 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             "scope": snippet_scope,
             "path": relative_path,
         }
-        # Store role from frontmatter, or default.
-        raw_role = metadata.get("role")
-        if isinstance(raw_role, str) and raw_role in ROLE_RANK:
-            entry["role"] = raw_role
-        else:
-            entry["role"] = DEFAULT_ROLE
         raw_visibility = metadata.get("visibility")
         if isinstance(raw_visibility, str) and raw_visibility in SNIPPET_VISIBILITY_VALUES:
             entry["visibility"] = raw_visibility

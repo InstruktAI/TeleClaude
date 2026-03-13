@@ -23,7 +23,7 @@ Frontmatter (required for all snippets):
 
 Frontmatter (optional):
 
-- `role` — minimum role to view the snippet: `public`, `member`, or `admin`. Defaults to `member` when omitted.
+- `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
 
 Document structure:
 
@@ -62,7 +62,7 @@ Global snippets are distributed to `~/.teleclaude/docs/` and available to all pr
 
 - `type`: principle, concept, policy, procedure, design, spec (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - `scope`: global, domain, project.
-- `role`: public, member, admin. Hierarchy: `public` (everyone) < `member` (member + admin) < `admin` (admin only). Default: `member`.
+- `visibility`: public, internal. Default: `internal`.
 
 ## Known caveats
 
