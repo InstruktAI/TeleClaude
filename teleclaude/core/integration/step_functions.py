@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import threading
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -31,7 +33,6 @@ from teleclaude.core.integration.formatters import (
     _format_queue_empty,
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
-from teleclaude.core.integration.queue import IntegrationQueue
 from teleclaude.core.integration.readiness_projection import CandidateKey
 
 logger = get_logger(__name__)
@@ -246,87 +247,174 @@ def _emit_lifecycle_event(
 # ---------------------------------------------------------------------------
 
 
-def _try_auto_enqueue(*, queue: IntegrationQueue, slug: str, cwd: str) -> bool:
-    """Auto-enqueue a candidate when called by slug but not yet in the queue.
+@dataclass(frozen=True)
+class ScannedCandidate:
+    """A finalize-ready candidate discovered by scanning worktree state files."""
 
-    Derives branch name from slug (convention: branch == slug) and resolves
-    the SHA from the local branch ref. Used for legacy/manual direct-integrate
-    entry when a caller invokes ``telec todo integrate <slug>`` without a
-    prior queue population step.
+    key: CandidateKey
+    ready_at: str
 
-    Skips enqueue when the candidate is already tracked in the queue (any
-    status) — this is the primary guard against re-enqueue loops, covering
-    cases where recovery requeues in_progress items or squash merges bypass
-    ancestry detection. Also skips when the candidate SHA is already an
-    ancestor of main (fast-forward integrated).
+
+def _scan_finalize_ready_candidates(
+    cwd: str, *, exclude_slug: str | None = None
+) -> list[ScannedCandidate]:
+    """Scan worktree state.yaml files for finalize-ready candidates.
+
+    Iterates ``trees/`` subdirectories (skipping ``_integration``), reads each
+    worktree's ``state.yaml`` via ``read_phase_state``, and returns candidates
+    whose ``finalize.status`` is ``"ready"`` — or ``"handed_off"`` with a stale
+    ``handed_off_at`` older than the lease TTL (crash recovery).
+
+    Each candidate is validated: branch must exist on origin and SHA must not
+    already be an ancestor of main.
+
+    Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
     """
-    branch = slug  # branch == slug by project convention
-    rc, stdout, _ = _run_git(["rev-parse", branch], cwd=cwd)
-    if rc != 0 or not stdout.strip():
-        logger.warning("Auto-enqueue: could not resolve SHA for branch %s", branch)
-        return False
-    sha = stdout.strip()
-    # Validate SHA looks like a 40-char hex (guards against git printing non-SHA output)
-    if len(sha) != 40 or not all(c in "0123456789abcdefABCDEF" for c in sha):
-        logger.warning("Auto-enqueue: invalid SHA for branch %s: %r", branch, sha)
-        return False
-    # Skip if already tracked in queue (any status — prevents re-enqueue loops
-    # when recovery requeues in_progress items or squash merges bypass ancestry)
-    existing = queue.get(key=CandidateKey(slug=slug, branch=branch, sha=sha))
-    if existing is not None:
-        logger.info("Auto-enqueue: %s already in queue (status=%s) — skipping", slug, existing.status)
-        return False
-    ancestor_rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
-    if ancestor_rc == 0:
-        logger.info("Auto-enqueue: %s (sha=%s) already ancestor of main — skipping", slug, sha[:8])
-        return False
-    ready_at = _now_iso()
+    from teleclaude.core.next_machine.state_io import read_phase_state
+
+    trees_dir = Path(cwd) / WORKTREE_DIR
+    if not trees_dir.is_dir():
+        return []
+
+    candidates: list[ScannedCandidate] = []
+    now = datetime.now(tz=UTC)
+
+    for entry in sorted(trees_dir.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("_"):
+            continue
+        slug = entry.name
+        if slug == exclude_slug:
+            continue
+
+        try:
+            state = read_phase_state(str(entry), slug)
+        except Exception:
+            continue
+
+        finalize = state.get("finalize", {})
+        if not isinstance(finalize, dict):
+            continue
+
+        status = finalize.get("status")
+
+        if status == "handed_off":
+            handed_off_at = finalize.get("handed_off_at", "")
+            if not handed_off_at:
+                continue
+            try:
+                handoff_time = datetime.fromisoformat(handed_off_at)
+                if (now - handoff_time).total_seconds() < _INTEGRATION_LEASE_TTL_SECONDS:
+                    continue  # Fresh handoff — not yet recoverable
+            except (ValueError, TypeError):
+                continue
+        elif status != "ready":
+            continue
+
+        branch = finalize.get("branch", slug)
+        sha = finalize.get("sha", "")
+        ready_at = finalize.get("ready_at", "")
+        if not sha or not ready_at:
+            continue
+
+        # Verify branch exists on origin
+        rc, _, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
+        if rc != 0:
+            continue
+
+        # Verify SHA not already ancestor of main
+        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
+        if rc == 0:
+            continue
+
+        candidates.append(ScannedCandidate(
+            key=CandidateKey(slug=slug, branch=branch, sha=sha),
+            ready_at=ready_at,
+        ))
+
+    candidates.sort(key=lambda c: (c.ready_at, c.key.slug))
+    return candidates
+
+
+def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
+    """Check if a specific slug's worktree state.yaml shows finalize-ready.
+
+    Same validations as the scanner but targeted to a single slug.
+    """
+    from teleclaude.core.next_machine.state_io import read_phase_state
+
+    worktree_dir = Path(cwd) / WORKTREE_DIR / slug
+    if not worktree_dir.is_dir():
+        return None
+
     try:
-        queue.enqueue(key=CandidateKey(slug=slug, branch=branch, sha=sha), ready_at=ready_at)
-        logger.info("Auto-enqueued candidate %s (branch=%s sha=%s)", slug, branch, sha[:8])
-        return True
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.warning("Auto-enqueue failed for %s: %s", slug, exc)
-        return False
+        state = read_phase_state(str(worktree_dir), slug)
+    except Exception:
+        return None
+
+    finalize = state.get("finalize", {})
+    if not isinstance(finalize, dict):
+        return None
+
+    status = finalize.get("status")
+
+    if status == "handed_off":
+        handed_off_at = finalize.get("handed_off_at", "")
+        if not handed_off_at:
+            return None
+        try:
+            handoff_time = datetime.fromisoformat(handed_off_at)
+            if (datetime.now(tz=UTC) - handoff_time).total_seconds() < _INTEGRATION_LEASE_TTL_SECONDS:
+                return None
+        except (ValueError, TypeError):
+            return None
+    elif status != "ready":
+        return None
+
+    branch = finalize.get("branch", slug)
+    sha = finalize.get("sha", "")
+    ready_at = finalize.get("ready_at", "")
+    if not sha or not ready_at:
+        return None
+
+    # Verify branch exists on origin
+    rc, _, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
+    if rc != 0:
+        return None
+
+    # Verify SHA not already ancestor of main
+    rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
+    if rc == 0:
+        return None
+
+    return ScannedCandidate(
+        key=CandidateKey(slug=slug, branch=branch, sha=sha),
+        ready_at=ready_at,
+    )
 
 
 def _step_idle(
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
-    queue: IntegrationQueue,
     lease_store: IntegrationLeaseStore,
     session_id: str,
     slug: str | None,
     cwd: str,
     started: float,
 ) -> tuple[bool, str]:
-    """IDLE: check queue, acquire lease, pop candidate, proceed to merge."""
-    queued_items = [item for item in queue.items() if item.status == "queued"]
-    if not queued_items:
-        # When a specific slug is requested, auto-enqueue from the local branch
-        # (branch == slug by convention). This preserves the legacy/manual
-        # direct-integrate path where a caller invokes
-        # ``telec todo integrate <slug>`` without a prior deployment event.
-        if slug is not None:
-            _try_auto_enqueue(queue=queue, slug=slug, cwd=cwd)
-            queued_items = [item for item in queue.items() if item.status == "queued"]
+    """IDLE: scan worktree state files for finalize-ready candidates, acquire lease, proceed to merge."""
+    exclude = checkpoint.candidate_slug
 
-    if not queued_items:
+    if slug is not None:
+        candidate = _verify_slug_ready(cwd, slug)
+        candidates = [candidate] if candidate else []
+    else:
+        candidates = _scan_finalize_ready_candidates(cwd, exclude_slug=exclude)
+
+    if not candidates:
         elapsed_ms = int((perf_counter() - started) * 1000)
-        # Release any stale lease we might hold
         _try_release_lease(lease_store, session_id, checkpoint.lease_token)
         return False, _format_queue_empty(checkpoint.items_processed, checkpoint.items_blocked, elapsed_ms)
-
-    # Validate slug filter (queue is FIFO)
-    if slug is not None:
-        next_item = queued_items[0]
-        if next_item.key.slug != slug:
-            return False, _format_error(
-                "SLUG_NOT_NEXT",
-                f"Requested slug '{slug}' is not next in queue (next: '{next_item.key.slug}').\n"
-                "The integration queue is FIFO. Process queued items in order.",
-            )
 
     # Acquire lease
     acquire_result = lease_store.acquire(
@@ -339,16 +427,7 @@ def _step_idle(
         return False, _format_lease_busy(holder_id)
 
     lease_token = acquire_result.lease.lease_token
-
-    # Pop next candidate
-    item = queue.pop_next()
-    if item is None:
-        # Race between count and pop
-        lease_store.release(key=_INTEGRATION_LEASE_KEY, owner_session_id=session_id, lease_token=lease_token)
-        elapsed_ms = int((perf_counter() - started) * 1000)
-        return False, _format_queue_empty(checkpoint.items_processed, checkpoint.items_blocked, elapsed_ms)
-
-    key = item.key
+    key = candidates[0].key
     now = _now_iso()
     checkpoint.phase = IntegrationPhase.CANDIDATE_DEQUEUED.value
     checkpoint.candidate_slug = key.slug
@@ -361,7 +440,7 @@ def _step_idle(
 
     logger.info("%s slug=%s phase=CANDIDATE_DEQUEUED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
     _emit_lifecycle_event(
-        "integration.started", {"slug": key.slug, "session_id": session_id, "queue_depth": len(queued_items)}
+        "integration.started", {"slug": key.slug, "session_id": session_id, "queue_depth": len(candidates)}
     )
     _emit_lifecycle_event("integration.candidate.dequeued", {"slug": key.slug, "branch": key.branch, "sha": key.sha})
 
@@ -647,7 +726,6 @@ def _step_push_succeeded(
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
-    queue: IntegrationQueue,
     cwd: str,
 ) -> tuple[bool, str]:
     """PUSH_SUCCEEDED: sync repo root with pushed origin/main, then cleanup."""
@@ -664,14 +742,13 @@ def _step_push_succeeded(
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
-    return _do_cleanup(checkpoint=checkpoint, checkpoint_path=checkpoint_path, queue=queue, key=key, cwd=cwd)
+    return _do_cleanup(checkpoint=checkpoint, checkpoint_path=checkpoint_path, key=key, cwd=cwd)
 
 
 def _step_cleanup(
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
-    queue: IntegrationQueue,
     cwd: str,
 ) -> tuple[bool, str]:
     """CLEANUP: idempotent re-entry for cleanup after crash."""
@@ -679,14 +756,13 @@ def _step_cleanup(
     if not key:
         return False, _format_error("INVALID_STATE", "CLEANUP phase has no candidate key")
 
-    return _do_cleanup(checkpoint=checkpoint, checkpoint_path=checkpoint_path, queue=queue, key=key, cwd=cwd)
+    return _do_cleanup(checkpoint=checkpoint, checkpoint_path=checkpoint_path, key=key, cwd=cwd)
 
 
 def _do_cleanup(
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
-    queue: IntegrationQueue,
     key: CandidateKey,
     cwd: str,
 ) -> tuple[bool, str]:
@@ -698,6 +774,9 @@ def _do_cleanup(
     cleanup_delivered_slug which handles physical artifacts (worktree
     removal, branch deletion, leftover directory removal) and also runs
     clean_dependency_references idempotently on repo root.
+
+    The worktree cleanup removes the ``state.yaml`` — that IS the
+    consumption mechanism. No separate queue bookkeeping needed.
     """
     from teleclaude.core.next_machine.core import cleanup_delivered_slug
 
@@ -713,12 +792,6 @@ def _do_cleanup(
         "integration.candidate.delivered",
         {"slug": key.slug, "branch": key.branch, "merge_commit_sha": merge_commit},
     )
-
-    # Mark integrated and advance checkpoint
-    try:
-        queue.mark_integrated(key=key, reason="integrated via state machine")
-    except Exception as exc:
-        logger.warning("mark_integrated failed for %s: %s", key.slug, exc)
 
     checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
     checkpoint.items_processed += 1

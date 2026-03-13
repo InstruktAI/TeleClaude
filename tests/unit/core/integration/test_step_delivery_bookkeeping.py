@@ -11,7 +11,7 @@ via a single 'git push origin HEAD:main'. Repo root pull failure is non-fatal.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from teleclaude.core.integration.checkpoint import (
     IntegrationCheckpoint,
@@ -157,8 +157,6 @@ def test_repo_root_pull_failure_is_nonfatal(tmp_path: Path) -> None:
             return 0, "d" * 40 + "\n", ""
         return 0, "", ""
 
-    queue = MagicMock()
-
     with (
         patch(
             "teleclaude.core.integration.step_functions._run_git",
@@ -171,7 +169,6 @@ def test_repo_root_pull_failure_is_nonfatal(tmp_path: Path) -> None:
         ok, _msg = _step_push_succeeded(
             checkpoint=cp,
             checkpoint_path=cp_path,
-            queue=queue,
             cwd=str(tmp_path),
         )
 

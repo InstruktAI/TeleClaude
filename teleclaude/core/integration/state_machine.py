@@ -28,7 +28,6 @@ from teleclaude.core.integration.checkpoint import (
 )
 from teleclaude.core.integration.formatters import _format_error, _format_queue_empty
 from teleclaude.core.integration.lease import IntegrationLeaseStore
-from teleclaude.core.integration.queue import IntegrationQueue
 from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
     _do_merge,
@@ -70,7 +69,6 @@ def _dispatch_sync(
     """Synchronous state machine loop. Returns instruction string for the agent."""
     _tls.loop = loop
     checkpoint_path = state_dir / "integrate-state.json"
-    queue = IntegrationQueue(state_path=state_dir / "queue.json")
     lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
 
     # Sync repo root with origin/main on every entry.
@@ -115,7 +113,6 @@ def _dispatch_sync(
             phase=phase,
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
-            queue=queue,
             lease_store=lease_store,
             session_id=session_id,
             slug=slug,
@@ -133,7 +130,6 @@ def _step(
     phase: IntegrationPhase,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
-    queue: IntegrationQueue,
     lease_store: IntegrationLeaseStore,
     session_id: str,
     slug: str | None,
@@ -145,7 +141,6 @@ def _step(
         return _step_idle(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
-            queue=queue,
             lease_store=lease_store,
             session_id=session_id,
             slug=slug,
@@ -198,7 +193,6 @@ def _step(
         return _step_push_succeeded(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
-            queue=queue,
             cwd=cwd,
         )
 
@@ -206,18 +200,11 @@ def _step(
         return _step_cleanup(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
-            queue=queue,
             cwd=cwd,
         )
 
     if phase == IntegrationPhase.CANDIDATE_DELIVERED:
         # Reset and loop for next candidate
-        key = _get_candidate_key(checkpoint)
-        if key:
-            try:
-                queue.mark_integrated(key=key, reason="integrated via state machine")
-            except Exception as exc:
-                logger.warning("mark_integrated failed for %s: %s", key.slug, exc)
         checkpoint.phase = IntegrationPhase.IDLE.value
         checkpoint.candidate_slug = None
         checkpoint.candidate_branch = None

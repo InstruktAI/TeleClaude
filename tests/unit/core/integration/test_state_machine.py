@@ -112,7 +112,7 @@ def test_dispatch_preserves_counters_on_mid_run_reentry(_mock_git: object, tmp_p
         started=perf_counter(),
     )
 
-    # CANDIDATE_DELIVERED transitions to IDLE, then IDLE finds empty queue.
-    # Counters from the crashed run are preserved in the report.
+    # CANDIDATE_DELIVERED transitions to IDLE, then IDLE finds no candidates
+    # (no trees/ directory). Counters from the crashed run are preserved.
     assert _extract_processed_count(output) == 3
     assert _extract_blocked_count(output) == 1
