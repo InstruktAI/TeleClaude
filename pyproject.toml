@@ -144,7 +144,7 @@ max-complexity = 20
 "teleclaude/helpers/agent_cli.py" = ["E402"]  # Needs sys.path for standalone execution
 # guard: ratchet-down — existing complexity violations, must decompose over time
 "teleclaude/api_server.py" = ["C901"]
-"teleclaude/cli/telec.py" = ["C901", "B904", "E402"]
+"teleclaude/cli/telec/**" = ["C901", "B904", "E402"]
 "teleclaude/cli/cartridge_cli.py" = ["C901"]
 "teleclaude/cli/tui/state.py" = ["C901"]
 "teleclaude/cli/tui/pane_manager.py" = ["C901"]
@@ -180,7 +180,7 @@ max-complexity = 20
 # guard: ratchet-down — B904 (raise from), B023 (loop vars), E402 (import order), RUF001-003 (unicode)
 "teleclaude/cli/config_cli.py" = ["B904"]
 "teleclaude/cli/tool_client.py" = ["B904"]
-"teleclaude/cli/tool_commands.py" = ["B904"]
+"teleclaude/cli/tool_commands/**" = ["B904"]
 "teleclaude/core/integration/lease.py" = ["B904"]
 "teleclaude/core/tmux_bridge.py" = ["B904"]
 "teleclaude/core/codex_prompt_submit.py" = ["B023", "RUF001", "RUF002", "RUF003"]
