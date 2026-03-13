@@ -19,25 +19,18 @@ Not every todo requires creative work. The creative stage activates only when th
 involves visual or creative work — explicitly stated in `input.md` or flagged in
 `roadmap.yaml`.
 
-The lifecycle has three sequential phases, each with a human gate:
+Governing constraints:
 
-1. **Design Discovery** — human and creator collaborate to produce `design-spec.md`.
-   Human gate: explicit confirmation required.
-
-2. **Art Generation** — artist agent generates mood board images from the confirmed
-   design spec and reference images. Output to `todos/{slug}/art/`.
-   Human gate: explicit approval required (iterations allowed).
-
-3. **Visual Drafting** — frontender agent(s) produce HTML+CSS visual artifacts from
-   approved art and design spec. Output to `todos/{slug}/html/`.
-   Human gate: explicit approval required (bake-off selection for multi-agent).
+- **Human-in-the-loop**: three blocking gates where the machine parks and waits.
+- **Stateless derivation**: all state derived from filesystem artifacts and `state.yaml`.
+- **Artifact immutability**: the machine never modifies artifacts directly — it dispatches workers.
+- **Sequential phases**: design spec precedes art, art precedes visuals.
 
 When all three phases complete (CREATIVE_COMPLETE), creative artifacts become
 preconditions for the prepare machine: `design-spec.md` constrains requirements,
 `art/` provides visual reference, `html/` provides prototypes.
 
-Work state lives in `todos/{slug}/state.yaml` under the `creative` section. All state
-is derived from filesystem artifacts — each call is crash-safe.
+Work state lives in `todos/{slug}/state.yaml` under the `creative` section.
 
 ## Preconditions
 
@@ -47,10 +40,29 @@ is derived from filesystem artifacts — each call is crash-safe.
 ## Steps
 
 1. Run `telec todo create [slug]` to derive the current creative phase.
-2. Follow the returned instruction (facilitate design discovery, dispatch artist,
-   dispatch frontender, or park at human gate).
-3. Repeat until the machine returns CREATIVE_COMPLETE.
-4. Proceed to `telec todo prepare [slug]` for requirements discovery.
+
+2. **Design Discovery** — human and creator collaborate to produce `design-spec.md`,
+   the constraint document that governs all downstream creative work. The creator
+   presents reference sites, collects images the human provides (saved to
+   `todos/{slug}/input/`), and facilitates the dialogue.
+   Human gate: the design spec requires explicit human confirmation before proceeding.
+
+3. **Art Generation** — artist agent generates mood board images from the confirmed
+   design spec and any reference images. Output goes to `todos/{slug}/art/`.
+   Human gate: the art requires explicit human approval before proceeding. The human
+   may request iterations — the artist revises and the human reviews again.
+
+4. **Visual Drafting** — frontender agent(s) produce self-contained HTML+CSS visual
+   artifacts from the approved art and design spec. The frontender is multimodal — it
+   reads the approved art images for compositional intent and uses the design spec for
+   exact values. Output goes to `todos/{slug}/html/`.
+   Human gate: the visuals require explicit human approval before proceeding. For
+   multi-agent bake-offs, the human selects the winning version.
+
+5. Repeat `telec todo create [slug]` after each worker completes or human gate resolves
+   until the machine returns CREATIVE_COMPLETE.
+
+6. Proceed to `telec todo prepare [slug]` for requirements discovery.
 
 ## Outputs
 
@@ -63,3 +75,8 @@ is derived from filesystem artifacts — each call is crash-safe.
 
 - Each call is crash-safe — re-calling derives state from the filesystem and resumes.
 - If blocked, the orchestrator records the blocker and surfaces it to the human.
+
+## See Also
+
+- ~/.teleclaude/docs/creative/design/creative-machine.md
+- ~/.teleclaude/docs/creative/procedure/creative-orchestration.md
