@@ -555,7 +555,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Run the Phase C (integrate) state machine",
                 args="[<slug>]",
                 flags=[_H],
-                auth=CommandAuth(system=_SYS_ORCH | _SYS_INTG, human=_HR_MEMBER),
+                auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
             ),
             "mark-phase": CommandDef(
                 desc="Mark a work or prepare phase in state.yaml",
