@@ -167,17 +167,28 @@ class SessionRow(TelecMixin, Widget):
         agent_label = self.agent or "shell"
         line.append(f"{agent_label}/{self.mode}", style=style)
 
-        # Subdir (slug only) — respects selection/preview state for contrast
+        # Subdir (slug only) — permanently highlighted; inverted when row is selected/previewed
         subdir = getattr(self.session, "subdir", None)
         if subdir:
             slug = subdir.removeprefix(WORKTREE_DIR + "/")
-            # When selected or previewed, use row style for inverted contrast
-            # Otherwise, use agent color without bold/italic
-            slug_style = style if (selected or previewed) else resolve_style(self.agent, self._tier("normal"))
+            if selected:
+                slug_style = Style(
+                    color=resolve_selection_bg_hex(self.agent),
+                    bgcolor=get_selection_fg_hex(),
+                    bold=True,
+                )
+            elif previewed:
+                slug_style = Style(
+                    color=resolve_preview_bg_hex(self.agent),
+                    bgcolor=get_selection_fg_hex(),
+                    bold=True,
+                )
+            else:
+                slug_style = resolve_style(self.agent, self._tier("highlight"))
             line.append(f" {slug}", style=slug_style)
 
-        # Title in quotes — truncate to fit available width
-        title = self.session.title or "(untitled)"
+        # Title in quotes — strip newlines then truncate to fit available width
+        title = (self.session.title or "(untitled)").splitlines()[0]
         content_w = self._content_width
         avail = content_w - line.cell_len - 4  # 4 = '  "' prefix + '"' suffix
         if avail > 0 and len(title) > avail:
