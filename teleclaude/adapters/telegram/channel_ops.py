@@ -1,25 +1,31 @@
 """Channel operations mixin for Telegram adapter.
 
-Handles forum topic creation, updating, closing, reopening, and deletion.
+Handles forum topic creation, updating, closing, reopening, deletion,
+session-from-topic resolution, menu message management, and output streaming.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from telegram import ForumTopic
+from telegram import ForumTopic, Message, Update
 from telegram.error import BadRequest, TelegramError
 
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, Session
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
 from teleclaude.utils import command_retry
 
 from ..base_adapter import AdapterError
 
 if TYPE_CHECKING:
+    from telegram import InlineKeyboardMarkup
     from telegram.ext import ExtBot
+
+    from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 
 logger = get_logger(__name__)
 
@@ -246,3 +252,259 @@ class ChannelOperationsMixin:
     async def _delete_forum_topic_with_retry(self, topic_id: int) -> None:
         """Internal method with retry logic for deleting forum topics."""
         await self.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
+
+    # =========================================================================
+    # TYPE_CHECKING stubs for methods provided by other mixins
+    # =========================================================================
+
+    if TYPE_CHECKING:
+        user_whitelist: set[int]
+        computer_name: str
+        _qos_scheduler: OutputQoSScheduler
+
+        def _validate_update_for_command(self, update: Update) -> bool: ...
+
+        def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup: ...
+
+        async def edit_general_message(
+            self, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+        ) -> bool: ...
+
+        async def send_general_message(
+            self, text: str, *, metadata: MessageMetadata | None = None
+        ) -> str: ...
+
+        async def _send_general_message_with_retry(
+            self,
+            thread_id: int | None,
+            text: str,
+            parse_mode: str | None,
+            reply_markup: object,
+        ) -> Message: ...
+
+    # =========================================================================
+    # Session-from-topic resolution
+    # =========================================================================
+
+    async def _get_session_from_topic(self, update: Update) -> Session | None:
+        """Get session from current topic (silent - no feedback on failure).
+
+        Returns:
+            Session object or None if not found/not authorized
+        """
+        # Check preconditions
+        if not self._validate_update_for_command(update):
+            logger.debug("_get_session_from_topic: invalid update (no user or message)")
+            return None
+
+        # Check authorization
+        user = update.effective_user
+        if not user or user.id not in self.user_whitelist:
+            logger.debug("_get_session_from_topic: user %s not in whitelist", user.id if user else None)
+            return None
+
+        # Get message (handles both regular and edited messages)
+        message = update.effective_message
+        if not message or not message.message_thread_id:
+            logger.debug("_get_session_from_topic: no message_thread_id")
+            return None
+
+        thread_id = message.message_thread_id
+
+        sessions = await db.get_sessions_by_adapter_metadata(
+            "telegram",
+            "topic_id",
+            thread_id,
+            include_closed=True,
+        )
+
+        if not sessions:
+            logger.debug("_get_session_from_topic: no session found for topic_id %s", thread_id)
+            return None
+
+        session = sessions[0]
+        # TODO(core): keep treating "closing" as terminal here until lifecycle transitions
+        # are strictly enforced at query-time across all adapters.
+        if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+            logger.debug(
+                "_get_session_from_topic: topic_id %s maps to terminal session %s",
+                thread_id,
+                session.session_id,
+            )
+            return None
+
+        return session
+
+    async def _require_session_from_topic(self, update: Update) -> Session | None:
+        """Get session from topic, with error feedback if not found.
+
+        Use this for commands that MUST have a session context.
+        Sends error message to user if session not found.
+
+        Returns:
+            Session object or None (after sending error feedback)
+        """
+        session = await self._get_session_from_topic(update)
+        if session:
+            return session
+
+        # Determine the reason and give feedback
+        message = update.effective_message
+        if not message:
+            return None  # Can't send feedback without a message
+
+        thread_id = message.message_thread_id
+
+        if not thread_id:
+            # Command used outside of a session topic
+            error_msg = "❌ This command must be used in a session topic, not in General."
+            logger.warning(
+                "Command used outside session topic by user %s",
+                update.effective_user.id if update.effective_user else "unknown",
+            )
+        else:
+            # Session not found for this topic
+            error_msg = "❌ No session found for this topic. The session may have ended."
+            logger.warning("No session found for topic_id %s", thread_id)
+
+        try:
+            await self._send_general_message_with_retry(
+                thread_id,
+                error_msg,
+                None,
+                None,
+            )
+        except Exception as e:
+            logger.error("Failed to send session error feedback: %s", e)
+
+        return None
+
+    # =========================================================================
+    # Menu message management
+    # =========================================================================
+
+    async def _send_or_update_menu_message(self) -> None:
+        """Send or update the menu message in the general topic.
+
+        On daemon startup, checks for an existing menu message ID in system_settings.
+        If found, attempts to edit it. If edit fails (message deleted), creates a new one.
+        If not found, creates a new message.
+
+        The menu message shows a registry line with the heartbeat keyboard.
+        """
+        setting_key = f"menu_message_id:{self.computer_name}"
+        bot_info = await self.bot.get_me()
+        bot_username = bot_info.username or "unknown"
+
+        # Build menu content (parse_mode=None to avoid MarkdownV2 escaping issues)
+        reply_markup = self._build_heartbeat_keyboard(bot_username)
+        text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        metadata = MessageMetadata(reply_markup=reply_markup, parse_mode=None)
+
+        # Check for existing message ID
+        existing_msg_id = await db.get_system_setting(setting_key)
+
+        if existing_msg_id:
+            # Try to edit existing message
+            success = await self.edit_general_message(existing_msg_id, text, metadata=metadata)
+            if success:
+                logger.info("Updated menu message %s in general topic", existing_msg_id)
+                return
+            # Edit failed (message deleted), fall through to create new
+
+        # Create new message
+        new_msg_id = await self.send_general_message(text, metadata=metadata)
+        await db.set_system_setting(setting_key, new_msg_id)
+        logger.info("Created new menu message %s in general topic", new_msg_id)
+
+    # =========================================================================
+    # Peer discovery and output streaming
+    # =========================================================================
+
+    async def discover_peers(self) -> list[PeerInfo]:
+        """Discover peers via Telegram adapter.
+
+        NOTE: Due to Telegram Bot API restrictions, bots cannot see messages
+        from other bots, so this adapter does not support peer discovery.
+
+        Actual peer discovery is handled by other adapters (e.g., RedisTransport)
+        that support bot-to-bot communication.
+
+        Returns:
+            Empty list (Telegram doesn't support bot-to-bot discovery)
+        """
+        return []
+
+    async def create_topic(self, title: str) -> ForumTopic:
+        """Create a new forum topic and return the topic object."""
+        self._ensure_started()
+        topic = await self._create_forum_topic_with_retry(title)
+        logger.info("Created topic: %s (ID: %s)", title, topic.message_thread_id)
+        return topic
+
+    async def get_all_topics(self) -> list[object]:
+        """Get all forum topics in the supergroup.
+
+        Note: Telegram Bot API doesn't have a direct method to list all forum topics.
+        This implementation uses a workaround by searching through recent updates.
+        For now, we return empty list and rely on database persistence instead.
+        """
+        self._ensure_started()
+
+        return []
+
+    async def send_message_to_topic(
+        self, topic_id: int | None, text: str, parse_mode: str | None = "Markdown"
+    ) -> Message:
+        """Send a message to a specific topic or General topic.
+
+        Args:
+            topic_id: Topic ID (message_thread_id). Use None for General topic.
+            text: Message text
+            parse_mode: Parse mode (Markdown, HTML, or None for plain text)
+
+        Returns:
+            Message object
+        """
+        self._ensure_started()
+        if topic_id is not None:
+            message = await self._send_general_message_with_retry(
+                topic_id,
+                text,
+                parse_mode,
+                None,
+            )
+        else:
+            message = await self._send_general_message_with_retry(
+                None,
+                text,
+                parse_mode,
+                None,
+            )
+
+        return message
+
+    async def poll_output_stream(  # type: ignore[override,misc]
+        self,
+        session: Session,
+        timeout: float = 300.0,
+    ) -> AsyncIterator[str]:
+        """Poll for output chunks (not implemented for Telegram).
+
+        Telegram doesn't support bidirectional streaming like Redis.
+        This method is only implemented in RedisTransport.
+
+        Args:
+            session: Session object
+            timeout: Max seconds to wait
+
+        Raises:
+            NotImplementedError: Telegram doesn't support output streaming
+        """
+        raise NotImplementedError("Telegram adapter does not support poll_output_stream")
+        # This yield is unreachable but satisfies mypy's async generator requirements
+        yield ""  # pylint: disable=unreachable
+
+    def drop_pending_output(self, session_id: str) -> int:
+        """Drop pending QoS payloads for a session to prevent stale output after turn break."""
+        return self._qos_scheduler.drop_pending(session_id)
