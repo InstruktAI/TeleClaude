@@ -111,10 +111,6 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: rlf-cli
-  group: refactor-large-files
-  description: 'Decompose CLI entrypoint: cli/telec.py (4,329), cli/tool_commands.py
-    (1,417)'
 - slug: rlf-core-data
   group: refactor-large-files
   description: 'Decompose data layer: core/db.py (2,506), core/models.py (1,095),

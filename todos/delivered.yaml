@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: rlf-cli
+  date: '2026-03-14'
+  commit: 71c352a71d08
 - slug: fix-integration-delivery-bookkeeping-commits
   date: '2026-03-13'
   commit: 29b3b6d652ad
