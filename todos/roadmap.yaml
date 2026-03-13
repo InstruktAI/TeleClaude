@@ -47,50 +47,42 @@
   group: test-suite-overhaul
   after:
   - tso-infra
-  - refactor-large-files
   description: 'Test overhaul: adapters/, transport/ (~19 source files)'
 - slug: tso-api
   group: test-suite-overhaul
   after:
   - tso-infra
-  - refactor-large-files
   description: 'Test overhaul: api/, services/ (~16 source files)'
 - slug: tso-cli
   group: test-suite-overhaul
   after:
   - tso-infra
-  - refactor-large-files
   description: 'Test overhaul: cli/ non-TUI, config/, entrypoints/ (~21 source files)'
 - slug: tso-tui
   group: test-suite-overhaul
   after:
   - tso-infra
-  - refactor-large-files
   description: 'Test overhaul: cli/tui/ full tree (~60 source files)'
 - slug: tso-core-data
   group: test-suite-overhaul
   after:
   - tso-infra
-  - refactor-large-files
   description: 'Test overhaul: core/ data model layer + migrations (~59 source files)'
 - slug: tso-core-logic
   group: test-suite-overhaul
   after:
   - tso-infra
-  - refactor-large-files
   description: 'Test overhaul: core/ behavioral layer, state machines, integration
     (~44 source files)'
 - slug: tso-hooks
   group: test-suite-overhaul
   after:
   - tso-infra
-  - refactor-large-files
   description: 'Test overhaul: hooks/ full tree (~23 source files)'
 - slug: tso-peripherals
   group: test-suite-overhaul
   after:
   - tso-infra
-  - refactor-large-files
   description: 'Test overhaul: channels, chiptunes, cron, memory, mirrors, tts, stt,
     utils, root files (~112 source files)'
 - slug: tso-integration

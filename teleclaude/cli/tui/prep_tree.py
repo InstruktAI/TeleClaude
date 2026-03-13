@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 
 from teleclaude.cli.tui.todos import TodoItem
@@ -18,8 +19,51 @@ class TreeRenderNode:
     todo: TodoItem
 
 
+def _topo_sort_siblings(
+    slugs: list[str], after_map: dict[str, list[str]]
+) -> list[str]:
+    """Topologically sort a sibling set by after-dependencies, stable on input order.
+
+    Uses Kahn's algorithm restricted to the sibling set.
+    Dependencies pointing outside the set are ignored.
+    Original order is the tiebreaker for items with equal precedence.
+    """
+    sibling_set = set(slugs)
+    # Build in-degree and adjacency restricted to this sibling set
+    in_degree: dict[str, int] = {s: 0 for s in slugs}
+    dependents: dict[str, list[str]] = {s: [] for s in slugs}
+
+    for slug in slugs:
+        for dep in after_map.get(slug, []):
+            if dep in sibling_set:
+                in_degree[slug] += 1
+                dependents[dep].append(slug)
+
+    # Seed queue with zero in-degree items, preserving input order
+    queue: deque[str] = deque(s for s in slugs if in_degree[s] == 0)
+    result: list[str] = []
+
+    while queue:
+        current = queue.popleft()
+        result.append(current)
+        # Release dependents in their original input order
+        for dep in sorted(dependents[current], key=slugs.index):
+            in_degree[dep] -= 1
+            if in_degree[dep] == 0:
+                queue.append(dep)
+
+    # Append any remaining items (cycle fallback) in original order
+    if len(result) < len(slugs):
+        seen = set(result)
+        for s in slugs:
+            if s not in seen:
+                result.append(s)
+
+    return result
+
+
 def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
-    """Build a dependency tree from TodoItems using their `after` and `group` fields.
+    """Build a dependency tree from TodoItems using `group` for hierarchy and `after` for ordering.
 
     Args:
         items: Flat list of TodoItems with `after` dependencies and optional `group`
@@ -27,105 +71,99 @@ def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
     Returns:
         List of TreeRenderNode in DFS order (parent before children)
 
-    The tree structure is derived from `after` dependencies with `group` nesting:
-    - Items with `after=[X]` nest under X (first resolvable entry is visual parent)
-    - Items with no resolvable `after` but `group=Y` nest under Y as visual children
-    - Items with neither become roots
-    - Siblings preserve their relative order from the input list
+    Phase 1 - Hierarchy from `group`:
+        - Items with `group=Y` (where Y is visible and not self) nest under Y
+        - All others are roots
+
+    Phase 2 - Ordering from `after`:
+        - Siblings within each parent are topologically sorted by `after` deps
+        - Cross-group `after` deps affect root ordering (A after B means A's root after B's root)
+
+    Phase 3 - DFS walk:
+        - Walk roots in sorted order, recurse into sorted children
+        - Compute depth, is_last, tree_lines for rendering
     """
     if not items:
         return []
 
-    # Build lookup structures
     todo_by_slug = {t.slug: t for t in items}
     visible_slugs = set(todo_by_slug.keys())
+    after_map = {t.slug: t.after for t in items}
 
-    # Build parent-child relationships from `after` dependencies
+    # --- Phase 1: Hierarchy from group only ---
     parent_map: dict[str, str | None] = {}
     children_map: dict[str, list[str]] = {}
 
-    # Helper to detect cycles when finding parent
-    def _has_cycle_to(slug: str, target: str) -> bool:
-        """Check if following parents from slug leads to target (cycle)."""
-        visited_chain: set[str] = set()
-        current = slug
-        while current is not None:
-            if current == target:
-                return True
-            if current in visited_chain:
-                # Hit a cycle in the chain but not involving target
-                break
-            visited_chain.add(current)
-            current = parent_map.get(current)
-        return False
-
     for item in items:
-        # Find first resolvable parent from `after` list that doesn't create a cycle
         parent_slug = None
-        if item.after:
-            for candidate in item.after:
-                if candidate in visible_slugs and not _has_cycle_to(candidate, item.slug):
-                    parent_slug = candidate
-                    break
-
-        # Group nesting: use group as visual parent when no after parent resolved
         if (
-            parent_slug is None
-            and item.group
+            item.group
             and item.group in visible_slugs
             and item.group != item.slug
-            and not _has_cycle_to(item.group, item.slug)
         ):
             parent_slug = item.group
 
         parent_map[item.slug] = parent_slug
         if parent_slug is not None:
-            if parent_slug not in children_map:
-                children_map[parent_slug] = []
-            children_map[parent_slug].append(item.slug)
+            children_map.setdefault(parent_slug, []).append(item.slug)
 
-    # Identify roots (items with no parent)
     roots = [item.slug for item in items if parent_map[item.slug] is None]
 
-    # Track visited to break cycles
-    visited: set[str] = set()
+    # --- Phase 2: Topological sort for ordering ---
 
-    # DFS traversal to build render order
+    # Helper: find which root group a slug belongs to
+    def _root_of(slug: str) -> str:
+        current = slug
+        parent = parent_map.get(current)
+        while parent is not None:
+            current = parent
+            parent = parent_map.get(current)
+        return current
+
+    # Sort children within each parent
+    for parent_slug, children in children_map.items():
+        children_map[parent_slug] = _topo_sort_siblings(children, after_map)
+
+    # Sort roots: cross-group after-deps promote root ordering.
+    # If slug A has after=[B] and B is in a different root group, A's root comes after B's root.
+    root_after: dict[str, list[str]] = {r: [] for r in roots}
+    for item in items:
+        item_root = _root_of(item.slug)
+        for dep in item.after:
+            if dep in visible_slugs:
+                dep_root = _root_of(dep)
+                if dep_root != item_root and dep_root in root_after:
+                    if dep_root not in root_after.get(item_root, []):
+                        root_after.setdefault(item_root, []).append(dep_root)
+
+    roots = _topo_sort_siblings(roots, root_after)
+
+    # --- Phase 3: DFS walk ---
+    visited: set[str] = set()
     result: list[TreeRenderNode] = []
 
     def _walk(slug: str, depth: int, ancestors: list[str]) -> None:
-        """Walk tree in DFS order, computing visual properties."""
-        # Check for cycles (slug already in ancestors chain)
-        if slug in ancestors or slug in visited:
-            # Cycle detected or already visited - skip this branch
+        if slug in visited:
             return
         visited.add(slug)
 
-        # Get children and determine if this is the last sibling
         parent_slug = parent_map[slug]
         if parent_slug is None:
-            # Root item - check if last among roots
             is_last = slug == roots[-1]
         else:
-            # Child item - check if last among siblings
             siblings = children_map.get(parent_slug, [])
             is_last = slug == siblings[-1]
 
-        # Build tree_lines: for each ancestor level, check if continuation is needed
         tree_lines: list[bool] = []
         for ancestor_slug in ancestors:
-            # Check if ancestor has a next sibling
             ancestor_parent = parent_map[ancestor_slug]
             if ancestor_parent is None:
-                # Ancestor is a root - always continue (GroupSeparator closes)
                 tree_lines.append(True)
             else:
-                # Ancestor is a child - check if it has a next sibling
                 ancestor_siblings = children_map.get(ancestor_parent, [])
                 ancestor_is_last = ancestor_slug == ancestor_siblings[-1]
                 tree_lines.append(not ancestor_is_last)
 
-        # Add node to result
         result.append(
             TreeRenderNode(
                 slug=slug,
@@ -136,12 +174,10 @@ def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
             )
         )
 
-        # Recurse into children
         children = children_map.get(slug, [])
         for child_slug in children:
-            _walk(child_slug, depth + 1, ancestors + [slug])
+            _walk(child_slug, depth + 1, [*ancestors, slug])
 
-    # Walk all roots in their original order
     for root_slug in roots:
         _walk(root_slug, 0, [])
 
