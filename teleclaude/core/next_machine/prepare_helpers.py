@@ -13,7 +13,8 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from teleclaude.core.next_machine.core import _emit_prepare_event, read_phase_state, write_phase_state
+from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
+from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 
 logger = logging.getLogger(__name__)
 

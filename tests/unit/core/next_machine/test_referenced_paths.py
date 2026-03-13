@@ -31,7 +31,7 @@ def _write_file(path: Path, name: str, content: str = "content long enough to pa
 
 
 @pytest.mark.asyncio
-@patch("teleclaude.core.next_machine.core._emit_prepare_event")
+@patch("teleclaude.core.next_machine.prepare._emit_prepare_event")
 async def test_plan_with_missing_referenced_paths_returns_redraft(
     _mock_emit: MagicMock,
     tmp_path: Path,
@@ -78,12 +78,12 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
     mock_db = MagicMock()
 
     with patch(
-        "teleclaude.core.next_machine.core.compose_agent_guidance",
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
         new_callable=AsyncMock,
         return_value="guidance",
     ):
-        with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
+        with patch("teleclaude.core.next_machine.prepare.slug_in_roadmap", return_value=True):
+            with patch("teleclaude.core.next_machine.prepare.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
 
     # Should return a re-draft instruction (not loop to plan_review)
@@ -93,7 +93,7 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
 
 
 @pytest.mark.asyncio
-@patch("teleclaude.core.next_machine.core._emit_prepare_event")
+@patch("teleclaude.core.next_machine.prepare._emit_prepare_event")
 async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
     _mock_emit: MagicMock,
     tmp_path: Path,
@@ -141,12 +141,12 @@ async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
     mock_db = MagicMock()
 
     with patch(
-        "teleclaude.core.next_machine.core.compose_agent_guidance",
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
         new_callable=AsyncMock,
         return_value="guidance",
     ):
-        with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
+        with patch("teleclaude.core.next_machine.prepare.slug_in_roadmap", return_value=True):
+            with patch("teleclaude.core.next_machine.prepare.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
 
     # Should dispatch a reviewer (advanced past plan_drafting to plan_review)
@@ -156,7 +156,7 @@ async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
 
 
 @pytest.mark.asyncio
-@patch("teleclaude.core.next_machine.core._emit_prepare_event")
+@patch("teleclaude.core.next_machine.prepare._emit_prepare_event")
 async def test_plan_with_empty_referenced_paths_advances_normally(
     _mock_emit: MagicMock,
     tmp_path: Path,
@@ -198,12 +198,12 @@ async def test_plan_with_empty_referenced_paths_advances_normally(
     mock_db = MagicMock()
 
     with patch(
-        "teleclaude.core.next_machine.core.compose_agent_guidance",
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
         new_callable=AsyncMock,
         return_value="guidance",
     ):
-        with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
+        with patch("teleclaude.core.next_machine.prepare.slug_in_roadmap", return_value=True):
+            with patch("teleclaude.core.next_machine.prepare.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
 
     # Should advance to plan review
