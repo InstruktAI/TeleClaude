@@ -132,9 +132,6 @@
   group: refactor-large-files
   description: 'Decompose core infra: core/agent_coordinator.py (1,619), core/tmux_bridge.py
     (1,402), core/adapter_client.py (1,161)'
-- slug: rlf-services
-  group: refactor-large-files
-  description: 'Decompose service layer: api_server.py (3,268), daemon.py (2,669)'
 - slug: rlf-peripherals
   group: refactor-large-files
   description: 'Decompose peripherals: transport, utils, hooks, helpers, validation

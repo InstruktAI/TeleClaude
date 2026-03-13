@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: rlf-services
+  date: '2026-03-13'
+  commit: a3a162595bdc
 - slug: rlf-adapters
   date: '2026-03-13'
   commit: 953deb1c3cc6
