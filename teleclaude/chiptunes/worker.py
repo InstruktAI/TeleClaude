@@ -63,6 +63,8 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         self._pending_command_id: str = ""
         self._pending_action: str = ""
         self._lock = threading.RLock()
+        self._playback_lock = threading.Lock()
+        self._playback_gen = 0
         self._command_queue: queue.Queue[tuple[str, CommandAction]] = queue.Queue()
         self._command_worker = threading.Thread(target=self._command_loop, daemon=True, name="chiptunes-commands")
         self._command_worker.start()
@@ -106,6 +108,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         """Mark worker as disabled and stop playback."""
         with self._lock:
             self._enabled = False
+            self._playback_gen += 1  # invalidate in-flight callbacks
             self._paused_requested = False
             if self._player is not None:
                 self._player.stop()
@@ -243,33 +246,41 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
     # ------------------------------------------------------------------ #
 
     def _play_track(self, track: Path, start_position_seconds: float | None = None) -> None:
-        """Stop current player, emit track_start callback, and start playback."""
-        with self._lock:
-            if self._player is not None:
-                self._player.stop()
+        """Stop current player, emit track_start callback, and start playback.
 
-            player = ChiptunesPlayer(volume=self._volume)
-            player.on_track_end = self._on_track_end
-            self._player = player
-            self._current_track = track
-            start_paused = self._paused_requested
-            start_position = self._paused_position_seconds if start_position_seconds is None else start_position_seconds
-            self._loading = True
+        Serialized by ``_playback_lock`` so only one track transition runs at a
+        time.  A generation counter (``_playback_gen``) lets ``_on_track_end``
+        ignore stale callbacks from replaced players.
+        """
+        with self._playback_lock:
+            with self._lock:
+                gen = self._playback_gen + 1
+                self._playback_gen = gen
+                if self._player is not None:
+                    self._player.stop()
 
-        track_label = track.stem.replace("_", " ")
-        logger.info("ChipTunes: playing %s", track_label)
+                player = ChiptunesPlayer(volume=self._volume)
+                player.on_track_end = lambda reason=None: self._on_track_end(reason, gen=gen)
+                self._player = player
+                self._current_track = track
+                start_paused = self._paused_requested
+                start_position = self._paused_position_seconds if start_position_seconds is None else start_position_seconds
+                self._loading = True
 
-        if self.on_track_start is not None:
-            self.on_track_start(track_label, str(track))
+            track_label = track.stem.replace("_", " ")
+            logger.info("ChipTunes: playing %s (gen=%d)", track_label, gen)
 
-        player.play(track, start_paused=start_paused, start_position_seconds=max(0.0, start_position))
-        with self._lock:
-            paused_requested = self._paused_requested
-            self._loading = False
-        if paused_requested and not start_paused:
-            player.pause()
-        self._finalize_pending_command()
-        self._notify_state_change()
+            if self.on_track_start is not None:
+                self.on_track_start(track_label, str(track))
+
+            player.play(track, start_paused=start_paused, start_position_seconds=max(0.0, start_position))
+            with self._lock:
+                paused_requested = self._paused_requested
+                self._loading = False
+            if paused_requested and not start_paused:
+                player.pause()
+            self._finalize_pending_command()
+            self._notify_state_change()
 
     def _play_next(self) -> None:
         """Advance to the next track.
@@ -339,8 +350,18 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
 
         self._play_track(track)
 
-    def _on_track_end(self, reason: str | None = None) -> None:
-        """Called by the player when a track finishes — auto-advance."""
+    def _on_track_end(self, reason: str | None = None, *, gen: int = -1) -> None:
+        """Called by the player when a track finishes — auto-advance.
+
+        The ``gen`` parameter ties the callback to the playback generation that
+        created it.  If another ``_play_track`` call has since incremented the
+        generation, this callback is stale and must be ignored to prevent
+        cascading auto-advance loops.
+        """
+        with self._lock:
+            if gen != self._playback_gen:
+                logger.debug("ChipTunes: ignoring stale track_end (gen=%d, current=%d)", gen, self._playback_gen)
+                return
         if reason is None:
             reason = self._player.track_end_reason if self._player is not None else None
         track_end_reason = reason
@@ -349,7 +370,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             self._notify_state_change()
             return
         if self._enabled:
-            logger.debug("ChipTunes: track ended, advancing to next")
+            logger.debug("ChipTunes: track ended (gen=%d), advancing to next", gen)
             threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()
         else:
             self._notify_state_change()
