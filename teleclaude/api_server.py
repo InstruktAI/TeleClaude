@@ -14,6 +14,7 @@ import shlex
 import socket
 import tempfile
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -1232,17 +1233,43 @@ class APIServer:
                 resolved = await db.get_session_by_field(
                     "native_session_id", session_id, include_initializing=True
                 )
-                if not resolved:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"No session found for native ID {session_id} (agent={agent})",
+                if resolved:
+                    if resolved.active_agent and resolved.active_agent != agent:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Native session belongs to agent '{resolved.active_agent}', not '{agent}'",
+                        )
+                    session_id = resolved.session_id
+                else:
+                    # No existing session — create a headless one for the native ID
+                    from teleclaude.core.session_utils import (
+                        get_short_project_name,
+                        split_project_path_and_subdir,
                     )
-                if resolved.active_agent and resolved.active_agent != agent:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Native session belongs to agent '{resolved.active_agent}', not '{agent}'",
+
+                    new_session_id = str(uuid.uuid4())
+                    project_path: str | None = None
+                    subdir: str | None = None
+                    title = "Revived"
+                    raw_project = http_request.query_params.get("project")
+                    if raw_project:
+                        trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
+                        project_path, subdir = split_project_path_and_subdir(raw_project, trusted_dirs)
+                        if project_path:
+                            title = get_short_project_name(project_path, subdir)
+
+                    await db.create_headless_session(
+                        session_id=new_session_id,
+                        computer_name=config.computer.name,
+                        last_input_origin=InputOrigin.TERMINAL.value,
+                        title=title,
+                        active_agent=agent,
+                        native_session_id=session_id,
+                        native_log_file=None,
+                        project_path=project_path,
+                        subdir=subdir,
                     )
-                session_id = resolved.session_id
+                    session_id = new_session_id
 
             await check_session_access(http_request, session_id)
             try:

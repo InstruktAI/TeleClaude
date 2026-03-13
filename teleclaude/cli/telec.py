@@ -1876,7 +1876,8 @@ async def _revive_session_via_api(session_id: str, *, agent: str | None = None) 
     api = TelecAPIClient()
     await api.connect()
     try:
-        return await api.revive_session(session_id, agent=agent)
+        project = os.getcwd() if agent else None
+        return await api.revive_session(session_id, agent=agent, project=project)
     finally:
         await api.close()
 

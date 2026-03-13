@@ -11,7 +11,7 @@ from typing import TypedDict
 
 import httpx
 
-from teleclaude.constants import AGENT_PROTOCOL, API_SOCKET_PATH
+from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.agents import AgentName
 from teleclaude.mirrors.store import MirrorRecord, MirrorSearchResult, get_mirror, search_mirrors
 from teleclaude.utils.transcript import parse_session_transcript
@@ -96,14 +96,7 @@ def _print_results(search_term: str, results: list[dict[str, str]], *, show_comp
         print(" | ".join(parts))
 
     print()
-    shown_agents = {entry["agent"] for entry in results}
-    for agent_str in sorted(shown_agents):
-        meta = AGENT_PROTOCOL.get(agent_str)
-        if meta:
-            resume_tpl = str(meta.get("resume_template", ""))
-            if resume_tpl:
-                example = resume_tpl.format(base_cmd=agent_str, session_id="<session-id>")
-                print(f"Resume {agent_str}: {example}")
+    print("Revive: telec sessions revive <session-id> --agent <agent>")
 
 
 def _local_result_to_entry(result: MirrorSearchResult) -> dict[str, str]:
