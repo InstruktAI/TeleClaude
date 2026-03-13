@@ -101,9 +101,7 @@ def check_artifact_staleness(cwd: str, slug: str) -> list[str]:
     return [key for key, _ in _ARTIFACT_CASCADE[stale_from:]]
 
 
-def record_finding(
-    cwd: str, slug: str, review_type: str, finding: dict[str, object]
-) -> None:
+def record_finding(cwd: str, slug: str, review_type: str, finding: dict[str, object]) -> None:
     """Append a structured finding to the review's findings list in state.yaml."""
     state = read_phase_state(cwd, slug)
     review = state.get(review_type, {})
@@ -126,9 +124,7 @@ def record_finding(
     )
 
 
-def resolve_finding(
-    cwd: str, slug: str, review_type: str, finding_id: str, resolution_method: str
-) -> None:
+def resolve_finding(cwd: str, slug: str, review_type: str, finding_id: str, resolution_method: str) -> None:
     """Mark a finding as resolved in state.yaml."""
     now = datetime.now(UTC).isoformat()
     state = read_phase_state(cwd, slug)

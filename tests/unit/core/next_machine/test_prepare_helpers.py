@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -175,5 +174,3 @@ def test_compute_todo_folder_diff_returns_folder_diff(tmp_path: Path) -> None:
     assert result == "folder diff"
     call_args = mock_git.call_args[0][0]
     assert f"todos/{slug}/" in " ".join(call_args)
-
-

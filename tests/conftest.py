@@ -2,9 +2,9 @@
 
 import logging
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 
 import pytest
 
@@ -228,11 +228,11 @@ class MockAPIClient:
 
     async def create_session(
         self,
-        computer: str | None = None,  # noqa: ARG002
-        project_path: str | None = None,  # noqa: ARG002
-        agent: str = "claude",  # noqa: ARG002
-        thinking_mode: str = "slow",  # noqa: ARG002
-        message: str | None = None,  # noqa: ARG002
+        computer: str | None = None,
+        project_path: str | None = None,
+        agent: str = "claude",
+        thinking_mode: str = "slow",
+        message: str | None = None,
     ) -> dict[str, object]:  # guard: loose-dict
         """Mock create session.
 
@@ -253,8 +253,8 @@ class MockAPIClient:
 
     async def end_session(
         self,
-        session_id: str,  # noqa: ARG002
-        computer: str,  # noqa: ARG002
+        session_id: str,
+        computer: str,
     ) -> bool:
         """Mock end session.
 

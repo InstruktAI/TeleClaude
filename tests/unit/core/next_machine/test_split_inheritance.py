@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -183,5 +182,3 @@ def test_split_plan_approved_children_inherit_prepared(
     child_plan = tmp_path / "todos" / "child-c" / "implementation-plan.md"
     assert "Requirements content" in child_req.read_text()
     assert "Implementation plan content" in child_plan.read_text()
-
-

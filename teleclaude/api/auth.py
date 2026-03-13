@@ -187,8 +187,8 @@ class CallerIdentity:
     system_role: str | None  # e.g. "worker" or None (orchestrator/admin)
     human_role: str | None  # e.g. "admin", "member", etc.
     tmux_session_name: str | None  # for diagnostic use only
-    principal: str | None = None        # "human:<email>" or "system:<id>" (token-auth only)
-    principal_role: str | None = None   # role carried with the token (token-auth only)
+    principal: str | None = None  # "human:<email>" or "system:<id>" (token-auth only)
+    principal_role: str | None = None  # role carried with the token (token-auth only)
 
 
 async def verify_caller(

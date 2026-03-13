@@ -41,9 +41,7 @@ class DefaultSignalAIClient:
 
     async def summarise(self, title: str, body: str) -> str:
         client = self._anthropic_client()
-        prompt = (
-            f"Summarise this article in one sentence (max 20 words).\n\nTitle: {title}\n\nContent: {body[:2000]}"
-        )
+        prompt = f"Summarise this article in one sentence (max 20 words).\n\nTitle: {title}\n\nContent: {body[:2000]}"
         try:
             resp = await client.messages.create(  # type: ignore[union-attr]
                 model="claude-haiku-4-5-20251001",
@@ -82,8 +80,7 @@ class DefaultSignalAIClient:
     async def synthesise_cluster(self, items: list[dict[str, object]]) -> SynthesisArtifact:
         client = self._anthropic_client()
         item_descriptions = "\n".join(
-            f"- {i.get('raw_title', 'Untitled')} ({i.get('item_url', '')}): {i.get('summary', '')}"
-            for i in items[:10]
+            f"- {i.get('raw_title', 'Untitled')} ({i.get('item_url', '')}): {i.get('summary', '')}" for i in items[:10]
         )
         prompt = (
             "Synthesise the following news items into a structured JSON artifact.\n\n"

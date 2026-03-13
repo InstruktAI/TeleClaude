@@ -27,7 +27,6 @@ def _future_iso() -> str:
     return (datetime.now(UTC) + timedelta(hours=24)).isoformat()
 
 
-
 def _make_token_record(
     token: str | None = None,
     session_id: str = "sess-lifecycle",
@@ -108,9 +107,7 @@ class TestBootstrapIssuesToken:
         with patch.object(db_instance, "_session") as mock_ctx:
             mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-            token = await db_instance.issue_session_token(
-                "sess-lifecycle", "system:sess-lifecycle", "admin"
-            )
+            token = await db_instance.issue_session_token("sess-lifecycle", "system:sess-lifecycle", "admin")
 
         assert stored[0].principal == "system:sess-lifecycle"
         assert stored[0].role == "admin"

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.sandbox.bridge import SandboxBridgeCartridge
 from teleclaude.events.sandbox.container import SandboxContainerManager
-from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 
 
 def _make_event() -> EventEnvelope:
@@ -21,7 +21,7 @@ def _make_event() -> EventEnvelope:
         domain="test",
         description="test event",
         visibility=EventVisibility.LOCAL,
-        timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2025, 1, 1, tzinfo=UTC),
     )
 
 
@@ -128,6 +128,3 @@ async def test_connection_error_produces_error_entry():
 
     assert result is event
     assert result.payload["_sandbox_results"][0]["error"] == "unavailable"
-
-
-

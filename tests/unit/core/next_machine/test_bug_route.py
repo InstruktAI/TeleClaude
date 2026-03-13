@@ -17,9 +17,7 @@ from teleclaude.core.next_machine.core import is_bug_todo, verify_artifacts
 
 def _write_state(todo_dir: Path, state: dict) -> None:
     todo_dir.mkdir(parents=True, exist_ok=True)
-    (todo_dir / "state.yaml").write_text(
-        yaml.dump(state, default_flow_style=False), encoding="utf-8"
-    )
+    (todo_dir / "state.yaml").write_text(yaml.dump(state, default_flow_style=False), encoding="utf-8")
 
 
 class _git_result:

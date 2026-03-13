@@ -12,11 +12,8 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole, SlashCommand
 from teleclaude.core.models import SessionMetadata
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -199,9 +196,7 @@ async def test_run_slash_command_unmapped_command_produces_no_metadata():
 async def test_spawn_integrator_session_guard_returns_none_when_active():
     """Guard branch: if an integrator session is already running, return None."""
     running = MagicMock()
-    running.session_metadata = SessionMetadata(
-        system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value
-    )
+    running.session_metadata = SessionMetadata(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value)
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[running])
     mock_svc = MagicMock()

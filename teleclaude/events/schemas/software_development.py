@@ -176,7 +176,9 @@ def register_software_development(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="software-development",
             idempotency_fields=["package", "version"],
-            lifecycle=NotificationLifecycle(updates=True, group_key="package", meaningful_fields=["package", "version"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="package", meaningful_fields=["package", "version"]
+            ),
         )
     )
     catalog.register(
@@ -292,9 +294,7 @@ def register_software_development(catalog: EventCatalog) -> None:
             default_level=EventLevel.BUSINESS,
             domain="software-development",
             idempotency_fields=["slug"],
-            lifecycle=NotificationLifecycle(
-                updates=True, group_key="slug", meaningful_fields=["blocker"]
-            ),
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["blocker"]),
             actionable=True,
         )
     )

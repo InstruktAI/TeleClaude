@@ -126,3 +126,6 @@
     (1,402), core/adapter_client.py (1,161)'
 - slug: refactor-large-files
 - slug: rlf-peripherals
+- slug: rlf-core-data-pylint
+  after:
+  - rlf-core-data

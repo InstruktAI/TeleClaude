@@ -1,9 +1,87 @@
-build: pending
-review: pending
-deferrals_processed: false
+schema_version: 1
+phase: in_progress
+build: complete
+review: approved
+deferrals_processed: true
+deferrals_hash: 693d0a9b356e580db68a321ec5488f3d7a818d26028870acc2651a57b7b2dec8
+finalize:
+  status: pending
 breakdown:
   assessed: false
   todos: []
+review_round: 1
+max_review_rounds: 3
+review_baseline_commit: 8e675353e45f3b0a48689fd5aa6ca605e94afd21
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: ''
+grounding:
+  valid: false
+  base_sha: ''
+  input_digest: ''
+  referenced_paths: []
+  last_grounded_at: ''
+  invalidated_at: ''
+  invalidation_reason: ''
+requirements_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+test_spec_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
+plan_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+artifacts:
+  input:
+    digest: ''
+    produced_at: ''
+    stale: false
+  requirements:
+    digest: ''
+    produced_at: ''
+    stale: false
+  implementation_plan:
+    digest: ''
+    produced_at: ''
+    stale: false
+audit:
+  input_assessment:
+    started_at: ''
+    completed_at: ''
+  triangulation:
+    started_at: ''
+    completed_at: ''
+  requirements_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  plan_drafting:
+    started_at: ''
+    completed_at: ''
+  plan_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  gate:
+    started_at: ''
+    completed_at: ''
 dor:
   last_assessed_at: null
   score: 0
@@ -13,9 +91,3 @@ dor:
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []
-schema_version: 1

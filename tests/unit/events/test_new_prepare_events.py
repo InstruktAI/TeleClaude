@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 NEW_EVENTS = [
     "domain.software-development.prepare.phase_skipped",
     "domain.software-development.prepare.input_consumed",
@@ -24,6 +23,4 @@ def test_new_prepare_events_registered() -> None:
     register_software_development(catalog)
 
     for event_type in NEW_EVENTS:
-        assert catalog.get(event_type) is not None, (
-            f"Event '{event_type}' not found in catalog after registration"
-        )
+        assert catalog.get(event_type) is not None, f"Event '{event_type}' not found in catalog after registration"

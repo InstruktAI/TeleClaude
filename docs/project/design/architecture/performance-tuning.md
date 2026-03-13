@@ -26,12 +26,12 @@ These effects compound: pool starvation delays request handlers, background work
 
 | Parameter              | Location                      | Value        | Rationale                                                 |
 | ---------------------- | ----------------------------- | ------------ | --------------------------------------------------------- |
-| `pool_size`            | `core/db.py` engine config    | 20           | Headroom for concurrent API handlers + background workers |
-| `max_overflow`         | `core/db.py` engine config    | 10           | Burst capacity (30 total connections)                     |
-| `PRAGMA cache_size`    | `core/db.py` connect listener | -8000 (8 MB) | Per-connection page cache reduces disk I/O                |
-| `PRAGMA busy_timeout`  | `core/db.py` connect listener | 5000 ms      | WAL writer wait before SQLITE_BUSY                        |
-| `PRAGMA journal_mode`  | `core/db.py` connect listener | WAL          | Concurrent readers + single writer                        |
-| `PRAGMA synchronous`   | `core/db.py` connect listener | NORMAL       | Durability vs. write throughput tradeoff                  |
+| `pool_size`            | `core/db/_base.py` engine config    | 20           | Headroom for concurrent API handlers + background workers |
+| `max_overflow`         | `core/db/_base.py` engine config    | 10           | Burst capacity (30 total connections)                     |
+| `PRAGMA cache_size`    | `core/db/_base.py` connect listener | -8000 (8 MB) | Per-connection page cache reduces disk I/O                |
+| `PRAGMA busy_timeout`  | `core/db/_base.py` connect listener | 5000 ms      | WAL writer wait before SQLITE_BUSY                        |
+| `PRAGMA journal_mode`  | `core/db/_base.py` connect listener | WAL          | Concurrent readers + single writer                        |
+| `PRAGMA synchronous`   | `core/db/_base.py` connect listener | NORMAL       | Durability vs. write throughput tradeoff                  |
 | Auth session cache TTL | `api/auth.py`                 | 30 s         | Balance freshness vs. DB read elimination                 |
 | Auth session cache max | `api/auth.py`                 | 256 entries  | Bounded memory; LRU eviction when full                    |
 | Event loop policy      | `daemon.py` entry point       | uvloop       | 2-4x throughput for all async I/O                         |

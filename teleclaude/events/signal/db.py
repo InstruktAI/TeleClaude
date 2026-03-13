@@ -97,9 +97,7 @@ class SignalDB:
         return cursor.lastrowid or 0
 
     async def signal_item_exists(self, idempotency_key: str) -> bool:
-        cursor = await self._conn.execute(
-            "SELECT 1 FROM signal_items WHERE idempotency_key = ?", (idempotency_key,)
-        )
+        cursor = await self._conn.execute("SELECT 1 FROM signal_items WHERE idempotency_key = ?", (idempotency_key,))
         return (await cursor.fetchone()) is not None
 
     async def get_unclustered_items(self, since: datetime, limit: int = 500) -> list[dict[str, object]]:
@@ -166,9 +164,7 @@ class SignalDB:
         await self._conn.commit()
 
     async def get_cluster(self, cluster_id: int) -> dict[str, object] | None:
-        cursor = await self._conn.execute(
-            "SELECT * FROM signal_clusters WHERE id = ?", (cluster_id,)
-        )
+        cursor = await self._conn.execute("SELECT * FROM signal_clusters WHERE id = ?", (cluster_id,))
         row = await cursor.fetchone()
         if row is None:
             return None
@@ -235,8 +231,6 @@ class SignalDB:
         }
 
     async def get_last_ingest_time(self) -> str | None:
-        cursor = await self._conn.execute(
-            "SELECT MAX(fetched_at) FROM signal_items"
-        )
+        cursor = await self._conn.execute("SELECT MAX(fetched_at) FROM signal_items")
         row = await cursor.fetchone()
         return str(row[0]) if row and row[0] else None

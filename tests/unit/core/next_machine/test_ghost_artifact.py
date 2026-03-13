@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from teleclaude.core.next_machine.core import _derive_prepare_phase, PreparePhase
-
+from teleclaude.core.next_machine.core import PreparePhase, _derive_prepare_phase
 
 # ---------------------------------------------------------------------------
 # Helpers

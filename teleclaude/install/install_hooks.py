@@ -361,11 +361,7 @@ def _load_managed_mcp_servers(repo_root: Path) -> dict[str, dict[str, object]]:
     if not isinstance(mcp_servers, dict):
         return {}
 
-    return {
-        name: spec
-        for name, spec in mcp_servers.items()
-        if isinstance(name, str) and isinstance(spec, dict)
-    }
+    return {name: spec for name, spec in mcp_servers.items() if isinstance(name, str) and isinstance(spec, dict)}
 
 
 def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, dict[str, object]], label: str) -> None:
@@ -587,7 +583,7 @@ def _ensure_codex_mcp_servers(content: str, mcp_servers_spec: dict[str, dict[str
         mcp_header = re.search(r"^\[mcp_servers\]\s*$", content, re.MULTILINE)
         if mcp_header:
             # Find end of mcp_servers section (next top-level section or EOF)
-            next_section = re.search(r"^\[[^\.]", content[mcp_header.end():], re.MULTILINE)
+            next_section = re.search(r"^\[[^\.]", content[mcp_header.end() :], re.MULTILINE)
             if next_section:
                 insert_pos = mcp_header.end() + next_section.start()
             else:

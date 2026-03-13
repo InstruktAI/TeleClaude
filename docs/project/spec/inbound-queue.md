@@ -81,7 +81,7 @@ Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles w
 
 ### Delivery Function
 
-`deliver_inbound(row, client, start_polling)` in `command_handlers.py`:
+`deliver_inbound(row, client, start_polling)` in `command_handlers/_message.py`:
 
 1. Fetch session from DB — raises if not found
 2. Startup gate: wait up to 15s for session to exit `initializing` — raises on timeout

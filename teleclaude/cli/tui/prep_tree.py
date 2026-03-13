@@ -19,9 +19,7 @@ class TreeRenderNode:
     todo: TodoItem
 
 
-def _topo_sort_siblings(
-    slugs: list[str], after_map: dict[str, list[str]]
-) -> list[str]:
+def _topo_sort_siblings(slugs: list[str], after_map: dict[str, list[str]]) -> list[str]:
     """Topologically sort a sibling set by after-dependencies, stable on input order.
 
     Uses Kahn's algorithm restricted to the sibling set.
@@ -96,11 +94,7 @@ def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
 
     for item in items:
         parent_slug = None
-        if (
-            item.group
-            and item.group in visible_slugs
-            and item.group != item.slug
-        ):
+        if item.group and item.group in visible_slugs and item.group != item.slug:
             parent_slug = item.group
 
         parent_map[item.slug] = parent_slug

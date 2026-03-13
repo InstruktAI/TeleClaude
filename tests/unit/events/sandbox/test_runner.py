@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.sandbox.protocol import (
     SandboxRequest,
     read_frame,
@@ -22,7 +23,6 @@ from teleclaude.events.sandbox.runner import (
     _build_catalog_from_snapshot,
     _load_cartridge_module,
 )
-from teleclaude.events.envelope import EventLevel, EventVisibility
 
 # ---------------------------------------------------------------------------
 # _load_cartridge_module
@@ -43,9 +43,7 @@ def test_load_cartridge_module_no_process_callable():
 
 def test_load_cartridge_module_loads_callable():
     with tempfile.TemporaryDirectory() as tmpdir:
-        Path(tmpdir, "echo_cart.py").write_text(
-            "async def process(envelope, ctx):\n    return envelope\n"
-        )
+        Path(tmpdir, "echo_cart.py").write_text("async def process(envelope, ctx):\n    return envelope\n")
         module = _load_cartridge_module(tmpdir, "echo_cart")
         assert callable(getattr(module, "process", None))
 
@@ -148,9 +146,7 @@ async def _run_single_request(
 @pytest.mark.asyncio
 async def test_ping_handler_returns_ok():
     with tempfile.TemporaryDirectory() as tmpdir:
-        req = request_to_dict(
-            SandboxRequest(cartridge_name="__ping__", envelope={}, catalog_snapshot=[])
-        )
+        req = request_to_dict(SandboxRequest(cartridge_name="__ping__", envelope={}, catalog_snapshot=[]))
         resp = await _run_single_request(tmpdir, req)
         parsed = response_from_dict(resp)
         assert parsed.error is None
@@ -225,9 +221,7 @@ async def test_handle_client_cartridge_returning_none():
 
         from teleclaude.events.envelope import EventEnvelope
 
-        Path(tmpdir, "null_cart.py").write_text(
-            "async def process(envelope, ctx):\n    return None\n"
-        )
+        Path(tmpdir, "null_cart.py").write_text("async def process(envelope, ctx):\n    return None\n")
 
         env = EventEnvelope(
             event="test.event",

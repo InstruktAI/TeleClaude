@@ -263,13 +263,16 @@ class TestIsCommandAllowedWithPrincipal:
         from teleclaude.cli.telec import is_command_allowed
 
         # With principal_role="admin", should be permitted
-        assert is_command_allowed(
-            "sessions list",
-            system_role=None,
-            human_role=None,
-            principal="system:sess-001",
-            principal_role="admin",
-        ) is True
+        assert (
+            is_command_allowed(
+                "sessions list",
+                system_role=None,
+                human_role=None,
+                principal="system:sess-001",
+                principal_role="admin",
+            )
+            is True
+        )
 
     @pytest.mark.unit
     def test_anonymous_caller_denied_when_both_role_and_principal_absent(self):

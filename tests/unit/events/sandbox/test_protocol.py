@@ -8,8 +8,8 @@ import struct
 import pytest
 
 from teleclaude.events.sandbox.protocol import (
-    FrameTooLargeError,
     _MAX_FRAME_BYTES,
+    FrameTooLargeError,
     decode_message,
     encode_message,
     read_frame,

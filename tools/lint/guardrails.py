@@ -59,21 +59,23 @@ def main() -> None:
 # The cap exists to make config erosion VISIBLE — not to prevent all change.
 
 PYRIGHT_MAX_IGNORE_FILES = 8
-PYRIGHT_ALLOWED_NONE_REPORTS = frozenset({
-    "reportOptionalSubscript",
-    "reportOptionalMemberAccess",
-    "reportOptionalCall",
-    "reportOptionalIterable",
-    "reportOptionalContextManager",
-    "reportOptionalOperand",
-    "reportArgumentType",
-    "reportMissingTypeStubs",
-    "reportUnknownArgumentType",
-    "reportUnknownMemberType",
-    "reportUnknownParameterType",
-    "reportUnknownVariableType",
-    "reportPrivateUsage",
-})
+PYRIGHT_ALLOWED_NONE_REPORTS = frozenset(
+    {
+        "reportOptionalSubscript",
+        "reportOptionalMemberAccess",
+        "reportOptionalCall",
+        "reportOptionalIterable",
+        "reportOptionalContextManager",
+        "reportOptionalOperand",
+        "reportArgumentType",
+        "reportMissingTypeStubs",
+        "reportUnknownArgumentType",
+        "reportUnknownMemberType",
+        "reportUnknownParameterType",
+        "reportUnknownVariableType",
+        "reportPrivateUsage",
+    }
+)
 
 RUFF_REQUIRED_RULE_GROUPS = {"E", "F", "I", "C90", "B", "UP", "RUF"}
 # guard: ratchet-down — 8 includes 5 tech-debt items (UP042, RUF012, RUF005, RUF006, B905)
@@ -115,7 +117,9 @@ def _check_ruff_invariants(pyproject: str) -> None:
     the capture, hiding ignored rules from the cap check.
     """
     parsed = tomllib.loads(pyproject)
-    ruff_lint = parsed.get("tool", {}).get("ruff", {}).get("lint", {})  # guard: loose-dict - TOML parse result is untyped
+    ruff_lint = (
+        parsed.get("tool", {}).get("ruff", {}).get("lint", {})
+    )  # guard: loose-dict - TOML parse result is untyped
 
     # Required rule groups must be present in select
     selected_rules = set(ruff_lint.get("select", []))

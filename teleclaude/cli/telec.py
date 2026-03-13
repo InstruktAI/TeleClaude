@@ -3298,10 +3298,7 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
                 "git",
                 "commit",
                 "-m",
-                (
-                    f"chore({slug}): deliver and cleanup\n\n"
-                    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-                ),
+                (f"chore({slug}): deliver and cleanup\n\nCo-Authored-By: TeleClaude <noreply@instrukt.ai>"),
             ],
             capture_output=True,
             text=True,

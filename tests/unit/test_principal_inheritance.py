@@ -78,11 +78,11 @@ async def _run_create_session(
     fake_path.mkdir = MagicMock()
 
     with (
-        patch("teleclaude.core.command_handlers.db") as mock_db,
-        patch("teleclaude.core.command_handlers.get_identity_resolver") as mock_resolver,
-        patch("teleclaude.core.command_handlers.resolve_working_dir", return_value=working_dir),
-        patch("teleclaude.core.command_handlers.config") as mock_config,
-        patch("teleclaude.core.command_handlers.Path", return_value=fake_path),
+        patch("teleclaude.core.command_handlers._session.db") as mock_db,
+        patch("teleclaude.core.command_handlers._session.get_identity_resolver") as mock_resolver,
+        patch("teleclaude.core.command_handlers._session.resolve_working_dir", return_value=working_dir),
+        patch("teleclaude.core.command_handlers._session.config") as mock_config,
+        patch("teleclaude.core.command_handlers._session.Path", return_value=fake_path),
     ):
         mock_db.get_session = AsyncMock(return_value=parent_session)
         mock_db.create_session = AsyncMock(side_effect=_capture_create)

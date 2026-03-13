@@ -54,7 +54,7 @@ def filter_tool_names(role: str | None, tool_names: list[str], human_role: str |
 
     result = []
     for name in tool_names:
-        path = name[len("telec "):] if name.startswith("telec ") else name
+        path = name[len("telec ") :] if name.startswith("telec ") else name
         if is_command_allowed(path, role, human_role):
             result.append(name)
     return result
@@ -67,7 +67,7 @@ def filter_tool_specs(role: str | None, tools: list[ToolSpec], human_role: str |
     result = []
     for t in tools:
         name = t.get("name", "")
-        path = name[len("telec "):] if name.startswith("telec ") else name
+        path = name[len("telec ") :] if name.startswith("telec ") else name
         if is_command_allowed(path, role, human_role):
             result.append(t)
     return result
