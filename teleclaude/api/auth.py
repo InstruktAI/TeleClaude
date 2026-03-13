@@ -176,7 +176,9 @@ def _derive_session_system_role(session: Session) -> str | None:
         if normalized in {ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}:
             return normalized
 
-    return ROLE_WORKER if session.working_slug else ROLE_ORCHESTRATOR
+    if session.working_slug:
+        return ROLE_WORKER
+    return None
 
 
 @dataclass(frozen=True)
@@ -187,8 +189,8 @@ class CallerIdentity:
     system_role: str | None  # e.g. "worker" or None (orchestrator/admin)
     human_role: str | None  # e.g. "admin", "member", etc.
     tmux_session_name: str | None  # for diagnostic use only
-    principal: str | None = None  # "human:<email>" or "system:<id>" (token-auth only)
-    principal_role: str | None = None  # role carried with the token (token-auth only)
+    principal: str | None = None        # "human:<email>" or "system:<id>" (token-auth only)
+    principal_role: str | None = None   # role carried with the token (token-auth only)
 
 
 async def verify_caller(
@@ -308,13 +310,10 @@ async def verify_caller(
 
 def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
     """Check if a tool (mapped from endpoint) is denied for this identity."""
-    return not is_command_allowed(
-        tool_name,
-        identity.system_role,
-        identity.human_role,
-        principal=identity.principal,
-        principal_role=identity.principal_role,
-    )
+    human_role = identity.human_role
+    if human_role is None and identity.principal is not None:
+        human_role = identity.principal_role
+    return not is_command_allowed(tool_name, identity.system_role, human_role)
 
 
 def require_clearance(tool_name: str):

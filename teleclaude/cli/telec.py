@@ -116,8 +116,17 @@ class TelecCommand(str, Enum):
 @dataclass(frozen=True)
 class CommandAuth:
     system: frozenset[str]  # allowed system roles
-    human: frozenset[str]  # allowed human roles (admin always implicit except escalate)
-    exclude_human: frozenset[str] = field(default_factory=frozenset)  # roles denied even with admin bypass
+    human: frozenset[str]  # allowed human roles (admin must be explicit)
+
+    def allows(self, system_role: str | None, human_role: str | None) -> bool:
+        """Check whether a caller with the given roles is authorized.
+
+        Agent callers (system_role set) check the system set.
+        Human callers (no system_role) check the human set.
+        """
+        if system_role is not None:
+            return system_role in self.system
+        return human_role in self.human if human_role is not None else False
 
 
 @dataclass
@@ -170,12 +179,12 @@ _SYS_ORCH = frozenset({ROLE_ORCHESTRATOR, ROLE_INTEGRATOR})
 _SYS_ALL = frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR})
 _SYS_INTG = frozenset({ROLE_INTEGRATOR})
 
-_HR_ADMIN = frozenset()  # admin implicit; no other human roles
-_HR_MEMBER = frozenset({HUMAN_ROLE_MEMBER})
-_HR_MEMBER_CONTRIB = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR})
-_HR_MEMBER_CONTRIB_NEWCOMER = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER})
+_HR_ADMIN = frozenset({HUMAN_ROLE_ADMIN})
+_HR_MEMBER = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER})
+_HR_MEMBER_CONTRIB = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR})
+_HR_MEMBER_CONTRIB_NEWCOMER = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER})
 _HR_ALL_NON_ADMIN = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER})
-_HR_ALL = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER})
+_HR_ALL = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER})
 
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
@@ -345,7 +354,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(
                     system=_SYS_ALL | _SYS_INTG,
                     human=_HR_ALL_NON_ADMIN,
-                    exclude_human=frozenset({HUMAN_ROLE_ADMIN}),
                 ),
             ),
         },
@@ -1003,50 +1011,17 @@ def is_command_allowed(
     command_path: str,
     system_role: str | None,
     human_role: str | None,
-    principal: str | None = None,
-    principal_role: str | None = None,
 ) -> bool:
     """Check whether a caller is authorized to run a CLI command.
 
-    Both gates must pass: system_allows(cmd) AND human_allows(cmd).
-
-    - system_role=None (non-session callers like TUI/terminal) is treated as
-      orchestrator for the system-role check.
-    - human_role=None denies all human-role-gated commands (fail closed),
-      UNLESS a valid principal is present — token-authenticated agent sessions
-      use principal_role as their effective human role.
-    - Unknown command paths return False (fail closed).
-    - Admin bypasses the human-role allow-list for all commands except those
-      with an explicit exclude_human containing HUMAN_ROLE_ADMIN.
+    Agent callers (system_role set) check auth.system.
+    Human callers (no system_role) check auth.human.
+    Unknown command paths return False (fail closed).
     """
     auth = _resolve_command_auth(command_path)
     if auth is None:
         return False
-
-    # Determine the effective human role early — admin bypasses both gates.
-    # Token-authenticated agent sessions: fall back to principal_role when human_role absent.
-    effective_human_role = human_role
-    if effective_human_role is None and principal is not None:
-        effective_human_role = principal_role
-
-    if effective_human_role is None:
-        return False
-
-    # Admin exclusion check (e.g., sessions escalate explicitly blocks admin).
-    if effective_human_role == HUMAN_ROLE_ADMIN and effective_human_role in auth.exclude_human:
-        return False
-
-    # Admin bypasses both system-role and human-role gates.
-    # System-role restrictions constrain agents, not admins.
-    if effective_human_role == HUMAN_ROLE_ADMIN:
-        return True
-
-    # System-role gate: restricts which agent roles can invoke this command.
-    effective_system = system_role if system_role is not None else ROLE_ORCHESTRATOR
-    if effective_system not in auth.system:
-        return False
-
-    return effective_human_role in auth.human
+    return auth.allows(system_role, human_role)
 
 
 # Derived constants for completion (from schema)
