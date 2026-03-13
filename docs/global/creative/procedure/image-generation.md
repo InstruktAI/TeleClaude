@@ -14,32 +14,28 @@ Generate, edit, and iterate on images as part of creative work — mood boards, 
 art, logos, visual artifacts. This procedure is backend-agnostic; specific implementations
 live in subdirectories.
 
-## Modes
-
 All implementations support three modes:
 
 1. **Text-to-image** — generate a new image from a text prompt.
 2. **Image editing** — modify an existing image guided by a text prompt.
 3. **Multi-turn iteration** — generate, review, refine with follow-up prompts.
 
-## When to use
+## Preconditions
 
-- Creative lifecycle art generation phase (mood boards, hero images, concept art).
-- Ad-hoc visual work requested by a human (logos, icons, illustrations).
-- Iterating on visual output until approved.
+- At least one image generation implementation is available (see table in Steps).
+- API credentials are configured for the chosen backend.
 
 ## Steps
 
-1. Determine which implementation is available (see below).
+1. Determine which implementation is available:
+
+   | Implementation | Backend | Procedure |
+   |---|---|---|
+   | Nano Banana | Gemini (Google) | `creative/procedure/image-generation/nano-banana` |
+
 2. Follow the implementation-specific procedure for the chosen mode.
 3. Save output to the appropriate directory (typically `todos/{slug}/art/` for lifecycle work).
 4. If iterating, use the edit mode with the previous output as input.
-
-## Available implementations
-
-| Implementation | Backend | Procedure |
-|---|---|---|
-| Nano Banana | Gemini (Google) | `creative/procedure/image-generation/nano-banana` |
 
 ## Outputs
 
