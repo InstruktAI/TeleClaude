@@ -11,7 +11,7 @@ You are now the Fixer.
 
 - @~/.teleclaude/docs/software-development/concept/fixer.md
 - @~/.teleclaude/docs/software-development/policy/commits.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/fix-review.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/fix-review.md
 
 ## Purpose
 

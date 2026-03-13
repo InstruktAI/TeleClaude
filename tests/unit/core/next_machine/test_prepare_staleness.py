@@ -4,13 +4,10 @@ and record_input_consumed emission at input_assessment → requirements_review t
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import yaml
 
 
 # ---------------------------------------------------------------------------
@@ -28,10 +25,6 @@ def _write_file(todo_dir: Path, name: str, content: str = "content") -> Path:
     p = todo_dir / name
     p.write_text(content)
     return p
-
-
-def _write_state(todo_dir: Path, state: dict[str, Any]) -> None:
-    (todo_dir / "state.yaml").write_text(yaml.dump(state))
 
 
 # ---------------------------------------------------------------------------
@@ -133,40 +126,3 @@ async def test_next_prepare_no_staleness_proceeds_normally(
     assert "DISPATCH" in result or "next-prepare-discovery" in result
 
 
-# ---------------------------------------------------------------------------
-# record_input_consumed emitted at input_assessment → requirements_review transition
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-@patch("teleclaude.core.next_machine.core._emit_prepare_event")
-@patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event")
-async def test_input_consumed_emitted_when_requirements_exist(
-    mock_helpers_emit: MagicMock,
-    mock_core_emit: MagicMock,
-    tmp_path: Path,
-) -> None:
-    """_prepare_step_input_assessment emits input_consumed before transitioning to requirements_review."""
-    from teleclaude.core.next_machine.core import next_prepare, write_phase_state, read_phase_state
-
-    cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md", "This is the input description that is long enough to pass scaffold check.")
-    _write_file(tmp_path / "todos" / slug, "requirements.md", "This is a requirements document with enough content to pass scaffold check.")
-
-    # State: input_assessment phase (requirements.md exists)
-    state = read_phase_state(cwd, slug)
-    state["prepare_phase"] = "input_assessment"
-    write_phase_state(cwd, slug, state)
-
-    mock_db = MagicMock()
-
-    with patch("teleclaude.core.next_machine.core.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
-        with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
-                await next_prepare(mock_db, slug, cwd)
-
-    # input_consumed should have been emitted via helpers emit
-    all_helper_calls = [c[0][0] for c in mock_helpers_emit.call_args_list]
-    assert any("input_consumed" in call for call in all_helper_calls), (
-        f"Expected input_consumed event, got: {all_helper_calls}"
-    )

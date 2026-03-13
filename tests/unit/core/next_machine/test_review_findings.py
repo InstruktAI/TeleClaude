@@ -7,7 +7,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import yaml
 
 
 # ---------------------------------------------------------------------------
@@ -215,24 +214,3 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
     assert instruction  # some instruction returned
 
 
-# ---------------------------------------------------------------------------
-# needs_decision added to _PREPARE_VERDICT_VALUES
-# ---------------------------------------------------------------------------
-
-
-def test_needs_decision_in_verdict_values() -> None:
-    from teleclaude.core.next_machine.core import _PREPARE_VERDICT_VALUES
-
-    assert "needs_decision" in _PREPARE_VERDICT_VALUES
-
-
-def test_mark_prepare_verdict_accepts_needs_decision(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.core import mark_prepare_verdict
-
-    cwd = str(tmp_path)
-    slug = "test"
-    (tmp_path / "todos" / slug).mkdir(parents=True)
-
-    # Should not raise
-    state = mark_prepare_verdict(cwd, slug, "requirements_review", "needs_decision")
-    assert state["requirements_review"]["verdict"] == "needs_decision"  # type: ignore[index]

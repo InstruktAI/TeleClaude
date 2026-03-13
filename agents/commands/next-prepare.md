@@ -12,7 +12,7 @@ You are now the Prepare orchestrator.
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
-- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
 
 ## Purpose
 

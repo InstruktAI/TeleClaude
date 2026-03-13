@@ -21,20 +21,20 @@ The Work state machine routes implementation through four sub-phases: **Build �
 | File | Purpose |
 |------|---------|
 | [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py) | State machine implementation (`next_work()`) |
-| [`docs/software-development/procedure/lifecycle/build.md`](../../../software-development/procedure/lifecycle/build.md) | Build procedure |
-| [`docs/software-development/procedure/lifecycle/review.md`](../../../software-development/procedure/lifecycle/review.md) | Review procedure |
-| [`docs/software-development/procedure/lifecycle/fix-review.md`](../../../software-development/procedure/lifecycle/fix-review.md) | Fix review procedure |
-| [`docs/software-development/procedure/lifecycle/finalize.md`](../../../software-development/procedure/lifecycle/finalize.md) | Finalize procedure |
+| [`docs/software-development/procedure/lifecycle/work/build.md`](../../../software-development/procedure/lifecycle/work/build.md) | Build procedure |
+| [`docs/software-development/procedure/lifecycle/work/review.md`](../../../software-development/procedure/lifecycle/work/review.md) | Review procedure |
+| [`docs/software-development/procedure/lifecycle/work/fix-review.md`](../../../software-development/procedure/lifecycle/work/fix-review.md) | Fix review procedure |
+| [`docs/software-development/procedure/lifecycle/work/finalize.md`](../../../software-development/procedure/lifecycle/work/finalize.md) | Finalize procedure |
 | [`docs/general/procedure/orchestration.md`](../../../general/procedure/orchestration.md) | Orchestration loop procedure |
 
 ### Referenced doc snippets
 
 | Snippet ID | Content |
 |------------|---------|
-| `software-development/procedure/lifecycle/build` | Build phase — implement plan, commit per task |
-| `software-development/procedure/lifecycle/review` | Review phase — parallel lanes, structured findings |
-| `software-development/procedure/lifecycle/fix-review` | Fix phase — address findings, peer conversation |
-| `software-development/procedure/lifecycle/finalize` | Finalize — two-stage: worker prepare, orchestrator apply |
+| `software-development/procedure/lifecycle/work/build` | Build phase — implement plan, commit per task |
+| `software-development/procedure/lifecycle/work/review` | Review phase — parallel lanes, structured findings |
+| `software-development/procedure/lifecycle/work/fix-review` | Fix phase — address findings, peer conversation |
+| `software-development/procedure/lifecycle/work/finalize` | Finalize — two-stage: worker prepare, orchestrator apply |
 | `general/procedure/orchestration` | Orchestration loop and dispatch rules |
 | `software-development/policy/definition-of-done` | Quality gates for completion |
 | `software-development/policy/testing` | Pre-commit quality gates |
@@ -45,6 +45,7 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 - `todos/{slug}/requirements.md` — feature requirements (from Phase A)
 - `todos/{slug}/implementation-plan.md` — technical design with task checkboxes (from Phase A)
+- Test specification files — expected-failure-marked tests in the worktree (from Phase A)
 - `todos/{slug}/state.yaml` — build/review status, finalize state, review rounds
 - `todos/{slug}/quality-checklist.md` — build and review gate checkboxes
 - `todos/roadmap.yaml` — slug resolution and dependency graph
@@ -173,13 +174,14 @@ flowchart TD
     P1["1. Resolve slug\n(explicit or first ready item)"]
     P2["2. Dependency gating\n(all deps must be done)"]
     P3["3. Stash debt check\n(git stash forbidden)"]
-    P4["4. Artifact existence\n(requirements.md + plan)"]
+    P4["4. Artifact existence\n(requirements.md + plan + test specs)"]
+    P4b["4b. Test spec verification\n(expected-failure test specs exist in worktree)"]
     P5["5. Preparation freshness\n(grounding must be valid)"]
     P6["6. Worktree management\n(ensure + prep + sync)"]
     P7["7. Clean check\n(uncommitted changes)"]
     P8["8. Claim item\n(pending -> in_progress)"]
 
-    P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8
+    P1 --> P2 --> P3 --> P4 --> P4b --> P5 --> P6 --> P7 --> P8
 ```
 
 ### Happy path (sequence diagram)
@@ -198,7 +200,7 @@ sequenceDiagram
 
     Note over O,B: Build Phase
     O->>B: telec sessions run --command /next-build --args slug
-    B->>B: Implement tasks, write tests, commit per task
+    B->>B: Satisfy test specs, implement tasks, commit per task
     B->>B: Check all tasks [x], make test, make lint
     B-->>O: BUILD COMPLETE: slug
     O->>O: telec todo mark-phase slug --build complete

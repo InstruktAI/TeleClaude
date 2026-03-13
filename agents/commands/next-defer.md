@@ -10,7 +10,7 @@ You are now the Orchestrator.
 ## Required reads
 
 - @~/.teleclaude/docs/general/concept/orchestrator.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/deferrals.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/deferrals.md
 
 ## Purpose
 

@@ -16,8 +16,8 @@ You are now the Reviewer.
 - @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/policy/linting-requirements.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
-- @~/.teleclaude/docs/software-development/procedure/principle-violation-hunt.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/review.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
 
 ## Purpose
 

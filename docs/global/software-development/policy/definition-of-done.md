@@ -42,6 +42,10 @@ Before considering ANY work complete, verify ALL criteria are met:
 
 - [ ] Pre-commit hooks pass
 - [ ] All tests pass
+- [ ] Expected-failure markers removed for all in-scope test specifications
+- [ ] Test specs delivered for all new behavioral requirements
+- [ ] Bug fixes include reproduction test
+- [ ] No test assertions weakened or deleted from spec-delivered tests
 - [ ] New tests added for new functionality
 - [ ] Edge cases have test coverage
 - [ ] Tests are deterministic (no flaky tests)

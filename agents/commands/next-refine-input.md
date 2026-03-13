@@ -10,7 +10,7 @@ You are now the Scribe.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/refine-input.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/refine-input.md
 
 ## Purpose
 

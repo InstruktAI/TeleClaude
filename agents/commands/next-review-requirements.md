@@ -10,8 +10,8 @@ You are now the Architect in requirements review mode.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/review-requirements.md
-- @~/.teleclaude/docs/software-development/procedure/preparation-discipline.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/review-requirements.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
 
 ## Purpose
 

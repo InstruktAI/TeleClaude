@@ -41,6 +41,7 @@ Gates (all required):
      management, review overhead, and sequencing complexity. If the coordination
      cost exceeds the session-size benefit, don't split.
 3. **Verification**
+   - Executable test specifications (expected-failure-marked) exist for all behavioral requirements.
    - There is a clear way to verify completion (tests, logs, or observable behavior).
    - Edge cases and error paths are identified or explicitly deferred.
    - Definition of Done applies and is not contradicted by the task.

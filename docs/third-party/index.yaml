@@ -120,6 +120,14 @@ snippets:
   description: Gemini CLI Sub-Agents
   scope: project
   path: gemini-cli/sub-agents.md
+- id: third-party/image-generation/gemini-nano-banana
+  description: Gemini Image Generation (Nano Banana)
+  scope: project
+  path: image-generation/gemini-nano-banana.md
+- id: third-party/image-generation/landscape
+  description: Image Generation API Landscape
+  scope: project
+  path: image-generation/landscape.md
 - id: third-party/tmux/session-output-observation
   description: tmux Session Output Observation
   scope: project

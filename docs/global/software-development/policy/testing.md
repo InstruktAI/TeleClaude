@@ -86,13 +86,6 @@ Use a layered approach: **unit → functional → smoke**. Each layer proves a d
    - Tiny, fast, and intentionally shallow.
    - Proves wiring across the application without deep assertions.
 
-### Running Tests
-
-- `make test` — run the full test suite (unit + integration)
-- `make test-unit` — run unit tests only
-- `make test-e2e` — run integration tests only
-- Smoke tests live in `tests/integration/test_e2e_smoke.py` and run under `make test-e2e`.
-
 ### Targeted Tests Only (Default)
 
 Run the smallest test scope that proves the change. Escalate only when needed.
@@ -108,7 +101,7 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 - Test public interfaces, not private internals
 - Mock at architectural boundaries; avoid over-mocking
 - Use clear, descriptive test names
-- Use fixtures for shared setup; keep them small and composable
+- Use shared setup helpers; keep them small and composable
 
 1. Each test runs independently - no shared state between tests
 2. Tests can run in any order
@@ -117,20 +110,56 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 5. Reset mocks between tests
 6. Clean up global state in teardown
 
-7. **Flaky tests** - non-deterministic tests that pass/fail randomly
-8. **Slow tests** - tests that take seconds to run (indicates integration, not unit)
-9. **Testing implementation details** - tests that break when refactoring
-10. **Over-mocking** - mocking everything makes tests brittle
-11. **Mega tests** - one test that validates many behaviors
-12. **No assertions** - tests that execute code but don't verify outcomes
-13. **Commented-out tests** - either fix or delete them
-14. **Prose-lock tests** - tests that assert on rendered text (messages, help output, reports, notifications) instead of on the data that produced it. These break when wording changes while behavior stays the same. Always assert on the underlying structure, never the composed string
+Every test must survive one question: **"What real bug in OUR code would this catch?"**
 
-15. All tests run on every commit
-16. Tests must pass before merging to main branch
-17. Linting, type checking, and unit tests run automatically
-18. No commits with `--no-verify` to bypass hooks unless explicitly approved
-19. Keep test suite fast (< 10s for unit tests)
+7. **Flaky tests** — non-deterministic tests that pass/fail randomly
+8. **Slow tests** — tests that take seconds to run (indicates integration, not unit)
+9. **Testing implementation details** — tests that break when refactoring without behavior change
+10. **Over-mocking** — mocking everything makes tests brittle and proves nothing
+11. **Mega tests** — one test that validates many behaviors; split into focused assertions
+12. **No assertions** — tests that execute code but don't verify outcomes
+13. **Commented-out tests** — either fix or delete them
+14. **Prose-lock tests** — asserting on rendered text (messages, help output, reports, notifications) instead of on the data that produced it. These break when wording changes while behavior stays the same. Always assert on the underlying structure, never the composed string
+15. **Testing third-party code** — never test that a library works. YAML round-trips, JSON serialization, `hashlib` output, ORM queries returning rows — these are the library's responsibility
+16. **Testing informational side-effects** — audit timestamps, event emissions, log entries, metrics. If the system behaves identically when the side-effect is absent, the test has no value. Test the observability system, not every callsite that emits into it
+17. **Tautological assertions** — asserting that a data literal contains keys visible in the source. The code that consumes the structure catches missing keys — that is the real test
+18. **Truthy-check assertions** — `assert value` passes for any non-empty value. If a trivially wrong implementation satisfies the assertion, the assertion is worthless. Assert on specific expected values
+19. **Redundant coverage across files** — a function has one test home. Do not test the same function from multiple test files. Redundant tests multiply maintenance without adding safety
+
+20. All tests run on every commit
+21. Tests must pass before merging to main branch
+22. Linting, type checking, and unit tests run automatically
+23. No commits with `--no-verify` to bypass hooks unless explicitly approved
+24. Keep test suite fast (< 10s for unit tests)
+
+### Test Specification Delivery
+
+Test specifications precede implementation plans. Specs are marked as expected failures using the
+project's test framework mechanism. The suite stays green with specs present. When implementation
+satisfies a spec, the expected-failure marker is removed. The marker mechanism is framework-specific —
+the agent discovers it from the codebase.
+
+### Reproduction Test Delivery
+
+Every bug fix starts with a test that reproduces the bug (RED). The reproduction test becomes a
+permanent regression guard. "I verified manually" is not acceptable — if you can reproduce it,
+you can test it.
+
+### Test Spec Immutability
+
+The builder cannot delete or weaken spec tests. The builder can remove expected-failure markers
+(making tests active), can add new tests, and can refactor test structure while preserving all
+assertions.
+
+### Language and Framework Context
+
+This policy is framework-agnostic. Test framework, runner commands, expected-failure markers, and
+file patterns are project concerns — discover them from the codebase (package config, Makefile,
+existing tests).
+
+You MUST use `telec docs index | grep '{language}'` to surface language-specific doc snippets,
+and use `telec docs get {snippet_id}` to read them ALL — they contain mandatory language idioms
+for any code-producing work.
 
 ## Rationale
 

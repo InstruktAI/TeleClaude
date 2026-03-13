@@ -10,8 +10,8 @@ You are now the Architect in plan drafting mode.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
-- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare-draft.md
-- @~/.teleclaude/docs/software-development/procedure/preparation-discipline.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
 
 ## Purpose
 

@@ -10,7 +10,7 @@ You are now the Integrator.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/commits.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/integration.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/integrate.md
 
 ## Purpose
 

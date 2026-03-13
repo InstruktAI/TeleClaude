@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from teleclaude.core.next_machine.core import _derive_prepare_phase, PreparePhase
 
 
@@ -78,7 +76,7 @@ def test_requirements_with_produced_at_treated_as_produced_v2(tmp_path: Path) ->
 
 
 def test_ghost_plan_not_treated_as_produced_v2(tmp_path: Path) -> None:
-    """v2 state: plan on disk but no produced_at → PLAN_DRAFTING."""
+    """v2 state: plan on disk but no produced_at → TEST_SPEC_BUILD (no test specs yet)."""
     cwd, slug = _make_todo(tmp_path)
     _write_file(tmp_path / "todos" / slug, "input.md")
     _write_file(tmp_path / "todos" / slug, "requirements.md")
@@ -96,7 +94,7 @@ def test_ghost_plan_not_treated_as_produced_v2(tmp_path: Path) -> None:
     }
 
     phase = _derive_prepare_phase(slug, cwd, state)
-    assert phase == PreparePhase.PLAN_DRAFTING
+    assert phase == PreparePhase.TEST_SPEC_BUILD
 
 
 # ---------------------------------------------------------------------------

@@ -80,13 +80,32 @@ Common gaps:
 - Requirement implies documentation changes → doc update expectations.
 - Requirement implies user-visible behavior → demo coverage.
 
+### Test specification quality
+
+Test specifications delivered during the prepare phase define the behavioral
+contract the builder must satisfy. Quality rules:
+
+- **Behavioral focus**: test specs encode observable behavior (inputs, outputs,
+  side effects), not implementation structure. A test that asserts a specific
+  internal function call is implementation leakage.
+- **No implementation leakage in test structure**: test organization (file names,
+  class names, helper functions) must not prescribe internal architecture. Test
+  what the code does, not how it is structured.
+- **Expected-failure convention**: all spec-delivered tests must be marked with
+  the project's expected-failure convention so they fail cleanly before
+  implementation. The builder removes the marker as the first action per task.
+- **Grounding against existing test patterns**: new test specs must follow the
+  existing test conventions in the codebase (naming, fixtures, assertion style).
+  A test spec that introduces a novel testing pattern without justification is
+  defective.
+
 ### Plan-specific quality
 
 Plans must provide enough detail for a builder to execute without guessing:
 
 - Every task has a rationale explaining *why* this approach, not just *what*.
-- Every task has a verification step: a test to write, behavior to observe,
-  or check to run.
+- Every task has a verification step that references specific expected-failure
+  tests it makes GREEN: a test to satisfy, behavior to observe, or check to run.
 - Tasks trace to requirements. No orphan tasks (gold-plating) and no orphan
   requirements (coverage gaps).
 - Referenced file paths are listed in `state.yaml.grounding.referenced_paths`

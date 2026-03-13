@@ -1,8 +1,7 @@
 # Parked work items. Promote back to roadmap.yaml when priority changes.
 
-- slug: agent-session-auth
-  description: Agent session identity and credential lifecycle — token issuance, ledger,
-    two principal types (human-delegated, system/job), revocation on session close
+- slug: workflow-engine-refactor
+- slug: a2ui-showcase-component
 - slug: start-gathering-tool
 - slug: gathering-trail-files
 - slug: gathering-rhythm-subprocedures

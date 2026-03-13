@@ -1,15 +1,43 @@
 {
   "tools": {
-    "allowed": ["*"],
+    "allowed": [ "*" ],
+    "enableHooks": true,
     "sandbox": false
   },
   "skills": {
     "enabled": true
   },
-  "mcpServers": {
-    "firecrawl": {
-      "command": "bash",
-      "args": ["-c", "npx -y @dotenvx/dotenvx run --env-file $HOME/.teleclaude/.env -- npx -y firecrawl-mcp"]
+  "context": {
+    "fileName": [
+      "AGENTS.md",
+      "GEMINI.md"
+    ],
+    "includeDirectories": [
+      "/"
+    ],
+    "fileFiltering": {
+      "respectGitIgnore": false
     }
+  },
+  "general": {
+    "checkpointing": {
+      "enabled": true
+    },
+    "previewFeatures": true,
+    "disableAutoUpdate": false,
+    "enableAutoUpdate": true,
+    "sessionRetention": {
+      "warningAcknowledged": true,
+      "enabled": true,
+      "maxAge": "120d"
+    }
+  },
+  "experimental": {
+    "useOSC52Paste": true,
+    "skills": true,
+    "introspectionAgentSettings": {
+      "enabled": true
+    },
+    "plan": true
   }
 }

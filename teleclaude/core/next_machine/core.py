@@ -76,6 +76,8 @@ class PreparePhase(str, Enum):
     INPUT_ASSESSMENT = "input_assessment"
     TRIANGULATION = "triangulation"
     REQUIREMENTS_REVIEW = "requirements_review"
+    TEST_SPEC_BUILD = "test_spec_build"
+    TEST_SPEC_REVIEW = "test_spec_review"
     PLAN_DRAFTING = "plan_drafting"
     PLAN_REVIEW = "plan_review"
     GATE = "gate"
@@ -289,6 +291,24 @@ WHEN WORKER COMPLETES:
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
 8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+""",
+    "next-build-specs": """WHEN WORKER COMPLETES:
+1. Read worker output via get_session_data
+2. telec sessions end <session_id>
+3. Call {next_call}
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+""",
+    "next-review-specs": """WHEN WORKER COMPLETES:
+1. Read worker output via get_session_data
+2. telec sessions end <session_id>
+3. Call {next_call}
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
 }
 
@@ -955,6 +975,12 @@ DEFAULT_STATE: dict[str, StateValue] = {
         "baseline_commit": "",
         "findings": [],
     },
+    "test_spec_review": {
+        "verdict": "",
+        "reviewed_at": "",
+        "findings_count": 0,
+        "rounds": 0,
+    },
     "plan_review": {
         "verdict": "",
         "reviewed_at": "",
@@ -1145,7 +1171,7 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
 
 
 # Valid prepare sub-phases that accept verdicts via mark-phase
-_PREPARE_VERDICT_PHASES = ("requirements_review", "plan_review")
+_PREPARE_VERDICT_PHASES = ("requirements_review", "test_spec_review", "plan_review")
 _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 
 # Valid prepare_phase values for direct phase advancement
@@ -3119,6 +3145,16 @@ def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> 
     if not req_verdict or req_verdict in ("needs_work", "needs_decision"):
         return PreparePhase.REQUIREMENTS_REVIEW
 
+    # After requirements approved: check test spec phase
+    has_test_specs = _has_test_spec_artifacts(cwd, slug)
+    if not has_test_specs:
+        return PreparePhase.TEST_SPEC_BUILD
+
+    spec_review = state.get("test_spec_review", {})
+    spec_verdict = (isinstance(spec_review, dict) and spec_review.get("verdict")) or ""
+    if not spec_verdict or spec_verdict in ("needs_work",):
+        return PreparePhase.TEST_SPEC_REVIEW
+
     has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
     # Ghost artifact protection for plan
     if has_plan and not _is_artifact_produced_v2(state, "implementation_plan"):
@@ -3231,7 +3267,7 @@ async def _prepare_step_requirements_review(
     if verdict == "approve":
         stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
         stamp_audit(state, "requirements_review", "verdict", "approve")  # type: ignore[arg-type]
-        state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
+        state["prepare_phase"] = PreparePhase.TEST_SPEC_BUILD.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
         return True, ""  # loop
@@ -3332,6 +3368,133 @@ async def _prepare_step_requirements_review(
         guidance=guidance,
         subfolder="",
         note=f"Review todos/{slug}/requirements.md and write verdict to state.yaml requirements_review.verdict.",
+        next_call=f"telec todo prepare {slug}",
+    )
+
+
+def _has_test_spec_artifacts(cwd: str, slug: str) -> bool:
+    """Check if xfail-marked test spec files exist in the worktree."""
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    if not worktree_path.is_dir():
+        return False
+    # Look for test files containing xfail markers
+    for test_file in worktree_path.rglob("test_*.py"):
+        try:
+            content = test_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if "xfail" in content:
+            return True
+    return False
+
+
+async def _prepare_step_test_spec_build(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """TEST_SPEC_BUILD: xfail test specs needed in worktree."""
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+
+    stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+
+    if await asyncio.to_thread(_has_test_spec_artifacts, cwd, slug):
+        stamp_audit(state, "test_spec_build", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        state["prepare_phase"] = PreparePhase.TEST_SPEC_REVIEW.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        _emit_prepare_event("domain.software-development.prepare.specs_drafted", {"slug": slug})
+        return True, ""  # loop
+
+    # First prepare step that needs a worktree — ensure it exists
+    await ensure_worktree_with_policy_async(cwd, slug)
+
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        command=SlashCommand.NEXT_BUILD_SPECS,
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        note=(
+            f"Read todos/{slug}/requirements.md and write xfail-marked pytest test specs "
+            f"in the worktree. Each test should capture a requirement as a failing test. "
+            f"Commit the specs to the worktree branch."
+        ),
+        next_call=f"telec todo prepare {slug}",
+    )
+
+
+async def _prepare_step_test_spec_review(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """TEST_SPEC_REVIEW: awaiting test spec review verdict."""
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+
+    stamp_audit(state, "test_spec_review", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+
+    spec_review = state.get("test_spec_review", {})
+    verdict = (isinstance(spec_review, dict) and spec_review.get("verdict")) or ""
+
+    if verdict == "approve":
+        stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "test_spec_review", "verdict", "approve")  # type: ignore[arg-type]
+        state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
+        return True, ""  # loop
+
+    if verdict == "needs_work":
+        if isinstance(spec_review, dict):
+            rounds = int(spec_review.get("rounds", 0)) + 1
+            spec_review["rounds"] = rounds
+            spec_review["verdict"] = ""
+        else:
+            rounds = 1
+        # Block after exceeding max review rounds to prevent infinite cycles
+        if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
+            state["test_spec_review"] = spec_review  # type: ignore[assignment]
+            state["prepare_phase"] = PreparePhase.BLOCKED.value
+            await asyncio.to_thread(write_phase_state, cwd, slug, state)
+            return False, (
+                f"BLOCKED: {slug} test spec review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
+                f"Manual resolution required.\n\n"
+                f"Before acting, load the relevant worker role:\n"
+                f"  telec docs index\n"
+                f"Then use telec docs get to load the procedure for the role you are assuming."
+            )
+        stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "test_spec_review", "verdict", "needs_work")  # type: ignore[arg-type]
+        stamp_audit(state, "test_spec_review", "rounds", rounds)  # type: ignore[arg-type]
+        state["test_spec_review"] = spec_review  # type: ignore[assignment]
+        state["prepare_phase"] = PreparePhase.TEST_SPEC_BUILD.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        guidance = await compose_agent_guidance(db)
+        return False, format_tool_call(
+            command=SlashCommand.NEXT_BUILD_SPECS,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{slug}",
+            note=(
+                f"Test specs need revision (round {rounds}). "
+                f"Review feedback and update xfail test specs in the worktree."
+            ),
+            next_call=f"telec todo prepare {slug}",
+        )
+
+    # No verdict yet — dispatch reviewer
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        command=SlashCommand.NEXT_REVIEW_SPECS,
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and write verdict to state.yaml test_spec_review.verdict.",
         next_call=f"telec todo prepare {slug}",
     )
 
@@ -3738,6 +3901,10 @@ async def _prepare_dispatch(
         return await _prepare_step_triangulation(db, slug, cwd, state)
     if phase == PreparePhase.REQUIREMENTS_REVIEW:
         return await _prepare_step_requirements_review(db, slug, cwd, state)
+    if phase == PreparePhase.TEST_SPEC_BUILD:
+        return await _prepare_step_test_spec_build(db, slug, cwd, state)
+    if phase == PreparePhase.TEST_SPEC_REVIEW:
+        return await _prepare_step_test_spec_review(db, slug, cwd, state)
     if phase == PreparePhase.PLAN_DRAFTING:
         return await _prepare_step_plan_drafting(db, slug, cwd, state)
     if phase == PreparePhase.PLAN_REVIEW:

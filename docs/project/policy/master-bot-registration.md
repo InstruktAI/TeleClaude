@@ -1,7 +1,7 @@
 ---
 id: 'project/policy/master-bot-registration'
 type: 'policy'
-scope: 'global'
+scope: 'project'
 description: 'Policy for Telegram command registration in multi-computer setups.'
 ---
 

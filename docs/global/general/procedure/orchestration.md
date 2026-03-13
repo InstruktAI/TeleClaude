@@ -9,7 +9,7 @@ type: 'procedure'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
 
 ## Goal
 

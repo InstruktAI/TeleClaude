@@ -10,8 +10,8 @@ type: 'spec'
 ## Required reads
 
 - @~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
-- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare.md
-- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare-gate.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/readiness-gate.md
 
 ## What it is
 

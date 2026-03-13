@@ -9,7 +9,7 @@ You are now the Demo Presenter.
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/demo.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/demo.md
 
 ## Purpose
 

@@ -1,8 +1,17 @@
 {
-  "permissions": {
-    "defaultMode": "bypassPermissions"
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  }
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bunx -y ccstatusline@latest",
+    "padding": 0
+  },
+  "skipDangerousModePermissionPrompt": true
 }

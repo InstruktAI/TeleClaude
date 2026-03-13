@@ -1,0 +1,62 @@
+phase: pending
+build: pending
+review: pending
+deferrals_processed: false
+finalize:
+  status: pending
+breakdown:
+  assessed: false
+  todos: []
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: blocked
+grounding:
+  valid: true
+  base_sha: 80432307676bbb8c4fb6db1b9486082ead40533c
+  input_digest: dd354e2baacb14038a21edd5443ea9a24ede52ad497a1a62739c41e93ba5ad43
+  last_grounded_at: '2026-03-12T19:30:00Z'
+  invalidation_reason: null
+  referenced_paths:
+  - teleclaude/core/next_machine/core.py
+  - teleclaude/core/next_machine/engine.py
+  - teleclaude/core/next_machine/__init__.py
+  - teleclaude/core/next_machine/prepare.py
+  - teleclaude/core/next_machine/validators.py
+  - teleclaude/core/next_machine/work.py
+  - teleclaude/core/agents.py
+  - teleclaude/core/db.py
+  - teleclaude/core/integration_bridge.py
+  - teleclaude/constants.py
+  - teleclaude/config/__init__.py
+  - teleclaude.yml
+  - docs/project/spec/teleclaude-config.md
+  - workflows/prepare.yaml
+  - workflows/work.yaml
+  - languages/python/baseline.md
+  - languages/typescript/baseline.md
+  - tests/unit/core/next_machine/test_prepare_equivalence.py
+  - tests/unit/core/next_machine/test_work_equivalence.py
+  - tests/unit/core/next_machine/test_workflow_engine.py
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-12T17:30:23Z'
+  findings_count: 5
+plan_review:
+  verdict: ''
+  reviewed_at: '2026-03-12T18:36:18Z'
+  findings_count: 4
+  rounds: 4
+kind: todo
+dor:
+  last_assessed_at: null
+  score: 0
+  status: needs_work
+  schema_version: 1
+  blockers: []
+  actions_taken:
+    requirements_updated: false
+    implementation_plan_updated: false
+schema_version: 1

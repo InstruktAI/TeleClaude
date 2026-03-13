@@ -23,13 +23,13 @@
 @docs/third-party/discord/bot-api.md
 @docs/third-party/discord/gateway-delivery-guarantees.md
 @docs/third-party/discord/message-formatting.md
-@docs/third-party/image-generation/gemini-nano-banana.md
-@docs/third-party/image-generation/landscape.md
 @docs/third-party/gemini-cli/commands.md
 @docs/third-party/gemini-cli/hooks.md
 @docs/third-party/gemini-cli/permissions.md
 @docs/third-party/gemini-cli/skills.md
 @docs/third-party/gemini-cli/sub-agents.md
+@docs/third-party/image-generation/gemini-nano-banana.md
+@docs/third-party/image-generation/landscape.md
 @docs/third-party/tmux/session-output-observation.md
 @docs/third-party/whatsapp/cloud-api.md
 @docs/third-party/whatsapp/media-api.md

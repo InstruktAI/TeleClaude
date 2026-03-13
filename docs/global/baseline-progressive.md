@@ -6,6 +6,7 @@
 @~/.teleclaude/docs/software-development/principle/failure-modes.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
 @~/.teleclaude/docs/general/policy/ai-agent-security.md
+@~/.teleclaude/docs/software-development/policy/testing.md
 @~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
 @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
 @~/.teleclaude/docs/general/procedure/peer-discussion.md

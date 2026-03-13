@@ -75,7 +75,6 @@ python3 -c "
 from teleclaude.core.next_machine.prepare_helpers import (
     record_artifact_produced, check_artifact_staleness
 )
-from unittest.mock import patch
 import yaml, tempfile
 from pathlib import Path
 
@@ -83,15 +82,14 @@ tmp = Path(tempfile.mkdtemp())
 todo_dir = tmp / 'todos' / 'test-slug'
 todo_dir.mkdir(parents=True)
 
-# Create artifacts and initial state
+# Create artifacts
 (todo_dir / 'input.md').write_text('original input')
 (todo_dir / 'requirements.md').write_text('requirements content')
 (todo_dir / 'state.yaml').write_text(yaml.dump({'schema_version': 2}))
 
 # Record production (writes both digest and produced_at)
-with patch('teleclaude.core.next_machine.prepare_helpers._emit_prepare_event'):
-    record_artifact_produced(str(tmp), 'test-slug', 'input.md')
-    record_artifact_produced(str(tmp), 'test-slug', 'requirements.md')
+record_artifact_produced(str(tmp), 'test-slug', 'input')
+record_artifact_produced(str(tmp), 'test-slug', 'requirements')
 
 # Modify input after recording
 (todo_dir / 'input.md').write_text('modified input')
@@ -129,132 +127,6 @@ for evt in new_events:
     print(f'  registered: {evt}')
 
 print(f'PASS: all {len(new_events)} new events registered')
-"
-```
-
-### BLOCKED output: architectural finding blocks the machine
-
-```bash
-# Show that an architectural finding in state.yaml produces BLOCKED output
-python3 -c "
-import asyncio, yaml, tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-
-tmp = Path(tempfile.mkdtemp())
-todo_dir = tmp / 'todos' / 'test-slug'
-todo_dir.mkdir(parents=True)
-
-# Write state with an architectural finding
-(todo_dir / 'input.md').write_text('original input content long enough to pass the scaffold check.')
-state = {
-    'schema_version': 2,
-    'prepare_phase': 'requirements_review',
-    'requirements_review': {
-        'verdict': 'needs_decision',
-        'reviewed_at': '2026-01-01T00:00:00+00:00',
-        'findings_count': 1,
-        'rounds': 1,
-        'baseline_commit': 'abc123',
-        'findings': [
-            {'id': 'f1', 'severity': 'architectural', 'summary': 'Design contradiction', 'status': 'open'}
-        ],
-    },
-    'plan_review': {'verdict': '', 'findings': [], 'baseline_commit': '', 'rounds': 0, 'findings_count': 0},
-    'artifacts': {
-        'input': {'digest': 'abc', 'produced_at': '2026-01-01T00:00:00+00:00', 'stale': False},
-        'requirements': {'digest': '', 'produced_at': '', 'stale': False},
-        'implementation_plan': {'digest': '', 'produced_at': '', 'stale': False},
-    },
-    'grounding': {'valid': True, 'base_sha': '', 'input_digest': '', 'referenced_paths': [], 'last_grounded_at': '', 'invalidated_at': '', 'invalidation_reason': ''},
-    'audit': {},
-}
-(todo_dir / 'state.yaml').write_text(yaml.dump(state))
-
-from teleclaude.core.next_machine.core import next_prepare
-
-mock_db = MagicMock()
-with patch('teleclaude.core.next_machine.core._emit_prepare_event'):
-    with patch('teleclaude.core.next_machine.core.slug_in_roadmap', return_value=True):
-        with patch('teleclaude.core.next_machine.core.resolve_holder_children', return_value=[]):
-            with patch('teleclaude.core.next_machine.core.compose_agent_guidance', new_callable=AsyncMock, return_value='guidance'):
-                result = asyncio.run(next_prepare(mock_db, 'test-slug', str(tmp)))
-
-assert 'BLOCKED' in result, f'Expected BLOCKED, got: {result[:200]}'
-assert 'requirements-review-findings.md' in result, 'Expected file pointer in BLOCKED output'
-print('PASS: architectural finding produces BLOCKED output with file pointer')
-print(f'Output: {result[:200]}')
-"
-```
-
-### additional_context delivery: RunSessionRequest model
-
-```bash
-# Verify that RunSessionRequest carries additional_context and api_server appends it
-python3 -c "
-from teleclaude.api_models import RunSessionRequest
-
-# Create request with additional_context
-req = RunSessionRequest(
-    command='/next-build',
-    args='my-slug',
-    project='/tmp/project',
-    additional_context='Missing paths:\n- teleclaude/nonexistent.py',
-)
-assert req.additional_context == 'Missing paths:\n- teleclaude/nonexistent.py'
-print('PASS: RunSessionRequest.additional_context field accepted')
-
-# Verify format_tool_call renders --additional-context flag when non-empty
-from teleclaude.core.next_machine.core import format_tool_call, SlashCommand
-result = format_tool_call(
-    command=SlashCommand.NEXT_PREPARE_DRAFT,
-    args='test-slug',
-    project='/tmp/project',
-    guidance='',
-    subfolder='',
-    note='Fix missing paths',
-    next_call='telec todo prepare test-slug',
-    additional_context='Missing paths:\n- teleclaude/nonexistent.py',
-)
-assert '--additional-context' in result, 'Expected --additional-context flag in output'
-print('PASS: format_tool_call includes --additional-context when non-empty')
-"
-```
-
-### prepare.input_consumed: event fires at input → requirements_review transition
-
-```bash
-# Verify input_consumed is emitted when input_assessment sees requirements.md
-python3 -c "
-import asyncio, yaml, tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-
-tmp = Path(tempfile.mkdtemp())
-todo_dir = tmp / 'todos' / 'test-slug'
-todo_dir.mkdir(parents=True)
-(todo_dir / 'input.md').write_text('This is the input description that is long enough to pass scaffold check.')
-(todo_dir / 'requirements.md').write_text('This is a requirements document with enough content to pass scaffold check.')
-state = {'schema_version': 2, 'prepare_phase': 'input_assessment'}
-(todo_dir / 'state.yaml').write_text(yaml.dump(state))
-
-from teleclaude.core.next_machine.core import next_prepare
-
-emitted_events = []
-def capture_emit(event_type, payload):
-    emitted_events.append(event_type)
-
-mock_db = MagicMock()
-with patch('teleclaude.core.next_machine.core._emit_prepare_event', side_effect=capture_emit):
-    with patch('teleclaude.core.next_machine.prepare_helpers._emit_prepare_event', side_effect=capture_emit):
-        with patch('teleclaude.core.next_machine.core.slug_in_roadmap', return_value=True):
-            with patch('teleclaude.core.next_machine.core.resolve_holder_children', return_value=[]):
-                with patch('teleclaude.core.next_machine.core.compose_agent_guidance', new_callable=AsyncMock, return_value='guidance'):
-                    asyncio.run(next_prepare(mock_db, 'test-slug', str(tmp)))
-
-input_consumed_events = [e for e in emitted_events if 'input_consumed' in e]
-assert len(input_consumed_events) == 1, f'Expected 1 input_consumed event, got {input_consumed_events}'
-print(f'PASS: prepare.input_consumed emitted at input_assessment → requirements_review: {input_consumed_events[0]}')
 "
 ```
 
@@ -299,15 +171,3 @@ proves R13.
 
 List the updated procedure and spec doc snippets. Verify each passes
 `telec sync --validate-only`. This proves R15.
-
-### Step 7: BLOCKED escalation path
-
-Show the BLOCKED output that surfaces when a review worker writes
-`needs_decision` to state.yaml due to an architectural finding. Walk through
-the escalation path: the machine detects the verdict, sets `prepare_phase` to
-BLOCKED, emits `prepare.blocked`, and returns a BLOCKED string with count and
-file pointer for the human to resolve. This is the only human gate inside the
-prepare machine (R1, R3). Also demonstrate the `--additional-context` CLI flag:
-when a re-dispatch carries specific scope (missing paths, artifact diffs), the
-worker startup message contains the context block, giving re-dispatched workers
-precise scope instead of generic redo instructions (R17).

@@ -1,5 +1,5 @@
 ---
-description: 'Tactical implementation. Follow architecture, write code matching requirements, pragmatic autonomy, tests after implementation.'
+description: 'Tactical implementation. Follow architecture, write code matching requirements, pragmatic autonomy, satisfy test specifications.'
 id: 'software-development/concept/builder'
 scope: 'domain'
 type: 'concept'
@@ -14,12 +14,12 @@ visibility: 'public'
 
 ## What
 
-Tactical implementation role. Follow architecture, write code matching requirements, pragmatic autonomy, tests after implementation.
+Tactical implementation role. Follow architecture, write code matching requirements, pragmatic autonomy, satisfy test specifications.
 
 1. **Implement features** - Write code that matches requirements.
 2. **Follow patterns** - Match existing codebase conventions.
 3. **Adhere to architecture** - Keep actors and flows aligned with the plan.
-4. **Write tests** - Add behavioral coverage after implementation.
+4. **Satisfy test specifications** - Make expected-failure tests pass by implementing the code they specify. Add tests for edge cases discovered during implementation.
 5. **Answer "how"** - The "what" and "why" are already decided.
 6. **Own the entire codebase** - No distinction between "my code" and "their code".
 

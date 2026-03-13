@@ -1,7 +1,7 @@
 ---
 description: 'The role of an AI agent session in the TeleClaude network.'
 id: 'project/concept/ai-worker'
-scope: 'global'
+scope: 'project'
 type: 'concept'
 ---
 

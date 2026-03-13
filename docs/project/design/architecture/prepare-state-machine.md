@@ -21,23 +21,21 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 | File | Purpose |
 |------|---------|
 | [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py) | State machine implementation (`PreparePhase` enum, `next_prepare()`) |
-| [`docs/software-development/procedure/lifecycle/prepare.md`](../../../software-development/procedure/lifecycle/prepare.md) | Prepare procedure |
-| [`docs/software-development/procedure/maintenance/next-prepare.md`](../../../software-development/procedure/maintenance/next-prepare.md) | Orchestration loop procedure |
-| [`docs/software-development/procedure/maintenance/next-prepare-discovery.md`](../../../software-development/procedure/maintenance/next-prepare-discovery.md) | Discovery worker procedure |
-| [`docs/software-development/procedure/maintenance/next-prepare-draft.md`](../../../software-development/procedure/maintenance/next-prepare-draft.md) | Plan drafting worker procedure |
-| [`docs/software-development/procedure/maintenance/next-prepare-gate.md`](../../../software-development/procedure/maintenance/next-prepare-gate.md) | DOR gate worker procedure |
+| [`docs/software-development/procedure/lifecycle/prepare/overview.md`](../../../software-development/procedure/lifecycle/prepare/overview.md) | Prepare overview and orchestration loop |
+| [`docs/software-development/procedure/lifecycle/prepare/discovery.md`](../../../software-development/procedure/lifecycle/prepare/discovery.md) | Discovery worker procedure |
+| [`docs/software-development/procedure/lifecycle/prepare/plan-draft.md`](../../../software-development/procedure/lifecycle/prepare/plan-draft.md) | Plan drafting worker procedure |
+| [`docs/software-development/procedure/lifecycle/prepare/readiness-gate.md`](../../../software-development/procedure/lifecycle/prepare/readiness-gate.md) | DOR gate worker procedure |
 
 ### Referenced doc snippets
 
 | Snippet ID | Content |
 |------------|---------|
-| `software-development/procedure/lifecycle/prepare` | Prepare phase overview |
-| `software-development/procedure/maintenance/next-prepare` | Orchestration loop |
-| `software-development/procedure/maintenance/next-prepare-discovery` | Discovery worker |
-| `software-development/procedure/maintenance/next-prepare-draft` | Draft worker |
-| `software-development/procedure/maintenance/next-prepare-gate` | DOR gate worker |
-| `software-development/procedure/lifecycle/review-requirements` | Requirements review |
-| `software-development/procedure/lifecycle/review-plan` | Plan review |
+| `software-development/procedure/lifecycle/prepare/overview` | Prepare overview and orchestration loop |
+| `software-development/procedure/lifecycle/prepare/discovery` | Discovery worker |
+| `software-development/procedure/lifecycle/prepare/plan-draft` | Draft worker |
+| `software-development/procedure/lifecycle/prepare/readiness-gate` | DOR gate worker |
+| `software-development/procedure/lifecycle/prepare/review-requirements` | Requirements review |
+| `software-development/procedure/lifecycle/prepare/review-plan` | Plan review |
 | `software-development/policy/definition-of-ready` | DOR gates validated by gate phase |
 | `software-development/policy/preparation-artifact-quality` | Quality rules for requirements and plans |
 
@@ -52,6 +50,7 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 **Outputs:**
 
 - `todos/{slug}/requirements.md` — triangulated, reviewed, approved requirements
+- Test specification files — expected-failure-marked tests encoding behavioral requirements
 - `todos/{slug}/implementation-plan.md` — review-aware, rationale-rich, reviewed, approved plan
 - `todos/{slug}/demo.md` — draft demonstration plan
 - `todos/{slug}/dor-report.md` — gate assessment
@@ -62,6 +61,7 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 |----------|-----------|-------------|
 | `input.md` | Human (via `/next-refine-input`) | — |
 | `requirements.md` | Discovery worker (`/next-prepare-discovery`) | Requirements reviewer (`/next-review-requirements`) |
+| Test spec files | Test spec worker (`/next-prepare-test-spec`) | Test spec reviewer (`/next-review-test-spec`) |
 | `implementation-plan.md` | Draft worker (`/next-prepare-draft`) | Plan reviewer (`/next-review-plan`) |
 | `demo.md` | Draft worker | — |
 | `dor-report.md` | Gate worker (`/next-prepare-gate`) | — |
@@ -88,9 +88,15 @@ stateDiagram-v2
 
     TRIANGULATION --> REQUIREMENTS_REVIEW: requirements drafted
 
-    REQUIREMENTS_REVIEW --> PLAN_DRAFTING: verdict = approve
+    REQUIREMENTS_REVIEW --> TEST_SPEC_BUILD: verdict = approve
     REQUIREMENTS_REVIEW --> TRIANGULATION: verdict = needs_work (re-draft)
     REQUIREMENTS_REVIEW --> BLOCKED: review rounds exceeded
+
+    TEST_SPEC_BUILD --> TEST_SPEC_REVIEW: test specs written
+
+    TEST_SPEC_REVIEW --> PLAN_DRAFTING: verdict = approve
+    TEST_SPEC_REVIEW --> TEST_SPEC_BUILD: verdict = needs_work (re-draft)
+    TEST_SPEC_REVIEW --> BLOCKED: review rounds exceeded
 
     PLAN_DRAFTING --> PLAN_REVIEW: plan drafted
 
@@ -116,7 +122,9 @@ stateDiagram-v2
 | `INPUT_ASSESSMENT` | Evaluate input.md, check if requirements.md exists | No | Yes — routes to TRIANGULATION or REQUIREMENTS_REVIEW |
 | `TRIANGULATION` | Requirements need to be written or reworked | Yes — dispatch `/next-prepare-discovery` | No |
 | `REQUIREMENTS_REVIEW` | Requirements exist, need review verdict | Yes — dispatch `/next-review-requirements` | No |
-| `PLAN_DRAFTING` | Requirements approved, plan needs to be written | Yes — dispatch `/next-prepare-draft` | No |
+| `TEST_SPEC_BUILD` | Requirements approved, test specifications need to be written | Yes — dispatch `/next-prepare-test-spec` | No |
+| `TEST_SPEC_REVIEW` | Test specs exist, need review verdict | Yes — dispatch `/next-review-test-spec` | No |
+| `PLAN_DRAFTING` | Test specs approved, plan needs to be written | Yes — dispatch `/next-prepare-draft` | No |
 | `PLAN_REVIEW` | Plan exists, needs review verdict | Yes — dispatch `/next-review-plan` | No |
 | `GATE` | All artifacts exist and approved, run DOR validation | Yes — dispatch `/next-prepare-gate` | No |
 | `GROUNDING_CHECK` | Verify freshness of artifacts against current codebase | No | Yes — routes to PREPARED or RE_GROUNDING |
@@ -168,10 +176,27 @@ flowchart TD
 
     ReqExists -->|"No verdict"| DispatchReqReview
     DispatchReqReview --> ReqExists
-    ReqExists -->|"approve"| PlanExists
+    ReqExists -->|"approve"| TestSpecExists
     ReqExists -->|"needs_work"| CheckRounds1
     CheckRounds1 -->|"Yes"| Triangulate
     CheckRounds1 -->|"No"| Blocked
+
+    TestSpecExists{"test specs\nexist?"}
+    DispatchTestSpec["Dispatch\nnext-prepare-test-spec"]
+    TestSpecReview{"test_spec_review\nverdict?"}
+    DispatchTestSpecReview["Dispatch\nnext-review-test-spec"]
+    CheckRoundsTS{"Review rounds\n< max (3)?"}
+
+    TestSpecExists -->|"No"| DispatchTestSpec
+    TestSpecExists -->|"Yes"| TestSpecReview
+    DispatchTestSpec --> TestSpecReview
+
+    TestSpecReview -->|"No verdict"| DispatchTestSpecReview
+    DispatchTestSpecReview --> TestSpecReview
+    TestSpecReview -->|"approve"| PlanExists
+    TestSpecReview -->|"needs_work"| CheckRoundsTS
+    CheckRoundsTS -->|"Yes"| DispatchTestSpec
+    CheckRoundsTS -->|"No"| Blocked
 
     PlanExists -->|"No"| DispatchDraft
     PlanExists -->|"Yes"| PlanReview
@@ -203,6 +228,8 @@ sequenceDiagram
     participant SM as Prepare Machine
     participant D as Discovery Worker
     participant RR as Requirements Reviewer
+    participant TS as Test Spec Worker
+    participant TSR as Test Spec Reviewer
     participant DR as Draft Worker
     participant PR as Plan Reviewer
     participant G as Gate Worker
@@ -220,25 +247,37 @@ sequenceDiagram
     RR-->>O: notification (verdict: approve)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 3 — Plan Drafting
+    Note over O,G: Phase 3 — Test Specification
+    SM-->>O: DISPATCH next-prepare-test-spec
+    O->>TS: telec sessions run --command /next-prepare-test-spec --args slug
+    TS-->>O: notification (test specs written)
+    O->>SM: telec todo prepare slug
+
+    Note over O,G: Phase 4 — Test Spec Review
+    SM-->>O: DISPATCH next-review-test-spec
+    O->>TSR: telec sessions run --command /next-review-test-spec --args slug
+    TSR-->>O: notification (verdict: approve)
+    O->>SM: telec todo prepare slug
+
+    Note over O,G: Phase 5 — Plan Drafting
     SM-->>O: DISPATCH next-prepare-draft
     O->>DR: telec sessions run --command /next-prepare-draft --args slug
     DR-->>O: notification (implementation-plan.md written)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 4 — Plan Review
+    Note over O,G: Phase 6 — Plan Review
     SM-->>O: DISPATCH next-review-plan
     O->>PR: telec sessions run --command /next-review-plan --args slug
     PR-->>O: notification (verdict: approve)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 5 — DOR Gate
+    Note over O,G: Phase 7 — DOR Gate
     SM-->>O: DISPATCH next-prepare-gate
     O->>G: telec sessions run --command /next-prepare-gate --args slug
     G-->>O: notification (DOR score >= 8)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 6 — Grounding Check (mechanical)
+    Note over O,G: Phase 8 — Grounding Check (mechanical)
     SM-->>O: PREPARED
     Note over O: Todo ready for Phase B
 ```
@@ -251,6 +290,8 @@ Each state dispatches a specific worker command via `telec sessions run`:
 |-------|---------|-------------|---------------|-----------------|
 | `TRIANGULATION` | `/next-prepare-discovery` | Architect | `slow` | `requirements.md` |
 | `REQUIREMENTS_REVIEW` | `/next-review-requirements` | Reviewer | `slow` | verdict in `state.yaml` |
+| `TEST_SPEC_BUILD` | `/next-prepare-test-spec` | Architect | `slow` | Test spec files (expected-failure-marked) |
+| `TEST_SPEC_REVIEW` | `/next-review-test-spec` | Reviewer | `slow` | verdict in `state.yaml` |
 | `PLAN_DRAFTING` | `/next-prepare-draft` | Architect | `slow` | `implementation-plan.md`, `demo.md` |
 | `PLAN_REVIEW` | `/next-review-plan` | Reviewer | `slow` | verdict in `state.yaml` |
 | `GATE` | `/next-prepare-gate` | Assessor | `slow` | `dor-report.md`, DOR score in `state.yaml` |
@@ -295,6 +336,8 @@ Invalidation triggers:
 | `prepare.discovery_started` | Discovery worker dispatched |
 | `prepare.requirements_drafted` | `requirements.md` written |
 | `prepare.requirements_approved` | Requirements review verdict = approve |
+| `prepare.test_specs_drafted` | Test specification files written (expected-failure-marked) |
+| `prepare.test_specs_approved` | Test spec review verdict = approve |
 | `prepare.plan_drafted` | `implementation-plan.md` written |
 | `prepare.plan_approved` | Plan review verdict = approve |
 | `prepare.grounding_invalidated` | Grounding check found stale artifacts |

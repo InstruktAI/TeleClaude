@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 import yaml
 
 
@@ -80,20 +78,6 @@ def test_record_artifact_produced_writes_digest_and_produced_at(tmp_path: Path) 
     assert artifacts["input"]["produced_at"] != ""
 
 
-def test_record_artifact_produced_emits_event(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
-
-    cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "requirements.md", "reqs")
-
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event") as mock_emit:
-        record_artifact_produced(cwd, slug, "requirements.md")
-
-    mock_emit.assert_called_once()
-    event_type = mock_emit.call_args[0][0]
-    assert "artifact_produced" in event_type
-
-
 # ---------------------------------------------------------------------------
 # check_artifact_staleness
 # ---------------------------------------------------------------------------
@@ -155,71 +139,6 @@ def test_check_artifact_staleness_only_requirements_stale(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
-# record_finding / resolve_finding
-# ---------------------------------------------------------------------------
-
-
-def test_record_finding_appends_to_findings(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import record_finding
-
-    cwd, slug = _make_todo(tmp_path)
-    finding = {"id": "f1", "severity": "substantive", "summary": "missing coverage", "status": "open"}
-
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event"):
-        record_finding(cwd, slug, "requirements_review", finding)
-
-    state = _read_state(cwd, slug)
-    findings = state["requirements_review"]["findings"]
-    assert len(findings) == 1
-    assert findings[0]["id"] == "f1"
-    assert findings[0]["status"] == "open"
-
-
-def test_record_finding_emits_event(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import record_finding
-
-    cwd, slug = _make_todo(tmp_path)
-    finding = {"id": "f2", "severity": "trivial", "summary": "formatting", "status": "open"}
-
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event") as mock_emit:
-        record_finding(cwd, slug, "requirements_review", finding)
-
-    mock_emit.assert_called_once()
-    assert "finding_recorded" in mock_emit.call_args[0][0]
-
-
-def test_resolve_finding_updates_status(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import record_finding, resolve_finding
-
-    cwd, slug = _make_todo(tmp_path)
-    finding = {"id": "f1", "severity": "trivial", "summary": "formatting", "status": "open"}
-
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event"):
-        record_finding(cwd, slug, "requirements_review", finding)
-        resolve_finding(cwd, slug, "requirements_review", "f1", "auto_remediated")
-
-    state = _read_state(cwd, slug)
-    f = state["requirements_review"]["findings"][0]
-    assert f["status"] == "resolved"
-    assert f["resolved_at"] != ""
-
-
-def test_resolve_finding_emits_event(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import record_finding, resolve_finding
-
-    cwd, slug = _make_todo(tmp_path)
-    finding = {"id": "f1", "severity": "trivial", "summary": "formatting", "status": "open"}
-
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event") as mock_emit:
-        record_finding(cwd, slug, "requirements_review", finding)
-        mock_emit.reset_mock()
-        resolve_finding(cwd, slug, "requirements_review", "f1", "auto_remediated")
-
-    mock_emit.assert_called_once()
-    assert "finding_resolved" in mock_emit.call_args[0][0]
-
-
-# ---------------------------------------------------------------------------
 # compute_artifact_diff
 # ---------------------------------------------------------------------------
 
@@ -258,23 +177,3 @@ def test_compute_todo_folder_diff_returns_folder_diff(tmp_path: Path) -> None:
     assert f"todos/{slug}/" in " ".join(call_args)
 
 
-# ---------------------------------------------------------------------------
-# record_input_consumed
-# ---------------------------------------------------------------------------
-
-
-def test_record_input_consumed_emits_event(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import record_input_consumed
-
-    cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md", "input content")
-
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event") as mock_emit:
-        record_input_consumed(cwd, slug)
-
-    mock_emit.assert_called_once()
-    event_type = mock_emit.call_args[0][0]
-    assert "input_consumed" in event_type
-    payload = mock_emit.call_args[0][1]
-    assert "digest" in payload
-    assert payload["phase"] == "input_assessment"
