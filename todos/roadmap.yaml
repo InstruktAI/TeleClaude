@@ -38,7 +38,6 @@
 - slug: test-suite-overhaul
   after:
   - rlf-cli
-  - rlf-tui
   - rlf-core-machines
   - rlf-core-data
   - rlf-core-infra
@@ -134,9 +133,6 @@
   group: refactor-large-files
   description: 'Decompose core infra: core/agent_coordinator.py (1,619), core/tmux_bridge.py
     (1,402), core/adapter_client.py (1,161)'
-- slug: rlf-adapters
-  group: refactor-large-files
-  description: 'Decompose adapters: discord (2,951), telegram (1,368), ui (1,048)'
 - slug: rlf-services
   group: refactor-large-files
   description: 'Decompose service layer: api_server.py (3,268), daemon.py (2,669)'
