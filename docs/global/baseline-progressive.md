@@ -13,3 +13,4 @@
 @~/.teleclaude/docs/general/principle/agent-shorthand.md
 @~/.teleclaude/docs/software-development/principle/failure-modes.md
 @~/.teleclaude/docs/general/policy/ai-agent-security.md
+@~/.teleclaude/docs/creative/procedure/image-generation.md
