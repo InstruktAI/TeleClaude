@@ -300,7 +300,7 @@ def _configure_json_agent_hooks(
         hook_map_builder: Function that returns hook map
         enable_hooks_flag: If True, set tools.enableHooks = True (for Gemini)
     """
-    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver.py"
+    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
         print(f"Warning: {agent.capitalize()} receiver not found at {receiver_script}")
         return
@@ -429,7 +429,7 @@ def configure_codex(repo_root: Path) -> None:
     `agent-turn-complete` which maps to our internal "agent_stop" event.
     """
     repo_root = resolve_main_repo_root(repo_root)
-    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver.py"
+    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
         print(f"Warning: Codex receiver not found at {receiver_script}")
         return
@@ -468,7 +468,7 @@ def configure_codex(repo_root: Path) -> None:
                 is_our_hook = False
                 joined = " ".join(str(part) for part in existing_notify)
                 if isinstance(existing_notify, list):
-                    has_receiver = RECEIVER_FILE in joined
+                    has_receiver = RECEIVER_TOKEN in joined
                     has_codex_agent = f"{AGENT_FLAG} {CODEX_AGENT}" in joined
                     is_our_hook = has_receiver and has_codex_agent
 
