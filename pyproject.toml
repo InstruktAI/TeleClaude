@@ -167,12 +167,13 @@ max-complexity = 20
 "teleclaude/api/sessions_actions_routes.py" = ["C901"]
 "teleclaude/docs_index.py" = ["C901"]
 "teleclaude/entrypoints/youtube_sync_subscriptions.py" = ["C901"]
-"teleclaude/helpers/youtube_helper.py" = ["C901"]
-"teleclaude/hooks/receiver.py" = ["C901", "E402"]
+"teleclaude/helpers/youtube_helper/__init__.py" = ["C901"]
+"teleclaude/hooks/receiver/__init__.py" = ["C901"]
+"teleclaude/hooks/receiver/__main__.py" = ["C901", "E402"]
 "teleclaude/output_projection/conversation_projector.py" = ["C901"]
-"teleclaude/resource_validation.py" = ["C901", "E402"]
+"teleclaude/resource_validation/__init__.py" = ["C901"]
 "teleclaude/utils/markdown.py" = ["C901"]
-"teleclaude/utils/transcript.py" = ["C901"]
+"teleclaude/utils/transcript/*.py" = ["C901"]
 "teleclaude/adapters/telegram/input_handlers.py" = ["C901"]
 "teleclaude/api/streaming.py" = ["C901"]
 "teleclaude/adapters/base_adapter.py" = ["B027"]  # Intentional non-abstract base methods
@@ -224,8 +225,11 @@ module = [
   "teleclaude.api_server",
   "teleclaude.adapters.telegram_adapter",
   "teleclaude.transport.redis_transport",
+  "teleclaude.transport.redis_transport.*",
   "teleclaude.hooks.receiver",
+  "teleclaude.hooks.receiver.*",
   "teleclaude.utils.transcript",
+  "teleclaude.utils.transcript.*",
   "teleclaude.core.agent_parsers",
   "teleclaude.core.codex_watcher",
   "teleclaude.config",
@@ -236,7 +240,7 @@ disallow_any_explicit = false
 warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
-module = "teleclaude.transport.redis_transport"
+module = ["teleclaude.transport.redis_transport", "teleclaude.transport.redis_transport.*"]
 # Redis client returns Any types that propagate.
 disable_error_code = ["misc", "no-any-return", "attr-defined", "explicit-any", "arg-type", "assignment", "override"]
 
@@ -277,7 +281,7 @@ module = "teleclaude.cli.api_client"
 disable_error_code = ["misc", "no-any-return"]
 
 [[tool.mypy.overrides]]
-module = "teleclaude.utils.transcript"
+module = ["teleclaude.utils.transcript", "teleclaude.utils.transcript.*"]
 # External JSON payloads are highly dynamic; validate in code instead of types.
 disable_error_code = ["misc"]
 

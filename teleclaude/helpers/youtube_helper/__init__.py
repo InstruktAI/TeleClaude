@@ -5,638 +5,122 @@ via InnerTube API, and extracts transcripts.
 """
 
 import asyncio
-import hashlib
-import http.cookiejar
 import json
-import logging
 import time
 import urllib.parse
-from collections.abc import Coroutine, Mapping
-from datetime import UTC, datetime, timedelta
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
+from collections.abc import Coroutine
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 import dateparser  # pylint: disable=import-error
 from aiohttp import ClientSession
-from munch import munchify  # pylint: disable=import-error
-from pydantic import BaseModel
-from typing_extensions import TypedDict
 from youtube_transcript_api import YouTubeTranscriptApi  # pylint: disable=import-error
 
-from teleclaude.core.models import JsonDict, JsonValue
-
-
-def _safe_get(obj: JsonValue, *keys: str | int, default: JsonValue = None) -> JsonValue:
-    """Safely traverse nested JSON structures with type safety.
-
-    Args:
-        obj: The starting JSON value (dict, list, or primitive)
-        *keys: Keys (str for dicts) or indices (int for lists) to traverse
-        default: Value to return if any key is missing or type is wrong
-
-    Returns:
-        The value at the nested path, or default if unreachable
-    """
-    current: JsonValue = obj
-    for key in keys:
-        if isinstance(key, int):
-            if not isinstance(current, list) or key >= len(current):
-                return default
-            current = current[key]
-        else:
-            if not isinstance(current, dict):
-                return default
-            current = current.get(key, default)
-            if current is default:
-                return default
-    return current
-
-
-def _safe_get_dict(obj: JsonValue, *keys: str | int) -> JsonDict:
-    """Safely get a nested dict, returning empty dict if not found or wrong type."""
-    result = _safe_get(obj, *keys, default={})
-    return result if isinstance(result, dict) else {}
-
-
-def _safe_get_list(obj: JsonValue, *keys: str | int) -> list[JsonValue]:
-    """Safely get a nested list, returning empty list if not found or wrong type."""
-    result = _safe_get(obj, *keys, default=[])
-    return result if isinstance(result, list) else []
-
-
-def _safe_get_str(obj: JsonValue, *keys: str | int, default: str = "") -> str:
-    """Safely get a nested string, returning default if not found or wrong type."""
-    result = _safe_get(obj, *keys, default=default)
-    return result if isinstance(result, str) else default
-
-
-# Configure logging to youtube_helper.log
-log_dir = Path.home() / ".claude" / "logs"
-log_dir.mkdir(parents=True, exist_ok=True)
-log_file = log_dir / "youtube_helper.log"
-
-log = logging.getLogger("youtube_helper")
-log.setLevel(logging.INFO)
-if not any(isinstance(handler, RotatingFileHandler) for handler in log.handlers):
-    handler = RotatingFileHandler(
-        str(log_file),
-        maxBytes=1_000_000,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    handler.setFormatter(
-        logging.Formatter(
-            fmt="[%(asctime)s] [%(levelname)s] [youtube_helper] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    log.addHandler(handler)
-
-
-class Transcript(BaseModel):
-    """Transcript model."""
-
-    text: str
-    start: int
-    duration: int
-
-
-class VideoTranscript(BaseModel):
-    """Video transcript model."""
-
-    id: str
-    text: str
-
-
-class Video(BaseModel):
-    """Video model."""
-
-    id: str
-    title: str
-    short_desc: str
-    channel: str
-    duration: str
-    views: str
-    publish_time: str
-    url_suffix: str
-    long_desc: str | None = None
-    transcript: str | None = None
-
-
-class SubscriptionChannel(BaseModel):
-    """Subscription channel model."""
-
-    id: str
-    title: str
-    handle: str | None = None
-    url_suffix: str | None = None
-    description: str | None = None
-    subscribers: str | None = None
-
-
-class LockupViewModel(TypedDict, total=False):
-    """Subset of lockupViewModel fields used by the helper."""
-
-    contentId: str
-    metadata: JsonDict
-    contentImage: JsonDict
-
-
-class VideoRenderer(TypedDict, total=False):
-    """Subset of videoRenderer fields used by the helper."""
-
-    videoId: str
-    title: JsonDict
-    longBylineText: JsonDict
-    lengthText: JsonDict
-    viewCountText: JsonDict
-    publishedTimeText: JsonDict
-    navigationEndpoint: JsonDict
-
-
-class HistoryEntry(TypedDict):
-    id: str
-    title: str
-    channel: str
-    duration: str
-    views: str
-    url_suffix: str
-    publish_time: str
-
-
-class SubscriptionEntry(TypedDict):
-    id: str
-    title: str
-    channel: str
-    duration: str
-    views: str
-    publish_time: str
-    url_suffix: str
-
-
-class HtmlVideoInfo(TypedDict):
-    long_desc: str | None
-
-
-class RichGridItem(TypedDict, total=False):
-    richItemRenderer: JsonDict  # guard: youtube-api - Nested InnerTube structure
-    continuationItemRenderer: JsonDict  # guard: youtube-api - Nested InnerTube structure
-
-
-# ---------------------------------------------------------------------------
-# Circuit breaker for authenticated YouTube requests
-# ---------------------------------------------------------------------------
-
-BACKOFF_FILE = Path.home() / ".config" / "youtube" / ".backoff"
-BACKOFF_SECONDS = 600  # 10 minutes
-
-
-class YouTubeBackoffError(RuntimeError):
-    """Raised when the circuit breaker is active."""
-
-
-def _check_backoff() -> None:
-    """Raise if we're still in a backoff window."""
-    if not BACKOFF_FILE.exists():
-        return
-    try:
-        expires = datetime.fromisoformat(BACKOFF_FILE.read_text(encoding="utf-8").strip())
-    except (ValueError, OSError):
-        BACKOFF_FILE.unlink(missing_ok=True)
-        return
-    if datetime.now(UTC) < expires:
-        remaining = int((expires - datetime.now(UTC)).total_seconds())
-        raise YouTubeBackoffError(
-            f"YouTube backoff active — retrying in {remaining}s. "
-            f"Previous request triggered a protective response from YouTube."
-        )
-    BACKOFF_FILE.unlink(missing_ok=True)
-
-
-def _trigger_backoff(reason: str) -> None:
-    """Activate the circuit breaker."""
-    expires = datetime.now(UTC) + timedelta(seconds=BACKOFF_SECONDS)
-    BACKOFF_FILE.parent.mkdir(parents=True, exist_ok=True)
-    BACKOFF_FILE.write_text(expires.isoformat(), encoding="utf-8")
-    log.warning("YouTube backoff triggered for %ds: %s", BACKOFF_SECONDS, reason)
-
-
-# ---------------------------------------------------------------------------
-# Watch history via InnerTube browse API (aiohttp — no yt-dlp needed)
-# ---------------------------------------------------------------------------
-
-_INNERTUBE_API_URL = "https://www.youtube.com/youtubei/v1/browse"
-_INNERTUBE_CONTEXT = {
-    "client": {
-        "clientName": "WEB",
-        "clientVersion": "2.20240101.00.00",
-        "hl": "en",
-        "gl": "US",
-    }
-}
-
-
-def _load_cookies_txt(path: str) -> dict[str, str]:
-    """Load a Netscape cookies.txt file and return youtube.com cookies as a dict."""
-    jar = http.cookiejar.MozillaCookieJar(path)
-    jar.load(ignore_discard=True, ignore_expires=True)
-    return {c.name: c.value for c in jar if c.domain and ".youtube.com" in c.domain and c.value is not None}
-
-
-def _cookies_to_header(cookies: dict[str, str]) -> str:
-    """Format cookie dict as a Cookie header string."""
-    return "; ".join(f"{k}={v}" for k, v in cookies.items())
-
-
-def _build_innertube_headers(cookies_file: str | None) -> tuple[dict[str, str], str]:
-    """Build InnerTube headers and resolve cookies file path."""
-    default_cookies = Path.home() / ".config" / "youtube" / "cookies.txt"
-    if not cookies_file and default_cookies.exists():
-        cookies_file = str(default_cookies)
-    if not cookies_file:
-        raise FileNotFoundError(
-            "No cookies file found. Export YouTube cookies to "
-            "~/.config/youtube/cookies.txt (Netscape format) using a browser extension."
-        )
-
-    cookies = _load_cookies_txt(cookies_file)
-    if not cookies:
-        raise ValueError(f"No youtube.com cookies found in {cookies_file}")
-
-    cookie_header = _cookies_to_header(cookies)
-    sapid = cookies.get("SAPISID") or cookies.get("__Secure-3PAPISID") or ""
-    headers: dict[str, str] = {
-        "Cookie": cookie_header,
-        "Content-Type": "application/json",
-        "Origin": "https://www.youtube.com",
-        "X-Youtube-Client-Name": "1",
-        "X-Youtube-Client-Version": "2.20240101.00.00",
-    }
-    if sapid:
-        ts = str(int(time.time()))
-        hash_input = f"{ts} {sapid} https://www.youtube.com"
-        sapid_hash = hashlib.sha1(hash_input.encode()).hexdigest()
-        headers["Authorization"] = f"SAPISIDHASH {ts}_{sapid_hash}"
-
-    return headers, cookies_file
-
-
-_COOKIE_REFRESH_LOCK = Path.home() / ".config" / "youtube" / ".refresh_lock"
-_COOKIE_REFRESH_COOLDOWN_SECONDS = 10 * 60
-
-
-def _refresh_cookies_if_needed() -> bool:
-    """Run the cookie refresh script if profile exists. Returns True if successful."""
-    profile_dir = Path.home() / ".config" / "youtube" / "playwright-profile"
-    if not profile_dir.exists():
-        log.warning("Playwright profile not found at %s - cannot auto-refresh cookies", profile_dir)
-        return False
-
-    if _COOKIE_REFRESH_LOCK.exists():
-        age = time.time() - _COOKIE_REFRESH_LOCK.stat().st_mtime
-        if age < _COOKIE_REFRESH_COOLDOWN_SECONDS:
-            log.warning("Cookie refresh cooldown active (%.0fs remaining)", _COOKIE_REFRESH_COOLDOWN_SECONDS - age)
-            return False
-
-    try:
-        from teleclaude.helpers.youtube.refresh_cookies import refresh_cookies
-    except Exception as exc:
-        log.warning("refresh_cookies import failed - cannot auto-refresh cookies: %s", exc)
-        return False
-
-    log.info("Auto-refreshing YouTube cookies...")
-    try:
-        _COOKIE_REFRESH_LOCK.parent.mkdir(parents=True, exist_ok=True)
-        _COOKIE_REFRESH_LOCK.touch()
-        return refresh_cookies(
-            profile_dir=Path.home() / ".config" / "youtube" / "playwright-profile",
-            output_path=Path.home() / ".config" / "youtube" / "cookies.txt",
-            headless=True,
-        )
-    except Exception as e:
-        log.error("Cookie refresh error: %s", e)
-        return False
-
-
-def _parse_history_entries(data: JsonDict) -> list[HistoryEntry]:
-    """Extract video entries from InnerTube browse response JSON."""
-    entries: list[HistoryEntry] = []
-    try:
-        sections = _get_sections(data)
-        for section in sections:
-            contents = _safe_get_list(section, "itemSectionRenderer", "contents")
-            for item in contents:
-                if isinstance(item, dict):
-                    entry = _parse_lockup_view_model(item) or _parse_video_renderer(item)
-                    if entry:
-                        entries.append(entry)
-    except (KeyError, IndexError, TypeError) as exc:
-        log.warning("Failed to parse history entries: %s", exc)
-    return entries
-
-
-def _get_richgrid_contents(data: JsonDict) -> list[JsonDict]:
-    """Extract richGrid contents from initial or continuation response."""
-    if "contents" in data:
-        contents = _safe_get_list(
-            data,
-            "contents",
-            "twoColumnBrowseResultsRenderer",
-            "tabs",
-            0,
-            "tabRenderer",
-            "content",
-            "richGridRenderer",
-            "contents",
-        )
-        return [item for item in contents if isinstance(item, dict)]
-    if "onResponseReceivedActions" in data:
-        actions = _safe_get_list(data, "onResponseReceivedActions")
-        for action in actions:
-            if isinstance(action, dict) and "appendContinuationItemsAction" in action:
-                items = _safe_get_list(action, "appendContinuationItemsAction", "continuationItems")
-                return [item for item in items if isinstance(item, dict)]
-    return []
-
-
-def _extract_richgrid_continuation(contents: list[JsonDict]) -> str | None:
-    """Extract continuation token from richGrid contents."""
-    for item in contents:
-        token = _safe_get_str(item, "continuationItemRenderer", "continuationEndpoint", "continuationCommand", "token")
-        if token:
-            return token
-    return None
-
-
-def _extract_lockup_publish_time(lvm: Mapping[str, JsonValue]) -> str:
-    """Extract publish time from lockupViewModel metadata rows."""
-    rows = _safe_get_list(
-        dict(lvm), "metadata", "lockupMetadataViewModel", "metadata", "contentMetadataViewModel", "metadataRows"
-    )
-    if len(rows) < 2:
-        return ""
-    row1 = rows[1]
-    if not isinstance(row1, dict):
-        return ""
-    parts = _safe_get_list(row1, "metadataParts")
-    for part in parts:
-        if isinstance(part, dict):
-            text = _safe_get_str(part, "text", "content")
-            if text:
-                return text
-    return ""
-
-
-def _parse_subscription_entries(data: JsonDict) -> list[SubscriptionEntry]:
-    """Extract subscription feed entries from InnerTube browse response JSON."""
-    entries: list[SubscriptionEntry] = []
-    contents = _get_richgrid_contents(data)
-    for item in contents:
-        if "richItemRenderer" not in item:
-            continue
-        content = _safe_get_dict(item, "richItemRenderer", "content")
-        if "lockupViewModel" in content:
-            lvm = _safe_get_dict(content, "lockupViewModel")
-            entry = _parse_lockup_view_model({"lockupViewModel": lvm})
-            if entry:
-                entry["publish_time"] = _extract_lockup_publish_time(lvm)
-                entries.append(entry)
-            continue
-        if "videoRenderer" in content:
-            vr = _safe_get_dict(content, "videoRenderer")
-            entry = _parse_video_renderer({"videoRenderer": vr})
-            if entry:
-                entry["publish_time"] = _safe_get_str(vr, "publishedTimeText", "simpleText")
-                entries.append(entry)
-    return entries
-
-
-def _parse_subscription_channels(data: JsonDict) -> list[SubscriptionChannel]:
-    """Extract subscription channel list from InnerTube browse response JSON."""
-    channels: list[SubscriptionChannel] = []
-    sections = _safe_get_list(
-        data,
-        "contents",
-        "twoColumnBrowseResultsRenderer",
-        "tabs",
-        0,
-        "tabRenderer",
-        "content",
-        "sectionListRenderer",
-        "contents",
-    )
-    if not sections:
-        return channels
-
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        contents = _safe_get_list(section, "itemSectionRenderer", "contents")
-        for content in contents:
-            if not isinstance(content, dict):
-                continue
-            items = _safe_get_list(content, "shelfRenderer", "content", "expandedShelfContentsRenderer", "items")
-            for item in items:
-                if not isinstance(item, dict) or "channelRenderer" not in item:
-                    continue
-                r = _safe_get_dict(item, "channelRenderer")
-                title = _safe_get_str(r, "title", "simpleText")
-                channel_id = _safe_get_str(r, "channelId")
-                url_suffix = _safe_get_str(r, "navigationEndpoint", "commandMetadata", "webCommandMetadata", "url")
-                description: str | None = None
-                if "descriptionSnippet" in r:
-                    runs = _safe_get_list(r, "descriptionSnippet", "runs")
-                    if runs:
-                        description = (
-                            "".join(_safe_get_str(run, "text") for run in runs if isinstance(run, dict)) or None
-                        )
-                handle = _safe_get_str(r, "subscriberCountText", "simpleText") or None
-                if handle and not handle.startswith("@"):
-                    handle = None
-                subscribers = _safe_get_str(r, "videoCountText", "simpleText") or None
-                channels.append(
-                    SubscriptionChannel(
-                        id=channel_id,
-                        title=title,
-                        handle=handle,
-                        url_suffix=url_suffix or None,
-                        description=description,
-                        subscribers=subscribers,
-                    )
-                )
-    return channels
-
-
-def _extract_yt_initial_data(html: str) -> JsonDict | None:
-    if "ytInitialData" not in html:
-        return None
-    try:
-        start = html.index("ytInitialData") + len("ytInitialData") + 3
-        end = html.index("};", start) + 1
-        json_str = html[start:end]
-        return json.loads(json_str)
-    except (ValueError, json.JSONDecodeError):
-        return None
-
-
-def _find_about_description(obj: Any) -> str | None:
-    if isinstance(obj, dict):
-        if "descriptionPreviewViewModel" in obj:
-            vm = obj["descriptionPreviewViewModel"]
-            if isinstance(vm, dict):
-                desc = vm.get("description", {})
-                if isinstance(desc, dict):
-                    content = desc.get("content")
-                    if content:
-                        return content
-        if "channelAboutFullMetadataRenderer" in obj:
-            meta = obj["channelAboutFullMetadataRenderer"]
-            desc = meta.get("description", {})
-            if isinstance(desc, dict):
-                text = desc.get("simpleText")
-                if text:
-                    return text
-            if isinstance(desc, str):
-                return desc
-        for value in obj.values():
-            found = _find_about_description(value)
-            if found:
-                return found
-    elif isinstance(obj, list):
-        for item in obj:
-            found = _find_about_description(item)
-            if found:
-                return found
-    return None
-
-
-async def _fetch_channel_about_description(
-    session: ClientSession,
-    channel: SubscriptionChannel,
-) -> str | None:
-    url = None
-    if channel.handle:
-        url = f"https://www.youtube.com/{channel.handle}/about?hl=en"
-    elif channel.id:
-        url = f"https://www.youtube.com/channel/{channel.id}/about?hl=en"
-    if not url:
-        return None
-    try:
-        resp = await session.get(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0",
-                "Cookie": "SOCS=CAESEwgDEgk0ODE3Nzk3MjQaAmVuIAEaBgiA_LyaBg",
-            },
-        )
-        if resp.status != 200:
-            return None
-        html = await resp.text()
-        data = _extract_yt_initial_data(html)
-        if not data:
-            return None
-        return _find_about_description(data)
-    except Exception:
-        return None
-
-
-def _get_sections(data: JsonDict) -> list[JsonDict]:
-    """Get section list from initial or continuation response."""
-    if "contents" in data:
-        contents = _safe_get_list(
-            data,
-            "contents",
-            "twoColumnBrowseResultsRenderer",
-            "tabs",
-            0,
-            "tabRenderer",
-            "content",
-            "sectionListRenderer",
-            "contents",
-        )
-        return [item for item in contents if isinstance(item, dict)]
-    if "onResponseReceivedActions" in data:
-        actions = _safe_get_list(data, "onResponseReceivedActions")
-        for action in actions:
-            if isinstance(action, dict) and "appendContinuationItemsAction" in action:
-                items = _safe_get_list(action, "appendContinuationItemsAction", "continuationItems")
-                return [item for item in items if isinstance(item, dict)]
-    return []
-
-
-def _parse_lockup_view_model(item: JsonDict) -> HistoryEntry | None:
-    """Parse a lockupViewModel entry (current YouTube history format)."""
-    lvm = _safe_get_dict(item, "lockupViewModel")
-    if not lvm:
-        return None
-    vid_id = _safe_get_str(lvm, "contentId")
-    meta = _safe_get_dict(lvm, "metadata", "lockupMetadataViewModel")
-    title = _safe_get_str(meta, "title", "content")
-    meta2 = _safe_get_dict(meta, "metadata", "contentMetadataViewModel")
-    rows = _safe_get_list(meta2, "metadataRows")
-    channel_name = ""
-    views = ""
-    # row[0] typically has channel (part 0) and views (part 1)
-    if rows and isinstance(rows[0], dict):
-        parts = _safe_get_list(rows[0], "metadataParts")
-        if len(parts) >= 1 and isinstance(parts[0], dict):
-            channel_name = _safe_get_str(parts[0], "text", "content")
-        if len(parts) >= 2 and isinstance(parts[1], dict):
-            views = _safe_get_str(parts[1], "text", "content")
-    duration = ""
-    overlays = _safe_get_list(lvm, "contentImage", "thumbnailViewModel", "overlays")
-    for ov in overlays:
-        if not isinstance(ov, dict):
-            continue
-        badges = _safe_get_list(ov, "thumbnailBottomOverlayViewModel", "badges")
-        for b in badges:
-            if isinstance(b, dict):
-                duration = _safe_get_str(b, "thumbnailBadgeViewModel", "text")
-    return {
-        "id": vid_id,
-        "title": title,
-        "channel": channel_name,
-        "duration": duration,
-        "views": views,
-        "url_suffix": f"/watch?v={vid_id}",
-        "publish_time": _extract_lockup_publish_time(lvm),
-    }
-
-
-def _parse_video_renderer(item: JsonDict) -> SubscriptionEntry | None:
-    """Parse a videoRenderer entry (legacy YouTube format)."""
-    vr = _safe_get_dict(item, "videoRenderer")
-    if not vr:
-        return None
-    title_runs = _safe_get_list(vr, "title", "runs")
-    channel_runs = _safe_get_list(vr, "longBylineText", "runs")
-    title = ""
-    if title_runs and isinstance(title_runs[0], dict):
-        title = _safe_get_str(title_runs[0], "text")
-    channel = ""
-    if channel_runs and isinstance(channel_runs[0], dict):
-        channel = _safe_get_str(channel_runs[0], "text")
-    return {
-        "id": _safe_get_str(vr, "videoId"),
-        "title": title,
-        "channel": channel,
-        "duration": _safe_get_str(vr, "lengthText", "simpleText"),
-        "views": _safe_get_str(vr, "viewCountText", "simpleText"),
-        "publish_time": _safe_get_str(vr, "publishedTimeText", "simpleText"),
-        "url_suffix": _safe_get_str(vr, "navigationEndpoint", "commandMetadata", "webCommandMetadata", "url"),
-    }
-
-
-def _extract_continuation_token(data: JsonDict) -> str | None:
-    """Extract the continuation token for the next page of history."""
-    for section in _get_sections(data):
-        token = _safe_get_str(
-            section, "continuationItemRenderer", "continuationEndpoint", "continuationCommand", "token"
-        )
-        if token:
-            return token
-    return None
+# Re-export models for backward-compatible imports
+from teleclaude.helpers.youtube_helper._models import (
+    HistoryEntry,
+    HtmlVideoInfo,
+    LockupViewModel,
+    RichGridItem,
+    SubscriptionChannel,
+    SubscriptionEntry,
+    Transcript,
+    Video,
+    VideoRenderer,
+    VideoTranscript,
+    YouTubeBackoffError,
+)
+
+# Re-export parsers for backward-compatible imports
+from teleclaude.helpers.youtube_helper._parsers import (
+    _extract_continuation_token,
+    _extract_lockup_publish_time,
+    _extract_richgrid_continuation,
+    _extract_yt_initial_data,
+    _fetch_channel_about_description,
+    _find_about_description,
+    _get_richgrid_contents,
+    _get_sections,
+    _parse_history_entries,
+    _parse_html_list,
+    _parse_html_video,
+    _parse_lockup_view_model,
+    _parse_subscription_channels,
+    _parse_subscription_entries,
+    _parse_video_renderer,
+)
+
+# Re-export utilities for backward-compatible imports
+from teleclaude.helpers.youtube_helper._utils import (
+    _INNERTUBE_API_URL,
+    _INNERTUBE_CONTEXT,
+    BACKOFF_FILE,
+    BACKOFF_SECONDS,
+    _build_innertube_headers,
+    _check_backoff,
+    _cookies_to_header,
+    _load_cookies_txt,
+    _refresh_cookies_if_needed,
+    _safe_get,
+    _safe_get_dict,
+    _safe_get_list,
+    _safe_get_str,
+    _trigger_backoff,
+    log,
+)
+
+__all__ = [
+    # Models
+    "BACKOFF_FILE",
+    "BACKOFF_SECONDS",
+    # Utils
+    "_INNERTUBE_API_URL",
+    "_INNERTUBE_CONTEXT",
+    "HistoryEntry",
+    "HtmlVideoInfo",
+    "LockupViewModel",
+    "RichGridItem",
+    "SubscriptionChannel",
+    "SubscriptionEntry",
+    "Transcript",
+    "Video",
+    "VideoRenderer",
+    "VideoTranscript",
+    "YouTubeBackoffError",
+    "_build_innertube_headers",
+    "_check_backoff",
+    "_cookies_to_header",
+    # Parsers
+    "_extract_continuation_token",
+    "_extract_lockup_publish_time",
+    "_extract_richgrid_continuation",
+    "_extract_yt_initial_data",
+    "_fetch_channel_about_description",
+    "_find_about_description",
+    "_get_richgrid_contents",
+    "_get_sections",
+    "_load_cookies_txt",
+    "_parse_history_entries",
+    "_parse_html_list",
+    "_parse_html_video",
+    "_parse_lockup_view_model",
+    "_parse_subscription_channels",
+    "_parse_subscription_entries",
+    "_parse_video_renderer",
+    "_refresh_cookies_if_needed",
+    "_safe_get",
+    "_safe_get_dict",
+    "_safe_get_list",
+    "_safe_get_str",
+    "_trigger_backoff",
+    "log",
+    # Public functions
+    "main",
+    "youtube_history",
+    "youtube_search",
+    "youtube_subscriptions",
+    "youtube_transcripts",
+]
 
 
 async def youtube_history(
@@ -910,73 +394,6 @@ def _get_since_date(period_days: int, end_date: str) -> tuple[str, str, str]:
         str(start.month).zfill(2),
         str(start.day).zfill(2),
     )
-
-
-def _parse_html_list(html: str, max_results: int) -> list[Video]:
-    """Parse YouTube search results HTML."""
-    results: list[Video] = []
-    if "ytInitialData" not in html:
-        return []
-    start = html.index("ytInitialData") + len("ytInitialData") + 3
-    end = html.index("};", start) + 1
-    json_str = html[start:end]
-    data = json.loads(json_str)
-    if "twoColumnBrowseResultsRenderer" not in data["contents"]:
-        return []
-    tab = None
-    for tab in data["contents"]["twoColumnBrowseResultsRenderer"]["tabs"]:
-        if "expandableTabRenderer" in tab:
-            break
-    if tab is None:
-        return []
-    for contents in tab["expandableTabRenderer"]["content"]["sectionListRenderer"]["contents"]:
-        if "itemSectionRenderer" in contents:
-            for video in contents["itemSectionRenderer"]["contents"]:
-                if "videoRenderer" not in video:
-                    continue
-
-                res: dict[str, str | list[str] | int | None] = {}
-                video_data = video.get("videoRenderer", {})
-                res["id"] = video_data.get("videoId", None)
-                res["title"] = video_data.get("title", {}).get("runs", [[{}]])[0].get("text", "")
-                res["short_desc"] = video_data.get("descriptionSnippet", {}).get("runs", [{}])[0].get("text", "")
-                res["channel"] = video_data.get("longBylineText", {}).get("runs", [[{}]])[0].get("text", None)
-                res["duration"] = video_data.get("lengthText", {}).get("simpleText", "")
-                res["views"] = video_data.get("viewCountText", {}).get("simpleText", "")
-                res["publish_time"] = video_data.get("publishedTimeText", {}).get(
-                    "simpleText",
-                    "",
-                )
-                res["url_suffix"] = (
-                    video_data.get("navigationEndpoint", {})
-                    .get("commandMetadata", {})
-                    .get("webCommandMetadata", {})
-                    .get("url", "")
-                )
-                results.append(Video(**res))
-                if len(results) >= int(max_results):
-                    break
-        if len(results) >= int(max_results):
-            break
-
-    return results
-
-
-def _parse_html_video(html: str) -> HtmlVideoInfo:
-    """Parse video page HTML to extract description."""
-    result: HtmlVideoInfo = {"long_desc": None}
-    start = html.index("ytInitialData") + len("ytInitialData") + 3
-    end = html.index("};", start) + 1
-    json_str = html[start:end]
-    data = json.loads(json_str)
-    obj = munchify(data)
-    try:
-        result["long_desc"] = obj.contents.twoColumnWatchNextResults.results.results.contents[  # type: ignore[attr-defined]
-            1
-        ].videoSecondaryInfoRenderer.attributedDescription.content
-    except (AttributeError, KeyError, IndexError, TypeError):
-        log.warning("YouTube HTML structure changed, could not extract long description")
-    return result
 
 
 def _build_youtube_search_url(query: str | None, period_days: int, end_date: str) -> str:

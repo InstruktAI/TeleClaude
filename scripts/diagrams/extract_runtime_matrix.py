@@ -10,7 +10,7 @@ EVENTS_PATH = PROJECT_ROOT / "teleclaude" / "core" / "events.py"
 AGENT_TYPES_PATH = PROJECT_ROOT / "teleclaude" / "helpers" / "agent_types.py"
 CONSTANTS_PATH = PROJECT_ROOT / "teleclaude" / "constants.py"
 HOOK_ADAPTERS_DIR = PROJECT_ROOT / "teleclaude" / "hooks" / "adapters"
-HOOK_RECEIVER_PATH = PROJECT_ROOT / "teleclaude" / "hooks" / "receiver.py"
+HOOK_RECEIVER_PATH = PROJECT_ROOT / "teleclaude" / "hooks" / "receiver" / "__main__.py"
 OUTPUT_PATH = PROJECT_ROOT / "docs" / "diagrams" / "runtime-matrix.mmd"
 
 

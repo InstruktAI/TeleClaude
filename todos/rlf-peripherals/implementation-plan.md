@@ -2,21 +2,45 @@
 
 ## Overview
 
-- Summarize the approach and why it is appropriate.
+Decompose oversized Python modules into focused sub-packages to improve code organization, maintainability, and reduce cognitive load. Each module is broken into logically cohesive components based on responsibility.
 
-## Phase 1: Core Changes
+## Phase 1: Core Decompositions
 
-### Task 1.1:
+### Task 1.1: Decompose checkpoint.py into 4-module package
 
-**File(s):** ``
+**File(s):** `teleclaude/hooks/checkpoint/`
 
-- [ ] Complete this task
+- [x] Complete this task
 
-### Task 1.2:
+### Task 1.2: Decompose resource_validation.py into 3-module package
 
-**File(s):** ``
+**File(s):** `teleclaude/resource_validation/`
 
-- [ ] Complete this task
+- [x] Complete this task
+
+### Task 1.3: Decompose youtube_helper.py into 4-module package
+
+**File(s):** `teleclaude/helpers/youtube_helper/`
+
+- [x] Complete this task
+
+### Task 1.4: Decompose receiver.py into receiver/ package
+
+**File(s):** `teleclaude/hooks/receiver/`
+
+- [x] Complete this task
+
+### Task 1.5: Decompose transcript.py into a package
+
+**File(s):** `teleclaude/utils/transcript/`
+
+- [x] Complete this task
+
+### Task 1.6: Decompose oversized TUI modules into focused submodules
+
+**File(s):** `teleclaude/cli/tui/`
+
+- [x] Complete this task
 
 ---
 
@@ -24,18 +48,18 @@
 
 ### Task 2.1: Tests
 
-- [ ] Add or update tests for the changed behavior
-- [ ] Run `make test`
+- [x] Add or update tests for the changed behavior
+- [x] Run `make test` — 139 tests passing
 
 ### Task 2.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint` — guardrails passing
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable — none required)

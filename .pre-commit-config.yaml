@@ -78,4 +78,4 @@ repos:
     entry: ./tools/checks/check-raw-sql.sh
     language: system
     pass_filenames: false
-    files: ^teleclaude/(core/db\.py|hooks/receiver\.py)$
+    files: ^teleclaude/(core/db\.py|hooks/receiver/__main__\.py)$
