@@ -35,8 +35,6 @@
   description: 'Render-aware session runtime: wake-driven capture, adaptive cadence,
     and reduced idle tmux overhead for all session types'
 - slug: test-suite-overhaul
-  after:
-  - rlf-core-infra
   description: 'Clean-slate test suite: behavioral contracts, 1:1 mapping, zero string
     snapshots. Depends on refactored codebase.'
 - slug: tso-adapters
@@ -119,7 +117,5 @@
 - slug: rlf-core-data-pylint
 - slug: rlf-core-machines
 - slug: lint-baseline-fix
-  after:
-  - rlf-core-infra
   description: 'Restore make lint to passing: fix pre-existing mypy/pyright baseline
     failures'
