@@ -523,33 +523,20 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
         all_passed = False
         results.append(f"GATE FAILED: make test (error: {exc})")
 
-    # Gate 2: Demo structure validation
+    # Gate 2: Demo structure validation (inline — no subprocess)
     if is_bug_todo(worktree_cwd, slug):
         results.append("GATE SKIPPED: demo validate (bug workflow)")
     else:
-        try:
-            demo_result = subprocess.run(
-                ["telec", "todo", "demo", "validate", slug],
-                cwd=worktree_cwd,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if demo_result.returncode != 0:
-                all_passed = False
-                results.append(f"GATE FAILED: demo validate (exit {demo_result.returncode})\n{demo_result.stdout}")
-            elif "no-demo marker found" in demo_result.stdout.lower():
-                results.append(
-                    f"GATE WARNING: demo validate — no-demo marker used, reviewer must verify\n{demo_result.stdout.strip()}"
-                )
-            else:
-                results.append(f"GATE PASSED: demo validate\n{demo_result.stdout.strip()}")
-        except subprocess.TimeoutExpired:
+        from teleclaude.cli.demo_validation import validate_demo
+
+        passed, is_no_demo, message = validate_demo(slug, Path(worktree_cwd))
+        if not passed:
             all_passed = False
-            results.append("GATE FAILED: demo validate (timed out)")
-        except OSError as exc:
-            all_passed = False
-            results.append(f"GATE FAILED: demo validate (error: {exc})")
+            results.append(f"GATE FAILED: demo validate\n{message}")
+        elif is_no_demo:
+            results.append(f"GATE WARNING: demo validate — no-demo marker used, reviewer must verify\n{message}")
+        else:
+            results.append(f"GATE PASSED: demo validate\n{message.strip()}")
 
     return all_passed, "\n".join(results)
 
