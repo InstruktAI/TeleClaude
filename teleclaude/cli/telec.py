@@ -1023,13 +1023,7 @@ def is_command_allowed(
     if auth is None:
         return False
 
-    # Normalize None system_role to orchestrator (TUI/terminal callers are never workers).
-    effective_system = system_role if system_role is not None else ROLE_ORCHESTRATOR
-
-    if effective_system not in auth.system:
-        return False
-
-    # Determine the effective human role.
+    # Determine the effective human role early — admin bypasses both gates.
     # Token-authenticated agent sessions: fall back to principal_role when human_role absent.
     effective_human_role = human_role
     if effective_human_role is None and principal is not None:
@@ -1042,9 +1036,15 @@ def is_command_allowed(
     if effective_human_role == HUMAN_ROLE_ADMIN and effective_human_role in auth.exclude_human:
         return False
 
-    # Admin bypasses the human allow-list (unless excluded above).
+    # Admin bypasses both system-role and human-role gates.
+    # System-role restrictions constrain agents, not admins.
     if effective_human_role == HUMAN_ROLE_ADMIN:
         return True
+
+    # System-role gate: restricts which agent roles can invoke this command.
+    effective_system = system_role if system_role is not None else ROLE_ORCHESTRATOR
+    if effective_system not in auth.system:
+        return False
 
     return effective_human_role in auth.human
 
@@ -3298,7 +3298,10 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
                 "git",
                 "commit",
                 "-m",
-                (f"chore({slug}): deliver and cleanup\n\nCo-Authored-By: TeleClaude <noreply@instrukt.ai>"),
+                (
+                    f"chore({slug}): deliver and cleanup\n\n"
+                    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
+                ),
             ],
             capture_output=True,
             text=True,
