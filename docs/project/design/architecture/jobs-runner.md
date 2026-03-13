@@ -279,12 +279,26 @@ jobs:
     agent: claude
     thinking_mode: fast
 
+```
+
+Script job example (direct Python execution, no agent):
+
+```yaml
+jobs:
+  youtube_scraper:
+    category: system
+    when:
+      at: '06:00'
+    script: jobs/youtube_scraper.py
+    tags:
+      - ai
+      - devtools
+
   youtube_sync_subscriptions:
-    schedule: daily
-    preferred_hour: 6
-    job: youtube-sync-subscriptions
-    agent: claude
-    thinking_mode: fast
+    category: system
+    when:
+      at: '06:00'
+    script: jobs/youtube_sync_subscriptions.py
 ```
 
 The runner constructs the agent prompt from the `job` field:
@@ -384,4 +398,4 @@ complete mandate — the agent reads it, executes it, and stays within its scope
 
 ### Known Issues
 
-1. **No tests.** No unit tests exist for the cron engine or job implementations.
+1. **Limited test coverage.** No unit tests exist for the cron engine. Job implementation tests exist for youtube_scraper only.

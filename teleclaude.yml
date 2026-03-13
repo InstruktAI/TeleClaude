@@ -14,6 +14,16 @@ jobs:
     thinking_mode: fast
 
   youtube_scraper:
+    category: system
+    when:
+      at: '06:00'
+    script: jobs/youtube_scraper.py
+    tags:
+      - ai
+      - devtools
+
+  youtube_sync_subscriptions:
+    category: system
     when:
       at: '06:00'
     script: jobs/youtube_sync_subscriptions.py

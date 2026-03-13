@@ -1,5 +1,5 @@
 ---
-description: 'YouTube subscription tagger job: nightly AI classification of untagged channels.'
+description: 'YouTube subscription tagger: scheduled script job that classifies untagged channels.'
 id: 'project/spec/jobs/youtube-sync-subscriptions'
 scope: 'project'
 type: 'spec'
@@ -13,7 +13,9 @@ type: 'spec'
 
 ## What it is
 
-A nightly AI job that classifies untagged YouTube subscriptions per person. For each person with YouTube subscriptions configured, runs the tagging script against their `youtube.csv`. The script finds channels with empty tags and classifies them using AI. Already-tagged channels are skipped. Results are written back to CSV.
+A scheduled script job that classifies untagged YouTube subscriptions per person. For each person with YouTube subscriptions configured, runs the tagging script against their `youtube.csv`. The script finds channels with empty tags and classifies them using AI. Already-tagged channels are skipped. Results are written back to CSV.
+
+Registered under the `youtube_sync_subscriptions` key in `teleclaude.yml` as a `category: system` script job — distinct from `youtube_scraper`, which performs tag-filtered channel scraping.
 
 ## Canonical fields
 

@@ -12,3 +12,22 @@
 #   token: ${DISCORD_BOT_TOKEN}
 #   guild_id: ${DISCORD_GUILD_ID}
 #   help_desk_channel_id: ${DISCORD_HELP_DESK_CHANNEL_ID}
+#
+# jobs:
+#   # Scrapes recent videos for tag-filtered subscribed channels (script job).
+#   youtube_scraper:
+#     category: system
+#     when:
+#       at: '06:00'
+#     script: jobs/youtube_scraper.py
+#     tags:
+#       - ai
+#       - devtools
+#
+#   # Tags unclassified channels in each subscriber's youtube.csv (script job).
+#   youtube_sync_subscriptions:
+#     category: system
+#     when:
+#       at: '06:00'
+#     script: jobs/youtube_sync_subscriptions.py
+#

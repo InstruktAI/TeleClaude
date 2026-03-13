@@ -46,6 +46,20 @@ config_keys:
     pinned_minor: string # required when channel=stable (e.g. "1.2")
   people: list[PersonEntry]
   jobs: mapping[string, JobScheduleConfig]
+  # Job-specific extra fields (extra="allow" on JobScheduleConfig):
+  #   jobs.youtube_scraper.tags: list[string]  — channel tag filter for the scraper job.
+  #     A channel matches if any of its CSV tags appear in this list.
+  #     Channels with empty or "n/a" tags are always excluded.
+  #     Example:
+  #       jobs:
+  #         youtube_scraper:
+  #           category: system
+  #           when:
+  #             at: '06:00'
+  #           script: jobs/youtube_scraper.py
+  #           tags:
+  #             - ai
+  #             - devtools
 
 environment_variables:
   - TELEGRAM_BOT_TOKEN
