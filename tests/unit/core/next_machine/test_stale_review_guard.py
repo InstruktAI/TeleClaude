@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-MODULE = "teleclaude.core.next_machine.core"
+MODULE = "teleclaude.core.next_machine.work"
 
 SLUG = "fix-something"
 BASELINE_SHA = "aaa1111"
@@ -101,7 +101,7 @@ async def test_finalize_ready_skips_stale_review_reset() -> None:
     mock_mark = MagicMock(return_value=state)
 
     with _patched_context(state, mock_mark):
-        from teleclaude.core.next_machine.core import next_work
+        from teleclaude.core.next_machine.work import next_work
 
         result = await next_work(MagicMock(), SLUG, "/fake/cwd")
 
@@ -128,7 +128,7 @@ async def test_finalize_pending_allows_stale_review_reset() -> None:
         return state
 
     with _patched_context(state, tracking_mark):
-        from teleclaude.core.next_machine.core import next_work
+        from teleclaude.core.next_machine.work import next_work
 
         await next_work(MagicMock(), SLUG, "/fake/cwd")
 
@@ -147,7 +147,7 @@ async def test_finalize_handed_off_skips_stale_review_reset() -> None:
     mock_mark = MagicMock(return_value=state)
 
     with _patched_context(state, mock_mark):
-        from teleclaude.core.next_machine.core import next_work
+        from teleclaude.core.next_machine.work import next_work
 
         result = await next_work(MagicMock(), SLUG, "/fake/cwd")
 
