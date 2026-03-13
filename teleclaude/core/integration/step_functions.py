@@ -162,11 +162,24 @@ def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
         if rc != 0:
             return integration_wt, f"git worktree add (integration) failed:\n{stderr.strip()}"
 
+    # Skip reset if there's an active merge or squash state — preserves
+    # conflict resolutions and in-progress squash merges on re-entry.
+    wt_str = str(integration_wt)
+    if _merge_head_exists(wt_str):
+        return integration_wt, ""
+    gd = _git_dir(wt_str)
+    if gd is None:
+        # Cannot determine git directory — skip reset to avoid destroying
+        # potential in-progress squash merge state.
+        return integration_wt, ""
+    if (gd / "SQUASH_MSG").exists():
+        return integration_wt, ""
+
     # Sync to latest origin/main
-    rc, _, stderr = _run_git(["fetch", "origin"], cwd=str(integration_wt))
+    rc, _, stderr = _run_git(["fetch", "origin"], cwd=wt_str)
     if rc != 0:
         return integration_wt, f"git fetch origin failed in integration worktree:\n{stderr.strip()}"
-    rc, _, stderr = _run_git(["reset", "--hard", "origin/main"], cwd=str(integration_wt))
+    rc, _, stderr = _run_git(["reset", "--hard", "origin/main"], cwd=wt_str)
     if rc != 0:
         return integration_wt, f"git reset to origin/main failed in integration worktree:\n{stderr.strip()}"
 
@@ -241,8 +254,11 @@ def _try_auto_enqueue(*, queue: IntegrationQueue, slug: str, cwd: str) -> bool:
     entry when a caller invokes ``telec todo integrate <slug>`` without a
     prior queue population step.
 
-    Skips enqueue if the candidate SHA is already an ancestor of main
-    (already integrated) to prevent infinite re-enqueue loops.
+    Skips enqueue when the candidate is already tracked in the queue (any
+    status) — this is the primary guard against re-enqueue loops, covering
+    cases where recovery requeues in_progress items or squash merges bypass
+    ancestry detection. Also skips when the candidate SHA is already an
+    ancestor of main (fast-forward integrated).
     """
     branch = slug  # branch == slug by project convention
     rc, stdout, _ = _run_git(["rev-parse", branch], cwd=cwd)
@@ -254,10 +270,11 @@ def _try_auto_enqueue(*, queue: IntegrationQueue, slug: str, cwd: str) -> bool:
     if len(sha) != 40 or not all(c in "0123456789abcdefABCDEF" for c in sha):
         logger.warning("Auto-enqueue: invalid SHA for branch %s: %r", branch, sha)
         return False
-    # Skip if already integrated (ancestry check or queue status)
+    # Skip if already tracked in queue (any status — prevents re-enqueue loops
+    # when recovery requeues in_progress items or squash merges bypass ancestry)
     existing = queue.get(key=CandidateKey(slug=slug, branch=branch, sha=sha))
-    if existing and existing.status == "integrated":
-        logger.info("Auto-enqueue: %s already marked integrated in queue — skipping", slug)
+    if existing is not None:
+        logger.info("Auto-enqueue: %s already in queue (status=%s) — skipping", slug, existing.status)
         return False
     ancestor_rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
     if ancestor_rc == 0:

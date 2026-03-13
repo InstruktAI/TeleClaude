@@ -14,7 +14,7 @@ from teleclaude.core.integration.readiness_projection import CandidateKey
 QueueStatus = Literal["queued", "in_progress", "integrated", "blocked", "superseded"]
 _RECOVERY_REQUEUE_REASON = "requeued after runtime restart"
 _ALLOWED_STATUS_TRANSITIONS: dict[QueueStatus, frozenset[QueueStatus]] = {
-    "queued": frozenset({"in_progress"}),
+    "queued": frozenset({"in_progress", "integrated"}),
     "in_progress": frozenset({"queued", "integrated", "blocked", "superseded"}),
     "integrated": frozenset(),
     "blocked": frozenset({"queued"}),
