@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: rlf-peripherals
+  date: '2026-03-13'
+  commit: b596d9630897
 - slug: youtube-scrape-channels-job
   date: '2026-03-13'
   commit: 27ea7fb9a6b0
