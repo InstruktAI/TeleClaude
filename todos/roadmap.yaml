@@ -41,7 +41,6 @@
   - rlf-core-machines
   - rlf-core-data
   - rlf-core-infra
-  - rlf-services
   - rlf-peripherals
   description: 'Clean-slate test suite: behavioral contracts, 1:1 mapping, zero string
     snapshots. Depends on refactored codebase.'
