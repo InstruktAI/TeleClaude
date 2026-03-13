@@ -35,12 +35,16 @@
 - slug: session-runtime-overhaul
   description: 'Render-aware session runtime: wake-driven capture, adaptive cadence,
     and reduced idle tmux overhead for all session types'
-- slug: refactor-large-files
-  description: Split files over ~500 LOC into focused modules. 20 files targeted,
-    top 4 over 2900 lines. No test changes — tests are rebuilt separately after.
 - slug: test-suite-overhaul
   after:
-  - refactor-large-files
+  - rlf-cli
+  - rlf-tui
+  - rlf-core-machines
+  - rlf-core-data
+  - rlf-core-infra
+  - rlf-adapters
+  - rlf-services
+  - rlf-peripherals
   description: 'Clean-slate test suite: behavioral contracts, 1:1 mapping, zero string
     snapshots. Depends on refactored codebase.'
 - slug: tso-adapters
@@ -103,21 +107,21 @@
   - tso-integration
   description: 'Final validation: full suite, 1:1 mapping check, success criteria
     audit'
+- slug: session-polling-baseline
+  group: session-runtime-overhaul
+  description: Immediate corrections + replay corpus (split from session-runtime-overhaul)
 - slug: session-adaptive-runtime
+  group: session-runtime-overhaul
   after:
   - session-polling-baseline
 - slug: session-async-control-lane
+  group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: session-polling-baseline
-  description: Immediate corrections + replay corpus (split from session-runtime-overhaul)
 - slug: rlf-cli
   group: refactor-large-files
   description: 'Decompose CLI entrypoint: cli/telec.py (4,329), cli/tool_commands.py
     (1,417)'
-- slug: rlf-tui
-  group: refactor-large-files
-  description: 'Decompose TUI layer: 6 files in cli/tui/ (~7,231 lines total)'
 - slug: rlf-core-machines
   group: refactor-large-files
   description: 'Decompose state machines: core/next_machine/core.py (4,168), core/integration/state_machine.py
@@ -140,3 +144,4 @@
   group: refactor-large-files
   description: 'Decompose peripherals: transport, utils, hooks, helpers, validation
     (6 files, ~9,066 lines)'
+- slug: refactor-large-files

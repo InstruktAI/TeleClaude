@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: rlf-tui
+  date: '2026-03-13'
+  commit: 01d673aa7b47
 - slug: fix-bugs-report-event-system-regression
   date: '2026-03-13'
   commit: 140a63e74ff6
