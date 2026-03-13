@@ -82,11 +82,14 @@ def _extract_receiver_script(command: str | list[object]) -> str | None:
             return None
     for part in parts:
         if part.endswith(PY_EXTENSION) and RECEIVER_TOKEN in part:
-            # Normalize legacy receiver_claude/receiver_gemini to receiver.py family
+            # Normalize all receiver variants to a single token for dedup:
+            # - legacy receiver.py / receiver_claude.py / receiver_gemini.py
+            # - current receiver/__main__.py (package form)
             if (
                 part.endswith(RECEIVER_FILE)
                 or part.endswith(RECEIVER_CLAUDE_FILE)
                 or part.endswith(RECEIVER_GEMINI_FILE)
+                or part.endswith("receiver/__main__.py")
             ):
                 return RECEIVER_TOKEN
             return part
