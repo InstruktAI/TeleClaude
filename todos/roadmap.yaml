@@ -117,10 +117,6 @@
   group: refactor-large-files
   description: 'Decompose CLI entrypoint: cli/telec.py (4,329), cli/tool_commands.py
     (1,417)'
-- slug: rlf-core-machines
-  group: refactor-large-files
-  description: 'Decompose state machines: core/next_machine/core.py (4,168), core/integration/state_machine.py
-    (1,183)'
 - slug: rlf-core-data
   group: refactor-large-files
   description: 'Decompose data layer: core/db.py (2,506), core/models.py (1,095),
@@ -130,3 +126,4 @@
   description: 'Decompose core infra: core/agent_coordinator.py (1,619), core/tmux_bridge.py
     (1,402), core/adapter_client.py (1,161)'
 - slug: refactor-large-files
+- slug: rlf-peripherals
