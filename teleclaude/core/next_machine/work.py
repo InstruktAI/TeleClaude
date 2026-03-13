@@ -425,9 +425,14 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             "approved_review_implies_build_complete",
         )
 
+    finalize_state = _get_finalize_state(state)
+
     # Guard stale review approvals: if new commits landed after approval baseline,
     # route back through review instead of proceeding to finalize.
-    if review_status == PhaseStatus.APPROVED.value:
+    # Skip when finalize is already ready/handed_off — post-finalize merge-main
+    # commits are infrastructure, not new code requiring re-review.
+    finalize_status = finalize_state.get("status", "pending")
+    if review_status == PhaseStatus.APPROVED.value and finalize_status not in ("ready", "handed_off"):
         baseline_raw = state.get("review_baseline_commit")
         baseline = baseline_raw if isinstance(baseline_raw, str) else ""
         head_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
@@ -449,8 +454,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 "run",
                 "review_approval_stale_baseline",
             )
-
-    finalize_state = _get_finalize_state(state)
 
     # Finalize handoff is a slug-scoped follow-up step after FINALIZE_READY.
     # Once ready is recorded, the next `telec todo work {slug}` must consume
