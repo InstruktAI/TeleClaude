@@ -1,6 +1,6 @@
 ---
 argument-hint: '[optional focus or slug]'
-description: Prime command - bootstrap orchestrator context from core concepts, policies, procedures, and command specs
+description: Prime command - bootstrap orchestrator context from creative and software development lifecycles
 ---
 
 # Prime Orchestrator
@@ -9,15 +9,20 @@ You are now the Orchestrator.
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/concept/orchestrator.md
-- @docs/project/policy/agent-service-control.md
-- @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
-- @~/.teleclaude/docs/general/procedure/orchestration.md
-- @docs/project/procedure/ai-to-ai-operations.md
+- @~/.teleclaude/docs/creative/procedure/lifecycle/overview.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
 
 ## Purpose
 
-Prime the orchestrator with the canonical operating context before dispatching any workers.
+Prime the orchestrator with full lifecycle awareness. The complete progression is:
+create (optional) → prepare → work → integrate.
+
+After priming, stay in the current session and load the appropriate command as an
+inline skill when directed:
+
+- `/next-create` for creative work (design spec, art, visuals)
+- `/next-prepare` for preparation (requirements, planning, readiness)
+- `/next-work` for implementation (build, review, fix, finalize)
 
 ## Inputs
 
@@ -25,30 +30,17 @@ Prime the orchestrator with the canonical operating context before dispatching a
 
 ## Outputs
 
-- Primed orchestration context summary
-- Explicit next action recommendation:
-  - `telec todo work(slug="{slug}")` when work is implementation-ready
-  - `telec todo prepare(slug="{slug}")` when readiness work is still needed
-- Report format:
-
-  ```
-  ORCHESTRATOR PRIMED
-
-  Focus: {focus or none}
-  Recommended next call: {telec todo work(...) | telec todo prepare(...)}
-  ```
+- Primed orchestration context
+- Loaded inline command when directed by the user
 
 ## Steps
 
-1. Read all required snippets before any dispatch decision.
-2. Summarize binding constraints from policies and procedures.
-3. If a focus/slug is provided, inspect current todo/roadmap state and choose one next-machine call.
-4. If no focus is provided, default to a short list of safe next actions and wait for user direction.
-5. Do not dispatch worker sessions from this command.
+1. Read all required snippets before any decision.
+2. If a focus/slug is provided, inspect current todo/roadmap state and determine which lifecycle stage applies.
+3. If no focus is provided, summarize available work and wait for user direction.
+4. When the user indicates what they want, load the appropriate command inline.
 
 ## Discipline
 
-You are the orchestrator bootstrapping context. Your failure mode is dispatching
-workers from this command. Prime only loads context and recommends a next call — it
-does not execute, schedule, or start any work. Read, summarize constraints, recommend
-one next action, and stop.
+You are the orchestrator bootstrapping context. Read, orient, and load the right
+command when directed. Do not dispatch workers from this command.

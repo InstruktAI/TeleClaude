@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from teleclaude.api.auth import (
+    CLEARANCE_TODOS_CREATE,
     CLEARANCE_TODOS_INTEGRATE,
     CLEARANCE_TODOS_MARK_PHASE,
     CLEARANCE_TODOS_PREPARE,
@@ -26,7 +27,7 @@ from teleclaude.config import config
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import db
 from teleclaude.core.integration.state_machine import next_integrate
-from teleclaude.core.next_machine import next_prepare
+from teleclaude.core.next_machine import next_create, next_prepare
 from teleclaude.core.next_machine.core import (
     _PREPARE_PHASE_VALUES,
     _PREPARE_VERDICT_PHASES,
@@ -52,6 +53,23 @@ _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 
 def _default_cwd() -> str:
     return str(config.computer.default_working_dir)
+
+
+@router.post("/create")
+async def todo_create(  # pyright: ignore
+    slug: Annotated[str | None, Body()] = None,
+    cwd: Annotated[str | None, Body()] = None,
+    _identity: CallerIdentity = Depends(CLEARANCE_TODOS_CREATE),
+) -> dict[str, str]:
+    """Run the creative lifecycle state machine.
+
+    Checks creative state for the given slug and returns instructions for
+    the next action (design discovery, art generation, visual drafting,
+    or human gates). Requires clearance to invoke the creative workflow.
+    """
+    effective_cwd = cwd or _default_cwd()
+    result = await next_create(db, slug, effective_cwd)
+    return {"result": result}
 
 
 @router.post("/prepare")

@@ -95,6 +95,8 @@ class SlashCommand(str, Enum):
     NEXT_REFINE_INPUT = "next-refine-input"
     NEXT_WORK = "next-work"
     NEXT_INTEGRATE = "next-integrate"
+    NEXT_CREATE_ART = "next-create-art"
+    NEXT_CREATE_HTML = "next-create-html"
 
 
 class JobRole(str, Enum):
@@ -109,6 +111,9 @@ class JobRole(str, Enum):
     GATE_CHECKER = "gate-checker"
     PREPARE_ORCHESTRATOR = "prepare-orchestrator"
     WORK_ORCHESTRATOR = "work-orchestrator"
+    CREATE_ORCHESTRATOR = "create-orchestrator"
+    ARTIST = "artist"
+    FRONTENDER = "frontender"
     INTEGRATOR = "integrator"
 
 

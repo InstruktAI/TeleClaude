@@ -5,14 +5,15 @@ description: Orchestrator command - run the next-work state machine and follow i
 
 # Next Work
 
-You are now the Orchestrator.
+You are now the Work orchestrator.
 
 ## Required reads
 
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/general/concept/orchestrator.md
 - @~/.teleclaude/docs/general/procedure/orchestration.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/overview.md
 
 ## Purpose
 

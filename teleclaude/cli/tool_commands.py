@@ -743,6 +743,44 @@ def handle_sessions_escalate(args: list[str]) -> None:
 # =============================================================================
 
 
+def handle_todo_create(args: list[str]) -> None:
+    """Run the creative lifecycle state machine.
+
+    Usage: telec todo create [<slug>]
+
+    Checks creative state for the given slug and returns instructions for
+    the next action: design discovery, art generation, visual drafting,
+    or human gate signals.
+
+    When called without a slug, selects the next work item that needs
+    creative work from the roadmap.
+
+    Options:
+      <slug>    Work item slug (optional; auto-selects if omitted)
+
+    Examples:
+      telec todo create
+      telec todo create my-feature
+    """
+    if "--help" in args or "-h" in args:
+        print(handle_todo_create.__doc__ or "")
+        return
+
+    cwd = os.getcwd()
+    body: dict[str, object] = {"cwd": cwd}  # guard: loose-dict - JSON request body
+
+    i = 0
+    while i < len(args):
+        if not args[i].startswith("-"):
+            body["slug"] = args[i]
+            i += 1
+        else:
+            i += 1
+
+    data = tool_api_call("POST", "/todos/create", json_body=body)
+    print_json(data)
+
+
 def handle_todo_prepare(args: list[str]) -> None:
     """Run the Phase A (prepare) state machine.
 

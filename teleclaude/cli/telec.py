@@ -32,6 +32,7 @@ from teleclaude.cli.tool_commands import (
     handle_operations,
     handle_projects,
     handle_sessions,
+    handle_todo_create,
     handle_todo_integrate,
     handle_todo_mark_finalize_ready,
     handle_todo_mark_phase,
@@ -477,6 +478,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Manage work items",
         subcommands={
             "create": CommandDef(
+                desc="Run the creative state machine",
+                args="[<slug>]",
+                flags=[_H],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "scaffold": CommandDef(
                 desc="Scaffold todo files for a slug",
                 args="<slug>",
                 flags=[
@@ -2092,6 +2099,8 @@ def _handle_todo(args: list[str]) -> None:
 
     subcommand = args[0]
     if subcommand == "create":
+        handle_todo_create(args[1:])
+    elif subcommand == "scaffold":
         _handle_todo_create(args[1:])
     elif subcommand == "remove":
         _handle_todo_remove(args[1:])
