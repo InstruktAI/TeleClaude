@@ -2,6 +2,7 @@
 
 One-shot requests to the daemon REST API over the Unix socket.
 Sends identity headers on every call:
+  X-Session-Token:     from $TELEC_SESSION_TOKEN (daemon-issued credential)
   X-Caller-Session-Id: from $TMPDIR/teleclaude_session_id
   X-Telec-Email:       from TTY-scoped telec login state
   X-Tmux-Session:      from tmux server (unforgeable by agent)
@@ -96,6 +97,9 @@ def tool_api_request(
     tmux_session = _read_tmux_session_name()
 
     headers: dict[str, str] = {}
+    token = os.environ.get("TELEC_SESSION_TOKEN")
+    if token:
+        headers["x-session-token"] = token
     if session_id:
         headers["x-caller-session-id"] = session_id
     if terminal_email:
