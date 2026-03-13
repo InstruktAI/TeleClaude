@@ -148,6 +148,7 @@ max-complexity = 20
 "teleclaude/cli/cartridge_cli.py" = ["C901"]
 "teleclaude/cli/tui/state.py" = ["C901"]
 "teleclaude/cli/tui/pane_manager.py" = ["C901"]
+"teleclaude/cli/tui/pane_layout.py" = ["C901"]
 "teleclaude/cli/tui/animations/base.py" = ["C901", "RUF001", "RUF002", "RUF003"]
 "teleclaude/cli/tui/widgets/banner.py" = ["C901"]
 "teleclaude/cli/tui/widgets/box_tab_bar.py" = ["C901"]
