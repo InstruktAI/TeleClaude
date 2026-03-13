@@ -37,7 +37,6 @@
 - slug: test-suite-overhaul
   after:
   - rlf-cli
-  - rlf-core-data
   - rlf-core-infra
   description: 'Clean-slate test suite: behavioral contracts, 1:1 mapping, zero string
     snapshots. Depends on refactored codebase.'
@@ -127,5 +126,4 @@
 - slug: refactor-large-files
 - slug: rlf-peripherals
 - slug: rlf-core-data-pylint
-  after:
-  - rlf-core-data
+- slug: rlf-core-machines
