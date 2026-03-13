@@ -8,11 +8,12 @@ Exports TelegramApp type alias for re-use in telegram_adapter.py.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, cast
 
 import httpx
 from instrukt_ai_logging import get_logger
-from telegram import BotCommand, BotCommandScopeChat
+from telegram import BotCommand, BotCommandScopeChat, Update
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
@@ -31,10 +32,6 @@ from teleclaude.core.events import UiCommands
 from ..base_adapter import AdapterError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-
-    from telegram import Update
-
     from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 
 logger = get_logger(__name__)
@@ -187,7 +184,7 @@ class LifecycleMixin:
         # Edited command updates can duplicate execution (MESSAGE + EDITED_MESSAGE).
         for command_name, handler in self._get_command_handlers():
             typed_handler = cast(
-                Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]],
+                "Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]",
                 handler,
             )
             cmd_handler: object = CommandHandler(
