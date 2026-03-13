@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: rlf-core-infra
+  date: '2026-03-14'
+  commit: f2de29f319d6
 - slug: rlf-cli
   date: '2026-03-14'
   commit: 71c352a71d08
