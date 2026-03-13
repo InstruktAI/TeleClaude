@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-bugs-report-event-system-regression
+  date: '2026-03-13'
+  commit: 140a63e74ff6
 - slug: agent-session-auth
   date: '2026-03-12'
   commit: 02a7da425980
