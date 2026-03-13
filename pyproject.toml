@@ -334,6 +334,22 @@ exclude = [
     "teleclaude/core/metadata.py",       # Pure Pydantic model, no logic
     "teleclaude/logging_config.py",       # Delegates to instrukt_ai_logging
 ]
+# guard: ratchet-down — orphaned tests to rename/restructure; each entry needs a source companion or removal
+orphan-exclude = [
+    "tests/unit/cli/tui/test_animation_modes.py",             # Tests animation mode switching across TUI animation files
+    "tests/unit/core/next_machine/test_bug_route.py",         # Tests bug routing logic in core.py
+    "tests/unit/core/next_machine/test_format_tool_call.py",  # Tests tool call formatting in core.py
+    "tests/unit/core/next_machine/test_ghost_artifact.py",    # Tests ghost artifact detection in core.py
+    "tests/unit/core/next_machine/test_prepare_staleness.py", # Tests prepare staleness in prepare.py
+    "tests/unit/core/next_machine/test_referenced_paths.py",  # Tests referenced paths in core.py
+    "tests/unit/core/next_machine/test_review_findings.py",   # Tests review findings in core.py
+    "tests/unit/core/next_machine/test_split_inheritance.py",  # Tests split inheritance in core.py
+    "tests/unit/events/test_new_prepare_events.py",           # Tests prepare event flow across event modules
+    "tests/unit/test_api_auth.py",                            # Tests teleclaude/api/auth.py (path mismatch)
+    "tests/unit/test_principal_inheritance.py",               # Cross-module principal inheritance behavior
+    "tests/unit/test_session_token_lifecycle.py",             # Cross-module session token lifecycle
+    "tests/unit/test_session_tokens.py",                      # Cross-module session token behavior
+]
 
 [tool.coverage.run]
 source = ["teleclaude"]

@@ -31,6 +31,18 @@ repos:
     language: system
     types: [python]
     pass_filenames: false
+  - id: mypy
+    name: Mypy type check
+    entry: ./tools/lint/precommit-hook.sh mypy
+    language: system
+    types: [python]
+    pass_filenames: false
+  - id: pylint
+    name: Pylint
+    entry: ./tools/lint/precommit-hook.sh pylint
+    language: system
+    types: [python]
+    pass_filenames: false
   - id: markdown-validate
     name: Markdown validation
     entry: ./tools/lint/precommit-hook.sh markdown

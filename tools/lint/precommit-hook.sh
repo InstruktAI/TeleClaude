@@ -2,7 +2,7 @@
 # Component-scoped lint hook for pre-commit.
 # Usage: ./tools/lint/precommit-hook.sh <component> [files...]
 #
-# Components: guardrails, ruff-check, pyright, markdown, pylint
+# Components: guardrails, ruff-check, pyright, mypy, pylint, markdown
 set -e
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -14,12 +14,14 @@ if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
     RUFF="${REPO_ROOT}/.venv/bin/ruff"
     PYRIGHT="${REPO_ROOT}/.venv/bin/pyright"
     PYLINT="${REPO_ROOT}/.venv/bin/pylint"
+    MYPY="${REPO_ROOT}/.venv/bin/mypy"
     export PYTHONPATH="${REPO_ROOT}:${PYTHONPATH:-}"
 else
     RUN="uv run --quiet python"
     RUFF="uv run --quiet ruff"
     PYRIGHT="uv run --quiet pyright"
     PYLINT="uv run --quiet pylint"
+    MYPY="uv run --quiet mypy"
 fi
 
 component="$1"; shift
@@ -42,8 +44,11 @@ case "$component" in
     markdown)
         $RUN "${REPO_ROOT}/tools/lint/markdown.py"
         ;;
+    mypy)
+        $MYPY
+        ;;
     pylint)
-        $PYLINT --exit-zero teleclaude
+        $PYLINT teleclaude
         ;;
     *)
         echo "Unknown lint component: $component" >&2

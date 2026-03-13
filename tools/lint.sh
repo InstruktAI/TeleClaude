@@ -3,7 +3,7 @@ set -e  # Exit on first error
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
-dirs="teleclaude tools bin"
+dirs="teleclaude tools bin tests"
 
 # Use venv directly if available (avoids uv network calls in CI),
 # fall back to uv run for local development.
@@ -13,6 +13,7 @@ if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
     RUFF="${REPO_ROOT}/.venv/bin/ruff"
     PYRIGHT="${REPO_ROOT}/.venv/bin/pyright"
     PYLINT="${REPO_ROOT}/.venv/bin/pylint"
+    MYPY="${REPO_ROOT}/.venv/bin/mypy"
     export PYTHONPATH="${REPO_ROOT}:${PYTHONPATH:-}"
 else
     RUN="uv run --quiet python"
@@ -20,6 +21,7 @@ else
     RUFF="uv run --quiet ruff"
     PYRIGHT="uv run --quiet pyright"
     PYLINT="uv run --quiet pylint"
+    MYPY="uv run --quiet mypy"
 fi
 
 echo "Running lint checks"
@@ -46,8 +48,8 @@ $RUFF format $dirs
 echo "Running pyright"
 $PYRIGHT
 
-echo "Running pylint (report-only baseline)"
-# The repository still carries a large lazy-import baseline across core runtime
-# modules. Ruff and pyright remain the enforced gates here; pylint output is
-# surfaced for cleanup work but does not block `make lint`.
-$PYLINT --exit-zero teleclaude
+echo "Running mypy"
+$MYPY
+
+echo "Running pylint"
+$PYLINT teleclaude
