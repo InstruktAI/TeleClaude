@@ -138,7 +138,7 @@ async def test_unresolved_substantive_yields_needs_work(mock_emit: MagicMock, tm
 
     mock_db = MagicMock()
 
-    with patch("teleclaude.core.next_machine.core.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
         keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
 
     assert keep_going is False
@@ -206,7 +206,7 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
     write_phase_state(cwd, slug, state)
 
     mock_db = MagicMock()
-    with patch("teleclaude.core.next_machine.core.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
         keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
 
     # Should dispatch reviewer without raising
