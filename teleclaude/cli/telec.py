@@ -299,7 +299,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--session", "-s", "Session ID"),
                     Flag("--computer", desc="Target computer (optional; defaults to local)"),
                 ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                auth=CommandAuth(system=_SYS_ORCH | _SYS_INTG, human=_HR_MEMBER),
             ),
             "unsubscribe": CommandDef(
                 desc="Stop receiving notifications from a session",

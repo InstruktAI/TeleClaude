@@ -289,10 +289,19 @@ async def verify_caller(
 
     system_role = _derive_session_system_role(session)
 
+    # Resolve human_role: prefer DB value, fall back to terminal email or
+    # session's own human_email when the session was created without a role
+    # (cascading-null prevention for API-dispatched child sessions).
+    human_role = session.human_role
+    if not human_role:
+        fallback_email = x_telec_email or getattr(session, "human_email", None)
+        if fallback_email:
+            human_role = _resolve_terminal_role(fallback_email)
+
     return CallerIdentity(
         session_id=x_caller_session_id,
         system_role=system_role,
-        human_role=session.human_role,
+        human_role=human_role,
         tmux_session_name=session.tmux_session_name,
     )
 
