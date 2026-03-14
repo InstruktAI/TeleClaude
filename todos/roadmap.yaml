@@ -45,8 +45,6 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: chartest-core-domain
-  group: chartest
 - slug: chartest-core-db
   group: chartest
 - slug: chartest-core-agent-coord
