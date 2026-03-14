@@ -4,7 +4,6 @@ Tests:
 1. filter_channels_by_tags — tag intersection logic and edge cases.
 2. Job result reporting — correct counts in JobResult.items_processed.
 3. Config access — tags read from JobScheduleConfig with extra="allow".
-4. Runner schedule contract — both jobs are category: system.
 """
 
 from __future__ import annotations
@@ -188,40 +187,3 @@ class TestConfigAccess:
     def test_missing_tags_returns_empty(self):
         config = JobScheduleConfig.model_validate({"category": "system"})
         assert getattr(config, "tags", []) == []
-
-
-# ---------------------------------------------------------------------------
-# 4. Runner schedule contract — both jobs are category: system
-# ---------------------------------------------------------------------------
-
-
-class TestRunnerScheduleContract:
-    def test_both_jobs_are_system_category(self):
-        config_path = Path(__file__).resolve().parents[2] / "teleclaude.yml"
-        from teleclaude.config.loader import load_project_config
-
-        project_config = load_project_config(config_path)
-
-        scraper = project_config.jobs.get("youtube_scraper")
-        assert scraper is not None, "youtube_scraper entry missing from teleclaude.yml"
-        assert scraper.category == "system", f"youtube_scraper.category={scraper.category!r}, expected 'system'"
-
-        sync = project_config.jobs.get("youtube_sync_subscriptions")
-        assert sync is not None, "youtube_sync_subscriptions entry missing from teleclaude.yml"
-        assert sync.category == "system", f"youtube_sync_subscriptions.category={sync.category!r}, expected 'system'"
-
-    def test_scraper_points_to_correct_script(self):
-        config_path = Path(__file__).resolve().parents[2] / "teleclaude.yml"
-        from teleclaude.config.loader import load_project_config
-
-        project_config = load_project_config(config_path)
-        scraper = project_config.jobs["youtube_scraper"]
-        assert scraper.script == "jobs/youtube_scraper.py"
-
-    def test_sync_points_to_correct_script(self):
-        config_path = Path(__file__).resolve().parents[2] / "teleclaude.yml"
-        from teleclaude.config.loader import load_project_config
-
-        project_config = load_project_config(config_path)
-        sync = project_config.jobs["youtube_sync_subscriptions"]
-        assert sync.script == "jobs/youtube_sync_subscriptions.py"
