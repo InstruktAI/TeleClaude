@@ -59,27 +59,30 @@ def main() -> None:
 # The cap exists to make config erosion VISIBLE — not to prevent all change.
 
 PYRIGHT_MAX_IGNORE_FILES = 8
-PYRIGHT_ALLOWED_NONE_REPORTS = frozenset({
-    "reportOptionalSubscript",
-    "reportOptionalMemberAccess",
-    "reportOptionalCall",
-    "reportOptionalIterable",
-    "reportOptionalContextManager",
-    "reportOptionalOperand",
-    "reportArgumentType",
-    "reportMissingTypeStubs",
-    "reportUnknownArgumentType",
-    "reportUnknownMemberType",
-    "reportUnknownParameterType",
-    "reportUnknownVariableType",
-    "reportPrivateUsage",
-})
+PYRIGHT_ALLOWED_NONE_REPORTS = frozenset(
+    {
+        "reportOptionalSubscript",
+        "reportOptionalMemberAccess",
+        "reportOptionalCall",
+        "reportOptionalIterable",
+        "reportOptionalContextManager",
+        "reportOptionalOperand",
+        "reportArgumentType",
+        "reportMissingTypeStubs",
+        "reportUnknownArgumentType",
+        "reportUnknownMemberType",
+        "reportUnknownParameterType",
+        "reportUnknownVariableType",
+        "reportPrivateUsage",
+    }
+)
 
 RUFF_REQUIRED_RULE_GROUPS = {"E", "F", "I", "C90", "B", "UP", "RUF"}
 # guard: ratchet-down — 8 includes 5 tech-debt items (UP042, RUF012, RUF005, RUF006, B905)
 RUFF_MAX_GLOBAL_IGNORES = 8
-# guard: ratchet-down — 43 entries, mostly C901 complexity violations to decompose
-RUFF_MAX_PER_FILE_IGNORE_ENTRIES = 43
+# guard: ratchet-down — 50 entries after rlf-peripherals module decomposition
+# (monoliths split into packages, each submodule inherits parent's ignores)
+RUFF_MAX_PER_FILE_IGNORE_ENTRIES = 50
 
 MYPY_MAX_OVERRIDE_SECTIONS = 13
 MYPY_ALLOWED_IGNORE_ERRORS_MODULES = frozenset({"teleclaude.hooks.*"})
@@ -115,7 +118,9 @@ def _check_ruff_invariants(pyproject: str) -> None:
     the capture, hiding ignored rules from the cap check.
     """
     parsed = tomllib.loads(pyproject)
-    ruff_lint = parsed.get("tool", {}).get("ruff", {}).get("lint", {})  # guard: loose-dict - TOML parse result is untyped
+    ruff_lint = (
+        parsed.get("tool", {}).get("ruff", {}).get("lint", {})
+    )  # guard: loose-dict - TOML parse result is untyped
 
     # Required rule groups must be present in select
     selected_rules = set(ruff_lint.get("select", []))

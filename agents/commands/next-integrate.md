@@ -46,7 +46,7 @@ pull is blocked by dirty local files, you receive a REPO ROOT SYNC BLOCKED instr
 
 - **Tell the user** what happened: delivery is safe on origin, local main needs sync.
 - **Wait for confirmation** — other agent sessions may be active on local main.
-- **Run the stash/pull/pop sequence** exactly as instructed (with `TELECLAUDE_INTEGRATION_STASH=1`).
+- **Run the stash/pull/pop sequence** exactly as instructed (with `TELECLAUDE_INTEGRATION_STASH=1`). <!-- guard: allow-git-stash -->
 - **If stash pop produces conflicts**: files deleted by the delivery that had local
   edits are obsolete — accept the delivered version. Port real work to new locations.
 - After recovery, call `telec todo integrate` to complete cleanup.

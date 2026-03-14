@@ -697,8 +697,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
-  description: 'YouTube subscription tagger job: nightly AI classification of untagged
-    channels.'
+  description: 'YouTube subscription tagger: scheduled script job that classifies
+    untagged channels.'
   type: spec
   scope: project
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md

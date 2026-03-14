@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -32,7 +33,22 @@ def ensure_git_repo(project_root: Path) -> None:
 
 
 def ensure_hooks_path(project_root: Path, hooks_path: str = ".githooks") -> None:
-    """Configure git core.hooksPath idempotently for project-local hooks."""
+    """Install project-local hooks into .git/hooks/ without touching core.hooksPath.
+
+    Previously this function set core.hooksPath, which made git ignore
+    .git/hooks/ entirely — silently killing pre-commit framework hooks.
+    Now it copies hooks from the project-local directory into .git/hooks/
+    so they coexist with pre-commit.
+    """
+    source_dir = project_root / hooks_path
+    if not source_dir.is_dir():
+        return
+
+    git_hooks_dir = project_root / ".git" / "hooks"
+    if not git_hooks_dir.is_dir():
+        return
+
+    # If core.hooksPath was previously set, unset it to restore .git/hooks/
     result = subprocess.run(
         ["git", "config", "--local", "--get", "core.hooksPath"],
         cwd=project_root,
@@ -40,18 +56,22 @@ def ensure_hooks_path(project_root: Path, hooks_path: str = ".githooks") -> None
         text=True,
         check=False,
     )
-    if result.returncode == 0 and result.stdout.strip() == hooks_path:
-        print(f"telec init: git hooksPath already set to {hooks_path}.")
-        return
+    if result.returncode == 0:
+        subprocess.run(
+            ["git", "config", "--local", "--unset", "core.hooksPath"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        print("telec init: removed core.hooksPath (restoring .git/hooks/).")
 
-    set_result = subprocess.run(
-        ["git", "config", "--local", "core.hooksPath", hooks_path],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if set_result.returncode == 0:
-        print(f"telec init: git hooksPath set to {hooks_path}.")
-    else:
-        print(f"telec init: failed to set git hooksPath to {hooks_path}.")
+    # Copy project-local hooks into .git/hooks/ (preserving pre-commit)
+    for hook_file in source_dir.iterdir():
+        if not hook_file.is_file():
+            continue
+        dest = git_hooks_dir / hook_file.name
+        shutil.copy2(hook_file, dest)
+        dest.chmod(dest.stat().st_mode | 0o111)
+
+    print(f"telec init: installed project hooks from {hooks_path}/ into .git/hooks/.")
