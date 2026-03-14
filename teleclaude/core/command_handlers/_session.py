@@ -119,8 +119,12 @@ async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Se
             metadata_principal = raw_principal.strip()
 
     identity = get_identity_resolver().resolve(origin, cmd.channel_metadata or {})
-    human_email = identity.person_email or metadata_human_email
-    human_role = identity.person_role or metadata_human_role
+    # Channel metadata carries identity from the API auth layer (verify_caller),
+    # which is authoritative for API-origin sessions. The identity resolver is a
+    # fallback for platform origins (telegram, discord, etc.) where channel_metadata
+    # doesn't carry role/email.
+    human_email = metadata_human_email or identity.person_email
+    human_role = metadata_human_role or identity.person_role
 
     # Handle parent session identity inheritance
     principal: str | None = metadata_principal
