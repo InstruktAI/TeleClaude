@@ -45,13 +45,9 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: chartest
-  description: Characterization tests for full codebase coverage (27 batches)
 - slug: chartest-core-domain
   group: chartest
 - slug: chartest-core-db
-  group: chartest
-- slug: chartest-core-integration
   group: chartest
 - slug: chartest-core-next-machine
   group: chartest

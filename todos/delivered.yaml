@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: chartest-core-integration
+  date: '2026-03-15'
+  commit: f666c354f6ad
 - slug: fix-integration-delivery-bookkeeping-commits
   date: '2026-03-13'
   commit: 29b3b6d652ad
