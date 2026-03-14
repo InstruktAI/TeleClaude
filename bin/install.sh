@@ -361,40 +361,8 @@ install_python_deps() {
 
     install_uv
 
-    has_optional_extra() {
-        local extra="$1"
-        "$PYTHON_CMD" - "$INSTALL_DIR/pyproject.toml" "$extra" <<'PY'
-import sys
-import tomllib
-from pathlib import Path
-
-pyproject_path = Path(sys.argv[1])
-extra = sys.argv[2]
-data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-optional = data.get("project", {}).get("optional-dependencies", {})
-sys.exit(0 if isinstance(optional, dict) and extra in optional else 1)
-PY
-    }
-
-    sync_args=()
-    for extra in test; do
-        if has_optional_extra "$extra"; then
-            sync_args+=(--extra "$extra")
-        else
-            print_warning "Optional dependency extra '$extra' not defined in pyproject.toml; skipping"
-        fi
-    done
-
-    # On Apple Silicon macOS (non-CI), install local MLX dependencies so
-    # Parakeet STT and MLX TTS run in-process (no CLI fallback required).
-    if [ "$CI_MODE" = false ] && [ "$OS" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
-        if has_optional_extra "mlx"; then
-            sync_args+=(--extra "mlx")
-        else
-            print_warning "Optional dependency extra 'mlx' not defined in pyproject.toml; skipping"
-        fi
-    fi
-
+    # All deps use platform markers — plain uv sync installs the right
+    # packages for any platform. No extras, no flags, no fragility.
     print_info "Syncing Python environment with uv..."
     if [ "$CI_MODE" = true ] && [ -d "$HOME/Workspace/InstruktAI/TeleClaude/.venv" ]; then
         # CI on self-hosted runner: reuse main checkout's venv to avoid
@@ -409,13 +377,13 @@ PY
         "$INSTALL_DIR/.venv/bin/python" -c "import instrukt_ai_logging; print('venv OK')" || {
             print_error "Main checkout .venv is broken, falling back to uv sync"
             rm -f "$INSTALL_DIR/.venv"
-            (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
+            (cd "$INSTALL_DIR" && uv sync --frozen)
         }
     elif [ "$CI_MODE" = true ]; then
         # Fallback: try frozen sync (requires uv.lock in checkout).
-        (cd "$INSTALL_DIR" && uv sync --frozen "${sync_args[@]}")
+        (cd "$INSTALL_DIR" && uv sync --frozen)
     else
-        (cd "$INSTALL_DIR" && uv sync "${sync_args[@]}")
+        (cd "$INSTALL_DIR" && uv sync)
     fi
 
     if [ ! -d "$INSTALL_DIR/.venv" ]; then

@@ -57,16 +57,14 @@ dependencies = [
     "pyresidfp>=0.17.0",
     "py65emu>=0.1.0",
     "sounddevice>=0.5.0",
+    "mlx-audio; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "misaki[en]; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "phonemizer-fork>=3.3.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "num2words; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
-[project.optional-dependencies]
-mlx = [
-    "mlx-audio @ git+https://github.com/Blaizzy/mlx-audio.git@main",
-    "misaki[en]",
-    "phonemizer-fork>=3.3.2",
-    "num2words",
-]
-test = [
+[dependency-groups]
+dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
@@ -80,9 +78,9 @@ test = [
     "pre-commit>=3.6.0",
     "mypy>=1.8.0",
 ]
-dev = [
-    "TeleClaude[test,mlx]",
-]
+
+[tool.uv.sources]
+mlx-audio = { git = "https://github.com/Blaizzy/mlx-audio.git", branch = "main" }
 
 [tool.setuptools.packages.find]
 where = ["."]
