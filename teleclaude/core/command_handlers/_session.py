@@ -119,8 +119,8 @@ async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Se
             metadata_principal = raw_principal.strip()
 
     identity = get_identity_resolver().resolve(origin, cmd.channel_metadata or {})
-    human_email = identity.person_email if identity and identity.person_email else metadata_human_email
-    human_role = identity.person_role if identity and identity.person_role else metadata_human_role
+    human_email = identity.person_email or metadata_human_email
+    human_role = identity.person_role or metadata_human_role
 
     # Handle parent session identity inheritance
     principal: str | None = metadata_principal
@@ -131,12 +131,6 @@ async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Se
             human_role = parent_session.human_role
         if not principal and parent_session.principal:
             principal = parent_session.principal
-    if not human_role and origin not in {"api", "web"}:
-        human_role = HUMAN_ROLE_ADMIN
-
-    # API/web callers may intentionally create role-less sessions and rely on
-    # boundary-injected identity. Other unidentified origins keep the legacy
-    # admin fallback until their callers are migrated to pass an explicit role.
     raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
     configured_help_desk_path = (
         raw_help_desk_path

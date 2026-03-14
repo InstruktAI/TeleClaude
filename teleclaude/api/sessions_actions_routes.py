@@ -242,6 +242,8 @@ async def revive_session(
                 if project_path:
                     title = get_short_project_name(project_path, subdir)
 
+            from teleclaude.constants import HUMAN_ROLE_CUSTOMER  # pylint: disable=import-outside-toplevel
+
             await db.create_headless_session(
                 session_id=new_session_id,
                 computer_name=config.computer.name,
@@ -252,6 +254,7 @@ async def revive_session(
                 native_log_file=None,
                 project_path=project_path,
                 subdir=subdir,
+                human_role=identity.human_role or HUMAN_ROLE_CUSTOMER,
             )
             session_id = new_session_id
 

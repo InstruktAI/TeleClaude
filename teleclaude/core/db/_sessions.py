@@ -141,6 +141,7 @@ class DbSessionsMixin:
         native_log_file: str | None,
         project_path: str | None,
         subdir: str | None,
+        human_role: str,
     ) -> Session:
         """Create a headless session (no tmux)."""
         now = datetime.now(UTC)
@@ -160,7 +161,7 @@ class DbSessionsMixin:
             description=None,
             working_slug=None,
             initiator_session_id=None,
-            human_role=HUMAN_ROLE_ADMIN,
+            human_role=human_role,
             lifecycle_status="headless",
             active_agent=active_agent,
             native_session_id=native_session_id,

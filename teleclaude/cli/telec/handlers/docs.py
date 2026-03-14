@@ -75,7 +75,7 @@ def _handle_docs_index(args: list[str]) -> None:
             print(_usage("docs", "index"))
             raise SystemExit(1)
 
-    from teleclaude.core.identity import resolve_cli_caller_role
+    from teleclaude.cli.session_auth import resolve_cli_caller_role
 
     effective_role = resolve_cli_caller_role()
     output = build_context_output(
@@ -118,7 +118,7 @@ def _handle_docs_get(args: list[str]) -> None:
         print(_usage("docs", "get"))
         raise SystemExit(1)
 
-    from teleclaude.core.identity import resolve_cli_caller_role
+    from teleclaude.cli.session_auth import resolve_cli_caller_role
 
     effective_role = resolve_cli_caller_role()
     output = build_context_output(

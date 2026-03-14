@@ -385,6 +385,8 @@ class _DaemonHookOutboxMixin:
             agent=agent_str,
             project_path=project_path or "",
         )
+        from teleclaude.constants import HUMAN_ROLE_CUSTOMER  # pylint: disable=import-outside-toplevel
+
         session = await db.create_headless_session(
             session_id=session_id,
             computer_name=config.computer.name,
@@ -395,6 +397,7 @@ class _DaemonHookOutboxMixin:
             native_log_file=str(native_log_file) if native_log_file else None,
             project_path=project_path,
             subdir=subdir,
+            human_role=HUMAN_ROLE_CUSTOMER,
         )
 
         event_bus.emit(

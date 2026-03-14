@@ -14,7 +14,6 @@ import argparse
 import ast
 import datetime
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -48,32 +47,11 @@ def _get_lifecycle_manager() -> LifecycleManager:
 
 
 def _caller_is_admin() -> bool:
-    """Determine if the current session caller has admin role.
+    """Determine if the current session caller has admin role."""
+    from teleclaude.cli.session_auth import resolve_cli_caller_role  # pylint: disable=import-outside-toplevel
+    from teleclaude.constants import HUMAN_ROLE_ADMIN  # pylint: disable=import-outside-toplevel
 
-    Reads the session ID from $TMPDIR/teleclaude_session_id and looks up
-    human_role via sync DB query, matching the pattern in config_cli.py.
-    Returns False when not in a session context or on any error (fail closed).
-    """
-    tmpdir = os.environ.get("TMPDIR", "")
-    if not tmpdir:
-        return False
-    session_file = Path(tmpdir) / "teleclaude_session_id"
-    if not session_file.exists():
-        return False
-    try:
-        session_id = session_file.read_text(encoding="utf-8").strip()
-    except Exception:
-        return False
-    if not session_id:
-        return False
-    try:
-        from teleclaude.config import config
-        from teleclaude.core.db import get_session_field_sync
-
-        role = get_session_field_sync(config.database.path, session_id, "human_role")
-        return role == "admin"
-    except Exception:
-        return False
+    return resolve_cli_caller_role() == HUMAN_ROLE_ADMIN
 
 
 def _get_sandbox_dir() -> Path:
