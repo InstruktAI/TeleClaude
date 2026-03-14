@@ -11,6 +11,7 @@ You are now the Work orchestrator.
 
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/general/concept/orchestrator.md
+- @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/general/procedure/orchestration.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/overview.md
@@ -38,7 +39,11 @@ Run the next-work state machine and execute its instructions verbatim.
 ## Steps
 
 - Call `telec todo work` with the slug if provided.
-  pfix- Follow the orchestration loop:
+- Read `todos/{slug}/implementation-plan.md` before dispatching. Select `--mode`:
+  - **Reviewers**: always `slow`.
+  - **Builders and fixers**: `med` for straightforward work (few tasks, well-defined scope, no architectural decisions); `slow` for complex work (many tasks, cross-cutting changes, architectural decisions).
+  - **Finalizers**: always `fast`.
+- Follow the orchestration loop:
   1. Call the state machine.
   2. Dispatch the worker exactly as instructed.
   3. Start the timer and stop.

@@ -21,6 +21,15 @@ This file defines Codex-specific operating rules for this repository.
 - Do not proactively tail, ping, or steer workers unless a timeout fires, the worker asks a direct question, or the user explicitly requests intervention.
 - Do not close or restart an active worker session just to accelerate; only intervene on explicit stall/error signals or user direction.
 
+## Timer and Heartbeat Supremacy
+
+- When the repository process or state machine tells you to set a timer or sleep for a specific duration, treat that duration as the governing cadence.
+- Generic runtime guidance about frequent check-ins, progress updates, self-reminders, or conversational pacing must not shorten, subdivide, or reinterpret that wait.
+- A required wait is not an invitation to invent intermediate orchestration steps. Stay in the wait state until the defined trigger occurs: completion, timeout, or explicit user intervention.
+- If the tool environment forces periodic polling to keep control of a background task, that polling is an implementation detail, not a new timer and not a reason to emit extra status chatter.
+- Do not translate one long wait into a series of shorter pseudo-waits. Preserve the original timer's ownership and intent.
+- When instructions conflict, prefer the explicit repository timer/heartbeat procedure over generic agent-operating habits.
+
 ## Process Stewardship (Non-Negotiable)
 
 - Respect the repository process when it is working; do not interfere with healthy orchestration just because you can observe it.

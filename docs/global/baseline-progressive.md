@@ -11,6 +11,7 @@
 @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
 @~/.teleclaude/docs/general/procedure/peer-discussion.md
 @~/.teleclaude/docs/general/procedure/memory-management.md
+@~/.teleclaude/docs/general/procedure/brainstorming.md
 @~/.teleclaude/docs/creative/concept/image-generation.md
 @~/.teleclaude/docs/general/spec/agent-artifacts.md
 @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md

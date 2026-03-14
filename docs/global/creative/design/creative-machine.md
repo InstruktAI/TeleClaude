@@ -24,21 +24,13 @@ autonomously.
 Like the next-machine, the creative machine is stateless — it derives all state
 from filesystem artifacts and `state.yaml`.
 
-## Roles
-
-Three roles participate in the creative lifecycle:
-
-- **Creator** (rich orchestrator): captures input from the human, drives the
-  machine, dispatches workers, manages human gates. The creator is the
-  human-facing coordinator — it presents reference sites, collects images,
-  facilitates design discovery, and shepherds the todo through all creative
-  phases.
-- **Artist** (image generation worker): generates mood board images from the
-  design spec and any visual references. Uses the `image-generator` meta-skill
-  to select the right engine. Stays in session for iteration.
-- **Frontender** (HTML+CSS worker): produces self-contained HTML+CSS visual
-  artifacts from the approved art and design spec. Multimodal — reads images
-  and translates compositional intent into code.
+Three roles participate: the **Creator** (rich orchestrator — captures input,
+drives the machine, dispatches workers, manages human gates), the **Artist**
+(image generation worker — generates mood board images from the design spec
+using the `image-generator` meta-skill, stays in session for iteration), and
+the **Frontender** (HTML+CSS worker — produces self-contained visual artifacts
+from approved art and design spec, multimodal — reads images and translates
+compositional intent into code).
 
 ## Inputs/Outputs
 
@@ -139,8 +131,8 @@ Check `state.yaml` for design spec confirmation:
 creative:
   design_spec:
     confirmed: true
-    confirmed_at: "<ISO8601>"
-    confirmed_by: "human"
+    confirmed_at: '<ISO8601>'
+    confirmed_by: 'human'
 ```
 
 - Confirmed → transition to CHECK_ART.
@@ -197,8 +189,8 @@ Check `state.yaml` for art approval:
 creative:
   art:
     approved: true
-    approved_at: "<ISO8601>"
-    approved_by: "human"
+    approved_at: '<ISO8601>'
+    approved_by: 'human'
     iteration_count: 1
 ```
 
@@ -272,9 +264,9 @@ Check `state.yaml` for visual approval:
 creative:
   visuals:
     approved: true
-    approved_at: "<ISO8601>"
-    approved_by: "human"
-    selected_version: "gemini"  # only set for bake-off
+    approved_at: '<ISO8601>'
+    approved_by: 'human'
+    selected_version: 'gemini' # only set for bake-off
 ```
 
 - Approved → transition to CREATIVE_COMPLETE.
@@ -327,25 +319,25 @@ The creative machine reads and writes to the `creative` section of `state.yaml`:
 
 ```yaml
 creative:
-  phase: "creative_complete"  # current phase
+  phase: 'creative_complete' # current phase
   design_spec:
     confirmed: true
-    confirmed_at: "2026-03-12T14:30:00Z"
-    confirmed_by: "human"
+    confirmed_at: '2026-03-12T14:30:00Z'
+    confirmed_by: 'human'
   art:
     approved: true
-    approved_at: "2026-03-12T15:00:00Z"
-    approved_by: "human"
+    approved_at: '2026-03-12T15:00:00Z'
+    approved_by: 'human'
     iteration_count: 2
-    engine_used: "gemini"  # or "flux", "gpt-image", etc.
+    engine_used: 'gemini' # or "flux", "gpt-image", etc.
   visuals:
     approved: true
-    approved_at: "2026-03-12T16:00:00Z"
-    approved_by: "human"
-    selected_version: null  # or agent name for bake-off
+    approved_at: '2026-03-12T16:00:00Z'
+    approved_by: 'human'
+    selected_version: null # or agent name for bake-off
     iteration_count: 1
-  started_at: "2026-03-12T10:00:00Z"
-  completed_at: "2026-03-12T16:00:00Z"
+  started_at: '2026-03-12T10:00:00Z'
+  completed_at: '2026-03-12T16:00:00Z'
 ```
 
 ## Failure modes

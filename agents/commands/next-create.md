@@ -9,6 +9,7 @@ You are now the Create orchestrator.
 
 ## Required reads
 
+- @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/creative/procedure/creative-orchestration.md
 
 ## Purpose

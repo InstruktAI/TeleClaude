@@ -32,6 +32,7 @@ Verify the implementation against requirements and standards, and deliver a bina
 If no slug provided, select the first item with phase `active` in `state.yaml` that lacks `review-findings.md`.
 
 Read:
+
 - `todos/{slug}/requirements.md` (or `bug.md` for bug fixes)
 - `todos/{slug}/implementation-plan.md`
 - `README.md`, `AGENTS.md`, and `docs/*` for project patterns
@@ -44,6 +45,7 @@ git diff $(git merge-base HEAD main)..HEAD
 ```
 
 Treat orchestrator-managed planning/state drift as non-blocking review noise:
+
 - `todos/roadmap.yaml`
 - `todos/{slug}/state.yaml`
 
@@ -58,21 +60,29 @@ Do not raise findings solely for this drift unless review scope explicitly inclu
 
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
-| Aspect     | When to use                 | Skill                      | Task                                                             |
-| ---------- | --------------------------- | -------------------------- | ---------------------------------------------------------------- |
-| scope      | Always                      | _(reviewer direct)_        | Verify delivery matches requirements — no gold-plating, no gaps  |
-| code       | Always                      | next-code-reviewer         | Find bugs and pattern violations                                 |
-| paradigm   | Always                      | _(reviewer direct)_        | Paradigm-fit assessment (see below)                              |
-| principles | Always                      | _(reviewer direct)_        | Principle violation hunt (see below)                             |
-| security   | Always                      | _(reviewer direct)_        | Check for secrets, injection, auth gaps, info leakage (see below)|
-| tests      | Always                      | next-test-analyzer         | Evaluate coverage, quality, and presence for new behavior        |
-| errors     | Always                      | next-silent-failure-hunter | Find silent failures                                             |
-| types      | Types added/modified        | next-type-design-analyzer  | Validate type design                                             |
-| comments   | Code changed                | next-comment-analyzer      | Check accuracy of comments on changed code                       |
-| logging    | Always                      | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes               |
-| demo       | Always                      | _(reviewer direct)_        | Verify demo.md has real executable blocks (see below)            |
-| docs       | CLI, config, or API changed | _(reviewer direct)_        | Verify help text, config surface, README reflect changes         |
-| simplify   | After other lanes pass      | next-code-simplifier       | Simplify without behavior changes                                |
+| Aspect     | When to use                 | Skill                      | Task                                                              |
+| ---------- | --------------------------- | -------------------------- | ----------------------------------------------------------------- |
+| scope      | Always                      | _(reviewer direct)_        | Verify delivery matches requirements — no gold-plating, no gaps   |
+| code       | Always                      | next-code-reviewer         | Find bugs and pattern violations                                  |
+| paradigm   | Always                      | _(reviewer direct)_        | Paradigm-fit assessment (see below)                               |
+| principles | Always                      | _(reviewer direct)_        | Principle violation hunt (see below)                              |
+| security   | Always                      | _(reviewer direct)_        | Check for secrets, injection, auth gaps, info leakage (see below) |
+| tests      | Always                      | next-test-analyzer         | Evaluate coverage, quality, and presence for new behavior         |
+| errors     | Always                      | next-silent-failure-hunter | Find silent failures                                              |
+| types      | Types added/modified        | next-type-design-analyzer  | Validate type design                                              |
+| comments   | Code changed                | next-comment-analyzer      | Check accuracy of comments on changed code                        |
+| logging    | Always                      | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes                |
+| demo       | Always                      | _(reviewer direct)_        | Verify demo.md has real executable blocks (see below)             |
+| docs       | CLI, config, or API changed | _(reviewer direct)_        | Verify help text, config surface, README reflect changes          |
+| simplify   | After other lanes pass      | next-code-simplifier       | Simplify without behavior changes                                 |
+
+### Lane execution gate
+
+Before proceeding to lane details, verify every lane whose trigger condition is met
+("Always" or conditional match) was executed. Each executed lane must produce a
+section in `review-findings.md` — even if no issues were found. A lane section that
+says "No findings" proves the lane ran. A missing lane section means the review is
+incomplete — stop and execute the missing lane before writing the verdict.
 
 ### 4. Lane detail reference
 
@@ -141,10 +151,12 @@ Read `todos/{slug}/demo.md` (or `demos/{slug}/demo.md`). For each executable bas
 - Does the demo exercise features that were actually implemented — not planned, not old behavior?
 
 **Findings:**
+
 - Block uses nonexistent flags or commands -> **Critical**.
 - Demo is shallow, expected output is fabricated, or demo could pass validation while being functionally wrong -> **Important**.
 
 **No-demo marker (`<!-- no-demo: reason -->`) is a hard gate:**
+
 - Valid only for pure internal refactors with zero user-visible behavior change.
 - If delivery touches CLI, TUI, config, API, or messaging -> no-demo marker is invalid -> **Critical**.
 - "Requires live terminal interaction" is never valid — the AI presenter can drive TUI, Playwright, and APIs.
@@ -219,11 +231,17 @@ Missing reproduction test for a bug fix is a **Critical** finding. All other rev
 
 Write unresolved findings to `todos/{slug}/review-findings.md`.
 
-Verdict rules:
+Verdict rules — **verdict is arithmetic, not judgement:**
 
-- `APPROVE` only when unresolved Critical and unresolved Important findings are both zero.
-- `REQUEST CHANGES` when any unresolved Critical or Important finding remains.
+- Count unresolved Critical findings. Count unresolved Important findings.
+- If either count > 0: verdict is `REQUEST CHANGES`.
+- If both are 0: verdict is `APPROVE`.
 - Suggestion findings may remain unresolved under `APPROVE`.
+- The reviewer must not invent categories ("non-blocking", "accepted", "deferred
+  to follow-up") to reduce the count and achieve APPROVE. The only way to reduce
+  the count is to resolve the finding: auto-remediate it, or investigate and
+  determine it is invalid with evidence. Overall delivery quality does not
+  override individual finding severity.
 
 If all findings were remediated inline, record a short "Resolved During Review"
 section so the caller can trace what changed.

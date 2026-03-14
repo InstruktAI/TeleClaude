@@ -13,7 +13,7 @@ description: 'Plan review phase. Validate implementation-plan.md against policie
 - @~/.teleclaude/docs/software-development/policy/code-quality.md
 - @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/review.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
 
 ## Goal
 
@@ -66,7 +66,7 @@ reviewer. If scope fails, mark `needs_work`.
 Apply the plan-specific quality rules from the preparation artifact quality
 policy:
 
-- Every task has a rationale explaining *why* this approach. Task with no
+- Every task has a rationale explaining _why_ this approach. Task with no
   rationale → Important. Rationale that contradicts codebase patterns or
   loaded domain specs → Critical.
 - Every task has a verification step. Task with no verification → Important.
@@ -126,11 +126,11 @@ Record findings in `state.yaml` under `plan_review.findings`:
 
 ```yaml
 findings:
-  - id: "plan-01"
-    severity: "substantive"   # trivial | substantive | architectural
-    summary: "Task T3 has no verification step"
-    status: "open"            # open | resolved
-    resolved_at: ""
+  - id: 'plan-01'
+    severity: 'substantive' # trivial | substantive | architectural
+    summary: 'Task T3 has no verification step'
+    status: 'open' # open | resolved
+    resolved_at: ''
 ```
 
 Auto-remediate **trivial** findings inline. Localized means all of the following are true:

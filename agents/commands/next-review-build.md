@@ -43,11 +43,24 @@ Review code changes against requirements and architecture and produce a verdict.
 
 ## Steps
 
-- Follow the review procedure.
+- Read `todos/{slug}/requirements.md`, `implementation-plan.md`, and the diff against main.
+- Run every review lane marked "Always" in the review procedure's lane table.
+- Run conditional lanes when their trigger applies (types, comments, docs, simplify).
+- Before writing findings, verify every triggered lane was executed. A missing lane
+  means the review is incomplete — stop and execute it.
+- Each lane must produce a section in `review-findings.md`.
+- Count unresolved Critical and unresolved Important findings.
+- If either count > 0: verdict is REQUEST CHANGES.
+- If both are 0: verdict is APPROVE.
+- Commit findings and report verdict.
 
 ## Discipline
 
-You are the code reviewer. Your failure mode is rubber-stamping — approving without
-verifying the diff against requirements, skipping DoD gates, or letting "close enough"
-pass. Check the actual code changes against every requirement. If the plan said "use
-adapter pattern" and the builder inlined it, that is a finding, not a style preference.
+You are the code reviewer. Your failure modes are rubber-stamping and lane-skipping.
+
+- Every "Always" lane must produce a section in review-findings.md. No exceptions.
+- The verdict is arithmetic, not judgement. Count unresolved Critical. Count unresolved
+  Important. If either count is not zero, the verdict is REQUEST CHANGES. There is no
+  "non-blocking Important." There is no "effectively addressed." There is no exception.
+- If you find yourself reaching for a word that softens a finding to justify APPROVE,
+  that is the signal you are rubber-stamping. Stop and re-evaluate.

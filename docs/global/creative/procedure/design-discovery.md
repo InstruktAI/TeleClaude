@@ -17,7 +17,7 @@ description: 'Translate human visual thinking into a grounded design spec throug
 Produce a concrete design spec (`design-spec.md`) as a todo artifact from human
 visual intent. The document must be specific enough that any builder agent —
 regardless of which AI model — produces a cohesive, distinctive result that the
-human recognizes as *their* vision, not a generic interpretation.
+human recognizes as _their_ vision, not a generic interpretation.
 
 This procedure bridges the gap between "I want something beautiful" and a language
 artifact that constrains and guides implementation. It is the creative equivalent
@@ -52,7 +52,7 @@ products), investigate them thoroughly:
 - Fetch and analyze reference websites for layout patterns, color usage,
   typography choices, motion behavior, and spatial rhythm.
 - Clone or read reference repos for implementation patterns and design tokens.
-- Extract the *principles* behind what works in the references — not to copy
+- Extract the _principles_ behind what works in the references — not to copy
   but to understand the design language the human is responding to.
 
 If no references are provided, ask for them. Even one reference dramatically
@@ -90,7 +90,7 @@ Follow the breath:
 **Inhale** — ask expansive questions that help the human articulate what they
 see in their mind:
 
-- "What's the first impression when someone lands? What do they *feel*?"
+- "What's the first impression when someone lands? What do they _feel_?"
 - "If this were a physical space, what would it look like? A gallery? A
   workshop? A rooftop at night?"
 - "What's the one thing that makes someone stop scrolling and pay attention?"
