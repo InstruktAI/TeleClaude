@@ -364,15 +364,18 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 return
         if reason is None:
             reason = self._player.track_end_reason if self._player is not None else None
-        track_end_reason = reason
-        if track_end_reason == "stream_open_failed":
-            logger.debug("ChipTunes: track ended due to stream open failure, not auto-advancing")
-            self._notify_state_change()
-            return
-        if self._enabled:
-            logger.debug("ChipTunes: track ended (gen=%d), advancing to next", gen)
-            threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()
+        # Only auto-advance on normal completion or max-duration. All failure
+        # reasons (init_failed, sid_parse_failed, emulation_error,
+        # stream_open_failed) must NOT auto-advance to prevent infinite loops
+        # when every track fails (e.g. missing dependency).
+        if reason in {"track_completed", "max_duration"}:
+            if self._enabled:
+                logger.debug("ChipTunes: track ended normally (gen=%d, reason=%s), advancing to next", gen, reason)
+                threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()
+            else:
+                self._notify_state_change()
         else:
+            logger.debug("ChipTunes: track ended with failure (gen=%d, reason=%s), not auto-advancing", gen, reason)
             self._notify_state_change()
 
     def _command_loop(self) -> None:
