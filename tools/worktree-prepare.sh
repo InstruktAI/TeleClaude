@@ -71,7 +71,7 @@ cd "$WORKTREE_DIR"
 
 # Check if uv is available
 if command -v uv &> /dev/null; then
-    uv sync --extra test
+    uv sync --group dev
 else
     print_warning "uv not found, falling back to pip"
     # Create venv if it doesn't exist
@@ -80,7 +80,7 @@ else
     fi
     # Install with pip
     .venv/bin/python -m pip install --quiet --upgrade pip
-    .venv/bin/python -m pip install --quiet -e ".[test]"
+    .venv/bin/python -m pip install --quiet -e ".[dev]"
 fi
 
 print_success "Dependencies installed"
