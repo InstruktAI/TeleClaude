@@ -11,11 +11,9 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from enum import Enum, IntEnum
-from typing import Any
+from typing import Any, cast
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from teleclaude.core.models import JsonDict
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 #: Current envelope schema generation. Used as the default for EventEnvelope.version.
 SCHEMA_VERSION: int = 1
@@ -99,7 +97,7 @@ class EventEnvelope(BaseModel):
 
         d = {_str(k): _str(v) for k, v in data.items()}
 
-        payload: JsonDict = json.loads(d.get("payload", "{}")) if d.get("payload") else {}
+        payload = cast(dict[str, JsonValue], json.loads(d.get("payload", "{}")) if d.get("payload") else {})
         actions_raw = d.get("actions", "")
         actions = None
         if actions_raw:
@@ -107,10 +105,10 @@ class EventEnvelope(BaseModel):
         resolution_shape_raw = d.get("resolution_shape", "")
         resolution_shape = json.loads(resolution_shape_raw) if resolution_shape_raw else None
 
-        extra: JsonDict = {}
+        extra: dict[str, JsonValue] = {}
         extra_raw = d.get("_extra", "")
         if extra_raw:
-            extra = json.loads(extra_raw)
+            extra = cast(dict[str, JsonValue], json.loads(extra_raw))
 
         return cls(
             event=d["event"],
