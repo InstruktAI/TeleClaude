@@ -101,6 +101,37 @@ Exit this session immediately. The active integrator will drain the queue.
 NEXT: End this session — another integrator is already active"""
 
 
+def _format_pull_blocked(pull_stderr: str, slug: str) -> str:
+    return f"""INTEGRATION DECISION: REPO ROOT SYNC BLOCKED
+
+Candidate: {slug} — delivery pushed to origin/main successfully.
+
+Syncing local main with origin/main failed because of dirty local files:
+{pull_stderr}
+
+The delivery is safe on origin. But local main is now behind, and agents
+starting work on local main will see stale files as truth.
+
+## Your Task
+1. Tell the user: "Integration delivered {slug} to origin/main, but local main
+   has dirty files that block the pull. I need to stash local changes, pull, and
+   restore them — but only when no other agent sessions are active on local main.
+   Confirm when ready."
+2. Wait for the user's confirmation.
+3. Run the following commands in sequence:
+   TELECLAUDE_INTEGRATION_STASH=1 git stash
+   git pull --ff-only origin main
+   TELECLAUDE_INTEGRATION_STASH=1 git stash pop
+4. If stash pop succeeds cleanly, call: telec todo integrate
+5. If stash pop produces conflicts:
+   - Files deleted by the delivery that had local edits are obsolete — accept the delivered version
+   - Real work that should be ported to new locations: move manually, then stage
+   - After all conflicts resolved: TELECLAUDE_INTEGRATION_STASH=1 git stash drop
+   - Then call: telec todo integrate
+
+NEXT: Inform user, wait for confirmation, stash/pull/pop, resolve conflicts if any, then call telec todo integrate"""
+
+
 def _format_queue_empty(items_processed: int, items_blocked: int, duration_ms: int) -> str:
     return f"""INTEGRATION COMPLETE: Queue empty
 
@@ -108,7 +139,7 @@ Candidates processed: {items_processed}
 Candidates blocked: {items_blocked}
 Duration: {duration_ms}ms
 
-The integration queue is empty. Self-end this session.
+The integration queue is empty.
 
 NEXT: End this session — integration complete"""
 

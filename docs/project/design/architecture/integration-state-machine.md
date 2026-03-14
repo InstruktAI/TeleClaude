@@ -541,3 +541,60 @@ flowchart LR
 - **Checkpoint corrupt or missing**: resets to IDLE, starts fresh. No manual editing needed.
 - **Integration worktree missing**: created on first use, reused after. Missing worktree is auto-created.
 - **Auto-enqueue fallback**: when called with explicit slug not in queue, auto-enqueues from local branch (branch name == slug convention), provided SHA is not already ancestor of main.
+
+### Repo root sync recovery
+
+After pushing to origin/main, `_step_push_succeeded` syncs local main via `git pull --ff-only origin main`. When dirty local files conflict with incoming changes, the pull fails.
+
+**Why it happens:** Other agents may have in-progress work on local main (dirty working tree). The `--ff-only` pull cannot proceed with uncommitted changes that conflict with incoming files.
+
+**Recovery flow:**
+
+1. The machine advances the checkpoint to CLEANUP (delivery is already safe on origin).
+2. Returns a `REPO ROOT SYNC BLOCKED` instruction to the agent.
+3. The agent informs the user and waits for confirmation (other agent sessions may be active).
+4. After confirmation, the agent runs:
+   ```bash
+   TELECLAUDE_INTEGRATION_STASH=1 git stash
+   git pull --ff-only origin main
+   TELECLAUDE_INTEGRATION_STASH=1 git stash pop
+   ```
+5. If stash pop succeeds, the agent calls `telec todo integrate` — the machine resumes at CLEANUP.
+6. If stash pop produces conflicts, the agent resolves them (files deleted by delivery with local edits are obsolete), then calls `telec todo integrate`.
+
+**`TELECLAUDE_INTEGRATION_STASH` env var:** The git wrapper (`~/.teleclaude/bin/git`) blocks `git stash` in agent sessions by default (version-control-safety policy). Setting `TELECLAUDE_INTEGRATION_STASH=1` bypasses this block specifically for integration recovery. The env var is only used in the pull-blocked recovery sequence after explicit user confirmation.
+
+```mermaid
+sequenceDiagram
+    participant Agent as Integrator Agent
+    participant SM as Integration Machine
+    participant Root as Repo Root (local main)
+    participant Origin as origin/main
+
+    SM->>Origin: git push origin HEAD:main (from worktree)
+    Note over Origin: Push succeeds
+
+    SM->>Root: git pull --ff-only origin main
+    Root-->>SM: FAILED (dirty files conflict)
+
+    SM->>SM: Advance checkpoint to CLEANUP
+    SM-->>Agent: REPO ROOT SYNC BLOCKED
+
+    Note over Agent: Agent informs user,<br/>waits for confirmation
+
+    Agent->>Root: TELECLAUDE_INTEGRATION_STASH=1 git stash
+    Agent->>Root: git pull --ff-only origin main
+    Note over Root: Pull succeeds
+    Agent->>Root: TELECLAUDE_INTEGRATION_STASH=1 git stash pop
+
+    alt Clean pop
+        Agent->>SM: telec todo integrate
+        SM->>SM: Resume at CLEANUP → COMPLETED
+    else Conflicts
+        Note over Agent: Resolve conflicts<br/>(obsolete files = accept delivered)
+        Agent->>Root: git add resolved files
+        Agent->>Root: TELECLAUDE_INTEGRATION_STASH=1 git stash drop
+        Agent->>SM: telec todo integrate
+        SM->>SM: Resume at CLEANUP → COMPLETED
+    end
+```

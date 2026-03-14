@@ -2,9 +2,10 @@
 
 Covers:
 1. Original regression: bookkeeping runs in integration worktree (not repo root)
-2. Repo root pull failure is non-fatal
-3. Bug todo slugs reach deliver_to_delivered (no is_bug bypass)
-4. reconcile_roadmap_after_merge removes ghost/orphan entries, preserves valid ones
+2. Repo root pull failure returns structured REPO ROOT SYNC BLOCKED instruction
+3. Successful pull continues to cleanup inline
+4. Bug todo slugs reach deliver_to_delivered (no is_bug bypass)
+5. reconcile_roadmap_after_merge removes ghost/orphan entries, preserves valid ones
 """
 
 from __future__ import annotations
@@ -142,10 +143,9 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
     assert cp.phase == IntegrationPhase.PUSH_SUCCEEDED.value
 
 
-def test_repo_root_pull_failure_is_nonfatal(tmp_path: Path) -> None:
-    """When repo root has local commits (non-fast-forwardable), pull --ff-only
-    fails. This must be non-fatal because bookkeeping was already committed and
-    pushed from the integration worktree atomically.
+def test_repo_root_pull_failure_returns_pull_blocked(tmp_path: Path) -> None:
+    """When repo root pull fails due to dirty files, return a REPO ROOT SYNC
+    BLOCKED instruction instead of silently swallowing the failure.
     """
     cp, cp_path = _make_checkpoint(tmp_path, phase=IntegrationPhase.PUSH_SUCCEEDED.value)
 
@@ -156,9 +156,43 @@ def test_repo_root_pull_failure_is_nonfatal(tmp_path: Path) -> None:
     ) -> tuple[int, str, str]:
         nonlocal pull_attempted
         if args[:3] == ["pull", "--ff-only", "origin"]:
-            # Simulate repo root divergence — cannot fast-forward
             pull_attempted = True
             return 1, "", "fatal: not possible to fast-forward, aborting."
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return 0, "d" * 40 + "\n", ""
+        return 0, "", ""
+
+    with (
+        patch(
+            "teleclaude.core.integration.step_functions._run_git",
+            side_effect=mock_run_git,
+        ),
+        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
+        patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
+    ):
+        ok, msg = _step_push_succeeded(
+            checkpoint=cp,
+            checkpoint_path=cp_path,
+            cwd=str(tmp_path),
+        )
+
+    assert pull_attempted, "pull --ff-only must be attempted on repo root"
+    assert ok is False, "pull failure must stop the loop and return instruction"
+    assert cp.phase == IntegrationPhase.CLEANUP.value, "checkpoint must advance to CLEANUP"
+    assert "REPO ROOT SYNC BLOCKED" in msg
+    assert "TELECLAUDE_INTEGRATION_STASH=1" in msg
+    assert "my-feature" in msg
+
+
+def test_repo_root_pull_success_continues_to_cleanup(tmp_path: Path) -> None:
+    """When repo root pull succeeds, continue to cleanup inline (happy path)."""
+    cp, cp_path = _make_checkpoint(tmp_path, phase=IntegrationPhase.PUSH_SUCCEEDED.value)
+
+    def mock_run_git(
+        args: list[str], *, cwd: str, timeout: float = 30
+    ) -> tuple[int, str, str]:
+        if args[:3] == ["pull", "--ff-only", "origin"]:
+            return 0, "", ""  # Pull succeeds
         if args[:2] == ["rev-parse", "HEAD"]:
             return 0, "d" * 40 + "\n", ""
         return 0, "", ""
@@ -178,9 +212,7 @@ def test_repo_root_pull_failure_is_nonfatal(tmp_path: Path) -> None:
             cwd=str(tmp_path),
         )
 
-    assert pull_attempted, "pull --ff-only must be attempted on repo root"
-    # Non-fatal: step proceeds through cleanup despite pull failure
-    assert ok is True, "repo root pull failure must not abort the integration flow"
+    assert ok is True, "successful pull must continue to cleanup"
     assert cp.phase == IntegrationPhase.CANDIDATE_DELIVERED.value
 
 

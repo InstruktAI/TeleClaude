@@ -29,6 +29,7 @@ from teleclaude.core.integration.formatters import (
     _format_conflict_decision,
     _format_error,
     _format_lease_busy,
+    _format_pull_blocked,
     _format_push_rejected,
     _format_queue_empty,
 )
@@ -736,9 +737,11 @@ def _step_push_succeeded(
     # Sync repo root with origin/main (now contains squash + bookkeeping + cleanup commits)
     rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
     if rc != 0:
-        logger.warning("repo root pull failed after push: %s", stderr.strip())
-        # Non-fatal: bookkeeping was already committed and pushed from the
-        # integration worktree. Repo root sync will happen on next entry.
+        # Advance to CLEANUP so re-entry after agent fixes dirty files
+        # picks up at cleanup normally.
+        checkpoint.phase = IntegrationPhase.CLEANUP.value
+        _write_checkpoint(checkpoint_path, checkpoint)
+        return False, _format_pull_blocked(stderr.strip(), key.slug)
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
