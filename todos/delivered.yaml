@@ -1,14 +1,11 @@
 # Delivered work items. Newest first.
 
-- slug: rlf-core-infra
-  date: '2026-03-14'
-  commit: f2de29f319d6
-- slug: rlf-cli
-  date: '2026-03-14'
-  commit: 71c352a71d08
 - slug: fix-integration-delivery-bookkeeping-commits
   date: '2026-03-13'
   commit: 29b3b6d652ad
+- slug: fix-state-machine-triggers-unnecessary-revie
+  date: '2026-03-13'
+  commit: 28fbe9f90
 - slug: rlf-peripherals
   date: '2026-03-13'
   commit: d804720dd946

@@ -112,10 +112,8 @@
   group: refactor-large-files
   description: 'Decompose data layer: core/db.py (2,506), core/models.py (1,095),
     core/command_handlers.py (2,023)'
+- slug: rlf-core-infra
+  group: refactor-large-files
+  description: 'Decompose core infra: core/agent_coordinator.py (1,619), core/tmux_bridge.py
+    (1,402), core/adapter_client.py (1,161)'
 - slug: refactor-large-files
-- slug: rlf-peripherals
-- slug: rlf-core-data-pylint
-- slug: rlf-core-machines
-- slug: lint-baseline-fix
-  description: 'Restore make lint to passing: fix pre-existing mypy/pyright baseline
-    failures'
