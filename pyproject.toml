@@ -54,14 +54,12 @@ dependencies = [
     "ruamel.yaml>=0.18.0",
     "textual>=1.0.0",
     "uvloop>=0.21.0; sys_platform != 'win32'",
-]
-
-[project.optional-dependencies]
-chiptunes = [
     "pyresidfp>=0.17.0",
     "py65emu>=0.1.0",
     "sounddevice>=0.5.0",
 ]
+
+[project.optional-dependencies]
 mlx = [
     "mlx-audio @ git+https://github.com/Blaizzy/mlx-audio.git@main",
     "misaki[en]",
@@ -83,7 +81,7 @@ test = [
     "mypy>=1.8.0",
 ]
 dev = [
-    "TeleClaude[test,mlx,chiptunes]",
+    "TeleClaude[test,mlx]",
 ]
 
 [tool.setuptools.packages.find]
@@ -153,8 +151,7 @@ max-complexity = 20
 "teleclaude/cli/tui/widgets/banner.py" = ["C901"]
 "teleclaude/cli/tui/widgets/box_tab_bar.py" = ["C901"]
 "teleclaude/context_selector.py" = ["C901"]
-"teleclaude/core/agent_coordinator/_coordinator.py" = ["C901"]
-"teleclaude/core/agent_coordinator/_helpers.py" = ["C901"]
+"teleclaude/core/agent_coordinator.py" = ["C901"]
 "teleclaude/core/command_handlers.py" = ["C901"]
 "teleclaude/core/next_machine/core.py" = ["C901"]
 "teleclaude/core/output_poller.py" = ["C901"]
@@ -166,7 +163,6 @@ max-complexity = 20
 "teleclaude/daemon_event_platform.py" = ["C901"]
 "teleclaude/api/sessions_routes.py" = ["C901"]
 "teleclaude/api/sessions_actions_routes.py" = ["C901"]
-"teleclaude/api/ws_mixin.py" = ["C901"]
 "teleclaude/docs_index.py" = ["C901"]
 "teleclaude/entrypoints/youtube_sync_subscriptions.py" = ["C901"]
 "teleclaude/helpers/youtube_helper/__init__.py" = ["C901"]
@@ -184,7 +180,7 @@ max-complexity = 20
 "teleclaude/cli/tool_client.py" = ["B904"]
 "teleclaude/cli/tool_commands/**" = ["B904"]
 "teleclaude/core/integration/lease.py" = ["B904"]
-"teleclaude/core/tmux_bridge/_subprocess.py" = ["B904"]
+"teleclaude/core/tmux_bridge.py" = ["B904"]
 "teleclaude/core/codex_prompt_submit.py" = ["B023", "RUF001", "RUF002", "RUF003"]
 "teleclaude/chiptunes/sid_cpu.py" = ["RUF001", "RUF002", "RUF003"]
 "teleclaude/chiptunes/sid_parser.py" = ["RUF001", "RUF002", "RUF003"]

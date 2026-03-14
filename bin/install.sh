@@ -377,7 +377,7 @@ PY
     }
 
     sync_args=()
-    for extra in test chiptunes; do
+    for extra in test; do
         if has_optional_extra "$extra"; then
             sync_args+=(--extra "$extra")
         else
