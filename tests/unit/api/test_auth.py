@@ -429,3 +429,61 @@ class TestIsToolDeniedPrincipalWiring:
         )
 
         assert _is_tool_denied("sessions list", identity) is True
+
+
+# ---------------------------------------------------------------------------
+# Single-owner mode — implicit admin without login
+# ---------------------------------------------------------------------------
+
+
+class TestSingleOwnerImplicitAdmin:
+    """In single-owner mode (0-1 registered people), unidentified callers are admin."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_tmux_caller_no_login_single_owner_gets_admin(self):
+        """Tmux caller without login in single-owner mode gets admin."""
+        request = _make_request()
+
+        with (
+            patch("teleclaude.api.auth._resolve_terminal_role", return_value=None),
+            patch("teleclaude.api.auth._requires_terminal_login", return_value=False),
+        ):
+            identity = await verify_caller(
+                request=request, x_tmux_session="tc_tui",
+            )
+
+        assert identity.human_role == "admin"
+        assert identity.system_role is None
+        assert identity.tmux_session_name == "tc_tui"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_non_tmux_caller_no_login_single_owner_gets_admin(self):
+        """Non-tmux caller without login in single-owner mode gets admin."""
+        request = _make_request()
+
+        with (
+            patch("teleclaude.api.auth._resolve_terminal_role", return_value=None),
+            patch("teleclaude.api.auth._requires_terminal_login", return_value=False),
+        ):
+            identity = await verify_caller(request=request)
+
+        assert identity.human_role == "admin"
+        assert identity.system_role is None
+        assert identity.tmux_session_name is None
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_multi_user_no_login_raises_401(self):
+        """Any caller without login in multi-user mode raises 401."""
+        request = _make_request()
+
+        with (
+            patch("teleclaude.api.auth._resolve_terminal_role", return_value=None),
+            patch("teleclaude.api.auth._requires_terminal_login", return_value=True),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_caller(request=request, x_tmux_session="tc_tui")
+
+            assert exc_info.value.status_code == 401

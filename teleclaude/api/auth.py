@@ -16,11 +16,10 @@ The human_role comes from DB session record or terminal email mapping.
 
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Final
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Header, HTTPException, Request
 
@@ -33,11 +32,6 @@ from teleclaude.core.db import db
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
-
-_default_unidentified_human_role = (os.getenv("TELECLAUDE_UNIDENTIFIED_HUMAN_ROLE", HUMAN_ROLE_ADMIN) or "").strip()
-if not _default_unidentified_human_role:
-    _default_unidentified_human_role = HUMAN_ROLE_ADMIN
-DEFAULT_UNIDENTIFIED_HUMAN_ROLE: Final[str] = _default_unidentified_human_role
 
 _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
 _email_role_cache: dict[str, str] = {}
@@ -243,38 +237,27 @@ async def verify_caller(
         )
 
     if not x_caller_session_id:
-        # Terminal/TUI mode without daemon session marker:
-        # - tmux contexts may use telec login email mapping (tc_tui bridge)
-        # - multi-user mode requires login for tmux callers without session_id
-        # - otherwise tmux falls back to default unidentified role
-        # - non-tmux contexts may use telec login email mapping
-        # - otherwise reject as unauthorized
+        # Terminal/TUI/web caller without a daemon session.
+        # 1. Try email → role resolution (works for any caller context).
+        # 2. Single-owner mode (0-1 registered people) → implicit admin.
+        # 3. Multi-user mode → login required.
         email_to_use = x_telec_email or x_web_user_email
         terminal_role = _resolve_terminal_role(email_to_use)
-        if x_tmux_session:
-            if terminal_role:
-                return CallerIdentity(
-                    session_id="",
-                    system_role=None,
-                    human_role=terminal_role,
-                    tmux_session_name=x_tmux_session,
-                )
-            if _requires_terminal_login():
-                raise HTTPException(status_code=401, detail="terminal login required in multi-user mode")
-            return CallerIdentity(
-                session_id="",
-                system_role=None,
-                human_role=DEFAULT_UNIDENTIFIED_HUMAN_ROLE,
-                tmux_session_name=x_tmux_session,
-            )
         if terminal_role:
             return CallerIdentity(
                 session_id="",
                 system_role=None,
                 human_role=terminal_role,
-                tmux_session_name=None,
+                tmux_session_name=x_tmux_session,
             )
-        raise HTTPException(status_code=401, detail="missing session")
+        if _requires_terminal_login():
+            raise HTTPException(status_code=401, detail="login required in multi-user mode")
+        return CallerIdentity(
+            session_id="",
+            system_role=None,
+            human_role=HUMAN_ROLE_ADMIN,
+            tmux_session_name=x_tmux_session,
+        )
 
     session = _get_cached_session(x_caller_session_id)
     if session is None:
