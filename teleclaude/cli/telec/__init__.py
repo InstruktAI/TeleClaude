@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import time as _t
+from collections.abc import Callable
 from pathlib import Path
 
 _BOOT = _t.monotonic()
@@ -13,10 +14,10 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.session_auth import read_current_session_email
 
 # Re-export TUI runners
-from teleclaude.cli.telec._run_tui import _run_tui, _run_tui_config_mode  # noqa: F401
+from teleclaude.cli.telec._run_tui import _run_tui, _run_tui_config_mode
 
 # Re-export shared config proxy and constants
-from teleclaude.cli.telec._shared import (  # noqa: F401
+from teleclaude.cli.telec._shared import (
     TMUX_ENV_KEY,
     TUI_AUTH_EMAIL_ENV_KEY,
     TUI_ENV_KEY,
@@ -26,8 +27,8 @@ from teleclaude.cli.telec._shared import (  # noqa: F401
 )
 
 # Re-export auth helpers
-from teleclaude.cli.telec.auth import _resolve_command_auth, is_command_allowed  # noqa: F401
-from teleclaude.cli.telec.handlers.auth_cmds import (  # noqa: F401
+from teleclaude.cli.telec.auth import _resolve_command_auth, is_command_allowed
+from teleclaude.cli.telec.handlers.auth_cmds import (
     _handle_auth,
     _handle_login,
     _handle_logout,
@@ -35,15 +36,15 @@ from teleclaude.cli.telec.handlers.auth_cmds import (  # noqa: F401
     _requires_tui_login,
     _role_for_email,
 )
-from teleclaude.cli.telec.handlers.bugs import (  # noqa: F401
+from teleclaude.cli.telec.handlers.bugs import (
     _handle_bugs,
     _handle_bugs_create,
     _handle_bugs_list,
     _handle_bugs_report,
 )
 from teleclaude.cli.telec.handlers.config import _handle_config
-from teleclaude.cli.telec.handlers.content import _handle_content, _handle_content_dump  # noqa: F401
-from teleclaude.cli.telec.handlers.demo import (  # noqa: F401
+from teleclaude.cli.telec.handlers.content import _handle_content, _handle_content_dump
+from teleclaude.cli.telec.handlers.demo import (
     _check_no_demo_marker,
     _demo_create,
     _demo_list,
@@ -53,19 +54,19 @@ from teleclaude.cli.telec.handlers.demo import (  # noqa: F401
     _find_demo_md,
     _handle_todo_demo,
 )
-from teleclaude.cli.telec.handlers.docs import _handle_docs, _handle_docs_get, _handle_docs_index  # noqa: F401
-from teleclaude.cli.telec.handlers.events_signals import (  # noqa: F401
+from teleclaude.cli.telec.handlers.docs import _handle_docs, _handle_docs_get, _handle_docs_index
+from teleclaude.cli.telec.handlers.events_signals import (
     _handle_events,
     _handle_events_list,
     _handle_signals,
     _handle_signals_status,
 )
-from teleclaude.cli.telec.handlers.history import (  # noqa: F401
+from teleclaude.cli.telec.handlers.history import (
     _handle_history,
     _handle_history_search,
     _handle_history_show,
 )
-from teleclaude.cli.telec.handlers.memories import (  # noqa: F401
+from teleclaude.cli.telec.handlers.memories import (
     _VALID_OBS_TYPES,
     _handle_memories,
     _handle_memories_delete,
@@ -75,7 +76,7 @@ from teleclaude.cli.telec.handlers.memories import (  # noqa: F401
 )
 
 # Re-export handlers
-from teleclaude.cli.telec.handlers.misc import (  # noqa: F401
+from teleclaude.cli.telec.handlers.misc import (
     _attach_tmux_session,
     _ensure_tmux_mouse_on,
     _ensure_tmux_status_hidden_for_tui,
@@ -91,7 +92,7 @@ from teleclaude.cli.telec.handlers.misc import (  # noqa: F401
     _revive_session_via_api,
     _send_revive_enter_via_api,
 )
-from teleclaude.cli.telec.handlers.roadmap import (  # noqa: F401
+from teleclaude.cli.telec.handlers.roadmap import (
     _handle_roadmap,
     _handle_roadmap_add,
     _handle_roadmap_deliver,
@@ -103,7 +104,7 @@ from teleclaude.cli.telec.handlers.roadmap import (  # noqa: F401
     _handle_roadmap_show,
     _handle_roadmap_unfreeze,
 )
-from teleclaude.cli.telec.handlers.todo import (  # noqa: F401
+from teleclaude.cli.telec.handlers.todo import (
     _handle_todo,
     _handle_todo_create,
     _handle_todo_dump,
@@ -114,7 +115,7 @@ from teleclaude.cli.telec.handlers.todo import (  # noqa: F401
 )
 
 # Re-export help functions
-from teleclaude.cli.telec.help import (  # noqa: F401
+from teleclaude.cli.telec.help import (
     _complete_flags,
     _complete_subcmd,
     _example_commands,
@@ -134,7 +135,7 @@ from teleclaude.cli.telec.help import (  # noqa: F401
 )
 
 # Re-export surface symbols
-from teleclaude.cli.telec.surface import (  # noqa: F401
+from teleclaude.cli.telec.surface import (
     _H,
     CLI_SURFACE,
     HELP_SUBCOMMAND_EXPANSIONS,
@@ -153,83 +154,64 @@ from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
 from teleclaude.logging_config import setup_logging
 from teleclaude.project_setup import init_project
 
-
 __all__ = [
-    # config proxy
-    "_ConfigProxy",
-    "config",
+    "CLI_SURFACE",
+    "HELP_SUBCOMMAND_EXPANSIONS",
     "TMUX_ENV_KEY",
     "TUI_AUTH_EMAIL_ENV_KEY",
     "TUI_ENV_KEY",
     "TUI_SESSION_NAME",
-    # surface
     "_H",
-    "CLI_SURFACE",
-    "HELP_SUBCOMMAND_EXPANSIONS",
+    "_VALID_OBS_TYPES",
     "CommandAuth",
     "CommandDef",
     "Flag",
     "TelecCommand",
-    # auth
-    "_resolve_command_auth",
-    "is_command_allowed",
-    # help/completion
+    "_ConfigProxy",
+    "_attach_tmux_session",
+    "_check_no_demo_marker",
     "_complete_flags",
     "_complete_subcmd",
-    "_example_commands",
-    "_example_positionals",
-    "_flag_matches",
-    "_flag_used",
-    "_handle_completion",
-    "_maybe_show_help",
-    "_print_completion",
-    "_print_flag",
-    "_sample_flag_value",
-    "_sample_positional_value",
-    "_usage",
-    "_usage_leaf",
-    "_usage_main",
-    "_usage_subcmd",
-    # TUI
-    "_run_tui",
-    "_run_tui_config_mode",
-    # handlers/misc
-    "_attach_tmux_session",
-    "_ensure_tmux_mouse_on",
-    "_ensure_tmux_status_hidden_for_tui",
-    "_git_short_commit_hash",
-    "_handle_computers",
-    "_handle_projects",
-    "_handle_revive",
-    "_handle_sync",
-    "_handle_version",
-    "_handle_watch",
-    "_maybe_kill_tui_session",
-    "_revive_session",
-    "_revive_session_via_api",
-    "_send_revive_enter_via_api",
-    # handlers/docs
-    "_handle_docs",
-    "_handle_docs_get",
-    "_handle_docs_index",
-    # handlers/demo
-    "_check_no_demo_marker",
     "_demo_create",
     "_demo_list",
     "_demo_run",
     "_demo_validate",
+    "_ensure_tmux_mouse_on",
+    "_ensure_tmux_status_hidden_for_tui",
+    "_example_commands",
+    "_example_positionals",
     "_extract_demo_blocks",
     "_find_demo_md",
-    "_handle_todo_demo",
-    # handlers/todo
-    "_handle_todo",
-    "_handle_todo_create",
-    "_handle_todo_dump",
-    "_handle_todo_remove",
-    "_handle_todo_split",
-    "_handle_todo_validate",
-    "_handle_todo_verify_artifacts",
-    # handlers/roadmap
+    "_flag_matches",
+    "_flag_used",
+    "_git_short_commit_hash",
+    "_handle_auth",
+    "_handle_bugs",
+    "_handle_bugs_create",
+    "_handle_bugs_list",
+    "_handle_bugs_report",
+    "_handle_completion",
+    "_handle_computers",
+    "_handle_config",
+    "_handle_content",
+    "_handle_content_dump",
+    "_handle_docs",
+    "_handle_docs_get",
+    "_handle_docs_index",
+    "_handle_events",
+    "_handle_events_list",
+    "_handle_history",
+    "_handle_history_search",
+    "_handle_history_show",
+    "_handle_login",
+    "_handle_logout",
+    "_handle_memories",
+    "_handle_memories_delete",
+    "_handle_memories_save",
+    "_handle_memories_search",
+    "_handle_memories_timeline",
+    "_handle_projects",
+    "_handle_revive",
     "_handle_roadmap",
     "_handle_roadmap_add",
     "_handle_roadmap_deliver",
@@ -240,39 +222,40 @@ __all__ = [
     "_handle_roadmap_remove",
     "_handle_roadmap_show",
     "_handle_roadmap_unfreeze",
-    # handlers/bugs
-    "_handle_bugs",
-    "_handle_bugs_create",
-    "_handle_bugs_list",
-    "_handle_bugs_report",
-    # handlers/config
-    "_handle_config",
-    # handlers/content
-    "_handle_content",
-    "_handle_content_dump",
-    # handlers/events_signals
-    "_handle_events",
-    "_handle_events_list",
     "_handle_signals",
     "_handle_signals_status",
-    # handlers/auth_cmds
-    "_handle_auth",
-    "_handle_login",
-    "_handle_logout",
+    "_handle_sync",
+    "_handle_todo",
+    "_handle_todo_create",
+    "_handle_todo_demo",
+    "_handle_todo_dump",
+    "_handle_todo_remove",
+    "_handle_todo_split",
+    "_handle_todo_validate",
+    "_handle_todo_verify_artifacts",
+    "_handle_version",
+    "_handle_watch",
     "_handle_whoami",
+    "_maybe_kill_tui_session",
+    "_maybe_show_help",
+    "_print_completion",
+    "_print_flag",
     "_requires_tui_login",
+    "_resolve_command_auth",
+    "_revive_session",
+    "_revive_session_via_api",
     "_role_for_email",
-    # handlers/history
-    "_handle_history",
-    "_handle_history_search",
-    "_handle_history_show",
-    # handlers/memories
-    "_VALID_OBS_TYPES",
-    "_handle_memories",
-    "_handle_memories_delete",
-    "_handle_memories_save",
-    "_handle_memories_search",
-    "_handle_memories_timeline",
+    "_run_tui",
+    "_run_tui_config_mode",
+    "_sample_flag_value",
+    "_sample_positional_value",
+    "_send_revive_enter_via_api",
+    "_usage",
+    "_usage_leaf",
+    "_usage_main",
+    "_usage_subcmd",
+    "config",
+    "is_command_allowed",
 ]
 
 
@@ -367,54 +350,45 @@ def _handle_cli_command(argv: list[str]) -> None:
         print(_usage(cmd))
         return
 
-    if cmd_enum is TelecCommand.SESSIONS:
-        if args and args[0] == "revive":
-            _handle_revive(args[1:])
-        else:
-            handle_sessions(args)
-    elif cmd_enum is TelecCommand.COMPUTERS:
-        _handle_computers(args)
-    elif cmd_enum is TelecCommand.PROJECTS:
-        _handle_projects(args)
-    elif cmd_enum is TelecCommand.AGENTS:
-        handle_agents(args)
-    elif cmd_enum is TelecCommand.CHANNELS:
-        handle_channels(args)
-    elif cmd_enum is TelecCommand.OPERATIONS:
-        handle_operations(args)
-    elif cmd_enum is TelecCommand.INIT:
-        init_project(Path.cwd())
-    elif cmd_enum is TelecCommand.VERSION:
-        _handle_version()
-    elif cmd_enum is TelecCommand.SYNC:
-        _handle_sync(args)
-    elif cmd_enum is TelecCommand.WATCH:
-        _handle_watch(args)
-    elif cmd_enum is TelecCommand.DOCS:
-        _handle_docs(args)
-    elif cmd_enum is TelecCommand.TODO:
-        _handle_todo(args)
-    elif cmd_enum is TelecCommand.ROADMAP:
-        _handle_roadmap(args)
-    elif cmd_enum is TelecCommand.BUGS:
-        _handle_bugs(args)
-    elif cmd_enum is TelecCommand.EVENTS:
-        _handle_events(args)
-    elif cmd_enum is TelecCommand.AUTH:
-        _handle_auth(args)
-    elif cmd_enum is TelecCommand.CONFIG:
-        _handle_config(args)
-    elif cmd_enum is TelecCommand.CONTENT:
-        _handle_content(args)
-    elif cmd_enum is TelecCommand.HISTORY:
-        _handle_history(args)
-    elif cmd_enum is TelecCommand.MEMORIES:
-        _handle_memories(args)
-    elif cmd_enum is TelecCommand.SIGNALS:
-        _handle_signals(args)
-    else:
+    handler = _resolve_cli_handler(cmd_enum, args)
+    if handler is None:
         print(f"Unknown command: /{cmd}")
         print(_usage())
+        return
+    handler()
+
+
+def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Callable[[], None] | None:
+    def handle_sessions_command() -> None:
+        if args and args[0] == "revive":
+            _handle_revive(args[1:])
+            return
+        handle_sessions(args)
+
+    handlers = {
+        TelecCommand.SESSIONS: handle_sessions_command,
+        TelecCommand.COMPUTERS: lambda: _handle_computers(args),
+        TelecCommand.PROJECTS: lambda: _handle_projects(args),
+        TelecCommand.AGENTS: lambda: handle_agents(args),
+        TelecCommand.CHANNELS: lambda: handle_channels(args),
+        TelecCommand.OPERATIONS: lambda: handle_operations(args),
+        TelecCommand.INIT: lambda: init_project(Path.cwd()),
+        TelecCommand.VERSION: _handle_version,
+        TelecCommand.SYNC: lambda: _handle_sync(args),
+        TelecCommand.WATCH: lambda: _handle_watch(args),
+        TelecCommand.DOCS: lambda: _handle_docs(args),
+        TelecCommand.TODO: lambda: _handle_todo(args),
+        TelecCommand.ROADMAP: lambda: _handle_roadmap(args),
+        TelecCommand.BUGS: lambda: _handle_bugs(args),
+        TelecCommand.EVENTS: lambda: _handle_events(args),
+        TelecCommand.AUTH: lambda: _handle_auth(args),
+        TelecCommand.CONFIG: lambda: _handle_config(args),
+        TelecCommand.CONTENT: lambda: _handle_content(args),
+        TelecCommand.HISTORY: lambda: _handle_history(args),
+        TelecCommand.MEMORIES: lambda: _handle_memories(args),
+        TelecCommand.SIGNALS: lambda: _handle_signals(args),
+    }
+    return handlers.get(cmd_enum)
 
 
 if __name__ == MAIN_MODULE:

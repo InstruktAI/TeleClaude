@@ -21,15 +21,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Literal, cast
+from typing import Literal, NotRequired, cast
 
 import frontmatter
 import yaml
 from frontmatter import Post
 from frontmatter.default_handlers import YAMLHandler
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import TypedDict
 
 # Allow running from any working directory by anchoring imports at repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -432,7 +433,7 @@ def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool 
             if warn_only:
                 print(f"WARNING: {msg}")
                 return match.group(0)
-            raise RuntimeError(msg)
+            raise RuntimeError(msg) from None
 
     return EXEC_DIRECTIVE_RE.sub(_run, content)
 
@@ -634,7 +635,7 @@ def _resolve_git_common_root(project_root: Path) -> Path:
     return common_path.parent
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901
     parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
     parser.add_argument("--deploy", action="store_true", help="Sync generated files to their locations.")
     parser.add_argument(
@@ -830,7 +831,7 @@ def main() -> None:
                 if not item_path:
                     continue
                 try:
-                    with open(item_path, "r") as f:
+                    with open(item_path) as f:
                         post = frontmatter.load(f)
                     validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
                     if spec.kind == "skill":
@@ -855,7 +856,7 @@ def main() -> None:
         shutil.rmtree(dist_dir)
     os.makedirs(dist_dir)
 
-    def _run_phase(
+    def _run_phase(  # noqa: C901
         *,
         sources: list[dict[str, str]],
         prefix_root: str,
@@ -873,7 +874,7 @@ def main() -> None:
         artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
         for source in sources:
             if os.path.isfile(source["master"]) and source["label"] != ".agents":
-                with open(source["master"], "r") as f:
+                with open(source["master"]) as f:
                     agent_master_contents.append(f.read())
             for spec in artifact_specs:
                 source_dir = source.get(spec.source_dir_key)
@@ -899,7 +900,7 @@ def main() -> None:
             agent_specific_file = os.path.join(prefix_root, f"{agent_name.upper()}.addendum.md")
             agent_specific_content = ""
             if os.path.exists(agent_specific_file):
-                with open(agent_specific_file, "r") as extra_f:
+                with open(agent_specific_file) as extra_f:
                     raw_agent_specific = extra_f.read()
                 agent_specific_content = process_file(raw_agent_specific, config["prefix"], agent_name)
 
@@ -964,7 +965,7 @@ def main() -> None:
                             break
                     if not item_path:
                         continue
-                    with open(item_path, "r") as f:
+                    with open(item_path) as f:
                         try:
                             post = frontmatter.load(f)
                             validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))

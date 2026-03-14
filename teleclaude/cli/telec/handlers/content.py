@@ -1,4 +1,5 @@
 """Handlers for telec content commands."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,12 +12,11 @@ from teleclaude.content_scaffold import _resolve_author, create_content_inbox_en
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.slug import normalize_slug
 
-
-
 __all__ = [
     "_handle_content",
     "_handle_content_dump",
 ]
+
 
 def _handle_content(args: list[str]) -> None:
     """Handle telec content subcommands."""

@@ -39,7 +39,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class UiAdapter(ThreadedOutputMixin, OutputDeliveryMixin, BaseAdapter):
+class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]
+    ThreadedOutputMixin, OutputDeliveryMixin, BaseAdapter
+):
     """Base class for UI-enabled adapters.
 
     Provides output message management for platforms with editable messages.

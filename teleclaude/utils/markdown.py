@@ -191,6 +191,79 @@ def _toggle_stack_marker(stack: list[str], marker: str) -> None:
     stack.append(marker)
 
 
+def _consume_escaped_markdown_char(text: str, index: int) -> int | None:
+    if text[index] != "\\":
+        return None
+    return index + 2
+
+
+def _consume_markdown_link_state(
+    text: str,
+    index: int,
+    *,
+    in_link_text: bool,
+    link_url_depth: int,
+) -> tuple[int, bool, int] | None:
+    if link_url_depth > 0:
+        if text[index] == "(":
+            link_url_depth += 1
+        elif text[index] == ")":
+            link_url_depth -= 1
+        return index + 1, in_link_text, link_url_depth
+    if not in_link_text:
+        return None
+    if text[index : index + 2] == "](":
+        return index + 2, False, 1
+    if text[index] == "]":
+        return index + 1, False, 0
+    return index + 1, True, 0
+
+
+def _consume_markdown_code_state(text: str, index: int, stack: list[str]) -> int | None:
+    in_code_block = bool(stack and stack[-1] == _STATE_CODE_BLOCK)
+    if in_code_block:
+        if text[index : index + 3] == MARKDOWN_FENCE:
+            stack.pop()
+            return index + 3
+        return index + 1
+
+    in_inline_code = bool(stack and stack[-1] == _STATE_INLINE_CODE)
+    if in_inline_code:
+        if text[index] == MARKDOWN_INLINE_CODE:
+            stack.pop()
+            return index + 1
+        return index + 1
+
+    if text[index : index + 3] == MARKDOWN_FENCE:
+        stack.append(_STATE_CODE_BLOCK)
+        return index + 3
+    return None
+
+
+def _consume_markdown_format_marker(text: str, index: int, stack: list[str]) -> int | None:
+    if text[index] == "[":
+        return index + 1
+    if text[index : index + 2] == "||":
+        _toggle_stack_marker(stack, _STATE_SPOILER)
+        return index + 2
+    if text[index : index + 2] == "__":
+        _toggle_stack_marker(stack, _STATE_UNDERLINE)
+        return index + 2
+    if text[index] == MARKDOWN_INLINE_CODE:
+        stack.append(_STATE_INLINE_CODE)
+        return index + 1
+    if text[index] == "*":
+        _toggle_stack_marker(stack, _STATE_BOLD)
+        return index + 1
+    if text[index] == "_":
+        _toggle_stack_marker(stack, _STATE_ITALIC)
+        return index + 1
+    if text[index] == "~":
+        _toggle_stack_marker(stack, _STATE_STRIKETHROUGH)
+        return index + 1
+    return None
+
+
 def scan_markdown_v2_state(text: str, initial_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE) -> MarkdownV2State:
     """Scan text and return MarkdownV2 parser state after consuming it."""
     stack = list(initial_state.stack)
@@ -198,90 +271,33 @@ def scan_markdown_v2_state(text: str, initial_state: MarkdownV2State = MARKDOWN_
     link_url_depth = initial_state.link_url_depth
     i = 0
     while i < len(text):
-        if text[i] == "\\":
-            i += 2
+        escaped_index = _consume_escaped_markdown_char(text, i)
+        if escaped_index is not None:
+            i = escaped_index
             continue
 
-        if link_url_depth > 0:
-            if text[i] == "(":
-                link_url_depth += 1
-            elif text[i] == ")":
-                link_url_depth -= 1
+        link_state = _consume_markdown_link_state(
+            text,
+            i,
+            in_link_text=in_link_text,
+            link_url_depth=link_url_depth,
+        )
+        if link_state is not None:
+            i, in_link_text, link_url_depth = link_state
+            continue
+
+        code_index = _consume_markdown_code_state(text, i, stack)
+        if code_index is not None:
+            i = code_index
+            continue
+
+        format_index = _consume_markdown_format_marker(text, i, stack)
+        if format_index is None:
             i += 1
             continue
-
-        if in_link_text:
-            if text[i : i + 2] == "](":
-                in_link_text = False
-                link_url_depth = 1
-                i += 2
-                continue
-            if text[i] == "]":
-                in_link_text = False
-                i += 1
-                continue
-            i += 1
-            continue
-
-        in_code_block = bool(stack and stack[-1] == _STATE_CODE_BLOCK)
-        if in_code_block:
-            if text[i : i + 3] == MARKDOWN_FENCE:
-                stack.pop()
-                i += 3
-                continue
-            i += 1
-            continue
-
-        in_inline_code = bool(stack and stack[-1] == _STATE_INLINE_CODE)
-        if in_inline_code:
-            if text[i] == MARKDOWN_INLINE_CODE:
-                stack.pop()
-                i += 1
-                continue
-            i += 1
-            continue
-
-        if text[i : i + 3] == MARKDOWN_FENCE:
-            stack.append(_STATE_CODE_BLOCK)
-            i += 3
-            continue
-
         if text[i] == "[":
             in_link_text = True
-            i += 1
-            continue
-
-        if text[i : i + 2] == "||":
-            _toggle_stack_marker(stack, _STATE_SPOILER)
-            i += 2
-            continue
-
-        if text[i : i + 2] == "__":
-            _toggle_stack_marker(stack, _STATE_UNDERLINE)
-            i += 2
-            continue
-
-        if text[i] == MARKDOWN_INLINE_CODE:
-            stack.append(_STATE_INLINE_CODE)
-            i += 1
-            continue
-
-        if text[i] == "*":
-            _toggle_stack_marker(stack, _STATE_BOLD)
-            i += 1
-            continue
-
-        if text[i] == "_":
-            _toggle_stack_marker(stack, _STATE_ITALIC)
-            i += 1
-            continue
-
-        if text[i] == "~":
-            _toggle_stack_marker(stack, _STATE_STRIKETHROUGH)
-            i += 1
-            continue
-
-        i += 1
+        i = format_index
 
     return MarkdownV2State(
         stack=tuple(stack),

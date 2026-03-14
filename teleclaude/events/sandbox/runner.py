@@ -12,10 +12,10 @@ import importlib.util
 import time
 import types
 from pathlib import Path
-from typing import Any
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.catalog import EventCatalog, EventSchema
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 _CARTRIDGE_TIMEOUT = 10.0  # seconds
 
 
-def _build_catalog_from_snapshot(snapshot: list[dict[str, Any]]) -> EventCatalog:
+def _build_catalog_from_snapshot(snapshot: list[JsonDict]) -> EventCatalog:
     """Rebuild a minimal EventCatalog from a serialized snapshot (no DB required)."""
     catalog = EventCatalog()
     for item in snapshot:

@@ -223,9 +223,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             widget.refresh()
         for widget in self.query(BoxTabBar):
             widget.refresh()
-        for widget in self.query(SessionRow):
+        for widget in self.query("SessionRow"):
             widget.refresh()
-        for widget in self.query(TodoRow):
+        for widget in self.query("TodoRow"):
             widget.refresh()
 
     def compose(self) -> ComposeResult:

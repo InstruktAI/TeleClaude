@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from teleclaude.cli.config_handlers import EnvVarStatus, set_env_var
 from teleclaude.cli.tui.views._config_constants import (
@@ -13,9 +14,15 @@ from teleclaude.cli.tui.views._config_constants import (
     _VALID_ROLES,
 )
 
+if TYPE_CHECKING:
+    from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
+
 
 class ConfigContentEditingMixin:
     """Cursor movement, inline editing, and guided-mode logic for ConfigContent."""
+
+    if TYPE_CHECKING:
+        _adapter_sections: list[AdapterSectionProjection]
 
     def move_cursor(self, delta: int) -> None:
         if self.is_editing:  # type: ignore[attr-defined]
@@ -24,7 +31,8 @@ class ConfigContentEditingMixin:
         if tab == "people":
             if self._expanded_person is not None:  # type: ignore[attr-defined]
                 self._person_field_cursor = max(  # type: ignore[attr-defined]
-                    0, min(self._person_field_cursor + delta, len(_PERSON_EDITABLE_FIELDS) - 1)  # type: ignore[attr-defined]
+                    0,
+                    min(self._person_field_cursor + delta, len(_PERSON_EDITABLE_FIELDS) - 1),  # type: ignore[attr-defined]
                 )
             elif self._people_data:  # type: ignore[attr-defined]
                 self._set_current_cursor(max(0, min(self._current_cursor() + delta, len(self._people_data) - 1)))  # type: ignore[attr-defined]
@@ -254,7 +262,8 @@ class ConfigContentEditingMixin:
         step = _GUIDED_STEPS[self._guided_step_index]  # type: ignore[attr-defined]
         if step.subtab == "adapters":
             section = next(
-                (item for item in self._adapter_sections if item.key == step.adapter_tab), None  # type: ignore[attr-defined]
+                (item for item in self._adapter_sections if item.key == step.adapter_tab),
+                None,  # type: ignore[attr-defined]
             )
             return bool(section and section.status == "configured")
         if step.subtab == "people":

@@ -5,6 +5,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 
 @dataclass
@@ -52,6 +53,10 @@ def parse_sid_file(path: Path) -> SIDHeader:  # pylint: disable=too-many-locals
     if len(data) < _HEADER_V1_SIZE:
         raise ValueError(f"File too short to be a valid SID: {path}")
 
+    header_values = cast(
+        tuple[bytes, int, int, int, int, int, int, int, int, bytes, bytes, bytes],
+        struct.unpack_from(_HEADER_V1_FMT, data, 0),
+    )
     (
         magic,
         version,
@@ -65,7 +70,7 @@ def parse_sid_file(path: Path) -> SIDHeader:  # pylint: disable=too-many-locals
         name_raw,
         author_raw,
         released_raw,
-    ) = struct.unpack_from(_HEADER_V1_FMT, data, 0)
+    ) = header_values
 
     if magic not in (_PSID_MAGIC, _RSID_MAGIC):
         raise ValueError(f"Not a PSID/RSID file (magic={magic!r}): {path}")
@@ -75,7 +80,8 @@ def parse_sid_file(path: Path) -> SIDHeader:  # pylint: disable=too-many-locals
 
     flags = 0
     if version >= 2 and data_offset >= _HEADER_V1_SIZE + _HEADER_V2_EXTRA_SIZE:
-        (flags, *_) = struct.unpack_from(_HEADER_V2_EXTRA_FMT, data, _HEADER_V1_SIZE)
+        extra_values = cast(tuple[int, int, int, int, int], struct.unpack_from(_HEADER_V2_EXTRA_FMT, data, _HEADER_V1_SIZE))
+        flags = extra_values[0]
 
     payload = data[data_offset:]
 
@@ -83,7 +89,7 @@ def parse_sid_file(path: Path) -> SIDHeader:  # pylint: disable=too-many-locals
     if load_address == 0:
         if len(payload) < 2:
             raise ValueError(f"Payload too short for embedded load address: {path}")
-        load_address = struct.unpack_from("<H", payload, 0)[0]
+        load_address = cast(int, struct.unpack_from("<H", payload, 0)[0])
         payload = payload[2:]
 
     return SIDHeader(

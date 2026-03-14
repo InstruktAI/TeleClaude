@@ -270,9 +270,7 @@ class ChannelOperationsMixin:
             self, message_id: str, text: str, *, metadata: MessageMetadata | None = None
         ) -> bool: ...
 
-        async def send_general_message(
-            self, text: str, *, metadata: MessageMetadata | None = None
-        ) -> str: ...
+        async def send_general_message(self, text: str, *, metadata: MessageMetadata | None = None) -> str: ...
 
         async def _send_general_message_with_retry(
             self,

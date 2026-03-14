@@ -5,14 +5,32 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 logger = get_logger(__name__)
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
-class _HeartbeatMixin:
+    from teleclaude.core.cache import DaemonCache
+
+
+class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: periodic heartbeat emission and cache-change no-op handler."""
+
+    if TYPE_CHECKING:
+        computer_name: str
+        heartbeat_interval: int
+        heartbeat_ttl: int
+        _running: bool
+
+        @property
+        def cache(self) -> DaemonCache | None: ...
+
+        async def _get_redis(self) -> Redis: ...
+        async def _handle_redis_error(self, context: str, exc: Exception) -> None: ...
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""

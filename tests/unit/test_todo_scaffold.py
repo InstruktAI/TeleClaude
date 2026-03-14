@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import yaml
+
+from teleclaude.core.next_machine._types import StateValue
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -22,17 +23,17 @@ def _make_parent(tmp_path: Path, slug: str = "parent-slug") -> tuple[Path, str]:
     return tmp_path, slug
 
 
-def _set_parent_state(tmp_path: Path, slug: str, extra: dict[str, Any]) -> None:
+def _set_parent_state(tmp_path: Path, slug: str, extra: dict[str, StateValue]) -> None:
     """Merge extra fields into parent state.yaml."""
     state_path = tmp_path / "todos" / slug / "state.yaml"
-    existing: dict[str, Any] = {}
+    existing: dict[str, StateValue] = {}
     if state_path.exists():
         existing = yaml.safe_load(state_path.read_text()) or {}
     existing.update(extra)
     state_path.write_text(yaml.dump(existing))
 
 
-def _read_child_state(tmp_path: Path, child_slug: str) -> dict[str, Any]:
+def _read_child_state(tmp_path: Path, child_slug: str) -> dict[str, StateValue]:
     state_path = tmp_path / "todos" / child_slug / "state.yaml"
     return yaml.safe_load(state_path.read_text()) or {}
 

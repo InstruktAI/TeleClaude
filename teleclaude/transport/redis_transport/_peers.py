@@ -4,20 +4,41 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.dates import parse_iso_datetime
-from teleclaude.core.models import MessageMetadata, PeerInfo
+from teleclaude.core.models import JsonDict, MessageMetadata, PeerInfo
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
-class _PeersMixin:
+    from teleclaude.core.adapter_client import AdapterClient
+
+
+class _PeersMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: online computer discovery and peer enumeration."""
+
+    if TYPE_CHECKING:
+        client: AdapterClient
+        computer_name: str
+        redis: Redis
+
+        async def _get_redis(self) -> Redis: ...
+        def _schedule_reconnect(self, reason: str, error: Exception | None = None) -> None: ...
+        async def send_request(
+            self,
+            computer_name: str,
+            command: str,
+            metadata: MessageMetadata,
+            session_id: str | None = None,
+            args: list[str] | None = None,
+        ) -> str: ...
 
     async def _get_online_computers(self) -> list[str]:
         """Get list of online computer names from Redis heartbeat keys.
@@ -51,7 +72,7 @@ class _PeersMixin:
                     info_obj: object = json.loads(data_str)
                     if not isinstance(info_obj, dict):
                         continue
-                    info: dict[str, object] = info_obj
+                    info: JsonDict = info_obj
 
                     computer_name: str = str(info["computer_name"])
 
@@ -103,7 +124,7 @@ class _PeersMixin:
                     info_obj: object = json.loads(data_str)
                     if not isinstance(info_obj, dict):
                         continue
-                    info: dict[str, object] = info_obj
+                    info: JsonDict = info_obj
 
                     last_seen_str: object = info.get("last_seen", "")
                     last_seen_dt = parse_iso_datetime(str(last_seen_str))
@@ -136,7 +157,7 @@ class _PeersMixin:
                         envelope_obj: object = json.loads(response_data.strip())
                         if not isinstance(envelope_obj, dict):
                             continue
-                        envelope: dict[str, object] = envelope_obj
+                        envelope: JsonDict = envelope_obj
 
                         # Unwrap envelope response
                         status: object = envelope.get("status")

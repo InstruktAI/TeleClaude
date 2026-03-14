@@ -137,7 +137,9 @@ class TestJobResultReporting:
             patch.object(job, "_job_tags", return_value=["ai"]),
             patch("jobs.youtube_scraper.discover_youtube_subscribers", return_value=[subscriber]),
             patch("jobs.youtube_scraper.read_csv", return_value=rows),
-            patch("jobs.youtube_scraper.youtube_search", new_callable=AsyncMock, side_effect=RuntimeError("network error")),
+            patch(
+                "jobs.youtube_scraper.youtube_search", new_callable=AsyncMock, side_effect=RuntimeError("network error")
+            ),
         ):
             result = job.run()
 

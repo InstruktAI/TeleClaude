@@ -6,17 +6,28 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import JsonDict, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 
 logger = get_logger(__name__)
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
-class _RequestResponseMixin:
+
+class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: request/response pattern, observation, and system commands."""
+
+    if TYPE_CHECKING:
+        computer_name: str
+        message_stream_maxlen: int
+        output_stream_maxlen: int
+
+        async def _get_redis(self) -> Redis: ...
 
     # === Session Observation (Interest Window) ===
 
@@ -38,7 +49,7 @@ class _RequestResponseMixin:
         """
 
         key = f"observation:{target_computer}:{session_id}"
-        observation_data: dict[str, object] = {
+        observation_data: JsonDict = {
             "observer": self.computer_name,
             "started_at": time.time(),
         }
@@ -250,9 +261,7 @@ class _RequestResponseMixin:
             logger.debug("read_response cancelled for message %s", message_id)
             raise
 
-    async def send_system_command(
-        self, computer_name: str, command: str, args: dict[str, object] | None = None
-    ) -> str:
+    async def send_system_command(self, computer_name: str, command: str, args: JsonDict | None = None) -> str:
         """Send system command to remote computer (not session-specific).
 
         System commands are handled by the daemon itself, not routed to tmux.
@@ -290,7 +299,7 @@ class _RequestResponseMixin:
         logger.info("Sent system command to %s: %s", computer_name, command)
         return message_id_bytes.decode("utf-8")
 
-    async def get_system_command_status(self, computer_name: str, command: str) -> dict[str, object]:
+    async def get_system_command_status(self, computer_name: str, command: str) -> JsonDict:
         """Get status of system command execution.
 
         Args:
@@ -311,10 +320,10 @@ class _RequestResponseMixin:
         result_obj: object = json.loads(data.decode("utf-8"))
         if not isinstance(result_obj, dict):
             return {"status": "error", "error": "Invalid result format"}
-        result: dict[str, object] = result_obj
+        result: JsonDict = result_obj
         return result
 
-    async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:  # pyright: ignore[reportIncompatibleMethodOverride]
+    def poll_output_stream(self, request_id: str, timeout: float = 300.0) -> AsyncIterator[str]:
         """Redis transport does not stream session output; use get_session_data polling."""
-        _ = (session_id, timeout)
+        _ = (request_id, timeout)
         raise NotImplementedError("Redis output streaming is disabled; use get_session_data polling.")

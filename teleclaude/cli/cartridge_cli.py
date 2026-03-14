@@ -165,25 +165,22 @@ def _promote_from_sandbox(parsed: argparse.Namespace, use_json: bool) -> None:
         print("Next: wire it into the domain pipeline configuration, then commit.")
 
 
-def handle_cartridge_cli(args: list[str]) -> None:
+def _build_cartridge_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="telec config cartridges", add_help=True)
     subparsers = parser.add_subparsers(dest="action")
 
-    # install
     p_install = subparsers.add_parser("install", help="Install a cartridge")
     p_install.add_argument("--path", required=True, help="Source cartridge directory path")
     p_install.add_argument("--scope", required=True, choices=["personal", "domain", "platform"])
     p_install.add_argument("--target", required=True, help="Target name (member id or domain name)")
     p_install.add_argument("--json", action="store_true", help="Output JSON")
 
-    # remove
     p_remove = subparsers.add_parser("remove", help="Remove a cartridge")
     p_remove.add_argument("--id", required=True, dest="cartridge_id", help="Cartridge ID")
     p_remove.add_argument("--scope", required=True, choices=["personal", "domain", "platform"])
     p_remove.add_argument("--target", required=True, help="Target name")
     p_remove.add_argument("--json", action="store_true", help="Output JSON")
 
-    # promote
     p_promote = subparsers.add_parser("promote", help="Promote a cartridge to a higher scope")
     p_promote.add_argument("--id", required=True, dest="cartridge_id", help="Cartridge ID")
     p_promote.add_argument(
@@ -196,7 +193,6 @@ def handle_cartridge_cli(args: list[str]) -> None:
     )
     p_promote.add_argument("--json", action="store_true", help="Output JSON")
 
-    # list
     p_list = subparsers.add_parser("list", help="List installed cartridges")
     p_list.add_argument(
         "--scope",
@@ -207,7 +203,137 @@ def handle_cartridge_cli(args: list[str]) -> None:
     p_list.add_argument("--domain", default=None, help="Filter by domain name")
     p_list.add_argument("--member", default=None, help="Filter by member id")
     p_list.add_argument("--json", action="store_true", help="Output JSON")
+    return parser
 
+
+def _emit_cartridge_result(use_json: bool, result: dict[str, str | bool], message: str) -> None:
+    if use_json:
+        print(json.dumps(result))
+        return
+    print(message)
+
+
+def _handle_install_action(
+    manager: LifecycleManager,
+    parsed: argparse.Namespace,
+    *,
+    is_admin: bool,
+    use_json: bool,
+    cartridge_scope: type,
+) -> None:
+    manager.install(
+        source_path=Path(parsed.path).expanduser(),
+        scope=cartridge_scope(parsed.scope),
+        target=parsed.target,
+        caller_is_admin=is_admin,
+    )
+    _emit_cartridge_result(
+        use_json,
+        {"ok": True, "action": "install", "scope": parsed.scope, "target": parsed.target},
+        f"Installed cartridge from {parsed.path} to {parsed.scope}/{parsed.target}",
+    )
+
+
+def _handle_remove_action(
+    manager: LifecycleManager,
+    parsed: argparse.Namespace,
+    *,
+    is_admin: bool,
+    use_json: bool,
+    cartridge_scope: type,
+) -> None:
+    manager.remove(
+        cartridge_id=parsed.cartridge_id,
+        scope=cartridge_scope(parsed.scope),
+        target=parsed.target,
+        caller_is_admin=is_admin,
+    )
+    _emit_cartridge_result(
+        use_json,
+        {"ok": True, "action": "remove", "id": parsed.cartridge_id},
+        f"Removed cartridge '{parsed.cartridge_id}' from {parsed.scope}/{parsed.target}",
+    )
+
+
+def _handle_promote_action(
+    manager: LifecycleManager,
+    parsed: argparse.Namespace,
+    *,
+    is_admin: bool,
+    use_json: bool,
+    cartridge_scope: type,
+) -> None:
+    if parsed.from_scope == "sandbox":
+        _promote_from_sandbox(parsed, use_json)
+        return
+    if not parsed.target_domain:
+        print("Error: --domain is required when promoting between lifecycle scopes", file=sys.stderr)
+        sys.exit(1)
+    manager.promote(
+        cartridge_id=parsed.cartridge_id,
+        from_scope=cartridge_scope(parsed.from_scope),
+        to_scope=cartridge_scope(parsed.to_scope),
+        target_domain=parsed.target_domain,
+        caller_is_admin=is_admin,
+        source_member_id=getattr(parsed, "source_member_id", None),
+    )
+    _emit_cartridge_result(
+        use_json,
+        {
+            "ok": True,
+            "action": "promote",
+            "id": parsed.cartridge_id,
+            "from": parsed.from_scope,
+            "to": parsed.to_scope,
+        },
+        f"Promoted cartridge '{parsed.cartridge_id}' from {parsed.from_scope} to {parsed.to_scope}",
+    )
+
+
+def _list_lifecycle_rows(
+    manager: LifecycleManager, parsed: argparse.Namespace, cartridge_scope: type
+) -> list[dict[str, str]]:
+    if parsed.domain:
+        return manager.list_cartridges(cartridge_scope.domain, parsed.domain)
+    if parsed.member:
+        return manager.list_cartridges(cartridge_scope.personal, parsed.member)
+
+    from teleclaude.config.loader import load_global_config  # pylint: disable=import-outside-toplevel
+
+    rows: list[dict[str, str]] = []
+    config = load_global_config()
+    event_domains = getattr(config, "event_domains", None)
+    if event_domains:
+        for domain_name in event_domains.domains:
+            rows.extend(manager.list_cartridges(cartridge_scope.domain, domain_name))
+    return rows
+
+
+def _print_cartridge_rows(rows: list[dict[str, str]], use_json: bool) -> None:
+    if use_json:
+        print(json.dumps(rows))
+        return
+    if not rows:
+        print("No cartridges found.")
+        return
+    print(f"{'ID':<30} {'VERSION':<10} {'SCOPE':<10} {'TARGET':<20} DESCRIPTION")
+    print("-" * 90)
+    for row in rows:
+        print(f"{row['id']:<30} {row['version']:<10} {row['scope']:<10} {row['target']:<20} {row['description']}")
+
+
+def _handle_list_action(
+    manager: LifecycleManager, parsed: argparse.Namespace, use_json: bool, cartridge_scope: type
+) -> None:
+    scope_filter = getattr(parsed, "scope", None)
+    if scope_filter == "sandbox":
+        _list_sandbox_cartridges(use_json)
+        return
+    _print_cartridge_rows(_list_lifecycle_rows(manager, parsed, cartridge_scope), use_json)
+
+
+def handle_cartridge_cli(args: list[str]) -> None:
+    parser = _build_cartridge_parser()
     parsed = parser.parse_args(args)
 
     if parsed.action is None:
@@ -220,93 +346,17 @@ def handle_cartridge_cli(args: list[str]) -> None:
         manager = _get_lifecycle_manager()
         is_admin = _caller_is_admin()
         use_json = getattr(parsed, "json", False)
-
-        if parsed.action == "install":
-            manager.install(
-                source_path=Path(parsed.path).expanduser(),
-                scope=CartridgeScope(parsed.scope),
-                target=parsed.target,
-                caller_is_admin=is_admin,
-            )
-            result = {"ok": True, "action": "install", "scope": parsed.scope, "target": parsed.target}
-            if use_json:
-                print(json.dumps(result))
-            else:
-                print(f"Installed cartridge from {parsed.path} to {parsed.scope}/{parsed.target}")
-
-        elif parsed.action == "remove":
-            manager.remove(
-                cartridge_id=parsed.cartridge_id,
-                scope=CartridgeScope(parsed.scope),
-                target=parsed.target,
-                caller_is_admin=is_admin,
-            )
-            result = {"ok": True, "action": "remove", "id": parsed.cartridge_id}
-            if use_json:
-                print(json.dumps(result))
-            else:
-                print(f"Removed cartridge '{parsed.cartridge_id}' from {parsed.scope}/{parsed.target}")
-
-        elif parsed.action == "promote":
-            if parsed.from_scope == "sandbox":
-                _promote_from_sandbox(parsed, use_json)
-            else:
-                if not parsed.target_domain:
-                    print("Error: --domain is required when promoting between lifecycle scopes", file=sys.stderr)
-                    sys.exit(1)
-                manager.promote(
-                    cartridge_id=parsed.cartridge_id,
-                    from_scope=CartridgeScope(parsed.from_scope),
-                    to_scope=CartridgeScope(parsed.to_scope),
-                    target_domain=parsed.target_domain,
-                    caller_is_admin=is_admin,
-                    source_member_id=getattr(parsed, "source_member_id", None),
-                )
-                result = {
-                    "ok": True,
-                    "action": "promote",
-                    "id": parsed.cartridge_id,
-                    "from": parsed.from_scope,
-                    "to": parsed.to_scope,
-                }
-                if use_json:
-                    print(json.dumps(result))
-                else:
-                    print(f"Promoted cartridge '{parsed.cartridge_id}' from {parsed.from_scope} to {parsed.to_scope}")
-
-        elif parsed.action == "list":
-            scope_filter = getattr(parsed, "scope", None)
-            if scope_filter == "sandbox":
-                _list_sandbox_cartridges(use_json)
-                return
-
-            rows: list[dict[str, str]] = []
-            if parsed.domain:
-                rows.extend(manager.list_cartridges(CartridgeScope.domain, parsed.domain))
-            elif parsed.member:
-                rows.extend(manager.list_cartridges(CartridgeScope.personal, parsed.member))
-            else:
-                # List all domains from config
-                from teleclaude.config.loader import load_global_config  # pylint: disable=import-outside-toplevel
-
-                config = load_global_config()
-                event_domains = getattr(config, "event_domains", None)
-                if event_domains:
-                    for domain_name in event_domains.domains:
-                        rows.extend(manager.list_cartridges(CartridgeScope.domain, domain_name))
-            if use_json:
-                print(json.dumps(rows))
-            else:
-                if not rows:
-                    print("No cartridges found.")
-                else:
-                    print(f"{'ID':<30} {'VERSION':<10} {'SCOPE':<10} {'TARGET':<20} DESCRIPTION")
-                    print("-" * 90)
-                    for row in rows:
-                        print(
-                            f"{row['id']:<30} {row['version']:<10} {row['scope']:<10} "
-                            f"{row['target']:<20} {row['description']}"
-                        )
+        action_handlers = {
+            "install": _handle_install_action,
+            "remove": _handle_remove_action,
+            "promote": _handle_promote_action,
+        }
+        handler = action_handlers.get(parsed.action)
+        if handler:
+            handler(manager, parsed, is_admin=is_admin, use_json=use_json, cartridge_scope=CartridgeScope)
+            return
+        if parsed.action == "list":
+            _handle_list_action(manager, parsed, use_json, CartridgeScope)
 
     except PermissionError as e:
         print(f"Error: {e}", file=sys.stderr)

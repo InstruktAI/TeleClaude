@@ -10,6 +10,19 @@ from teleclaude.core.dates import format_local_datetime
 CHECKPOINT_JSONL_TAIL_ENTRIES = 2000
 CHECKPOINT_JSONL_TAIL_READ_BYTES = 1_048_576
 
+__all__ = [
+    "CHECKPOINT_JSONL_TAIL_ENTRIES",
+    "CHECKPOINT_JSONL_TAIL_READ_BYTES",
+    "_apply_tail_limit",
+    "_apply_tail_limit_codex",
+    "_escape_triple_backticks",
+    "_format_thinking",
+    "_format_timestamp_prefix",
+    "_italicize_thinking_line",
+    "_parse_timestamp",
+    "_wrap_thinking_emphasis",
+]
+
 
 def _parse_timestamp(ts: str) -> datetime | None:
     """Parse ISO 8601 timestamp string to datetime.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tomllib
 from pathlib import Path
+from typing import cast
 
 
 def _load_exclusions(repo_root: Path) -> set[str]:
@@ -12,8 +13,22 @@ def _load_exclusions(repo_root: Path) -> set[str]:
         print(f"ERROR: pyproject.toml not found: {pyproject_path}", file=sys.stderr)
         sys.exit(2)
     with open(pyproject_path, "rb") as f:
-        data = tomllib.load(f)
-    return set(data.get("tool", {}).get("test-mapping", {}).get("exclude", []))
+        data_obj = tomllib.load(f)
+    if not isinstance(data_obj, dict):
+        return set()
+    data = cast(dict[str, object], data_obj)
+    tool_obj = data.get("tool")
+    if not isinstance(tool_obj, dict):
+        return set()
+    tool = cast(dict[str, object], tool_obj)
+    mapping_obj = tool.get("test-mapping")
+    if not isinstance(mapping_obj, dict):
+        return set()
+    mapping = cast(dict[str, object], mapping_obj)
+    exclude_obj = mapping.get("exclude")
+    if not isinstance(exclude_obj, list):
+        return set()
+    return {item for item in exclude_obj if isinstance(item, str)}
 
 
 def _mirror_path(source_path: str) -> str:

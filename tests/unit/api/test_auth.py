@@ -135,7 +135,9 @@ class TestVerifyCallerTokenPath:
     async def test_token_path_takes_priority_over_session_id(self):
         """When both X-Session-Token and X-Caller-Session-Id are present, token wins."""
         token_record = _make_token_record(
-            session_id="sess-token", principal="system:sess-token", role="admin",
+            session_id="sess-token",
+            principal="system:sess-token",
+            role="admin",
         )
         session = _make_session_record(session_id="sess-token")
         request = _make_request()
@@ -450,7 +452,8 @@ class TestSingleOwnerImplicitAdmin:
             patch("teleclaude.api.auth._requires_terminal_login", return_value=False),
         ):
             identity = await verify_caller(
-                request=request, x_tmux_session="tc_tui",
+                request=request,
+                x_tmux_session="tc_tui",
             )
 
         assert identity.human_role == "admin"

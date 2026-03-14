@@ -71,7 +71,7 @@ async def wait_with_timeout(
             logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
         except ProcessLookupError:
             pass  # Process already terminated
-        raise SubprocessTimeoutError(operation, timeout, process.pid)
+        raise SubprocessTimeoutError(operation, timeout, process.pid) from None
 
 
 async def communicate_with_timeout(
@@ -114,4 +114,4 @@ async def communicate_with_timeout(
             logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
         except ProcessLookupError:
             pass  # Process already terminated
-        raise SubprocessTimeoutError(operation, timeout, process.pid)
+        raise SubprocessTimeoutError(operation, timeout, process.pid) from None

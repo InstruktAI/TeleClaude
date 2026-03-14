@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import yaml
@@ -17,6 +18,8 @@ from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName
 from teleclaude.core.next_machine.state_io import is_bug_todo
 
 logger = get_logger(__name__)
+
+GateCheck = Callable[[Path, list[str]], bool]
 
 
 def _count_test_failures(output: str) -> int:
@@ -257,181 +260,14 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool =
         (passed: bool, report: str) where report lists each check with PASS/FAIL.
     """
     results: list[str] = []
-    all_passed = True
     todo_base = Path(worktree_cwd) / "todos" / slug
 
-    # General checks (all phases): state.yaml parseable and consistent
-    state_path = todo_base / "state.yaml"
-    if not state_path.exists():
-        all_passed = False
-        results.append("FAIL: state.yaml does not exist")
-    else:
-        try:
-            state_content = state_path.read_text(encoding="utf-8")
-            raw_state = yaml.safe_load(state_content)
-            if raw_state is None:
-                raw_state = {}
-            if not isinstance(raw_state, dict):
-                raise ValueError("state.yaml content is not a mapping")
-            state: dict[str, StateValue] = raw_state
-            results.append("PASS: state.yaml is parseable YAML")
-            # Phase field consistency
-            if phase == PhaseName.BUILD.value:
-                build_val = state.get(PhaseName.BUILD.value)
-                if build_val == PhaseStatus.PENDING.value:
-                    all_passed = False
-                    results.append(
-                        f"FAIL: state.yaml build={build_val!r} — still pending, expected 'complete' or later"
-                    )
-                else:
-                    results.append(f"PASS: state.yaml build={build_val!r}")
-            elif phase == PhaseName.REVIEW.value:
-                review_val = state.get(PhaseName.REVIEW.value)
-                if review_val not in (
-                    PhaseStatus.APPROVED.value,
-                    PhaseStatus.CHANGES_REQUESTED.value,
-                ):
-                    all_passed = False
-                    results.append(
-                        f"FAIL: state.yaml review={review_val!r} (expected 'approved' or 'changes_requested')"
-                    )
-                else:
-                    results.append(f"PASS: state.yaml review={review_val!r}")
-        except Exception as exc:
-            all_passed = False
-            results.append(f"FAIL: state.yaml is not parseable: {exc}")
+    all_passed = _verify_state_yaml(todo_base, phase, results)
 
     if phase == PhaseName.BUILD.value:
-        if is_bug:
-            # Bug builds: check bug.md exists and has content
-            bug_path = todo_base / "bug.md"
-            if not bug_path.exists():
-                all_passed = False
-                results.append("FAIL: bug.md does not exist")
-            else:
-                content = bug_path.read_text(encoding="utf-8")
-                stripped = content.strip()
-                if not stripped or stripped.startswith("<!--") and stripped.endswith("-->"):
-                    all_passed = False
-                    results.append("FAIL: bug.md is empty or contains only a template comment")
-                else:
-                    results.append("PASS: bug.md exists and has content")
-        else:
-            # Regular builds: check implementation-plan.md exists and all checkboxes are [x]
-            plan_path = todo_base / "implementation-plan.md"
-            if not plan_path.exists():
-                all_passed = False
-                results.append("FAIL: implementation-plan.md does not exist")
-            else:
-                content = plan_path.read_text(encoding="utf-8")
-                unchecked = re.findall(r"^\s*-\s*\[ \]", content, re.MULTILINE)
-                if unchecked:
-                    all_passed = False
-                    results.append(
-                        f"FAIL: implementation-plan.md has {len(unchecked)} unchecked task(s) "
-                        f"(all must be [x] before review)"
-                    )
-                else:
-                    results.append("PASS: implementation-plan.md — all tasks checked [x]")
-
-        # Check: build commits exist on worktree branch beyond merge-base with main
-        try:
-            merge_base_result = subprocess.run(
-                ["git", "-C", worktree_cwd, "merge-base", "HEAD", "main"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if merge_base_result.returncode == 0:
-                base = merge_base_result.stdout.strip()
-                log_result = subprocess.run(
-                    ["git", "-C", worktree_cwd, "log", "--oneline", f"{base}..HEAD"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                has_commits = bool(log_result.stdout.strip())
-            else:
-                log_result = subprocess.run(
-                    ["git", "-C", worktree_cwd, "log", "--oneline", "-1"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                has_commits = bool(log_result.stdout.strip())
-            if has_commits:
-                results.append("PASS: build commits exist on worktree branch")
-            else:
-                all_passed = False
-                results.append("FAIL: no build commits found on worktree branch beyond main")
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            all_passed = False
-            results.append(f"FAIL: could not verify commits: {exc}")
-
-        if not is_bug:
-            # Check: quality-checklist.md Build Gates section has at least one [x]
-            checklist_path = todo_base / "quality-checklist.md"
-            if not checklist_path.exists():
-                all_passed = False
-                results.append("FAIL: quality-checklist.md does not exist")
-            else:
-                content = checklist_path.read_text(encoding="utf-8")
-                build_section = _extract_checklist_section(content, "Build Gates")
-                if build_section is None:
-                    all_passed = False
-                    results.append("FAIL: quality-checklist.md missing '## Build Gates' section")
-                else:
-                    checked = re.findall(r"^\s*-\s*\[x\]", build_section, re.MULTILINE | re.IGNORECASE)
-                    if not checked:
-                        all_passed = False
-                        results.append("FAIL: quality-checklist.md Build Gates — no checked items")
-                    else:
-                        results.append(f"PASS: quality-checklist.md Build Gates — {len(checked)} checked item(s)")
-
+        all_passed = _verify_build_artifacts(worktree_cwd, todo_base, is_bug, results) and all_passed
     elif phase == PhaseName.REVIEW.value:
-        # Check: review-findings.md exists and is not a scaffold template
-        findings_path = todo_base / "review-findings.md"
-        if not findings_path.exists():
-            all_passed = False
-            results.append("FAIL: review-findings.md does not exist")
-        else:
-            content = findings_path.read_text(encoding="utf-8")
-            if _is_review_findings_template(content):
-                all_passed = False
-                results.append("FAIL: review-findings.md appears to be an unfilled template")
-            else:
-                results.append("PASS: review-findings.md has real content (not template)")
-
-            # Check: verdict present
-            has_approve = REVIEW_APPROVE_MARKER in content
-            has_request_changes = "REQUEST CHANGES" in content
-            if not (has_approve or has_request_changes):
-                all_passed = False
-                results.append("FAIL: review-findings.md missing verdict (APPROVE or REQUEST CHANGES)")
-            else:
-                verdict = "APPROVE" if has_approve else "REQUEST CHANGES"
-                results.append(f"PASS: review-findings.md verdict: {verdict}")
-
-        if not is_bug:
-            # Check: quality-checklist.md Review Gates section has at least one [x]
-            checklist_path = todo_base / "quality-checklist.md"
-            if not checklist_path.exists():
-                all_passed = False
-                results.append("FAIL: quality-checklist.md does not exist")
-            else:
-                content = checklist_path.read_text(encoding="utf-8")
-                review_section = _extract_checklist_section(content, "Review Gates")
-                if review_section is None:
-                    all_passed = False
-                    results.append("FAIL: quality-checklist.md missing '## Review Gates' section")
-                else:
-                    checked = re.findall(r"^\s*-\s*\[x\]", review_section, re.MULTILINE | re.IGNORECASE)
-                    if not checked:
-                        all_passed = False
-                        results.append("FAIL: quality-checklist.md Review Gates — no checked items")
-                    else:
-                        results.append(f"PASS: quality-checklist.md Review Gates — {len(checked)} checked item(s)")
-
+        all_passed = _verify_review_artifacts(todo_base, is_bug, results) and all_passed
     else:
         all_passed = False
         results.append(f"FAIL: unknown phase '{phase}' (expected 'build' or 'review')")
@@ -439,3 +275,199 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool =
     summary = "PASS" if all_passed else "FAIL"
     report = f"Artifact verification [{summary}] for {slug} phase={phase}\n" + "\n".join(results)
     return all_passed, report
+
+
+def _verify_state_yaml(todo_base: Path, phase: str, results: list[str]) -> bool:
+    """Validate state.yaml presence, parseability, and phase consistency."""
+    state_path = todo_base / "state.yaml"
+    if not state_path.exists():
+        results.append("FAIL: state.yaml does not exist")
+        return False
+
+    try:
+        state_content = state_path.read_text(encoding="utf-8")
+        raw_state = yaml.safe_load(state_content)
+        if raw_state is None:
+            raw_state = {}
+        if not isinstance(raw_state, dict):
+            raise ValueError("state.yaml content is not a mapping")
+        state: dict[str, StateValue] = raw_state
+    except Exception as exc:
+        results.append(f"FAIL: state.yaml is not parseable: {exc}")
+        return False
+
+    results.append("PASS: state.yaml is parseable YAML")
+    return _verify_phase_consistency(state, phase, results)
+
+
+def _verify_phase_consistency(state: dict[str, StateValue], phase: str, results: list[str]) -> bool:
+    """Verify the current state.yaml phase marker matches the requested gate."""
+    if phase == PhaseName.BUILD.value:
+        build_val = state.get(PhaseName.BUILD.value)
+        if build_val == PhaseStatus.PENDING.value:
+            results.append(f"FAIL: state.yaml build={build_val!r} — still pending, expected 'complete' or later")
+            return False
+        results.append(f"PASS: state.yaml build={build_val!r}")
+        return True
+
+    if phase == PhaseName.REVIEW.value:
+        review_val = state.get(PhaseName.REVIEW.value)
+        if review_val not in (PhaseStatus.APPROVED.value, PhaseStatus.CHANGES_REQUESTED.value):
+            results.append(f"FAIL: state.yaml review={review_val!r} (expected 'approved' or 'changes_requested')")
+            return False
+        results.append(f"PASS: state.yaml review={review_val!r}")
+        return True
+
+    return True
+
+
+def _verify_build_artifacts(worktree_cwd: str, todo_base: Path, is_bug: bool, results: list[str]) -> bool:
+    """Verify build-phase artifacts, commits, and checklist gates."""
+    checks: list[GateCheck] = [_verify_bug_report if is_bug else _verify_implementation_plan]
+    checks.append(_build_commit_check(worktree_cwd, results))
+    if not is_bug:
+        checks.append(_checklist_gate_check(todo_base, "Build Gates", results))
+    return all(check(todo_base, results) for check in checks)
+
+
+def _build_commit_check(worktree_cwd: str, results: list[str]) -> GateCheck:
+    def _check(_todo_base: Path, _results: list[str]) -> bool:
+        return _verify_build_commits(worktree_cwd, results)
+
+    return _check
+
+
+def _verify_bug_report(todo_base: Path, results: list[str]) -> bool:
+    """Verify bug.md exists and contains non-template content."""
+    bug_path = todo_base / "bug.md"
+    if not bug_path.exists():
+        results.append("FAIL: bug.md does not exist")
+        return False
+    content = bug_path.read_text(encoding="utf-8")
+    stripped = content.strip()
+    if not stripped or (stripped.startswith("<!--") and stripped.endswith("-->")):
+        results.append("FAIL: bug.md is empty or contains only a template comment")
+        return False
+    results.append("PASS: bug.md exists and has content")
+    return True
+
+
+def _verify_implementation_plan(todo_base: Path, results: list[str]) -> bool:
+    """Verify implementation-plan.md exists and all tasks are checked off."""
+    plan_path = todo_base / "implementation-plan.md"
+    if not plan_path.exists():
+        results.append("FAIL: implementation-plan.md does not exist")
+        return False
+    content = plan_path.read_text(encoding="utf-8")
+    unchecked = re.findall(r"^\s*-\s*\[ \]", content, re.MULTILINE)
+    if unchecked:
+        results.append(
+            f"FAIL: implementation-plan.md has {len(unchecked)} unchecked task(s) (all must be [x] before review)"
+        )
+        return False
+    results.append("PASS: implementation-plan.md — all tasks checked [x]")
+    return True
+
+
+def _verify_build_commits(worktree_cwd: str, results: list[str]) -> bool:
+    """Verify the worktree contains at least one build commit ahead of main."""
+    try:
+        merge_base_result = subprocess.run(
+            ["git", "-C", worktree_cwd, "merge-base", "HEAD", "main"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if merge_base_result.returncode == 0:
+            base = merge_base_result.stdout.strip()
+            log_result = subprocess.run(
+                ["git", "-C", worktree_cwd, "log", "--oneline", f"{base}..HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        else:
+            log_result = subprocess.run(
+                ["git", "-C", worktree_cwd, "log", "--oneline", "-1"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        if log_result.stdout.strip():
+            results.append("PASS: build commits exist on worktree branch")
+            return True
+        results.append("FAIL: no build commits found on worktree branch beyond main")
+        return False
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        results.append(f"FAIL: could not verify commits: {exc}")
+        return False
+
+
+def _verify_review_artifacts(todo_base: Path, is_bug: bool, results: list[str]) -> bool:
+    """Verify review findings and checklist gates for review dispatch."""
+    checks: list[GateCheck] = [_review_findings_check(todo_base, results)]
+    if not is_bug:
+        checks.append(_checklist_gate_check(todo_base, "Review Gates", results))
+    return all(check(todo_base, results) for check in checks)
+
+
+def _review_findings_check(todo_base: Path, results: list[str]) -> GateCheck:
+    def _check(_unused_todo_base: Path, _unused_results: list[str]) -> bool:
+        return _verify_review_findings(todo_base, results)
+
+    return _check
+
+
+def _checklist_gate_check(todo_base: Path, section: str, results: list[str]) -> GateCheck:
+    def _check(_unused_todo_base: Path, _unused_results: list[str]) -> bool:
+        return _verify_checklist_section(todo_base, section, results)
+
+    return _check
+
+
+def _verify_review_findings(todo_base: Path, results: list[str]) -> bool:
+    """Verify review-findings.md exists, is filled in, and includes a verdict."""
+    findings_path = todo_base / "review-findings.md"
+    if not findings_path.exists():
+        results.append("FAIL: review-findings.md does not exist")
+        return False
+
+    content = findings_path.read_text(encoding="utf-8")
+    passed = True
+    if _is_review_findings_template(content):
+        results.append("FAIL: review-findings.md appears to be an unfilled template")
+        passed = False
+    else:
+        results.append("PASS: review-findings.md has real content (not template)")
+
+    has_approve = REVIEW_APPROVE_MARKER in content
+    has_request_changes = "REQUEST CHANGES" in content
+    if not (has_approve or has_request_changes):
+        results.append("FAIL: review-findings.md missing verdict (APPROVE or REQUEST CHANGES)")
+        return False
+
+    verdict = "APPROVE" if has_approve else "REQUEST CHANGES"
+    results.append(f"PASS: review-findings.md verdict: {verdict}")
+    return passed
+
+
+def _verify_checklist_section(todo_base: Path, section_name: str, results: list[str]) -> bool:
+    """Verify a checklist section exists and has at least one checked item."""
+    checklist_path = todo_base / "quality-checklist.md"
+    if not checklist_path.exists():
+        results.append("FAIL: quality-checklist.md does not exist")
+        return False
+
+    content = checklist_path.read_text(encoding="utf-8")
+    section = _extract_checklist_section(content, section_name)
+    if section is None:
+        results.append(f"FAIL: quality-checklist.md missing '## {section_name}' section")
+        return False
+
+    checked = re.findall(r"^\s*-\s*\[x\]", section, re.MULTILINE | re.IGNORECASE)
+    if not checked:
+        results.append(f"FAIL: quality-checklist.md {section_name} — no checked items")
+        return False
+
+    results.append(f"PASS: quality-checklist.md {section_name} — {len(checked)} checked item(s)")
+    return True

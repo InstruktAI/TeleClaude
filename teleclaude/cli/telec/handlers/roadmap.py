@@ -1,25 +1,29 @@
 """Handlers for telec roadmap commands."""
+
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from teleclaude.cli.telec.help import _usage
 
-
+if TYPE_CHECKING:
+    from teleclaude.core.models import TodoInfo
 
 __all__ = [
     "_handle_roadmap",
-    "_handle_roadmap_show",
     "_handle_roadmap_add",
-    "_handle_roadmap_remove",
-    "_handle_roadmap_move",
+    "_handle_roadmap_deliver",
     "_handle_roadmap_deps",
     "_handle_roadmap_freeze",
-    "_handle_roadmap_unfreeze",
     "_handle_roadmap_migrate_icebox",
-    "_handle_roadmap_deliver",
+    "_handle_roadmap_move",
+    "_handle_roadmap_remove",
+    "_handle_roadmap_show",
+    "_handle_roadmap_unfreeze",
 ]
+
 
 def _handle_roadmap(args: list[str]) -> None:
     """Handle telec roadmap commands."""
@@ -57,104 +61,96 @@ def _handle_roadmap_show(args: list[str]) -> None:
     """Display the roadmap grouped by group, with deps and state."""
     import json
 
-    from teleclaude.core.models import TodoInfo
     from teleclaude.core.roadmap import assemble_roadmap
 
-    project_root = Path.cwd()
-    include_icebox = False
-    icebox_only = False
-    include_delivered = False
-    delivered_only = False
-    json_output = False
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("--include-icebox", "-i"):
-            include_icebox = True
-            i += 1
-        elif arg in ("--icebox-only", "-o"):
-            icebox_only = True
-            i += 1
-        elif arg in ("--include-delivered", "-d"):
-            include_delivered = True
-            i += 1
-        elif arg == "--delivered-only":
-            delivered_only = True
-            i += 1
-        elif arg == "--json":
-            json_output = True
-            i += 1
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("roadmap", "list"))
-            raise SystemExit(1)
-        else:
-            print(f"Unknown argument: {arg}")
-            print(_usage("roadmap", "list"))
-            raise SystemExit(1)
+    parsed = _parse_roadmap_show_args(args)
 
     todos = assemble_roadmap(
-        str(project_root),
-        include_icebox=include_icebox,
-        icebox_only=icebox_only,
-        include_delivered=include_delivered,
-        delivered_only=delivered_only,
+        str(Path.cwd()),
+        include_icebox=parsed["include_icebox"],
+        icebox_only=parsed["icebox_only"],
+        include_delivered=parsed["include_delivered"],
+        delivered_only=parsed["delivered_only"],
     )
 
     if not todos:
-        if json_output:
+        if parsed["json_output"]:
             print("[]")
         else:
             print("Roadmap is empty.")
         return
 
-    if json_output:
+    if parsed["json_output"]:
         print(json.dumps([t.to_dict() for t in todos], indent=2))
         return
 
-    # Group todos preserving order
+    _print_grouped_roadmap(todos)
+
+
+def _parse_roadmap_show_args(args: list[str]) -> dict[str, bool]:
+    options = {
+        "--include-icebox": "include_icebox",
+        "-i": "include_icebox",
+        "--icebox-only": "icebox_only",
+        "-o": "icebox_only",
+        "--include-delivered": "include_delivered",
+        "-d": "include_delivered",
+        "--delivered-only": "delivered_only",
+        "--json": "json_output",
+    }
+    parsed = {
+        "include_icebox": False,
+        "icebox_only": False,
+        "include_delivered": False,
+        "delivered_only": False,
+        "json_output": False,
+    }
+    for arg in args:
+        option = options.get(arg)
+        if option:
+            parsed[option] = True
+            continue
+        error_kind = "option" if arg.startswith("-") else "argument"
+        print(f"Unknown {error_kind}: {arg}")
+        print(_usage("roadmap", "list"))
+        raise SystemExit(1)
+    return parsed
+
+
+def _todo_extras(todo: TodoInfo) -> str:
+    extras = []
+    if todo.dor_score is not None:
+        extras.append(f"DOR:{todo.dor_score}")
+    if todo.findings_count > 0:
+        extras.append(f"Findings:{todo.findings_count}")
+    if todo.build_status and todo.build_status != "pending":
+        extras.append(f"Build:{todo.build_status}")
+    if todo.review_status and todo.review_status != "pending":
+        extras.append(f"Review:{todo.review_status}")
+    if todo.delivered_at:
+        extras.append(f"Delivered:{todo.delivered_at}")
+    return f" [{', '.join(extras)}]" if extras else ""
+
+
+def _print_grouped_roadmap(todos: list[TodoInfo]) -> None:
     groups: dict[str, list[TodoInfo]] = {}
     for todo in todos:
-        key = todo.group or ""
-        groups.setdefault(key, []).append(todo)
+        groups.setdefault(todo.group or "", []).append(todo)
 
     first = True
     for group_name, group_todos in groups.items():
         if not first:
             print()
         first = False
-
         if group_name:
             print(f"  {group_name}")
             print(f"  {'─' * len(group_name)}")
-        else:
-            # If default group is not empty and not the only group, add spacing
-            if len(groups) > 1:
-                print()
+        elif len(groups) > 1:
+            print()
 
         for todo in group_todos:
-            phase = todo.status
-
-            extras = []
-            if todo.dor_score is not None:
-                extras.append(f"DOR:{todo.dor_score}")
-            if todo.findings_count > 0:
-                extras.append(f"Findings:{todo.findings_count}")
-            if todo.build_status and todo.build_status != "pending":
-                extras.append(f"Build:{todo.build_status}")
-            if todo.review_status and todo.review_status != "pending":
-                extras.append(f"Review:{todo.review_status}")
-            if todo.delivered_at:
-                extras.append(f"Delivered:{todo.delivered_at}")
-
-            extras_str = f" [{', '.join(extras)}]" if extras else ""
-
-            deps_str = ""
-            if todo.after:
-                deps_str = f" (after: {', '.join(todo.after)})"
-
-            print(f"    {todo.slug} [{phase}]{extras_str}{deps_str}")
+            deps_str = f" (after: {', '.join(todo.after)})" if todo.after else ""
+            print(f"    {todo.slug} [{todo.status}]{_todo_extras(todo)}{deps_str}")
 
 
 def _handle_roadmap_add(args: list[str]) -> None:
@@ -508,10 +504,7 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
                 "git",
                 "commit",
                 "-m",
-                (
-                    f"chore({slug}): deliver and cleanup\n\n"
-                    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-                ),
+                (f"chore({slug}): deliver and cleanup\n\nCo-Authored-By: TeleClaude <noreply@instrukt.ai>"),
             ],
             capture_output=True,
             text=True,

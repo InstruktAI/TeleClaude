@@ -28,6 +28,7 @@ from teleclaude.api.transcript_converter import (
 from teleclaude.core.agents import AgentName, resolve_parser_agent
 from teleclaude.core.db import db
 from teleclaude.core.db_models import Session
+from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import WEB_POLICY
 from teleclaude.utils.transcript import (
@@ -126,7 +127,7 @@ def _get_agent_name(session: Session) -> AgentName:
 def _iter_entries_for_file(
     path: str,
     agent_name: AgentName,
-) -> list[dict[str, object]]:  # guard: loose-dict - External transcript entries
+) -> list[JsonDict]:
     """Load transcript entries from a single file."""
     p = Path(path).expanduser()
     if not p.exists():
@@ -138,6 +139,138 @@ def _iter_entries_for_file(
     if agent_name == AgentName.GEMINI:
         return list(_iter_gemini_entries(p))
     return list(_iter_claude_entries(p))
+
+
+async def _emit_initial_stream_events(
+    session: Session,
+    session_id: str,
+    message_id: str,
+) -> AsyncIterator[str]:
+    """Emit the initial stream start and status events."""
+    yield message_start(message_id)
+
+    initial_status = _map_lifecycle_to_sse_status(session.lifecycle_status)
+    logger.info(
+        "Web lane stream start",
+        lane="web",
+        session_id=session_id,
+        event_type="data-session-status",
+        status=initial_status,
+        lifecycle_status=session.lifecycle_status,
+    )
+    yield convert_session_status(initial_status, session_id)
+
+
+async def _deliver_user_message(
+    session_id: str,
+    user_message: str | None,
+) -> AsyncIterator[str]:
+    """Send the incoming user message through the canonical command path."""
+    if not user_message:
+        return
+
+    from teleclaude.core.command_registry import get_command_service
+    from teleclaude.types.commands import ProcessMessageCommand
+
+    cmd = ProcessMessageCommand(
+        session_id=session_id,
+        text=user_message,
+        origin="web",
+    )
+    try:
+        await get_command_service().process_message(cmd)
+    except Exception:
+        logger.warning(
+            "Web lane message delivery failed",
+            lane="web",
+            session_id=session_id,
+            event_type="data-session-status",
+            exc_info=True,
+        )
+        yield convert_session_status("error", session_id)
+
+
+async def _replay_history(
+    chain: list[str],
+    agent_name: AgentName,
+    since_timestamp: str | None,
+) -> AsyncIterator[str]:
+    """Replay existing transcript history with the web visibility policy."""
+    for file_path in chain:
+        entries = _iter_entries_for_file(file_path, agent_name)
+        for projected in project_entries(entries, WEB_POLICY, since=since_timestamp):
+            for sse_event in convert_projected_block(projected):
+                yield sse_event
+
+
+def _stream_is_live(chain: list[str]) -> bool:
+    """Check whether live tailing can start for the current transcript chain."""
+    return bool(chain) and Path(chain[-1]).exists()
+
+
+async def _emit_stream_finish(message_id: str) -> AsyncIterator[str]:
+    """Emit the terminal stream events."""
+    yield message_finish(message_id)
+    yield stream_done()
+
+
+async def _load_live_transcript_events(
+    live_file: str,
+    *,
+    file_size: int,
+    session_id: str,
+) -> tuple[int, list[str]]:
+    """Read newly appended transcript data and convert it into SSE events."""
+    events: list[str] = []
+    try:
+        with open(live_file, "rb") as f:
+            f.seek(file_size)
+            new_bytes = f.read()
+            next_size = f.tell()
+    except OSError as exc:
+        logger.warning(
+            "Web lane error reading live transcript",
+            lane="web",
+            session_id=session_id,
+            event_type="data-session-status",
+            file=live_file,
+            error=str(exc),
+        )
+        return file_size, []
+
+    new_text = new_bytes.decode("utf-8", errors="ignore")
+    for line in new_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry_value: object = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(entry_value, dict):
+            continue
+        entry: dict[str, object] = entry_value  # guard: loose-dict - JSONL parse
+        for projected in project_entries([entry], WEB_POLICY):
+            events.extend(convert_projected_block(projected))
+
+    return next_size, events
+
+
+async def _resolve_stream_closure(session_id: str) -> tuple[bool, str | None]:
+    """Check whether the stream should close based on canonical lifecycle status."""
+    refreshed = await db.get_session(session_id)
+    if refreshed and refreshed.lifecycle_status not in _CLOSED_STATUSES:
+        return False, refreshed.native_log_file
+
+    close_reason = "not_found" if not refreshed else refreshed.lifecycle_status
+    logger.info(
+        "Web lane stream closed",
+        lane="web",
+        session_id=session_id,
+        event_type="data-session-status",
+        reason=close_reason,
+    )
+    return True, None
 
 
 # ---------------------------------------------------------------------------
@@ -158,139 +291,59 @@ async def _stream_sse(
     """
     agent_name = _get_agent_name(session)
     chain = _get_transcript_chain(session)
-
     message_id = f"msg-{session_id}"
-    yield message_start(message_id)
+    async for sse_event in _emit_initial_stream_events(session, session_id, message_id):
+        yield sse_event
 
-    # R1/R2: Derive initial status from canonical lifecycle_status — no hardcoded bypass.
-    initial_status = _map_lifecycle_to_sse_status(session.lifecycle_status)
-    logger.info(
-        "Web lane stream start",
-        lane="web",
-        session_id=session_id,
-        event_type="data-session-status",
-        status=initial_status,
-        lifecycle_status=session.lifecycle_status,
-    )
-    yield convert_session_status(initial_status, session_id)
+    async for sse_event in _deliver_user_message(session_id, user_message):
+        yield sse_event
 
-    # --- Message ingestion via canonical route ---
-    if user_message:
-        from teleclaude.core.command_registry import get_command_service
-        from teleclaude.types.commands import ProcessMessageCommand
+    async for sse_event in _replay_history(chain, agent_name, since_timestamp):
+        yield sse_event
 
-        cmd = ProcessMessageCommand(
-            session_id=session_id,
-            text=user_message,
-            origin="web",
-        )
-        try:
-            await get_command_service().process_message(cmd)
-        except Exception:
-            logger.warning(
-                "Web lane message delivery failed",
-                lane="web",
-                session_id=session_id,
-                event_type="data-session-status",
-                exc_info=True,
-            )
-            yield convert_session_status("error", session_id)
-
-    # --- History replay ---
-    # Apply WEB_POLICY: tools and thinking hidden by default, matching the
-    # visibility contract of the history API. The since_timestamp filter is
-    # applied inside project_entries() to avoid a second timestamp parse pass.
-    for file_path in chain:
-        entries = _iter_entries_for_file(file_path, agent_name)
-        for projected in project_entries(entries, WEB_POLICY, since=since_timestamp):
-            for sse_event in convert_projected_block(projected):
-                yield sse_event
-
-    # --- Live tail ---
-    if not chain:
-        yield message_finish(message_id)
-        yield stream_done()
-        return
-
-    live_file = chain[-1]
-    if not Path(live_file).exists():
-        yield message_finish(message_id)
-        yield stream_done()
+    if not _stream_is_live(chain):
+        async for sse_event in _emit_stream_finish(message_id):
+            yield sse_event
         return
 
     # Track file position for incremental reads
+    live_file = chain[-1]
     file_size = os.path.getsize(live_file)
     idle_elapsed = 0.0
 
     while idle_elapsed < LIVE_IDLE_TIMEOUT_S:
         await asyncio.sleep(LIVE_POLL_INTERVAL_S)
 
-        # R2: Use canonical lifecycle_status for closure detection (not closed_at bypass).
-        refreshed = await db.get_session(session_id)
-        if not refreshed or refreshed.lifecycle_status in _CLOSED_STATUSES:
-            close_reason = "not_found" if not refreshed else refreshed.lifecycle_status
-            logger.info(
-                "Web lane stream closed",
-                lane="web",
-                session_id=session_id,
-                event_type="data-session-status",
-                reason=close_reason,
-            )
+        should_close, rotated_live_file = await _resolve_stream_closure(session_id)
+        if should_close:
             yield convert_session_status("closed", session_id)
             break
 
-        # Check for new transcript data
         if not Path(live_file).exists():
             break
 
         current_size = os.path.getsize(live_file)
         if current_size <= file_size:
             idle_elapsed += LIVE_POLL_INTERVAL_S
-            continue
-
-        # Read new content
-        idle_elapsed = 0.0
-        try:
-            with open(live_file, "rb") as f:
-                f.seek(file_size)
-                new_bytes = f.read()
-                file_size = f.tell()
-
-            new_text = new_bytes.decode("utf-8", errors="ignore")
-            for line in new_text.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry_value: object = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(entry_value, dict):
-                    entry: dict[str, object] = entry_value  # guard: loose-dict - JSONL parse
-                    # Apply WEB_POLICY for live tail: same visibility as history replay.
-                    for projected in project_entries([entry], WEB_POLICY):
-                        for sse_event in convert_projected_block(projected):
-                            yield sse_event
-        except OSError as exc:
-            logger.warning(
-                "Web lane error reading live transcript",
-                lane="web",
+        else:
+            idle_elapsed = 0.0
+            next_size, live_events = await _load_live_transcript_events(
+                live_file,
+                file_size=file_size,
                 session_id=session_id,
-                event_type="data-session-status",
-                file=live_file,
-                error=str(exc),
             )
-            break
+            if next_size == file_size:
+                break
+            file_size = next_size
+            for sse_event in live_events:
+                yield sse_event
 
-        # Check if transcript file rotated (new native_log_file)
-        refreshed = await db.get_session(session_id)
-        if refreshed and refreshed.native_log_file:
-            if refreshed.native_log_file != live_file and Path(refreshed.native_log_file).exists():
-                live_file = refreshed.native_log_file
-                file_size = 0
+        if rotated_live_file and rotated_live_file != live_file and Path(rotated_live_file).exists():
+            live_file = rotated_live_file
+            file_size = 0
 
-    yield message_finish(message_id)
-    yield stream_done()
+    async for sse_event in _emit_stream_finish(message_id):
+        yield sse_event
 
 
 # ---------------------------------------------------------------------------

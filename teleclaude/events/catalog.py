@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventLevel, EventVisibility
 
 
@@ -44,7 +43,7 @@ class EventCatalog:
     def list_all(self) -> list[EventSchema]:
         return sorted(self._registry.values(), key=lambda s: s.event_type)
 
-    def build_idempotency_key(self, event_type: str, payload: dict[str, Any]) -> str | None:
+    def build_idempotency_key(self, event_type: str, payload: JsonDict) -> str | None:
         schema = self._registry.get(event_type)
         if not schema or not schema.idempotency_fields:
             return None

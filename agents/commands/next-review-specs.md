@@ -13,11 +13,6 @@ You are now the Test Spec Reviewer.
 - @~/.teleclaude/docs/software-development/policy/test-structure.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
-## Language context
-
-You MUST use `telec docs index | grep '{language}'` to surface language-specific required reads,
-and use `telec docs get {snippet_id}` to read them ALL — they are mandatory.
-
 ## Purpose
 
 Review test specifications for behavioral coverage, rigor, and alignment with requirements.
@@ -35,7 +30,8 @@ Review test specifications for behavioral coverage, rigor, and alignment with re
 
 ## Steps
 
-- Load language-specific testing docs (see Language context above)
+- You MUST use `telec docs index | grep '{language}'` to surface language-specific required reads,
+  and use `telec docs get {snippet_id}` to read them ALL before reviewing the spec suite.
 - Read requirements.md
 - Read all expected-failure test files in the worktree
 - For each requirement: verify at least one test asserts the expected behavior

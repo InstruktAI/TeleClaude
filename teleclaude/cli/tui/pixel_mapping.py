@@ -72,7 +72,7 @@ class RenderTarget:
 class TargetRegistry:
     """Registry for animation render targets."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._targets: dict[str, RenderTarget] = {}
         # Register default targets
         self.register("banner", BIG_BANNER_WIDTH, BIG_BANNER_HEIGHT, BIG_BANNER_LETTERS)

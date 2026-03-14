@@ -3,16 +3,36 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import MessageMetadata, ProjectInfo, SessionSnapshot, TodoInfo
+from teleclaude.core.models import JsonDict, MessageMetadata, ProjectInfo, SessionSnapshot, TodoInfo
 
 logger = get_logger(__name__)
 
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.cache import DaemonCache
 
-class _PullMixin:
+
+class _PullMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: pull sessions, projects, and todos from remote computers."""
+
+    if TYPE_CHECKING:
+        client: AdapterClient
+
+        @property
+        def cache(self) -> DaemonCache | None: ...
+
+        async def send_request(
+            self,
+            computer_name: str,
+            command: str,
+            metadata: MessageMetadata,
+            session_id: str | None = None,
+            args: list[str] | None = None,
+        ) -> str: ...
 
     async def _pull_initial_sessions(self) -> None:
         """Pull existing sessions from remote computers that have registered interest.
@@ -53,7 +73,7 @@ class _PullMixin:
                     logger.warning("Invalid response from %s: not a dict", computer_name)
                     continue
 
-                envelope: dict[str, object] = envelope_obj
+                envelope: JsonDict = envelope_obj
 
                 # Check response status
                 status = envelope.get("status")
@@ -109,7 +129,7 @@ class _PullMixin:
                 logger.warning("Invalid response from %s: not a dict", computer)
                 return
 
-            envelope: dict[str, object] = envelope_obj
+            envelope: JsonDict = envelope_obj
 
             # Check response status
             status = envelope.get("status")
@@ -160,7 +180,7 @@ class _PullMixin:
                 logger.warning("Invalid response from %s: not a dict", computer)
                 return
 
-            envelope: dict[str, object] = envelope_obj
+            envelope: JsonDict = envelope_obj
 
             status = envelope.get("status")
             if status == "error":
@@ -220,7 +240,7 @@ class _PullMixin:
                 logger.warning("Invalid response from %s: not a dict", computer)
                 return
 
-            envelope: dict[str, object] = envelope_obj
+            envelope: JsonDict = envelope_obj
 
             # Check response status
             status = envelope.get("status")

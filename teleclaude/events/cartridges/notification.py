@@ -18,7 +18,7 @@ class NotificationProjectorCartridge:
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         # Fast-path: if _classification is present and treatment is signal-only, skip notification logic
         classification = event.payload.get("_classification")
-        if classification is not None and classification.get("treatment") == "signal-only":
+        if isinstance(classification, dict) and classification.get("treatment") == "signal-only":
             return event
 
         schema = context.catalog.get(event.event)

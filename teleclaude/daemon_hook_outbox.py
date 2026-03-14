@@ -112,7 +112,7 @@ class _HookOutboxSessionQueue:
     notify: asyncio.Event = field(default_factory=asyncio.Event)
 
 
-class _DaemonHookOutboxMixin:
+class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
     """Hook outbox processing methods extracted from TeleClaudeDaemon."""
 
     if TYPE_CHECKING:
@@ -593,6 +593,151 @@ class _DaemonHookOutboxMixin:
         finally:
             self._maybe_log_hook_outbox_summary(force=True)
 
+    def _get_or_create_session_outbox_queue(self, session_id: str) -> _HookOutboxSessionQueue:
+        """Return the in-memory queue state for a session."""
+        queue_state = self._session_outbox_queues.get(session_id)
+        if queue_state is None:
+            queue_state = _HookOutboxSessionQueue()
+            self._session_outbox_queues[session_id] = queue_state
+        return queue_state
+
+    @staticmethod
+    def _discard_claimed_row(
+        pending: list[_HookOutboxQueueItem],
+        claimed_row_ids: set[int],
+        drop_idx: int,
+        dropped_rows: list[HookOutboxRow],
+    ) -> None:
+        """Remove a queued item and clear its claimed-row marker."""
+        dropped_row = pending.pop(drop_idx).row
+        dropped_row_id = int(dropped_row.get("id") or 0)
+        dropped_rows.append(dropped_row)
+        if dropped_row_id:
+            claimed_row_ids.discard(dropped_row_id)
+
+    @staticmethod
+    def _append_queue_item(
+        pending: list[_HookOutboxQueueItem],
+        claimed_row_ids: set[int],
+        queue_item: _HookOutboxQueueItem,
+        row_id: int,
+    ) -> None:
+        """Append a queue item and track its claimed row ID."""
+        pending.append(queue_item)
+        if row_id:
+            claimed_row_ids.add(row_id)
+
+    def _enqueue_bursty_item(
+        self,
+        pending: list[_HookOutboxQueueItem],
+        claimed_row_ids: set[int],
+        queue_item: _HookOutboxQueueItem,
+        row: HookOutboxRow,
+        row_id: int,
+        event_type: str,
+        dropped_rows: list[HookOutboxRow],
+    ) -> bool:
+        """Apply bursty queue coalescing and capacity rules."""
+        replace_idx = self._find_bursty_coalesce_index(pending, event_type)
+        if replace_idx is not None:
+            replaced_row = pending[replace_idx].row
+            replaced_row_id = int(replaced_row.get("id") or 0)
+            dropped_rows.append(replaced_row)
+            if replaced_row_id:
+                claimed_row_ids.discard(replaced_row_id)
+            pending[replace_idx] = queue_item
+            if row_id:
+                claimed_row_ids.add(row_id)
+            return True
+
+        bursty_limit = self._bursty_capacity_limit()
+        if bursty_limit == 0:
+            dropped_rows.append(row)
+            return False
+
+        while self._bursty_item_count(pending) >= bursty_limit:
+            drop_idx = self._find_oldest_bursty_index(pending)
+            if drop_idx is None:
+                break
+            self._discard_claimed_row(pending, claimed_row_ids, drop_idx, dropped_rows)
+
+        if len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
+            drop_idx = self._find_oldest_bursty_index(pending)
+            if drop_idx is None:
+                dropped_rows.append(row)
+                return False
+            self._discard_claimed_row(pending, claimed_row_ids, drop_idx, dropped_rows)
+
+        self._append_queue_item(pending, claimed_row_ids, queue_item, row_id)
+        return True
+
+    def _enqueue_critical_item(
+        self,
+        pending: list[_HookOutboxQueueItem],
+        claimed_row_ids: set[int],
+        queue_item: _HookOutboxQueueItem,
+        row_id: int,
+        dropped_rows: list[HookOutboxRow],
+    ) -> tuple[bool, bool]:
+        """Apply critical-item queue admission rules."""
+        while len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
+            drop_idx = self._find_oldest_bursty_index(pending)
+            if drop_idx is None:
+                return False, True
+            self._discard_claimed_row(pending, claimed_row_ids, drop_idx, dropped_rows)
+
+        self._append_queue_item(pending, claimed_row_ids, queue_item, row_id)
+        return True, False
+
+    async def _mark_dropped_outbox_rows(
+        self,
+        dropped_rows: list[HookOutboxRow],
+        event_type: str,
+    ) -> None:
+        """Mark coalesced rows as delivered in durable storage."""
+        if not dropped_rows:
+            return
+        self._hook_outbox_coalesced_count += len(dropped_rows)
+        for dropped in dropped_rows:
+            await db.mark_hook_outbox_delivered(
+                dropped["id"],
+                error=f"coalesced:{event_type or 'unknown'}",
+            )
+
+    async def _requeue_critical_outbox_row(
+        self,
+        session_id: str,
+        row: HookOutboxRow,
+        row_id: int,
+        queue_depth: int,
+    ) -> None:
+        """Retry a claimed critical row later when the session queue is full."""
+        logger.debug(
+            "Hook outbox session queue at capacity; deferring claimed critical row",
+            session_id=session_id,
+            row_id=row_id or row["id"],
+            queue_depth=queue_depth,
+            max_pending=HOOK_OUTBOX_SESSION_MAX_PENDING,
+        )
+        attempt = int(row.get("attempt_count", 0)) + 1
+        delay = self._hook_outbox_backoff(attempt)
+        retry_at = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
+        await db.mark_hook_outbox_failed(
+            row_id=row_id or row["id"],
+            attempt_count=attempt,
+            next_attempt_at=retry_at,
+            error="backpressure:session_queue_full",
+        )
+
+    def _ensure_session_outbox_worker(self, session_id: str) -> None:
+        """Start the per-session worker if it is not already running."""
+        worker = self._session_outbox_workers.get(session_id)
+        if worker and not worker.done():
+            return
+        task = asyncio.create_task(self._run_session_outbox_worker(session_id))
+        self._session_outbox_workers[session_id] = task
+        self._track_background_task(task, f"outbox-worker:{session_id}")
+
     async def _enqueue_session_outbox_item(
         self,
         session_id: str,
@@ -602,16 +747,11 @@ class _DaemonHookOutboxMixin:
         event_type = str(row.get("event_type") or "")
         row_id = int(row.get("id") or 0)
         classification = self._classify_hook_event(event_type)
-        queue_state = self._session_outbox_queues.get(session_id)
-        if queue_state is None:
-            queue_state = _HookOutboxSessionQueue()
-            self._session_outbox_queues[session_id] = queue_state
-
+        queue_state = self._get_or_create_session_outbox_queue(session_id)
         dropped_rows: list[HookOutboxRow] = []
-        enqueued = True
+        enqueued = False
         requeue_claimed_critical = False
         duplicate_claimed_row = False
-        queue_depth = 0
         queue_item = _HookOutboxQueueItem(
             row=row,
             event_type=event_type,
@@ -625,107 +765,36 @@ class _DaemonHookOutboxMixin:
             # Ignore duplicate claims for rows already queued or currently in-flight.
             if row_id and row_id in claimed_row_ids:
                 duplicate_claimed_row = True
-                enqueued = False
             elif classification == "bursty":
-                replace_idx = self._find_bursty_coalesce_index(pending, event_type)
-                if replace_idx is not None:
-                    replaced_row = pending[replace_idx].row
-                    replaced_row_id = int(replaced_row.get("id") or 0)
-                    dropped_rows.append(replaced_row)
-                    if replaced_row_id:
-                        claimed_row_ids.discard(replaced_row_id)
-                    pending[replace_idx] = queue_item
-                    if row_id:
-                        claimed_row_ids.add(row_id)
-                else:
-                    bursty_limit = self._bursty_capacity_limit()
-                    if bursty_limit == 0:
-                        dropped_rows.append(row)
-                        enqueued = False
-                    else:
-                        while self._bursty_item_count(pending) >= bursty_limit:
-                            drop_idx = self._find_oldest_bursty_index(pending)
-                            if drop_idx is None:
-                                break
-                            dropped_row = pending.pop(drop_idx).row
-                            dropped_row_id = int(dropped_row.get("id") or 0)
-                            dropped_rows.append(dropped_row)
-                            if dropped_row_id:
-                                claimed_row_ids.discard(dropped_row_id)
-                    if enqueued and len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
-                        drop_idx = self._find_oldest_bursty_index(pending)
-                        if drop_idx is not None:
-                            dropped_row = pending.pop(drop_idx).row
-                            dropped_row_id = int(dropped_row.get("id") or 0)
-                            dropped_rows.append(dropped_row)
-                            if dropped_row_id:
-                                claimed_row_ids.discard(dropped_row_id)
-                        else:
-                            # Critical-only backlog: preserve critical order, drop incoming bursty.
-                            dropped_rows.append(row)
-                            enqueued = False
-                    if enqueued:
-                        pending.append(queue_item)
-                        if row_id:
-                            claimed_row_ids.add(row_id)
+                enqueued = self._enqueue_bursty_item(
+                    pending,
+                    claimed_row_ids,
+                    queue_item,
+                    row,
+                    row_id,
+                    event_type,
+                    dropped_rows,
+                )
             else:
-                while len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
-                    drop_idx = self._find_oldest_bursty_index(pending)
-                    if drop_idx is None:
-                        # Queue is full of critical rows. Keep the claimed row durable in DB and retry later.
-                        requeue_claimed_critical = True
-                        enqueued = False
-                        break
-                    dropped_row = pending.pop(drop_idx).row
-                    dropped_row_id = int(dropped_row.get("id") or 0)
-                    dropped_rows.append(dropped_row)
-                    if dropped_row_id:
-                        claimed_row_ids.discard(dropped_row_id)
-                if enqueued:
-                    pending.append(queue_item)
-                    if row_id:
-                        claimed_row_ids.add(row_id)
+                enqueued, requeue_claimed_critical = self._enqueue_critical_item(
+                    pending,
+                    claimed_row_ids,
+                    queue_item,
+                    row_id,
+                    dropped_rows,
+                )
 
             queue_depth = len(pending)
             if enqueued:
                 queue_state.notify.set()
 
-        if dropped_rows:
-            self._hook_outbox_coalesced_count += len(dropped_rows)
-            for dropped in dropped_rows:
-                dropped_id = dropped["id"]
-                await db.mark_hook_outbox_delivered(
-                    dropped_id,
-                    error=f"coalesced:{event_type or 'unknown'}",
-                )
+        await self._mark_dropped_outbox_rows(dropped_rows, event_type)
 
         if requeue_claimed_critical and not duplicate_claimed_row:
-            logger.debug(
-                "Hook outbox session queue at capacity; deferring claimed critical row",
-                session_id=session_id,
-                row_id=row_id or row["id"],
-                queue_depth=queue_depth,
-                max_pending=HOOK_OUTBOX_SESSION_MAX_PENDING,
-            )
-            attempt = int(row.get("attempt_count", 0)) + 1
-            delay = self._hook_outbox_backoff(attempt)
-            retry_at = (datetime.now(UTC) + timedelta(seconds=delay)).isoformat()
-            await db.mark_hook_outbox_failed(
-                row_id=row_id or row["id"],
-                attempt_count=attempt,
-                next_attempt_at=retry_at,
-                error="backpressure:session_queue_full",
-            )
+            await self._requeue_critical_outbox_row(session_id, row, row_id, queue_depth)
 
         self._maybe_warn_hook_backlog(session_id, queue_depth)
-
-        worker = self._session_outbox_workers.get(session_id)
-        if worker and not worker.done():
-            return
-
-        task = asyncio.create_task(self._run_session_outbox_worker(session_id))
-        self._session_outbox_workers[session_id] = task
-        self._track_background_task(task, f"outbox-worker:{session_id}")
+        self._ensure_session_outbox_worker(session_id)
 
     async def _run_session_outbox_worker(self, session_id: str) -> None:
         """Process claimed outbox rows serially for a single session."""

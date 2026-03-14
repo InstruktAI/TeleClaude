@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.db import EventDB
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
@@ -29,7 +29,7 @@ class EnrichmentCartridge:
         updated_payload["_enrichment"] = enrichment
         return event.model_copy(update={"payload": updated_payload})
 
-    async def _enrich(self, entity_uri: str, db: EventDB) -> dict[str, Any] | None:
+    async def _enrich(self, entity_uri: str, db: EventDB) -> JsonDict | None:
         if not entity_uri.startswith("telec://"):
             return None
 
@@ -47,7 +47,7 @@ class EnrichmentCartridge:
 
         return None
 
-    async def _enrich_todo(self, entity_id: str, entity_uri: str, db: EventDB) -> dict[str, Any] | None:
+    async def _enrich_todo(self, entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
         failure_count = await db.count_events_by_entity(
             entity_uri, "domain.software-development.build.completed", payload_filter={"success": False}
         )
@@ -63,7 +63,7 @@ class EnrichmentCartridge:
             "current_phase": phase_payload.get("phase") if phase_payload else None,
         }
 
-    async def _enrich_worker(self, entity_id: str, entity_uri: str, db: EventDB) -> dict[str, Any] | None:
+    async def _enrich_worker(self, entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
         since_24h = datetime.now(UTC) - timedelta(hours=24)
         crash_count = await db.count_events_by_entity(entity_uri, "system.worker.crashed", since=since_24h)
         last_crash_payload = await db.get_latest_event_payload(entity_uri, "system.worker.crashed")

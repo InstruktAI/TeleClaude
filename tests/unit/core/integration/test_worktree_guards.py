@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 from teleclaude.core.integration.step_functions import _ensure_integration_worktree
 
 
-def _mock_run_git_success(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:  # noqa: ARG001
+def _mock_run_git_success(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
     """Mock git that succeeds for all commands."""
     return 0, "", ""
 
@@ -26,9 +26,7 @@ def _mock_run_git_success(args: list[str], *, cwd: str, timeout: float = 30) -> 
 
 @patch("teleclaude.core.integration.step_functions._run_git", side_effect=_mock_run_git_success)
 @patch("teleclaude.core.integration.step_functions._merge_head_exists", return_value=True)
-def test_skips_reset_when_merge_head_exists(
-    _mock_merge_head: Any, mock_git: MagicMock, tmp_path: Path
-) -> None:
+def test_skips_reset_when_merge_head_exists(_mock_merge_head: Any, mock_git: MagicMock, tmp_path: Path) -> None:
     """Active merge (MERGE_HEAD present) must skip fetch + reset."""
     wt_path = tmp_path / "trees" / "_integration"
     wt_path.mkdir(parents=True)

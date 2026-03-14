@@ -183,3 +183,11 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
             invalidated.append(slug)
 
     return {"invalidated": invalidated}
+
+
+__all__ = [
+    "_derive_prepare_phase",
+    "_emit_prepare_event",
+    "_has_test_spec_artifacts",
+    "invalidate_stale_preparations",
+]

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.core.next_machine._types import StateValue
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,7 +28,7 @@ def _write_file(todo_dir: Path, name: str, content: str = _LONG) -> Path:
     return p
 
 
-def _build_state(findings: list[dict[str, Any]], verdict: str = "") -> dict[str, Any]:
+def _build_state(findings: list[dict[str, StateValue]], verdict: str = "") -> dict[str, StateValue]:
     return {
         "schema_version": 2,
         "prepare_phase": "requirements_review",
@@ -106,7 +106,13 @@ async def test_all_findings_resolved_yields_approve(mock_emit: MagicMock, tmp_pa
 
     findings = [
         {"id": "f1", "severity": "trivial", "summary": "formatting", "status": "resolved", "resolved_at": "2025-01-01"},
-        {"id": "f2", "severity": "substantive", "summary": "coverage", "status": "resolved", "resolved_at": "2025-01-01"},
+        {
+            "id": "f2",
+            "severity": "substantive",
+            "summary": "coverage",
+            "status": "resolved",
+            "resolved_at": "2025-01-01",
+        },
     ]
     state = _build_state(findings, verdict="approve")
     write_phase_state(cwd, slug, state)
@@ -138,7 +144,11 @@ async def test_unresolved_substantive_yields_needs_work(mock_emit: MagicMock, tm
 
     mock_db = MagicMock()
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
 
     assert keep_going is False
@@ -188,7 +198,7 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
     _write_file(tmp_path / "todos" / slug, "requirements.md")
 
     # v1-style state: no findings key
-    state: dict[str, Any] = {
+    state: dict[str, StateValue] = {
         "schema_version": 1,
         "prepare_phase": "requirements_review",
         "requirements_review": {
@@ -199,18 +209,25 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
         },
         "plan_review": {"verdict": "", "findings_count": 0, "rounds": 0},
         "grounding": {
-            "valid": False, "base_sha": "", "input_digest": "",
-            "referenced_paths": [], "last_grounded_at": "", "invalidated_at": "", "invalidation_reason": "",
+            "valid": False,
+            "base_sha": "",
+            "input_digest": "",
+            "referenced_paths": [],
+            "last_grounded_at": "",
+            "invalidated_at": "",
+            "invalidation_reason": "",
         },
     }
     write_phase_state(cwd, slug, state)
 
     mock_db = MagicMock()
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
 
     # Should dispatch reviewer without raising
     assert keep_going is False
     assert instruction  # some instruction returned
-
-

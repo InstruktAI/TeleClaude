@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.models import JsonDict
 
 from ._block_renderers import (
     _extract_tool_subject,
@@ -133,6 +134,140 @@ def parse_gemini_transcript(
         return f"Error parsing transcript: {e}"
 
 
+def _last_user_boundary_start(entries: list[JsonDict]) -> int:
+    """Return the index after the last user message."""
+    last_user_idx = -1
+    for i in range(len(entries) - 1, -1, -1):
+        message = normalize_transcript_entry_message(entries[i])
+        if isinstance(message, dict) and message.get("role") == "user":
+            last_user_idx = i
+            break
+    return last_user_idx + 1
+
+
+def _resolve_render_start_index(
+    entries: list[JsonDict],
+    transcript_path: str,
+    agent_name: AgentName,
+    since_timestamp: datetime | None,
+    *,
+    mode: str,
+) -> int | None:
+    """Resolve the starting entry index for incremental rendering."""
+    if since_timestamp is None:
+        return _last_user_boundary_start(entries)
+    return _start_index_after_timestamp_or_rotation(
+        entries,
+        since_timestamp,
+        transcript_path=transcript_path,
+        agent_name=agent_name,
+        mode=mode,
+    )
+
+
+def _append_clean_tool_use_block(
+    block: JsonDict,
+    lines: list[str],
+) -> None:
+    """Append a single clean-render tool_use block."""
+    tool_name = str(block.get("name", "unknown"))
+    tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
+
+    formatted_name = f"**`{tool_name_safe}`**"
+    subject = _extract_tool_subject(block)
+
+    base_len = len(tool_name_safe)
+    if subject:
+        base_len += 2
+    budget = max(0, 70 - base_len)
+
+    if subject and budget > 0:
+        if len(subject) > budget:
+            subject = subject[: budget - 1] + "…"
+        block_content = f"{formatted_name}: `{subject}`"
+    else:
+        block_content = formatted_name
+
+    if lines:
+        lines.append("")
+    lines.append(block_content)
+
+
+def _append_clean_render_block(
+    block: JsonDict,
+    block_type: str,
+    lines: list[str],
+) -> bool:
+    """Render one projected assistant block for clean output."""
+    if block_type == "text":
+        text = block.get("text", "")
+        if text:
+            if lines:
+                lines.append("")
+            lines.append(str(text))
+            return True
+        return False
+
+    if block_type == "thinking":
+        thinking = block.get("thinking", "")
+        if thinking:
+            if lines:
+                lines.append("")
+            lines.append(_format_thinking(str(thinking)))
+            return True
+        return False
+
+    if block_type == "tool_use":
+        _append_clean_tool_use_block(block, lines)
+        return True
+
+    return False
+
+
+def _append_standard_render_block(
+    block: JsonDict,
+    block_type: str,
+    time_prefix: str,
+    lines: list[str],
+) -> bool:
+    """Render one projected assistant block for standard output."""
+    if block_type == "text":
+        text = block.get("text", "")
+        if text:
+            if lines:
+                lines.append("")
+            lines.append(f"{time_prefix}{text}")
+            return True
+        return False
+
+    if block_type == "thinking":
+        thinking = block.get("thinking", "")
+        if thinking:
+            if lines:
+                lines.append("")
+            lines.append(f"{time_prefix}{_format_thinking(str(thinking))}")
+            return True
+        return False
+
+    if block_type == "tool_use":
+        lines.append("")
+        _process_tool_use_block(block, time_prefix, lines)
+        return True
+
+    if block_type == "tool_result":
+        lines.append("")
+        _process_tool_result_block(
+            block,
+            time_prefix,
+            lines,
+            collapse_tool_results=False,
+            max_chars=2000,
+        )
+        return True
+
+    return False
+
+
 def render_clean_agent_output(
     transcript_path: str,
     agent_name: AgentName,
@@ -156,28 +291,15 @@ def render_clean_agent_output(
     if not entries:
         return None, None
 
-    # Find the lower boundary (activity after since_timestamp)
-    start_idx = 0
-    if since_timestamp:
-        start_idx = _start_index_after_timestamp_or_rotation(
-            entries,
-            since_timestamp,
-            transcript_path=transcript_path,
-            agent_name=agent_name,
-            mode="clean",
-        )
-        if start_idx is None:
-            return None, None
-    else:
-        # Fall back to last user boundary if no timestamp provided
-        last_user_idx = -1
-        for i in range(len(entries) - 1, -1, -1):
-            entry = entries[i]
-            message = normalize_transcript_entry_message(entry)
-            if isinstance(message, dict) and message.get("role") == "user":
-                last_user_idx = i
-                break
-        start_idx = last_user_idx + 1
+    start_idx = _resolve_render_start_index(
+        entries,
+        transcript_path,
+        agent_name,
+        since_timestamp,
+        mode="clean",
+    )
+    if start_idx is None:
+        return None, None
 
     assistant_entries = entries[start_idx:]
     if not assistant_entries:
@@ -203,49 +325,7 @@ def render_clean_agent_output(
             if entry_dt:
                 last_entry_dt = entry_dt
 
-        block = pb.block
-        block_type = pb.block_type
-
-        if block_type == "text":
-            text = block.get("text", "")
-            if text:
-                if lines:
-                    lines.append("")
-                lines.append(str(text))
-                emitted = True
-        elif block_type == "thinking":
-            thinking = block.get("thinking", "")
-            if thinking:
-                if lines:
-                    lines.append("")
-                formatted = _format_thinking(str(thinking))
-                lines.append(formatted)
-                emitted = True
-        elif block_type == "tool_use":
-            tool_name = str(block.get("name", "unknown"))
-            # Truncate at first newline, open paren, or open brace to ensure single-line name only
-            tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
-
-            # Format using enriched subject logic
-            formatted_name = f"**`{tool_name_safe}`**"
-            subject = _extract_tool_subject(block)
-
-            # Length budget calculation (name + colon-space[2])
-            base_len = len(tool_name_safe)
-            if subject:
-                base_len += 2
-            budget = max(0, 70 - base_len)
-
-            if subject and budget > 0:
-                if len(subject) > budget:
-                    subject = subject[: budget - 1] + "…"
-                block_content = f"{formatted_name}: `{subject}`"
-            else:
-                block_content = formatted_name
-
-            if lines:
-                lines.append("")
-            lines.append(block_content)
+        if _append_clean_render_block(pb.block, pb.block_type, lines):
             emitted = True
         # tool_result: suppressed by THREADED_CLEAN_POLICY (include_tool_results=False)
 
@@ -327,29 +407,17 @@ def render_agent_output(
     if not entries:
         return None, None
 
-    # Find the lower boundary
-    start_idx = 0
-    if since_timestamp:
-        start_idx = _start_index_after_timestamp_or_rotation(
-            entries,
-            since_timestamp,
-            transcript_path=transcript_path,
-            agent_name=agent_name,
-            mode="standard",
-        )
-        if start_idx is None:
-            # All entries are before/equal to since_timestamp and no rotation fallback applies.
-            return None, None
-    else:
-        # If no since_timestamp, find the last user boundary
-        last_user_idx = -1
-        for i in range(len(entries) - 1, -1, -1):
-            entry = entries[i]
-            message = normalize_transcript_entry_message(entry)
-            if isinstance(message, dict) and message.get("role") == "user":
-                last_user_idx = i
-                break
-        start_idx = last_user_idx + 1
+    start_idx = _resolve_render_start_index(
+        entries,
+        transcript_path,
+        agent_name,
+        since_timestamp,
+        mode="standard",
+    )
+    if start_idx is None:
+        return None, None
+
+    if since_timestamp is None:
         logger.debug("[STD_RENDER] No cursor. Starting after last user message at index %d", start_idx)
 
     # Collect assistant activity from start_idx
@@ -396,37 +464,7 @@ def render_agent_output(
         if include_timestamps and last_entry_dt:
             time_prefix = f"[{last_entry_dt.strftime('%H:%M:%S')}] "
 
-        block = pb.block
-        block_type = pb.block_type
-
-        if block_type == "text":
-            text = block.get("text", "")
-            if text:
-                if lines:
-                    lines.append("")
-                lines.append(f"{time_prefix}{text}")
-                emitted = True
-        elif block_type == "thinking":
-            thinking = block.get("thinking", "")
-            if thinking:
-                if lines:
-                    lines.append("")
-                formatted = _format_thinking(str(thinking))
-                lines.append(f"{time_prefix}{formatted}")
-                emitted = True
-        elif block_type == "tool_use":
-            lines.append("")
-            _process_tool_use_block(block, time_prefix, lines)
-            emitted = True
-        elif block_type == "tool_result":
-            lines.append("")
-            _process_tool_result_block(
-                block,
-                time_prefix,
-                lines,
-                collapse_tool_results=False,
-                max_chars=2000,
-            )
+        if _append_standard_render_block(pb.block, pb.block_type, time_prefix, lines):
             emitted = True
 
     if not emitted:

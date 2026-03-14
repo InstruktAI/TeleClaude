@@ -39,7 +39,7 @@ from teleclaude.core.events import (
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.models import MessageMetadata, SessionSnapshot
+from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 
@@ -65,7 +65,7 @@ API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
 
-class APIServer(_WebSocketMixin):
+class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableOverride]
     """HTTP API server on Unix socket."""
 
     def __init__(
@@ -173,7 +173,7 @@ class APIServer(_WebSocketMixin):
         self._previous_interest: dict[str, set[str]] = {}  # {data_type: {computers}}
         # Debounce refresh-style WS events to avoid burst refresh storms
         self._refresh_debounce_task: asyncio.Task[object] | None = None
-        self._refresh_pending_payload: dict[str, object] | None = None  # guard: loose-dict - WS payload
+        self._refresh_pending_payload: JsonDict | None = None
 
         # Subscribe to local session updates
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)

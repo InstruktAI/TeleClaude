@@ -1,4 +1,5 @@
 """Miscellaneous handlers: version, sync, watch, revive, computers, projects, tmux helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,22 +14,21 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
 
 __all__ = [
-    "_handle_version",
+    "_attach_tmux_session",
+    "_ensure_tmux_mouse_on",
+    "_ensure_tmux_status_hidden_for_tui",
     "_git_short_commit_hash",
-    "_handle_sync",
-    "_handle_watch",
+    "_handle_computers",
+    "_handle_projects",
     "_handle_revive",
+    "_handle_sync",
+    "_handle_version",
+    "_handle_watch",
+    "_maybe_kill_tui_session",
     "_revive_session",
     "_revive_session_via_api",
     "_send_revive_enter_via_api",
-    "_attach_tmux_session",
-    "_handle_computers",
-    "_handle_projects",
-    "_maybe_kill_tui_session",
-    "_ensure_tmux_mouse_on",
-    "_ensure_tmux_status_hidden_for_tui",
 ]
-
 
 
 def _git_short_commit_hash() -> str:

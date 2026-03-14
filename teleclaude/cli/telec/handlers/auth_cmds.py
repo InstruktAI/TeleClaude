@@ -1,4 +1,5 @@
 """Handlers for telec auth commands."""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,16 +15,15 @@ from teleclaude.cli.session_auth import (
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY
 from teleclaude.cli.telec.help import _usage
 
-
-
 __all__ = [
     "_handle_auth",
-    "_role_for_email",
-    "_requires_tui_login",
     "_handle_login",
-    "_handle_whoami",
     "_handle_logout",
+    "_handle_whoami",
+    "_requires_tui_login",
+    "_role_for_email",
 ]
+
 
 def _handle_auth(args: list[str]) -> None:
     """Handle telec auth subcommands."""

@@ -6,19 +6,48 @@ import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import ComputerInfo
+from teleclaude.core.models import ComputerInfo, JsonDict
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.types import SystemStats
 
 logger = get_logger(__name__)
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
-class _RefreshMixin:
+    from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.models import PeerInfo
+    from teleclaude.core.task_registry import TaskRegistry
+
+
+class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: coalesced remote cache refresh with cooldown and peer loop."""
+
+    if TYPE_CHECKING:
+        task_registry: TaskRegistry | None
+        computer_name: str
+        heartbeat_interval: int
+        _running: bool
+        _refresh_last: dict[str, float]
+        _refresh_tasks: dict[str, asyncio.Task[object]]
+        _peer_digests: dict[str, str]
+        _refresh_cooldown_seconds: float
+        _ALLOWED_REFRESH_REASONS: set[str]
+
+        @property
+        def cache(self) -> DaemonCache | None: ...
+
+        async def discover_peers(self) -> list[PeerInfo]: ...
+        async def pull_interested_sessions(self) -> None: ...
+        async def pull_remote_projects_with_todos(self, computer: str) -> None: ...
+        async def pull_remote_todos(self, computer: str, project_path: str) -> None: ...
+        def _spawn_refresh_task(self, coro: Awaitable[None], *, key: str) -> asyncio.Task[object]: ...
+        def _log_task_exception(self, task: asyncio.Task[object]) -> None: ...
+        async def _get_redis(self) -> Redis: ...
 
     async def refresh_remote_snapshot(self) -> None:
         """Refresh remote computers and project/todo cache (best effort)."""
@@ -190,7 +219,7 @@ class _RefreshMixin:
                 data_bytes: object = await redis_client.get(key)
                 data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
                 info_obj: object = json.loads(data_str)
-                info = cast(dict[str, object], info_obj)
+                info = cast(JsonDict, info_obj)
 
                 computer_name = cast(str, info["computer_name"])
                 if computer_name == self.computer_name:
@@ -217,8 +246,8 @@ class _RefreshMixin:
                             data_type="projects",
                             reason="digest",
                             force=True,
-                            on_success=lambda name=computer_name, d=digest_value: self._peer_digests.__setitem__(
-                                name, d
+                            on_success=lambda name=computer_name, digest=digest_value: self._record_peer_digest(
+                                name, digest
                             ),
                         )
                         if not scheduled:
@@ -226,3 +255,7 @@ class _RefreshMixin:
             except Exception as exc:
                 logger.warning("Heartbeat peer parse failed: %s", exc)
                 continue
+
+    def _record_peer_digest(self, computer_name: str, digest: str) -> None:
+        """Persist the most recent project digest for a peer."""
+        self._peer_digests[computer_name] = digest

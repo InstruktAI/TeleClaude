@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypeAlias
 
 from typing_extensions import TypedDict
+
+JsonPrimitive: TypeAlias = str | int | float | bool | None
+JsonValue: TypeAlias = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
 
 
 class ChannelInfo(TypedDict):
@@ -20,4 +23,4 @@ class ConsumedMessage(TypedDict):
     """A single message read from a consumer group."""
 
     id: str
-    payload: dict[str, Any]  # guard: loose-dict - Channel payload is arbitrary user JSON
+    payload: dict[str, JsonValue]

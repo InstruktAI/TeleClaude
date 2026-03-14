@@ -6,6 +6,7 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 
 logger = get_logger(__name__)
@@ -29,7 +30,7 @@ class EventProducer:
             self._stream,
         )
         try:
-            entry_id: bytes = await self._redis.xadd(self._stream, data, maxlen=self._maxlen)  # type: ignore[assignment]
+            entry_id = await self._redis.xadd(self._stream, data, maxlen=self._maxlen)
         except Exception:
             logger.exception("EventProducer.emit xadd FAILED: event=%s", envelope.event)
             raise
@@ -49,7 +50,7 @@ async def emit_event(
     level: EventLevel,
     domain: str = "",
     description: str = "",
-    payload: dict[str, Any] | None = None,
+    payload: JsonDict | None = None,
     visibility: EventVisibility = EventVisibility.LOCAL,
     entity: str | None = None,
     **kwargs: Any,

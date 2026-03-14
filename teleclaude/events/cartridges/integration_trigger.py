@@ -14,6 +14,7 @@ import logging
 from collections.abc import Callable, Coroutine, Mapping, Sequence
 from typing import Any
 
+from teleclaude.core.models import JsonDict, JsonValue
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
 
@@ -38,10 +39,10 @@ _PLATFORM_TO_CANONICAL: dict[str, str] = {
 
 IntegratorSpawnCallback = Callable[[str, str, str], Coroutine[Any, Any, Any] | None]
 # Ingest callback: takes (canonical_event_type, payload) → returns list of (slug, branch, sha) ready candidates
-IngestionCallback = Callable[[str, Mapping[str, Any]], Sequence[tuple[str, str, str]]]
+IngestionCallback = Callable[[str, Mapping[str, JsonValue]], Sequence[tuple[str, str, str]]]
 
 
-def _strip_pipeline_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
+def _strip_pipeline_metadata(payload: Mapping[str, JsonValue]) -> JsonDict:
     """Remove pipeline-private fields before canonical integration validation.
 
     Trust and later cartridges annotate payloads with underscore-prefixed keys
@@ -105,12 +106,8 @@ class IntegrationTriggerCartridge:
                             if asyncio.iscoroutine(result):
                                 await result
                         except Exception:
-                            logger.exception(
-                                "Integration trigger spawn callback failed for %s", first_slug
-                            )
+                            logger.exception("Integration trigger spawn callback failed for %s", first_slug)
             except Exception:
-                logger.exception(
-                    "Integration trigger ingest callback failed for %s event", event.event
-                )
+                logger.exception("Integration trigger ingest callback failed for %s event", event.event)
 
         return event

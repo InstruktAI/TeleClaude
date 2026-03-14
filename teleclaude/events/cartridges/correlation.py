@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import PipelineContext
 
@@ -27,7 +27,7 @@ class CorrelationConfig:
     burst_threshold: int = 10
     crash_cascade_threshold: int = 3
     entity_failure_threshold: int = 3
-    clock: Callable[[], datetime] = field(default_factory=lambda: datetime.utcnow)
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
 
 class CorrelationCartridge:
@@ -97,7 +97,7 @@ class CorrelationCartridge:
 
         return event
 
-    async def _emit_synthetic(self, event_type: str, payload: dict[str, Any], context: PipelineContext) -> None:
+    async def _emit_synthetic(self, event_type: str, payload: JsonDict, context: PipelineContext) -> None:
         if context.producer is None:
             logger.warning(
                 "correlation: no producer configured, cannot emit synthetic event",

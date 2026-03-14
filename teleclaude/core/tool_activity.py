@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from re import Pattern
 
 TOOL_ACTIVITY_PREVIEW_MAX_CHARS = 70
-_TREE_PREFIX_RE = re.compile(r"^(?:[│┃┆┊|]+\s*|[├└]\s*)+")
-_INLINE_TREE_MARKER_RE = re.compile(r"\s[├└]\s+")
-_NEXT_WORK_CALL_RE = re.compile(r"telec todo work\(\s*slug\s*=\s*([^)]+?)\s*\)")
-_NEXT_PREPARE_CALL_RE = re.compile(r"telec todo prepare\(\s*slug\s*=\s*([^)]+?)\s*\)")
-_NEXT_WORK_EMPTY_CALL_RE = re.compile(r"telec todo work\(\s*\)")
-_NEXT_PREPARE_EMPTY_CALL_RE = re.compile(r"telec todo prepare\(\s*\)")
+_TREE_PREFIX_RE: Pattern[str] = re.compile(r"^(?:[│┃┆┊|]+\s*|[├└]\s*)+")
+_INLINE_TREE_MARKER_RE: Pattern[str] = re.compile(r"\s[├└]\s+")
+_NEXT_WORK_CALL_RE: Pattern[str] = re.compile(r"telec todo work\(\s*slug\s*=\s*([^)]+?)\s*\)")
+_NEXT_PREPARE_CALL_RE: Pattern[str] = re.compile(r"telec todo prepare\(\s*slug\s*=\s*([^)]+?)\s*\)")
+_NEXT_WORK_EMPTY_CALL_RE: Pattern[str] = re.compile(r"telec todo work\(\s*\)")
+_NEXT_PREPARE_EMPTY_CALL_RE: Pattern[str] = re.compile(r"telec todo prepare\(\s*\)")
 _MAPPED_TOOL_NAMES: dict[str, str] = {
     "next_work": "telec todo work",
     "next_prepare": "telec todo prepare",
@@ -34,7 +35,7 @@ _MAPPED_TOOL_NAMES: dict[str, str] = {
     "channels_list": "telec channels list",
     "publish": "telec channels publish",
 }
-_MAPPED_TOOL_NAME_RE = re.compile(
+_MAPPED_TOOL_NAME_RE: Pattern[str] = re.compile(
     r"\b(" + "|".join(re.escape(name) for name in sorted(_MAPPED_TOOL_NAMES, key=len, reverse=True)) + r")\b"
 )
 
@@ -80,8 +81,14 @@ def _normalize_tool_invocations(text: str) -> str:
         slug_expr = _strip_quotes(match.group(1))
         return f"{command} {slug_expr}".strip()
 
-    normalized = _NEXT_WORK_CALL_RE.sub(lambda m: _replace_slug_call(m, "telec todo work"), text)
-    normalized = _NEXT_PREPARE_CALL_RE.sub(lambda m: _replace_slug_call(m, "telec todo prepare"), normalized)
+    def _replace_work_call(match: re.Match[str]) -> str:
+        return _replace_slug_call(match, "telec todo work")
+
+    def _replace_prepare_call(match: re.Match[str]) -> str:
+        return _replace_slug_call(match, "telec todo prepare")
+
+    normalized = _NEXT_WORK_CALL_RE.sub(_replace_work_call, text)
+    normalized = _NEXT_PREPARE_CALL_RE.sub(_replace_prepare_call, normalized)
     normalized = _NEXT_WORK_EMPTY_CALL_RE.sub("telec todo work", normalized)
     normalized = _NEXT_PREPARE_EMPTY_CALL_RE.sub("telec todo prepare", normalized)
 
@@ -130,8 +137,8 @@ def _extract_detail(tool_input: Mapping[str, object]) -> str | None:
             return _first_line(val)
 
     # Generic fallback: first string value that isn't empty
-    for val in tool_input.values():
-        text = _as_non_empty_str(val)
+    for candidate in tool_input.values():
+        text = _as_non_empty_str(candidate)
         if text:
             return _first_line(text)
 

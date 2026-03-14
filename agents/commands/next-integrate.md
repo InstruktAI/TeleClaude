@@ -39,14 +39,10 @@ confirming the candidate branch is clean, tests pass, and the worktree state mat
 expectations before merging to canonical main. Follow the lease protocol exactly.
 A failed merge that reaches main is harder to fix than a blocked integration queue.
 
-## Repo Root Sync Recovery
-
 After pushing to origin/main, the machine syncs local main via git pull. If the
 pull is blocked by dirty local files, you receive a REPO ROOT SYNC BLOCKED instruction.
-
-- **Tell the user** what happened: delivery is safe on origin, local main needs sync.
-- **Wait for confirmation** — other agent sessions may be active on local main.
-- **Run the stash/pull/pop sequence** exactly as instructed (with `TELECLAUDE_INTEGRATION_STASH=1`). <!-- guard: allow-git-stash -->
-- **If stash pop produces conflicts**: files deleted by the delivery that had local
-  edits are obsolete — accept the delivered version. Port real work to new locations.
-- After recovery, call `telec todo integrate` to complete cleanup.
+Tell the user what happened, wait for confirmation, then run the instructed
+stash/pull/pop sequence with `TELECLAUDE_INTEGRATION_STASH=1`. <!-- guard: allow-git-stash -->
+If stash pop produces conflicts, accept delivered versions for files deleted by the
+delivery and port any real local work to the new locations. After recovery, call
+`telec todo integrate` to complete cleanup.

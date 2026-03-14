@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from fastapi import WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
@@ -20,14 +20,14 @@ from teleclaude.api_models import (
     SessionClosedDataDTO,
     SessionClosedEventDTO,
     SessionDTO,
-    SessionStartedEventDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
+    SessionStartedEventDTO,
     SessionUpdatedEventDTO,
     TodoDTO,
 )
 from teleclaude.config import config
-from teleclaude.core.models import SessionSnapshot
+from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -48,23 +48,25 @@ from teleclaude.api.ws_constants import (
 logger = get_logger(__name__)
 
 
-class _WebSocketMixin:
+class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
     """WebSocket support methods extracted from APIServer."""
 
     if TYPE_CHECKING:
         client: AdapterClient
         task_registry: TaskRegistry | None
         _cache: DaemonCache | None
-        _event_db: EventDB | None
         _ws_clients: set[WebSocket]
         _client_subscriptions: dict[WebSocket, dict[str, set[str]]]
         _ws_client_states: dict[WebSocket, _WsClientState]
         _previous_interest: dict[str, set[str]]
         _refresh_debounce_task: asyncio.Task[object] | None
-        _refresh_pending_payload: dict[str, object] | None
+        _refresh_pending_payload: JsonDict | None
 
         @property
         def cache(self) -> DaemonCache | None: ...
+
+        @property
+        def _event_db(self) -> EventDB | None: ...
 
     async def _handle_websocket(self, websocket: WebSocket) -> None:
         """Handle WebSocket connection for push updates.
@@ -331,40 +333,54 @@ class _WebSocketMixin:
             event: Event type (e.g., "session_updated", "computer_updated")
             data: Event data
         """
-        # Convert to DTO payload if necessary
-        payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
-        if event in ("session_started", "session_updated"):
-            # Extract session from cache notification
-            session: SessionSnapshot | None = None
-            if isinstance(data, dict):
-                session_val = data.get("session")
-                if isinstance(session_val, SessionSnapshot):
-                    session = session_val
-            elif isinstance(data, SessionSnapshot):
-                session = data
+        session_payload = self._build_session_cache_payload(event, data)
+        if session_payload is not None:
+            self._broadcast_payload(event, session_payload)
+            return
 
-            if session:
-                dto = SessionDTO.from_core(session, computer=session.computer)
-                if event == "session_started":
-                    payload = SessionStartedEventDTO(
-                        event=event,
-                        data=dto,
-                    ).model_dump(exclude_none=True)
-                else:
-                    payload = SessionUpdatedEventDTO(
-                        event=event,
-                        data=dto,
-                    ).model_dump(exclude_none=True)
-            else:
-                payload = {"event": event, "data": data}
-        elif event == "session_closed":
-            if isinstance(data, dict):
-                payload = SessionClosedEventDTO(
-                    data=SessionClosedDataDTO(session_id=str(data.get("session_id", "")))
-                ).model_dump(exclude_none=True)
-            else:
-                payload = {"event": event, "data": data}
-        elif event in (
+        if event == "session_closed":
+            self._broadcast_payload(event, self._build_session_closed_payload(event, data))
+            return
+
+        refresh_payload = self._build_refresh_payload(event, data)
+        if refresh_payload is not None:
+            self._schedule_refresh_broadcast(refresh_payload)
+            return
+
+        self._broadcast_payload(event, self._build_generic_payload(event, data))
+
+    def _build_session_cache_payload(self, event: str, data: object) -> JsonDict | None:
+        """Build DTO-backed payloads for session cache events when possible."""
+        if event not in ("session_started", "session_updated"):
+            return None
+        session = self._extract_session_snapshot(data)
+        if session is None:
+            return None
+        dto = SessionDTO.from_core(session, computer=session.computer)
+        if event == "session_started":
+            return SessionStartedEventDTO(event=event, data=dto).model_dump(exclude_none=True)
+        return SessionUpdatedEventDTO(event=event, data=dto).model_dump(exclude_none=True)
+
+    def _extract_session_snapshot(self, data: object) -> SessionSnapshot | None:
+        """Extract a session snapshot from a cache notification payload."""
+        if isinstance(data, SessionSnapshot):
+            return data
+        if not isinstance(data, dict):
+            return None
+        session = data.get("session")
+        return session if isinstance(session, SessionSnapshot) else None
+
+    def _build_session_closed_payload(self, event: str, data: object) -> JsonDict:
+        """Build the session_closed websocket payload."""
+        if isinstance(data, dict):
+            return SessionClosedEventDTO(
+                data=SessionClosedDataDTO(session_id=str(data.get("session_id", "")))
+            ).model_dump(exclude_none=True)
+        return self._build_generic_payload(event, data)
+
+    def _build_refresh_payload(self, event: str, data: object) -> JsonDict | None:
+        """Build coalesced refresh payloads for cache snapshot/update events."""
+        if event not in {
             "computer_updated",
             "project_updated",
             "projects_updated",
@@ -374,63 +390,64 @@ class _WebSocketMixin:
             "todo_removed",
             "projects_snapshot",
             "todos_snapshot",
-        ):
-            computer: str | None = None
-            project_path: str | None = None
-            if isinstance(data, dict):
-                computer_val = data.get("computer")
-                if isinstance(computer_val, str):
-                    computer = computer_val
-                project_val = data.get("project_path")
-                if isinstance(project_val, str):
-                    project_path = project_val
-            else:
-                if hasattr(data, "computer"):
-                    computer_val = getattr(data, "computer")  # noqa: B009
-                    if isinstance(computer_val, str):
-                        computer = computer_val
-                if hasattr(data, "path"):
-                    path_val = getattr(data, "path")  # noqa: B009
-                    if isinstance(path_val, str):
-                        project_path = path_val
-                if event == "computer_updated" and computer is None and hasattr(data, "name"):
-                    name_val = getattr(data, "name")  # noqa: B009
-                    if isinstance(name_val, str):
-                        computer = name_val
+        }:
+            return None
 
-            normalized_event: Literal[
-                "computer_updated",
-                "project_updated",
-                "projects_updated",
-                "todos_updated",
-                "todo_created",
-                "todo_updated",
-                "todo_removed",
-            ]
-            if event == "projects_snapshot":
-                normalized_event = "projects_updated"
-            elif event == "todos_snapshot":
-                normalized_event = "todos_updated"
-            else:
-                normalized_event = event  # type: ignore[assignment]
+        computer, project_path = self._extract_refresh_targets(event, data)
+        normalized_event = self._normalize_refresh_event(event)
+        return RefreshEventDTO(
+            event=normalized_event,
+            data=RefreshDataDTO(computer=computer, project_path=project_path),
+        ).model_dump(exclude_none=True)
 
-            payload = RefreshEventDTO(
-                event=normalized_event,
-                data=RefreshDataDTO(computer=computer, project_path=project_path),
-            ).model_dump(exclude_none=True)
-            self._schedule_refresh_broadcast(payload)
-            return
-        else:
-            # Fallback for other events
-            if hasattr(data, "to_dict"):
-                # Use type ignore since we check hasattr
-                payload = {"event": event, "data": data.to_dict()}  # pyright: ignore[reportAttributeAccessIssue]
-            else:
-                payload = {"event": event, "data": data}
+    def _extract_refresh_targets(self, event: str, data: object) -> tuple[str | None, str | None]:
+        """Resolve the affected computer/project identifiers for refresh events."""
+        if isinstance(data, dict):
+            computer = data.get("computer")
+            project_path = data.get("project_path")
+            return (
+                computer if isinstance(computer, str) else None,
+                project_path if isinstance(project_path, str) else None,
+            )
 
-        self._broadcast_payload(event, payload)
+        computer = self._get_optional_str_attr(data, "computer")
+        project_path = self._get_optional_str_attr(data, "path")
+        if event == "computer_updated" and computer is None:
+            computer = self._get_optional_str_attr(data, "name")
+        return computer, project_path
 
-    def _schedule_refresh_broadcast(self, payload: dict[str, object]) -> None:  # guard: loose-dict - WS payload
+    def _normalize_refresh_event(
+        self, event: str
+    ) -> Literal[
+        "computer_updated",
+        "project_updated",
+        "projects_updated",
+        "todos_updated",
+        "todo_created",
+        "todo_updated",
+        "todo_removed",
+    ]:
+        """Map snapshot-style cache events onto the WS refresh event contract."""
+        if event == "projects_snapshot":
+            return "projects_updated"
+        if event == "todos_snapshot":
+            return "todos_updated"
+        return event  # type: ignore[return-value]
+
+    def _build_generic_payload(self, event: str, data: object) -> JsonDict:
+        """Fallback websocket payload for non-DTO events."""
+        if hasattr(data, "to_dict"):
+            return {"event": event, "data": cast(JsonValue, data.to_dict())}  # pyright: ignore[reportAttributeAccessIssue]
+        return {"event": event, "data": cast(JsonValue, data)}
+
+    def _get_optional_str_attr(self, obj: object, attr_name: str) -> str | None:
+        """Read a string attribute when present on an arbitrary cache object."""
+        if not hasattr(obj, attr_name):
+            return None
+        value = getattr(obj, attr_name)
+        return value if isinstance(value, str) else None
+
+    def _schedule_refresh_broadcast(self, payload: JsonDict) -> None:
         """Coalesce refresh events into a single WS broadcast."""
         self._refresh_pending_payload = payload
         if self._refresh_debounce_task and not self._refresh_debounce_task.done():
@@ -449,13 +466,7 @@ class _WebSocketMixin:
         else:
             self._refresh_debounce_task = asyncio.create_task(_debounced())
 
-    def _broadcast_payload(
-        self,
-        event: str,
-        payload: dict[str, object],  # guard: loose-dict - WS payload
-        *,
-        targets: list[WebSocket] | None = None,
-    ) -> None:
+    def _broadcast_payload(self, event: str, payload: JsonDict, *, targets: list[WebSocket] | None = None) -> None:
         """Send a WS payload to connected clients. If targets is given, only those clients receive it."""
         clients = targets if targets is not None else list(self._ws_clients)
         for ws in clients:
@@ -483,14 +494,14 @@ class _WebSocketMixin:
                 state.sender_task = asyncio.create_task(sender, name=task_name)
         return state
 
-    def _enqueue_ws_payload(self, websocket: WebSocket, event: str, payload: dict[str, object]) -> None:
+    def _enqueue_ws_payload(self, websocket: WebSocket, event: str, payload: JsonDict) -> None:
         """Queue a payload for serialized delivery to one websocket."""
         if websocket not in self._ws_clients:
             return
         state = self._ensure_ws_client_state(websocket)
         state.queue.put_nowait((event, payload))
 
-    async def _send_or_enqueue_payload(self, websocket: WebSocket, event: str, payload: dict[str, object]) -> None:
+    async def _send_or_enqueue_payload(self, websocket: WebSocket, event: str, payload: JsonDict) -> None:
         """Send directly for untracked sockets or enqueue for managed clients."""
         if websocket in self._ws_clients:
             self._enqueue_ws_payload(websocket, event, payload)
@@ -508,7 +519,7 @@ class _WebSocketMixin:
             finally:
                 state.queue.task_done()
 
-    async def _send_ws_payload(self, websocket: WebSocket, event: str, payload: dict[str, object]) -> bool:
+    async def _send_ws_payload(self, websocket: WebSocket, event: str, payload: JsonDict) -> bool:
         """Send one payload and normalize disconnect handling."""
         timeout = self._ws_send_timeout_seconds(event)
         try:

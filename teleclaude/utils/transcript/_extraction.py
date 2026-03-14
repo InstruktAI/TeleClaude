@@ -395,79 +395,99 @@ def _find_workdir_in_obj(obj: object) -> str | None:
     return None
 
 
+def _collect_abs_paths(obj: object, out: list[str]) -> None:
+    """Collect absolute filesystem paths from a nested JSON object."""
+    if isinstance(obj, dict):
+        for value in obj.values():
+            _collect_abs_paths(value, out)
+        return
+    if isinstance(obj, list):
+        for item in obj:
+            _collect_abs_paths(item, out)
+        return
+    if isinstance(obj, str) and Path(obj).is_absolute():
+        out.append(obj.strip())
+
+
+def _derive_workdir_from_paths(paths: list[str]) -> str | None:
+    """Infer a common workdir from absolute file or directory paths."""
+    normalized: list[str] = []
+    for raw in paths:
+        candidate = raw.strip()
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if path.suffix and not candidate.endswith("/"):
+            path = path.parent
+        normalized.append(str(path))
+
+    if not normalized:
+        return None
+
+    try:
+        common = Path(os.path.commonpath(normalized))
+    except ValueError:
+        return normalized[0]
+
+    if common.is_file():
+        common = common.parent
+    return str(common)
+
+
+def _extract_workdir_from_jsonl(path: Path) -> str | None:
+    """Inspect a JSONL transcript for explicit or inferred workdir metadata."""
+    abs_paths: list[str] = []
+    with open(path, encoding="utf-8") as f:
+        for idx, line in enumerate(f):
+            if idx > 200:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if isinstance(entry, dict) and entry.get("type") == "session_meta":
+                found = _find_workdir_in_obj(entry.get("payload"))
+                if found:
+                    return found
+
+            _collect_abs_paths(entry, abs_paths)
+            found = _find_workdir_in_obj(entry)
+            if found:
+                return found
+
+    return _derive_workdir_from_paths(abs_paths)
+
+
+def _extract_workdir_from_json(path: Path) -> str | None:
+    """Inspect a JSON transcript for explicit or inferred workdir metadata."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    found = _find_workdir_in_obj(data)
+    if found:
+        return found
+
+    abs_paths: list[str] = []
+    _collect_abs_paths(data, abs_paths)
+    return _derive_workdir_from_paths(abs_paths)
+
+
 def extract_workdir_from_transcript(transcript_path: str) -> str | None:
     """Extract a working directory path from a native transcript file."""
     path = Path(transcript_path).expanduser()
     if not path.exists():
         return None
 
-    def _collect_abs_paths(obj: object, out: list[str]) -> None:
-        if isinstance(obj, dict):
-            for value in obj.values():
-                _collect_abs_paths(value, out)
-        elif isinstance(obj, list):
-            for item in obj:
-                _collect_abs_paths(item, out)
-        elif isinstance(obj, str) and Path(obj).is_absolute():
-            out.append(obj.strip())
-
-    def _derive_workdir_from_paths(paths: list[str]) -> str | None:
-        if not paths:
-            return None
-        normalized: list[str] = []
-        for raw in paths:
-            candidate = raw.strip()
-            if not candidate:
-                continue
-            p = Path(candidate)
-            # If this looks like a file path, use its parent directory.
-            if p.suffix and not candidate.endswith("/"):
-                p = p.parent
-            normalized.append(str(p))
-        if not normalized:
-            return None
-        try:
-            common = Path(os.path.commonpath(normalized))
-        except ValueError:
-            return normalized[0]
-        if common.is_file():
-            common = common.parent
-        return str(common)
-
     try:
         if path.suffix == ".jsonl":
-            with open(path, encoding="utf-8") as f:
-                abs_paths: list[str] = []
-                for idx, line in enumerate(f):
-                    if idx > 200:
-                        break
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if isinstance(entry, dict) and entry.get("type") == "session_meta":
-                        payload = entry.get("payload")
-                        found = _find_workdir_in_obj(payload)
-                        if found:
-                            return found
-                    _collect_abs_paths(entry, abs_paths)
-                    found = _find_workdir_in_obj(entry)
-                    if found:
-                        return found
-            return _derive_workdir_from_paths(abs_paths)
+            return _extract_workdir_from_jsonl(path)
 
         if path.suffix == ".json":
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-            found = _find_workdir_in_obj(data)
-            if found:
-                return found
-            abs_paths: list[str] = []
-            _collect_abs_paths(data, abs_paths)
-            return _derive_workdir_from_paths(abs_paths)
+            return _extract_workdir_from_json(path)
     except OSError:
         return None
     except json.JSONDecodeError:

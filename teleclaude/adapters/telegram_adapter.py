@@ -47,7 +47,7 @@ from .ui_adapter import UiAdapter
 logger = get_logger(__name__)
 
 
-class TelegramAdapter(
+class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]
     PrivateHandlersMixin,
     LifecycleMixin,
     InputHandlersMixin,
@@ -621,8 +621,3 @@ class TelegramAdapter(
                 ]
             )
         return InlineKeyboardMarkup(keyboard)
-
-
-
-
-

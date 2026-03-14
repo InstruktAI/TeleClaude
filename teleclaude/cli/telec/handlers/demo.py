@@ -1,4 +1,5 @@
 """Handlers for telec todo demo subcommands."""
+
 from __future__ import annotations
 
 import os
@@ -8,18 +9,17 @@ from pathlib import Path
 
 from teleclaude.cli.telec.help import _usage
 
-
-
 __all__ = [
+    "_check_no_demo_marker",
+    "_demo_create",
+    "_demo_list",
+    "_demo_run",
+    "_demo_validate",
     "_extract_demo_blocks",
     "_find_demo_md",
-    "_check_no_demo_marker",
-    "_demo_list",
-    "_demo_validate",
-    "_demo_run",
-    "_demo_create",
     "_handle_todo_demo",
 ]
+
 
 def _extract_demo_blocks(content: str) -> list[tuple[int, str, bool, str]]:
     """Extract bash blocks from demo.md with skip-validation metadata.

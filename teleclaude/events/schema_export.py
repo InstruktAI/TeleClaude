@@ -11,12 +11,12 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventEnvelope
 
 
-def export_json_schema() -> dict[str, Any]:
+def export_json_schema() -> JsonDict:
     """Return the JSON Schema document for EventEnvelope."""
     return EventEnvelope.model_json_schema()
 

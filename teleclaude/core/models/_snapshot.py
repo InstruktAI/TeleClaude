@@ -8,6 +8,7 @@ from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.types import SystemStats
 
 from ._session import Session, SessionMetadata
+from ._types import JsonDict
 
 
 class ThinkingMode(str, Enum):
@@ -302,9 +303,9 @@ class TodoInfo:
             finalize_status=cast(str | None, data.get("finalize_status")),
         )
 
-    def to_dict(self) -> dict[str, object]:  # guard: loose-dict
+    def to_dict(self) -> JsonDict:  # guard: loose-dict
         """Convert to dict."""
-        return cast(dict[str, object], asdict(self))
+        return cast(JsonDict, asdict(self))
 
 
 @dataclass
@@ -330,9 +331,9 @@ class ProjectInfo:
         )
         # fmt: on
 
-    def to_dict(self) -> dict[str, object]:  # guard: loose-dict
+    def to_dict(self) -> JsonDict:  # guard: loose-dict
         """Convert to dict."""
-        result = cast(dict[str, object], asdict(self))
+        result = cast(JsonDict, asdict(self))
         result["todos"] = [t.to_dict() for t in self.todos]
         return result
 

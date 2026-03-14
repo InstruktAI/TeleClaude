@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
 
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.core import PreparePhase
 
 # ---------------------------------------------------------------------------
@@ -35,9 +35,9 @@ def _write_file(base: Path, name: str, content: str = _LONG) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _v2_state(extra: dict[str, Any] | None = None) -> dict[str, Any]:
+def _v2_state(extra: dict[str, StateValue] | None = None) -> dict[str, StateValue]:
     """Build a minimal v2 state dict with artifacts section."""
-    s: dict[str, Any] = {
+    s: dict[str, StateValue] = {
         "schema_version": 2,
         "artifacts": {
             "input": {"digest": "", "produced_at": "", "stale": False},
@@ -111,7 +111,7 @@ def test_v1_state_file_existence_respected(tmp_path: Path) -> None:
     _write_file(tmp_path / "todos" / slug, "input.md")
     _write_file(tmp_path / "todos" / slug, "requirements.md")
 
-    v1_state: dict[str, Any] = {
+    v1_state: dict[str, StateValue] = {
         "requirements_review": {
             "verdict": "",
             "findings_count": 0,
@@ -184,9 +184,7 @@ class _git_result:
 
 def _write_state(todo_dir: Path, state: dict) -> None:
     todo_dir.mkdir(parents=True, exist_ok=True)
-    (todo_dir / "state.yaml").write_text(
-        yaml.dump(state, default_flow_style=False), encoding="utf-8"
-    )
+    (todo_dir / "state.yaml").write_text(yaml.dump(state, default_flow_style=False), encoding="utf-8")
 
 
 def test_bug_md_presence_does_not_determine_bug_identity(tmp_path: Path) -> None:
@@ -243,7 +241,7 @@ def test_bug_review_passes_without_quality_checklist(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _build_review_state(findings: list[dict[str, Any]], verdict: str = "") -> dict[str, Any]:
+def _build_review_state(findings: list[dict[str, StateValue]], verdict: str = "") -> dict[str, StateValue]:
     return {
         "schema_version": 2,
         "prepare_phase": "requirements_review",
@@ -316,7 +314,13 @@ async def test_all_findings_resolved_yields_approve(mock_emit: MagicMock, tmp_pa
 
     findings = [
         {"id": "f1", "severity": "trivial", "summary": "formatting", "status": "resolved", "resolved_at": "2025-01-01"},
-        {"id": "f2", "severity": "substantive", "summary": "coverage", "status": "resolved", "resolved_at": "2025-01-01"},
+        {
+            "id": "f2",
+            "severity": "substantive",
+            "summary": "coverage",
+            "status": "resolved",
+            "resolved_at": "2025-01-01",
+        },
     ]
     state = _build_review_state(findings, verdict="approve")
     write_phase_state(cwd, slug, state)
@@ -348,7 +352,11 @@ async def test_unresolved_substantive_yields_needs_work(mock_emit: MagicMock, tm
 
     mock_db = MagicMock()
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
 
     assert keep_going is False
@@ -395,7 +403,7 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
     cwd, slug = _make_todo(tmp_path)
     _write_file(tmp_path / "todos" / slug, "requirements.md")
 
-    state: dict[str, Any] = {
+    state: dict[str, StateValue] = {
         "schema_version": 1,
         "prepare_phase": "requirements_review",
         "requirements_review": {
@@ -406,14 +414,23 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
         },
         "plan_review": {"verdict": "", "findings_count": 0, "rounds": 0},
         "grounding": {
-            "valid": False, "base_sha": "", "input_digest": "",
-            "referenced_paths": [], "last_grounded_at": "", "invalidated_at": "", "invalidation_reason": "",
+            "valid": False,
+            "base_sha": "",
+            "input_digest": "",
+            "referenced_paths": [],
+            "last_grounded_at": "",
+            "invalidated_at": "",
+            "invalidation_reason": "",
         },
     }
     write_phase_state(cwd, slug, state)
 
     mock_db = MagicMock()
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
 
     assert keep_going is False
@@ -468,7 +485,11 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
 
     mock_db = MagicMock()
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
             with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
@@ -520,7 +541,11 @@ async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
 
     mock_db = MagicMock()
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
             with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
@@ -569,7 +594,11 @@ async def test_plan_with_empty_referenced_paths_advances_normally(
 
     mock_db = MagicMock()
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
             with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
@@ -599,7 +628,11 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     cwd, slug = _make_todo(tmp_path)
     long_content = "This is the original content that is long enough to pass the scaffold content check in teleclaude."
     input_file = _write_file(tmp_path / "todos" / slug, "input.md", long_content)
-    _write_file(tmp_path / "todos" / slug, "requirements.md", "Requirements document with enough content to pass scaffold threshold for testing purposes.")
+    _write_file(
+        tmp_path / "todos" / slug,
+        "requirements.md",
+        "Requirements document with enough content to pass scaffold threshold for testing purposes.",
+    )
 
     record_artifact_produced(cwd, slug, "input.md")
     record_artifact_produced(cwd, slug, "requirements.md")
@@ -623,12 +656,18 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     mock_db = MagicMock()
     mock_db.scalar_one_or_none = AsyncMock(return_value=None)
 
-    with patch("teleclaude.core.next_machine.core.compose_agent_guidance", return_value=AsyncMock(return_value="guidance")()):
+    with patch(
+        "teleclaude.core.next_machine.core.compose_agent_guidance", return_value=AsyncMock(return_value="guidance")()
+    ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
             with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
 
-    all_calls = [c[0][0] for c in mock_core_emit.call_args_list] + [c[0][0] for c in mock_helpers_emit.call_args_list] + [c[0][0] for c in mock_prepare_emit.call_args_list]
+    all_calls = (
+        [c[0][0] for c in mock_core_emit.call_args_list]
+        + [c[0][0] for c in mock_helpers_emit.call_args_list]
+        + [c[0][0] for c in mock_prepare_emit.call_args_list]
+    )
     assert any("artifact_invalidated" in call for call in all_calls), f"Expected artifact_invalidated in {all_calls}"
 
 
@@ -645,7 +684,11 @@ async def test_next_prepare_no_staleness_proceeds_normally(
     from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
 
     cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md", "This is stable input that has enough content to pass scaffold threshold for the test.")
+    _write_file(
+        tmp_path / "todos" / slug,
+        "input.md",
+        "This is stable input that has enough content to pass scaffold threshold for the test.",
+    )
 
     record_artifact_produced(cwd, slug, "input.md")
 
@@ -657,7 +700,11 @@ async def test_next_prepare_no_staleness_proceeds_normally(
 
     mock_db = MagicMock()
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
             with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)

@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any, cast
 
-discord = importlib.import_module("discord")
+if TYPE_CHECKING:
+    import discord as discord_module
+
+    discord = discord_module
+else:
+    discord = cast(Any, importlib.import_module("discord"))
 
 LaunchCallback = Callable[[object, str], Awaitable[None]]
 

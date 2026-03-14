@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _IncrementalOutputMixin:
+class _IncrementalOutputMixin:  # pyright: ignore[reportUnusedClass]
     """Suppression tracking and incremental threaded output rendering."""
 
     if TYPE_CHECKING:

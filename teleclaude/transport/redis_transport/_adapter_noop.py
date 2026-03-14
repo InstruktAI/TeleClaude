@@ -14,7 +14,7 @@ from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session
 logger = get_logger(__name__)
 
 
-class _AdapterNoopMixin:
+class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: BaseAdapter no-op overrides for Redis transport."""
 
     async def send_message(

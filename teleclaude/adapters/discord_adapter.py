@@ -51,7 +51,7 @@ class DiscordClientLike(Protocol):
     async def close(self) -> None: ...
 
 
-class DiscordAdapter(
+class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,reportIncompatibleVariableOverride]
     ChannelOperationsMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
@@ -123,7 +123,7 @@ class DiscordAdapter(
         intents.messages = True
         intents.message_content = True
 
-        self._client = self._discord.Client(intents=intents)
+        self._client = self._discord.Client(intents=intents)  # pyright: ignore[reportIncompatibleVariableOverride]
         self._register_cancel_slash_command()
         self._register_gateway_handlers()
         self._ready_event.clear()

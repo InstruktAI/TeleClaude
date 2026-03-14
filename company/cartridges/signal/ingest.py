@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -31,14 +31,14 @@ class SignalIngestCartridge:
         self._ai = ai
         self._signal_db = signal_db
 
-    async def process(self, event: EventEnvelope, context: "PipelineContext") -> EventEnvelope | None:
+    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         # Only acts on the scheduler trigger; all other events pass through unchanged.
         if event.event != "signal.pull.triggered":
             return event
         await self.pull(context)
         return None
 
-    async def pull(self, context: "PipelineContext") -> int:
+    async def pull(self, context: PipelineContext) -> int:
         """Explicit pull — returns count of new items ingested."""
         sources = await load_sources(self._config)
         sem = asyncio.Semaphore(self._config.ai_concurrency)
@@ -50,6 +50,7 @@ class SignalIngestCartridge:
                 continue
             if not source.url:
                 continue
+            source_id = source.label or source.url or ""
 
             result = await fetch_url(source.url)
             if result.error or result.body is None:
@@ -66,15 +67,14 @@ class SignalIngestCartridge:
                     new_items.append((ikey, item))
 
             # Enrich new items concurrently
-            async def enrich_and_emit(ikey: str, item: dict) -> None:
+            async def enrich_and_emit(ikey: str, item: dict, *, source_id: str = source_id) -> None:
                 nonlocal count
                 async with sem:
                     summary = await self._ai.summarise(item.get("title", ""), item.get("description", ""))
                     tags = await self._ai.extract_tags(item.get("title", ""), summary)
                     embed = await self._ai.embed(summary)
 
-                fetched_at = datetime.now(timezone.utc).isoformat()
-                source_id = source.label or source.url or ""
+                fetched_at = datetime.now(UTC).isoformat()
                 payload: dict[str, object] = {
                     "idempotency_key": ikey,
                     "source_id": source_id,

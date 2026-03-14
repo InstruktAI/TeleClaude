@@ -6,15 +6,50 @@ import asyncio
 import random
 import ssl
 import time
+from typing import TYPE_CHECKING, TypeAlias
 
 from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
 
 logger = get_logger(__name__)
 
+_RedisKwargValue: TypeAlias = str | int | float | bool | None | ssl.VerifyMode
 
-class _ConnectionMixin:
+if TYPE_CHECKING:
+    from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.task_registry import TaskRegistry
+
+
+class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: Redis connection lifecycle, reconnect loop, start/stop."""
+
+    if TYPE_CHECKING:
+        task_registry: TaskRegistry | None
+        _connection_task: asyncio.Task[object] | None
+        _message_poll_task: asyncio.Task[object] | None
+        _heartbeat_task: asyncio.Task[object] | None
+        _peer_refresh_task: asyncio.Task[object] | None
+        _reconnect_task: asyncio.Task[object] | None
+        _running: bool
+        _idle_poll_last_log_at: float | None
+        _idle_poll_suppressed: int
+        _redis_ready: asyncio.Event
+        _redis_last_error: str | None
+        redis: Redis
+        redis_url: str
+        redis_password: str | None
+        max_connections: int
+        socket_timeout: float | None
+        message_stream_maxlen: int
+        output_stream_maxlen: int
+
+        @property
+        def cache(self) -> DaemonCache | None: ...
+
+        async def _poll_redis_messages(self) -> None: ...
+        async def _heartbeat_loop(self) -> None: ...
+        async def _peer_refresh_loop(self) -> None: ...
+        async def refresh_remote_snapshot(self) -> None: ...
 
     def _reset_idle_poll_log_throttle(self) -> None:
         self._idle_poll_last_log_at = None
@@ -121,7 +156,7 @@ class _ConnectionMixin:
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""
-        kwargs: dict[str, object] = {
+        kwargs: dict[str, _RedisKwargValue] = {
             "password": self.redis_password,
             "max_connections": self.max_connections,
             "socket_timeout": self.socket_timeout,

@@ -42,7 +42,7 @@ class SignalSynthesizeCartridge:
         self._ai = ai
         self._signal_db = signal_db
 
-    async def process(self, event: EventEnvelope, context: "PipelineContext") -> EventEnvelope | None:
+    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         if event.event != "signal.cluster.formed":
             return event
 

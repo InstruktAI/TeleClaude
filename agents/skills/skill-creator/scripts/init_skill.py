@@ -82,7 +82,7 @@ def init_skill(skill_name: str, path: str) -> Path | None:
     return skill_dir
 
 
-def main():
+def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: init_skill.py <skill-name> [--path <path>]")
         sys.exit(1)

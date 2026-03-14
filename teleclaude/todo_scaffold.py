@@ -10,6 +10,8 @@ from pathlib import Path
 import yaml
 
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.models import JsonDict
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.slug import ensure_unique_slug, validate_slug
 from teleclaude.types.todos import BreakdownState, DorState, TodoState
 
@@ -156,7 +158,7 @@ def create_bug_skeleton(
     return todo_dir
 
 
-def _emit_prepare_event(event_type: str, payload: dict[str, object]) -> None:
+def _emit_prepare_event(event_type: str, payload: JsonDict) -> None:
     """Fire-and-forget prepare lifecycle event (mirrors core helper)."""
     from teleclaude.core.next_machine.core import _emit_prepare_event as _core_emit
 
@@ -169,8 +171,8 @@ def _inherit_parent_phase(
     parent_slug: str,
     child_slug: str,
     child_dir: Path,
-    parent_req_review: dict[str, object],
-    parent_plan_review: dict[str, object],
+    parent_req_review: dict[str, StateValue],
+    parent_plan_review: dict[str, StateValue],
     req_approved: bool,
     plan_approved: bool,
     parent_requirements_path: Path,
@@ -185,7 +187,14 @@ def _inherit_parent_phase(
     # Determine inherited phase and skipped phases
     if plan_approved:
         inherited_phase = "prepared"
-        skipped_phases = ["input_assessment", "triangulation", "requirements_review", "plan_drafting", "plan_review", "gate"]
+        skipped_phases = [
+            "input_assessment",
+            "triangulation",
+            "requirements_review",
+            "plan_drafting",
+            "plan_review",
+            "gate",
+        ]
     else:
         # req_approved only
         inherited_phase = "plan_drafting"
@@ -259,9 +268,7 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
     state = read_phase_state(str(project_root), parent_slug)
     breakdown = state.get("breakdown", {})
     if isinstance(breakdown, dict) and breakdown.get("todos"):
-        raise ValueError(
-            f"Todo '{parent_slug}' is already a container with children: {breakdown['todos']}"
-        )
+        raise ValueError(f"Todo '{parent_slug}' is already a container with children: {breakdown['todos']}")
 
     # Validate all child slugs and check they don't exist
     for child in child_slugs:

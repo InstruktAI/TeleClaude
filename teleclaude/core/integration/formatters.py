@@ -146,3 +146,14 @@ NEXT: End this session — integration complete"""
 
 def _format_error(code: str, message: str) -> str:
     return f"INTEGRATION ERROR: {code}\n{message}"
+
+
+__all__ = [
+    "_format_commit_decision",
+    "_format_conflict_decision",
+    "_format_error",
+    "_format_lease_busy",
+    "_format_pull_blocked",
+    "_format_push_rejected",
+    "_format_queue_empty",
+]

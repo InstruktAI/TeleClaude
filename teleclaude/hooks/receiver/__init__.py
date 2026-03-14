@@ -20,6 +20,7 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS, is_internal_user_text
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_RECHECK_FLAG,
@@ -192,7 +193,7 @@ def _render_person_header(person: PersonEntry) -> str:
     for domain, value in expertise.items():
         if isinstance(value, str):
             lines.append(f"  {domain}: {value}")
-        elif isinstance(value, dict):
+        else:
             default = value.get("default")
             sub_areas = {k: v for k, v in value.items() if k != "default"}
             if default and sub_areas:
@@ -230,10 +231,8 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
                         identity_key = derive_identity_key(adapter_meta)
                     human_email = getattr(row, "human_email", None)
                     if human_email:
-                        person = next(
-                            (p for p in config.people if p.email == human_email),
-                            None,
-                        )
+                        people = getattr(config, "people", [])
+                        person = next((p for p in people if p.email == human_email), None)
                         if person:
                             person_header = _render_person_header(person)
         except Exception:
@@ -451,24 +450,9 @@ def _emit_receiver_error_best_effort(
         logger.error("Receiver error reporting failed", error=str(exc), code=code)
 
 
-# guard: loose-dict-func - Main path processes raw hook payload boundaries.
-def main() -> None:
-    args = _parse_args()
-
-    logger.trace(
-        "Hook receiver start",
-        argv=sys.argv,
-        cwd=os.getcwd(),
-        stdin_tty=sys.stdin.isatty(),
-        has_event_arg=bool(args.event_type),
-        agent=args.agent,
-    )
-
-    adapter = get_adapter(args.agent)
-
-    # Parse input via adapter (agent-specific input format)
+def _parse_receiver_input(args: argparse.Namespace, adapter: object) -> tuple[str, str, JsonDict]:
     try:
-        raw_input, raw_event_type, raw_data = adapter.parse_input(args)
+        return adapter.parse_input(args)  # type: ignore[union-attr]
     except json.JSONDecodeError:
         _emit_receiver_error_best_effort(
             agent=args.agent,
@@ -486,36 +470,18 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
-    log_raw = True
-    _log_raw_input(raw_input, log_raw=log_raw)
 
-    # Map agent-specific event_type to TeleClaude internal event_type
+def _map_hook_event_type(agent: str, raw_event_type: str) -> str:
     event_type = raw_event_type
-    agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(args.agent, {})
-
-    # Contract boundary: event names are trusted; only exact mapping is allowed.
+    agent_map = AgentHookEvents.HOOK_EVENT_MAP.get(agent, {})
     mapped_event_type = agent_map.get(raw_event_type)
-
-    # Use mapped event if found, otherwise keep original (for direct events like 'tool_done')
     if mapped_event_type:
         event_type = mapped_event_type
         logger.debug("Mapped hook event: %s -> %s", raw_event_type, event_type)
+    return event_type
 
-    # Event types outside the handled contract are ignored by design.
-    if event_type not in _HANDLED_EVENTS:
-        logger.debug(
-            "Dropped unhandled hook event", event_type=event_type, raw_event_type=raw_event_type, agent=args.agent
-        )
-        sys.exit(0)
 
-    headless_route = _is_headless_route()
-
-    # Normalize payload: maps agent-specific field names to canonical internal names.
-    # After this, all agents use: session_id, transcript_path, prompt, message.
-    data = adapter.normalize_payload(dict(raw_data))
-
-    # Extract native identity from normalized data (agent-agnostic)
+def _extract_native_hook_fields(data: JsonDict) -> tuple[str | None, str | None]:
     raw_native_session_id: str | None = None
     raw_id = data.get("session_id")
     if isinstance(raw_id, str):
@@ -525,19 +491,30 @@ def main() -> None:
     raw_log = data.get("transcript_path")
     if isinstance(raw_log, str):
         raw_native_log_file = raw_log
+    return raw_native_session_id, raw_native_log_file
 
+
+def _resolve_receiver_session_id(
+    *,
+    agent: str,
+    event_type: str,
+    raw_event_type: str,
+    raw_native_session_id: str | None,
+    headless_route: bool,
+    adapter: object,
+) -> str | None:
     try:
         teleclaude_session_id, cached_session_id, existing_id = _resolve_hook_session_id(
-            agent=args.agent,
+            agent=agent,
             event_type=event_type,
             native_session_id=raw_native_session_id,
             headless=headless_route,
-            mint_events=adapter.mint_events,
+            mint_events=adapter.mint_events,  # type: ignore[union-attr]
         )
     except ValueError as exc:
         logger.error(
             "Hook receiver contract violation",
-            agent=args.agent,
+            agent=agent,
             event_type=event_type,
             headless=headless_route,
             error=str(exc),
@@ -545,7 +522,7 @@ def main() -> None:
         sys.exit(1)
     logger.debug(
         "Hook session resolution",
-        agent=args.agent,
+        agent=agent,
         headless=headless_route,
         event_type=event_type,
         cached_session_id=(cached_session_id or ""),
@@ -553,17 +530,170 @@ def main() -> None:
         resolved_session_id=(teleclaude_session_id or ""),
         native_session_id=(raw_native_session_id or ""),
     )
-    if not teleclaude_session_id:
-        logger.debug(
-            "Hook session has no TeleClaude mapping, dropping event",
-            agent=args.agent,
-            headless=headless_route,
+    if teleclaude_session_id:
+        return teleclaude_session_id
+    logger.debug(
+        "Hook session has no TeleClaude mapping, dropping event",
+        agent=agent,
+        headless=headless_route,
+        event_type=event_type,
+        raw_event_type=raw_event_type,
+        native_session_id=(raw_native_session_id or ""),
+        cached_session_id=(cached_session_id or ""),
+        existing_session_id=(existing_id or ""),
+    )
+    return None
+
+
+def _persist_native_metadata(
+    *,
+    session_id: str,
+    agent: str,
+    event_type: str,
+    raw_native_session_id: str | None,
+    raw_native_log_file: str | None,
+) -> None:
+    if raw_native_session_id:
+        _update_session_native_fields(
+            session_id,
+            agent=agent,
             event_type=event_type,
-            raw_event_type=raw_event_type,
-            native_session_id=(raw_native_session_id or ""),
-            cached_session_id=(cached_session_id or ""),
-            existing_session_id=(existing_id or ""),
+            native_log_file=raw_native_log_file,
+            native_session_id=raw_native_session_id,
         )
+        return
+    if raw_native_log_file:
+        _update_session_native_fields(
+            session_id,
+            agent=agent,
+            event_type=event_type,
+            native_log_file=raw_native_log_file,
+        )
+
+
+def _handle_user_prompt_submit(
+    *,
+    event_type: str,
+    data: JsonDict,
+    agent: str,
+    session_id: str,
+    raw_native_session_id: str | None,
+    raw_event_type: str,
+) -> bool:
+    if event_type != AgentHookEvents.USER_PROMPT_SUBMIT:
+        return False
+    prompt_value = data.get("prompt")
+    prompt_text = prompt_value if isinstance(prompt_value, str) else ""
+    if not prompt_text.strip():
+        logger.warning(
+            "Dropped empty user_prompt_submit hook event",
+            agent=agent,
+            session_id=session_id,
+            native_session_id=(raw_native_session_id or ""),
+            hook_event_name=str(data.get("hook_event_name") or ""),
+            raw_event_type=str(raw_event_type or ""),
+        )
+        return True
+    if is_internal_user_text(prompt_text):
+        logger.debug(
+            "Dropped system-injected user_prompt_submit",
+            agent=agent,
+            session_id=session_id,
+        )
+        return True
+    _reset_checkpoint_flags(session_id)
+    return False
+
+
+def _maybe_inject_memory_context(
+    *,
+    event_type: str,
+    cwd: str | None,
+    adapter: object,
+    session_id: str,
+) -> None:
+    if event_type != AgentHookEvents.AGENT_SESSION_START:
+        return
+    if cwd:
+        project_name = Path(cwd).name
+        logger.debug("Injecting memory index for session_start", project=project_name)
+        _print_memory_injection(cwd, adapter, session_id=session_id)
+        return
+    logger.error("Skipping memory injection: no CWD provided (contract violation)")
+
+
+def _maybe_emit_checkpoint_response(
+    *,
+    event_type: str,
+    adapter: object,
+    session_id: str,
+    agent: str,
+    raw_data: JsonDict,
+) -> None:
+    if event_type != AgentHookEvents.AGENT_STOP or not adapter.supports_hook_checkpoint:  # type: ignore[union-attr]
+        return
+    checkpoint_reason: str | None = None
+    try:
+        checkpoint_reason = _maybe_checkpoint_output(session_id, agent, raw_data)
+    except Exception as exc:
+        logger.warning(
+            "Checkpoint eval crashed (ignored)",
+            event_type=event_type,
+            session_id=session_id,
+            agent=agent,
+            error=str(exc),
+        )
+    if not checkpoint_reason:
+        return
+    checkpoint_json = adapter.format_checkpoint_response(checkpoint_reason)  # type: ignore[union-attr]
+    if checkpoint_json:
+        print(checkpoint_json)
+        sys.exit(0)
+
+
+# guard: loose-dict-func - Main path processes raw hook payload boundaries.
+def main() -> None:
+    args = _parse_args()
+
+    logger.trace(
+        "Hook receiver start",
+        argv=sys.argv,
+        cwd=os.getcwd(),
+        stdin_tty=sys.stdin.isatty(),
+        has_event_arg=bool(args.event_type),
+        agent=args.agent,
+    )
+
+    adapter = get_adapter(args.agent)
+
+    raw_input, raw_event_type, raw_data = _parse_receiver_input(args, adapter)
+
+    # log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
+    log_raw = True
+    _log_raw_input(raw_input, log_raw=log_raw)
+
+    event_type = _map_hook_event_type(args.agent, raw_event_type)
+
+    if event_type not in _HANDLED_EVENTS:
+        logger.debug(
+            "Dropped unhandled hook event", event_type=event_type, raw_event_type=raw_event_type, agent=args.agent
+        )
+        sys.exit(0)
+
+    headless_route = _is_headless_route()
+
+    data = adapter.normalize_payload(dict(raw_data))  # type: ignore[union-attr]
+    raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
+
+    teleclaude_session_id = _resolve_receiver_session_id(
+        agent=args.agent,
+        event_type=event_type,
+        raw_event_type=raw_event_type,
+        raw_native_session_id=raw_native_session_id,
+        headless_route=headless_route,
+        adapter=adapter,
+    )
+    if not teleclaude_session_id:
         sys.exit(0)
 
     logger.debug(
@@ -590,12 +720,12 @@ def main() -> None:
 
     if raw_native_session_id or raw_native_log_file:
         try:
-            _update_session_native_fields(
-                teleclaude_session_id,
+            _persist_native_metadata(
+                session_id=teleclaude_session_id,
                 agent=args.agent,
                 event_type=event_type,
-                native_log_file=raw_native_log_file,
-                native_session_id=raw_native_session_id,
+                raw_native_session_id=raw_native_session_id,
+                raw_native_log_file=raw_native_log_file,
             )
         except Exception as exc:  # Best-effort update; never fail hook.
             logger.warning(
@@ -610,60 +740,29 @@ def main() -> None:
     if isinstance(cwd, str) and cwd:
         data["cwd"] = cwd
 
-    # Guard: Some Gemini BeforeAgent hooks arrive with an empty prompt.
-    # These are not real user turns and must not overwrite last_message_sent.
-    if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
-        prompt_value = data.get("prompt")
-        prompt_text = prompt_value if isinstance(prompt_value, str) else ""
-        if not prompt_text.strip():
-            logger.warning(
-                "Dropped empty user_prompt_submit hook event",
-                agent=args.agent,
-                session_id=teleclaude_session_id,
-                native_session_id=(raw_native_session_id or ""),
-                hook_event_name=str(data.get("hook_event_name") or ""),
-                raw_event_type=str(raw_event_type or ""),
-            )
-            return
-        if is_internal_user_text(prompt_text):
-            logger.debug(
-                "Dropped system-injected user_prompt_submit",
-                agent=args.agent,
-                session_id=teleclaude_session_id,
-            )
-            return
-        _reset_checkpoint_flags(teleclaude_session_id)
+    if _handle_user_prompt_submit(
+        event_type=event_type,
+        data=data,
+        agent=args.agent,
+        session_id=teleclaude_session_id,
+        raw_native_session_id=raw_native_session_id,
+        raw_event_type=raw_event_type,
+    ):
+        return
 
-    # Inject memory index into STDOUT for SessionStart (Agent Context)
-    if event_type == AgentHookEvents.AGENT_SESSION_START:
-        cwd = args.cwd
-        if cwd:
-            project_name = Path(cwd).name
-            logger.debug("Injecting memory index for session_start", project=project_name)
-            _print_memory_injection(cwd, adapter, session_id=teleclaude_session_id)
-        else:
-            logger.error("Skipping memory injection: no CWD provided (contract violation)")
-
-    # Hook-based checkpoint: skip for agents that don't support hook blocking.
-    # If checkpoint fires: print blocking JSON, exit 0, skip enqueue (agent continues).
-    # If no checkpoint: fall through to enqueue (real stop enters the system).
-    if event_type == AgentHookEvents.AGENT_STOP and adapter.supports_hook_checkpoint:
-        checkpoint_reason: str | None = None
-        try:
-            checkpoint_reason = _maybe_checkpoint_output(teleclaude_session_id, args.agent, raw_data)
-        except Exception as exc:
-            logger.warning(
-                "Checkpoint eval crashed (ignored)",
-                event_type=event_type,
-                session_id=teleclaude_session_id,
-                agent=args.agent,
-                error=str(exc),
-            )
-        if checkpoint_reason:
-            checkpoint_json = adapter.format_checkpoint_response(checkpoint_reason)
-            if checkpoint_json:
-                print(checkpoint_json)
-                sys.exit(0)
+    _maybe_inject_memory_context(
+        event_type=event_type,
+        cwd=args.cwd,
+        adapter=adapter,
+        session_id=teleclaude_session_id,
+    )
+    _maybe_emit_checkpoint_response(
+        event_type=event_type,
+        adapter=adapter,
+        session_id=teleclaude_session_id,
+        agent=args.agent,
+        raw_data=raw_data,
+    )
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(UTC).isoformat()

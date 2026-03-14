@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 _EXAMPLE_CONFIG_PATH = Path.home() / ".teleclaude" / "example_config.json"
 _OLD_KEY = "legacy_feature_toggle"
@@ -15,11 +16,11 @@ def _read_config() -> dict[str, object]:
         return {}
 
     with _EXAMPLE_CONFIG_PATH.open("r", encoding="utf-8") as handle:
-        data = json.load(handle)
+        data_obj = json.load(handle)
 
-    if not isinstance(data, dict):
+    if not isinstance(data_obj, dict):
         raise ValueError(f"Invalid example config format: {_EXAMPLE_CONFIG_PATH}")
-    return data
+    return cast(dict[str, object], data_obj)
 
 
 def _write_config(data: dict[str, object]) -> None:

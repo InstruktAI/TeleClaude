@@ -1,4 +1,5 @@
 """Handlers for telec bugs commands."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,14 +12,13 @@ from teleclaude.constants import WORKTREE_DIR
 from teleclaude.slug import normalize_slug
 from teleclaude.todo_scaffold import create_bug_skeleton
 
-
-
 __all__ = [
     "_handle_bugs",
     "_handle_bugs_create",
-    "_handle_bugs_report",
     "_handle_bugs_list",
+    "_handle_bugs_report",
 ]
+
 
 def _handle_bugs(args: list[str]) -> None:
     """Handle telec bugs commands."""

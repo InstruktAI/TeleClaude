@@ -18,6 +18,26 @@ from teleclaude.utils.transcript import TurnTimeline
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "_canonical_tool_name",
+    "_categorize_files",
+    "_command_likely_mutates_files",
+    "_extract_apply_patch_paths",
+    "_extract_shell_command",
+    "_extract_shell_touched_paths",
+    "_extract_turn_file_signals",
+    "_file_matches_category",
+    "_get_uncommitted_files",
+    "_is_checkpoint_project_supported",
+    "_is_docs_only",
+    "_looks_like_path_token",
+    "_normalize_repo_path",
+    "_scope_git_files_to_current_turn",
+    "_segment_tokens",
+    "_split_shell_segments",
+    "_transcript_observability",
+]
+
 
 def _canonical_tool_name(tool_name: str) -> str:
     """Normalize tool names across transcript adapters."""

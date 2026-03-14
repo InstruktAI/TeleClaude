@@ -258,7 +258,12 @@ class SandboxContainerManager:
             had_cartridges = self._has_cartridges
             self._has_cartridges = len(cartridges) > 0
 
-            if self._has_cartridges and not self.is_running and not self._permanently_failed and not self._docker_unavailable:
+            if (
+                self._has_cartridges
+                and not self.is_running
+                and not self._permanently_failed
+                and not self._docker_unavailable
+            ):
                 logger.info("Sandbox cartridges detected — starting container")
                 try:
                     await self.start()

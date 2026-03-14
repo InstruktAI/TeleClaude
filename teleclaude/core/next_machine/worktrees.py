@@ -21,12 +21,12 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
-    EnsureWorktreeResult,
-    WorktreePrepDecision,
     _PREP_INPUT_FILES,
     _PREP_ROOT_INPUT_FILES,
     _PREP_STATE_VERSION,
     _WORKTREE_PREP_STATE_REL,
+    EnsureWorktreeResult,
+    WorktreePrepDecision,
 )
 from teleclaude.core.next_machine.state_io import _file_sha256
 
@@ -359,3 +359,10 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
             raise RuntimeError(msg) from e
 
     logger.info("No worktree preparation targets found for %s", slug)
+
+
+__all__ = [
+    "_ensure_todo_on_remote_main",
+    "ensure_worktree_with_policy",
+    "ensure_worktree_with_policy_async",
+]

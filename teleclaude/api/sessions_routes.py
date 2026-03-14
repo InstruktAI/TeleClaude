@@ -37,6 +37,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import (
+    JsonDict,
     MessageMetadata,
     SessionLaunchIntent,
     SessionLaunchKind,
@@ -48,6 +49,7 @@ from teleclaude.core.origins import InputOrigin
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -127,6 +129,225 @@ def _format_direct_conversation_intro(
     return format_system_message("Direct Conversation", body)
 
 
+def _build_channel_metadata(
+    request: CreateSessionRequest,
+    identity: CallerIdentity,
+) -> dict[str, str] | None:
+    """Build channel metadata for session creation."""
+    effective_human_role = request.human_role or identity.human_role
+    channel_metadata: dict[str, str] | None = None
+    if request.human_email or effective_human_role:
+        channel_metadata = {}
+        if request.human_email:
+            channel_metadata["human_email"] = request.human_email
+        if effective_human_role:
+            channel_metadata["human_role"] = effective_human_role
+
+    if request.direct and not identity.session_id:
+        raise HTTPException(
+            status_code=400,
+            detail="direct mode requires caller session identity",
+        )
+
+    if identity.session_id and not identity.session_id.startswith("web:"):
+        channel_metadata = channel_metadata or {}
+        channel_metadata["initiator_session_id"] = identity.session_id
+
+    return channel_metadata
+
+
+def _build_request_session_metadata(
+    metadata: JsonDict | None,
+) -> SessionMetadata | None:
+    """Normalize request metadata into SessionMetadata."""
+    if not metadata:
+        return None
+    return SessionMetadata(
+        system_role=str(metadata.get("system_role") or "") or None,
+        job=str(metadata.get("job") or "") or None,
+    )
+
+
+def _resolve_enabled_agent(requested_agent: str | None) -> str:
+    """Resolve an enabled agent or raise an HTTPException."""
+    if requested_agent:
+        try:
+            return assert_agent_enabled(requested_agent)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        return get_default_agent()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _validate_auto_command_agent(
+    auto_command: str | None,
+    validated_request_agent: str | None,
+) -> None:
+    """Validate any agent references embedded in the auto-command."""
+    if not auto_command:
+        return
+
+    command_name, command_args = parse_command_string(auto_command)
+    normalized_command = (command_name or "").lower()
+    known_agents = set(get_known_agents())
+    resume_aliases = {f"{agent}_resume" for agent in known_agents}
+
+    if normalized_command in known_agents:
+        _resolve_enabled_agent(normalized_command)
+        return
+    if normalized_command in resume_aliases:
+        _resolve_enabled_agent(normalized_command.removesuffix("_resume"))
+        return
+    if normalized_command not in {"agent", "agent_then_message", "agent_resume", "agent_restart"}:
+        return
+
+    auto_command_agent = command_args[0] if command_args else validated_request_agent
+    if auto_command_agent:
+        _resolve_enabled_agent(auto_command_agent)
+
+
+def _effective_launch_agent(validated_request_agent: str | None) -> str:
+    """Resolve the agent used for derived launch intents."""
+    if validated_request_agent:
+        return validated_request_agent
+    return _resolve_enabled_agent(None)
+
+
+async def _build_direct_launch_message(
+    request: CreateSessionRequest,
+    identity: CallerIdentity,
+) -> tuple[str, Session | None]:
+    """Format the initial direct-conversation message and return caller session."""
+    if not request.direct or not identity.session_id or request.message is None:
+        return request.message or "", None
+
+    caller_session = await db.get_session(identity.session_id)
+    caller_label = caller_session.title if caller_session and caller_session.title else identity.session_id
+    caller_computer = caller_session.computer_name if caller_session else config.computer.name
+    return (
+        _format_direct_conversation_intro(
+            caller_session_id=identity.session_id,
+            caller_label=caller_label,
+            caller_computer=caller_computer,
+            message_text=request.message,
+        ),
+        caller_session,
+    )
+
+
+async def _build_launch_intent(
+    request: CreateSessionRequest,
+    identity: CallerIdentity,
+    validated_request_agent: str | None,
+    thinking_mode: str,
+) -> tuple[SessionLaunchIntent | None, Session | None]:
+    """Build a launch intent for requests without an explicit auto-command."""
+    if request.auto_command:
+        return None, None
+
+    launch_kind = SessionLaunchKind(request.launch_kind)
+    if launch_kind == SessionLaunchKind.AGENT and request.message:
+        launch_kind = SessionLaunchKind.AGENT_THEN_MESSAGE
+
+    if launch_kind == SessionLaunchKind.EMPTY:
+        return SessionLaunchIntent(kind=SessionLaunchKind.EMPTY), None
+
+    if launch_kind == SessionLaunchKind.AGENT_RESUME:
+        if not request.agent:
+            raise HTTPException(status_code=400, detail="agent required for agent_resume")
+        effective_agent = validated_request_agent or _resolve_enabled_agent(request.agent)
+        return (
+            SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT_RESUME,
+                agent=effective_agent,
+                thinking_mode=thinking_mode,
+                native_session_id=request.native_session_id,
+            ),
+            None,
+        )
+
+    if launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
+        if request.message is None:
+            raise HTTPException(status_code=400, detail="message required for agent_then_message")
+        direct_message, caller_session = await _build_direct_launch_message(request, identity)
+        return (
+            SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+                agent=_effective_launch_agent(validated_request_agent),
+                thinking_mode=thinking_mode,
+                message=direct_message,
+            ),
+            caller_session,
+        )
+
+    return (
+        SessionLaunchIntent(
+            kind=SessionLaunchKind.AGENT,
+            agent=_effective_launch_agent(validated_request_agent),
+            thinking_mode=thinking_mode,
+        ),
+        None,
+    )
+
+
+def _derive_auto_command(
+    request_auto_command: str | None,
+    launch_intent: SessionLaunchIntent | None,
+) -> str | None:
+    """Derive the auto-command from the launch intent when needed."""
+    if request_auto_command or not launch_intent:
+        return request_auto_command
+
+    if launch_intent.kind == SessionLaunchKind.AGENT:
+        return f"agent {launch_intent.agent} {launch_intent.thinking_mode}"
+    if launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
+        quoted_message = shlex.quote(launch_intent.message or "")
+        return f"agent_then_message {launch_intent.agent} {launch_intent.thinking_mode} {quoted_message}"
+    if launch_intent.kind == SessionLaunchKind.AGENT_RESUME:
+        if launch_intent.native_session_id:
+            return f"agent_resume {launch_intent.agent} {launch_intent.native_session_id}"
+        return f"agent_resume {launch_intent.agent}"
+    return None
+
+
+async def _link_direct_sessions(
+    *,
+    caller_session_id: str,
+    target_session_id: str,
+    target_title: str,
+    caller_session: Session | None,
+) -> None:
+    """Create the direct link between caller and target sessions after creation."""
+    from teleclaude.core.session_listeners import create_or_reuse_direct_link, unregister_listener
+
+    await unregister_listener(
+        target_session_id=target_session_id,
+        caller_session_id=caller_session_id,
+    )
+
+    resolved_caller_session = caller_session or await db.get_session(caller_session_id)
+    target_session = await db.get_session(target_session_id)
+    caller_label = (
+        resolved_caller_session.title
+        if resolved_caller_session and resolved_caller_session.title
+        else caller_session_id
+    )
+    target_label = target_session.title if target_session and target_session.title else target_title
+    caller_computer = resolved_caller_session.computer_name if resolved_caller_session else config.computer.name
+    target_computer = target_session.computer_name if target_session else config.computer.name
+
+    await create_or_reuse_direct_link(
+        caller_session_id=caller_session_id,
+        target_session_id=target_session_id,
+        caller_name=caller_label,
+        target_name=target_label,
+        caller_computer=caller_computer,
+        target_computer=target_computer,
+    )
+
+
 @router.get("/sessions")
 async def list_sessions(
     request: Request,
@@ -184,11 +405,7 @@ async def list_sessions(
 
         # Job filter: narrows existing visibility results
         if job:
-            merged = [
-                s for s in merged
-                if s.session_metadata is not None
-                and s.session_metadata.job == job
-            ]
+            merged = [s for s in merged if s.session_metadata is not None and s.session_metadata.job == job]
 
         return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
     except Exception as e:
@@ -215,31 +432,8 @@ async def create_session(
     """
     # Normalize request into internal command.
 
-    effective_human_role = request.human_role or identity.human_role
-    channel_metadata: dict[str, str] | None = None
-    if request.human_email or effective_human_role:
-        channel_metadata = {}
-        if request.human_email:
-            channel_metadata["human_email"] = request.human_email
-        if effective_human_role:
-            channel_metadata["human_role"] = effective_human_role
-    if request.direct and not identity.session_id:
-        raise HTTPException(
-            status_code=400,
-            detail="direct mode requires caller session identity",
-        )
-
-    if identity.session_id and not identity.session_id.startswith("web:"):
-        channel_metadata = channel_metadata or {}
-        channel_metadata["initiator_session_id"] = identity.session_id
-
-    incoming_meta = request.metadata
-    request_session_meta: SessionMetadata | None = None
-    if incoming_meta:
-        request_session_meta = SessionMetadata(
-            system_role=str(incoming_meta.get("system_role") or "") or None,
-            job=str(incoming_meta.get("job") or "") or None,
-        )
+    channel_metadata = _build_channel_metadata(request, identity)
+    request_session_meta = _build_request_session_metadata(request.metadata)
     metadata = _build_metadata(
         title=request.title or "Untitled",
         project_path=request.project_path,
@@ -256,111 +450,15 @@ async def create_session(
     title = title or "Untitled"
 
     effective_thinking_mode = request.thinking_mode or "slow"
-    direct_caller_session = None
-
-    def _resolve_enabled_agent(requested_agent: str | None) -> str:
-        if requested_agent:
-            try:
-                return assert_agent_enabled(requested_agent)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-        try:
-            return get_default_agent()
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    validated_request_agent: str | None = None
-    if request.agent:
-        validated_request_agent = _resolve_enabled_agent(request.agent)
-
-    if request.auto_command:
-        command_name, command_args = parse_command_string(request.auto_command)
-        normalized_command = (command_name or "").lower()
-        known_agents = set(get_known_agents())
-
-        resume_aliases = {f"{agent}_resume" for agent in known_agents}
-
-        if normalized_command in known_agents:
-            _resolve_enabled_agent(normalized_command)
-        elif normalized_command in resume_aliases:
-            _resolve_enabled_agent(normalized_command.removesuffix("_resume"))
-        elif normalized_command in {"agent", "agent_then_message", "agent_resume", "agent_restart"}:
-            auto_command_agent = command_args[0] if command_args else validated_request_agent
-            if auto_command_agent:
-                _resolve_enabled_agent(auto_command_agent)
-
-    def _effective_launch_agent() -> str:
-        if validated_request_agent:
-            return validated_request_agent
-        return _resolve_enabled_agent(None)
-
-    launch_intent = None
-    if not request.auto_command:
-        launch_kind = SessionLaunchKind(request.launch_kind)
-        if launch_kind == SessionLaunchKind.AGENT and request.message:
-            launch_kind = SessionLaunchKind.AGENT_THEN_MESSAGE
-
-        if launch_kind == SessionLaunchKind.EMPTY:
-            launch_intent = SessionLaunchIntent(kind=SessionLaunchKind.EMPTY)
-        elif launch_kind == SessionLaunchKind.AGENT_RESUME:
-            if not request.agent:
-                raise HTTPException(status_code=400, detail="agent required for agent_resume")
-            effective_agent = validated_request_agent or _resolve_enabled_agent(request.agent)
-            launch_intent = SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT_RESUME,
-                agent=effective_agent,
-                thinking_mode=effective_thinking_mode,
-                native_session_id=request.native_session_id,
-            )
-        elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
-            if request.message is None:
-                raise HTTPException(status_code=400, detail="message required for agent_then_message")
-            direct_message = request.message
-            if request.direct and identity.session_id:
-                direct_caller_session = await db.get_session(identity.session_id)
-                caller_label = (
-                    direct_caller_session.title
-                    if direct_caller_session and direct_caller_session.title
-                    else identity.session_id
-                )
-                caller_computer = (
-                    direct_caller_session.computer_name if direct_caller_session else config.computer.name
-                )
-                direct_message = _format_direct_conversation_intro(
-                    caller_session_id=identity.session_id,
-                    caller_label=caller_label,
-                    caller_computer=caller_computer,
-                    message_text=request.message,
-                )
-            effective_agent = _effective_launch_agent()
-            launch_intent = SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-                agent=effective_agent,
-                thinking_mode=effective_thinking_mode,
-                message=direct_message,
-            )
-        else:
-            effective_agent = _effective_launch_agent()
-            launch_intent = SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT,
-                agent=effective_agent,
-                thinking_mode=effective_thinking_mode,
-            )
-
-    auto_command = request.auto_command
-    if not auto_command and launch_intent:
-        if launch_intent.kind == SessionLaunchKind.AGENT:
-            auto_command = f"agent {launch_intent.agent} {launch_intent.thinking_mode}"
-        elif launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
-            quoted_message = shlex.quote(launch_intent.message or "")
-            auto_command = (
-                f"agent_then_message {launch_intent.agent} {launch_intent.thinking_mode} {quoted_message}"
-            )
-        elif launch_intent.kind == SessionLaunchKind.AGENT_RESUME:
-            if launch_intent.native_session_id:
-                auto_command = f"agent_resume {launch_intent.agent} {launch_intent.native_session_id}"
-            else:
-                auto_command = f"agent_resume {launch_intent.agent}"
+    validated_request_agent = _resolve_enabled_agent(request.agent) if request.agent else None
+    _validate_auto_command_agent(request.auto_command, validated_request_agent)
+    launch_intent, direct_caller_session = await _build_launch_intent(
+        request,
+        identity,
+        validated_request_agent,
+        effective_thinking_mode,
+    )
+    auto_command = _derive_auto_command(request.auto_command, launch_intent)
 
     auto_command_source = "request" if request.auto_command else ("derived" if launch_intent else "none")
     logger.info(
@@ -412,28 +510,11 @@ async def create_session(
             )
 
         if request.direct and identity.session_id:
-            from teleclaude.core.session_listeners import create_or_reuse_direct_link, unregister_listener
-
-            await unregister_listener(
-                target_session_id=str(session_id),
-                caller_session_id=identity.session_id,
-            )
-
-            caller_session = direct_caller_session or await db.get_session(identity.session_id)
-            target_session = await db.get_session(str(session_id))
-            caller_label = (
-                caller_session.title if caller_session and caller_session.title else identity.session_id
-            )
-            target_label = target_session.title if target_session and target_session.title else title
-            caller_computer = caller_session.computer_name if caller_session else config.computer.name
-            target_computer = target_session.computer_name if target_session else config.computer.name
-            await create_or_reuse_direct_link(
+            await _link_direct_sessions(
                 caller_session_id=identity.session_id,
                 target_session_id=str(session_id),
-                caller_name=caller_label,
-                target_name=target_label,
-                caller_computer=caller_computer,
-                target_computer=target_computer,
+                target_title=title,
+                caller_session=direct_caller_session,
             )
 
         return CreateSessionResponseDTO(
@@ -500,6 +581,204 @@ async def end_session(
         raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
 
 
+def _active_direct_link_response(
+    link_id: str,
+    *,
+    already_active: bool,
+) -> JsonDict:
+    """Return the standard response for blocked direct-link sends."""
+    return {
+        "status": "error",
+        "mode": "direct",
+        "link_id": link_id,
+        "message": (
+            (
+                "A direct link is already active with this peer. "
+                if already_active
+                else "A direct link is active with this peer. "
+            )
+            + (
+                "We agreed not to use send during direct conversation "
+                "as it obfuscates the exchange from the observer. "
+                "Your turn-complete output is automatically shared — just talk."
+            )
+        ),
+    }
+
+
+async def _process_api_message(
+    session_id: str,
+    message_text: str,
+    metadata: MessageMetadata,
+) -> None:
+    """Process a single API-originated message."""
+    cmd = CommandMapper.map_api_input(
+        "message",
+        {"session_id": session_id, "text": message_text},
+        metadata,
+    )
+    await get_command_service().process_message(cmd)
+
+
+async def _load_target_session_for_message(
+    session_id: str,
+    message_text: str | None,
+) -> Session | None:
+    """Load and validate the target session when message delivery is requested."""
+    if not message_text:
+        return None
+
+    target_session = await db.get_session(session_id)
+    if not target_session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    if target_session.closed_at or target_session.lifecycle_status in {"closed", "closing"}:
+        raise HTTPException(status_code=409, detail=f"Session {session_id} is closed")
+    return target_session
+
+
+async def _handle_close_link_request(
+    *,
+    session_id: str,
+    request: SendMessageRequest,
+    identity: CallerIdentity,
+) -> JsonDict:
+    """Handle close-link requests, optionally delivering a final message first."""
+    from teleclaude.core.session_listeners import close_link_for_member, resolve_link_for_sender_target
+
+    if not identity.session_id:
+        raise HTTPException(status_code=400, detail="close_link requires caller session identity")
+
+    active_link = await resolve_link_for_sender_target(
+        sender_session_id=identity.session_id,
+        target_session_id=session_id,
+    )
+    if not active_link:
+        return {"status": "error", "message": "no active direct link found"}
+
+    if request.message:
+        await _process_api_message(session_id, request.message, _build_metadata())
+
+    closed_link_id = await close_link_for_member(
+        caller_session_id=identity.session_id,
+        target_session_id=session_id,
+    )
+    return {"status": "success", "mode": "direct", "action": "closed", "link_id": closed_link_id}
+
+
+async def _handle_direct_message_request(
+    *,
+    session_id: str,
+    request: SendMessageRequest,
+    identity: CallerIdentity,
+    target_session: Session | None,
+    metadata: MessageMetadata,
+) -> JsonDict:
+    """Create or reuse a direct link and deliver the message to active peers."""
+    from teleclaude.core.session_listeners import (
+        create_or_reuse_direct_link,
+        get_peer_members,
+        resolve_link_for_sender_target,
+        unregister_listener,
+    )
+
+    if not identity.session_id:
+        raise HTTPException(status_code=400, detail="direct mode requires caller session identity")
+
+    caller_session = await db.get_session(identity.session_id)
+    resolved_target_session = target_session or await db.get_session(session_id)
+    caller_label = caller_session.title if caller_session and caller_session.title else identity.session_id
+    target_label = (
+        resolved_target_session.title if resolved_target_session and resolved_target_session.title else session_id
+    )
+    caller_computer = caller_session.computer_name if caller_session else config.computer.name
+    target_computer = resolved_target_session.computer_name if resolved_target_session else config.computer.name
+
+    link_ctx = await resolve_link_for_sender_target(
+        sender_session_id=identity.session_id,
+        target_session_id=session_id,
+    )
+    if link_ctx:
+        return _active_direct_link_response(link_ctx[0].link_id, already_active=True)
+
+    await unregister_listener(
+        target_session_id=session_id,
+        caller_session_id=identity.session_id,
+    )
+
+    link, _ = await create_or_reuse_direct_link(
+        caller_session_id=identity.session_id,
+        target_session_id=session_id,
+        caller_name=caller_label,
+        target_name=target_label,
+        caller_computer=caller_computer,
+        target_computer=target_computer,
+    )
+    resolved_link_ctx = await resolve_link_for_sender_target(
+        sender_session_id=identity.session_id,
+        target_session_id=session_id,
+    )
+    if not resolved_link_ctx:
+        raise HTTPException(status_code=500, detail="failed to resolve direct link")
+
+    _, members = resolved_link_ctx
+    message_text = _format_direct_conversation_intro(
+        caller_session_id=identity.session_id,
+        caller_label=caller_label,
+        caller_computer=caller_computer,
+        message_text=request.message or "",
+    )
+    peers = await get_peer_members(link_id=link.link_id, sender_session_id=identity.session_id)
+    delivery_targets = [peer.session_id for peer in peers] or [session_id]
+    delivered_to = 0
+
+    for target_id in delivery_targets:
+        target_for_delivery = await db.get_session(target_id)
+        if not target_for_delivery:
+            logger.info("Skipping direct delivery to missing session %s", target_id)
+            continue
+        if target_for_delivery.closed_at or target_for_delivery.lifecycle_status in {"closed", "closing"}:
+            logger.info("Skipping direct delivery to closed session %s", target_id)
+            continue
+        await _process_api_message(target_id, message_text, metadata)
+        delivered_to += 1
+
+    if delivered_to == 0:
+        return {
+            "status": "error",
+            "mode": "direct",
+            "link_id": link.link_id,
+            "message": "No active target sessions available for delivery",
+        }
+
+    return {
+        "status": "success",
+        "mode": "direct",
+        "link_id": link.link_id,
+        "link_state": "created",
+        "delivered_to": delivered_to,
+        "members": len(members),
+    }
+
+
+async def _reject_existing_direct_link(
+    session_id: str,
+    identity: CallerIdentity,
+) -> JsonDict | None:
+    """Return the standard error response if a work send conflicts with a direct link."""
+    from teleclaude.core.session_listeners import resolve_link_for_sender_target
+
+    if not identity.session_id:
+        return None
+
+    existing_link = await resolve_link_for_sender_target(
+        sender_session_id=identity.session_id,
+        target_session_id=session_id,
+    )
+    if not existing_link:
+        return None
+    return _active_direct_link_response(existing_link[0].link_id, already_active=False)
+
+
 @router.post("/sessions/{session_id}/message")
 async def send_message_endpoint(
     http_request: Request,
@@ -507,179 +786,39 @@ async def send_message_endpoint(
     request: SendMessageRequest,
     computer: str | None = Query(None),
     identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_SEND),
-) -> dict[str, object]:  # guard: loose-dict - API boundary
+) -> JsonDict:
     """Send message to session."""
     from teleclaude.api.session_access import check_session_access
-    from teleclaude.core.session_listeners import (
-        close_link_for_member,
-        create_or_reuse_direct_link,
-        get_peer_members,
-        resolve_link_for_sender_target,
-        unregister_listener,
-    )
 
     await check_session_access(http_request, session_id)
     try:
-        target_session = None
-        if request.message:
-            target_session = await db.get_session(session_id)
-            if not target_session:
-                raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-            if target_session.closed_at or target_session.lifecycle_status in {"closed", "closing"}:
-                raise HTTPException(status_code=409, detail=f"Session {session_id} is closed")
+        target_session = await _load_target_session_for_message(session_id, request.message)
 
         if request.close_link:
-            if not identity.session_id:
-                raise HTTPException(status_code=400, detail="close_link requires caller session identity")
-
-            active_link = await resolve_link_for_sender_target(
-                sender_session_id=identity.session_id,
-                target_session_id=session_id,
+            return await _handle_close_link_request(
+                session_id=session_id,
+                request=request,
+                identity=identity,
             )
-            if not active_link:
-                return {"status": "error", "message": "no active direct link found"}
-
-            if request.message:
-                metadata = _build_metadata()
-                cmd = CommandMapper.map_api_input(
-                    "message",
-                    {"session_id": session_id, "text": request.message},
-                    metadata,
-                )
-                await get_command_service().process_message(cmd)
-
-            closed_link_id = await close_link_for_member(
-                caller_session_id=identity.session_id,
-                target_session_id=session_id,
-            )
-            return {"status": "success", "mode": "direct", "action": "closed", "link_id": closed_link_id}
 
         if not request.message:
             raise HTTPException(status_code=400, detail="message required")
 
-        message_text = request.message
         metadata = _build_metadata()
         if request.direct:
-            if not identity.session_id:
-                raise HTTPException(status_code=400, detail="direct mode requires caller session identity")
-
-            caller_session = await db.get_session(identity.session_id)
-            if target_session is None:
-                target_session = await db.get_session(session_id)
-            caller_label = (
-                caller_session.title if caller_session and caller_session.title else identity.session_id
-            )
-            target_label = target_session.title if target_session and target_session.title else session_id
-            caller_computer = caller_session.computer_name if caller_session else config.computer.name
-            target_computer = target_session.computer_name if target_session else config.computer.name
-
-            link_ctx = await resolve_link_for_sender_target(
-                sender_session_id=identity.session_id,
-                target_session_id=session_id,
-            )
-            if link_ctx:
-                return {
-                    "status": "error",
-                    "mode": "direct",
-                    "link_id": link_ctx[0].link_id,
-                    "message": (
-                        "A direct link is already active with this peer. "
-                        "We agreed not to use send during direct conversation "
-                        "as it obfuscates the exchange from the observer. "
-                        "Your turn-complete output is automatically shared — just talk."
-                    ),
-                }
-
-            await unregister_listener(
-                target_session_id=session_id,
-                caller_session_id=identity.session_id,
+            return await _handle_direct_message_request(
+                session_id=session_id,
+                request=request,
+                identity=identity,
+                target_session=target_session,
+                metadata=metadata,
             )
 
-            link, _ = await create_or_reuse_direct_link(
-                caller_session_id=identity.session_id,
-                target_session_id=session_id,
-                caller_name=caller_label,
-                target_name=target_label,
-                caller_computer=caller_computer,
-                target_computer=target_computer,
-            )
-            link_ctx = await resolve_link_for_sender_target(
-                sender_session_id=identity.session_id,
-                target_session_id=session_id,
-            )
-            if not link_ctx:
-                raise HTTPException(status_code=500, detail="failed to resolve direct link")
+        existing_link_response = await _reject_existing_direct_link(session_id, identity)
+        if existing_link_response:
+            return existing_link_response
 
-            _, members = link_ctx
-            message_text = _format_direct_conversation_intro(
-                caller_session_id=identity.session_id,
-                caller_label=caller_label,
-                caller_computer=caller_computer,
-                message_text=message_text,
-            )
-            peers = await get_peer_members(link_id=link.link_id, sender_session_id=identity.session_id)
-            delivery_targets = [peer.session_id for peer in peers] or [session_id]
-            delivered_to = 0
-            for target_id in delivery_targets:
-                target_for_delivery = await db.get_session(target_id)
-                if not target_for_delivery:
-                    logger.info("Skipping direct delivery to missing session %s", target_id)
-                    continue
-                if target_for_delivery.closed_at or target_for_delivery.lifecycle_status in {
-                    "closed",
-                    "closing",
-                }:
-                    logger.info("Skipping direct delivery to closed session %s", target_id)
-                    continue
-                cmd = CommandMapper.map_api_input(
-                    "message",
-                    {"session_id": target_id, "text": message_text},
-                    metadata,
-                )
-                await get_command_service().process_message(cmd)
-                delivered_to += 1
-
-            if delivered_to == 0:
-                return {
-                    "status": "error",
-                    "mode": "direct",
-                    "link_id": link.link_id,
-                    "message": "No active target sessions available for delivery",
-                }
-
-            return {
-                "status": "success",
-                "mode": "direct",
-                "link_id": link.link_id,
-                "link_state": "created",
-                "delivered_to": delivered_to,
-                "members": len(members),
-            }
-
-        if identity.session_id:
-            existing_link = await resolve_link_for_sender_target(
-                sender_session_id=identity.session_id,
-                target_session_id=session_id,
-            )
-            if existing_link:
-                return {
-                    "status": "error",
-                    "mode": "direct",
-                    "link_id": existing_link[0].link_id,
-                    "message": (
-                        "A direct link is active with this peer. "
-                        "We agreed not to use send during direct conversation "
-                        "as it obfuscates the exchange from the observer. "
-                        "Your turn-complete output is automatically shared — just talk."
-                    ),
-                }
-
-        cmd = CommandMapper.map_api_input(
-            "message",
-            {"session_id": session_id, "text": message_text},
-            metadata,
-        )
-        await get_command_service().process_message(cmd)
+        await _process_api_message(session_id, request.message, metadata)
         return {"status": "success", "mode": "work"}
     except SessionMessageRejectedError as exc:
         raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
@@ -688,4 +827,3 @@ async def send_message_endpoint(
     except Exception as e:
         logger.error("process_message failed (session=%s): %s", session_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
-

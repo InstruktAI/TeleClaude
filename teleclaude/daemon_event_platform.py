@@ -60,13 +60,14 @@ from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
+    from teleclaude.config.schema import PersonConfig
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.lifecycle import DaemonLifecycle
 
 logger = get_logger(__name__)
 
 
-class _DaemonEventPlatformMixin:
+class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     """Event platform and webhook service methods extracted from TeleClaudeDaemon."""
 
     if TYPE_CHECKING:
@@ -81,330 +82,387 @@ class _DaemonEventPlatformMixin:
 
         def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]: ...
 
+    async def _init_event_db_storage(self) -> None:
+        """Initialize event storage."""
+        self._event_db = EventDB()
+        await self._event_db.init()
+        logger.info("EventDB initialized")
+
+    async def _get_event_redis_client(self) -> object | None:
+        """Return the Redis client backing the event platform."""
+        redis_adapter = self.client.adapters.get("redis")
+        if not isinstance(redis_adapter, RedisTransport):
+            return None
+        return await redis_adapter._get_redis()
+
+    def _configure_event_producer(self, redis_client: object) -> EventProducer:
+        """Build and register the event producer."""
+        event_producer = EventProducer(redis_client=redis_client)
+        configure_producer(event_producer)
+        logger.info("EventProducer configured")
+        return event_producer
+
+    def _iter_admin_people_configs(self) -> list[tuple[str, PersonConfig]]:
+        """Load admin person configs from the global people directory."""
+        from teleclaude.config.loader import load_global_config, load_person_config
+
+        people_dir = Path("~/.teleclaude/people").expanduser()
+        global_cfg = load_global_config()
+        admin_configs: list[tuple[str, PersonConfig]] = []
+        for person in global_cfg.people:
+            if person.role != "admin":
+                continue
+            person_key = person.name.lower().replace(" ", "_")
+            person_cfg_path = people_dir / person_key / "teleclaude.yml"
+            if not person_cfg_path.exists():
+                continue
+            try:
+                person_cfg = load_person_config(person_cfg_path)
+            except Exception:
+                continue
+            admin_configs.append((person.name, person_cfg))
+        return admin_configs
+
+    def _build_push_callbacks(self) -> list[Callable[..., object]]:
+        """Build notification push callbacks for event projections."""
+        push_callbacks: list[Callable[..., object]] = []
+        self._register_api_push_callback(push_callbacks)
+        self._register_telegram_delivery_callbacks(push_callbacks)
+        self._register_discord_delivery_callbacks(push_callbacks)
+        self._register_whatsapp_delivery_callbacks(push_callbacks)
+        return push_callbacks
+
+    def _register_api_push_callback(self, push_callbacks: list[Callable[..., object]]) -> None:
+        """Register websocket push if the API server is available."""
+        api_server = getattr(self.lifecycle, "api_server", None)
+        if api_server is None:
+            return
+        api_server._event_db = self._event_db
+        push_callbacks.append(api_server._notification_push)
+
+    def _register_telegram_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
+        """Register Telegram notification delivery for admins."""
+        if not config.telegram:
+            return
+
+        from teleclaude.services.telegram import send_telegram_dm
+
+        try:
+            for person_name, person_cfg in self._iter_admin_people_configs():
+                chat_id = person_cfg.creds.telegram.chat_id if person_cfg.creds.telegram else None
+                if not chat_id:
+                    continue
+                adapter = TelegramDeliveryAdapter(chat_id=chat_id, send_fn=send_telegram_dm)
+                push_callbacks.append(adapter.on_notification)
+                logger.info("TelegramDeliveryAdapter registered for admin %s", person_name)
+        except Exception:
+            logger.warning("Could not load people config for Telegram delivery adapter")
+
+    def _register_discord_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
+        """Register Discord notification delivery for admins."""
+        if not config.discord.enabled:
+            return
+
+        from teleclaude.events.delivery.discord import DiscordDeliveryAdapter
+        from teleclaude.services.discord import send_discord_dm
+
+        try:
+            for person_name, person_cfg in self._iter_admin_people_configs():
+                user_id = person_cfg.creds.discord.user_id if person_cfg.creds.discord else None
+                if not user_id:
+                    continue
+                adapter = DiscordDeliveryAdapter(user_id=user_id, send_fn=send_discord_dm)
+                push_callbacks.append(adapter.on_notification)
+                logger.info("DiscordDeliveryAdapter registered for admin %s", person_name)
+        except Exception:
+            logger.warning("Could not load people config for Discord delivery adapter")
+
+    def _register_whatsapp_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
+        """Register WhatsApp notification delivery for admins."""
+        if not config.whatsapp.enabled:
+            return
+
+        from functools import partial
+
+        from teleclaude.events.delivery.whatsapp import WhatsAppDeliveryAdapter
+        from teleclaude.services.whatsapp import send_whatsapp_message
+
+        try:
+            for person_name, person_cfg in self._iter_admin_people_configs():
+                phone_number = person_cfg.creds.whatsapp.phone_number if person_cfg.creds.whatsapp else None
+                if not phone_number:
+                    continue
+                bound_send_fn = partial(
+                    send_whatsapp_message,
+                    phone_number_id=config.whatsapp.phone_number_id,
+                    access_token=config.whatsapp.access_token,
+                    api_version=config.whatsapp.api_version,
+                )
+                adapter = WhatsAppDeliveryAdapter(phone_number=phone_number, send_fn=bound_send_fn)
+                push_callbacks.append(adapter.on_notification)
+                logger.info("WhatsAppDeliveryAdapter registered for admin %s", person_name)
+        except Exception:
+            logger.warning("Could not load people config for WhatsApp delivery adapter")
+
+    def _build_integration_trigger(self) -> IntegrationTriggerCartridge:
+        """Create the integration trigger cartridge."""
+        from teleclaude.core.integration.queue import IntegrationQueue
+        from teleclaude.core.integration.service import IntegrationEventService
+        from teleclaude.core.integration_bridge import spawn_integrator_session
+
+        integration_service = IntegrationEventService.create(
+            reachability_checker=lambda _b, _s, _r: True,
+            integrated_checker=lambda _s, _r: False,
+        )
+        integration_queue = IntegrationQueue(state_path=default_integration_queue_path())
+
+        def _ingest_callback(canonical_type: str, payload: object) -> list[tuple[str, str, str]]:
+            from collections.abc import Mapping
+
+            if not isinstance(payload, Mapping):
+                return []
+            result = integration_service.ingest_raw(canonical_type, payload)
+            ready: list[tuple[str, str, str]] = []
+            for candidate in result.transitioned_to_ready:
+                integration_queue.enqueue(key=candidate.key, ready_at=candidate.ready_at)
+                ready.append((candidate.key.slug, candidate.key.branch, candidate.key.sha))
+            return ready
+
+        return IntegrationTriggerCartridge(
+            spawn_callback=spawn_integrator_session,
+            ingest_callback=_ingest_callback,
+        )
+
+    def _build_pipeline_context(
+        self,
+        event_catalog: object,
+        push_callbacks: list[Callable[..., object]],
+        event_producer: EventProducer,
+    ) -> PipelineContext:
+        """Create the shared pipeline context."""
+        return PipelineContext(
+            catalog=event_catalog,
+            db=self._event_db,
+            push_callbacks=push_callbacks,
+            trust_config=TrustConfig(
+                known_sources=frozenset({"daemon", "prepare-worker", "review-worker", "correlation"})
+            ),
+            correlation_config=CorrelationConfig(),
+            producer=event_producer,
+        )
+
+    def _build_domain_runner(self) -> object | None:
+        """Build the optional domain runner."""
+        event_domains_cfg = getattr(config, "event_domains", None)
+        if event_domains_cfg is None:
+            return None
+        try:
+            from teleclaude.events.startup import build_domain_pipeline_runner
+
+            domain_runner = build_domain_pipeline_runner(event_domains_cfg)
+            logger.info("Domain pipeline runner built successfully")
+            return domain_runner
+        except Exception as domain_err:
+            logger.error(
+                "Failed to build domain pipeline runner: %s — domain pipeline disabled",
+                domain_err,
+            )
+            return None
+
+    def _build_pipeline(
+        self,
+        context: PipelineContext,
+        integration_trigger: IntegrationTriggerCartridge,
+    ) -> Pipeline:
+        """Build the system event pipeline."""
+        return Pipeline(
+            [
+                TrustCartridge(),
+                integration_trigger,
+                DeduplicationCartridge(),
+                EnrichmentCartridge(),
+                CorrelationCartridge(),
+                ClassificationCartridge(),
+                NotificationProjectorCartridge(),
+                PrepareQualityCartridge(),
+            ],
+            context,
+            domain_runner=self._build_domain_runner(),
+        )
+
+    def _start_sandbox_watch_task(self, coro: object, task_name: str) -> None:
+        """Start and monitor a sandbox background task."""
+        asyncio.create_task(coro, name=task_name).add_done_callback(self._log_background_task_exception(task_name))
+
+    def _register_sandbox_bridge(self, pipeline: Pipeline, event_producer: EventProducer) -> None:
+        """Register the optional sandbox bridge."""
+        try:
+            from teleclaude.events.sandbox import (  # pylint: disable=import-outside-toplevel
+                SandboxBridgeCartridge,
+                SandboxContainerManager,
+            )
+        except ImportError:
+            logger.debug("Sandbox subsystem not available — skipping")
+            return
+
+        try:
+            sandbox_socket = getattr(config, "sandbox_socket_path", "/tmp/teleclaude-sandbox.sock")
+            sandbox_dir = getattr(config, "sandbox_cartridges_dir", "~/.teleclaude/sandbox-cartridges")
+            sandbox_manager = SandboxContainerManager(
+                socket_path=sandbox_socket,
+                cartridges_dir=sandbox_dir,
+                producer=event_producer,
+            )
+            pipeline.register(SandboxBridgeCartridge(manager=sandbox_manager))
+            self._start_sandbox_watch_task(
+                sandbox_manager.watch_cartridges_dir(self.shutdown_event),
+                "sandbox_cartridges_watcher",
+            )
+            self._start_sandbox_watch_task(
+                sandbox_manager.watch_health(self.shutdown_event),
+                "sandbox_health_watcher",
+            )
+            self._sandbox_manager = sandbox_manager
+            logger.info("Sandbox bridge cartridge registered (socket=%s, dir=%s)", sandbox_socket, sandbox_dir)
+        except Exception as exc:
+            logger.error("Sandbox subsystem init failed — skipping: %s", exc, exc_info=True)
+
+    def _start_event_processor(self, redis_client: object, pipeline: Pipeline) -> str:
+        """Start the Redis-backed event processor."""
+        computer_name = getattr(config, "computer", None)
+        computer_label = getattr(computer_name, "name", "local") if computer_name else "local"
+        event_processor = EventProcessor(
+            redis_client=redis_client,
+            pipeline=pipeline,
+            consumer_name=f"{computer_label}-{os.getpid()}",
+        )
+        self._event_processor_task = asyncio.create_task(event_processor.start(self.shutdown_event))
+        self._event_processor_task.add_done_callback(self._log_background_task_exception("event_processor"))
+        logger.info("EventProcessor started")
+        return computer_label
+
+    async def _emit_daemon_restarted_event(
+        self,
+        event_producer: EventProducer,
+        computer_label: str,
+    ) -> None:
+        """Emit the daemon-restarted infrastructure event."""
+        await event_producer.emit(
+            EventsEnvelope(
+                event="system.daemon.restarted",
+                source="daemon",
+                level=EventLevel.INFRASTRUCTURE,
+                domain="system",
+                visibility=EventVisibility.CLUSTER,
+                description=f"Daemon restarted on {computer_label}",
+                payload={"computer": computer_label, "pid": os.getpid()},
+            )
+        )
+        logger.info("Event 'system.daemon.restarted' emitted")
+
+    def _configure_signal_context(
+        self,
+        context: PipelineContext,
+        event_producer: EventProducer,
+        signal_ai: object,
+    ) -> None:
+        """Attach signal AI integrations to the shared pipeline context."""
+        context.ai_client = signal_ai
+        context.emit = event_producer.emit  # type: ignore[assignment]
+
+    def _start_signal_pipeline(
+        self,
+        pipeline: Pipeline,
+        context: PipelineContext,
+        event_producer: EventProducer,
+    ) -> None:
+        """Start the optional signal ingestion pipeline."""
+        signal_cfg = getattr(config, "signal", None)
+        if signal_cfg is None:
+            return
+
+        try:
+            import anthropic  # pylint: disable=import-outside-toplevel
+
+            from company.cartridges.signal import (  # pylint: disable=import-outside-toplevel
+                SignalClusterCartridge,
+                SignalIngestCartridge,
+                SignalSynthesizeCartridge,
+            )
+            from company.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel
+                SynthesizeConfig,
+            )
+            from teleclaude.events.signal.ai import (  # pylint: disable=import-outside-toplevel
+                DefaultSignalAIClient,
+            )
+            from teleclaude.events.signal.clustering import (  # pylint: disable=import-outside-toplevel
+                ClusteringConfig,
+            )
+            from teleclaude.events.signal.scheduler import (  # pylint: disable=import-outside-toplevel
+                IngestScheduler,
+            )
+            from teleclaude.events.signal.sources import (  # pylint: disable=import-outside-toplevel
+                SignalSourceConfig,
+            )
+
+            raw_ai = anthropic.AsyncAnthropic()
+            signal_ai = DefaultSignalAIClient(raw_ai)
+            signal_db = self._event_db.signal
+            source_config_data = signal_cfg if isinstance(signal_cfg, dict) else {}
+            source_config = SignalSourceConfig(**source_config_data)
+
+            self._configure_signal_context(context, event_producer, signal_ai)
+
+            ingest_cartridge = SignalIngestCartridge(config=source_config, ai=signal_ai, signal_db=signal_db)
+            cluster_cartridge = SignalClusterCartridge(
+                config=ClusteringConfig(),
+                ai=signal_ai,
+                signal_db=signal_db,
+            )
+            synthesize_cartridge = SignalSynthesizeCartridge(
+                config=SynthesizeConfig(),
+                ai=signal_ai,
+                signal_db=signal_db,
+            )
+
+            self._ingest_scheduler_task = asyncio.create_task(
+                IngestScheduler(ingest_cartridge, context, source_config.pull_interval_seconds).run(self.shutdown_event)
+            )
+            self._ingest_scheduler_task.add_done_callback(self._log_background_task_exception("ingest_scheduler"))
+            pipeline.register(cluster_cartridge)
+            pipeline.register(synthesize_cartridge)
+            logger.info(
+                "Signal pipeline started (%d sources, interval=%ds)",
+                len(source_config.sources),
+                source_config.pull_interval_seconds,
+            )
+        except ImportError:
+            logger.warning(
+                "Signal pipeline failed to start (missing optional dependency); signal ingestion disabled",
+                exc_info=True,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.error("Signal pipeline failed to start; signal ingestion disabled", exc_info=True)
+
     async def _start_event_platform(self) -> None:
         """Initialize and start the event processing platform."""
         try:
-            # 1. Storage
-            self._event_db = EventDB()
-            await self._event_db.init()
-            logger.info("EventDB initialized")
-
-            # 2. Catalog
+            await self._init_event_db_storage()
             event_catalog = build_default_catalog()
-
-            # 3. Producer
-            redis_adapter = self.client.adapters.get("redis")
-            redis_client = None
-            if isinstance(redis_adapter, RedisTransport):
-                redis_client = await redis_adapter._get_redis()
-
+            redis_client = await self._get_event_redis_client()
             if redis_client is None:
                 logger.warning("No Redis client available; event platform started in degraded mode (no Streams)")
                 return
 
-            event_producer = EventProducer(redis_client=redis_client)
-            configure_producer(event_producer)
-            logger.info("EventProducer configured")
-
-            # 4. Push callbacks
-            push_callbacks = []
-
-            # WebSocket push (if API server is running)
-            api_server = getattr(self.lifecycle, "api_server", None)
-            if api_server is not None:
-                api_server._event_db = self._event_db
-                push_callbacks.append(api_server._notification_push)
-
-            # Telegram delivery adapter (if any admin has a telegram chat_id)
-            if config.telegram:
-                people_dir = Path("~/.teleclaude/people").expanduser()
-                from teleclaude.config.loader import load_global_config, load_person_config
-                from teleclaude.services.telegram import send_telegram_dm
-
-                try:
-                    global_cfg = load_global_config()
-                    for person in global_cfg.people:
-                        if person.role != "admin":
-                            continue
-                        person_key = person.name.lower().replace(" ", "_")
-                        person_cfg_path = people_dir / person_key / "teleclaude.yml"
-                        if not person_cfg_path.exists():
-                            continue
-                        try:
-                            person_cfg = load_person_config(person_cfg_path)
-                        except Exception:
-                            continue
-                        chat_id = person_cfg.creds.telegram.chat_id if person_cfg.creds.telegram else None
-                        if chat_id:
-                            adapter = TelegramDeliveryAdapter(chat_id=chat_id, send_fn=send_telegram_dm)
-                            push_callbacks.append(adapter.on_notification)
-                            logger.info("TelegramDeliveryAdapter registered for admin %s", person.name)
-                except Exception:
-                    logger.warning("Could not load people config for Telegram delivery adapter")
-
-            # Discord delivery adapter (if any admin has a discord user_id)
-            if config.discord.enabled:
-                people_dir = Path("~/.teleclaude/people").expanduser()
-                from teleclaude.config.loader import load_global_config as _load_global_config_discord
-                from teleclaude.config.loader import load_person_config as _load_person_config_discord
-                from teleclaude.events.delivery.discord import DiscordDeliveryAdapter
-                from teleclaude.services.discord import send_discord_dm
-
-                try:
-                    global_cfg = _load_global_config_discord()
-                    for person in global_cfg.people:
-                        if person.role != "admin":
-                            continue
-                        person_key = person.name.lower().replace(" ", "_")
-                        person_cfg_path = people_dir / person_key / "teleclaude.yml"
-                        if not person_cfg_path.exists():
-                            continue
-                        try:
-                            person_cfg = _load_person_config_discord(person_cfg_path)
-                        except Exception:
-                            continue
-                        user_id = person_cfg.creds.discord.user_id if person_cfg.creds.discord else None
-                        if user_id:
-                            adapter = DiscordDeliveryAdapter(user_id=user_id, send_fn=send_discord_dm)
-                            push_callbacks.append(adapter.on_notification)
-                            logger.info("DiscordDeliveryAdapter registered for admin %s", person.name)
-                except Exception:
-                    logger.warning("Could not load people config for Discord delivery adapter")
-
-            # WhatsApp delivery adapter (if any admin has a whatsapp phone_number)
-            if config.whatsapp.enabled:
-                people_dir = Path("~/.teleclaude/people").expanduser()
-                from functools import partial
-
-                from teleclaude.config.loader import load_global_config as _load_global_config_whatsapp
-                from teleclaude.config.loader import load_person_config as _load_person_config_whatsapp
-                from teleclaude.events.delivery.whatsapp import WhatsAppDeliveryAdapter
-                from teleclaude.services.whatsapp import send_whatsapp_message
-
-                try:
-                    global_cfg = _load_global_config_whatsapp()
-                    for person in global_cfg.people:
-                        if person.role != "admin":
-                            continue
-                        person_key = person.name.lower().replace(" ", "_")
-                        person_cfg_path = people_dir / person_key / "teleclaude.yml"
-                        if not person_cfg_path.exists():
-                            continue
-                        try:
-                            person_cfg = _load_person_config_whatsapp(person_cfg_path)
-                        except Exception:
-                            continue
-                        phone_number = person_cfg.creds.whatsapp.phone_number if person_cfg.creds.whatsapp else None
-                        if phone_number:
-                            bound_send_fn = partial(
-                                send_whatsapp_message,
-                                phone_number_id=config.whatsapp.phone_number_id,
-                                access_token=config.whatsapp.access_token,
-                                api_version=config.whatsapp.api_version,
-                            )
-                            adapter = WhatsAppDeliveryAdapter(phone_number=phone_number, send_fn=bound_send_fn)
-                            push_callbacks.append(adapter.on_notification)
-                            logger.info("WhatsAppDeliveryAdapter registered for admin %s", person.name)
-                except Exception:
-                    logger.warning("Could not load people config for WhatsApp delivery adapter")
-
-            # 5. Pipeline (trust → integration trigger → dedup → enrichment → correlation → classification → notification projector → prepare quality)
-            from teleclaude.core.integration.queue import IntegrationQueue
-            from teleclaude.core.integration.service import IntegrationEventService
-            from teleclaude.core.integration_bridge import spawn_integrator_session
-
-            _integration_service = IntegrationEventService.create(
-                reachability_checker=lambda _b, _s, _r: True,
-                integrated_checker=lambda _s, _r: False,
-            )
-            _integration_queue = IntegrationQueue(
-                state_path=default_integration_queue_path(),
-            )
-
-            def _ingest_callback(canonical_type: str, payload: object) -> list[tuple[str, str, str]]:
-                from collections.abc import Mapping
-
-                if not isinstance(payload, Mapping):
-                    return []
-                result = _integration_service.ingest_raw(canonical_type, payload)
-                ready: list[tuple[str, str, str]] = []
-                for candidate in result.transitioned_to_ready:
-                    _integration_queue.enqueue(key=candidate.key, ready_at=candidate.ready_at)
-                    ready.append((candidate.key.slug, candidate.key.branch, candidate.key.sha))
-                return ready
-
-            integration_trigger = IntegrationTriggerCartridge(
-                spawn_callback=spawn_integrator_session,
-                ingest_callback=_ingest_callback,
-            )
-            trust_config = TrustConfig(
-                known_sources=frozenset({"daemon", "prepare-worker", "review-worker", "correlation"})
-            )
-            context = PipelineContext(
-                catalog=event_catalog,
-                db=self._event_db,
-                push_callbacks=push_callbacks,
-                trust_config=trust_config,
-                correlation_config=CorrelationConfig(),
-                producer=event_producer,
-            )
-            # 5b. Domain pipeline runner (fan-out after system pipeline)
-            domain_runner = None
-            event_domains_cfg = getattr(config, "event_domains", None)
-            if event_domains_cfg is not None:
-                try:
-                    from teleclaude.events.startup import build_domain_pipeline_runner
-
-                    domain_runner = build_domain_pipeline_runner(event_domains_cfg)
-                    logger.info("Domain pipeline runner built successfully")
-                except Exception as _domain_err:
-                    logger.error(
-                        "Failed to build domain pipeline runner: %s — domain pipeline disabled",
-                        _domain_err,
-                    )
-
-            pipeline = Pipeline(
-                [
-                    TrustCartridge(),
-                    integration_trigger,
-                    DeduplicationCartridge(),
-                    EnrichmentCartridge(),
-                    CorrelationCartridge(),
-                    ClassificationCartridge(),
-                    NotificationProjectorCartridge(),
-                    PrepareQualityCartridge(),
-                ],
-                context,
-                domain_runner=domain_runner,
-            )
-
-            # 5c. Sandbox bridge (optional sidecar — advisory, last in system pipeline)
-            try:
-                from teleclaude.events.sandbox import (  # pylint: disable=import-outside-toplevel
-                    SandboxBridgeCartridge,
-                    SandboxContainerManager,
-                )
-            except ImportError:
-                logger.debug("Sandbox subsystem not available — skipping")
-            else:
-                try:
-                    _sandbox_socket = getattr(config, "sandbox_socket_path", "/tmp/teleclaude-sandbox.sock")
-                    _sandbox_dir = getattr(config, "sandbox_cartridges_dir", "~/.teleclaude/sandbox-cartridges")
-                    _sandbox_manager = SandboxContainerManager(
-                        socket_path=_sandbox_socket,
-                        cartridges_dir=_sandbox_dir,
-                        producer=event_producer,
-                    )
-                    _sandbox_bridge = SandboxBridgeCartridge(manager=_sandbox_manager)
-                    pipeline.register(_sandbox_bridge)
-                    asyncio.create_task(
-                        _sandbox_manager.watch_cartridges_dir(self.shutdown_event),
-                        name="sandbox_cartridges_watcher",
-                    ).add_done_callback(self._log_background_task_exception("sandbox_cartridges_watcher"))
-                    asyncio.create_task(
-                        _sandbox_manager.watch_health(self.shutdown_event),
-                        name="sandbox_health_watcher",
-                    ).add_done_callback(self._log_background_task_exception("sandbox_health_watcher"))
-                    self._sandbox_manager = _sandbox_manager
-                    logger.info("Sandbox bridge cartridge registered (socket=%s, dir=%s)", _sandbox_socket, _sandbox_dir)
-                except Exception as exc:
-                    logger.error("Sandbox subsystem init failed — skipping: %s", exc, exc_info=True)
-
-            # 6. Processor
-            computer_name = getattr(config, "computer", None)
-            computer_label = getattr(computer_name, "name", "local") if computer_name else "local"
-            event_processor = EventProcessor(
-                redis_client=redis_client,
-                pipeline=pipeline,
-                consumer_name=f"{computer_label}-{os.getpid()}",
-            )
-            self._event_processor_task = asyncio.create_task(event_processor.start(self.shutdown_event))
-            self._event_processor_task.add_done_callback(self._log_background_task_exception("event_processor"))
-            logger.info("EventProcessor started")
-
-            # 7. Emit daemon restarted event
-            await event_producer.emit(
-                EventsEnvelope(
-                    event="system.daemon.restarted",
-                    source="daemon",
-                    level=EventLevel.INFRASTRUCTURE,
-                    domain="system",
-                    visibility=EventVisibility.CLUSTER,
-                    description=f"Daemon restarted on {computer_label}",
-                    payload={"computer": computer_label, "pid": os.getpid()},
-                )
-            )
-            logger.info("Event 'system.daemon.restarted' emitted")
-
-            # 8. Signal pipeline (optional — only if config.signal section is present)
-            signal_cfg = getattr(config, "signal", None)
-            if signal_cfg is not None:
-                try:
-                    import anthropic  # pylint: disable=import-outside-toplevel
-
-                    from company.cartridges.signal import (  # pylint: disable=import-outside-toplevel
-                        SignalClusterCartridge,
-                        SignalIngestCartridge,
-                        SignalSynthesizeCartridge,
-                    )
-                    from teleclaude.events.signal.ai import (  # pylint: disable=import-outside-toplevel
-                        DefaultSignalAIClient,
-                    )
-                    from teleclaude.events.signal.clustering import (  # pylint: disable=import-outside-toplevel
-                        ClusteringConfig,
-                    )
-                    from teleclaude.events.signal.scheduler import (  # pylint: disable=import-outside-toplevel
-                        IngestScheduler,
-                    )
-                    from teleclaude.events.signal.sources import (  # pylint: disable=import-outside-toplevel
-                        SignalSourceConfig,
-                    )
-
-                    raw_ai = anthropic.AsyncAnthropic()
-                    signal_ai = DefaultSignalAIClient(raw_ai)
-                    signal_db = self._event_db.signal
-                    source_config_data = signal_cfg if isinstance(signal_cfg, dict) else {}
-                    source_config = SignalSourceConfig(**source_config_data)
-
-                    context.ai_client = signal_ai
-                    context.emit = event_producer.emit  # type: ignore[assignment]
-
-                    ingest_cartridge = SignalIngestCartridge(config=source_config, ai=signal_ai, signal_db=signal_db)
-                    cluster_cartridge = SignalClusterCartridge(
-                        config=ClusteringConfig(), ai=signal_ai, signal_db=signal_db
-                    )
-
-                    from company.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel
-                        SynthesizeConfig,
-                    )
-
-                    synthesize_cartridge = SignalSynthesizeCartridge(
-                        config=SynthesizeConfig(), ai=signal_ai, signal_db=signal_db
-                    )
-
-                    self._ingest_scheduler_task = asyncio.create_task(
-                        IngestScheduler(ingest_cartridge, context, source_config.pull_interval_seconds).run(
-                            self.shutdown_event
-                        )
-                    )
-                    self._ingest_scheduler_task.add_done_callback(
-                        self._log_background_task_exception("ingest_scheduler")
-                    )
-                    pipeline.register(cluster_cartridge)
-                    pipeline.register(synthesize_cartridge)
-                    logger.info(
-                        "Signal pipeline started (%d sources, interval=%ds)",
-                        len(source_config.sources),
-                        source_config.pull_interval_seconds,
-                    )
-                except ImportError:
-                    logger.warning(
-                        "Signal pipeline failed to start (missing optional dependency); signal ingestion disabled",
-                        exc_info=True,
-                    )
-                except Exception:  # pylint: disable=broad-exception-caught
-                    logger.error("Signal pipeline failed to start; signal ingestion disabled", exc_info=True)
-
+            event_producer = self._configure_event_producer(redis_client)
+            push_callbacks = self._build_push_callbacks()
+            integration_trigger = self._build_integration_trigger()
+            context = self._build_pipeline_context(event_catalog, push_callbacks, event_producer)
+            pipeline = self._build_pipeline(context, integration_trigger)
+            self._register_sandbox_bridge(pipeline, event_producer)
+            computer_label = self._start_event_processor(redis_client, pipeline)
+            await self._emit_daemon_restarted_event(event_producer, computer_label)
+            self._start_signal_pipeline(pipeline, context, event_producer)
         except Exception:
             logger.exception("Event platform startup failed; continuing without event platform")
 

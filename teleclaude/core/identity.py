@@ -241,5 +241,3 @@ def get_identity_resolver() -> IdentityResolver:
     if _resolver_instance is None:
         _resolver_instance = IdentityResolver()
     return _resolver_instance
-
-

@@ -8,6 +8,19 @@ from datetime import datetime
 from ._parsers import normalize_transcript_entry_message
 from ._utils import _format_thinking, _format_timestamp_prefix, _parse_timestamp
 
+__all__ = [
+    "_extract_tool_subject",
+    "_process_entry",
+    "_process_list_content",
+    "_process_string_content",
+    "_process_text_block",
+    "_process_thinking_block",
+    "_process_tool_result_block",
+    "_process_tool_use_block",
+    "_should_skip_entry",
+    "iter_assistant_blocks",
+]
+
 
 def iter_assistant_blocks(
     entries: Iterable[Mapping[str, object]],

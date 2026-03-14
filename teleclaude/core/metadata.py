@@ -3,7 +3,6 @@
 Provides Pydantic models for type-safe event metadata across adapters.
 """
 
-
 from pydantic import BaseModel, Field
 
 

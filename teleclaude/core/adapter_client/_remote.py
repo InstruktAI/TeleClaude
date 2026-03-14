@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _RemoteMixin:
+class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
     """Remote execution (Redis transport) and peer discovery operations."""
 
     if TYPE_CHECKING:

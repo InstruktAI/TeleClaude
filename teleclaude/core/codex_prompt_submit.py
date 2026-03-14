@@ -433,3 +433,12 @@ async def maybe_emit_codex_input(
 
     if output_changed:
         state.last_output_change_time = current_time
+
+
+__all__ = [
+    "_find_prompt_input",
+    "_has_agent_marker",
+    "cleanup_codex_prompt_state",
+    "maybe_emit_codex_input",
+    "seed_codex_prompt_from_message",
+]

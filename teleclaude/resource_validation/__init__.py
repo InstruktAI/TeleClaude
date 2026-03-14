@@ -177,85 +177,93 @@ def _validate_parameters_field(parameters: object, path: str) -> None:
         seen_names.add(name)
 
 
-def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> None:
-    """Validate body structure of an agent artifact (command, agent, or skill)."""
+def _validate_artifact_argument_hint(post: frontmatter.Post, path: str, *, kind: str) -> None:
     argument_hint = post.metadata.get("argument-hint")
     if kind == "command" and argument_hint is not None and not isinstance(argument_hint, str):
         raise ValueError(f"{path} has invalid frontmatter 'argument-hint' (must be a string)")
-    lines = post.content.splitlines()
-    first_line, h1_idx = _next_nonblank(lines, 0)
-    if first_line is None or not first_line.startswith("# "):
-        raise ValueError(f"{path} must start with an H1 title")
 
+
+def _find_required_reads_block(lines: list[str], h1_idx: int) -> tuple[int | None, int | None]:
     required_reads_idx = None
     required_reads_end = None
     for i in range(h1_idx + 1, len(lines)):
-        if lines[i].strip().lower() == "## required reads":
-            required_reads_idx = i
-            j = i + 1
-            while j < len(lines):
-                stripped = lines[j].strip()
-                if not stripped:
-                    j += 1
-                    continue
-                if stripped.startswith("@") or stripped.startswith("- @"):
-                    j += 1
-                    continue
-                if stripped.startswith("# "):
-                    break
-                if stripped.startswith("## ") and stripped.lower() != "## required reads":
-                    break
-                break
-            required_reads_end = j
-            break
-
-    if required_reads_idx is not None:
-        for i in range(h1_idx + 1, required_reads_idx):
-            stripped = lines[i].strip()
-            if stripped.startswith("## "):
-                raise ValueError(f"{path} must place Required reads before other H2 sections")
-        for i in range(required_reads_idx + 1, required_reads_end or len(lines)):
-            stripped = lines[i].strip()
+        if lines[i].strip().lower() != "## required reads":
+            continue
+        required_reads_idx = i
+        j = i + 1
+        while j < len(lines):
+            stripped = lines[j].strip()
             if not stripped:
+                j += 1
                 continue
             if stripped.startswith("@") or stripped.startswith("- @"):
+                j += 1
                 continue
+            if stripped.startswith("# "):
+                break
+            if stripped.startswith("## ") and stripped.lower() != "## required reads":
+                break
             break
+        required_reads_end = j
+        break
+    return required_reads_idx, required_reads_end
 
-    refs = _extract_artifact_required_reads(lines)
-    _validate_required_reads_order(refs, path)
 
-    first_section_idx = None
+def _validate_required_reads_block_position(
+    lines: list[str],
+    path: str,
+    *,
+    h1_idx: int,
+    required_reads_idx: int | None,
+    required_reads_end: int | None,
+) -> None:
+    if required_reads_idx is None:
+        return
+    for i in range(h1_idx + 1, required_reads_idx):
+        if lines[i].strip().startswith("## "):
+            raise ValueError(f"{path} must place Required reads before other H2 sections")
+    for i in range(required_reads_idx + 1, required_reads_end or len(lines)):
+        stripped = lines[i].strip()
+        if not stripped:
+            continue
+        if stripped.startswith("@") or stripped.startswith("- @"):
+            continue
+        break
+
+
+def _find_first_artifact_section(lines: list[str], h1_idx: int) -> int | None:
     for i in range(h1_idx + 1, len(lines)):
         stripped = lines[i].strip()
         if stripped.startswith("## ") and stripped.lower() != "## required reads":
-            first_section_idx = i
-            break
+            return i
+    return None
 
-    if first_section_idx is None:
-        raise ValueError(f"{path} is missing required section headings")
 
+def _validate_artifact_role_activation(
+    lines: list[str],
+    path: str,
+    *,
+    kind: str,
+    h1_idx: int,
+    first_section_idx: int,
+) -> None:
+    role_lines = [line.strip() for line in lines]
     if kind in {"command", "agent"}:
-        has_role = any(line.strip().startswith("You are now the ") for line in lines[h1_idx + 1 : first_section_idx])
+        has_role = any(line.startswith("You are now the ") for line in role_lines[h1_idx + 1 : first_section_idx])
         if not has_role:
             raise ValueError(f"{path} must include a role activation line before the first section")
-    else:
-        if any(line.strip().startswith("You are now the ") for line in lines):
-            raise ValueError(f"{path} must not include a role activation line")
+        return
+    if any(line.startswith("You are now the ") for line in role_lines):
+        raise ValueError(f"{path} must not include a role activation line")
 
-    allowed_map = {
-        "command": ["Purpose", "Inputs", "Outputs", "Steps", "Discipline"],
-        "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
-        "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
-    }
-    required_map = {
-        "command": ["Purpose", "Inputs", "Outputs", "Steps", "Discipline"],
-        "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
-        "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
-    }
-    allowed = allowed_map[kind]
-    required = required_map[kind]
 
+def _artifact_section_order(kind: str) -> list[str]:
+    if kind == "command":
+        return ["Purpose", "Inputs", "Outputs", "Steps", "Discipline"]
+    return ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"]
+
+
+def _collect_artifact_headings(lines: list[str], path: str, *, h1_idx: int) -> list[str]:
     headings: list[str] = []
     in_required_reads = False
     for idx, raw in enumerate(lines):
@@ -273,23 +281,53 @@ def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> N
         if stripped.startswith("# "):
             if idx != h1_idx:
                 raise ValueError(f"{path} must only have one H1 title")
+            continue
         if stripped.startswith("### "):
             raise ValueError(f"{path} must use H2 headings only for schema sections")
         if stripped.startswith("## "):
             title = stripped[3:].strip()
-            if title.lower() == "required reads":
-                continue
-            headings.append(title)
+            if title.lower() != "required reads":
+                headings.append(title)
+    return headings
 
+
+def _validate_artifact_section_order(lines: list[str], path: str, *, kind: str, h1_idx: int) -> None:
+    headings = _collect_artifact_headings(lines, path, h1_idx=h1_idx)
     if not headings:
         raise ValueError(f"{path} is missing required section headings")
-
+    required = _artifact_section_order(kind)
     for heading in headings:
-        if heading not in allowed:
+        if heading not in required:
             raise ValueError(f"{path} has invalid section heading '{heading}'")
-
     if headings != required:
         raise ValueError(f"{path} section order must be: {' → '.join(required)}")
+
+
+def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> None:
+    """Validate body structure of an agent artifact (command, agent, or skill)."""
+    _validate_artifact_argument_hint(post, path, kind=kind)
+    lines = post.content.splitlines()
+    first_line, h1_idx = _next_nonblank(lines, 0)
+    if first_line is None or not first_line.startswith("# "):
+        raise ValueError(f"{path} must start with an H1 title")
+
+    required_reads_idx, required_reads_end = _find_required_reads_block(lines, h1_idx)
+    _validate_required_reads_block_position(
+        lines,
+        path,
+        h1_idx=h1_idx,
+        required_reads_idx=required_reads_idx,
+        required_reads_end=required_reads_end,
+    )
+
+    refs = _extract_artifact_required_reads(lines)
+    _validate_required_reads_order(refs, path)
+
+    first_section_idx = _find_first_artifact_section(lines, h1_idx)
+    if first_section_idx is None:
+        raise ValueError(f"{path} is missing required section headings")
+    _validate_artifact_role_activation(lines, path, kind=kind, h1_idx=h1_idx, first_section_idx=first_section_idx)
+    _validate_artifact_section_order(lines, path, kind=kind, h1_idx=h1_idx)
 
 
 def _validate_required_reads_order(refs: list[str], path: str) -> None:
@@ -391,6 +429,97 @@ def _job_slug_to_spec_filename(job_slug: str) -> str:
     return f"{job_slug.replace('_', '-')}.md"
 
 
+def _validate_job_when_or_schedule(
+    job_cfg: dict[object, object],
+    *,
+    name: object,
+    config_path: Path,
+    allowed_schedules: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    when_raw = job_cfg.get("when")
+    has_valid_when = False
+    if when_raw is not None:
+        if not isinstance(when_raw, dict):
+            errors.append(f"{config_path}: jobs.{name}.when must be a mapping")
+        else:
+            try:
+                JobWhenConfig.model_validate(when_raw)
+                has_valid_when = True
+            except ValidationError as exc:
+                first = exc.errors()[0] if exc.errors() else {"msg": "invalid when config"}
+                errors.append(f"{config_path}: jobs.{name}.when {first['msg']}")
+    if has_valid_when:
+        return errors
+    schedule = job_cfg.get("schedule")
+    if not isinstance(schedule, str) or schedule not in allowed_schedules:
+        errors.append(f"{config_path}: jobs.{name}.schedule must be one of {sorted(allowed_schedules)}")
+    return errors
+
+
+def _validate_job_preferences(job_cfg: dict[object, object], *, name: object, config_path: Path) -> list[str]:
+    errors: list[str] = []
+    preferred_hour = job_cfg.get("preferred_hour", 6)
+    if not isinstance(preferred_hour, int) or not (0 <= preferred_hour <= 23):
+        errors.append(f"{config_path}: jobs.{name}.preferred_hour must be int 0..23")
+
+    preferred_weekday = job_cfg.get("preferred_weekday", 0)
+    if not isinstance(preferred_weekday, int) or not (0 <= preferred_weekday <= 6):
+        errors.append(f"{config_path}: jobs.{name}.preferred_weekday must be int 0..6")
+
+    preferred_day = job_cfg.get("preferred_day", 1)
+    if not isinstance(preferred_day, int) or not (1 <= preferred_day <= 31):
+        errors.append(f"{config_path}: jobs.{name}.preferred_day must be int 1..31")
+    return errors
+
+
+def _validate_job_execution_target(
+    job_cfg: dict[object, object],
+    *,
+    name: object,
+    config_path: Path,
+    project_root: Path,
+) -> list[str]:
+    errors: list[str] = []
+    is_agent = str(job_cfg.get("type", "")) == "agent"
+    if is_agent:
+        if "message" in job_cfg:
+            errors.append(f"{config_path}: jobs.{name}.message is not allowed for agent jobs")
+        job_ref = job_cfg.get("job")
+        if not isinstance(job_ref, str) or not job_ref.strip():
+            errors.append(f"{config_path}: jobs.{name}.job is required for agent jobs")
+            return errors
+        spec_file = project_root / "docs" / "project" / "spec" / "jobs" / _job_slug_to_spec_filename(job_ref)
+        if not spec_file.exists():
+            errors.append(f"{config_path}: jobs.{name}.job references missing spec {spec_file}")
+        return errors
+
+    script_ref = job_cfg.get("script")
+    if isinstance(script_ref, str) and script_ref.strip():
+        return errors
+    python_module_path = project_root / "jobs" / f"{name}.py"
+    if not python_module_path.exists():
+        errors.append(f"{config_path}: jobs.{name} has no script and missing python module {python_module_path}")
+    return errors
+
+
+def _validate_single_job_config(
+    name: object,
+    raw: object,
+    *,
+    config_path: Path,
+    project_root: Path,
+    allowed_schedules: set[str],
+) -> list[str]:
+    if not isinstance(raw, dict):
+        return [f"{config_path}: jobs.{name} must be a mapping"]
+    return [
+        *_validate_job_when_or_schedule(raw, name=name, config_path=config_path, allowed_schedules=allowed_schedules),
+        *_validate_job_preferences(raw, name=name, config_path=config_path),
+        *_validate_job_execution_target(raw, name=name, config_path=config_path, project_root=project_root),
+    ]
+
+
 def validate_jobs_config(project_root: Path) -> list[str]:
     """Validate project job config in teleclaude.yml.
 
@@ -416,63 +545,15 @@ def validate_jobs_config(project_root: Path) -> list[str]:
     errors: list[str] = []
 
     for name, raw in jobs.items():
-        if not isinstance(raw, dict):
-            errors.append(f"{config_path}: jobs.{name} must be a mapping")
-            continue
-        job_cfg = raw
-
-        # New contract: jobs can use `when` and omit legacy `schedule`.
-        # Legacy `schedule` remains required only when `when` is absent.
-        when_raw = job_cfg.get("when")
-        has_valid_when = False
-        if when_raw is not None:
-            if not isinstance(when_raw, dict):
-                errors.append(f"{config_path}: jobs.{name}.when must be a mapping")
-            else:
-                try:
-                    JobWhenConfig.model_validate(when_raw)
-                    has_valid_when = True
-                except ValidationError as exc:
-                    first = exc.errors()[0] if exc.errors() else {"msg": "invalid when config"}
-                    errors.append(f"{config_path}: jobs.{name}.when {first['msg']}")
-
-        if not has_valid_when:
-            schedule = job_cfg.get("schedule")
-            if not isinstance(schedule, str) or schedule not in allowed_schedules:
-                errors.append(f"{config_path}: jobs.{name}.schedule must be one of {sorted(allowed_schedules)}")
-
-        preferred_hour = job_cfg.get("preferred_hour", 6)
-        if not isinstance(preferred_hour, int) or not (0 <= preferred_hour <= 23):
-            errors.append(f"{config_path}: jobs.{name}.preferred_hour must be int 0..23")
-
-        preferred_weekday = job_cfg.get("preferred_weekday", 0)
-        if not isinstance(preferred_weekday, int) or not (0 <= preferred_weekday <= 6):
-            errors.append(f"{config_path}: jobs.{name}.preferred_weekday must be int 0..6")
-
-        preferred_day = job_cfg.get("preferred_day", 1)
-        if not isinstance(preferred_day, int) or not (1 <= preferred_day <= 31):
-            errors.append(f"{config_path}: jobs.{name}.preferred_day must be int 1..31")
-
-        is_agent = str(job_cfg.get("type", "")) == "agent"
-        if is_agent:
-            if "message" in job_cfg:
-                errors.append(f"{config_path}: jobs.{name}.message is not allowed for agent jobs")
-            job_ref = job_cfg.get("job")
-            if not isinstance(job_ref, str) or not job_ref.strip():
-                errors.append(f"{config_path}: jobs.{name}.job is required for agent jobs")
-            else:
-                spec_file = project_root / "docs" / "project" / "spec" / "jobs" / _job_slug_to_spec_filename(job_ref)
-                if not spec_file.exists():
-                    errors.append(f"{config_path}: jobs.{name}.job references missing spec {spec_file}")
-        else:
-            script_ref = job_cfg.get("script")
-            if not isinstance(script_ref, str) or not script_ref.strip():
-                # Default python-job contract: module should exist at jobs/{name}.py
-                python_module_path = project_root / "jobs" / f"{name}.py"
-                if not python_module_path.exists():
-                    errors.append(
-                        f"{config_path}: jobs.{name} has no script and missing python module {python_module_path}"
-                    )
+        errors.extend(
+            _validate_single_job_config(
+                name,
+                raw,
+                config_path=config_path,
+                project_root=project_root,
+                allowed_schedules=allowed_schedules,
+            )
+        )
 
     return errors
 

@@ -149,40 +149,40 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-    Pop["Pop candidate from queue\n(slug, branch, sha)"]
+    Pop["Pop candidate from queue<br/>(slug, branch, sha)"]
 
-    AncestryCheck{"SHA already\nancestor of main?"}
+    AncestryCheck{"SHA already<br/>ancestor of main?"}
 
-    SetupWorktree["Reset integration worktree\nto origin/main"]
+    SetupWorktree["Reset integration worktree<br/>to origin/main"]
 
     SquashMerge["git merge --squash branch"]
 
     MergeResult{"Merge result?"}
 
-    EmptyCheck{"Staged changes\n(git diff --cached)?"}
+    EmptyCheck{"Staged changes<br/>(git diff --cached)?"}
 
-    CleanMerge["MERGE_CLEAN\nReturn: compose commit message"]
-    ConflictMerge["MERGE_CONFLICTED\nReturn: resolve + commit"]
+    CleanMerge["MERGE_CLEAN<br/>Return: compose commit message"]
+    ConflictMerge["MERGE_CONFLICTED<br/>Return: resolve + commit"]
 
-    CommitCheck{"HEAD advanced?\n(new commit detected)"}
+    CommitCheck{"HEAD advanced?<br/>(new commit detected)"}
 
-    Bookkeeping["DELIVERY_BOOKKEEPING\n- roadmap deliver slug\n- demo create slug\n- commit bookkeeping"]
+    Bookkeeping["DELIVERY_BOOKKEEPING<br/>- roadmap deliver slug<br/>- demo create slug<br/>- commit bookkeeping"]
 
     Push["git push origin HEAD:main"]
 
     PushResult{"Push result?"}
 
     PushOK["PUSH_SUCCEEDED"]
-    PushFail["PUSH_REJECTED\nReturn: rebase + retry"]
+    PushFail["PUSH_REJECTED<br/>Return: rebase + retry"]
 
-    RecoveryCheck{"Local HEAD ==\nremote main?"}
+    RecoveryCheck{"Local HEAD ==<br/>remote main?"}
 
-    DoCleanup["CLEANUP\n- Remove worktree\n- Delete branch\n- Remove todo dir"]
+    DoCleanup["CLEANUP<br/>- Remove worktree<br/>- Delete branch<br/>- Remove todo dir"]
 
-    Delivered["CANDIDATE_DELIVERED\n- Mark integrated in queue"]
+    Delivered["CANDIDATE_DELIVERED<br/>- Mark integrated in queue"]
 
-    AlreadyMerged["Already integrated\n(skip candidate)"]
-    EmptyMerge["Empty merge\n(content already on main)"]
+    AlreadyMerged["Already integrated<br/>(skip candidate)"]
+    EmptyMerge["Empty merge<br/>(content already on main)"]
 
     Pop --> AncestryCheck
     AncestryCheck -->|"Is ancestor"| AlreadyMerged
@@ -226,18 +226,18 @@ flowchart TD
 flowchart TD
     Start(["telec todo integrate"])
 
-    AcquireLease{"Acquire\nintegration lease?"}
-    LeaseBusy(["LEASE_BUSY:\nanother integrator active"])
+    AcquireLease{"Acquire<br/>integration lease?"}
+    LeaseBusy(["LEASE_BUSY:<br/>another integrator active"])
 
-    CheckQueue{"Queue has\ncandidates?"}
+    CheckQueue{"Queue has<br/>candidates?"}
 
-    ProcessCandidate["Process next candidate\n(see single candidate flow)"]
+    ProcessCandidate["Process next candidate<br/>(see single candidate flow)"]
 
-    MarkIntegrated["Mark candidate\nas integrated"]
+    MarkIntegrated["Mark candidate<br/>as integrated"]
 
-    MoreCandidates{"More candidates\nin queue?"}
+    MoreCandidates{"More candidates<br/>in queue?"}
 
-    Complete(["COMPLETED:\nqueue drained\nrelease lease\nself-end session"])
+    Complete(["COMPLETED:<br/>queue drained<br/>release lease<br/>self-end session"])
 
     Start --> AcquireLease
     AcquireLease -->|"No"| LeaseBusy
@@ -349,26 +349,26 @@ flowchart TB
     end
 
     subgraph "Readiness Projection"
-        Predicate["Readiness Predicate:\n1. review_approved exists\n2. finalize_ready exists\n3. branch_pushed exists\n4. SHA reachable on remote\n5. Not superseded\n6. Not already on main"]
+        Predicate["Readiness Predicate:<br/>1. review_approved exists<br/>2. finalize_ready exists<br/>3. branch_pushed exists<br/>4. SHA reachable on remote<br/>5. Not superseded<br/>6. Not already on main"]
     end
 
     subgraph "Serialization Layer"
-        Queue["Integration Queue\n(FIFO, durable)"]
-        Lease["Integration Lease\n(singleton, TTL=120s)"]
+        Queue["Integration Queue<br/>(FIFO, durable)"]
+        Lease["Integration Lease<br/>(singleton, TTL=120s)"]
     end
 
     subgraph "Integration Worktree"
-        IWT["trees/_integration/\n(persistent, reset to origin/main)"]
+        IWT["trees/_integration/<br/>(persistent, reset to origin/main)"]
     end
 
     subgraph "State Machine"
-        SM["IntegrationPhase\n12 states, checkpoint-backed"]
+        SM["IntegrationPhase<br/>12 states, checkpoint-backed"]
     end
 
     subgraph "Outputs"
-        Main["origin/main\n(canonical)"]
-        Cleanup2["Cleanup\n(worktree + branch + todo)"]
-        Events["Lifecycle Events\n(fire-and-forget)"]
+        Main["origin/main<br/>(canonical)"]
+        Cleanup2["Cleanup<br/>(worktree + branch + todo)"]
+        Events["Lifecycle Events<br/>(fire-and-forget)"]
     end
 
     ReviewApproved --> Predicate
@@ -391,11 +391,11 @@ The integration lease enforces singleton execution — only one integrator sessi
 ```mermaid
 flowchart LR
     subgraph "Lease Lifecycle"
-        Acquire["Acquire\n(compare-and-swap)"]
-        Hold["Hold\n(renew every 30s)"]
-        Release["Release\n(queue drained)"]
-        Expire["Expire\n(TTL=120s)"]
-        Break["Break\n(new session acquires\nafter expiry)"]
+        Acquire["Acquire<br/>(compare-and-swap)"]
+        Hold["Hold<br/>(renew every 30s)"]
+        Release["Release<br/>(queue drained)"]
+        Expire["Expire<br/>(TTL=120s)"]
+        Break["Break<br/>(new session acquires<br/>after expiry)"]
     end
 
     Acquire --> Hold
@@ -422,12 +422,12 @@ Two guards prevent re-integrating content already on main:
 
 ```mermaid
 flowchart TD
-    Candidate["Candidate\n(slug, branch, sha)"]
+    Candidate["Candidate<br/>(slug, branch, sha)"]
 
-    Guard1{"Guard 1: Ancestry\ngit merge-base\n--is-ancestor sha HEAD"}
-    Guard2{"Guard 2: Empty merge\ngit diff --cached --quiet\n(after squash merge)"}
+    Guard1{"Guard 1: Ancestry<br/>git merge-base<br/>--is-ancestor sha HEAD"}
+    Guard2{"Guard 2: Empty merge<br/>git diff --cached --quiet<br/>(after squash merge)"}
 
-    Skip["CANDIDATE_DELIVERED\n(skip - already integrated)"]
+    Skip["CANDIDATE_DELIVERED<br/>(skip - already integrated)"]
     Proceed["Continue with merge"]
 
     Candidate --> Guard1
@@ -452,13 +452,13 @@ flowchart TD
 
     IsBug{"Is bug slug?"}
 
-    Deliver["telec roadmap deliver slug\n(roadmap.yaml - delivered.yaml)"]
-    DemoCreate["telec todo demo create slug\n(if demo.md exists)"]
+    Deliver["telec roadmap deliver slug<br/>(roadmap.yaml - delivered.yaml)"]
+    DemoCreate["telec todo demo create slug<br/>(if demo.md exists)"]
 
-    Stage["git add\ntodos/roadmap.yaml\ntodos/delivered.yaml"]
-    Commit["git commit\n'chore: deliver slug'"]
+    Stage["git add<br/>todos/roadmap.yaml<br/>todos/delivered.yaml"]
+    Commit["git commit<br/>'chore: deliver slug'"]
 
-    Push["DELIVERY_BOOKKEEPING\ncomplete"]
+    Push["DELIVERY_BOOKKEEPING<br/>complete"]
 
     Committed --> IsBug
     IsBug -->|"No"| Deliver
@@ -478,21 +478,21 @@ Every phase is recoverable. Re-calling `telec todo integrate` reads the checkpoi
 ```mermaid
 flowchart LR
     subgraph "Crash Points"
-        C1["After dequeue,\nbefore merge"]
-        C2["After merge,\nbefore commit"]
-        C3["After commit,\nbefore push"]
-        C4["After push\nrejection"]
+        C1["After dequeue,<br/>before merge"]
+        C2["After merge,<br/>before commit"]
+        C3["After commit,<br/>before push"]
+        C4["After push<br/>rejection"]
         C5["During cleanup"]
-        C6["After candidate\ndelivered"]
+        C6["After candidate<br/>delivered"]
     end
 
     subgraph "Recovery Behavior"
-        R1["Resume at merge.\nNo work lost."]
-        R2["Re-prompt for commit.\nGit index persists."]
-        R3["Re-run bookkeeping\n(idempotent). Push."]
-        R4["Re-check if heads match.\nRe-prompt if not."]
-        R5["Re-run cleanup\n(idempotent)."]
-        R6["Mark integrated.\nReset to IDLE."]
+        R1["Resume at merge.<br/>No work lost."]
+        R2["Re-prompt for commit.<br/>Git index persists."]
+        R3["Re-run bookkeeping<br/>(idempotent). Push."]
+        R4["Re-check if heads match.<br/>Re-prompt if not."]
+        R5["Re-run cleanup<br/>(idempotent)."]
+        R6["Mark integrated.<br/>Reset to IDLE."]
     end
 
     C1 --> R1

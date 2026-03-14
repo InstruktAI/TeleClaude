@@ -278,3 +278,17 @@ def set_item_phase(cwd: str, slug: str, phase: str) -> None:
     state = read_phase_state(cwd, slug)
     state["phase"] = phase
     write_phase_state(cwd, slug, state)
+
+
+__all__ = [
+    "_find_next_prepare_slug",
+    "check_file_exists",
+    "get_item_phase",
+    "is_ready_for_work",
+    "resolve_canonical_project_root",
+    "resolve_first_runnable_holder_child",
+    "resolve_holder_children",
+    "resolve_slug",
+    "resolve_slug_async",
+    "set_item_phase",
+]

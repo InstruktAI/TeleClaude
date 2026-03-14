@@ -1,10 +1,25 @@
 """CLI surface — CLI_SURFACE dict and HELP_SUBCOMMAND_EXPANSIONS."""
+
 from __future__ import annotations  # noqa: I001
 
-from .surface_types import (  # noqa: F401  # type: ignore[reportUnusedImport]
-    CommandAuth, CommandDef, Flag, TelecCommand, _H, _SYS_ALL, _SYS_INTG, _SYS_ORCH,
-    _HR_ADMIN, _HR_ALL, _HR_ALL_NON_ADMIN, _HR_MEMBER, _HR_MEMBER_CONTRIB, _HR_MEMBER_CONTRIB_NEWCOMER,
+from .surface_types import (  # type: ignore[reportUnusedImport]
+    CommandAuth,
+    CommandDef,
+    Flag,
+    TelecCommand,
+    _H,
+    _SYS_ALL,
+    _SYS_INTG,
+    _SYS_ORCH,
+    _HR_ADMIN,
+    _HR_ALL,
+    _HR_ALL_NON_ADMIN,
+    _HR_MEMBER,
+    _HR_MEMBER_CONTRIB,
+    _HR_MEMBER_CONTRIB_NEWCOMER,
 )
+
+__all__ = ["CLI_SURFACE", "CommandAuth", "CommandDef", "Flag", "TelecCommand"]
 
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(

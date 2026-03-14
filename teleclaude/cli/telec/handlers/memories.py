@@ -1,4 +1,5 @@
 """Handlers for telec memories commands."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,14 +7,13 @@ import asyncio
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.telec.help import _usage
 
-
 __all__ = [
-    "_handle_memories",
-    "_handle_memories_search",
-    "_handle_memories_save",
-    "_handle_memories_delete",
-    "_handle_memories_timeline",
     "_VALID_OBS_TYPES",
+    "_handle_memories",
+    "_handle_memories_delete",
+    "_handle_memories_save",
+    "_handle_memories_search",
+    "_handle_memories_timeline",
 ]
 
 _VALID_OBS_TYPES = {"preference", "decision", "discovery", "gotcha", "pattern", "friction", "context"}

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import TypedDict, cast
 
 import aiosqlite
+
+from teleclaude.core.models import JsonDict
 
 _CREATE_SIGNAL_ITEMS = """
 CREATE TABLE IF NOT EXISTS signal_items (
@@ -60,6 +63,30 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+class SignalItemPayload(TypedDict, total=False):
+    id: int
+    idempotency_key: str
+    source_id: str
+    item_url: str
+    raw_title: str | None
+    summary: str | None
+    tags: list[str]
+    embedding: list[float] | None
+    fetched_at: str
+    cluster_id: int | None
+
+
+class SignalClusterRow(TypedDict):
+    id: int
+    cluster_key: str
+    tags: str | None
+    is_burst: int
+    is_novel: int
+    summary: str | None
+    member_count: int
+    formed_at: str
+
+
 class SignalDB:
     """CRUD wrapper for signal tables. Expects an already-initialized aiosqlite connection."""
 
@@ -75,7 +102,7 @@ class SignalDB:
             await self._conn.execute(idx_sql)
         await self._conn.commit()
 
-    async def insert_signal_item(self, payload: dict[str, object]) -> int:
+    async def insert_signal_item(self, payload: SignalItemPayload) -> int:
         cursor = await self._conn.execute(
             """
             INSERT OR IGNORE INTO signal_items
@@ -89,7 +116,7 @@ class SignalDB:
                 str(payload.get("raw_title", "")) if payload.get("raw_title") else None,
                 str(payload.get("summary", "")) if payload.get("summary") else None,
                 ",".join(str(t) for t in payload.get("tags", [])) if payload.get("tags") else None,  # type: ignore[arg-type]
-                json.dumps(payload["embedding"]) if payload.get("embedding") else None,
+                json.dumps(payload.get("embedding")) if payload.get("embedding") else None,
                 str(payload.get("fetched_at", _now_iso())),
             ),
         )
@@ -97,12 +124,10 @@ class SignalDB:
         return cursor.lastrowid or 0
 
     async def signal_item_exists(self, idempotency_key: str) -> bool:
-        cursor = await self._conn.execute(
-            "SELECT 1 FROM signal_items WHERE idempotency_key = ?", (idempotency_key,)
-        )
+        cursor = await self._conn.execute("SELECT 1 FROM signal_items WHERE idempotency_key = ?", (idempotency_key,))
         return (await cursor.fetchone()) is not None
 
-    async def get_unclustered_items(self, since: datetime, limit: int = 500) -> list[dict[str, object]]:
+    async def get_unclustered_items(self, since: datetime, limit: int = 500) -> list[SignalItemPayload]:
         cursor = await self._conn.execute(
             """
             SELECT id, idempotency_key, source_id, item_url, raw_title, summary, tags, embedding, fetched_at
@@ -114,16 +139,18 @@ class SignalDB:
             (since.isoformat(), limit),
         )
         rows = await cursor.fetchall()
-        result: list[dict[str, object]] = []
+        result: list[SignalItemPayload] = []
         for row in rows:
-            d = dict(row)
-            if d.get("tags"):
-                d["tags"] = [t.strip() for t in str(d["tags"]).split(",") if t.strip()]
+            d = cast(SignalItemPayload, dict(row))
+            tags_value = d.get("tags")
+            if tags_value:
+                d["tags"] = [t.strip() for t in str(tags_value).split(",") if t.strip()]
             else:
                 d["tags"] = []
-            if d.get("embedding"):
+            embedding_value = d.get("embedding")
+            if embedding_value:
                 try:
-                    d["embedding"] = json.loads(str(d["embedding"]))
+                    d["embedding"] = cast(list[float] | None, json.loads(str(embedding_value)))
                 except (ValueError, TypeError):
                     d["embedding"] = None
             result.append(d)
@@ -165,16 +192,14 @@ class SignalDB:
         )
         await self._conn.commit()
 
-    async def get_cluster(self, cluster_id: int) -> dict[str, object] | None:
-        cursor = await self._conn.execute(
-            "SELECT * FROM signal_clusters WHERE id = ?", (cluster_id,)
-        )
+    async def get_cluster(self, cluster_id: int) -> SignalClusterRow | None:
+        cursor = await self._conn.execute("SELECT * FROM signal_clusters WHERE id = ?", (cluster_id,))
         row = await cursor.fetchone()
         if row is None:
             return None
-        return dict(row)
+        return cast(SignalClusterRow, dict(row))
 
-    async def get_cluster_members(self, cluster_id: int, limit: int = 10) -> list[dict[str, object]]:
+    async def get_cluster_members(self, cluster_id: int, limit: int = 10) -> list[SignalItemPayload]:
         cursor = await self._conn.execute(
             """
             SELECT id, idempotency_key, source_id, item_url, raw_title, summary, tags, fetched_at
@@ -184,17 +209,18 @@ class SignalDB:
             (cluster_id, limit),
         )
         rows = await cursor.fetchall()
-        result: list[dict[str, object]] = []
+        result: list[SignalItemPayload] = []
         for row in rows:
-            d = dict(row)
-            if d.get("tags"):
-                d["tags"] = [t.strip() for t in str(d["tags"]).split(",") if t.strip()]
+            d = cast(SignalItemPayload, dict(row))
+            tags_value = d.get("tags")
+            if tags_value:
+                d["tags"] = [t.strip() for t in str(tags_value).split(",") if t.strip()]
             else:
                 d["tags"] = []
             result.append(d)
         return result
 
-    async def insert_synthesis(self, cluster_id: int, artifact: dict[str, object]) -> int:
+    async def insert_synthesis(self, cluster_id: int, artifact: JsonDict) -> int:
         cursor = await self._conn.execute(
             "INSERT INTO signal_syntheses (cluster_id, artifact, produced_at) VALUES (?, ?, ?)",
             (cluster_id, json.dumps(artifact), _now_iso()),
@@ -235,8 +261,6 @@ class SignalDB:
         }
 
     async def get_last_ingest_time(self) -> str | None:
-        cursor = await self._conn.execute(
-            "SELECT MAX(fetched_at) FROM signal_items"
-        )
+        cursor = await self._conn.execute("SELECT MAX(fetched_at) FROM signal_items")
         row = await cursor.fetchone()
         return str(row[0]) if row and row[0] else None

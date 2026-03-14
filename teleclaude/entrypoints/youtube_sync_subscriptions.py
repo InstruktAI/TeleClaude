@@ -12,6 +12,7 @@ import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import cast
 
 from aiohttp import ClientSession
 from instrukt_ai_logging import configure_logging, get_logger
@@ -284,11 +285,8 @@ def _validate_tags(raw_tags: object, allowed: set[str], evidence: str | None) ->
     return cleaned
 
 
-def main() -> int:
-    configure_logging("teleclaude")
-    logger = get_logger(__name__)
+def _configure_stdio() -> None:
     try:
-        # TextIOWrapper.reconfigure is available at runtime but not in TextIO stub
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
         if hasattr(sys.stderr, "reconfigure"):
@@ -296,6 +294,8 @@ def main() -> int:
     except Exception:
         pass
 
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Sync YouTube subscriptions into CSV and tag new rows.")
     parser.add_argument("--scope", choices=["person", "global"], default="person")
     parser.add_argument("--person", default="Morriz")
@@ -317,30 +317,15 @@ def main() -> int:
         help="Fetch subscriptions from YouTube (uses personal cookie). By default, uses existing CSV only.",
     )
     parser.add_argument("--thinking-mode", choices=["fast", "med", "slow"], default="fast")
-    parser.add_argument(
-        "--max-new",
-        type=int,
-        default=0,
-        help="Limit new rows appended and tagged (0 = no limit)",
-    )
+    parser.add_argument("--max-new", type=int, default=0, help="Limit new rows appended and tagged (0 = no limit)")
     parser.add_argument(
         "--max-refresh",
         type=int,
         default=0,
         help="Limit channels to refresh (0 = no limit, only with --refresh)",
     )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=4,
-        help="Max items per agent per batch (0 = no batching)",
-    )
-    parser.add_argument(
-        "--prompt-batch",
-        type=int,
-        default=5,
-        help="Channels per prompt (0 = single-row prompts)",
-    )
+    parser.add_argument("--batch-size", type=int, default=4, help="Max items per agent per batch (0 = no batching)")
+    parser.add_argument("--prompt-batch", type=int, default=5, help="Channels per prompt (0 = single-row prompts)")
     parser.add_argument(
         "--batch-pause-seconds",
         type=float,
@@ -350,43 +335,554 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Do not write CSV changes")
     parser.add_argument("--verbose", action="store_true", help="Print per-row tagging results")
     parser.add_argument("--debug", action="store_true", help="Emit prompt + raw tagger output")
-    # tools are configured per-agent; no CLI flag
-    args = parser.parse_args()
+    return parser
 
+
+def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
     root = Path.home() / ".teleclaude"
     if args.scope == "global":
-        cfg_path = root / "teleclaude.yml"
-        csv_path = root / "subscriptions" / "youtube.csv"
-    else:
-        cfg_path = root / "people" / args.person / "teleclaude.yml"
-        csv_path = root / "people" / args.person / "subscriptions" / "youtube.csv"
+        return root / "teleclaude.yml", root / "subscriptions" / "youtube.csv"
+    return (
+        root / "people" / args.person / "teleclaude.yml",
+        root / "people" / args.person / "subscriptions" / "youtube.csv",
+    )
 
-    tags = _load_tags(cfg_path, scope=args.scope)
-    allowed_tags = set(tags)
-    _ensure_csv(csv_path)
+
+def _debug_config(args: argparse.Namespace, csv_path: Path) -> None:
+    if not args.debug:
+        return
+    print(
+        json.dumps(
+            {
+                "debug_cfg": {
+                    "scope": args.scope,
+                    "person": args.person,
+                    "csv": str(csv_path),
+                    "mode": args.mode,
+                    "max_new": args.max_new,
+                    "batch_size": args.batch_size,
+                    "prompt_batch": args.prompt_batch,
+                    "agents": args.agents,
+                }
+            }
+        )
+    )
+
+
+def _fetch_new_rows(args: argparse.Namespace, seen: set[str]) -> list[dict[str, str]]:
+    if not args.fetch_subscriptions:
+        return []
+    channels = _call_youtube_helper()
     if args.debug:
+        print(json.dumps({"debug_channels": {"count": len(channels)}}))
+    rows = []
+    for ch in channels:
+        channel_id = ch.get("id", "")
+        if not channel_id or channel_id in seen:
+            continue
+        rows.append(
+            {
+                "channel_id": channel_id,
+                "channel_name": ch.get("title", ""),
+                "handle": ch.get("handle", "") or "",
+                "tags": "",
+                "_description": ch.get("description", "") or "",
+            }
+        )
+    return rows[: args.max_new] if args.max_new > 0 else rows
+
+
+def _pending_rows(
+    args: argparse.Namespace,
+    existing: list[dict[str, str]],
+    new_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    pending = [row for row in new_rows if not row.get("tags", "").strip()] + [
+        row for row in existing if not row.get("tags", "").strip()
+    ]
+    return pending[: args.max_new] if args.max_new > 0 else pending
+
+
+def _resolve_agents(args: argparse.Namespace) -> list[str]:
+    return [agent for agent in args.agents.split(",") if agent] if args.agents else ["claude", "codex", "gemini"]
+
+
+def _build_schemas(tags: list[str]) -> tuple[JsonDict, JsonDict]:
+    tag_enum = sorted(set(tags + ["n/a"]))
+    schema_single = cast(
+        JsonDict,
+        {
+            "type": "object",
+            "properties": {"tags": {"type": "array", "items": {"type": "string", "enum": tag_enum}}},
+            "required": ["tags"],
+            "additionalProperties": False,
+        },
+    )
+    schema_batch = cast(
+        JsonDict,
+        {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "channel_id": {"type": "string"},
+                            "tags": {"type": "array", "items": {"type": "string", "enum": tag_enum}},
+                        },
+                        "required": ["channel_id", "tags"],
+                        "additionalProperties": False,
+                    },
+                }
+            },
+            "required": ["items"],
+            "additionalProperties": False,
+        },
+    )
+    return schema_single, schema_batch
+
+
+def _chunk_rows(rows: list[dict[str, str]], batch_size: int) -> list[list[dict[str, str]]]:
+    if batch_size == 0:
+        return [rows]
+    return [rows[i : i + batch_size] for i in range(0, len(rows), batch_size)]
+
+
+def _retry_single_row(
+    row: dict[str, str],
+    *,
+    rr: Iterable[str],
+    use_web: bool,
+    tags: list[str],
+    args: argparse.Namespace,
+    schema_single: JsonDict,
+    schema_batch: JsonDict,
+    allowed_tags: set[str],
+    logger: logging.Logger,
+) -> list[str]:
+    agent = next(rr)
+    retry_prompt = _build_web_prompt([row], tags, retry=True) if use_web else _build_prompt(row, tags, retry=True)
+    result = _call_agent_cli(
+        agent,
+        args.thinking_mode,
+        retry_prompt,
+        schema_batch if use_web else schema_single,
+        logger,
+        debug=args.debug,
+        tools="web_search" if use_web else "",
+    )
+    if result is None:
+        return ["n/a"]
+    if use_web:
+        items = _safe_get_list(result, "items")
+        by_id = {
+            _safe_get_str(item, "channel_id"): _safe_get_list(item, "tags") for item in items if isinstance(item, dict)
+        }
+        tagged = by_id.get(row.get("channel_id", ""), [])
+    else:
+        tagged = _safe_get_list(result, "tags")
+    valid = _validate_tags(tagged, allowed_tags, result.get("evidence"))
+    return valid or ["n/a"]
+
+
+def _print_verbose_tags(args: argparse.Namespace, row: dict[str, str], valid: list[str]) -> None:
+    if args.verbose:
         print(
             json.dumps(
                 {
-                    "debug_cfg": {
-                        "scope": args.scope,
-                        "person": args.person,
-                        "csv": str(csv_path),
-                        "mode": args.mode,
-                        "max_new": args.max_new,
-                        "batch_size": args.batch_size,
-                        "prompt_batch": args.prompt_batch,
-                        "agents": args.agents,
-                    }
+                    "channel_id": row.get("channel_id", ""),
+                    "channel_name": row.get("channel_name", ""),
+                    "tags": valid,
                 }
             )
         )
 
+
+def _single_group_result(
+    group: list[dict[str, str]],
+    *,
+    agent: str,
+    rr: Iterable[str],
+    use_web: bool,
+    tags: list[str],
+    args: argparse.Namespace,
+    schema_single: JsonDict,
+    schema_batch: JsonDict,
+    allowed_tags: set[str],
+    logger: logging.Logger,
+) -> dict[str, str]:
+    row = group[0]
+    if args.debug:
+        print(
+            json.dumps(
+                {
+                    "debug_agent": agent,
+                    "debug_row": {
+                        "channel_id": row.get("channel_id", ""),
+                        "channel_name": row.get("channel_name", ""),
+                    },
+                }
+            )
+        )
+    prompt = _build_web_prompt([row], tags) if use_web else _build_prompt(row, tags)
+    start = time.monotonic()
+    result = _call_agent_cli(
+        agent,
+        args.thinking_mode,
+        prompt,
+        schema_batch if use_web else schema_single,
+        logger,
+        debug=args.debug,
+        tools="web_search" if use_web else "",
+    )
+    if args.debug:
+        print(json.dumps({"debug_duration_ms": int((time.monotonic() - start) * 1000)}))
+    if result is None:
+        return {}
+    if use_web:
+        items = _safe_get_list(result, "items")
+        item = {_safe_get_str(item, "channel_id"): item for item in items if isinstance(item, dict)}.get(
+            row.get("channel_id", ""),
+            {},
+        )
+        tagged = _safe_get_list(item, "tags")
+        evidence = item.get("evidence")
+    else:
+        tagged = _safe_get_list(result, "tags")
+        evidence = result.get("evidence")
+    valid = _validate_tags(tagged, allowed_tags, evidence) or _retry_single_row(
+        row,
+        rr=rr,
+        use_web=use_web,
+        tags=tags,
+        args=args,
+        schema_single=schema_single,
+        schema_batch=schema_batch,
+        allowed_tags=allowed_tags,
+        logger=logger,
+    )
+    _print_verbose_tags(args, row, valid)
+    return {row["channel_id"]: ",".join(valid)}
+
+
+def _batch_group_result(
+    group: list[dict[str, str]],
+    *,
+    agent: str,
+    rr: Iterable[str],
+    use_web: bool,
+    tags: list[str],
+    args: argparse.Namespace,
+    schema_single: JsonDict,
+    schema_batch: JsonDict,
+    allowed_tags: set[str],
+    logger: logging.Logger,
+) -> dict[str, str]:
+    if args.debug:
+        print(
+            json.dumps(
+                {
+                    "debug_agent": agent,
+                    "debug_group": [
+                        {"channel_id": row.get("channel_id", ""), "channel_name": row.get("channel_name", "")}
+                        for row in group
+                    ],
+                }
+            )
+        )
+    prompt = _build_web_prompt(group, tags) if use_web else _build_batch_prompt(group, tags)
+    start = time.monotonic()
+    result = _call_agent_cli(
+        agent,
+        args.thinking_mode,
+        prompt,
+        schema_batch,
+        logger,
+        debug=args.debug,
+        tools="web_search" if use_web else "",
+    )
+    if args.debug:
+        print(json.dumps({"debug_duration_ms": int((time.monotonic() - start) * 1000)}))
+    if result is None:
+        return {}
+    items = _safe_get_list(result, "items")
+    by_id = {_safe_get_str(item, "channel_id"): item for item in items if isinstance(item, dict)}
+    results: dict[str, str] = {}
+    for row in group:
+        cid = row.get("channel_id", "")
+        item = by_id.get(cid, {})
+        valid = _validate_tags(_safe_get_list(item, "tags"), allowed_tags, item.get("evidence")) or _retry_single_row(
+            row,
+            rr=rr,
+            use_web=use_web,
+            tags=tags,
+            args=args,
+            schema_single=schema_single,
+            schema_batch=schema_batch,
+            allowed_tags=allowed_tags,
+            logger=logger,
+        )
+        results[cid] = ",".join(valid)
+        _print_verbose_tags(args, row, valid)
+    return results
+
+
+def _process_group(
+    group: list[dict[str, str]],
+    agent: str,
+    *,
+    rr: Iterable[str],
+    use_web: bool,
+    tags: list[str],
+    args: argparse.Namespace,
+    schema_single: JsonDict,
+    schema_batch: JsonDict,
+    allowed_tags: set[str],
+    logger: logging.Logger,
+) -> dict[str, str]:
+    prompt_batch = max(0, int(args.prompt_batch))
+    if prompt_batch == 0 or len(group) == 1:
+        return _single_group_result(
+            group,
+            agent=agent,
+            rr=rr,
+            use_web=use_web,
+            tags=tags,
+            args=args,
+            schema_single=schema_single,
+            schema_batch=schema_batch,
+            allowed_tags=allowed_tags,
+            logger=logger,
+        )
+    return _batch_group_result(
+        group,
+        agent=agent,
+        rr=rr,
+        use_web=use_web,
+        tags=tags,
+        args=args,
+        schema_single=schema_single,
+        schema_batch=schema_batch,
+        allowed_tags=allowed_tags,
+        logger=logger,
+    )
+
+
+def _merge_tag_values(existing_tags: str, new_tags: str) -> str:
+    existing = {tag.strip() for tag in existing_tags.split(",") if tag.strip() and tag.strip() != "n/a"}
+    incoming = {tag.strip() for tag in new_tags.split(",") if tag.strip() and tag.strip() != "n/a"}
+    merged = sorted(existing | incoming)
+    return ",".join(merged) if merged else "n/a"
+
+
+def _apply_batch_updates(
+    *,
+    args: argparse.Namespace,
+    csv_path: Path,
+    all_rows: list[dict[str, str]],
+    batch_updates: dict[str, str],
+    merge_mode: bool,
+) -> None:
+    if not batch_updates or args.dry_run:
+        return
+    for row in all_rows:
+        cid = row.get("channel_id", "")
+        if cid not in batch_updates:
+            continue
+        row["tags"] = _merge_tag_values(row.get("tags") or "", batch_updates[cid]) if merge_mode else batch_updates[cid]
+    _write_csv(csv_path, all_rows)
+
+
+def _run_chunks(
+    *,
+    chunks: list[list[dict[str, str]]],
+    use_web: bool,
+    merge_mode: bool,
+    updates: dict[str, str],
+    rr: Iterable[str],
+    tags: list[str],
+    args: argparse.Namespace,
+    schema_single: JsonDict,
+    schema_batch: JsonDict,
+    allowed_tags: set[str],
+    logger: logging.Logger,
+    all_rows: list[dict[str, str]],
+    csv_path: Path,
+) -> None:
+    for idx, chunk in enumerate(chunks, start=1):
+        if args.verbose:
+            print(json.dumps({"batch_start": {"index": idx, "size": len(chunk)}}))
+        _enrich_batch_descriptions(chunk)
+        prompt_batch = max(0, int(args.prompt_batch))
+        row_groups = (
+            [chunk] if prompt_batch == 0 else [chunk[i : i + prompt_batch] for i in range(0, len(chunk), prompt_batch)]
+        )
+        batch_updates: dict[str, str] = {}
+        with ThreadPoolExecutor(max_workers=len(row_groups)) as executor:
+            futures = {
+                executor.submit(
+                    _process_group,
+                    group,
+                    next(rr),
+                    rr=rr,
+                    use_web=use_web,
+                    tags=tags,
+                    args=args,
+                    schema_single=schema_single,
+                    schema_batch=schema_batch,
+                    allowed_tags=allowed_tags,
+                    logger=logger,
+                ): group
+                for group in row_groups
+            }
+            for future in as_completed(futures):
+                batch_updates.update(future.result())
+        _apply_batch_updates(
+            args=args,
+            csv_path=csv_path,
+            all_rows=all_rows,
+            batch_updates=batch_updates,
+            merge_mode=merge_mode,
+        )
+        updates.update(batch_updates)
+        if args.verbose:
+            print(json.dumps({"batch_end": {"index": idx, "size": len(chunk)}}))
+        if args.batch_pause_seconds and idx < len(chunks):
+            time.sleep(args.batch_pause_seconds)
+
+
+def _run_mode_stages(
+    *,
+    args: argparse.Namespace,
+    batch_size: int,
+    pending: list[dict[str, str]],
+    all_rows: list[dict[str, str]],
+    updates: dict[str, str],
+    rr: Iterable[str],
+    tags: list[str],
+    schema_single: JsonDict,
+    schema_batch: JsonDict,
+    allowed_tags: set[str],
+    logger: logging.Logger,
+    csv_path: Path,
+) -> None:
+    chunks = _chunk_rows(pending, batch_size)
+    if args.mode in {"normal", "normal+web"}:
+        _run_chunks(
+            chunks=chunks,
+            use_web=False,
+            merge_mode=False,
+            updates=updates,
+            rr=rr,
+            tags=tags,
+            args=args,
+            schema_single=schema_single,
+            schema_batch=schema_batch,
+            allowed_tags=allowed_tags,
+            logger=logger,
+            all_rows=all_rows,
+            csv_path=csv_path,
+        )
+    if args.mode not in {"web", "normal+web"}:
+        return
+    na_rows = [row for row in all_rows if (row.get("tags") or "").strip() == "n/a"]
+    if args.max_new > 0:
+        na_rows = na_rows[: args.max_new]
+    if not na_rows:
+        return
+    _run_chunks(
+        chunks=_chunk_rows(na_rows, batch_size),
+        use_web=True,
+        merge_mode=False,
+        updates=updates,
+        rr=rr,
+        tags=tags,
+        args=args,
+        schema_single=schema_single,
+        schema_batch=schema_batch,
+        allowed_tags=allowed_tags,
+        logger=logger,
+        all_rows=all_rows,
+        csv_path=csv_path,
+    )
+
+
+def _run_refresh_stage(
+    *,
+    args: argparse.Namespace,
+    batch_size: int,
+    all_rows: list[dict[str, str]],
+    updates: dict[str, str],
+    rr: Iterable[str],
+    tags: list[str],
+    schema_single: JsonDict,
+    schema_batch: JsonDict,
+    allowed_tags: set[str],
+    logger: logging.Logger,
+    csv_path: Path,
+) -> None:
+    if args.debug:
+        print(json.dumps({"debug_refresh_flag": args.refresh}))
+    if not args.refresh:
+        return
+    tagged_rows = [
+        row for row in all_rows if (row.get("tags") or "").strip() and (row.get("tags") or "").strip() != "n/a"
+    ]
+    if args.max_refresh > 0:
+        tagged_rows = tagged_rows[: args.max_refresh]
+    if not tagged_rows:
+        return
+    if args.verbose:
+        print(json.dumps({"refresh_start": {"count": len(tagged_rows)}}))
+    refresh_chunks = _chunk_rows(tagged_rows, batch_size)
+    if args.mode in {"normal", "normal+web"}:
+        _run_chunks(
+            chunks=refresh_chunks,
+            use_web=False,
+            merge_mode=True,
+            updates=updates,
+            rr=rr,
+            tags=tags,
+            args=args,
+            schema_single=schema_single,
+            schema_batch=schema_batch,
+            allowed_tags=allowed_tags,
+            logger=logger,
+            all_rows=all_rows,
+            csv_path=csv_path,
+        )
+    if args.mode in {"web", "normal+web"}:
+        _run_chunks(
+            chunks=refresh_chunks,
+            use_web=True,
+            merge_mode=True,
+            updates=updates,
+            rr=rr,
+            tags=tags,
+            args=args,
+            schema_single=schema_single,
+            schema_batch=schema_batch,
+            allowed_tags=allowed_tags,
+            logger=logger,
+            all_rows=all_rows,
+            csv_path=csv_path,
+        )
+    if args.verbose:
+        print(json.dumps({"refresh_end": {"count": len(tagged_rows)}}))
+
+
+def _load_row_state(
+    args: argparse.Namespace,
+    *,
+    csv_path: Path,
+    allowed_tags: set[str],
+    logger: logging.Logger,
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
     existing = _read_csv(csv_path)
     if args.debug:
         print(json.dumps({"debug_existing": {"count": len(existing)}}))
 
-    # Cleanup: remove tags that no longer exist in the allowed list
     stale_cleaned = _cleanup_stale_tags(existing, allowed_tags)
     if stale_cleaned > 0:
         if args.verbose:
@@ -395,310 +891,83 @@ def main() -> int:
             _write_csv(csv_path, existing)
 
     seen = {row.get("channel_id", "") for row in existing}
-
-    new_rows: list[dict[str, str]] = []
-    if args.fetch_subscriptions:
-        channels = _call_youtube_helper()
-        if args.debug:
-            print(json.dumps({"debug_channels": {"count": len(channels)}}))
-        for ch in channels:
-            cid = ch.get("id", "")
-            if not cid or cid in seen:
-                continue
-            new_rows.append(
-                {
-                    "channel_id": cid,
-                    "channel_name": ch.get("title", ""),
-                    "handle": ch.get("handle", "") or "",
-                    "tags": "",
-                    "_description": ch.get("description", "") or "",
-                }
-            )
-
-    if args.max_new > 0:
-        new_rows = new_rows[: args.max_new]
+    new_rows = _fetch_new_rows(args, seen)
     if args.debug:
         print(json.dumps({"debug_new_rows": {"count": len(new_rows)}}))
 
     all_rows = existing + new_rows
     if new_rows and not args.dry_run:
         _write_csv(csv_path, all_rows)
-        existing = _read_csv(csv_path)
-        all_rows = existing
-    pending = [row for row in new_rows if not row.get("tags", "").strip()] + [
-        row for row in existing if not row.get("tags", "").strip()
-    ]
-    if args.max_new > 0:
-        pending = pending[: args.max_new]
+        all_rows = _read_csv(csv_path)
+
+    pending = _pending_rows(args, existing, new_rows)
     if args.debug:
         print(json.dumps({"debug_pending": {"count": len(pending)}}))
+    logger.debug(
+        "Loaded YouTube tagging row state: existing=%d new=%d pending=%d",
+        len(existing),
+        len(new_rows),
+        len(pending),
+    )
+    return all_rows, new_rows, pending
+
+
+def main() -> int:
+    configure_logging("teleclaude")
+    logger = get_logger(__name__)
+    _configure_stdio()
+    args = _build_parser().parse_args()
+    cfg_path, csv_path = _resolve_paths(args)
+
+    tags = _load_tags(cfg_path, scope=args.scope)
+    allowed_tags = set(tags)
+    _ensure_csv(csv_path)
+    _debug_config(args, csv_path)
+
+    all_rows, _, pending = _load_row_state(
+        args,
+        csv_path=csv_path,
+        allowed_tags=allowed_tags,
+        logger=logger,
+    )
     if not pending and not args.refresh:
         logger.info("tagging complete", updated=0)
         return 0
 
-    # Agent order (comma-separated), fallback defaults
-    if args.agents:
-        agents = [a for a in args.agents.split(",") if a]
-    else:
-        agents = ["claude", "codex", "gemini"]
+    agents = _resolve_agents(args)
     rr = _round_robin(agents)
-
-    tag_enum = sorted(set(tags + ["n/a"]))
-    schema_single = {
-        "type": "object",
-        "properties": {"tags": {"type": "array", "items": {"type": "string", "enum": tag_enum}}},
-        "required": ["tags"],
-        "additionalProperties": False,
-    }
-    schema_batch = {
-        "type": "object",
-        "properties": {
-            "items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "channel_id": {"type": "string"},
-                        "tags": {"type": "array", "items": {"type": "string", "enum": tag_enum}},
-                    },
-                    "required": ["channel_id", "tags"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        "required": ["items"],
-        "additionalProperties": False,
-    }
+    schema_single, schema_batch = _build_schemas(tags)
 
     updates: dict[str, str] = {}
     per_agent = max(0, int(args.batch_size))
     batch_size = 0 if per_agent == 0 else per_agent * max(1, len(agents))
-
-    def run_chunks(chunks: list[list[dict[str, str]]], use_web: bool, merge_mode: bool = False) -> None:
-        """Process chunks. If merge_mode=True, add new tags to existing (never remove)."""
-        nonlocal updates
-
-        def retry_single(row: dict[str, str]) -> list[str]:
-            agent = next(rr)
-            retry_prompt = (
-                _build_web_prompt([row], tags, retry=True) if use_web else _build_prompt(row, tags, retry=True)
-            )
-            result = _call_agent_cli(
-                agent,
-                args.thinking_mode,
-                retry_prompt,
-                schema_batch if use_web else schema_single,
-                logger,
-                debug=args.debug,
-                tools="web_search" if use_web else "",
-            )
-            if result is None:
-                return ["n/a"]
-            if use_web:
-                items = _safe_get_list(result, "items")
-                by_id = {
-                    _safe_get_str(i, "channel_id"): _safe_get_list(i, "tags") for i in items if isinstance(i, dict)
-                }
-                tagged = by_id.get(row.get("channel_id", ""), [])
-            else:
-                tagged = _safe_get_list(result, "tags")
-            evidence = result.get("evidence")
-            valid = _validate_tags(tagged, allowed_tags, evidence)
-            return valid or ["n/a"]
-
-        def process_group(group: list[dict[str, str]], agent: str) -> dict[str, str]:
-            """Process a single group and return {channel_id: tags_str}."""
-            group_results: dict[str, str] = {}
-            prompt_batch = max(0, int(args.prompt_batch))
-
-            if prompt_batch == 0 or len(group) == 1:
-                row = group[0]
-                if args.debug:
-                    print(
-                        json.dumps(
-                            {
-                                "debug_agent": agent,
-                                "debug_row": {
-                                    "channel_id": row.get("channel_id", ""),
-                                    "channel_name": row.get("channel_name", ""),
-                                },
-                            }
-                        )
-                    )
-                prompt = _build_web_prompt([row], tags) if use_web else _build_prompt(row, tags)
-                start = time.monotonic()
-                result = _call_agent_cli(
-                    agent,
-                    args.thinking_mode,
-                    prompt,
-                    schema_batch if use_web else schema_single,
-                    logger,
-                    debug=args.debug,
-                    tools="web_search" if use_web else "",
-                )
-                if args.debug:
-                    print(json.dumps({"debug_duration_ms": int((time.monotonic() - start) * 1000)}))
-                if result is None:
-                    return group_results
-                if use_web:
-                    items = _safe_get_list(result, "items")
-                    by_id = {_safe_get_str(i, "channel_id"): i for i in items if isinstance(i, dict)}
-                    item = by_id.get(row.get("channel_id", ""), {})
-                    tagged = _safe_get_list(item, "tags")
-                    evidence = item.get("evidence")
-                else:
-                    tagged = _safe_get_list(result, "tags")
-                    evidence = result.get("evidence")
-                valid = _validate_tags(tagged, allowed_tags, evidence)
-                if not valid:
-                    valid = retry_single(row)
-                group_results[row["channel_id"]] = ",".join(valid)
-                if args.verbose:
-                    print(
-                        json.dumps(
-                            {
-                                "channel_id": row.get("channel_id", ""),
-                                "channel_name": row.get("channel_name", ""),
-                                "tags": valid,
-                            }
-                        )
-                    )
-            else:
-                if args.debug:
-                    print(
-                        json.dumps(
-                            {
-                                "debug_agent": agent,
-                                "debug_group": [
-                                    {"channel_id": r.get("channel_id", ""), "channel_name": r.get("channel_name", "")}
-                                    for r in group
-                                ],
-                            }
-                        )
-                    )
-                prompt = _build_web_prompt(group, tags) if use_web else _build_batch_prompt(group, tags)
-                start = time.monotonic()
-                result = _call_agent_cli(
-                    agent,
-                    args.thinking_mode,
-                    prompt,
-                    schema_batch,
-                    logger,
-                    debug=args.debug,
-                    tools="web_search" if use_web else "",
-                )
-                if args.debug:
-                    print(json.dumps({"debug_duration_ms": int((time.monotonic() - start) * 1000)}))
-                if result is None:
-                    return group_results
-                items = _safe_get_list(result, "items")
-                by_id = {_safe_get_str(i, "channel_id"): i for i in items if isinstance(i, dict)}
-                for row in group:
-                    cid = row.get("channel_id", "")
-                    item = by_id.get(cid, {})
-                    tagged = _safe_get_list(item, "tags")
-                    evidence = item.get("evidence")
-                    valid = _validate_tags(tagged, allowed_tags, evidence)
-                    if not valid:
-                        valid = retry_single(row)
-                    group_results[cid] = ",".join(valid)
-                    if args.verbose:
-                        print(
-                            json.dumps(
-                                {
-                                    "channel_id": row.get("channel_id", ""),
-                                    "channel_name": row.get("channel_name", ""),
-                                    "tags": valid,
-                                }
-                            )
-                        )
-            return group_results
-
-        for idx, chunk in enumerate(chunks, start=1):
-            if args.verbose:
-                print(json.dumps({"batch_start": {"index": idx, "size": len(chunk)}}))
-            # Enrich batch with full about-page descriptions before tagging
-            _enrich_batch_descriptions(chunk)
-            batch_updates: dict[str, str] = {}
-            prompt_batch = max(0, int(args.prompt_batch))
-            row_groups = (
-                [chunk]
-                if prompt_batch == 0
-                else [chunk[i : i + prompt_batch] for i in range(0, len(chunk), prompt_batch)]
-            )
-
-            # Process all groups in parallel
-            with ThreadPoolExecutor(max_workers=len(row_groups)) as executor:
-                futures = {executor.submit(process_group, group, next(rr)): group for group in row_groups}
-                for future in as_completed(futures):
-                    group_results = future.result()
-                    batch_updates.update(group_results)
-
-            if batch_updates and not args.dry_run:
-                for row in all_rows:
-                    cid = row.get("channel_id", "")
-                    if cid in batch_updates:
-                        if merge_mode:
-                            # Merge: add new tags, never remove existing
-                            existing = set(
-                                t.strip()
-                                for t in (row.get("tags") or "").split(",")
-                                if t.strip() and t.strip() != "n/a"
-                            )
-                            new_tags = set(
-                                t.strip() for t in batch_updates[cid].split(",") if t.strip() and t.strip() != "n/a"
-                            )
-                            merged = sorted(existing | new_tags)
-                            row["tags"] = ",".join(merged) if merged else "n/a"
-                        else:
-                            row["tags"] = batch_updates[cid]
-                _write_csv(csv_path, all_rows)
-            if batch_updates:
-                for cid, tags_val in batch_updates.items():
-                    updates[cid] = tags_val
-            if args.verbose:
-                print(json.dumps({"batch_end": {"index": idx, "size": len(chunk)}}))
-            if args.batch_pause_seconds and idx < len(chunks):
-                time.sleep(args.batch_pause_seconds)
-
-    chunks = [pending] if batch_size == 0 else [pending[i : i + batch_size] for i in range(0, len(pending), batch_size)]
-    if args.mode in {"normal", "normal+web"}:
-        run_chunks(chunks, use_web=False)
-    if args.mode in {"web", "normal+web"}:
-        na_rows = [r for r in all_rows if (r.get("tags") or "").strip() == "n/a"]
-        if args.max_new > 0:
-            na_rows = na_rows[: args.max_new]
-        if na_rows:
-            web_chunks = (
-                [na_rows]
-                if batch_size == 0
-                else [na_rows[i : i + batch_size] for i in range(0, len(na_rows), batch_size)]
-            )
-            run_chunks(web_chunks, use_web=True)
-
-    # Refresh: re-evaluate already-tagged channels through the same normal → web flow
-    # Results are merged (add new tags, never remove existing)
-    if args.debug:
-        print(json.dumps({"debug_refresh_flag": args.refresh}))
-    if args.refresh:
-        tagged_rows = [r for r in all_rows if (r.get("tags") or "").strip() and (r.get("tags") or "").strip() != "n/a"]
-        if args.max_refresh > 0:
-            tagged_rows = tagged_rows[: args.max_refresh]
-        if tagged_rows:
-            if args.verbose:
-                print(json.dumps({"refresh_start": {"count": len(tagged_rows)}}))
-            refresh_chunks = (
-                [tagged_rows]
-                if batch_size == 0
-                else [tagged_rows[i : i + batch_size] for i in range(0, len(tagged_rows), batch_size)]
-            )
-            # Run both stages to find all possible new tags (merge mode)
-            if args.mode in {"normal", "normal+web"}:
-                run_chunks(refresh_chunks, use_web=False, merge_mode=True)
-            if args.mode in {"web", "normal+web"}:
-                run_chunks(refresh_chunks, use_web=True, merge_mode=True)
-            if args.verbose:
-                print(json.dumps({"refresh_end": {"count": len(tagged_rows)}}))
+    _run_mode_stages(
+        args=args,
+        batch_size=batch_size,
+        pending=pending,
+        all_rows=all_rows,
+        updates=updates,
+        rr=rr,
+        tags=tags,
+        schema_single=schema_single,
+        schema_batch=schema_batch,
+        allowed_tags=allowed_tags,
+        logger=logger,
+        csv_path=csv_path,
+    )
+    _run_refresh_stage(
+        args=args,
+        batch_size=batch_size,
+        all_rows=all_rows,
+        updates=updates,
+        rr=rr,
+        tags=tags,
+        schema_single=schema_single,
+        schema_batch=schema_batch,
+        allowed_tags=allowed_tags,
+        logger=logger,
+        csv_path=csv_path,
+    )
 
     if not updates:
         logger.info("tagging complete", updated=0)

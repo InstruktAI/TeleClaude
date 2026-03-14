@@ -1,15 +1,15 @@
 """Handler for telec config commands."""
+
 from __future__ import annotations
 
 import sys
 
 from teleclaude.cli.telec.help import _usage
 
-
-
 __all__ = [
     "_handle_config",
 ]
+
 
 def _handle_config(args: list[str]) -> None:
     """Handle telec config command.

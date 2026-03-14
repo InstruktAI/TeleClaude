@@ -562,137 +562,33 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info("Stopping TeleClaude daemon...")
 
         # Stop sandbox container (before other tasks to release socket)
-        if hasattr(self, "_sandbox_manager"):
-            try:
-                await self._sandbox_manager.stop()
-                logger.info("Sandbox container stopped")
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.warning("Sandbox container stop error during shutdown: %s", exc)
+        await self._stop_sandbox_manager()
 
-        # Stop periodic cleanup task
-        if hasattr(self, "cleanup_task"):
-            self.cleanup_task.cancel()
-            try:
-                await self.cleanup_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Periodic cleanup task stopped")
+        for attr_name, log_message in (
+            ("cleanup_task", "Periodic cleanup task stopped"),
+            ("poller_watch_task", "Poller watch task stopped"),
+            ("hook_outbox_task", "Hook outbox worker stopped"),
+            ("mirror_worker_task", "Mirror worker stopped"),
+            ("codex_transcript_watch_task", "Codex transcript watch task stopped"),
+        ):
+            await self._cancel_task_attr(attr_name, log_message)
 
-        # Stop poller watch task
-        if hasattr(self, "poller_watch_task"):
-            self.poller_watch_task.cancel()
-            try:
-                await self.poller_watch_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Poller watch task stopped")
+        await self._stop_session_outbox_workers()
 
-        if self.hook_outbox_task:
-            self.hook_outbox_task.cancel()
-            try:
-                await self.hook_outbox_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Hook outbox worker stopped")
-
-        if self.mirror_worker_task:
-            self.mirror_worker_task.cancel()
-            try:
-                await self.mirror_worker_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Mirror worker stopped")
-
-        if self.codex_transcript_watch_task:
-            self.codex_transcript_watch_task.cancel()
-            try:
-                await self.codex_transcript_watch_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Codex transcript watch task stopped")
-
-        if self._session_outbox_workers:
-            workers = list(self._session_outbox_workers.values())
-            self._session_outbox_workers.clear()
-            self._session_outbox_queues.clear()
-            self._hook_outbox_claim_paused_sessions.clear()
-            for worker in workers:
-                worker.cancel()
-            for worker in workers:
-                try:
-                    await worker
-                except asyncio.CancelledError:
-                    pass
-            logger.info("Session outbox workers stopped (%d)", len(workers))
-
-        if self.webhook_delivery_task:
-            self.webhook_delivery_task.cancel()
-            try:
-                await self.webhook_delivery_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Webhook delivery worker stopped")
-
-        if self.channel_subscription_worker_task:
-            self.channel_subscription_worker_task.cancel()
-            try:
-                await self.channel_subscription_worker_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Channel subscription worker stopped")
+        for attr_name, log_message in (
+            ("webhook_delivery_task", "Webhook delivery worker stopped"),
+            ("channel_subscription_worker_task", "Channel subscription worker stopped"),
+            ("resource_monitor_task", "Resource monitor stopped"),
+            ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
+            ("todo_watcher_task", "Todo watcher task stopped"),
+            ("launchd_watch_task", "Launchd watch task stopped"),
+            ("_ingest_scheduler_task", "IngestScheduler stopped"),
+            ("_event_processor_task", "EventProcessor stopped"),
+        ):
+            await self._cancel_task_attr(attr_name, log_message)
 
         if hasattr(self, "_webhook_delivery_worker"):
             await self._webhook_delivery_worker.close()
-
-        if self.resource_monitor_task:
-            self.resource_monitor_task.cancel()
-            try:
-                await self.resource_monitor_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Resource monitor stopped")
-
-        if hasattr(self, "_wal_checkpoint_task") and self._wal_checkpoint_task:
-            self._wal_checkpoint_task.cancel()
-            try:
-                await self._wal_checkpoint_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("WAL checkpoint task stopped")
-
-        if self.todo_watcher_task:
-            self.todo_watcher_task.cancel()
-            try:
-                await self.todo_watcher_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Todo watcher task stopped")
-
-        if self.launchd_watch_task:
-            self.launchd_watch_task.cancel()
-            try:
-                await self.launchd_watch_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Launchd watch task stopped")
-
-        # Stop signal ingest scheduler (before event processor so pending emits complete)
-        if self._ingest_scheduler_task:
-            self._ingest_scheduler_task.cancel()
-            try:
-                await self._ingest_scheduler_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("IngestScheduler stopped")
-
-        # Stop event processor
-        if self._event_processor_task:
-            self._event_processor_task.cancel()
-            try:
-                await self._event_processor_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("EventProcessor stopped")
 
         # Close event DB
         if self._event_db:
@@ -718,6 +614,46 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         self._release_lock()
         logger.info("Daemon stopped")
+
+    async def _stop_sandbox_manager(self) -> None:
+        """Stop the sandbox manager before other shutdown work."""
+        if not hasattr(self, "_sandbox_manager"):
+            return
+        try:
+            await self._sandbox_manager.stop()
+            logger.info("Sandbox container stopped")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Sandbox container stop error during shutdown: %s", exc)
+
+    async def _cancel_task_attr(self, attr_name: str, log_message: str) -> None:
+        """Cancel an optional task attribute and wait for it to finish."""
+        task = getattr(self, attr_name, None)
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        logger.info(log_message)
+
+    async def _stop_session_outbox_workers(self) -> None:
+        """Stop all per-session hook outbox workers."""
+        if not self._session_outbox_workers:
+            return
+
+        workers = list(self._session_outbox_workers.values())
+        self._session_outbox_workers.clear()
+        self._session_outbox_queues.clear()
+        self._hook_outbox_claim_paused_sessions.clear()
+        for worker in workers:
+            worker.cancel()
+        for worker in workers:
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
+        logger.info("Session outbox workers stopped (%d)", len(workers))
 
     def request_shutdown(self, reason: str) -> None:
         """Request graceful shutdown and capture diagnostics."""

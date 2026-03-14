@@ -1,15 +1,15 @@
 """Handlers for telec history commands."""
+
 from __future__ import annotations
 
 from teleclaude.cli.telec.help import _usage
-
-
 
 __all__ = [
     "_handle_history",
     "_handle_history_search",
     "_handle_history_show",
 ]
+
 
 def _handle_history(args: list[str]) -> None:
     """Handle telec history commands."""

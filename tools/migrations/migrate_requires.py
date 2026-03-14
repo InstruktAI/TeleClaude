@@ -11,6 +11,7 @@ import argparse
 import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -36,8 +37,8 @@ def _split_frontmatter(lines: list[str]) -> tuple[list[str], list[str]] | None:
 
 def _load_metadata(frontmatter_lines: list[str]) -> Mapping[str, object]:
     raw = "\n".join(frontmatter_lines)
-    data = yaml.safe_load(raw) or {}
-    return data if isinstance(data, dict) else {}
+    data_obj = yaml.safe_load(raw) or {}
+    return cast(dict[str, object], data_obj) if isinstance(data_obj, dict) else {}
 
 
 def _strip_requires_frontmatter(frontmatter_lines: list[str]) -> list[str]:
@@ -153,7 +154,7 @@ def main() -> None:
     parser.add_argument("--project-root", default=str(Path.cwd()), help="Project root (default: cwd)")
     args = parser.parse_args()
 
-    project_root = Path(args.project_root).expanduser().resolve()
+    project_root = Path(cast(str, args.project_root)).expanduser().resolve()
     roots = [project_root / "docs", project_root / "agents" / "docs"]
     changed: list[Path] = []
     for path in _iter_markdown_files(roots):

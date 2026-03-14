@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from typing_extensions import TypedDict
 
@@ -83,8 +84,11 @@ class CronState:
         state = cls(path=path)
         if path.exists():
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                for job_name, job_data in data.get("jobs", {}).items():
+                data_obj = json.loads(path.read_text(encoding="utf-8"))
+                data = cast(dict[str, object], data_obj) if isinstance(data_obj, dict) else {}
+                jobs_obj = data.get("jobs", {})
+                jobs = cast(dict[str, JobStateDict], jobs_obj) if isinstance(jobs_obj, dict) else {}
+                for job_name, job_data in jobs.items():
                     state.jobs[job_name] = JobState.from_dict(job_data)
             except (json.JSONDecodeError, KeyError):
                 pass
@@ -93,7 +97,7 @@ class CronState:
     def save(self) -> None:
         """Persist state to disk."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        data = {"jobs": {name: job.to_dict() for name, job in self.jobs.items()}}
+        data: CronStateDict = {"jobs": {name: job.to_dict() for name, job in self.jobs.items()}}
         self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def get_job(self, name: str) -> JobState:

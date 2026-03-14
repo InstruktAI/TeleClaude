@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _OutputMixin:
+class _OutputMixin:  # pyright: ignore[reportUnusedClass]
     """Message, output, and delivery operations for AdapterClient."""
 
     if TYPE_CHECKING:

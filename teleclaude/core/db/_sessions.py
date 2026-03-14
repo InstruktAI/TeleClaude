@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.event_bus import event_bus
 
 from .. import db_models

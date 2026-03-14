@@ -97,66 +97,76 @@ def _is_due(
 
     elapsed = now - last_run
 
-    # New 'when' scheduling contract
     if schedule_config.when:
-        when = schedule_config.when
-        if when.every:
-            duration = _parse_duration(when.every)
-            return elapsed >= duration
+        when_due = _is_when_due(schedule_config, last_run, now, elapsed)
+        if when_due is not None:
+            return when_due
 
-        if when.at:
-            local_now = now.astimezone()  # System local time
-
-            # Weekdays filter
-            if when.weekdays:
-                day_map = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
-                if local_now.weekday() not in [day_map[d] for d in when.weekdays]:
-                    return False
-
-            times_str = [when.at] if isinstance(when.at, str) else when.at
-            for at_time_str in times_str:
-                try:
-                    at_hour, at_min = map(int, at_time_str.split(":"))
-                    # Most recent scheduled occurrence of this time
-                    scheduled_today = local_now.replace(hour=at_hour, minute=at_min, second=0, microsecond=0)
-                    if local_now >= scheduled_today:
-                        # Due if hasn't run today after scheduled time
-                        if last_run.astimezone() < scheduled_today:
-                            return True
-                except (ValueError, AttributeError):
-                    logger.error("invalid time format in config", at=at_time_str)
-            return False
-
-    # Legacy compatibility fallback
     schedule_str = schedule_config.schedule if schedule_config.schedule else "daily"
-    # Ensure it matches Enum if it's a string from pydantic (which it should be)
     try:
         schedule = Schedule(schedule_str)
     except ValueError:
         schedule = Schedule.DAILY
+    return _is_legacy_schedule_due(schedule, schedule_config, now, elapsed)
 
+
+def _is_when_due(
+    schedule_config: JobScheduleConfig,
+    last_run: datetime,
+    now: datetime,
+    elapsed: timedelta,
+) -> bool | None:
+    when = schedule_config.when
+    if not when:
+        return None
+    if when.every:
+        return elapsed >= _parse_duration(when.every)
+    if not when.at:
+        return None
+    local_now = now.astimezone()
+    if not _is_allowed_weekday(local_now, when.weekdays):
+        return False
+    for at_time_str in [when.at] if isinstance(when.at, str) else when.at:
+        scheduled_today = _scheduled_occurrence(local_now, at_time_str)
+        if scheduled_today and local_now >= scheduled_today and last_run.astimezone() < scheduled_today:
+            return True
+    return False
+
+
+def _is_allowed_weekday(now: datetime, weekdays: list[str] | None) -> bool:
+    if not weekdays:
+        return True
+    day_map = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+    return now.weekday() in [day_map[day] for day in weekdays]
+
+
+def _scheduled_occurrence(local_now: datetime, at_time_str: str) -> datetime | None:
+    try:
+        at_hour, at_min = map(int, at_time_str.split(":"))
+        return local_now.replace(hour=at_hour, minute=at_min, second=0, microsecond=0)
+    except (ValueError, AttributeError):
+        logger.error("invalid time format in config", at=at_time_str)
+        return None
+
+
+def _is_legacy_schedule_due(
+    schedule: Schedule,
+    schedule_config: JobScheduleConfig,
+    now: datetime,
+    elapsed: timedelta,
+) -> bool:
     preferred_hour = schedule_config.preferred_hour
     preferred_weekday = schedule_config.preferred_weekday
     preferred_day = schedule_config.preferred_day
-
     match schedule:
         case Schedule.HOURLY:
             return elapsed >= timedelta(hours=1)
-
         case Schedule.DAILY:
-            if elapsed < timedelta(hours=20):
-                return False
-            return now.hour >= preferred_hour
-
+            return elapsed >= timedelta(hours=20) and now.hour >= preferred_hour
         case Schedule.WEEKLY:
-            if elapsed < timedelta(days=6):
-                return False
-            return now.weekday() == preferred_weekday and now.hour >= preferred_hour
-
+            return elapsed >= timedelta(days=6) and now.weekday() == preferred_weekday and now.hour >= preferred_hour
         case Schedule.MONTHLY:
-            if elapsed < timedelta(days=25):
-                return False
-            return now.day == preferred_day and now.hour >= preferred_hour
+            return elapsed >= timedelta(days=25) and now.day == preferred_day and now.hour >= preferred_hour
 
 
 _DEFAULT_JOB_TIMEOUT_S = 1800  # 30 minutes

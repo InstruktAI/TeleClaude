@@ -17,7 +17,7 @@ class FieldGuidance:
 class GuidanceRegistry:
     """Registry of guidance for configuration fields."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._registry: dict[str, FieldGuidance] = {}
         self._populate_defaults()
 

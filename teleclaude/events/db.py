@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import aiosqlite
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.catalog import EventSchema
 from teleclaude.events.envelope import EventEnvelope
 
@@ -37,6 +38,16 @@ class NotificationRow(TypedDict):
     seen_at: str | None
     claimed_at: str | None
     resolved_at: str | None
+
+
+class QuarantinedEventRow(TypedDict):
+    id: int
+    event_type: str
+    source: str
+    received_at: str
+    envelope_json: str
+    trust_flags: str
+    reviewed: int
 
 
 _CREATE_TABLE = """
@@ -251,7 +262,7 @@ class EventDB:
         await self._db().commit()
         return cursor.rowcount > 0  # type: ignore[union-attr]
 
-    async def resolve_notification(self, id: int, resolution: dict[str, Any]) -> bool:
+    async def resolve_notification(self, id: int, resolution: JsonDict) -> bool:
         now = _now_iso()
         cursor = await self._db().execute(
             "UPDATE notifications SET agent_status = 'resolved', resolution = ?, resolved_at = ?, updated_at = ? WHERE id = ?",
@@ -294,7 +305,7 @@ class EventDB:
         self,
         id: int,
         description: str,
-        payload: dict[str, Any],
+        payload: JsonDict,
         reset_human_status: bool = False,
     ) -> bool:
         now = _now_iso()
@@ -330,7 +341,7 @@ class EventDB:
         await self._db().commit()
         return cursor.lastrowid or 0  # type: ignore[union-attr]
 
-    async def list_quarantined(self, reviewed: bool | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    async def list_quarantined(self, reviewed: bool | None = None, limit: int = 50) -> list[QuarantinedEventRow]:
         params: list[Any] = []
         where = ""
         if reviewed is not None:
@@ -342,7 +353,7 @@ class EventDB:
             params,
         )
         rows = await cursor.fetchall()
-        return [dict(r) for r in rows]
+        return [cast(QuarantinedEventRow, dict(r)) for r in rows]
 
     # --- Enrichment query helpers ---
 
@@ -351,7 +362,7 @@ class EventDB:
         entity: str,
         event_type: str,
         since: datetime | None = None,
-        payload_filter: dict[str, Any] | None = None,
+        payload_filter: JsonDict | None = None,
     ) -> int:
         params: list[Any] = [entity, event_type]
         where = "entity = ? AND event_type = ?"
@@ -369,7 +380,7 @@ class EventDB:
         row = await cursor.fetchone()
         return int(row[0]) if row else 0
 
-    async def get_latest_event_payload(self, entity: str, event_type: str) -> dict[str, Any] | None:
+    async def get_latest_event_payload(self, entity: str, event_type: str) -> JsonDict | None:
         cursor = await self._db().execute(
             "SELECT payload FROM notifications WHERE entity = ? AND event_type = ? ORDER BY created_at DESC LIMIT 1",
             (entity, event_type),
@@ -377,7 +388,7 @@ class EventDB:
         row = await cursor.fetchone()
         if row is None:
             return None
-        return json.loads(row[0])  # type: ignore[no-any-return]
+        return cast(JsonDict, json.loads(row[0]))
 
     # --- Correlation window methods ---
 

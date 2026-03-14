@@ -1,9 +1,8 @@
 """Handlers for telec events and signals commands."""
+
 from __future__ import annotations
 
 from teleclaude.cli.telec.help import _usage
-
-
 
 __all__ = [
     "_handle_events",
@@ -11,6 +10,7 @@ __all__ = [
     "_handle_signals",
     "_handle_signals_status",
 ]
+
 
 def _handle_events(args: list[str]) -> None:
     """Handle telec events subcommands."""

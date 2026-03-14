@@ -16,8 +16,9 @@ import argparse
 import json
 import sys
 from collections import Counter
+from operator import itemgetter
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from typing_extensions import TypedDict
 
@@ -57,21 +58,35 @@ def load_report(path: Path) -> LaneReport | None:
         print(f"WARNING: {path} not found", file=sys.stderr)
         return None
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        loaded_data: object = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         print(f"WARNING: {path} parse error: {exc}", file=sys.stderr)
         return None
+    data_obj = loaded_data
+
+    if not isinstance(data_obj, dict):
+        print(f"WARNING: {path} payload is not an object", file=sys.stderr)
+        return None
+
+    data = cast(dict[str, object], data_obj)
 
     classification = data.get("classification")
     if classification not in VALID_CLASSIFICATIONS:
         print(f"WARNING: {path} invalid classification: {classification!r}", file=sys.stderr)
         return None
 
+    rationale = data.get("rationale", "")
+    contract_changes = data.get("contract_changes", [])
+    release_notes = data.get("release_notes", "")
+    if not isinstance(rationale, str) or not isinstance(contract_changes, list) or not isinstance(release_notes, str):
+        print(f"WARNING: {path} has invalid field types", file=sys.stderr)
+        return None
+
     return LaneReport(
-        classification=data["classification"],
-        rationale=data.get("rationale", ""),
-        contract_changes=data.get("contract_changes", []),
-        release_notes=data.get("release_notes", ""),
+        classification=cast(str, classification),
+        rationale=rationale,
+        contract_changes=[cast(ContractChange, item) for item in contract_changes if isinstance(item, dict)],
+        release_notes=release_notes,
     )
 
 
@@ -165,7 +180,7 @@ def _pick_most_detailed(reports: dict[str, LaneReport]) -> str | None:
         changes = report["contract_changes"]
         scored.append((lane, len(changes)))
 
-    scored.sort(key=lambda x: x[1], reverse=True)
+    scored.sort(key=itemgetter(1), reverse=True)
     if len(scored) >= 2 and scored[0][1] > scored[1][1] and scored[0][1] > 0:
         return scored[0][0]
     return None

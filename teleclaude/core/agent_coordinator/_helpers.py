@@ -47,7 +47,7 @@ SESSION_START_MESSAGES = [
 
 
 @dataclass
-class _SuppressionState:
+class _SuppressionState:  # pyright: ignore[reportUnusedClass]
     """Tracks repeated no-op events so logs can be sampled."""
 
     signature: str
@@ -137,53 +137,10 @@ def _resolve_hook_actor_name(session: "Session") -> str:
             return None
         return _coerce_nonempty_str(identity.person_name)
 
-    if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
-        telegram_meta: Mapping[str, object] = {
-            "user_id": str(telegram_user_id),
-            "telegram_user_id": str(telegram_user_id),
-        }
-        resolved = _resolve_identity_name(InputOrigin.TELEGRAM.value, telegram_meta)
-        if resolved:
-            return resolved
-
-    if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
-        discord_meta: Mapping[str, object] = {
-            "user_id": str(discord_user_id),
-            "discord_user_id": str(discord_user_id),
-        }
-        resolved = _resolve_identity_name(InputOrigin.DISCORD.value, discord_meta)
-        if resolved:
-            return resolved
-
-    if origin_hint == InputOrigin.WHATSAPP.value and whatsapp_phone:
-        whatsapp_meta: dict[str, object] = {  # guard: loose-dict - Identity resolver channel metadata is dynamic.
-            "phone_number": whatsapp_phone
-        }
-        resolved = _resolve_identity_name(InputOrigin.WHATSAPP.value, whatsapp_meta)
-        if resolved:
-            return resolved
-
-    if telegram_user_id is not None:
-        telegram_meta = {
-            "user_id": str(telegram_user_id),
-            "telegram_user_id": str(telegram_user_id),
-        }
-        resolved = _resolve_identity_name(InputOrigin.TELEGRAM.value, telegram_meta)
-        if resolved:
-            return resolved
-
-    if discord_user_id:
-        discord_meta = {
-            "user_id": str(discord_user_id),
-            "discord_user_id": str(discord_user_id),
-        }
-        resolved = _resolve_identity_name(InputOrigin.DISCORD.value, discord_meta)
-        if resolved:
-            return resolved
-
-    if whatsapp_phone:
-        whatsapp_meta = {"phone_number": whatsapp_phone}
-        resolved = _resolve_identity_name(InputOrigin.WHATSAPP.value, whatsapp_meta)
+    for origin, channel_meta in _identity_resolution_candidates(
+        origin_hint, telegram_user_id, discord_user_id, whatsapp_phone
+    ):
+        resolved = _resolve_identity_name(origin, channel_meta)
         if resolved:
             return resolved
 
@@ -191,20 +148,82 @@ def _resolve_hook_actor_name(session: "Session") -> str:
     if human_email:
         return human_email
 
-    if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
-        return f"telegram:{telegram_user_id}"
-    if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
-        return f"discord:{discord_user_id}"
-    if origin_hint == InputOrigin.WHATSAPP.value and whatsapp_phone:
-        return f"whatsapp:{whatsapp_phone}"
-    if telegram_user_id is not None:
-        return f"telegram:{telegram_user_id}"
-    if discord_user_id:
-        return f"discord:{discord_user_id}"
-    if whatsapp_phone:
-        return f"whatsapp:{whatsapp_phone}"
+    fallback_name = _fallback_hook_actor_name(origin_hint, telegram_user_id, discord_user_id, whatsapp_phone)
+    return fallback_name or "operator"
 
-    return "operator"
+
+def _identity_resolution_candidates(
+    origin_hint: str,
+    telegram_user_id: int | None,
+    discord_user_id: str | None,
+    whatsapp_phone: str | None,
+) -> list[tuple[str, Mapping[str, str]]]:
+    """Return identity resolver candidates in priority order."""
+    telegram_meta = _telegram_identity_meta(telegram_user_id)
+    discord_meta = _discord_identity_meta(discord_user_id)
+    whatsapp_meta = _whatsapp_identity_meta(whatsapp_phone)
+
+    prioritized: list[tuple[str, Mapping[str, str]]] = []
+    if origin_hint == InputOrigin.TELEGRAM.value and telegram_meta is not None:
+        prioritized.append((InputOrigin.TELEGRAM.value, telegram_meta))
+    if origin_hint == InputOrigin.DISCORD.value and discord_meta is not None:
+        prioritized.append((InputOrigin.DISCORD.value, discord_meta))
+    if origin_hint == InputOrigin.WHATSAPP.value and whatsapp_meta is not None:
+        prioritized.append((InputOrigin.WHATSAPP.value, whatsapp_meta))
+
+    for candidate in (
+        (InputOrigin.TELEGRAM.value, telegram_meta),
+        (InputOrigin.DISCORD.value, discord_meta),
+        (InputOrigin.WHATSAPP.value, whatsapp_meta),
+    ):
+        _origin, channel_meta = candidate
+        if channel_meta is not None and candidate not in prioritized:
+            prioritized.append(candidate)
+    return prioritized
+
+
+def _telegram_identity_meta(user_id: int | None) -> Mapping[str, str] | None:
+    if user_id is None:
+        return None
+    user_id_text = str(user_id)
+    return {"user_id": user_id_text, "telegram_user_id": user_id_text}
+
+
+def _discord_identity_meta(user_id: str | None) -> Mapping[str, str] | None:
+    if not user_id:
+        return None
+    return {"user_id": str(user_id), "discord_user_id": str(user_id)}
+
+
+def _whatsapp_identity_meta(phone_number: str | None) -> Mapping[str, str] | None:
+    if not phone_number:
+        return None
+    return {"phone_number": phone_number}
+
+
+def _fallback_hook_actor_name(
+    origin_hint: str,
+    telegram_user_id: int | None,
+    discord_user_id: str | None,
+    whatsapp_phone: str | None,
+) -> str | None:
+    """Return a deterministic fallback actor label when resolution fails."""
+    for origin, value in (
+        (InputOrigin.TELEGRAM.value, str(telegram_user_id) if telegram_user_id is not None else None),
+        (InputOrigin.DISCORD.value, str(discord_user_id) if discord_user_id else None),
+        (InputOrigin.WHATSAPP.value, whatsapp_phone),
+    ):
+        if origin_hint == origin and value:
+            return f"{origin}:{value}"
+
+    for origin, value in (
+        ("telegram", str(telegram_user_id) if telegram_user_id is not None else None),
+        ("discord", str(discord_user_id) if discord_user_id else None),
+        ("whatsapp", whatsapp_phone),
+    ):
+        if value:
+            return f"{origin}:{value}"
+    return None
 
 
 def _to_utc(ts: datetime) -> datetime:
@@ -241,3 +260,12 @@ def _is_codex_input_already_recorded(
         return True
     feedback_at = _to_utc(session.last_output_at)
     return message_at > feedback_at
+
+
+__all__ = [
+    "_has_active_output_message",
+    "_is_checkpoint_prompt",
+    "_is_codex_input_already_recorded",
+    "_is_codex_synthetic_prompt_event",
+    "_resolve_hook_actor_name",
+]

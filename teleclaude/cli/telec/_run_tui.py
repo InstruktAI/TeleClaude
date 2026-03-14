@@ -1,16 +1,16 @@
 """TUI run helpers — split out to avoid circular imports from config handler."""
+
 from __future__ import annotations
 
 import os
 import sys
 import time as _t
 
-
-
 __all__ = [
     "_run_tui",
     "_run_tui_config_mode",
 ]
+
 
 def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     """Run TUI application.

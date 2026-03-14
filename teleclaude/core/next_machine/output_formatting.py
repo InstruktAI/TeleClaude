@@ -8,8 +8,16 @@ from __future__ import annotations
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import PAREN_OPEN, REVIEW_DIFF_NOTE
 
-__all__ = ["REVIEW_DIFF_NOTE", "POST_COMPLETION", "format_tool_call", "format_error", "format_prepared",
-           "format_uncommitted_changes", "format_finalize_handoff_complete", "format_stash_debt"]
+__all__ = [
+    "POST_COMPLETION",
+    "REVIEW_DIFF_NOTE",
+    "format_error",
+    "format_finalize_handoff_complete",
+    "format_prepared",
+    "format_stash_debt",
+    "format_tool_call",
+    "format_uncommitted_changes",
+]
 
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
@@ -155,9 +163,7 @@ def format_tool_call(
 
     _escaped_ctx = additional_context.replace("\n", "\\n") if additional_context else ""
     additional_context_flag = f' --additional-context "{_escaped_ctx}"' if additional_context else ""
-    additional_context_block = (
-        f"\nADDITIONAL CONTEXT FOR WORKER:\n{additional_context}\n" if additional_context else ""
-    )
+    additional_context_block = f"\nADDITIONAL CONTEXT FOR WORKER:\n{additional_context}\n" if additional_context else ""
 
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 

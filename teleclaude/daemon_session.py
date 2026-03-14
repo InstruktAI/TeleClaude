@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from teleclaude.core.agent_coordinator import AgentCoordinator
     from teleclaude.core.command_service import CommandService
     from teleclaude.core.output_poller import OutputPoller
+    from teleclaude.daemon_hook_outbox import _HookOutboxSessionQueue
     from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 
 logger = get_logger(__name__)
@@ -74,13 +75,13 @@ class OutputChangeSummary:
     after_snippet: str | None = None
 
 
-class _DaemonSessionMixin:
+class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
     """Session and agent event handling methods extracted from TeleClaudeDaemon."""
 
     if TYPE_CHECKING:
         shutdown_event: asyncio.Event
         _background_tasks: set[asyncio.Task[object]]
-        _session_outbox_queues: dict[str, object]
+        _session_outbox_queues: dict[str, _HookOutboxSessionQueue]
         _session_outbox_workers: dict[str, asyncio.Task[None]]
         _hook_outbox_claim_paused_sessions: set[str]
         client: AdapterClient

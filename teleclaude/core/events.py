@@ -119,10 +119,27 @@ class AgentHookEvents:
         }
     )
 
-    ALL: set[AgentHookEventType] = cast(
-        "set[AgentHookEventType]",
-        {v for agent_map in HOOK_EVENT_MAP.values() for v in agent_map.values()} | {AGENT_ERROR},
-    )
+    ALL: set[AgentHookEventType] = {
+        AGENT_SESSION_START,
+        USER_PROMPT_SUBMIT,
+        TOOL_DONE,
+        AGENT_STOP,
+        AGENT_SESSION_END,
+        AGENT_ERROR,
+        BEFORE_AGENT,
+        BEFORE_MODEL,
+        TOOL_USE,
+        BEFORE_TOOL_SELECTION,
+        BEFORE_TOOL,
+        AFTER_TOOL,
+        PRE_COMPRESS,
+        PRE_TOOL_USE,
+        POST_TOOL_USE,
+        POST_TOOL_USE_FAILURE,
+        SUBAGENT_START,
+        SUBAGENT_STOP,
+        PRE_COMPACT,
+    }
     RECEIVER_HANDLED: frozenset[AgentHookEventType] = frozenset(
         {
             AGENT_SESSION_START,

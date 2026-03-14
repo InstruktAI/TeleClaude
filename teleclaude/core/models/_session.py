@@ -66,7 +66,7 @@ class SessionLaunchIntent:
     message: str | None = None
     native_session_id: str | None = None
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> JsonDict:
         return {
             "kind": self.kind.value,
             "agent": self.agent,
@@ -76,7 +76,7 @@ class SessionLaunchIntent:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "SessionLaunchIntent":
+    def from_dict(cls, data: JsonDict) -> "SessionLaunchIntent":
         if FIELD_KIND not in data or data[FIELD_KIND] is None:
             raise ValueError("launch_intent.kind is required")
         return cls(
@@ -183,9 +183,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
         """Get session adapter metadata."""
         return self.adapter_metadata
 
-    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
+    def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""
-        data = cast(dict[str, object], asdict(self))
+        data = cast(JsonDict, asdict(self))
         if self.created_at:
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:

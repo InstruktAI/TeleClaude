@@ -7,6 +7,7 @@ import json
 import os
 import re
 import traceback
+from operator import itemgetter
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -61,11 +62,12 @@ def _load_state(state_path: Path) -> set[str]:
         return set()
 
     with state_path.open("r", encoding="utf-8") as handle:
-        raw_state = json.load(handle)
+        raw_state_obj: object = json.load(handle)
 
-    if not isinstance(raw_state, dict):
+    if not isinstance(raw_state_obj, dict):
         raise ValueError(f"Invalid migration state payload in {state_path}")
 
+    raw_state = cast(dict[str, object], raw_state_obj)
     applied = raw_state.get("applied")
     if not isinstance(applied, list) or any(not isinstance(item, str) for item in applied):
         raise ValueError(f"Invalid migration state payload in {state_path}")
@@ -129,7 +131,7 @@ def discover_migrations(from_ver: str, to_ver: str) -> list[tuple[str, Path]]:
         normalized = _normalize_version(entry.name)
         eligible_versions.append((parse_version(normalized), normalized, entry))
 
-    eligible_versions.sort(key=lambda item: item[0])
+    eligible_versions.sort(key=itemgetter(0))
 
     discovered: list[tuple[str, Path]] = []
     for _, version, version_dir in eligible_versions:
@@ -143,7 +145,7 @@ def discover_migrations(from_ver: str, to_ver: str) -> list[tuple[str, Path]]:
             order = int(match.group(1))
             files.append((order, migration_file.name, migration_file))
 
-        files.sort(key=lambda item: (item[0], item[1]))
+        files.sort(key=itemgetter(0, 1))
         for _, _, migration_file in files:
             discovered.append((version, migration_file))
 

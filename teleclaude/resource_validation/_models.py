@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from typing import cast
 
 import yaml
 from typing_extensions import TypedDict
@@ -19,6 +20,18 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from teleclaude.constants import TAXONOMY_TYPES  # noqa: E402
+
+__all__ = [
+    "REPO_ROOT",
+    "_ARTIFACT_REF_ORDER",
+    "_as_str_list",
+    "_error",
+    "_load_schema",
+    "_warn",
+    "clear_warnings",
+    "get_errors",
+    "get_warnings",
+]
 
 # ---------------------------------------------------------------------------
 # Shared patterns
@@ -117,33 +130,35 @@ def _as_str_list(value: object) -> list[str]:
 def _load_schema() -> SchemaConfig:
     if not _SCHEMA_PATH.exists():
         return {"global_": {}, "sections": {}}
-    raw = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8")) or {}
-    if not isinstance(raw, dict):
+    raw_obj = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw_obj, dict):
         return {"global_": {}, "sections": {}}
+    raw = cast(dict[str, object], raw_obj)
 
     global_raw = raw.get("global", {})
     global_cfg: GlobalSchemaConfig = {}
     if isinstance(global_raw, dict):
         for key, value in global_raw.items():
-            if key in {
-                "required_reads_title",
-                "see_also_title",
-                "sources_title",
-            } and isinstance(value, str):
-                global_cfg[key] = value
-            elif key in {
-                "require_h1",
-                "require_h1_first",
-                "require_required_reads",
-                "allow_h3",
-            } and isinstance(value, bool):
-                global_cfg[key] = value
-            elif key in {
-                "required_reads_header_level",
-                "see_also_header_level",
-                "sources_header_level",
-            } and isinstance(value, int):
-                global_cfg[key] = value
+            if key == "required_reads_title" and isinstance(value, str):
+                global_cfg["required_reads_title"] = value
+            elif key == "see_also_title" and isinstance(value, str):
+                global_cfg["see_also_title"] = value
+            elif key == "sources_title" and isinstance(value, str):
+                global_cfg["sources_title"] = value
+            elif key == "require_h1" and isinstance(value, bool):
+                global_cfg["require_h1"] = value
+            elif key == "require_h1_first" and isinstance(value, bool):
+                global_cfg["require_h1_first"] = value
+            elif key == "require_required_reads" and isinstance(value, bool):
+                global_cfg["require_required_reads"] = value
+            elif key == "allow_h3" and isinstance(value, bool):
+                global_cfg["allow_h3"] = value
+            elif key == "required_reads_header_level" and isinstance(value, int):
+                global_cfg["required_reads_header_level"] = value
+            elif key == "see_also_header_level" and isinstance(value, int):
+                global_cfg["see_also_header_level"] = value
+            elif key == "sources_header_level" and isinstance(value, int):
+                global_cfg["sources_header_level"] = value
 
     sections_raw = raw.get("sections", {})
     sections: dict[str, SectionSchema] = {}
@@ -151,8 +166,9 @@ def _load_schema() -> SchemaConfig:
         for section_name, section_raw in sections_raw.items():
             if not isinstance(section_raw, dict):
                 continue
-            required = _as_str_list(section_raw.get("required"))
-            allowed = _as_str_list(section_raw.get("allowed"))
+            section = cast(dict[str, object], section_raw)
+            required = _as_str_list(section.get("required"))
+            allowed = _as_str_list(section.get("allowed"))
             sections[str(section_name)] = {"required": required, "allowed": allowed}
 
     return {"global_": global_cfg, "sections": sections}

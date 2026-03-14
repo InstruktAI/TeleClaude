@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -47,7 +46,11 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     cwd, slug = _make_todo(tmp_path)
     long_content = "This is the original content that is long enough to pass the scaffold content check in teleclaude."
     input_file = _write_file(tmp_path / "todos" / slug, "input.md", long_content)
-    _write_file(tmp_path / "todos" / slug, "requirements.md", "Requirements document with enough content to pass scaffold threshold for testing purposes.")
+    _write_file(
+        tmp_path / "todos" / slug,
+        "requirements.md",
+        "Requirements document with enough content to pass scaffold threshold for testing purposes.",
+    )
 
     # Record input artifact
     record_artifact_produced(cwd, slug, "input.md")
@@ -77,7 +80,11 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     mock_db = MagicMock()
     mock_db.scalar_one_or_none = AsyncMock(return_value=None)
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         with patch("teleclaude.core.next_machine.prepare.slug_in_roadmap", return_value=True):
             with patch("teleclaude.core.next_machine.prepare.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
@@ -100,7 +107,11 @@ async def test_next_prepare_no_staleness_proceeds_normally(
     from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
 
     cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md", "This is stable input that has enough content to pass scaffold threshold for the test.")
+    _write_file(
+        tmp_path / "todos" / slug,
+        "input.md",
+        "This is stable input that has enough content to pass scaffold threshold for the test.",
+    )
 
     # Record input artifact — no changes after
     record_artifact_produced(cwd, slug, "input.md")
@@ -114,7 +125,11 @@ async def test_next_prepare_no_staleness_proceeds_normally(
 
     mock_db = MagicMock()
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"):
+    with patch(
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
+    ):
         with patch("teleclaude.core.next_machine.prepare.slug_in_roadmap", return_value=True):
             with patch("teleclaude.core.next_machine.prepare.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
@@ -124,5 +139,3 @@ async def test_next_prepare_no_staleness_proceeds_normally(
     assert not any("artifact_invalidated" in call for call in all_calls)
     # Result is a dispatch instruction (not blocked/errored)
     assert "DISPATCH" in result or "next-prepare-discovery" in result
-
-

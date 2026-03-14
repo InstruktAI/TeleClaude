@@ -4,6 +4,8 @@
 import re
 import sys
 from pathlib import Path
+from re import Pattern
+from typing import cast
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TELECLAUDE_PATH = PROJECT_ROOT / "teleclaude"
@@ -34,8 +36,8 @@ KNOWN_PACKAGES = {
     "tagging",
 }
 
-_IMPORT_RE = re.compile(r"^\s*import\s+(.+)$")
-_FROM_IMPORT_RE = re.compile(r"^\s*from\s+([A-Za-z_][A-Za-z0-9_\.]*)\s+import\b")
+_IMPORT_RE: Pattern[str] = re.compile(r"^\s*import\s+(.+)$")
+_FROM_IMPORT_RE: Pattern[str] = re.compile(r"^\s*from\s+([A-Za-z_][A-Za-z0-9_\.]*)\s+import\b")
 
 
 def extract_package_deps() -> dict[str, set[str]]:
@@ -74,7 +76,8 @@ def extract_package_deps() -> dict[str, set[str]]:
             if not import_match:
                 continue
 
-            for imported in import_match.group(1).split(","):
+            imported_group = cast(str, import_match.group(1))
+            for imported in imported_group.split(","):
                 imported_name = imported.strip().split(" as ", 1)[0].strip()
                 target_pkg = _resolve_teleclaude_package(imported_name)
                 if target_pkg and target_pkg != source_pkg and target_pkg in KNOWN_PACKAGES:

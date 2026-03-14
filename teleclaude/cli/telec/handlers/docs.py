@@ -1,15 +1,15 @@
 """Handlers for telec docs commands."""
+
 from __future__ import annotations
 
 from teleclaude.cli.telec.help import _usage
 
-
-
 __all__ = [
     "_handle_docs",
-    "_handle_docs_index",
     "_handle_docs_get",
+    "_handle_docs_index",
 ]
+
 
 def _handle_docs(args: list[str]) -> None:
     """Handle telec docs commands."""

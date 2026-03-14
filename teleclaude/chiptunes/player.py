@@ -142,7 +142,9 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             return
         buffered = self._pcm_queue.qsize()
         if buffered < prebuffer_frames:
-            logger.warning("ChipTunes: prebuffer incomplete (%d/%d frames) — opening stream anyway", buffered, prebuffer_frames)
+            logger.warning(
+                "ChipTunes: prebuffer incomplete (%d/%d frames) — opening stream anyway", buffered, prebuffer_frames
+            )
         else:
             logger.debug("ChipTunes: prebuffer complete (%d frames), opening stream", buffered)
         with self._pause_lock:

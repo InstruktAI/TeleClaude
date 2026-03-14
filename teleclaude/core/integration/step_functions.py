@@ -51,9 +51,7 @@ _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 # ---------------------------------------------------------------------------
 
 
-def _run_git(
-    args: list[str], *, cwd: str, timeout: float = 30
-) -> tuple[int, str, str]:
+def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
     """Run a git command; return (returncode, stdout, stderr)."""
     try:
         result = subprocess.run(
@@ -153,9 +151,7 @@ def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
         rc, _, stderr = _run_git(["fetch", "origin", "main"], cwd=cwd)
         if rc != 0:
             return integration_wt, f"git fetch origin main failed:\n{stderr.strip()}"
-        rc, _, stderr = _run_git(
-            ["worktree", "add", str(integration_wt), "origin/main", "--detach"], cwd=cwd
-        )
+        rc, _, stderr = _run_git(["worktree", "add", str(integration_wt), "origin/main", "--detach"], cwd=cwd)
         if rc != 0:
             return integration_wt, f"git worktree add (integration) failed:\n{stderr.strip()}"
 
@@ -251,9 +247,7 @@ class ScannedCandidate:
     ready_at: str
 
 
-def _scan_finalize_ready_candidates(
-    cwd: str, *, exclude_slug: str | None = None
-) -> list[ScannedCandidate]:
+def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None) -> list[ScannedCandidate]:
     """Scan worktree state.yaml files for finalize-ready candidates.
 
     Iterates ``trees/`` subdirectories (skipping ``_integration``), reads each
@@ -322,10 +316,12 @@ def _scan_finalize_ready_candidates(
         if rc == 0:
             continue
 
-        candidates.append(ScannedCandidate(
-            key=CandidateKey(slug=slug, branch=branch, sha=sha),
-            ready_at=ready_at,
-        ))
+        candidates.append(
+            ScannedCandidate(
+                key=CandidateKey(slug=slug, branch=branch, sha=sha),
+                ready_at=ready_at,
+            )
+        )
 
     candidates.sort(key=lambda c: (c.ready_at, c.key.slug))
     return candidates
@@ -834,3 +830,13 @@ def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
         logger.warning("_mirror_integration_phase failed for %s phase=%s: %s", slug, phase, exc)
 
 
+__all__ = [
+    "_do_merge",
+    "_step_awaiting_commit",
+    "_step_cleanup",
+    "_step_committed",
+    "_step_delivery_bookkeeping",
+    "_step_idle",
+    "_step_push_rejected",
+    "_step_push_succeeded",
+]

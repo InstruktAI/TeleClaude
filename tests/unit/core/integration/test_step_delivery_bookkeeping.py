@@ -24,6 +24,7 @@ from teleclaude.core.integration.step_functions import (
     _step_delivery_bookkeeping,
     _step_push_succeeded,
 )
+from teleclaude.core.next_machine._types import DeliveredDict, RoadmapDict
 from teleclaude.core.next_machine.delivery import reconcile_roadmap_after_merge
 
 
@@ -65,9 +66,7 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
 
     git_calls: list[tuple[list[str], str]] = []
 
-    def mock_run_git(
-        args: list[str], *, cwd: str, timeout: float = 30
-    ) -> tuple[int, str, str]:
+    def mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
         git_calls.append((list(args), cwd))
         if args[:2] == ["diff", "--cached"]:
             return 1, "", ""  # staged changes exist -> trigger commit
@@ -131,13 +130,9 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
 
     # No git operations must target repo root for bookkeeping or push
     repo_root_git_ops = [
-        (args, cwd)
-        for args, cwd in git_calls
-        if cwd == str(tmp_path) and args[0] in ("commit", "push", "rm")
+        (args, cwd) for args, cwd in git_calls if cwd == str(tmp_path) and args[0] in ("commit", "push", "rm")
     ]
-    assert repo_root_git_ops == [], (
-        f"bookkeeping git ops must not run on repo root; found: {repo_root_git_ops}"
-    )
+    assert repo_root_git_ops == [], f"bookkeeping git ops must not run on repo root; found: {repo_root_git_ops}"
 
     assert ok is True
     assert cp.phase == IntegrationPhase.PUSH_SUCCEEDED.value
@@ -151,9 +146,7 @@ def test_repo_root_pull_failure_returns_pull_blocked(tmp_path: Path) -> None:
 
     pull_attempted = False
 
-    def mock_run_git(
-        args: list[str], *, cwd: str, timeout: float = 30
-    ) -> tuple[int, str, str]:
+    def mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
         nonlocal pull_attempted
         if args[:3] == ["pull", "--ff-only", "origin"]:
             pull_attempted = True
@@ -188,9 +181,7 @@ def test_repo_root_pull_success_continues_to_cleanup(tmp_path: Path) -> None:
     """When repo root pull succeeds, continue to cleanup inline (happy path)."""
     cp, cp_path = _make_checkpoint(tmp_path, phase=IntegrationPhase.PUSH_SUCCEEDED.value)
 
-    def mock_run_git(
-        args: list[str], *, cwd: str, timeout: float = 30
-    ) -> tuple[int, str, str]:
+    def mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
         if args[:3] == ["pull", "--ff-only", "origin"]:
             return 0, "", ""  # Pull succeeds
         if args[:2] == ["rev-parse", "HEAD"]:
@@ -253,9 +244,7 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
         deliver_called = True
         return True
 
-    def mock_run_git(
-        args: list[str], *, cwd: str, timeout: float = 30
-    ) -> tuple[int, str, str]:
+    def mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
         if args[:2] == ["diff", "--cached"]:
             return 1, "", ""
         if args[0] == "push":
@@ -295,13 +284,13 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
 # --- reconcile_roadmap_after_merge tests ---
 
 
-def _write_roadmap(cwd: Path, entries: list[dict[str, object]]) -> None:
+def _write_roadmap(cwd: Path, entries: list[RoadmapDict]) -> None:
     path = cwd / "todos" / "roadmap.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.dump(entries, default_flow_style=False, sort_keys=False))
 
 
-def _write_delivered(cwd: Path, entries: list[dict[str, object]]) -> None:
+def _write_delivered(cwd: Path, entries: list[DeliveredDict]) -> None:
     path = cwd / "todos" / "delivered.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.dump(entries, default_flow_style=False, sort_keys=False))
@@ -315,13 +304,19 @@ def _read_roadmap_slugs(cwd: Path) -> list[str]:
 
 def test_reconcile_removes_ghost_entries(tmp_path: Path) -> None:
     """Ghost entries: slug in both roadmap and delivered.yaml should be removed from roadmap."""
-    _write_roadmap(tmp_path, [
-        {"slug": "valid-item"},
-        {"slug": "ghost-item"},
-    ])
-    _write_delivered(tmp_path, [
-        {"slug": "ghost-item", "date": "2026-03-13"},
-    ])
+    _write_roadmap(
+        tmp_path,
+        [
+            {"slug": "valid-item"},
+            {"slug": "ghost-item"},
+        ],
+    )
+    _write_delivered(
+        tmp_path,
+        [
+            {"slug": "ghost-item", "date": "2026-03-13"},
+        ],
+    )
     # valid-item has a todo directory
     (tmp_path / "todos" / "valid-item").mkdir(parents=True, exist_ok=True)
 
@@ -334,10 +329,13 @@ def test_reconcile_removes_ghost_entries(tmp_path: Path) -> None:
 
 def test_reconcile_removes_orphan_entries(tmp_path: Path) -> None:
     """Orphan entries: slug in roadmap, no todo directory, not in delivered."""
-    _write_roadmap(tmp_path, [
-        {"slug": "valid-item"},
-        {"slug": "orphan-item"},
-    ])
+    _write_roadmap(
+        tmp_path,
+        [
+            {"slug": "valid-item"},
+            {"slug": "orphan-item"},
+        ],
+    )
     _write_delivered(tmp_path, [])
     # valid-item has a todo directory; orphan-item does not
     (tmp_path / "todos" / "valid-item").mkdir(parents=True, exist_ok=True)
@@ -351,10 +349,13 @@ def test_reconcile_removes_orphan_entries(tmp_path: Path) -> None:
 
 def test_reconcile_preserves_valid_entries(tmp_path: Path) -> None:
     """Valid entries with todo directories should be preserved."""
-    _write_roadmap(tmp_path, [
-        {"slug": "item-a"},
-        {"slug": "item-b"},
-    ])
+    _write_roadmap(
+        tmp_path,
+        [
+            {"slug": "item-a"},
+            {"slug": "item-b"},
+        ],
+    )
     _write_delivered(tmp_path, [])
     (tmp_path / "todos" / "item-a").mkdir(parents=True, exist_ok=True)
     (tmp_path / "todos" / "item-b").mkdir(parents=True, exist_ok=True)

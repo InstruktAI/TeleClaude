@@ -41,7 +41,7 @@ CALL_MSG = {
 }
 
 
-def run_test():
+def run_test() -> None:
     print("--- Starting Wrapper Resilience Test ---")
 
     # Start the wrapper subprocess

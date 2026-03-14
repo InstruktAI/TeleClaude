@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import uuid
 from pathlib import Path
 
@@ -15,6 +16,24 @@ from teleclaude.paths import SESSION_MAP_PATH
 
 logger = get_logger("teleclaude.hooks.receiver")
 
+__all__ = [
+    "_create_sync_engine",
+    "_find_session_id_by_native",
+    "_get_cached_session_id",
+    "_get_memory_context",
+    "_get_session_map_path",
+    "_get_tmux_contract_session_id",
+    "_get_tmux_contract_tmpdir",
+    "_is_headless_route",
+    "_is_tmux_contract_session_compatible",
+    "_load_session_map",
+    "_persist_session_map",
+    "_resolve_hook_session_id",
+    "_resolve_or_refresh_session_id",
+    "_session_map_key",
+    "_write_session_map_atomic",
+]
+
 
 def _create_sync_engine() -> object:
     """Create a sync SQLAlchemy engine with SQLite PRAGMAs set at connect time."""
@@ -24,7 +43,10 @@ def _create_sync_engine() -> object:
     engine = create_engine(f"sqlite:///{config.database.path}")
 
     @sa_event.listens_for(engine, "connect")
-    def _set_sqlite_pragmas(dbapi_connection, _connection_record):
+    def _set_sqlite_pragmas(  # pyright: ignore[reportUnusedFunction]
+        dbapi_connection: sqlite3.Connection,
+        _connection_record: object,
+    ) -> None:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA busy_timeout = 5000")

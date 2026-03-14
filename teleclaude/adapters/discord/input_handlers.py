@@ -225,7 +225,10 @@ class InputHandlersMixin:
     # =========================================================================
 
     async def _resolve_or_create_session(
-        self, message: object, *, first_message: str | None = None,
+        self,
+        message: object,
+        *,
+        first_message: str | None = None,
     ) -> Session | None:
         user_id = str(getattr(getattr(message, "author", None), "id", ""))
         if not user_id:
@@ -245,7 +248,10 @@ class InputHandlersMixin:
         if session is None:
             forum_type, project_path = self._resolve_forum_context(message)  # type: ignore[attr-defined]
             session = await self._create_session_for_message(
-                message, user_id, forum_type=forum_type, project_path=project_path,
+                message,
+                user_id,
+                forum_type=forum_type,
+                project_path=project_path,
                 first_message=first_message,
             )
             if session is None:

@@ -45,6 +45,7 @@ from ._incremental import _IncrementalOutputMixin
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -465,58 +466,82 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
             "db",
         )
 
-        # 1. Extract turn artifacts and persist with a single ordered activity update.
+        await self._record_agent_stop_input(session_id, payload, session)
+        link_output, summary = await self._record_agent_stop_output(session_id, payload)
+
+        # Emit activity event for UI updates (summary flows to TUI via event, not DB)
+        self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
+
+        # Emit canonical lifecycle status: completed (R2)
+        now_ts = datetime.now(UTC).isoformat()
+        self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=now_ts)
+
+        # 2. Incremental threaded output (final turn portion)
+        await self._maybe_send_incremental_output(session_id, payload)
+
+        # Clear threaded output state for this turn (only for threaded sessions).
+        # Non-threaded sessions rely on the poller's output_message_id for in-place edits.
+        # NOTE: Do NOT clear _incremental_render_digests here. The poller may
+        # fire one more OutputChanged tick after this point; keeping the digest
+        # lets the deduplication check prevent a duplicate message send.
+        # The digest is naturally invalidated on the next user turn when new
+        # assistant content changes the hash.
+        session = await db.get_session(session_id)  # Refresh to get latest metadata
+        if session and is_threaded_output_enabled(session.active_agent):
+            await self.client.break_threaded_turn(session)
+
+        # Clear turn-specific cursor at turn completion
+        await db.update_session(session_id, last_tool_done_at=None)
+        await self._finalize_agent_stop(session_id, session, payload, link_output, source_computer)
+
+    async def _record_agent_stop_input(
+        self,
+        session_id: str,
+        payload: AgentStopPayload,
+        session: "Session | None",
+    ) -> None:
+        """Backfill missing Codex input metadata and user prompt events."""
         input_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
-        feedback_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
-        emit_codex_submit_backfill = False
         recovered_input_text: str | None = None
 
-        # For Codex: recover last user input from transcript (no native prompt hook).
-        input_text = ""
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
         if isinstance(codex_input, tuple) and len(codex_input) == 2:
             input_text, input_timestamp = codex_input
-            input_update_kwargs.update(
-                {
-                    "last_message_sent": input_text[:200],
-                }
-            )
+            input_update_kwargs["last_message_sent"] = input_text[:200]
             if input_timestamp:
                 input_update_kwargs["last_message_sent_at"] = input_timestamp.isoformat()
             if input_text.strip() and not _is_codex_input_already_recorded(session, input_text):
-                emit_codex_submit_backfill = True
                 recovered_input_text = input_text
         elif codex_input:
-            logger.debug(
-                "Ignoring malformed codex input tuple for session %s",
-                session_id,
-            )
+            logger.debug("Ignoring malformed codex input tuple for session %s", session_id)
 
         if input_update_kwargs:
             await db.update_session(session_id, **input_update_kwargs)
-        if emit_codex_submit_backfill:
-            logger.info(
-                "Backfilling missing user_prompt_submit from codex agent_stop for session %s",
-                session_id,
-            )
-            self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
-            # Safety net: when Codex prompt polling misses a live submit marker,
-            # mirror the recovered user input to adapters so Discord/Telegram
-            # still show the user turn.
-            if session and session.lifecycle_status != "headless" and recovered_input_text:
-                hook_actor_name = _resolve_hook_actor_name(session)
-                await self.client.broadcast_user_input(
-                    session,
-                    recovered_input_text,
-                    InputOrigin.TERMINAL.value,
-                    actor_id=f"terminal:{config.computer.name}:{session_id}",
-                    actor_name=hook_actor_name,
-                )
+        if recovered_input_text is None:
+            return
 
+        logger.info("Backfilling missing user_prompt_submit from codex agent_stop for session %s", session_id)
+        self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
+        if session and session.lifecycle_status != "headless":
+            hook_actor_name = _resolve_hook_actor_name(session)
+            await self.client.broadcast_user_input(
+                session,
+                recovered_input_text,
+                InputOrigin.TERMINAL.value,
+                actor_id=f"terminal:{config.computer.name}:{session_id}",
+                actor_name=hook_actor_name,
+            )
+
+    async def _record_agent_stop_output(
+        self, session_id: str, payload: AgentStopPayload
+    ) -> tuple[str | None, str | None]:
+        """Persist stop output, summary, and optional TTS feedback."""
+        feedback_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         raw_output = await self._extract_agent_output(session_id, payload)
         forwarded_output_raw = payload.raw.get("linked_output")
         forwarded_output = forwarded_output_raw if isinstance(forwarded_output_raw, str) else None
         link_output = raw_output or forwarded_output
+
         if raw_output:
             if config.terminal.strip_ansi:
                 raw_output = strip_ansi_codes(raw_output)
@@ -545,68 +570,46 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                 len(raw_output),
                 len(summary) if summary else 0,
             )
-            if summary:
-                try:
-                    await self.tts_manager.speak(summary, session_id=session_id)
-                except Exception as exc:
-                    logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id})
+            await self._speak_agent_stop_summary(session_id, summary)
 
-        # Persist feedback and status to DB (activity events are emitted separately).
         if feedback_update_kwargs:
             await db.update_session(session_id, **feedback_update_kwargs)
+        return link_output, summary
 
-        # Emit activity event for UI updates (summary flows to TUI via event, not DB)
-        self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
+    async def _speak_agent_stop_summary(self, session_id: str, summary: str | None) -> None:
+        """Emit stop-summary TTS when a non-empty summary exists."""
+        if not summary:
+            return
+        try:
+            await self.tts_manager.speak(summary, session_id=session_id)
+        except Exception as exc:
+            logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id})
 
-        # Emit canonical lifecycle status: completed (R2)
-        now_ts = datetime.now(UTC).isoformat()
-        self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=now_ts)
-
-        # 2. Incremental threaded output (final turn portion)
-        await self._maybe_send_incremental_output(session_id, payload)
-
-        # Clear threaded output state for this turn (only for threaded sessions).
-        # Non-threaded sessions rely on the poller's output_message_id for in-place edits.
-        # NOTE: Do NOT clear _incremental_render_digests here. The poller may
-        # fire one more OutputChanged tick after this point; keeping the digest
-        # lets the deduplication check prevent a duplicate message send.
-        # The digest is naturally invalidated on the next user turn when new
-        # assistant content changes the hash.
-        session = await db.get_session(session_id)  # Refresh to get latest metadata
-        if session and is_threaded_output_enabled(session.active_agent):
-            await self.client.break_threaded_turn(session)
-
-        # Clear turn-specific cursor at turn completion
-        await db.update_session(session_id, last_tool_done_at=None)
-
-        # 3. Fan out distilled stop output across active direct/gathering links.
-        # Suppress fan-out for turns triggered by linked output to prevent echo
-        # loops: A fans to B, B acknowledges, B's acknowledgment fans back to A,
-        # A acknowledges, repeat forever.  Linked output is observational
-        # (one-way push); the recipient's response should not bounce back.
-        _is_linked_echo = session is not None and session.turn_triggered_by_linked_output
-        if _is_linked_echo:
-            logger.debug(
-                "Suppressing linked fan-out for session %s (turn triggered by linked output)",
-                session_id,
-            )
-        if link_output and link_output.strip() and not _is_linked_echo:
+    async def _finalize_agent_stop(
+        self,
+        session_id: str,
+        session: "Session | None",
+        payload: AgentStopPayload,
+        link_output: str | None,
+        source_computer: str | None,
+    ) -> None:
+        """Complete stop fan-out, listener notification, forwarding, and checkpoint injection."""
+        is_linked_echo = session is not None and session.turn_triggered_by_linked_output
+        if is_linked_echo:
+            logger.debug("Suppressing linked fan-out for session %s (turn triggered by linked output)", session_id)
+        if link_output and link_output.strip() and not is_linked_echo:
             await self._fanout_linked_stop_output(session_id, link_output, source_computer=source_computer)
 
-        # Clear the flag after fan-out decision so it doesn't persist across turns.
         if session is not None and session.turn_triggered_by_linked_output:
             await db.update_session(session_id, turn_triggered_by_linked_output=False)
 
-        # 4. Notify local listeners (worker orchestration mode)
         title_raw = payload.raw.get("title")
         title = title_raw if isinstance(title_raw, str) and title_raw else None
         await self._notify_session_listener(session_id, source_computer=source_computer, title_override=title)
 
-        # 5. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id, link_output)
 
-        # 6. Inject checkpoint into the stopped agent's tmux pane
         await self._maybe_inject_checkpoint(session_id, session)
 
     async def handle_tool_use(self, context: AgentEventContext) -> None:

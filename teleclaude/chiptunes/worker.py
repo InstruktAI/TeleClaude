@@ -264,7 +264,9 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 self._player = player
                 self._current_track = track
                 start_paused = self._paused_requested
-                start_position = self._paused_position_seconds if start_position_seconds is None else start_position_seconds
+                start_position = (
+                    self._paused_position_seconds if start_position_seconds is None else start_position_seconds
+                )
                 self._loading = True
 
             track_label = track.stem.replace("_", " ")

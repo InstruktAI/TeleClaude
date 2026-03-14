@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -20,7 +20,7 @@ from teleclaude.core.events import (
     build_agent_payload,
     parse_command_string,
 )
-from teleclaude.core.models import MessageMetadata, RedisInboundMessage, SessionLaunchIntent
+from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata, RedisInboundMessage, SessionLaunchIntent
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -36,9 +36,26 @@ from teleclaude.types.commands import (
 
 logger = get_logger(__name__)
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
-class _MessagingMixin:
+    from teleclaude.core.adapter_client import AdapterClient
+
+
+class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: Redis stream polling, message parsing, command dispatch."""
+
+    if TYPE_CHECKING:
+        client: AdapterClient
+        computer_name: str
+        message_stream_maxlen: int
+        _running: bool
+
+        def _reset_idle_poll_log_throttle(self) -> None: ...
+        def _maybe_log_idle_poll(self, *, message_stream: str) -> None: ...
+        async def _get_redis(self) -> Redis: ...
+        async def send_response(self, message_id: str, data: str) -> str: ...
+        async def _handle_redis_error(self, context: str, exc: Exception) -> None: ...
 
     async def _get_last_processed_message_id(self) -> str | None:
         """Get last processed Redis message ID from database.
@@ -230,7 +247,7 @@ class _MessagingMixin:
             except Exception:
                 pass
 
-    async def _handle_agent_notification_command(self, cmd_name: str, args: list[str]) -> dict[str, object]:
+    async def _handle_agent_notification_command(self, cmd_name: str, args: list[str]) -> JsonDict:
         """Handle stop_notification/input_notification commands as agent_event payloads."""
         if cmd_name == "stop_notification":
             if len(args) < 2:
@@ -257,7 +274,7 @@ class _MessagingMixin:
                 except Exception as e:
                     logger.warning("Failed to decode stop_notification linked output: %s", e)
 
-            event_data: dict[str, object] = {
+            event_data: JsonDict = {
                 "session_id": target_session_id,
                 "source_computer": source_computer,
             }
@@ -277,13 +294,13 @@ class _MessagingMixin:
 
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
 
-    async def _execute_command(self, command: object) -> dict[str, object]:
+    async def _execute_command(self, command: object) -> JsonDict:
         """Execute a command via command service and return an envelope."""
         try:
             cmds = get_command_service()
             if isinstance(command, CreateSessionCommand):
                 data = await cmds.create_session(command)
-                return {"status": "success", "data": data}
+                return {"status": "success", "data": cast(JsonValue, data)}
             if isinstance(command, ProcessMessageCommand):
                 await cmds.process_message(command)
                 return {"status": "success", "data": None}
@@ -297,14 +314,14 @@ class _MessagingMixin:
                 await cmds.resume_agent(command)
                 return {"status": "success", "data": None}
             if isinstance(command, RestartAgentCommand):
-                await cmds.restart_agent(command)
-                return {"status": "success", "data": None}
+                data = await cmds.restart_agent(command)
+                return {"status": "success", "data": list(data)}
             if isinstance(command, RunAgentCommand):
                 await cmds.run_agent_command(command)
                 return {"status": "success", "data": None}
             if isinstance(command, GetSessionDataCommand):
                 data = await cmds.get_session_data(command)
-                return {"status": "success", "data": data}
+                return {"status": "success", "data": cast(JsonValue, data)}
             if isinstance(command, CloseSessionCommand):
                 await cmds.close_session(command)
                 return {"status": "success", "data": None}
@@ -319,7 +336,7 @@ class _MessagingMixin:
         command = data.get(b"command", b"").decode("utf-8")
         origin = data.get(b"origin", b"").decode("utf-8") or InputOrigin.REDIS.value
 
-        channel_metadata: dict[str, object] | None = None
+        channel_metadata: JsonDict | None = None
         if b"channel_metadata" in data:
             try:
                 parsed = json.loads(data[b"channel_metadata"].decode("utf-8"))
@@ -337,7 +354,7 @@ class _MessagingMixin:
             try:
                 parsed_intent = json.loads(launch_intent_raw)
                 if isinstance(parsed_intent, dict):
-                    launch_intent = cast(dict[str, object], parsed_intent)
+                    launch_intent = cast(JsonDict, parsed_intent)
             except json.JSONDecodeError:
                 logger.warning("Invalid launch_intent JSON in message")
 

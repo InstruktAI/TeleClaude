@@ -40,9 +40,7 @@ def _derive_creative_phase(todo_dir: Path, creative: dict[str, StateValue]) -> C
         return CreativePhase.DESIGN_SPEC_PENDING_CONFIRMATION
 
     # Phase 2: Art generation
-    art_images = [
-        f for f in (art_dir.iterdir() if art_dir.is_dir() else []) if f.suffix.lower() in _IMAGE_EXTENSIONS
-    ]
+    art_images = [f for f in (art_dir.iterdir() if art_dir.is_dir() else []) if f.suffix.lower() in _IMAGE_EXTENSIONS]
     if not art_images:
         return CreativePhase.ART_GENERATION_REQUIRED
 
@@ -97,9 +95,7 @@ def _find_next_creative_slug(cwd: str) -> str | None:
     return None
 
 
-async def _creative_instruction(
-    slug: str, cwd: str, phase: CreativePhase, guidance: str
-) -> str:
+async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guidance: str) -> str:
     """Generate plain-text instruction for the orchestrator based on creative phase."""
     match phase:
         case CreativePhase.DESIGN_DISCOVERY_REQUIRED:
@@ -137,9 +133,11 @@ async def _creative_instruction(
 
         case CreativePhase.ART_PENDING_APPROVAL:
             art_dir = Path(cwd) / "todos" / slug / "art"
-            art_files = sorted(
-                f.name for f in art_dir.iterdir() if f.suffix.lower() in _IMAGE_EXTENSIONS
-            ) if art_dir.is_dir() else []
+            art_files = (
+                sorted(f.name for f in art_dir.iterdir() if f.suffix.lower() in _IMAGE_EXTENSIONS)
+                if art_dir.is_dir()
+                else []
+            )
             file_list = "\n".join(f"  todos/{slug}/art/{f}" for f in art_files)
             return (
                 f"ART_PENDING_APPROVAL: {slug}\n\n"
@@ -177,9 +175,9 @@ async def _creative_instruction(
 
         case CreativePhase.VISUALS_PENDING_APPROVAL:
             html_dir = Path(cwd) / "todos" / slug / "html"
-            html_files = sorted(
-                f.name for f in html_dir.iterdir() if f.suffix.lower() == ".html"
-            ) if html_dir.is_dir() else []
+            html_files = (
+                sorted(f.name for f in html_dir.iterdir() if f.suffix.lower() == ".html") if html_dir.is_dir() else []
+            )
             file_list = "\n".join(f"  todos/{slug}/html/{f}" for f in html_files)
             return (
                 f"VISUALS_PENDING_APPROVAL: {slug}\n\n"

@@ -127,9 +127,7 @@ async def _prepare_step_requirements_review(
         # Architectural blocker — requires human decision before proceeding
         findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(
-            1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
-        )
+        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         state["prepare_phase"] = PreparePhase.BLOCKED.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return False, (
@@ -162,9 +160,7 @@ async def _prepare_step_requirements_review(
         # Count-and-pointer pattern: no file content injection (R2)
         findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(
-            1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
-        )
+        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         findings_note = (
             f"Requirements need revision: {open_count} unresolved finding(s). "
             f"See todos/{slug}/requirements-review-findings.md."
@@ -180,6 +176,7 @@ async def _prepare_step_requirements_review(
             compute_artifact_diff,
             compute_todo_folder_diff,
         )
+
         base_sha = (isinstance(req_review, dict) and req_review.get("baseline_commit")) or ""
         req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", str(base_sha))
         folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
@@ -187,7 +184,12 @@ async def _prepare_step_requirements_review(
         # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
-            {"slug": slug, "finding_ids": [f.get("id", "") for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"]},
+            {
+                "slug": slug,
+                "finding_ids": [
+                    f.get("id", "") for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
+                ],
+            },
         )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
@@ -419,9 +421,7 @@ async def _prepare_step_plan_review(
         # Architectural blocker — requires human decision before proceeding
         findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(
-            1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
-        )
+        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         state["prepare_phase"] = PreparePhase.BLOCKED.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return False, (
@@ -454,9 +454,7 @@ async def _prepare_step_plan_review(
         # Count-and-pointer pattern: no file content injection (R2)
         findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(
-            1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
-        )
+        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         findings_note = (
             f"Implementation plan needs revision: {open_count} unresolved finding(s). "
             f"See todos/{slug}/plan-review-findings.md."
@@ -472,6 +470,7 @@ async def _prepare_step_plan_review(
             compute_artifact_diff,
             compute_todo_folder_diff,
         )
+
         base_sha = (isinstance(plan_review, dict) and plan_review.get("baseline_commit")) or ""
         plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", str(base_sha))
         folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
@@ -479,7 +478,12 @@ async def _prepare_step_plan_review(
         # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
-            {"slug": slug, "finding_ids": [f.get("id", "") for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"]},
+            {
+                "slug": slug,
+                "finding_ids": [
+                    f.get("id", "") for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
+                ],
+            },
         )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
@@ -755,3 +759,6 @@ async def _prepare_dispatch(
     if phase == PreparePhase.BLOCKED:
         return _prepare_step_blocked(slug, state)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"
+
+
+__all__ = ["_prepare_dispatch"]

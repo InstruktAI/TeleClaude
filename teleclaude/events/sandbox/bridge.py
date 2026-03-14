@@ -7,10 +7,10 @@ All failures are caught and logged; the approved pipeline result is never blocke
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.sandbox.container import SandboxContainerManager, scan_cartridges
@@ -42,24 +42,17 @@ class SandboxBridgeCartridge:
             return event
 
     async def _process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope:
-        if (
-            not self._manager.has_cartridges
-            or self._manager.permanently_failed
-            or self._manager.docker_unavailable
-        ):
+        if not self._manager.has_cartridges or self._manager.permanently_failed or self._manager.docker_unavailable:
             return event
 
         cartridge_names = scan_cartridges(self._manager.cartridges_dir)
         if not cartridge_names:
             return event
 
-        results: list[dict[str, Any]] = []
+        results: list[JsonDict] = []
 
         # Build catalog snapshot from context
-        catalog_snapshot = [
-            schema.model_dump()
-            for schema in (context.catalog.list_all() if context.catalog is not None else [])
-        ]
+        catalog_snapshot = [schema.model_dump() for schema in context.catalog.list_all()]
 
         for name in cartridge_names:
             result_entry = await self._invoke_cartridge(name, event, catalog_snapshot)
@@ -72,8 +65,8 @@ class SandboxBridgeCartridge:
         self,
         cartridge_name: str,
         event: EventEnvelope,
-        catalog_snapshot: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+        catalog_snapshot: list[JsonDict],
+    ) -> JsonDict:
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_unix_connection(self._manager.socket_path),

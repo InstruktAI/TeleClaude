@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 _TERMINAL_SESSION_STATUSES = frozenset({"closing", "closed"})
 
 
-class _ChannelsMixin:
+class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     """Channel provisioning, command handlers, and UI lane operations."""
 
     if TYPE_CHECKING:

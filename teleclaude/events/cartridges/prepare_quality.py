@@ -7,11 +7,13 @@ import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TypedDict, cast
 
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.models import JsonDict
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.producer import emit_event
@@ -27,6 +29,22 @@ _TRIGGER_EVENTS = {
     "domain.software-development.planning.todo_activated",
     "domain.software-development.planning.dependency_resolved",
 }
+
+
+class RequirementsScoreResult(TypedDict):
+    dimensions: dict[str, int]
+    gaps: list[str]
+    raw: int
+    max: int
+
+
+class PlanScoreResult(TypedDict):
+    dimensions: dict[str, int]
+    gaps: list[str]
+    contradictions: list[str]
+    raw: int
+    max: int
+
 
 # ── DOR Scorer ────────────────────────────────────────────────────────────────
 
@@ -46,7 +64,7 @@ def _count_checkboxes(content: str) -> int:
     return len(re.findall(r"^\s*-\s+\[[ x]\]", content, re.MULTILINE))
 
 
-def score_requirements(content: str) -> dict[str, Any]:
+def score_requirements(content: str) -> RequirementsScoreResult:
     """Score requirements.md against DOR rubric. Returns scores and gaps."""
     dims: dict[str, int] = {}
     gaps: list[str] = []
@@ -94,7 +112,7 @@ def score_requirements(content: str) -> dict[str, Any]:
     return {"dimensions": dims, "gaps": gaps, "raw": sum(dims.values()), "max": 8}
 
 
-def score_plan(content: str, requirements: str) -> dict[str, Any]:
+def score_plan(content: str, requirements: str) -> PlanScoreResult:
     """Score implementation-plan.md against DOR rubric. Returns scores and gaps."""
     dims: dict[str, int] = {}
     gaps: list[str] = []
@@ -162,7 +180,7 @@ def score_plan(content: str, requirements: str) -> dict[str, Any]:
     }
 
 
-def compute_dor_score(req_result: dict[str, Any], plan_result: dict[str, Any]) -> tuple[int, str]:
+def compute_dor_score(req_result: RequirementsScoreResult, plan_result: PlanScoreResult) -> tuple[int, str]:
     """Combine scores and return (normalized_score_1_10, verdict).
 
     Returns 'pass' when score >= 8, 'needs_work' otherwise. Callers that have
@@ -294,17 +312,17 @@ def _get_todo_commit(slug: str, project_root: Path) -> str:
         return "unknown"
 
 
-def _read_state_yaml(state_path: Path) -> dict[str, Any]:
+def _read_state_yaml(state_path: Path) -> dict[str, StateValue]:
     if not state_path.exists():
         return {}
     try:
-        return yaml.safe_load(state_path.read_text()) or {}
+        return cast(dict[str, StateValue], yaml.safe_load(state_path.read_text()) or {})
     except (yaml.YAMLError, OSError):
         logger.error("prepare-quality: corrupt state.yaml, cannot read", path=str(state_path))
         raise
 
 
-def _write_state_yaml(state_path: Path, state: dict[str, Any]) -> None:
+def _write_state_yaml(state_path: Path, state: dict[str, StateValue]) -> None:
     state_path.write_text(yaml.safe_dump(state, default_flow_style=False, sort_keys=False))
 
 
@@ -313,8 +331,8 @@ def _write_dor_report(
     slug: str,
     score: int,
     verdict: str,
-    req_result: dict[str, Any],
-    plan_result: dict[str, Any],
+    req_result: RequirementsScoreResult,
+    plan_result: PlanScoreResult,
     edits: list[str],
     assessed_at: str,
     assessed_commit: str,
@@ -411,7 +429,8 @@ class PrepareQualityCartridge:
         state = _read_state_yaml(state_path)
 
         current_commit = await asyncio.to_thread(_get_todo_commit, slug, project_root)
-        dor_state = state.get("dor", {})
+        dor_state_raw = state.get("dor", {})
+        dor_state = dor_state_raw if isinstance(dor_state_raw, dict) else {}
         if (
             current_commit != "unknown"
             and dor_state.get("assessed_commit") == current_commit
@@ -490,18 +509,21 @@ class PrepareQualityCartridge:
 
         # Update state.yaml dor section
         all_gaps = req_result["gaps"] + plan_result["gaps"]
-        state["dor"] = {
-            "last_assessed_at": assessed_at,
-            "score": score,
-            "status": verdict,
-            "schema_version": 1,
-            "blockers": all_gaps[:10],
-            "actions_taken": {
-                "requirements_updated": any("requirements" in e for e in all_edits),
-                "implementation_plan_updated": any("plan" in e.lower() for e in all_edits),
+        state["dor"] = cast(
+            StateValue,
+            {
+                "last_assessed_at": assessed_at,
+                "score": score,
+                "status": verdict,
+                "schema_version": 1,
+                "blockers": all_gaps[:10],
+                "actions_taken": {
+                    "requirements_updated": any("requirements" in e for e in all_edits),
+                    "implementation_plan_updated": any("plan" in e.lower() for e in all_edits),
+                },
+                "assessed_commit": current_commit,
             },
-            "assessed_commit": current_commit,
-        }
+        )
         _write_state_yaml(state_path, state)
 
         logger.info(
@@ -517,7 +539,10 @@ class PrepareQualityCartridge:
             if verdict in ("pass", "needs_work"):
                 await context.db.resolve_notification(
                     notification_id,
-                    {"verdict": verdict, "score": score, "assessed_by": "prepare-quality-runner"},
+                    cast(
+                        JsonDict,
+                        {"verdict": verdict, "score": score, "assessed_by": "prepare-quality-runner"},
+                    ),
                 )
             else:
                 # needs_decision — leave unresolved, log blockers
@@ -537,7 +562,10 @@ class PrepareQualityCartridge:
                 visibility=EventVisibility.LOCAL,
                 entity=slug,
                 description=f"DOR assessed for {slug}: {verdict} (score {score}/10)",
-                payload={"slug": slug, "score": score, "verdict": verdict, "assessed_commit": current_commit},
+                payload=cast(
+                    JsonDict,
+                    {"slug": slug, "score": score, "verdict": verdict, "assessed_commit": current_commit},
+                ),
             )
         except RuntimeError:
             # Producer not configured (e.g., in tests) — acceptable

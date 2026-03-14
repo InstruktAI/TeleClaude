@@ -22,7 +22,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from teleclaude.history.search import (  # noqa: E402
+from teleclaude.history.search import (
     display_combined_history,
     parse_agents,
     show_transcript,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -469,6 +469,241 @@ def _resolve_requires(
     return resolved
 
 
+def _build_project_catalog_output() -> str:
+    manifest_entries = sorted(load_manifest(), key=lambda entry: entry.name.lower())
+    parts = [
+        "# PHASE 0: Project Catalog",
+        "# Available projects registered in ~/.teleclaude/projects.yaml",
+        "",
+    ]
+    if not manifest_entries:
+        parts.append("No registered projects found.")
+    else:
+        for entry in manifest_entries:
+            description = entry.description or "(no description)"
+            parts.append(f"{entry.name.lower()}: {description}")
+    parts.extend(
+        [
+            "",
+            "# ⚠️  IMPORTANT: Call telec docs again to browse snippet indexes for the project(s) you need.",
+        ]
+    )
+    return "\n".join(parts)
+
+
+def _load_selected_snippets(
+    *,
+    project_root: Path,
+    projects: list[str] | None,
+    project_index: Path,
+    global_index: Path,
+    global_root: Path,
+    current_project_name: str,
+    manifest_projects: dict[str, tuple[Path, Path, str]],
+) -> list[SnippetMeta]:
+    snippets = _load_index(
+        global_index,
+        source_project="global",
+        rewrite_project_prefix=False,
+        project_root=global_root,
+    )
+    if not projects:
+        snippets.extend(
+            _load_index(
+                project_index,
+                source_project=current_project_name,
+                rewrite_project_prefix=False,
+                project_root=project_root,
+            )
+        )
+        return snippets
+
+    seen_projects: set[str] = set()
+    for project_name in projects:
+        project_key = project_name.strip().lower()
+        if not project_key or project_key in seen_projects:
+            continue
+        seen_projects.add(project_key)
+        manifest_entry = manifest_projects.get(project_key)
+        if manifest_entry:
+            snippets.extend(_load_manifest_index(*manifest_entry))
+    return snippets
+
+
+def _load_manifest_index(index_path: Path, manifest_root: Path, canonical_name: str) -> list[SnippetMeta]:
+    return _load_index(
+        index_path,
+        source_project=canonical_name,
+        rewrite_project_prefix=True,
+        project_root=manifest_root,
+    )
+
+
+def _load_cross_project_snippets(
+    *,
+    snippets: list[SnippetMeta],
+    snippet_ids: list[str] | None,
+    domain_config: dict[str, Path],
+    manifest_projects: dict[str, tuple[Path, Path, str]],
+    snippets_by_path: dict[str, SnippetMeta],
+) -> set[str]:
+    all_loaded_ids = {snippet.snippet_id for snippet in snippets}
+    if not snippet_ids:
+        return all_loaded_ids
+    domain_prefixes = {name.lower() for name in domain_config.keys()}
+    prefixes_to_load = {
+        sid.split("/", 1)[0].strip().lower()
+        for sid in snippet_ids
+        if _is_cross_project_snippet_id(sid, domain_prefixes=domain_prefixes)
+    }
+    already_loaded = {snippet.source_project.lower() for snippet in snippets if snippet.source_project}
+    for project_key in prefixes_to_load:
+        if project_key in already_loaded:
+            continue
+        manifest_entry = manifest_projects.get(project_key)
+        if not manifest_entry:
+            continue
+        loaded = _load_manifest_index(*manifest_entry)
+        snippets.extend(loaded)
+        for snippet in loaded:
+            snippets_by_path[str(snippet.path)] = snippet
+            all_loaded_ids.add(snippet.snippet_id)
+    return all_loaded_ids
+
+
+def _include_snippet_factory(
+    *,
+    effective_human_role: str | None,
+    requested_ids: set[str],
+    projects: list[str] | None,
+    current_project_name: str,
+    global_snippets_root: Path,
+    domain_config: dict[str, Path],
+    project_domain_roots: dict[str, Path],
+) -> Callable[[SnippetMeta], bool]:
+    def _include(snippet: SnippetMeta) -> bool:
+        if not effective_human_role:
+            return False
+        if effective_human_role != "admin" and snippet.visibility != "public":
+            return False
+        if global_snippets_root in snippet.path.parents:
+            return snippet.snippet_id.startswith("general/") or any(
+                snippet.snippet_id.startswith(f"{domain}/") for domain in domain_config
+            )
+        if snippet.scope != "project":
+            return True
+        is_cross_project = (
+            bool(snippet.source_project) and snippet.source_project.lower() != current_project_name.lower()
+        )
+        if requested_ids and snippet.snippet_id in requested_ids and is_cross_project:
+            return True
+        if projects and is_cross_project:
+            return True
+        return any(
+            root in snippet.path.parents or root == snippet.path.parent for root in project_domain_roots.values()
+        )
+
+    return _include
+
+
+def _apply_baseline_filter(
+    snippets: list[SnippetMeta],
+    *,
+    baseline_only: bool,
+    project_root: Path,
+    global_root: Path,
+    snippets_by_path: dict[str, SnippetMeta],
+) -> list[SnippetMeta]:
+    if not baseline_only:
+        return snippets
+    baseline_ids: set[str] = set()
+    baseline_ids.update(
+        _load_baseline_ids(GLOBAL_SNIPPETS_DIR / "baseline.md", snippets_by_path, project_root=global_root)
+    )
+    baseline_ids.update(
+        _load_baseline_ids(
+            project_root / "docs" / "project" / "baseline.md", snippets_by_path, project_root=project_root
+        )
+    )
+    return [snippet for snippet in snippets if snippet.snippet_id in baseline_ids]
+
+
+def _build_phase1_output(
+    snippets_for_selection: list[SnippetMeta],
+    third_party_entries: list[ThirdPartyMeta],
+    *,
+    areas: list[str],
+    global_snippets_root: Path,
+    test_agent: str | None,
+    test_mode: str | None,
+    test_request: str | None,
+    test_csv_path: str | None,
+) -> str:
+    parts = [
+        "# PHASE 1: Snippet Index (IDs + descriptions)",
+        "# Review the snippets below and select the IDs you need.",
+        "",
+    ]
+    ordered = sorted(
+        snippets_for_selection,
+        key=lambda s: (_scope_rank(_output_scope(s, global_snippets_root=global_snippets_root)), s.snippet_id),
+    )
+    _write_test_output(
+        phase="phase1",
+        areas=areas,
+        index_ids=[snippet.snippet_id for snippet in ordered],
+        selected_ids=[],
+        test_agent=test_agent,
+        test_mode=test_mode,
+        test_request=test_request,
+        test_csv_path=test_csv_path,
+    )
+    for snippet in ordered:
+        parts.append(f"{snippet.snippet_id}: {snippet.description or ''}".strip())
+    if third_party_entries:
+        parts.append("")
+        parts.append("# Third-party documentation (not part of taxonomy)")
+        for entry in sorted(third_party_entries, key=lambda s: (_scope_rank(s.scope), s.snippet_id)):
+            parts.append(f"{entry.snippet_id}: {entry.description or ''}".strip())
+    parts.extend(["", "# ⚠️  IMPORTANT: Call telec docs again with the snippet IDs of interest!"])
+    return "\n".join(parts)
+
+
+def _partition_selected_ids(
+    snippet_ids: list[str] | None,
+    valid_ids: set[str],
+    all_loaded_ids: set[str],
+    third_party_by_id: dict[str, ThirdPartyMeta],
+) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
+    selected_ids = list(snippet_ids or [])
+    denied_ids = [sid for sid in selected_ids if sid not in valid_ids and sid in all_loaded_ids]
+    unknown_ids = [sid for sid in selected_ids if sid not in valid_ids and sid not in all_loaded_ids]
+    allowed_ids = [sid for sid in selected_ids if sid not in denied_ids]
+    taxonomy_ids = [sid for sid in allowed_ids if sid not in third_party_by_id]
+    third_party_ids = [sid for sid in allowed_ids if sid in third_party_by_id]
+    return selected_ids, denied_ids, unknown_ids, taxonomy_ids, third_party_ids
+
+
+def _read_selected_snippet_body(
+    snippet: SnippetMeta,
+    *,
+    project_root: Path,
+    global_root: Path,
+    global_snippets_root: Path,
+) -> str | None:
+    try:
+        raw = snippet.path.read_text(encoding="utf-8")
+        root_path = (
+            global_root if global_snippets_root in snippet.path.parents else (snippet.project_root or project_root)
+        )
+        content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
+        _, body = _split_frontmatter(content)
+        return strip_required_reads_section(body)
+    except Exception as exc:
+        logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
+        return None
+
+
 def build_context_output(
     *,
     areas: list[str],
@@ -486,25 +721,7 @@ def build_context_output(
     test_csv_path: str | None = None,
 ) -> str:
     if list_projects:
-        manifest_entries = sorted(load_manifest(), key=lambda entry: entry.name.lower())
-        parts = [
-            "# PHASE 0: Project Catalog",
-            "# Available projects registered in ~/.teleclaude/projects.yaml",
-            "",
-        ]
-        if not manifest_entries:
-            parts.append("No registered projects found.")
-        else:
-            for entry in manifest_entries:
-                description = entry.description or "(no description)"
-                parts.append(f"{entry.name.lower()}: {description}")
-        parts.extend(
-            [
-                "",
-                "# ⚠️  IMPORTANT: Call telec docs again to browse snippet indexes for the project(s) you need.",
-            ]
-        )
-        return "\n".join(parts)
+        return _build_project_catalog_output()
 
     project_index = project_root / "docs" / "project" / "index.yaml"
     global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
@@ -517,44 +734,15 @@ def build_context_output(
     project_third_party_index = project_root / "docs" / "third-party" / "index.yaml"
     global_third_party_index = GLOBAL_SNIPPETS_DIR / "third-party" / "index.yaml"
 
-    # Load global snippets first, then selected project snippets.
-    snippets: list[SnippetMeta] = []
-    snippets.extend(
-        _load_index(
-            global_index,
-            source_project="global",
-            rewrite_project_prefix=False,
-            project_root=global_root,
-        )
+    snippets = _load_selected_snippets(
+        project_root=project_root,
+        projects=projects,
+        project_index=project_index,
+        global_index=global_index,
+        global_root=global_root,
+        current_project_name=current_project_name,
+        manifest_projects=manifest_projects,
     )
-    if projects:
-        seen_projects: set[str] = set()
-        for project_name in projects:
-            project_key = project_name.strip().lower()
-            if not project_key or project_key in seen_projects:
-                continue
-            seen_projects.add(project_key)
-            manifest_entry = manifest_projects.get(project_key)
-            if not manifest_entry:
-                continue
-            index_path, manifest_root, canonical_name = manifest_entry
-            snippets.extend(
-                _load_index(
-                    index_path,
-                    source_project=canonical_name,
-                    rewrite_project_prefix=True,
-                    project_root=manifest_root,
-                )
-            )
-    else:
-        snippets.extend(
-            _load_index(
-                project_index,
-                source_project=current_project_name,
-                rewrite_project_prefix=False,
-                project_root=project_root,
-            )
-        )
 
     # Build path-to-snippet mapping for baseline resolution
     snippets_by_path = {str(s.path): s for s in snippets}
@@ -578,67 +766,32 @@ def build_context_output(
     if not project_domain_roots:
         project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
 
-    # Phase 2 cross-project retrieval: load requested project indexes on demand.
-    if snippet_ids:
-        domain_prefixes = {name.lower() for name in domain_config.keys()}
-        prefixes_to_load: set[str] = set()
-        for sid in snippet_ids:
-            if _is_cross_project_snippet_id(sid, domain_prefixes=domain_prefixes):
-                prefixes_to_load.add(sid.split("/", 1)[0].strip().lower())
-        already_loaded = {snippet.source_project.lower() for snippet in snippets if snippet.source_project}
-        for project_key in prefixes_to_load:
-            if project_key in already_loaded:
-                continue
-            manifest_entry = manifest_projects.get(project_key)
-            if not manifest_entry:
-                continue
-            index_path, manifest_root, canonical_name = manifest_entry
-            loaded = _load_index(
-                index_path,
-                source_project=canonical_name,
-                rewrite_project_prefix=True,
-                project_root=manifest_root,
-            )
-            snippets.extend(loaded)
-            for snippet in loaded:
-                snippets_by_path[str(snippet.path)] = snippet
+    all_loaded_ids = _load_cross_project_snippets(
+        snippets=snippets,
+        snippet_ids=snippet_ids,
+        domain_config=domain_config,
+        manifest_projects=manifest_projects,
+        snippets_by_path=snippets_by_path,
+    )
 
     requested_ids = {sid.strip() for sid in (snippet_ids or []) if sid.strip()}
-
-    def _include_snippet(snippet: SnippetMeta) -> bool:
-        if not effective_human_role:
-            return False
-        if effective_human_role != "admin" and snippet.visibility != "public":
-            return False
-        if global_snippets_root in snippet.path.parents:
-            if snippet.snippet_id.startswith("general/"):
-                return True
-            return any(snippet.snippet_id.startswith(f"{domain}/") for domain in domain_config)
-        if snippet.scope == "project":
-            is_cross_project = (
-                bool(snippet.source_project) and snippet.source_project.lower() != current_project_name.lower()
-            )
-            if requested_ids and snippet.snippet_id in requested_ids and is_cross_project:
-                return True
-            if projects and is_cross_project:
-                return True
-            return any(
-                root in snippet.path.parents or root == snippet.path.parent for root in project_domain_roots.values()
-            )
-        return True
-
-    # Track all loaded IDs before filtering to distinguish "unknown" from "access denied" in Phase 2
-    all_loaded_ids = {s.snippet_id for s in snippets}
-    snippets = [snippet for snippet in snippets if _include_snippet(snippet)]
-
-    # Load baseline IDs if baseline_only mode is requested
-    if baseline_only:
-        global_baseline = GLOBAL_SNIPPETS_DIR / "baseline.md"
-        project_baseline = project_root / "docs" / "project" / "baseline.md"
-        baseline_ids: set[str] = set()
-        baseline_ids.update(_load_baseline_ids(global_baseline, snippets_by_path, project_root=global_root))
-        baseline_ids.update(_load_baseline_ids(project_baseline, snippets_by_path, project_root=project_root))
-        snippets = [s for s in snippets if s.snippet_id in baseline_ids]
+    include_snippet = _include_snippet_factory(
+        effective_human_role=effective_human_role,
+        requested_ids=requested_ids,
+        projects=projects,
+        current_project_name=current_project_name,
+        global_snippets_root=global_snippets_root,
+        domain_config=domain_config,
+        project_domain_roots=project_domain_roots,
+    )
+    snippets = [snippet for snippet in snippets if include_snippet(snippet)]
+    snippets = _apply_baseline_filter(
+        snippets,
+        baseline_only=baseline_only,
+        project_root=project_root,
+        global_root=global_root,
+        snippets_by_path=snippets_by_path,
+    )
 
     areas_set = set(areas)
     if areas_set:
@@ -647,65 +800,30 @@ def build_context_output(
         snippets_for_selection = list(snippets)
 
     if not snippet_ids:
-        parts: list[str] = [
-            "# PHASE 1: Snippet Index (IDs + descriptions)",
-            "# Review the snippets below and select the IDs you need.",
-            "",
-        ]
-        ordered = sorted(
+        return _build_phase1_output(
             snippets_for_selection,
-            key=lambda s: (_scope_rank(_output_scope(s, global_snippets_root=global_snippets_root)), s.snippet_id),
-        )
-        _write_test_output(
-            phase="phase1",
+            third_party_entries,
             areas=areas,
-            index_ids=[snippet.snippet_id for snippet in ordered],
-            selected_ids=[],
+            global_snippets_root=global_snippets_root,
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,
             test_csv_path=test_csv_path,
         )
-        for snippet in ordered:
-            description = snippet.description or ""
-            parts.append(f"{snippet.snippet_id}: {description}".strip())
-
-        # Include third-party entries (separate section, not filtered by areas)
-        if third_party_entries:
-            parts.append("")
-            parts.append("# Third-party documentation (not part of taxonomy)")
-            ordered_third_party = sorted(
-                third_party_entries,
-                key=lambda s: (_scope_rank(s.scope), s.snippet_id),
-            )
-            for entry in ordered_third_party:
-                description = entry.description or ""
-                parts.append(f"{entry.snippet_id}: {description}".strip())
-
-        parts.extend(
-            [
-                "",
-                "# ⚠️  IMPORTANT: Call telec docs again with the snippet IDs of interest!",
-            ]
-        )
-        return "\n".join(parts)
 
     # Build valid IDs from both taxonomy snippets and third-party entries
     valid_ids = {s.snippet_id for s in snippets}
     third_party_by_id = {e.snippet_id: e for e in third_party_entries}
     valid_ids.update(third_party_by_id.keys())
 
-    # Separate unknown IDs from access-denied IDs
-    denied_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids and sid in all_loaded_ids]
-    unknown_ids = [sid for sid in (snippet_ids or []) if sid not in valid_ids and sid not in all_loaded_ids]
+    selected_ids, denied_ids, unknown_ids, taxonomy_ids, third_party_ids = _partition_selected_ids(
+        snippet_ids,
+        valid_ids,
+        all_loaded_ids,
+        third_party_by_id,
+    )
     if unknown_ids:
         return f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}"
-
-    # Separate taxonomy and third-party selections (exclude denied IDs)
-    selected_ids = list(snippet_ids or [])
-    allowed_ids = [sid for sid in selected_ids if sid not in denied_ids]
-    taxonomy_ids = [sid for sid in allowed_ids if sid not in third_party_by_id]
-    third_party_ids = [sid for sid in allowed_ids if sid in third_party_by_id]
 
     resolved = _resolve_requires(taxonomy_ids, snippets, global_snippets_root=global_snippets_root)
     _write_test_output(
@@ -738,16 +856,13 @@ def build_context_output(
     for snippet in resolved:
         if snippet.snippet_id not in requested_set:
             continue
-        try:
-            raw = snippet.path.read_text(encoding="utf-8")
-            root_path = snippet.project_root or project_root
-            if global_snippets_root in snippet.path.parents:
-                root_path = global_root
-            content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
-            _, body = _split_frontmatter(content)
-            body = strip_required_reads_section(body)
-        except Exception as exc:
-            logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
+        body = _read_selected_snippet_body(
+            snippet,
+            project_root=project_root,
+            global_root=global_root,
+            global_snippets_root=global_snippets_root,
+        )
+        if body is None:
             continue
         domain = _domain_for_snippet(snippet, project_domains=project_domain_roots)
         scope = _output_scope(snippet, global_snippets_root=global_snippets_root)

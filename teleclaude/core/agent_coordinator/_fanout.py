@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _FanoutMixin:
+class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
     """Extraction, fanout, TTS, snapshot, and notification methods for AgentCoordinator."""
 
     if TYPE_CHECKING:

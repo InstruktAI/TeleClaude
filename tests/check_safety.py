@@ -10,7 +10,8 @@ db_path = Path(__file__).parent.parent / "teleclaude.db"
 if db_path.exists():
     conn = sqlite3.connect(str(db_path))
     cursor = conn.execute("SELECT COUNT(*) FROM sessions")
-    count = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    count = int(row[0]) if row is not None else 0
     conn.close()
 
     if count > 0:

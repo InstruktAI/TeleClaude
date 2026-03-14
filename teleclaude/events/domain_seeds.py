@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from teleclaude.core.models import JsonDict
 
-DEFAULT_EVENT_DOMAINS: dict[str, Any] = {
+DEFAULT_EVENT_DOMAINS: JsonDict = {
     "domains": {
         "software-development": {
             "name": "software-development",

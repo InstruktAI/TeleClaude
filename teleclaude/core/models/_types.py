@@ -1,12 +1,16 @@
 """Shared JSON type aliases and utility functions for models."""
 
 from dataclasses import asdict
-from typing import cast
+from typing import ClassVar, Protocol, cast
 
 # JSON-serializable types for database storage
 JsonPrimitive = str | int | float | bool | None
 JsonValue = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
 JsonDict = dict[str, JsonValue]
+
+
+class _DataclassInstance(Protocol):
+    __dataclass_fields__: ClassVar[dict[str, object]]
 
 
 def asdict_exclude_none(obj: object) -> JsonDict:
@@ -30,5 +34,7 @@ def asdict_exclude_none(obj: object) -> JsonDict:
         return cast(JsonDict, _exclude_none(obj))
 
     # asdict needs a dataclass instance
-    result = cast(JsonDict, asdict(obj))
+    if not hasattr(obj, "__dataclass_fields__"):
+        raise TypeError("asdict_exclude_none expects a dataclass instance or dict")
+    result = cast(JsonDict, asdict(cast(_DataclassInstance, obj)))
     return cast(JsonDict, _exclude_none(result))

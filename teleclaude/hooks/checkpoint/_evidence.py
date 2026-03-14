@@ -25,6 +25,26 @@ from teleclaude.hooks.checkpoint._git import (
 from teleclaude.hooks.checkpoint._models import CheckpointContext
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
+__all__ = [
+    "_check_edit_hygiene",
+    "_check_error_state",
+    "_check_slug_alignment",
+    "_command_has_evidence",
+    "_command_invokes_search",
+    "_command_references_file",
+    "_commands_overlap",
+    "_compute_log_since_window",
+    "_dedupe_strings",
+    "_enrich_error",
+    "_extract_plan_file_paths",
+    "_has_evidence",
+    "_has_evidence_after_index",
+    "_has_status_evidence",
+    "_iter_shell_command_records",
+    "_last_category_mutation_index",
+    "_segment_matches_evidence",
+]
+
 # ---------------------------------------------------------------------------
 # Evidence checking (R4)
 # ---------------------------------------------------------------------------

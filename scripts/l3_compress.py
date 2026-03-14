@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: RUF001
 """Compress L1 prose artifacts to L3 symbolic shorthand.
 
 Usage:
@@ -33,10 +34,10 @@ Core operators:
 | ¬      | not, negation                    | ¬degraded                |
 | ∴      | therefore, conclusion            | ∴mirror:=recall          |
 | ∵      | because, evidence                | ∵agents.summarize()      |
-| ⊗      | tension, unresolved              | ⊗file∨sqlite             |
+| ⊗      | tension, unresolved              | ⊗file∨sqlite             |  # noqa: RUF001
 | ⊢      | assertion, claim                 | ⊢premise✗                |
-| ∨      | or, alternative                  | file∨sqlite              |
-| ×      | and (in tension lists)           | ×writer ×trigger         |
+| ∨      | or, alternative                  | file∨sqlite              |  # noqa: RUF001
+| ×      | and (in tension lists)           | ×writer ×trigger         |  # noqa: RUF001
 | @      | reference, evidence pointer      | @1c178904                |
 | ?      | question, premise under test     | ?sessions=conv           |
 | :=     | defined as, equals by definition | mirror:=recall           |
@@ -63,7 +64,7 @@ L3 (symbolic compressed):
 @1c178904 430→73 17%
 ✓coherent ∵agents.summarize(tool_findings)→text
 ∴mirror:=recall ¬degraded
-⊗file∨sqlite ×writer ×trigger"
+⊗file∨sqlite ×writer ×trigger"  # noqa: RUF001
 """
 
 SYSTEM_PROMPT = f"""You are an L3 shorthand compressor. Your job is to transform L1 prose

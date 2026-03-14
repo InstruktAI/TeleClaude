@@ -11,7 +11,7 @@ from teleclaude.cli.tui import theme
 from teleclaude.cli.tui._pane_specs import LAYOUT_SPECS, SessionPaneSpec
 
 if TYPE_CHECKING:
-    from teleclaude.cli.tui._pane_specs import ComputerInfo
+    from teleclaude.cli.tui._pane_specs import ComputerInfo, LayoutSpec
     from teleclaude.cli.tui.state import DocPreviewState
 
 logger = get_logger(__name__)
@@ -135,7 +135,8 @@ class PaneLayoutMixin:
     def _build_session_specs(self) -> list[SessionPaneSpec]:
         session_specs: list[SessionPaneSpec] = list(self._sticky_specs)  # type: ignore[attr-defined]
         if self._active_spec and not any(  # type: ignore[attr-defined]
-            spec.session_id == self._active_spec.session_id for spec in session_specs  # type: ignore[attr-defined]
+            spec.session_id == self._active_spec.session_id
+            for spec in session_specs  # type: ignore[attr-defined]
         ):
             session_specs.append(self._active_spec)  # type: ignore[attr-defined]
         if len(session_specs) > 5:
@@ -277,12 +278,7 @@ class PaneLayoutMixin:
 
     def _render_layout(self) -> None:
         """Render panes deterministically from the layout matrix."""
-        if not self._in_tmux:  # type: ignore[attr-defined]
-            return
-        if not self._tui_pane_id:  # type: ignore[attr-defined]
-            self._tui_pane_id = self._get_current_pane_id()  # type: ignore[attr-defined]
-        if not self._tui_pane_id:  # type: ignore[attr-defined]
-            logger.warning("_render_layout: missing TUI pane id")
+        if not self._prepare_tui_pane():
             return
 
         session_specs = self._build_session_specs()
@@ -303,83 +299,112 @@ class PaneLayoutMixin:
             return
 
         self._cleanup_all_session_panes()  # type: ignore[attr-defined]
+        col_top_panes = self._render_top_row(layout, session_specs, total_panes)
+        self._normalize_layout_columns(layout)
+        self._render_bottom_row(layout, session_specs, col_top_panes)
+        self._finalize_layout_render()
 
-        def get_spec(index: int) -> SessionPaneSpec | None:
-            if index <= 0 or index > len(session_specs):
-                return None
-            return session_specs[index - 1]
+    def _prepare_tui_pane(self) -> bool:
+        if not self._in_tmux:  # type: ignore[attr-defined]
+            return False
+        if not self._tui_pane_id:  # type: ignore[attr-defined]
+            self._tui_pane_id = self._get_current_pane_id()  # type: ignore[attr-defined]
+        if self._tui_pane_id:  # type: ignore[attr-defined]
+            return True
+        logger.warning("_render_layout: missing TUI pane id")
+        return False
 
+    def _get_layout_spec(self, session_specs: list[SessionPaneSpec], index: int) -> SessionPaneSpec | None:
+        if index <= 0 or index > len(session_specs):
+            return None
+        return session_specs[index - 1]
+
+    def _render_top_row(
+        self,
+        layout: LayoutSpec,
+        session_specs: list[SessionPaneSpec],
+        total_panes: int,
+    ) -> list[str | None]:
         col_top_panes: list[str | None] = [self._tui_pane_id] + [None] * (layout.cols - 1)  # type: ignore[attr-defined]
-
         for col in range(1, layout.cols):
-            cell = layout.grid[0][col]
-            if not isinstance(cell, int):
-                continue
-            spec = get_spec(cell)
+            spec = self._get_layout_spec(session_specs, layout.grid[0][col])
             if not spec:
                 continue
-            attach_cmd = self._build_pane_command(spec)
-            if col == 1:
-                split_args = ["-t", self._tui_pane_id, "-h"]  # type: ignore[attr-defined]
-                if layout.cols == 2 and total_panes <= 3:
-                    split_args.extend(["-p", "60"])
-                split_args.append("-d")
-                pane_id = self._run_tmux(  # type: ignore[attr-defined]
-                    "split-window",
-                    *split_args,
-                    "-P",
-                    "-F",
-                    "#{pane_id}",
-                    attach_cmd,
-                )
-            else:
-                pane_id = self._run_tmux(  # type: ignore[attr-defined]
-                    "split-window",
-                    "-t",
-                    col_top_panes[col - 1] or "",
-                    "-h",
-                    "-d",
-                    "-P",
-                    "-F",
-                    "#{pane_id}",
-                    attach_cmd,
-                )
+            pane_id = self._split_top_row_pane(layout, col, col_top_panes, spec, total_panes)
             if pane_id:
                 col_top_panes[col] = pane_id
                 self._track_session_pane(spec, pane_id)
+        return col_top_panes
 
+    def _split_top_row_pane(
+        self,
+        layout: LayoutSpec,
+        col: int,
+        col_top_panes: list[str | None],
+        spec: SessionPaneSpec,
+        total_panes: int,
+    ) -> str | None:
+        attach_cmd = self._build_pane_command(spec)
+        if col == 1:
+            split_args = ["-t", self._tui_pane_id, "-h"]  # type: ignore[attr-defined]
+            if layout.cols == 2 and total_panes <= 3:
+                split_args.extend(["-p", "60"])
+            split_args.append("-d")
+            return self._run_tmux(  # type: ignore[attr-defined]
+                "split-window",
+                *split_args,
+                "-P",
+                "-F",
+                "#{pane_id}",
+                attach_cmd,
+            )
+        return self._run_tmux(  # type: ignore[attr-defined]
+            "split-window",
+            "-t",
+            col_top_panes[col - 1] or "",
+            "-h",
+            "-d",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            attach_cmd,
+        )
+
+    def _normalize_layout_columns(self, layout: LayoutSpec) -> None:
         if layout.cols == 3:
             self._run_tmux("select-layout", "even-horizontal")  # type: ignore[attr-defined]
 
-        if layout.rows > 1:
-            for col in range(layout.cols):
-                cell = layout.grid[1][col]
-                if not isinstance(cell, int):
-                    continue
-                spec = get_spec(cell)
-                if not spec:
-                    continue
-                target_pane = col_top_panes[col]
-                if not target_pane:
-                    continue
-                attach_cmd = self._build_pane_command(spec)
-                pane_id = self._run_tmux(  # type: ignore[attr-defined]
-                    "split-window",
-                    "-t",
-                    target_pane,
-                    "-v",
-                    "-d",
-                    "-P",
-                    "-F",
-                    "#{pane_id}",
-                    attach_cmd,
-                )
-                if pane_id:
-                    self._track_session_pane(spec, pane_id)
+    def _render_bottom_row(
+        self,
+        layout: LayoutSpec,
+        session_specs: list[SessionPaneSpec],
+        col_top_panes: list[str | None],
+    ) -> None:
+        if layout.rows <= 1:
+            return
+        for col in range(layout.cols):
+            spec = self._get_layout_spec(session_specs, layout.grid[1][col])
+            target_pane = col_top_panes[col]
+            if not spec or not target_pane:
+                continue
+            attach_cmd = self._build_pane_command(spec)
+            pane_id = self._run_tmux(  # type: ignore[attr-defined]
+                "split-window",
+                "-t",
+                target_pane,
+                "-v",
+                "-d",
+                "-P",
+                "-F",
+                "#{pane_id}",
+                attach_cmd,
+            )
+            if pane_id:
+                self._track_session_pane(spec, pane_id)
 
+    def _finalize_layout_render(self) -> None:
         if self._active_spec:  # type: ignore[attr-defined]
             self.state.active_session_id = self._active_spec.session_id  # type: ignore[attr-defined]
-
         logger.debug(
             "_render_layout: done. active_pane=%s active_session=%s tracked=%s",
             self._active_pane_id,  # type: ignore[attr-defined]

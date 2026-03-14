@@ -37,6 +37,7 @@ from typing import cast
 
 from teleclaude.constants import is_internal_user_text
 from teleclaude.core.agents import AgentName
+from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
@@ -47,6 +48,164 @@ from teleclaude.utils.transcript import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _compaction_block(entry_ts: str | None, entry_idx: int, file_index: int) -> ProjectedBlock:
+    return ProjectedBlock(
+        block_type="compaction",
+        block={"type": "compaction", "text": "Context compacted"},
+        role="system",
+        timestamp=entry_ts,
+        entry_index=entry_idx,
+        file_index=file_index,
+    )
+
+
+def _project_user_tool_results(
+    content: object,
+    policy: VisibilityPolicy,
+    *,
+    entry_ts: str | None,
+    entry_idx: int,
+    file_index: int,
+) -> Iterator[ProjectedBlock]:
+    if not policy.include_tool_results or not isinstance(content, list):
+        return
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "tool_result":
+            yield ProjectedBlock(
+                block_type="tool_result",
+                block=block,
+                role="assistant",
+                timestamp=entry_ts,
+                entry_index=entry_idx,
+                file_index=file_index,
+            )
+
+
+def _project_user_text(
+    content: str,
+    *,
+    entry_ts: str | None,
+    entry_idx: int,
+    file_index: int,
+) -> Iterator[ProjectedBlock]:
+    if is_internal_user_text(content):
+        logger.debug("Sanitized TeleClaude-internal user text at index %d", entry_idx)
+        return
+    yield ProjectedBlock(
+        block_type="text",
+        block={"type": "text", "text": content},
+        role="user",
+        timestamp=entry_ts,
+        entry_index=entry_idx,
+        file_index=file_index,
+    )
+
+
+def _project_content_block(
+    block: Mapping[str, object],
+    *,
+    role: str,
+    policy: VisibilityPolicy,
+    entry_ts: str | None,
+    entry_idx: int,
+    file_index: int,
+) -> Iterator[ProjectedBlock]:
+    block_type = str(block.get("type", ""))
+    if block_type in ("text", "input_text", "output_text"):
+        text = str(block.get("text", ""))
+        if not text.strip():
+            return
+        if role == "user" and is_internal_user_text(text):
+            logger.debug("Sanitized TeleClaude-internal user text block at index %d", entry_idx)
+            return
+        yield ProjectedBlock(
+            block_type="text",
+            block=block,
+            role=role,
+            timestamp=entry_ts,
+            entry_index=entry_idx,
+            file_index=file_index,
+        )
+        return
+    if block_type == "thinking":
+        thinking_text = str(block.get("thinking", ""))
+        if policy.include_thinking and thinking_text.strip():
+            yield ProjectedBlock(
+                block_type="thinking",
+                block=block,
+                role="assistant",
+                timestamp=entry_ts,
+                entry_index=entry_idx,
+                file_index=file_index,
+            )
+        return
+    if block_type == "tool_use":
+        tool_name = str(block.get("name", "unknown"))
+        if tool_name in policy.visible_tool_names or policy.include_tools:
+            yield ProjectedBlock(
+                block_type="tool_use",
+                block=block,
+                role="assistant",
+                timestamp=entry_ts,
+                entry_index=entry_idx,
+                file_index=file_index,
+            )
+        return
+    if block_type == "tool_result" and policy.include_tool_results:
+        yield ProjectedBlock(
+            block_type="tool_result",
+            block=block,
+            role="assistant",
+            timestamp=entry_ts,
+            entry_index=entry_idx,
+            file_index=file_index,
+        )
+
+
+def _project_message_blocks(
+    message: JsonDict,
+    policy: VisibilityPolicy,
+    *,
+    entry_ts: str | None,
+    entry_idx: int,
+    file_index: int,
+) -> Iterator[ProjectedBlock]:
+    role = message.get("role")
+    if not isinstance(role, str):
+        logger.debug("Skipping entry with missing/non-string role at index %d", entry_idx)
+        return
+
+    content = message.get("content")
+    if role == "user" and _is_user_tool_result_only_message(message):  # type: ignore[arg-type]
+        yield from _project_user_tool_results(
+            content,
+            policy,
+            entry_ts=entry_ts,
+            entry_idx=entry_idx,
+            file_index=file_index,
+        )
+        return
+    if role == "user" and isinstance(content, str):
+        yield from _project_user_text(content, entry_ts=entry_ts, entry_idx=entry_idx, file_index=file_index)
+        return
+    if not isinstance(content, list):
+        logger.debug("Skipping entry with non-list content at index %d (role=%s)", entry_idx, role)
+        return
+    if role not in ("user", "assistant"):
+        logger.debug("Skipping non-user/non-assistant block-based entry at index %d (role=%s)", entry_idx, role)
+        return
+    for block in content:
+        if isinstance(block, Mapping):
+            yield from _project_content_block(
+                cast(Mapping[str, object], block),
+                role=role,
+                policy=policy,
+                entry_ts=entry_ts,
+                entry_idx=entry_idx,
+                file_index=file_index,
+            )
 
 
 def project_entries(
@@ -80,7 +239,6 @@ def project_entries(
             continue
         entry_map = cast(Mapping[str, object], entry)
 
-        # Timestamp filter
         entry_ts_str = entry_map.get("timestamp")
         entry_ts: str | None = None
         if isinstance(entry_ts_str, str):
@@ -90,133 +248,24 @@ def project_entries(
                 if entry_dt and entry_dt <= since_dt:
                     continue
 
-        # Skip summary entries
         if entry_map.get("type") == "summary":
             logger.debug("Skipping summary entry at index %d", entry_idx)
             continue
 
-        # Compaction detection (Claude-specific)
         if _is_compaction_entry(entry_map, entry_idx):  # type: ignore[arg-type]
-            yield ProjectedBlock(
-                block_type="compaction",
-                block={"type": "compaction", "text": "Context compacted"},
-                role="system",
-                timestamp=entry_ts,
-                entry_index=entry_idx,
-                file_index=file_index,
-            )
+            yield _compaction_block(entry_ts, entry_idx, file_index)
             continue
 
         message = normalize_transcript_entry_message(entry_map)
         if not isinstance(message, dict):
             continue
-
-        role = message.get("role")
-        if not isinstance(role, str):
-            logger.debug("Skipping entry with missing/non-string role at index %d", entry_idx)
-            continue
-
-        content = message.get("content")
-
-        # User messages with tool_result-only content (Claude pattern).
-        # These are emitted only when tool_results are included in policy.
-        if role == "user" and _is_user_tool_result_only_message(message):  # type: ignore[arg-type]
-            if not policy.include_tool_results:
-                continue
-            if isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "tool_result":
-                        yield ProjectedBlock(
-                            block_type="tool_result",
-                            block=block,
-                            role="assistant",  # normalized: tool results surfaced as assistant
-                            timestamp=entry_ts,
-                            entry_index=entry_idx,
-                            file_index=file_index,
-                        )
-            continue
-
-        # User text messages (plain string content) — sanitize before emission
-        if role == "user" and isinstance(content, str):
-            if is_internal_user_text(content):
-                logger.debug("Sanitized TeleClaude-internal user text at index %d", entry_idx)
-                continue
-            yield ProjectedBlock(
-                block_type="text",
-                block={"type": "text", "text": content},
-                role="user",
-                timestamp=entry_ts,
-                entry_index=entry_idx,
-                file_index=file_index,
-            )
-            continue
-
-        # Block-based content — only user and assistant roles
-        if not isinstance(content, list):
-            logger.debug("Skipping entry with non-list content at index %d (role=%s)", entry_idx, role)
-            continue
-
-        if role not in ("user", "assistant"):
-            logger.debug("Skipping non-user/non-assistant block-based entry at index %d (role=%s)", entry_idx, role)
-            continue
-
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            block_type = str(block.get("type", ""))
-
-            if block_type in ("text", "input_text", "output_text"):
-                text = str(block.get("text", ""))
-                if not text.strip():
-                    continue
-                # Sanitize user text blocks
-                if role == "user" and is_internal_user_text(text):
-                    logger.debug("Sanitized TeleClaude-internal user text block at index %d", entry_idx)
-                    continue
-                yield ProjectedBlock(
-                    block_type="text",
-                    block=block,
-                    role=role,
-                    timestamp=entry_ts,
-                    entry_index=entry_idx,
-                    file_index=file_index,
-                )
-
-            elif block_type == "thinking":
-                if policy.include_thinking:
-                    thinking_text = str(block.get("thinking", ""))
-                    if thinking_text.strip():
-                        yield ProjectedBlock(
-                            block_type="thinking",
-                            block=block,
-                            role="assistant",
-                            timestamp=entry_ts,
-                            entry_index=entry_idx,
-                            file_index=file_index,
-                        )
-
-            elif block_type == "tool_use":
-                tool_name = str(block.get("name", "unknown"))
-                if tool_name in policy.visible_tool_names or policy.include_tools:
-                    yield ProjectedBlock(
-                        block_type="tool_use",
-                        block=block,
-                        role="assistant",
-                        timestamp=entry_ts,
-                        entry_index=entry_idx,
-                        file_index=file_index,
-                    )
-
-            elif block_type == "tool_result":
-                if policy.include_tool_results:
-                    yield ProjectedBlock(
-                        block_type="tool_result",
-                        block=block,
-                        role="assistant",
-                        timestamp=entry_ts,
-                        entry_index=entry_idx,
-                        file_index=file_index,
-                    )
+        yield from _project_message_blocks(
+            message,
+            policy,
+            entry_ts=entry_ts,
+            entry_idx=entry_idx,
+            file_index=file_index,
+        )
 
 
 def project_conversation_chain(

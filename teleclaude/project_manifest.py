@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict, cast
 
 import yaml
 
@@ -16,6 +17,17 @@ class ProjectManifestEntry:
     project_root: str
 
 
+class ProjectManifestPayload(TypedDict):
+    name: str
+    description: str
+    index_path: str
+    project_root: str
+
+
+class ProjectManifestFile(TypedDict):
+    projects: list[ProjectManifestPayload]
+
+
 def _normalize_manifest_path(path: Path) -> Path:
     return path.expanduser().resolve()
 
@@ -23,10 +35,11 @@ def _normalize_manifest_path(path: Path) -> Path:
 def _entry_from_raw(item: object) -> ProjectManifestEntry | None:
     if not isinstance(item, dict):
         return None
-    name = item.get("name")
-    description = item.get("description")
-    index_path = item.get("index_path")
-    project_root = item.get("project_root")
+    raw_item = cast(dict[str, object], item)
+    name = raw_item.get("name")
+    description = raw_item.get("description")
+    index_path = raw_item.get("index_path")
+    project_root = raw_item.get("project_root")
     if not isinstance(name, str) or not isinstance(index_path, str) or not isinstance(project_root, str):
         return None
     if not isinstance(description, str):
@@ -66,7 +79,7 @@ def load_manifest(path: Path = MANIFEST_PATH) -> list[ProjectManifestEntry]:
         return []
 
     try:
-        raw_data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        raw_data: object = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     except Exception:
         return []
 
@@ -121,7 +134,7 @@ def register_project(
         )
 
     next_entries.sort(key=lambda e: e.name.lower())
-    payload = {
+    payload: ProjectManifestFile = {
         "projects": [
             {
                 "name": entry.name,
@@ -132,4 +145,5 @@ def register_project(
             for entry in next_entries
         ]
     }
-    manifest_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    dumped = yaml.safe_dump(payload, sort_keys=False)
+    manifest_path.write_text(dumped, encoding="utf-8")

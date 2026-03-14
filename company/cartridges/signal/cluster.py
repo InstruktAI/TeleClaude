@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -32,16 +32,16 @@ class SignalClusterCartridge:
         self._ai = ai
         self._signal_db = signal_db
 
-    async def process(self, event: EventEnvelope, context: "PipelineContext") -> EventEnvelope | None:
+    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         if event.event != "signal.ingest.received":
             return event
         # Run a clustering pass after each ingested item (the pass is idempotent).
         await self.cluster_pass(context)
         return event
 
-    async def cluster_pass(self, context: "PipelineContext") -> int:
+    async def cluster_pass(self, context: PipelineContext) -> int:
         """Explicit cluster pass — returns count of clusters formed."""
-        window_start = datetime.now(timezone.utc) - timedelta(seconds=self._config.window_seconds)
+        window_start = datetime.now(UTC) - timedelta(seconds=self._config.window_seconds)
         items = await self._signal_db.get_unclustered_items(since=window_start)
 
         if not items:

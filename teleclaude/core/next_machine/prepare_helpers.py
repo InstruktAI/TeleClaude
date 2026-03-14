@@ -13,6 +13,7 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 
@@ -101,9 +102,7 @@ def check_artifact_staleness(cwd: str, slug: str) -> list[str]:
     return [key for key, _ in _ARTIFACT_CASCADE[stale_from:]]
 
 
-def record_finding(
-    cwd: str, slug: str, review_type: str, finding: dict[str, object]
-) -> None:
+def record_finding(cwd: str, slug: str, review_type: str, finding: dict[str, StateValue]) -> None:
     """Append a structured finding to the review's findings list in state.yaml."""
     state = read_phase_state(cwd, slug)
     review = state.get(review_type, {})
@@ -126,9 +125,7 @@ def record_finding(
     )
 
 
-def resolve_finding(
-    cwd: str, slug: str, review_type: str, finding_id: str, resolution_method: str
-) -> None:
+def resolve_finding(cwd: str, slug: str, review_type: str, finding_id: str, resolution_method: str) -> None:
     """Mark a finding as resolved in state.yaml."""
     now = datetime.now(UTC).isoformat()
     state = read_phase_state(cwd, slug)
@@ -155,12 +152,7 @@ def resolve_finding(
     )
 
 
-def stamp_audit(
-    state: dict[str, object],
-    phase_name: str,
-    field: str,
-    value: object,
-) -> None:
+def stamp_audit(state: dict[str, StateValue], phase_name: str, field: str, value: StateValue) -> None:
     """Safely navigate the nested audit dict and write a field value in-place."""
     audit = state.get("audit")
     if not isinstance(audit, dict):

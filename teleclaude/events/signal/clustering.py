@@ -7,6 +7,8 @@ import math
 
 from pydantic import BaseModel
 
+from teleclaude.events.signal.db import SignalItemPayload
+
 
 class ClusteringConfig(BaseModel):
     window_seconds: int = 900
@@ -18,7 +20,7 @@ class ClusteringConfig(BaseModel):
     singleton_promote_after_seconds: int = 3600
 
 
-def group_by_tags(items: list[dict[str, object]], min_overlap: int = 1) -> list[list[dict[str, object]]]:
+def group_by_tags(items: list[SignalItemPayload], min_overlap: int = 1) -> list[list[SignalItemPayload]]:
     """Group items by shared tag overlap using union-find."""
     n = len(items)
     if n == 0:
@@ -56,7 +58,7 @@ def group_by_tags(items: list[dict[str, object]], min_overlap: int = 1) -> list[
             union(a, b)
 
     # Collect groups
-    groups: dict[int, list[dict[str, object]]] = {}
+    groups: dict[int, list[SignalItemPayload]] = {}
     for idx, item in enumerate(items):
         root = find(idx)
         groups.setdefault(root, []).append(item)
@@ -74,15 +76,14 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def refine_by_embeddings(
-    group: list[dict[str, object]], threshold: float
-) -> list[list[dict[str, object]]]:
+def refine_by_embeddings(group: list[SignalItemPayload], threshold: float) -> list[list[SignalItemPayload]]:
     """Split a group into sub-groups based on embedding cosine similarity.
 
     Falls back to returning the original group as-is if embeddings are missing.
     """
     embeddings: list[list[float] | None] = [
-        item.get("embedding") for item in group  # type: ignore[misc]
+        item.get("embedding")
+        for item in group  # type: ignore[misc]
     ]
 
     # Degrade gracefully if any embedding is missing
@@ -110,7 +111,7 @@ def refine_by_embeddings(
                 if sim >= threshold:
                     union(i, j)
 
-    sub_groups: dict[int, list[dict[str, object]]] = {}
+    sub_groups: dict[int, list[SignalItemPayload]] = {}
     for idx, item in enumerate(group):
         root = find(idx)
         sub_groups.setdefault(root, []).append(item)
@@ -118,7 +119,7 @@ def refine_by_embeddings(
     return list(sub_groups.values())
 
 
-def detect_burst(group: list[dict[str, object]], threshold: int) -> bool:
+def detect_burst(group: list[SignalItemPayload], threshold: int) -> bool:
     return len(group) >= threshold
 
 

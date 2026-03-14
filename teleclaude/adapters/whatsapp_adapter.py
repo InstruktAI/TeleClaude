@@ -214,7 +214,7 @@ class WhatsAppAdapter(UiAdapter):
         response = await self._post_json(self._messages_url, payload)
         return self._extract_message_id(response)
 
-    async def send_message(
+    async def send_message(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         session: Session,
         text: str,

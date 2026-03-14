@@ -11,6 +11,24 @@ from pathlib import Path
 from teleclaude.core.models import JsonDict, JsonValue
 from teleclaude.helpers.youtube_helper._models import YouTubeBackoffError
 
+__all__ = [
+    "BACKOFF_FILE",
+    "BACKOFF_SECONDS",
+    "_INNERTUBE_API_URL",
+    "_INNERTUBE_CONTEXT",
+    "_build_innertube_headers",
+    "_check_backoff",
+    "_cookies_to_header",
+    "_load_cookies_txt",
+    "_refresh_cookies_if_needed",
+    "_safe_get",
+    "_safe_get_dict",
+    "_safe_get_list",
+    "_safe_get_str",
+    "_trigger_backoff",
+    "log",
+]
+
 
 def _safe_get(obj: JsonValue, *keys: str | int, default: JsonValue = None) -> JsonValue:
     """Safely traverse nested JSON structures with type safety.

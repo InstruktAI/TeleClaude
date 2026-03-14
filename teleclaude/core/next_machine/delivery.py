@@ -158,9 +158,7 @@ def reconcile_roadmap_after_merge(cwd: str) -> list[str]:
     return removed
 
 
-def _run_git_cmd(
-    args: list[str], *, cwd: str, timeout: float = 30
-) -> tuple[int, str, str]:
+def _run_git_cmd(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
     """Run a git command; return (returncode, stdout, stderr)."""
     try:
         result = subprocess.run(

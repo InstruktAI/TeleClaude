@@ -14,11 +14,28 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TypeAlias, cast
 
 import yaml
 
-YamlDict = dict[str, Any]  # guard: loose-dict - raw YAML data is inherently untyped
+YamlPrimitive: TypeAlias = str | int | float | bool | None
+YamlValue: TypeAlias = YamlPrimitive | list["YamlValue"] | dict[str, "YamlValue"]
+YamlDict = dict[str, YamlValue]
+
+
+def _as_yaml_dict(value: object) -> YamlDict | None:
+    if isinstance(value, dict):
+        return cast(YamlDict, value)
+    return None
+
+
+def _ensure_dict(parent: YamlDict, key: str) -> YamlDict:
+    existing = _as_yaml_dict(parent.get(key))
+    if existing is not None:
+        return existing
+    created: YamlDict = {}
+    parent[key] = created
+    return created
 
 
 def _people_dir() -> Path:
@@ -47,8 +64,8 @@ def _migrate(data: YamlDict) -> tuple[YamlDict, list[str]]:
     # 1. Move telegram_chat_id -> creds.telegram.chat_id
     chat_id = notifications.get("telegram_chat_id")
     if chat_id is not None:
-        creds: YamlDict = data.setdefault("creds", {})
-        telegram: YamlDict = creds.setdefault("telegram", {})
+        creds = _ensure_dict(data, "creds")
+        telegram = _ensure_dict(creds, "telegram")
         if "chat_id" not in telegram:
             telegram["chat_id"] = str(chat_id)
             changes.append(f"  moved notifications.telegram_chat_id -> creds.telegram.chat_id = {chat_id}")
@@ -86,7 +103,7 @@ def _migrate(data: YamlDict) -> tuple[YamlDict, list[str]]:
     elif isinstance(old_subs, list):
         # Already a list — append any channel-derived subs
         if new_subs:
-            existing: list[YamlDict] = data.setdefault("subscriptions", [])
+            existing = cast(list[YamlValue], data.setdefault("subscriptions", []))
             existing.extend(new_subs)
     else:
         if new_subs:
@@ -115,7 +132,8 @@ def migrate_person_configs(*, dry_run: bool = False, people_dir: Path | None = N
 
         name = person_dir.name
         raw = config_path.read_text(encoding="utf-8")
-        data = yaml.safe_load(raw) or {}
+        data_obj = yaml.safe_load(raw) or {}
+        data = _as_yaml_dict(data_obj) or {}
 
         if _is_new_format(data):
             print(f"  {name}: already migrated, skipping")

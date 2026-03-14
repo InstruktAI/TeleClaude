@@ -1,6 +1,7 @@
 """Pre-commit hook installation for TeleClaude docs check."""
 
 from pathlib import Path
+from typing import cast
 
 # Marker strings used for idempotent hook block insertion.
 DOCS_CHECK_MARKER = "teleclaude-docs-check"
@@ -78,15 +79,29 @@ def _add_precommit_framework_hook(config_path: Path) -> None:
         return
 
     try:
-        config = yaml.safe_load(content) or {}
+        loaded_config: object = yaml.safe_load(content)
     except Exception:
         print("telec init: failed to parse .pre-commit-config.yaml, skipping hook.")
         return
+    config_obj = loaded_config if loaded_config is not None else {}
 
-    if "repos" not in config:
-        config["repos"] = []
+    if not isinstance(config_obj, dict):
+        print("telec init: unexpected .pre-commit-config.yaml structure, skipping hook.")
+        return
 
-    teleclaude_hook = {
+    config = cast(dict[str, object], config_obj)
+
+    repos_obj = config.get("repos")
+    if repos_obj is None:
+        repos: list[object] = []
+        config["repos"] = repos
+    elif isinstance(repos_obj, list):
+        repos = repos_obj
+    else:
+        print("telec init: unexpected repos structure in .pre-commit-config.yaml, skipping hook.")
+        return
+
+    teleclaude_hook: dict[str, object] = {
         "repo": "local",
         "hooks": [
             {
@@ -100,7 +115,7 @@ def _add_precommit_framework_hook(config_path: Path) -> None:
             }
         ],
     }
-    config["repos"].append(teleclaude_hook)
+    repos.append(teleclaude_hook)
 
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)

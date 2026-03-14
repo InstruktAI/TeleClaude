@@ -66,12 +66,16 @@ def test_scan_finds_finalize_ready_candidate(_mock_git: object, tmp_path: Path) 
     """Scanner discovers a worktree with finalize.status == 'ready'."""
     trees = tmp_path / "trees" / "my-slug"
     trees.mkdir(parents=True)
-    _write_state_yaml(trees, "my-slug", {
-        "status": "ready",
-        "branch": "my-slug",
-        "sha": _SHA,
-        "ready_at": "2026-03-01T00:00:00+00:00",
-    })
+    _write_state_yaml(
+        trees,
+        "my-slug",
+        {
+            "status": "ready",
+            "branch": "my-slug",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+        },
+    )
 
     result = _scan_finalize_ready_candidates(str(tmp_path))
     assert len(result) == 1
@@ -95,13 +99,17 @@ def test_scan_skips_fresh_handed_off(_mock_git: object, tmp_path: Path) -> None:
     """Scanner ignores handed_off candidates that are not yet stale."""
     trees = tmp_path / "trees" / "fresh-slug"
     trees.mkdir(parents=True)
-    _write_state_yaml(trees, "fresh-slug", {
-        "status": "handed_off",
-        "branch": "fresh-slug",
-        "sha": _SHA,
-        "ready_at": "2026-03-01T00:00:00+00:00",
-        "handed_off_at": datetime.now(tz=UTC).isoformat(),  # just now
-    })
+    _write_state_yaml(
+        trees,
+        "fresh-slug",
+        {
+            "status": "handed_off",
+            "branch": "fresh-slug",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+            "handed_off_at": datetime.now(tz=UTC).isoformat(),  # just now
+        },
+    )
 
     result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
@@ -113,13 +121,17 @@ def test_scan_recovers_stale_handed_off(_mock_git: object, tmp_path: Path) -> No
     trees = tmp_path / "trees" / "stale-slug"
     trees.mkdir(parents=True)
     stale_time = (datetime.now(tz=UTC) - timedelta(seconds=300)).isoformat()
-    _write_state_yaml(trees, "stale-slug", {
-        "status": "handed_off",
-        "branch": "stale-slug",
-        "sha": _SHA,
-        "ready_at": "2026-03-01T00:00:00+00:00",
-        "handed_off_at": stale_time,
-    })
+    _write_state_yaml(
+        trees,
+        "stale-slug",
+        {
+            "status": "handed_off",
+            "branch": "stale-slug",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+            "handed_off_at": stale_time,
+        },
+    )
 
     result = _scan_finalize_ready_candidates(str(tmp_path))
     assert len(result) == 1
@@ -131,12 +143,16 @@ def test_scan_skips_already_ancestor(_mock_git: object, tmp_path: Path) -> None:
     """Scanner skips candidates whose SHA is already ancestor of main."""
     trees = tmp_path / "trees" / "merged-slug"
     trees.mkdir(parents=True)
-    _write_state_yaml(trees, "merged-slug", {
-        "status": "ready",
-        "branch": "merged-slug",
-        "sha": _SHA,
-        "ready_at": "2026-03-01T00:00:00+00:00",
-    })
+    _write_state_yaml(
+        trees,
+        "merged-slug",
+        {
+            "status": "ready",
+            "branch": "merged-slug",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+        },
+    )
 
     result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
@@ -147,12 +163,16 @@ def test_scan_skips_missing_remote_branch(_mock_git: object, tmp_path: Path) -> 
     """Scanner skips candidates whose branch doesn't exist on origin."""
     trees = tmp_path / "trees" / "no-remote"
     trees.mkdir(parents=True)
-    _write_state_yaml(trees, "no-remote", {
-        "status": "ready",
-        "branch": "no-remote",
-        "sha": _SHA,
-        "ready_at": "2026-03-01T00:00:00+00:00",
-    })
+    _write_state_yaml(
+        trees,
+        "no-remote",
+        {
+            "status": "ready",
+            "branch": "no-remote",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+        },
+    )
 
     result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
@@ -163,12 +183,16 @@ def test_scan_excludes_integration_directory(_mock_git: object, tmp_path: Path) 
     """Scanner skips the _integration worktree directory."""
     trees = tmp_path / "trees" / "_integration"
     trees.mkdir(parents=True)
-    _write_state_yaml(trees, "_integration", {
-        "status": "ready",
-        "branch": "_integration",
-        "sha": _SHA,
-        "ready_at": "2026-03-01T00:00:00+00:00",
-    })
+    _write_state_yaml(
+        trees,
+        "_integration",
+        {
+            "status": "ready",
+            "branch": "_integration",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+        },
+    )
 
     result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
@@ -179,12 +203,16 @@ def test_scan_respects_exclude_slug(_mock_git: object, tmp_path: Path) -> None:
     """Scanner skips the slug passed as exclude_slug."""
     trees = tmp_path / "trees" / "my-slug"
     trees.mkdir(parents=True)
-    _write_state_yaml(trees, "my-slug", {
-        "status": "ready",
-        "branch": "my-slug",
-        "sha": _SHA,
-        "ready_at": "2026-03-01T00:00:00+00:00",
-    })
+    _write_state_yaml(
+        trees,
+        "my-slug",
+        {
+            "status": "ready",
+            "branch": "my-slug",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+        },
+    )
 
     result = _scan_finalize_ready_candidates(str(tmp_path), exclude_slug="my-slug")
     assert result == []
@@ -200,12 +228,16 @@ def test_scan_fifo_ordering_by_ready_at(_mock_git: object, tmp_path: Path) -> No
     ]:
         trees = tmp_path / "trees" / slug
         trees.mkdir(parents=True)
-        _write_state_yaml(trees, slug, {
-            "status": "ready",
-            "branch": slug,
-            "sha": _SHA,
-            "ready_at": ready_at,
-        })
+        _write_state_yaml(
+            trees,
+            slug,
+            {
+                "status": "ready",
+                "branch": slug,
+                "sha": _SHA,
+                "ready_at": ready_at,
+            },
+        )
 
     result = _scan_finalize_ready_candidates(str(tmp_path))
     assert len(result) == 3
@@ -237,12 +269,16 @@ def test_verify_ready_slug(_mock_git: object, tmp_path: Path) -> None:
     """Verifier returns candidate for a finalize-ready slug."""
     trees = tmp_path / "trees" / "my-slug"
     trees.mkdir(parents=True)
-    _write_state_yaml(trees, "my-slug", {
-        "status": "ready",
-        "branch": "my-slug",
-        "sha": _SHA,
-        "ready_at": "2026-03-01T00:00:00+00:00",
-    })
+    _write_state_yaml(
+        trees,
+        "my-slug",
+        {
+            "status": "ready",
+            "branch": "my-slug",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+        },
+    )
 
     result = _verify_slug_ready(str(tmp_path), "my-slug")
     assert result is not None

@@ -26,7 +26,7 @@ import logging
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -220,7 +220,7 @@ async def generate_image(
         "model": model,
         "prompt": prompt,
         "aspect_ratio": aspect_ratio,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -272,7 +272,7 @@ async def edit_image(
         "model": model,
         "prompt": prompt,
         "input_image": str(input_image),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }
 
 

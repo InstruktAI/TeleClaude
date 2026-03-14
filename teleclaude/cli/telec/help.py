@@ -1,30 +1,76 @@
 """Help generation and shell completion for the telec CLI."""
+
 from __future__ import annotations
 
-from teleclaude.cli.telec.surface import CLI_SURFACE, Flag
+from teleclaude.cli.telec.surface import CLI_SURFACE, CommandDef, Flag
 
 # Derived constants for completion (from schema)
 _COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
 _COMMAND_DESCRIPTIONS = {name: cmd.desc for name, cmd in CLI_SURFACE.items() if not cmd.hidden}
+_BOOLEAN_FLAGS = {
+    "--all",
+    "--closed",
+    "--clear",
+    "--attach",
+    "--direct",
+    "--close-link",
+    "--baseline-only",
+    "--third-party",
+    "--validate-only",
+    "--warn-only",
+    "--invalidate-check",
+}
+_DESC_SAMPLE_RULES = (
+    (("json", "payload", "widget expression"), '\'{"key":"value"}\''),
+    (("iso8601", "iso 8601", "utc", "expiry"), "2026-01-01T00:00:00Z"),
+    (("project root", "project directory", "directory"), "/tmp/project"),
+    (("path", "file"), "/tmp/example.txt"),
+    (("agent",), "claude"),
+    (("thinking mode",), "slow"),
+    (("phase",), "build"),
+    (("status",), "degraded"),
+    (("format",), "markdown"),
+    (("reason",), '"example reason"'),
+    (("summary",), '"example summary"'),
+    (("customer",), '"Jane Doe"'),
+    (("channel",), "channel:demo:events"),
+)
+_LONG_KEY_SAMPLE_RULES = (
+    (("session",), "sess-123"),
+    (("slug",), "my-slug"),
+    (("project", "cwd", "root"), "/tmp/project"),
+    (("path", "file"), "/tmp/example.txt"),
+    (("agent",), "claude"),
+    (("mode",), "slow"),
+    (("phase",), "build"),
+    (("status",), "degraded"),
+    (("format",), "markdown"),
+    (("until", "date"), "2026-01-01T00:00:00Z"),
+    (("data",), '\'{"key":"value"}\''),
+    (("after",), "dep-a"),
+    (("before",), "target-slug"),
+    (("title",), '"Example Title"'),
+    (("description", "message", "content"), '"example"'),
+)
 
 
 __all__ = [
-    "_maybe_show_help",
-    "_usage",
-    "_usage_main",
-    "_usage_subcmd",
-    "_usage_leaf",
-    "_handle_completion",
     "_complete_flags",
     "_complete_subcmd",
     "_example_commands",
     "_example_positionals",
     "_flag_matches",
     "_flag_used",
+    "_handle_completion",
+    "_maybe_show_help",
     "_print_completion",
     "_print_flag",
     "_sample_flag_value",
     "_sample_positional_value",
+    "_usage",
+    "_usage_leaf",
+    "_usage_main",
+    "_usage_subcmd",
 ]
 
 
@@ -127,81 +173,25 @@ def _sample_positional_value(token: str) -> str:
 
 def _sample_flag_value(flag: Flag) -> str | None:
     """Return a sample value for a flag, or None for boolean/toggle flags."""
-    if flag.long in {
-        "--all",
-        "--closed",
-        "--clear",
-        "--attach",
-        "--direct",
-        "--close-link",
-        "--baseline-only",
-        "--third-party",
-        "--validate-only",
-        "--warn-only",
-        "--invalidate-check",
-    }:
+    if flag.long in _BOOLEAN_FLAGS:
         return None
 
     long_key = flag.long.lstrip("-").lower()
     desc = flag.desc.lower()
-    if "json" in desc or "payload" in desc or "widget expression" in desc:
-        return '\'{"key":"value"}\''
-    if "iso8601" in desc or "iso 8601" in desc or "utc" in desc or "expiry" in desc:
-        return "2026-01-01T00:00:00Z"
-    if "project root" in desc or "project directory" in desc or "directory" in desc:
-        return "/tmp/project"
-    if "path" in desc or "file" in desc:
-        return "/tmp/example.txt"
-    if "agent" in desc:
-        return "claude"
-    if "thinking mode" in desc:
-        return "slow"
-    if "phase" in desc:
-        return "build"
-    if "status" in desc:
-        return "degraded"
-    if "format" in desc:
-        return "markdown"
-    if "reason" in desc:
-        return '"example reason"'
-    if "summary" in desc:
-        return '"example summary"'
-    if "customer" in desc:
-        return '"Jane Doe"'
-    if "channel" in desc:
-        return "channel:demo:events"
-
-    if "session" in long_key:
-        return "sess-123"
-    if "slug" in long_key:
-        return "my-slug"
-    if "project" in long_key or "cwd" in long_key or "root" in long_key:
-        return "/tmp/project"
-    if "path" in long_key or "file" in long_key:
-        return "/tmp/example.txt"
-    if "agent" in long_key:
-        return "claude"
-    if "mode" in long_key:
-        return "slow"
-    if "phase" in long_key:
-        return "build"
-    if "status" in long_key:
-        return "degraded"
-    if "format" in long_key:
-        return "markdown"
-    if "until" in long_key or "date" in long_key:
-        return "2026-01-01T00:00:00Z"
-    if "data" in long_key:
-        return '\'{"key":"value"}\''
-    if "after" in long_key:
-        return "dep-a"
-    if "before" in long_key:
-        return "target-slug"
-    if "title" in long_key:
-        return '"Example Title"'
-    if "description" in long_key or "message" in long_key or "content" in long_key:
-        return '"example"'
+    desc_match = _match_sample_rule(desc, _DESC_SAMPLE_RULES)
+    if desc_match is not None:
+        return desc_match
+    long_key_match = _match_sample_rule(long_key, _LONG_KEY_SAMPLE_RULES)
+    if long_key_match is not None:
+        return long_key_match
     return "value"
+
+
+def _match_sample_rule(text: str, rules: tuple[tuple[tuple[str, ...], str], ...]) -> str | None:
+    for needles, sample in rules:
+        if any(needle in text for needle in needles):
+            return sample
+    return None
 
 
 def _example_positionals(args_spec: str) -> list[str]:
@@ -241,93 +231,102 @@ def _example_commands(command_parts: list[str], args_spec: str, flags: list[Flag
 def _usage_subcmd(cmd_name: str) -> str:
     """Generate detailed subcommand help. All flags shown."""
     cmd = CLI_SURFACE[cmd_name]
-    col = 49
     lines = ["Usage:"]
-
     if cmd.subcommands:
-        if cmd.standalone:
-            args_str = f" {cmd.args}" if cmd.args else ""
-            flag_hints = " [options]" if cmd.flags else ""
-            entry = f"telec {cmd_name}{args_str}{flag_hints}"
-            lines.append(f"  {entry:<{col}}# {cmd.desc}")
-
-            visible_cmd_flags = [f for f in cmd.flags if f.long != "--help"] if cmd.flags else []
-            if visible_cmd_flags:
-                lines.append("\nOptions:")
-                for f in visible_cmd_flags:
-                    flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
-                    lines.append(f"{flag_label:<25s}{f.desc}")
-                examples = _example_commands([cmd_name], cmd.args, visible_cmd_flags)
-                if examples:
-                    lines.append("\nExamples:")
-                    for example in examples:
-                        lines.append(f"  {example}")
-
-        for sub_name, sub_cmd in cmd.subcommands.items():
-            if sub_cmd.subcommands:
-                # Two-level nesting: expand leaf subcommands inline
-                for child_name, child_cmd in sub_cmd.subcommands.items():
-                    child_args = f" {child_cmd.args}" if child_cmd.args else ""
-                    child_flag_hints = " [options]" if child_cmd.flags else ""
-                    entry = f"telec {cmd_name} {sub_name} {child_name}{child_args}{child_flag_hints}"
-                    lines.append(f"  {entry:<{col}}# {child_cmd.desc}")
-                continue
-            args_str = f" {sub_cmd.args}" if sub_cmd.args else ""
-            flag_hints = " [options]" if sub_cmd.flags else ""
-            entry = f"telec {cmd_name} {sub_name}{args_str}{flag_hints}"
-            lines.append(f"  {entry:<{col}}# {sub_cmd.desc}")
-
-        # Group flags by shared flag set for compact display
-        seen_groups: dict[str, list[tuple[str, list[Flag]]]] = {}
-        for sub_name, sub_cmd in cmd.subcommands.items():
-            if not sub_cmd.flags:
-                continue
-            key = "|".join(f.long for f in sub_cmd.flags)
-            seen_groups.setdefault(key, []).append((sub_name, sub_cmd.flags))
-
-        for _key, group in seen_groups.items():
-            names = [n for n, _ in group]
-            flags = group[0][1]
-            label = "Options" if len(names) == len(cmd.subcommands) else f"{'/'.join(names)} options"
-            lines.append(f"\n{label}:")
-            for f in flags:
-                flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
-                lines.append(f"{flag_label:<25s}{f.desc}")
+        _append_grouped_command_usage(lines, cmd_name, cmd)
     else:
-        args_str = f" {cmd.args}" if cmd.args else ""
-        lines.append(f"  telec {cmd_name}{args_str}")
-        visible = [f for f in cmd.flags if f.long != "--help"] if cmd.flags else []
-        if cmd.flags:
-            if visible:
-                lines.append("\nOptions:")
-                for f in visible:
-                    flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
-                    lines.append(f"{flag_label:<25s}{f.desc}")
+        _append_leaf_command_usage(lines, cmd_name, cmd)
+    return "\n".join(lines) + "\n"
 
-        notes = cmd.notes or [f"Use this command to {cmd.desc.lower()}."]
+
+def _visible_flags(flags: list[Flag] | None) -> list[Flag]:
+    return [f for f in flags or [] if f.long != "--help"]
+
+
+def _append_flag_section(lines: list[str], label: str, flags: list[Flag]) -> None:
+    if not flags:
+        return
+    lines.append(f"\n{label}:")
+    for flag in flags:
+        flag_label = f"  {flag.short}, {flag.long}" if flag.short else f"  {flag.long}"
+        lines.append(f"{flag_label:<25s}{flag.desc}")
+
+
+def _append_examples(lines: list[str], examples: list[str]) -> None:
+    if not examples:
+        return
+    lines.append("\nExamples:")
+    for example in examples:
+        lines.append(f"  {example}")
+
+
+def _append_grouped_command_usage(lines: list[str], cmd_name: str, cmd: CommandDef) -> None:
+    col = 49
+    visible_cmd_flags = _visible_flags(cmd.flags)
+    if cmd.standalone:
+        args_str = f" {cmd.args}" if cmd.args else ""
+        flag_hints = " [options]" if cmd.flags else ""
+        entry = f"telec {cmd_name}{args_str}{flag_hints}"
+        lines.append(f"  {entry:<{col}}# {cmd.desc}")
+        _append_flag_section(lines, "Options", visible_cmd_flags)
+        _append_examples(lines, _example_commands([cmd_name], cmd.args, visible_cmd_flags))
+
+    for entry in _iter_subcommand_entries(cmd_name, cmd, col):
+        lines.append(entry)
+    for label, flags in _group_subcommand_flags(cmd):
+        _append_flag_section(lines, label, flags)
+
+    notes = list(dict.fromkeys([*cmd.notes, *[note for sub_cmd in cmd.subcommands.values() for note in sub_cmd.notes]]))
+    if notes:
         lines.append("\nNotes:")
         for note in notes:
             lines.append(f"  {note}")
 
-        examples = cmd.examples or _example_commands([cmd_name], cmd.args, visible)
-        if examples:
-            lines.append("\nExamples:")
-            for example in examples:
-                lines.append(f"  {example}")
 
-    # Collect notes only for grouped commands (leaf commands already render notes above).
-    if cmd.subcommands:
-        all_notes: list[str] = []
-        for _sub_name, sub_cmd in cmd.subcommands.items():
-            all_notes.extend(sub_cmd.notes)
-        all_notes.extend(cmd.notes)
-        unique_notes = list(dict.fromkeys(all_notes))
-        if unique_notes:
-            lines.append("\nNotes:")
-            for note in unique_notes:
-                lines.append(f"  {note}")
+def _append_leaf_command_usage(lines: list[str], cmd_name: str, cmd: CommandDef) -> None:
+    args_str = f" {cmd.args}" if cmd.args else ""
+    visible = _visible_flags(cmd.flags)
+    lines.append(f"  telec {cmd_name}{args_str}")
+    _append_flag_section(lines, "Options", visible)
 
-    return "\n".join(lines) + "\n"
+    notes = cmd.notes or [f"Use this command to {cmd.desc.lower()}."]
+    lines.append("\nNotes:")
+    for note in notes:
+        lines.append(f"  {note}")
+    _append_examples(lines, cmd.examples or _example_commands([cmd_name], cmd.args, visible))
+
+
+def _iter_subcommand_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[str]:
+    entries: list[str] = []
+    for sub_name, sub_cmd in cmd.subcommands.items():
+        if sub_cmd.subcommands:
+            for child_name, child_cmd in sub_cmd.subcommands.items():
+                child_args = f" {child_cmd.args}" if child_cmd.args else ""
+                child_flag_hints = " [options]" if child_cmd.flags else ""
+                entry = f"telec {cmd_name} {sub_name} {child_name}{child_args}{child_flag_hints}"
+                entries.append(f"  {entry:<{col}}# {child_cmd.desc}")
+            continue
+        args_str = f" {sub_cmd.args}" if sub_cmd.args else ""
+        flag_hints = " [options]" if sub_cmd.flags else ""
+        entry = f"telec {cmd_name} {sub_name}{args_str}{flag_hints}"
+        entries.append(f"  {entry:<{col}}# {sub_cmd.desc}")
+    return entries
+
+
+def _group_subcommand_flags(cmd: CommandDef) -> list[tuple[str, list[Flag]]]:
+    grouped: dict[str, list[tuple[str, list[Flag]]]] = {}
+    for sub_name, sub_cmd in cmd.subcommands.items():
+        if not sub_cmd.flags:
+            continue
+        key = "|".join(flag.long for flag in sub_cmd.flags)
+        grouped.setdefault(key, []).append((sub_name, sub_cmd.flags))
+
+    sections = []
+    for group in grouped.values():
+        names = [name for name, _ in group]
+        label = "Options" if len(names) == len(cmd.subcommands) else f"{'/'.join(names)} options"
+        sections.append((label, group[0][1]))
+    return sections
 
 
 def _usage_leaf(cmd_name: str, sub_name: str) -> str:

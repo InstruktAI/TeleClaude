@@ -149,59 +149,102 @@ def render_sprite(
       - ``fg_color + bg_color + ch``  (15 chars) — fully resolved from layers
     """
     if isinstance(sprite, CompositeSprite):
-        # Pre-composite all layers into a local pixel grid.
-        # Each entry: (char, fg_color, bg_color, scene_transparent)
-        grid: dict[tuple[int, int], tuple[str, str | None, str | None, bool]] = {}
-        # Accumulated surface color per cell — what you'd see looking down
-        # through all layers processed so far. None = sky (no layer touched it).
-        surface: dict[tuple[int, int], str | None] = {}
+        _render_composite_sprite(buffer, z, x, y, sprite, width, height)
+        return
+    _render_plain_sprite(buffer, z, x, y, sprite, width, height)
 
-        for layer in sprite.layers:
-            color = _norm_color(layer.color)
-            # Negative first so positive wins on overlap within a layer
-            if layer.negative:
-                for dy, row in enumerate(layer.negative):
-                    for dx, ch in enumerate(row):
-                        if ch != " ":
-                            prev = surface.get((dx, dy))
-                            if ch == "\u2588":
-                                # Full block: solid fill, same as positive
-                                grid[(dx, dy)] = (ch, color, prev, prev is None)
-                            else:
-                                # Partial block: cutout reveals surface below
-                                grid[(dx, dy)] = (ch, prev, color, prev is None)
-                            surface[(dx, dy)] = color
-            if layer.positive:
-                for dy, row in enumerate(layer.positive):
-                    for dx, ch in enumerate(row):
-                        if ch != " ":
-                            prev = surface.get((dx, dy))
-                            grid[(dx, dy)] = (ch, color, prev, prev is None)
-                            surface[(dx, dy)] = color
 
-        # Write resolved pixels to buffer with clipping
-        for (dx, dy), (ch, fg, bg, transparent) in grid.items():
-            px = x + dx
-            py = y + dy
-            if 0 <= px < width and 0 <= py < height:
-                if transparent and bg:
-                    buffer.add_pixel(z, px, py, "\x01" + bg + ch)
-                elif fg and bg:
-                    buffer.add_pixel(z, px, py, fg + bg + ch)
-                elif fg:
-                    buffer.add_pixel(z, px, py, fg + ch)
-    else:
-        for dy, row in enumerate(sprite):
-            py = y + dy
-            if py < 0:
+def _render_composite_sprite(
+    buffer: RenderBuffer,
+    z: int,
+    x: int,
+    y: int,
+    sprite: CompositeSprite,
+    width: int,
+    height: int,
+) -> None:
+    grid, surface = {}, {}
+    for layer in sprite.layers:
+        color = _norm_color(layer.color)
+        _render_layer_pixels(grid, surface, layer.negative, color, negative=True)
+        _render_layer_pixels(grid, surface, layer.positive, color, negative=False)
+    _write_composite_grid(buffer, z, x, y, width, height, grid)
+
+
+def _render_layer_pixels(
+    grid: dict[tuple[int, int], tuple[str, str | None, str | None, bool]],
+    surface: dict[tuple[int, int], str | None],
+    rows: list[str] | None,
+    color: str | None,
+    *,
+    negative: bool,
+) -> None:
+    if not rows:
+        return
+    for dy, row in enumerate(rows):
+        for dx, ch in enumerate(row):
+            if ch == " ":
                 continue
-            if py >= height:
-                break
-            for dx, ch in enumerate(row):
-                if ch != " ":
-                    px = x + dx
-                    if 0 <= px < width:
-                        buffer.add_pixel(z, px, py, ch)
+            prev = surface.get((dx, dy))
+            grid[(dx, dy)] = _resolve_layer_pixel(ch, color, prev, negative=negative)
+            surface[(dx, dy)] = color
+
+
+def _resolve_layer_pixel(
+    ch: str,
+    color: str | None,
+    prev: str | None,
+    *,
+    negative: bool,
+) -> tuple[str, str | None, str | None, bool]:
+    if not negative or ch == "\u2588":
+        return (ch, color, prev, prev is None)
+    return (ch, prev, color, prev is None)
+
+
+def _write_composite_grid(
+    buffer: RenderBuffer,
+    z: int,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    grid: dict[tuple[int, int], tuple[str, str | None, str | None, bool]],
+) -> None:
+    for (dx, dy), (ch, fg, bg, transparent) in grid.items():
+        px = x + dx
+        py = y + dy
+        if not (0 <= px < width and 0 <= py < height):
+            continue
+        if transparent and bg:
+            buffer.add_pixel(z, px, py, "\x01" + bg + ch)
+        elif fg and bg:
+            buffer.add_pixel(z, px, py, fg + bg + ch)
+        elif fg:
+            buffer.add_pixel(z, px, py, fg + ch)
+
+
+def _render_plain_sprite(
+    buffer: RenderBuffer,
+    z: int,
+    x: int,
+    y: int,
+    sprite: list[str],
+    width: int,
+    height: int,
+) -> None:
+    for dy, row in enumerate(sprite):
+        py = y + dy
+        if py < 0:
+            continue
+        if py >= height:
+            break
+        for dx, ch in enumerate(row):
+            if ch == " ":
+                continue
+            px = x + dx
+            if 0 <= px < width:
+                buffer.add_pixel(z, px, py, ch)
 
 
 class Animation(ABC):

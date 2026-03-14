@@ -288,3 +288,16 @@ async def compose_agent_guidance(db: Db) -> str:
     lines.append("- slow: complex reasoning, architecture, planning, root cause analysis")
 
     return "\n".join(lines)
+
+
+__all__ = [
+    "_has_meaningful_diff",
+    "_merge_origin_main_into_worktree",
+    "build_git_hook_env",
+    "compose_agent_guidance",
+    "get_stash_entries",
+    "has_git_stash_entries",
+    "has_uncommitted_changes",
+    "read_text_async",
+    "write_text_async",
+]

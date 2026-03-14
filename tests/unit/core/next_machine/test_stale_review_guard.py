@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.core.next_machine._types import StateValue
+
 MODULE = "teleclaude.core.next_machine.work"
 
 SLUG = "fix-something"
@@ -26,7 +28,7 @@ BASELINE_SHA = "aaa1111"
 HEAD_SHA = "bbb2222"
 
 
-def _make_state(*, finalize_status: str = "pending") -> dict[str, Any]:
+def _make_state(*, finalize_status: str = "pending") -> dict[str, StateValue]:
     """Build a state dict with review approved and a stale baseline."""
     return {
         "schema_version": 1,
@@ -59,7 +61,7 @@ class _FakeAsyncLock:
         pass
 
 
-def _patched_context(state: dict[str, Any], mark_phase_fn: Any) -> contextlib.ExitStack:
+def _patched_context(state: dict[str, StateValue], mark_phase_fn: Any) -> contextlib.ExitStack:
     """Return a context manager stacking all patches needed to reach the stale
     review guard in next_work."""
     stack = contextlib.ExitStack()
@@ -68,7 +70,10 @@ def _patched_context(state: dict[str, Any], mark_phase_fn: Any) -> contextlib.Ex
         ("sweep_completed_groups", lambda cwd: None),
         ("load_roadmap_deps", lambda cwd: {}),
         ("is_bug_todo", lambda cwd, slug: True),
-        ("get_stash_entries", lambda cwd: [],),
+        (
+            "get_stash_entries",
+            lambda cwd: [],
+        ),
         ("check_file_has_content", lambda cwd, path: True),
         ("_ensure_todo_on_remote_main", lambda cwd, slug: (True, "ok")),
         ("_get_slug_single_flight_lock", AsyncMock(return_value=_FakeAsyncLock())),
@@ -123,7 +128,7 @@ async def test_finalize_pending_allows_stale_review_reset() -> None:
     state = _make_state(finalize_status="pending")
     mark_calls: list[tuple[Any, ...]] = []
 
-    def tracking_mark(*args: Any) -> dict[str, Any]:
+    def tracking_mark(*args: Any) -> dict[str, StateValue]:
         mark_calls.append(args)
         return state
 
@@ -132,12 +137,8 @@ async def test_finalize_pending_allows_stale_review_reset() -> None:
 
         await next_work(MagicMock(), SLUG, "/fake/cwd")
 
-    review_resets = [
-        c for c in mark_calls if len(c) >= 4 and c[2] == "review" and c[3] == "pending"
-    ]
-    assert len(review_resets) == 1, (
-        f"Expected exactly one review reset to pending, got {len(review_resets)}"
-    )
+    review_resets = [c for c in mark_calls if len(c) >= 4 and c[2] == "review" and c[3] == "pending"]
+    assert len(review_resets) == 1, f"Expected exactly one review reset to pending, got {len(review_resets)}"
 
 
 @pytest.mark.asyncio

@@ -37,7 +37,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class RedisTransport(  # pylint: disable=too-many-instance-attributes  # Redis transport requires many connection and state attributes
+class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
+    # pylint: disable=too-many-instance-attributes  # Redis transport requires many connection and state attributes
     _ConnectionMixin,
     _RefreshMixin,
     _MessagingMixin,

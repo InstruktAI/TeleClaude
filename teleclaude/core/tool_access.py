@@ -6,7 +6,11 @@ UNAUTHORIZED_EXCLUDED_TOOLS) have been retired. Authorization uses
 is_command_allowed() from teleclaude.cli.telec as the single source of truth.
 """
 
+from collections.abc import Iterator
+
 from typing_extensions import TypedDict
+
+from teleclaude.cli.telec.surface import CommandDef
 
 
 class ToolSpec(TypedDict, total=False):
@@ -19,7 +23,7 @@ def _collect_gated_paths() -> list[str]:
     """Enumerate all CLI command paths that have CommandAuth (clearance-gated)."""
     from teleclaude.cli.telec import CLI_SURFACE
 
-    def _walk(surface, prefix=""):
+    def _walk(surface: dict[str, CommandDef], prefix: str = "") -> Iterator[str]:
         for name, cmd in surface.items():
             path = f"{prefix} {name}".strip() if prefix else name
             if cmd.subcommands:
@@ -54,7 +58,7 @@ def filter_tool_names(role: str | None, tool_names: list[str], human_role: str |
 
     result = []
     for name in tool_names:
-        path = name[len("telec "):] if name.startswith("telec ") else name
+        path = name[len("telec ") :] if name.startswith("telec ") else name
         if is_command_allowed(path, role, human_role):
             result.append(name)
     return result
@@ -67,7 +71,7 @@ def filter_tool_specs(role: str | None, tools: list[ToolSpec], human_role: str |
     result = []
     for t in tools:
         name = t.get("name", "")
-        path = name[len("telec "):] if name.startswith("telec ") else name
+        path = name[len("telec ") :] if name.startswith("telec ") else name
         if is_command_allowed(path, role, human_role):
             result.append(t)
     return result

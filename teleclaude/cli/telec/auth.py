@@ -1,4 +1,5 @@
 """Authorization helpers for the telec CLI."""
+
 from __future__ import annotations
 
 from teleclaude.cli.telec.surface import CLI_SURFACE, CommandAuth

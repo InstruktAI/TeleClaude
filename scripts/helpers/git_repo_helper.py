@@ -20,6 +20,7 @@ import argparse
 import json
 import subprocess
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlparse
 
 import yaml
@@ -102,12 +103,17 @@ def _load_checkout_root() -> Path:
     if not config_path.exists():
         return DEFAULT_CHECKOUT_ROOT
     try:
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        loaded_config: object = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     except Exception:
         return DEFAULT_CHECKOUT_ROOT
-    gh = raw.get("git", {}) if isinstance(raw, dict) else {}
-    root = gh.get("checkout_root") if isinstance(gh, dict) else None
-    if not root:
+    raw_obj = loaded_config if loaded_config is not None else {}
+    if not isinstance(raw_obj, dict):
+        return DEFAULT_CHECKOUT_ROOT
+    raw = cast(dict[str, object], raw_obj)
+    gh_obj = raw.get("git", {})
+    gh = cast(dict[str, object], gh_obj) if isinstance(gh_obj, dict) else {}
+    root = gh.get("checkout_root")
+    if not isinstance(root, str) or not root:
         return DEFAULT_CHECKOUT_ROOT
     return Path(root).expanduser()
 

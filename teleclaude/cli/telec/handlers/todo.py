@@ -1,4 +1,5 @@
 """Handlers for telec todo commands."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,17 +11,16 @@ from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.todo_scaffold import create_todo_skeleton
 
-
-
 __all__ = [
     "_handle_todo",
+    "_handle_todo_create",
+    "_handle_todo_dump",
+    "_handle_todo_remove",
+    "_handle_todo_split",
     "_handle_todo_validate",
     "_handle_todo_verify_artifacts",
-    "_handle_todo_dump",
-    "_handle_todo_split",
-    "_handle_todo_create",
-    "_handle_todo_remove",
 ]
+
 
 def _handle_todo(args: list[str]) -> None:
     """Handle telec todo commands."""

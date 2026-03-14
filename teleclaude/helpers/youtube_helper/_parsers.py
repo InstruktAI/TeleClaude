@@ -20,6 +20,24 @@ from teleclaude.helpers.youtube_helper._utils import (
     log,
 )
 
+__all__ = [
+    "_extract_continuation_token",
+    "_extract_lockup_publish_time",
+    "_extract_richgrid_continuation",
+    "_extract_yt_initial_data",
+    "_fetch_channel_about_description",
+    "_find_about_description",
+    "_get_richgrid_contents",
+    "_get_sections",
+    "_parse_history_entries",
+    "_parse_html_list",
+    "_parse_html_video",
+    "_parse_lockup_view_model",
+    "_parse_subscription_channels",
+    "_parse_subscription_entries",
+    "_parse_video_renderer",
+]
+
 
 def _parse_history_entries(data: JsonDict) -> list[HistoryEntry]:
     """Extract video entries from InnerTube browse response JSON."""

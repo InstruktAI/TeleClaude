@@ -12,16 +12,29 @@ from pathlib import Path
 from typing import cast
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.models import JsonDict
 
 from ._parsers import normalize_transcript_entry_message
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _parse_timestamp
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "_entry_role",
+    "_get_entries_for_agent",
+    "_is_rotation_fallback_candidate",
+    "_iter_claude_entries",
+    "_iter_codex_entries",
+    "_iter_gemini_entries",
+    "_iter_jsonl_entries",
+    "_iter_jsonl_entries_tail",
+    "_start_index_after_timestamp_or_rotation",
+]
+
 
 def _iter_jsonl_entries(
     path: Path,
-) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
+) -> Iterable[JsonDict]:
     """Yield JSON objects for each line in a transcript file."""
 
     with open(path, encoding="utf-8") as f:
@@ -34,7 +47,7 @@ def _iter_jsonl_entries(
                 continue
 
             if isinstance(entry_value, dict):
-                yield cast(dict[str, object], entry_value)  # guard: loose-dict - Parsed JSONL entry
+                yield cast(JsonDict, entry_value)
 
 
 def _iter_jsonl_entries_tail(
@@ -42,7 +55,7 @@ def _iter_jsonl_entries_tail(
     max_entries: int,
     *,
     max_bytes: int = CHECKPOINT_JSONL_TAIL_READ_BYTES,
-) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
+) -> Iterable[JsonDict]:
     """Yield only the last N JSONL entries from a transcript file."""
     if max_entries <= 0 or max_bytes <= 0:
         return
@@ -84,7 +97,7 @@ def _iter_jsonl_entries_tail(
         except json.JSONDecodeError:
             continue
         if isinstance(entry_value, dict):
-            tail.append(cast(dict[str, object], entry_value))  # guard: loose-dict - Parsed JSONL entry
+            tail.append(cast(JsonDict, entry_value))
 
     yield from tail
 
@@ -93,7 +106,7 @@ def _iter_claude_entries(
     path: Path,
     *,
     tail_entries: int | None = None,
-) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
+) -> Iterable[JsonDict]:
     """Yield entries from Claude Code transcripts (raw JSONL)."""
 
     if tail_entries is not None:
@@ -106,7 +119,7 @@ def _iter_codex_entries(
     path: Path,
     *,
     tail_entries: int | None = None,
-) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
+) -> Iterable[JsonDict]:
     """Yield entries from Codex JSONL transcripts, skipping metadata.
 
     guard: allow-string-compare
@@ -119,126 +132,123 @@ def _iter_codex_entries(
         yield entry
 
 
+def _coerce_dict_list(raw_items: object) -> list[JsonDict]:
+    """Return only dict items from an external JSON array."""
+    if not isinstance(raw_items, list):
+        return []
+    return [cast(JsonDict, item) for item in raw_items if isinstance(item, dict)]
+
+
+def _load_gemini_document(path: Path) -> JsonDict:
+    """Load Gemini session JSON as a dict when possible."""
+    with open(path, encoding="utf-8") as f:
+        raw_document: object = json.load(f)
+    if isinstance(raw_document, dict):
+        return cast(JsonDict, raw_document)
+    return {}
+
+
+def _normalize_gemini_user_entry(message: JsonDict) -> JsonDict:
+    """Normalize a Gemini user message into transcript entry shape."""
+    content_value = message.get("content", "")
+    return {
+        "type": "user",
+        "timestamp": message.get("timestamp"),
+        "message": {
+            "role": "user",
+            "content": [{"type": "input_text", "text": str(content_value)}],
+        },
+    }
+
+
+def _extract_gemini_tool_result_texts(tool_call: JsonDict) -> list[str]:
+    """Collect tool result output strings from a Gemini tool call."""
+    result_texts: list[str] = []
+    for result in _coerce_dict_list(tool_call.get("result")):
+        function_response = result.get("functionResponse")
+        response_candidate = (
+            function_response.get("response") if isinstance(function_response, dict) else result.get("response")
+        )
+
+        response_value = None
+        if isinstance(response_candidate, dict):
+            response_value = response_candidate.get("output")
+        elif response_candidate:
+            response_value = response_candidate
+
+        if response_value:
+            result_texts.append(str(response_value))
+
+    fallback_text = tool_call.get("resultDisplay") or tool_call.get("description")
+    if fallback_text and not result_texts:
+        result_texts.append(str(fallback_text))
+    return result_texts
+
+
+def _build_gemini_assistant_blocks(
+    message: JsonDict,
+) -> list[JsonDict]:
+    """Build normalized assistant blocks from a Gemini message."""
+    blocks: list[JsonDict] = []
+
+    for thought in _coerce_dict_list(message.get("thoughts")):
+        description = thought.get("description") or thought.get("text") or ""
+        if description:
+            blocks.append({"type": "thinking", "thinking": description})
+
+    content_text = message.get("content")
+    if content_text:
+        blocks.append({"type": "text", "text": str(content_text)})
+
+    for tool_call in _coerce_dict_list(message.get("toolCalls")):
+        name = tool_call.get("displayName") or tool_call.get("name") or "tool"
+        args = tool_call.get("args")
+        input_payload: JsonDict = {}
+        if isinstance(args, dict):
+            input_payload = cast(JsonDict, args)
+        blocks.append({"type": "tool_use", "name": name, "input": input_payload})
+
+        result_texts = _extract_gemini_tool_result_texts(tool_call)
+        if any(result_texts):
+            blocks.append({"type": "tool_result", "content": "\n\n".join(result_texts)})
+
+    return blocks
+
+
 def _iter_gemini_entries(
     path: Path,
-) -> Iterable[dict[str, object]]:  # guard: loose-dict - External JSONL unknown structure
+) -> Iterable[JsonDict]:
     """Yield normalized entries from Gemini JSON session files.
 
     guard: allow-string-compare
     """
 
-    with open(path, encoding="utf-8") as f:
-        raw_document: object = json.load(f)
-
-    document: dict[str, object] = {}  # guard: loose-dict - External JSON document
-    if isinstance(raw_document, dict):
-        document = cast(dict[str, object], raw_document)  # guard: loose-dict - External JSON document
-
-    raw_messages = document.get("messages", [])
-    messages: list[dict[str, object]] = []  # guard: loose-dict - External JSON messages
-    if isinstance(raw_messages, list):
-        for item in raw_messages:
-            if isinstance(item, dict):
-                messages.append(cast(dict[str, object], item))  # guard: loose-dict - External JSON message
-
-    for message in messages:
+    document = _load_gemini_document(path)
+    for message in _coerce_dict_list(document.get("messages", [])):
         msg_type = message.get("type")
-        timestamp = message.get("timestamp")
 
         if msg_type == "user":
-            content_value = message.get("content", "")
-            yield {
-                "type": "user",
-                "timestamp": timestamp,
-                "message": {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": str(content_value)}],
-                },
-            }
+            yield _normalize_gemini_user_entry(message)
             continue
 
         if msg_type != "gemini":
             continue
 
-        blocks: list[dict[str, object]] = []  # guard: loose-dict - Internal normalized blocks
-        thoughts_raw = message.get("thoughts")
-        thoughts: list[dict[str, object]] = []  # guard: loose-dict - External thoughts
-        if isinstance(thoughts_raw, list):
-            for thought_item in thoughts_raw:
-                if isinstance(thought_item, dict):
-                    thoughts.append(cast(dict[str, object], thought_item))  # guard: loose-dict - External thought
-
-        for thought in thoughts:
-            description = thought.get("description") or thought.get("text") or ""
-            if description:
-                blocks.append({"type": "thinking", "thinking": description})
-
-        content_text = message.get("content")
-        if content_text:
-            blocks.append({"type": "text", "text": str(content_text)})
-
-        tool_calls_raw = message.get("toolCalls")
-        tool_calls: list[dict[str, object]] = []  # guard: loose-dict - External tool calls
-        if isinstance(tool_calls_raw, list):
-            for tool_item in tool_calls_raw:
-                if isinstance(tool_item, dict):
-                    tool_calls.append(cast(dict[str, object], tool_item))  # guard: loose-dict - External tool call
-
-        for tool_call in tool_calls:
-            name = tool_call.get("displayName") or tool_call.get("name") or "tool"
-            args = tool_call.get("args")
-            input_payload: dict[str, object] = {}  # guard: loose-dict - External tool args
-            if isinstance(args, dict):
-                input_payload = cast(dict[str, object], args)  # guard: loose-dict - External tool args
-            blocks.append(
-                {
-                    "type": "tool_use",
-                    "name": name,
-                    "input": input_payload,
-                }
-            )
-
-            result_texts: list[str] = []
-            result_raw = tool_call.get("result")
-            if isinstance(result_raw, list):
-                for result in result_raw:
-                    if not isinstance(result, dict):
-                        continue
-                    function_response = result.get("functionResponse")
-                    if isinstance(function_response, dict):
-                        response_candidate = function_response.get("response")
-                    else:
-                        response_candidate = result.get("response")
-
-                    response_value = None
-                    if isinstance(response_candidate, dict):
-                        response_value = response_candidate.get("output")
-                    elif response_candidate:
-                        response_value = response_candidate
-                    if response_value:
-                        result_texts.append(str(response_value))
-
-            fallback_text = tool_call.get("resultDisplay") or tool_call.get("description")
-            if fallback_text and not result_texts:
-                result_texts.append(str(fallback_text))
-
-            if any(result_texts):
-                blocks.append({"type": "tool_result", "content": "\n\n".join(result_texts)})
-
-        if not blocks and content_text:
-            blocks.append({"type": "text", "text": str(content_text)})
-
+        blocks = _build_gemini_assistant_blocks(message)
         if not blocks:
             continue
 
-        yield {
-            "type": "assistant",
-            "timestamp": timestamp,
-            "message": {
-                "role": "assistant",
-                "content": blocks,
+        yield cast(
+            JsonDict,
+            {
+                "type": "assistant",
+                "timestamp": message.get("timestamp"),
+                "message": {
+                    "role": "assistant",
+                    "content": blocks,
+                },
             },
-        }
+        )
 
 
 def _entry_role(entry: Mapping[str, object]) -> str | None:
@@ -304,7 +314,7 @@ def _get_entries_for_agent(
     agent_name: AgentName,
     *,
     tail_entries: int | None = None,
-) -> list[dict[str, object]] | None:  # guard: loose-dict - External entries
+) -> list[JsonDict] | None:
     """Load and return transcript entries for the given agent type.
 
     Returns None if path doesn't exist or agent type is unknown.

@@ -48,6 +48,54 @@ FILE_SUBDIR: dict[IncomingFileType, str] = {
 }
 
 
+def _describe_message_content(message: Message) -> list[str]:
+    """Describe Telegram message content types for debug logging."""
+    message_parts: list[str] = []
+    if message.text:
+        message_parts.append(f"text: '{message.text[:50]}'")
+    if message.voice:
+        message_parts.append("voice")
+    if message.photo:
+        message_parts.append("photo")
+    if message.document:
+        message_parts.append("document")
+    if message.forum_topic_created:
+        message_parts.append("forum_topic_created")
+    if message.forum_topic_closed:
+        message_parts.append("forum_topic_closed")
+    if message.forum_topic_reopened:
+        message_parts.append("forum_topic_reopened")
+    if message.forum_topic_edited:
+        message_parts.append("forum_topic_edited")
+    if message.delete_chat_photo:
+        message_parts.append("delete_chat_photo")
+    if message.new_chat_members:
+        message_parts.append("new_chat_members")
+    if message.left_chat_member:
+        message_parts.append("left_chat_member")
+    return message_parts
+
+
+def _describe_update_extras(update: Update) -> list[str]:
+    """Describe non-message update types for debug logging."""
+    extras: list[str] = []
+    if update.callback_query:
+        extras.append(f"callback_query: {update.callback_query.data}")
+    if update.inline_query:
+        extras.append(f"inline_query: {update.inline_query.query}")
+    if update.poll:
+        extras.append("poll update")
+    if update.poll_answer:
+        extras.append("poll_answer")
+    if update.my_chat_member:
+        extras.append("my_chat_member")
+    if update.chat_member:
+        extras.append("chat_member")
+    if update.chat_join_request:
+        extras.append("chat_join_request")
+    return extras
+
+
 class InputHandlersMixin:
     """Mixin providing input handlers for TelegramAdapter.
 
@@ -525,47 +573,11 @@ Usage:
                 log_parts.append(f"in chat {chat.id} ({chat.type})")
 
             if message:
-                msg_type = []
-                if message.text:
-                    msg_type.append(f"text: '{message.text[:50]}'")
-                if message.voice:
-                    msg_type.append("voice")
-                if message.photo:
-                    msg_type.append("photo")
-                if message.document:
-                    msg_type.append("document")
-                if message.forum_topic_created:
-                    msg_type.append("forum_topic_created")
-                if message.forum_topic_closed:
-                    msg_type.append("forum_topic_closed")
-                if message.forum_topic_reopened:
-                    msg_type.append("forum_topic_reopened")
-                if message.forum_topic_edited:
-                    msg_type.append("forum_topic_edited")
-                if message.delete_chat_photo:
-                    msg_type.append("delete_chat_photo")
-                if message.new_chat_members:
-                    msg_type.append("new_chat_members")
-                if message.left_chat_member:
-                    msg_type.append("left_chat_member")
+                msg_type = _describe_message_content(message)
                 if msg_type:
                     log_parts.append(f"content: [{', '.join(msg_type)}]")
 
-            # Check for other update types
-            if update.callback_query:
-                log_parts.append(f"callback_query: {update.callback_query.data}")
-            if update.inline_query:
-                log_parts.append(f"inline_query: {update.inline_query.query}")
-            if update.poll:
-                log_parts.append("poll update")
-            if update.poll_answer:
-                log_parts.append("poll_answer")
-            if update.my_chat_member:
-                log_parts.append("my_chat_member")
-            if update.chat_member:
-                log_parts.append("chat_member")
-            if update.chat_join_request:
-                log_parts.append("chat_join_request")
+            log_parts.extend(_describe_update_extras(update))
 
             logger.info(" | ".join(log_parts))
 

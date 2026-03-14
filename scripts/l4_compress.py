@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: RUF001
 """Compress L1 prose artifacts to L4 semantic tokens.
 
 Usage:
@@ -43,7 +44,7 @@ L3 (symbolic, 170 chars):
 @1c178904 430→73 17%
 ✓coherent ∵agents.summarize(tool_findings)→text
 ∴mirror:=recall ¬degraded
-⊗file∨sqlite ×writer ×trigger"
+⊗file∨sqlite ×writer ×trigger"  # noqa: RUF001
 
 L4 (semantic tokens, 52 chars):
 "⊢premise✗ @evidence:73/430 ∴recall¬degraded ⊗3tensions"

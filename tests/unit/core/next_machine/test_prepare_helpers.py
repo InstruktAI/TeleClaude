@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import yaml
+
+from teleclaude.core.next_machine._types import StateValue
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,7 +27,7 @@ def _write_file(todo_dir: Path, name: str, content: str = "content") -> Path:
     return p
 
 
-def _read_state(cwd: str, slug: str) -> dict[str, Any]:
+def _read_state(cwd: str, slug: str) -> dict[str, StateValue]:
     state_path = Path(cwd) / "todos" / slug / "state.yaml"
     if not state_path.exists():
         return {}

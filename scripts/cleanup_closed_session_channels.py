@@ -22,7 +22,7 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 if os.environ.get("TELECLAUDE_DISABLE_UV_SCRIPT_ENV") is None:
@@ -44,7 +44,7 @@ async def _replay_closed_sessions(*, hours: float, dry_run: bool) -> int:
     if hours <= 0:
         raise ValueError("--hours must be > 0")
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
     sessions = await db.list_sessions(
         include_closed=True,
         include_initializing=True,

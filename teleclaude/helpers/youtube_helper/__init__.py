@@ -4,6 +4,7 @@ Searches YouTube channels for videos, queries personal watch history
 via InnerTube API, and extracts transcripts.
 """
 
+import argparse
 import asyncio
 import json
 import time
@@ -628,10 +629,7 @@ def _get_video_transcript(video_id: str, strip_timestamps: bool = False) -> str:
         return ""
 
 
-async def main() -> None:
-    """CLI entrypoint for searching YouTube channels and extracting transcripts."""
-    import argparse
-
+def _build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="YouTube search and transcript extraction")
     parser.add_argument(
         "--mode",
@@ -666,136 +664,171 @@ async def main() -> None:
         type=int,
         help="Max channels to return (subscriptions --list-channels only; default: no limit)",
     )
+    return parser
+
+
+def _print_transcript_results(results: list[VideoTranscript]) -> None:
+    for transcript in results:
+        print(f"Video ID: {transcript.id}")
+        print(f"URL: https://youtube.com/watch?v={transcript.id}")
+        print("---")
+        print(transcript.text)
+        print()
+
+
+def _print_history_results(videos: list[Video]) -> None:
+    if not videos:
+        print("No matching videos found in watch history.")
+    for video in videos:
+        print(f"Title: {video.title}")
+        print(f"URL: https://youtube.com{video.url_suffix}")
+        print(f"Channel: {video.channel}")
+        print(f"Duration: {video.duration}")
+        if video.views:
+            print(f"Views: {video.views}")
+        if video.transcript:
+            print("---")
+            print(video.transcript)
+        print()
+
+
+def _print_subscription_channel_results(channels: list[SubscriptionChannel], *, as_json: bool) -> None:
+    if as_json:
+        payload = [
+            {
+                "id": ch.id,
+                "title": ch.title,
+                "handle": ch.handle,
+                "url_suffix": ch.url_suffix,
+                "description": ch.description,
+                "subscribers": ch.subscribers,
+            }
+            for ch in channels
+        ]
+        print(json.dumps(payload))
+        return
+    for ch in channels:
+        print(f"Channel: {ch.title}")
+        if ch.handle:
+            print(f"Handle: {ch.handle}")
+        if ch.url_suffix:
+            print(f"URL: https://youtube.com{ch.url_suffix}")
+        if ch.subscribers:
+            print(f"Meta: {ch.subscribers}")
+        if ch.description:
+            print(f"Description: {ch.description}")
+        print()
+
+
+def _print_subscription_video_results(videos: list[Video]) -> None:
+    for video in videos:
+        print(f"Title: {video.title}")
+        print(f"URL: https://youtube.com{video.url_suffix}")
+        print(f"Channel: {video.channel}")
+        if video.publish_time:
+            print(f"Published: {video.publish_time}")
+        if video.duration:
+            print(f"Duration: {video.duration}")
+        if video.views:
+            print(f"Views: {video.views}")
+        if video.transcript:
+            print("---")
+            print(video.transcript)
+        print()
+
+
+def _print_search_results(videos: list[Video]) -> None:
+    for video in videos:
+        print(f"Title: {video.title}")
+        print(f"URL: https://youtube.com{video.url_suffix}")
+        print(f"Channel: {video.channel}")
+        print(f"Published: {video.publish_time}")
+        print(f"Duration: {video.duration}")
+        print(f"Views: {video.views}")
+        if video.long_desc:
+            print(f"Description: {video.long_desc}")
+        if video.transcript:
+            print("---")
+            print(video.transcript)
+        print()
+
+
+async def _run_history_mode(args: argparse.Namespace) -> None:
+    try:
+        videos = await youtube_history(
+            query=args.query,
+            channel=args.channel,
+            max_results=args.max_videos,
+            cookies_file=args.cookies,
+            get_transcripts=args.transcripts,
+            char_cap=args.char_cap,
+        )
+    except YouTubeBackoffError as e:
+        print(f"⏸ {e}", flush=True)
+        raise SystemExit(1) from e
+    _print_history_results(videos)
+
+
+async def _run_subscriptions_mode(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if args.query:
+        parser.error("--query is not supported for subscriptions mode")
+    if args.json and not args.list_channels:
+        parser.error("--json is only supported with --list-channels")
+    try:
+        results = await youtube_subscriptions(
+            query=args.query,
+            channel=args.channel,
+            max_results=args.max_videos,
+            cookies_file=args.cookies,
+            get_transcripts=args.transcripts,
+            char_cap=args.char_cap,
+            list_channels=args.list_channels,
+            max_channels=args.max_channels,
+        )
+    except YouTubeBackoffError as e:
+        print(f"⏸ {e}", flush=True)
+        raise SystemExit(1) from e
+
+    if not results:
+        print("No matching subscriptions found.")
+        return
+    if args.list_channels:
+        _print_subscription_channel_results(cast(list[SubscriptionChannel], results), as_json=args.json)
+        return
+    _print_subscription_video_results(cast(list[Video], results))
+
+
+async def _run_search_mode(args: argparse.Namespace) -> None:
+    videos = await youtube_search(
+        channels=args.channels,
+        query=args.query,
+        period_days=args.period_days,
+        end_date=args.end_date,
+        max_videos_per_channel=args.max_videos,
+        get_descriptions=args.descriptions,
+        get_transcripts=not args.no_transcripts,
+        char_cap=args.char_cap,
+    )
+    _print_search_results(videos)
+
+
+async def main() -> None:
+    """CLI entrypoint for searching YouTube channels and extracting transcripts."""
+    parser = _build_cli_parser()
     args = parser.parse_args()
 
     if args.mode == "transcripts":
         if not args.ids:
             parser.error("--ids required for transcripts mode")
-        results = youtube_transcripts(args.ids)
-        for t in results:
-            print(f"Video ID: {t.id}")
-            print(f"URL: https://youtube.com/watch?v={t.id}")
-            print("---")
-            print(t.text)
-            print()
-    elif args.mode == "history":
-        try:
-            videos = await youtube_history(
-                query=args.query,
-                channel=args.channel,
-                max_results=args.max_videos,
-                cookies_file=args.cookies,
-                get_transcripts=args.transcripts,
-                char_cap=args.char_cap,
-            )
-        except YouTubeBackoffError as e:
-            print(f"⏸ {e}", flush=True)
-            raise SystemExit(1) from e
-        if not videos:
-            print("No matching videos found in watch history.")
-        for video in videos:
-            print(f"Title: {video.title}")
-            print(f"URL: https://youtube.com{video.url_suffix}")
-            print(f"Channel: {video.channel}")
-            print(f"Duration: {video.duration}")
-            if video.views:
-                print(f"Views: {video.views}")
-            if video.transcript:
-                print("---")
-                print(video.transcript)
-            print()
-    elif args.mode == "subscriptions":
-        try:
-            if args.query:
-                parser.error("--query is not supported for subscriptions mode")
-            if args.json and not args.list_channels:
-                parser.error("--json is only supported with --list-channels")
-            results = await youtube_subscriptions(
-                query=args.query,
-                channel=args.channel,
-                max_results=args.max_videos,
-                cookies_file=args.cookies,
-                get_transcripts=args.transcripts,
-                char_cap=args.char_cap,
-                list_channels=args.list_channels,
-                max_channels=args.max_channels,
-            )
-        except YouTubeBackoffError as e:
-            print(f"⏸ {e}", flush=True)
-            raise SystemExit(1) from e
-
-        if not results:
-            print("No matching subscriptions found.")
-            return
-
-        if args.list_channels:
-            channels = cast(list[SubscriptionChannel], results)
-            if args.json:
-                payload = [
-                    {
-                        "id": ch.id,
-                        "title": ch.title,
-                        "handle": ch.handle,
-                        "url_suffix": ch.url_suffix,
-                        "description": ch.description,
-                        "subscribers": ch.subscribers,
-                    }
-                    for ch in channels
-                ]
-                print(json.dumps(payload))
-                return
-            for ch in channels:
-                print(f"Channel: {ch.title}")
-                if ch.handle:
-                    print(f"Handle: {ch.handle}")
-                if ch.url_suffix:
-                    print(f"URL: https://youtube.com{ch.url_suffix}")
-                if ch.subscribers:
-                    print(f"Meta: {ch.subscribers}")
-                if ch.description:
-                    print(f"Description: {ch.description}")
-                print()
-            return
-
-        videos = cast(list[Video], results)
-        for video in videos:
-            print(f"Title: {video.title}")
-            print(f"URL: https://youtube.com{video.url_suffix}")
-            print(f"Channel: {video.channel}")
-            if video.publish_time:
-                print(f"Published: {video.publish_time}")
-            if video.duration:
-                print(f"Duration: {video.duration}")
-            if video.views:
-                print(f"Views: {video.views}")
-            if video.transcript:
-                print("---")
-                print(video.transcript)
-            print()
-    elif args.mode == "search":
-        videos = await youtube_search(
-            channels=args.channels,
-            query=args.query,
-            period_days=args.period_days,
-            end_date=args.end_date,
-            max_videos_per_channel=args.max_videos,
-            get_descriptions=args.descriptions,
-            get_transcripts=not args.no_transcripts,
-            char_cap=args.char_cap,
-        )
-        for video in videos:
-            print(f"Title: {video.title}")
-            print(f"URL: https://youtube.com{video.url_suffix}")
-            print(f"Channel: {video.channel}")
-            print(f"Published: {video.publish_time}")
-            print(f"Duration: {video.duration}")
-            print(f"Views: {video.views}")
-            if video.long_desc:
-                print(f"Description: {video.long_desc}")
-            if video.transcript:
-                print("---")
-                print(video.transcript)
-            print()
+        _print_transcript_results(youtube_transcripts(args.ids))
+        return
+    if args.mode == "history":
+        await _run_history_mode(args)
+        return
+    if args.mode == "subscriptions":
+        await _run_subscriptions_mode(args, parser)
+        return
+    await _run_search_mode(args)
 
 
 if __name__ == "__main__":

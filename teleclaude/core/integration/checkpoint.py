@@ -165,12 +165,12 @@ def _default_state_dir() -> Path:
 
 
 __all__ = [
-    "IntegrationPhase",
-    "IntegrationCheckpoint",
-    "_CheckpointPayload",
     "_CHECKPOINT_VERSION",
+    "IntegrationCheckpoint",
+    "IntegrationPhase",
+    "_CheckpointPayload",
+    "_default_state_dir",
     "_now_iso",
     "_read_checkpoint",
     "_write_checkpoint",
-    "_default_state_dir",
 ]
