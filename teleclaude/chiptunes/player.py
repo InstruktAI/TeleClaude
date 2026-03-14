@@ -237,13 +237,13 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
     def _open_stream(self) -> bool:
         """Open the output stream for the current track if it is not already active."""
-        if self._stop_event.is_set():
-            return False
         blocksize = self._stream_blocksize
         if blocksize is None:
             return False
 
         with self._stream_lock:
+            if self._stop_event.is_set():
+                return False
             if self._stream is not None:
                 return True
             try:
