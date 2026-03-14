@@ -66,7 +66,7 @@ class EditorApp(App[None]):
         theme_name: str = "teleclaude-dark",
         **kwargs: object,
     ) -> None:
-        super().__init__(**kwargs)
+        super().__init__(**kwargs)  # type: ignore[arg-type]
         self.register_theme(_TELECLAUDE_DARK_THEME)
         self.register_theme(_TELECLAUDE_LIGHT_THEME)
         self.register_theme(_TELECLAUDE_DARK_AGENT_THEME)

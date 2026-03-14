@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]
+class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
     ThreadedOutputMixin, OutputDeliveryMixin, BaseAdapter
 ):
     """Base class for UI-enabled adapters.
@@ -412,7 +412,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]
         await handle_voice(
             session_id=session_id,
             audio_path=audio_file_path,
-            context=context,  # type: ignore[arg-type]
+            context=context,
             send_message=_send_notice,
             delete_message=self._delete_message_by_session_id,
         )

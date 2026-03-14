@@ -67,7 +67,7 @@ class SignalIngestCartridge:
                     new_items.append((ikey, item))
 
             # Enrich new items concurrently
-            async def enrich_and_emit(ikey: str, item: dict, *, source_id: str = source_id) -> None:
+            async def enrich_and_emit(ikey: str, item: dict, *, source_id: str = source_id) -> None:  # type: ignore[type-arg]
                 nonlocal count
                 async with sem:
                     summary = await self._ai.summarise(item.get("title", ""), item.get("description", ""))
@@ -86,7 +86,7 @@ class SignalIngestCartridge:
                     "summary": summary,
                     "embedding": embed,
                 }
-                row_id = await self._signal_db.insert_signal_item(payload)
+                row_id = await self._signal_db.insert_signal_item(payload)  # type: ignore[arg-type]
                 if row_id == 0:
                     # Already inserted by a concurrent call (race); skip
                     return
@@ -103,7 +103,7 @@ class SignalIngestCartridge:
                         "source_id": source_id,
                         "item_url": item.get("url", ""),
                         "raw_title": item.get("title", ""),
-                        "tags": tags,
+                        "tags": tags,  # type: ignore[dict-item]
                         "published_at": item.get("published", ""),
                         "fetched_at": fetched_at,
                     },

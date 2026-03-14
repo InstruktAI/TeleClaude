@@ -294,7 +294,7 @@ class OutputDeliveryMixin:
                 await self.client.send_message(
                     session,
                     f"❌ {error_message}",
-                    metadata=self._metadata(),  # type: ignore[attr-defined]
+                    metadata=self._metadata(),
                     cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )
         except Exception as e:
@@ -336,7 +336,7 @@ class OutputDeliveryMixin:
     def _build_footer_text(self, session: Session, status_line: str = "") -> str:
         """Build footer text with session IDs first and status line last."""
         parts: list[str] = []
-        session_lines = self._build_session_id_lines(session)  # type: ignore[attr-defined]
+        session_lines = self._build_session_id_lines(session)
         if session_lines:
             parts.append(session_lines)
         if status_line:

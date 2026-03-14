@@ -16,15 +16,15 @@ def _load_exclusions(repo_root: Path) -> set[str]:
         data_obj = tomllib.load(f)
     if not isinstance(data_obj, dict):
         return set()
-    data = cast(dict[str, object], data_obj)
+    data = cast(dict[str, object], data_obj)  # guard: loose-dict - TOML parsed data — pyproject config
     tool_obj = data.get("tool")
     if not isinstance(tool_obj, dict):
         return set()
-    tool = cast(dict[str, object], tool_obj)
+    tool = cast(dict[str, object], tool_obj)  # guard: loose-dict - TOML parsed data — tool section
     mapping_obj = tool.get("test-mapping")
     if not isinstance(mapping_obj, dict):
         return set()
-    mapping = cast(dict[str, object], mapping_obj)
+    mapping = cast(dict[str, object], mapping_obj)  # guard: loose-dict - TOML parsed data — mapping section
     exclude_obj = mapping.get("exclude")
     if not isinstance(exclude_obj, list):
         return set()

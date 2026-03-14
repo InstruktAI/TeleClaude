@@ -68,7 +68,7 @@ class ChannelOperationsMixin:
 
         if not isinstance(adapter_metadata, SessionAdapterMetadata):
             return
-        parsed = self._parse_optional_int(channel_id)  # type: ignore[attr-defined]
+        parsed = self._parse_optional_int(channel_id)
         if parsed is None:
             return
 
@@ -107,7 +107,7 @@ class ChannelOperationsMixin:
 
         from teleclaude.core.models import ChannelMetadata
 
-        await self.create_channel(session, title, ChannelMetadata())  # type: ignore[attr-defined]
+        await self.create_channel(session, title, ChannelMetadata())
         refreshed = await db.get_session(session.session_id)
         return refreshed or session
 
@@ -152,17 +152,17 @@ class ChannelOperationsMixin:
         from teleclaude.config import config
 
         channel = getattr(message, "channel", None)
-        channel_id = self._parse_optional_int(getattr(channel, "id", None))  # type: ignore[attr-defined]
+        channel_id = self._parse_optional_int(getattr(channel, "id", None))
 
         # Team text channel — route to the person's folder
         if channel_id is not None and channel_id in self._team_channel_map:
             return "team", self._team_channel_map[channel_id]
 
         # Prefer explicit parent_id attribute, then parent.id, then channel.id
-        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))  # type: ignore[attr-defined]
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
         if parent_id is None:
             parent_obj = getattr(channel, "parent", None)
-            parent_id = self._parse_optional_int(getattr(parent_obj, "id", None))  # type: ignore[attr-defined]
+            parent_id = self._parse_optional_int(getattr(parent_obj, "id", None))
         if parent_id is None:
             parent_id = channel_id
 
@@ -231,7 +231,7 @@ class ChannelOperationsMixin:
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         _ = metadata
-        if self._client is None:  # type: ignore[attr-defined]
+        if self._client is None:
             raise AdapterError("Discord adapter not started")
 
         discord_meta = session.get_metadata().get_ui().get_discord()
@@ -245,7 +245,7 @@ class ChannelOperationsMixin:
 
         target_forum_id = self._resolve_target_forum(session)
         if target_forum_id is not None:
-            forum = await self._get_channel(target_forum_id)  # type: ignore[attr-defined]
+            forum = await self._get_channel(target_forum_id)
             if forum is None:
                 raise AdapterError(f"Discord forum channel {target_forum_id} not found")
             if not self._is_forum_channel(forum):
@@ -268,13 +268,13 @@ class ChannelOperationsMixin:
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
-        thread = await self._get_channel(discord_meta.thread_id)  # type: ignore[attr-defined]
+        thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
             return False
         raw_edit_fn = getattr(thread, "edit", None)
         if raw_edit_fn is None:
             return False
-        edit_fn = self._require_async_callable(raw_edit_fn, label="Discord thread edit")  # type: ignore[attr-defined]
+        edit_fn = self._require_async_callable(raw_edit_fn, label="Discord thread edit")
         # Recompute Discord-specific title (same logic as thread creation)
         target_forum_id = self._resolve_target_forum(session)
         discord_title = self._build_thread_title(session, target_forum_id)
@@ -289,13 +289,13 @@ class ChannelOperationsMixin:
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
-        thread = await self._get_channel(discord_meta.thread_id)  # type: ignore[attr-defined]
+        thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
             return False
         raw_delete_fn = getattr(thread, "delete", None)
         if raw_delete_fn is None:
             return False
-        delete_fn = self._require_async_callable(raw_delete_fn, label="Discord thread delete")  # type: ignore[attr-defined]
+        delete_fn = self._require_async_callable(raw_delete_fn, label="Discord thread delete")
         try:
             await delete_fn()
             return True
@@ -307,13 +307,13 @@ class ChannelOperationsMixin:
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
-        thread = await self._get_channel(discord_meta.thread_id)  # type: ignore[attr-defined]
+        thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
             return False
         raw_edit_fn = getattr(thread, "edit", None)
         if raw_edit_fn is None:
             return False
-        edit_fn = self._require_async_callable(raw_edit_fn, label="Discord thread edit")  # type: ignore[attr-defined]
+        edit_fn = self._require_async_callable(raw_edit_fn, label="Discord thread edit")
         try:
             await edit_fn(archived=False, locked=False)
             return True
@@ -325,13 +325,13 @@ class ChannelOperationsMixin:
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
-        thread = await self._get_channel(discord_meta.thread_id)  # type: ignore[attr-defined]
+        thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
             return False
         raw_delete_fn = getattr(thread, "delete", None)
         if raw_delete_fn is None:
             return False
-        delete_fn = self._require_async_callable(raw_delete_fn, label="Discord thread delete")  # type: ignore[attr-defined]
+        delete_fn = self._require_async_callable(raw_delete_fn, label="Discord thread delete")
         try:
             await delete_fn()
             return True
@@ -349,7 +349,7 @@ class ChannelOperationsMixin:
 
     async def cleanup_stale_resources(self) -> int:
         """Scan Discord forums and clean up orphan/stale threads."""
-        if self._client is None:  # type: ignore[attr-defined]
+        if self._client is None:
             return 0
 
         cleaned = 0
@@ -370,7 +370,7 @@ class ChannelOperationsMixin:
         Collects both active and archived threads, then deletes any
         that have no corresponding active session in the database.
         """
-        forum = await self._get_channel(forum_id)  # type: ignore[attr-defined]
+        forum = await self._get_channel(forum_id)
         if forum is None or not self._is_forum_channel(forum):
             return 0
 
@@ -392,7 +392,7 @@ class ChannelOperationsMixin:
 
         cleaned = 0
         for thread in all_threads:
-            thread_id = self._parse_optional_int(getattr(thread, "id", None))  # type: ignore[attr-defined]
+            thread_id = self._parse_optional_int(getattr(thread, "id", None))
             if thread_id is None:
                 continue
 
@@ -402,7 +402,7 @@ class ChannelOperationsMixin:
                 continue
 
             try:
-                delete_fn = self._require_async_callable(getattr(thread, "delete", None), label="thread delete")  # type: ignore[attr-defined]
+                delete_fn = self._require_async_callable(getattr(thread, "delete", None), label="thread delete")
                 await delete_fn()
                 cleaned += 1
                 logger.info("Deleted orphan Discord thread %s in forum %s", thread_id, forum_id)

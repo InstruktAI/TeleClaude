@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from jobs.base import Job, JobResult
@@ -116,7 +116,7 @@ class SessionMemoryExtractionJob(Job):
             processed_at = getattr(session, "help_desk_processed_at", None)
             if processed_at is None or processed_at < last_activity:
                 pending.append(session)
-        return pending
+        return pending  # type: ignore[return-value]
 
     async def _process_session(self, session: object) -> None:
         """Process a single session: extract memories and actionable items."""
@@ -141,7 +141,7 @@ class SessionMemoryExtractionJob(Job):
         await self._extract_and_publish_actionable_items(transcript, session)
 
         # Step 6: Update bookkeeping timestamps
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await self._update_bookkeeping(session_id, now)
 
         # Step 7: Inject /compact into the session's tmux pane
@@ -155,7 +155,7 @@ class SessionMemoryExtractionJob(Job):
                     logger.info("Injected /compact into session %s (tmux: %s)", session_id[:8], tmux_name)
                 else:
                     logger.warning("Tmux session %s not found for /compact injection", tmux_name)
-            except Exception:  # noqa: BLE001 - best-effort compact injection
+            except Exception:
                 logger.warning("Failed to inject /compact into session %s", session_id[:8])
 
     async def _read_transcript_delta(

@@ -44,7 +44,7 @@ def _post_form(url: str, data: dict[str, str], timeout_s: float) -> ApiResponse:
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         body = resp.read().decode("utf-8", errors="replace")
     try:
-        return json.loads(body)
+        return json.loads(body)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {"ok": False, "description": f"Non-JSON response: {body[:2000]}"}
 

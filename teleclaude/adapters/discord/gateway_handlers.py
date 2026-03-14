@@ -135,26 +135,26 @@ class GatewayHandlersMixin:
     # =========================================================================
 
     def _register_cancel_slash_command(self) -> None:
-        if self._client is None:  # type: ignore[attr-defined]
+        if self._client is None:
             return
-        app_commands = getattr(self._discord, "app_commands", None)  # type: ignore[attr-defined]
+        app_commands = getattr(self._discord, "app_commands", None)
         command_tree_cls = getattr(app_commands, "CommandTree", None) if app_commands else None
         command_cls = getattr(app_commands, "Command", None) if app_commands else None
-        object_cls = getattr(self._discord, "Object", None)  # type: ignore[attr-defined]
+        object_cls = getattr(self._discord, "Object", None)
         if not callable(command_tree_cls) or not callable(command_cls):
             logger.warning("Discord app_commands unavailable; /cancel slash command not registered")
             return
 
-        self._tree = command_tree_cls(self._client)  # type: ignore[attr-defined]
+        self._tree = command_tree_cls(self._client)
         cancel_command = command_cls(
             name="cancel",
             description="Send CTRL+C to interrupt the current agent",
-            callback=self._handle_cancel_slash,  # type: ignore[attr-defined]
+            callback=self._handle_cancel_slash,
         )
         if self._guild_id is None or not callable(object_cls):
             logger.warning("DISCORD_GUILD_ID missing or invalid; skipping guild-scoped /cancel registration")
             return
-        add_command = getattr(self._tree, "add_command", None)  # type: ignore[attr-defined]
+        add_command = getattr(self._tree, "add_command", None)
         if callable(add_command):
             add_command(cancel_command, guild=object_cls(id=self._guild_id))
 
@@ -163,7 +163,7 @@ class GatewayHandlersMixin:
     # =========================================================================
 
     def _register_gateway_handlers(self) -> None:
-        if self._client is None:  # type: ignore[attr-defined]
+        if self._client is None:
             raise AdapterError("Discord client not initialized")
 
         async def on_ready() -> None:
@@ -188,12 +188,12 @@ class GatewayHandlersMixin:
     # =========================================================================
 
     async def _handle_on_ready(self) -> None:
-        if self._client is None:  # type: ignore[attr-defined]
+        if self._client is None:
             return
-        user = getattr(self._client, "user", None)  # type: ignore[attr-defined]
+        user = getattr(self._client, "user", None)
         logger.info("Discord adapter ready as %s", user)
         # Mark gateway readiness immediately; follow-up bootstrap can be slow.
-        self._ready_event.set()  # type: ignore[attr-defined]
+        self._ready_event.set()
 
         # Guard: on_ready fires on initial connect AND on RESUME failure.
         # Re-running provisioning with a stale guild cache creates duplicates.
@@ -203,26 +203,26 @@ class GatewayHandlersMixin:
 
         # Auto-provision Discord infrastructure (category + forums)
         try:
-            await self._ensure_discord_infrastructure()  # type: ignore[attr-defined]
+            await self._ensure_discord_infrastructure()
         except Exception as exc:
             logger.warning("Discord infrastructure provisioning failed: %s", exc)
 
-        if self._tree is not None and self._guild_id is not None:  # type: ignore[attr-defined]
-            sync_fn = getattr(self._tree, "sync", None)  # type: ignore[attr-defined]
-            object_cls = getattr(self._discord, "Object", None)  # type: ignore[attr-defined]
+        if self._tree is not None and self._guild_id is not None:
+            sync_fn = getattr(self._tree, "sync", None)
+            object_cls = getattr(self._discord, "Object", None)
             if callable(sync_fn) and callable(object_cls):
                 try:
-                    await self._require_async_callable(sync_fn, label="Discord command tree sync")(  # type: ignore[attr-defined]
+                    await self._require_async_callable(sync_fn, label="Discord command tree sync")(
                         guild=object_cls(id=self._guild_id)
                     )
                 except Exception as exc:
                     logger.warning("Failed to sync Discord slash commands: %s", exc)
 
-        if self._multi_agent:  # type: ignore[attr-defined]
-            add_view = getattr(self._client, "add_view", None)  # type: ignore[attr-defined]
+        if self._multi_agent:
+            add_view = getattr(self._client, "add_view", None)
             if callable(add_view):
                 try:
-                    self._launcher_registration_view = self._build_session_launcher_view()  # type: ignore[attr-defined]
+                    self._launcher_registration_view = self._build_session_launcher_view()
                     add_view(self._launcher_registration_view)
                 except Exception as exc:
                     logger.warning("Failed to register persistent Discord launcher view: %s", exc)
@@ -234,7 +234,7 @@ class GatewayHandlersMixin:
                 all_forum_ids.add(self._all_sessions_channel_id)
             for forum_id in all_forum_ids:
                 try:
-                    await self._post_or_update_launcher(forum_id)  # type: ignore[attr-defined]
+                    await self._post_or_update_launcher(forum_id)
                 except Exception as exc:
                     logger.warning("Failed to post launcher for forum %s: %s", forum_id, exc)
 
@@ -321,8 +321,8 @@ class GatewayHandlersMixin:
                 return
 
         # Process message
-        actor_name = (identity.person_name or "").strip() or self._discord_actor_name(author, user_id)  # type: ignore[attr-defined]
-        actor_avatar_url = self._discord_actor_avatar_url(author)  # type: ignore[attr-defined]
+        actor_name = (identity.person_name or "").strip() or self._discord_actor_name(author, user_id)
+        actor_avatar_url = self._discord_actor_avatar_url(author)
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text=text,
@@ -388,8 +388,8 @@ class GatewayHandlersMixin:
             },
             auto_command=f"agent {get_default_agent()}",
         )
-        result = await get_command_service().create_session(create_cmd)
-        session_id = str(result.get("session_id", ""))
+        result = await get_command_service().create_session(create_cmd)  # type: ignore[assignment]
+        session_id = str(result.get("session_id", ""))  # type: ignore[attr-defined]
         if not session_id:
             logger.error("Discord DM session creation failed for %s", person_name)
             channel = getattr(message, "channel", None)
@@ -411,17 +411,17 @@ class GatewayHandlersMixin:
         channel = getattr(message, "channel", None)
         logger.debug(
             "[DISCORD MSG] channel_id=%s author_id=%s is_bot=%s",
-            self._parse_optional_int(getattr(channel, "id", None)),  # type: ignore[attr-defined]
+            self._parse_optional_int(getattr(channel, "id", None)),
             getattr(author, "id", "?"),
             bool(getattr(author, "bot", False)),
         )
 
-        if self._is_bot_message(message):  # type: ignore[attr-defined]
+        if self._is_bot_message(message):
             return
 
         # Guild verification: drop messages from other guilds
         if self._guild_id is not None:
-            msg_guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))  # type: ignore[attr-defined]
+            msg_guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))
             if msg_guild_id is not None and msg_guild_id != self._guild_id:
                 logger.debug("Ignoring message from guild %s (expected %s)", msg_guild_id, self._guild_id)
                 return
@@ -433,35 +433,35 @@ class GatewayHandlersMixin:
 
         # Check if this message is in a relay thread (escalation forum)
         channel = getattr(message, "channel", None)
-        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))  # type: ignore[attr-defined]
-        if parent_id and parent_id == self._escalation_channel_id:  # type: ignore[attr-defined]
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id and parent_id == self._escalation_channel_id:
             text = getattr(message, "content", None)
             if isinstance(text, str) and text.strip():
-                await self._handle_relay_thread_message(message, text)  # type: ignore[attr-defined]
+                await self._handle_relay_thread_message(message, text)
             return
 
         # Channel gating: only process messages from managed forums
-        if not self._is_managed_message(message):  # type: ignore[attr-defined]
+        if not self._is_managed_message(message):
             logger.debug("Ignoring message from non-managed channel")
             return
 
         # Voice/audio attachment — handle before the text guard
-        audio_attachment = self._extract_audio_attachment(message)  # type: ignore[attr-defined]
+        audio_attachment = self._extract_audio_attachment(message)
         if audio_attachment is not None:
-            await self._handle_voice_attachment(message, audio_attachment)  # type: ignore[attr-defined]
+            await self._handle_voice_attachment(message, audio_attachment)
             return
 
         # Handle image/file attachments (non-audio)
-        file_attachments = self._extract_file_attachments(message)  # type: ignore[attr-defined]
+        file_attachments = self._extract_file_attachments(message)
         if file_attachments:
-            await self._handle_file_attachments(message, file_attachments)  # type: ignore[attr-defined]
+            await self._handle_file_attachments(message, file_attachments)
 
         text = getattr(message, "content", None)
         if not isinstance(text, str) or not text.strip():
             return  # No text — if attachments existed, they were already handled above
 
         try:
-            session = await self._resolve_or_create_session(message, first_message=text)  # type: ignore[attr-defined]
+            session = await self._resolve_or_create_session(message, first_message=text)  # type: ignore
         except Exception as exc:
             logger.error("Discord session resolution failed: %s", exc, exc_info=True)
             return
@@ -469,13 +469,13 @@ class GatewayHandlersMixin:
             return
 
         # Role-based authorization: customers only accepted from help desk threads
-        if self._is_customer_session(session) and not self._is_help_desk_thread(message):  # type: ignore[attr-defined]
+        if self._is_customer_session(session) and not self._is_help_desk_thread(message):
             logger.debug("Ignoring customer message from non-help-desk channel")
             return
 
         # Relay mode: divert customer messages to the relay thread instead of the AI session
         if session.relay_status == "active" and session.relay_discord_channel_id:
-            await self._forward_to_relay_thread(session, text, message)  # type: ignore[attr-defined]
+            await self._forward_to_relay_thread(session, text, message)
             return
 
         # If the session was just created, the first message was bundled into
@@ -491,14 +491,14 @@ class GatewayHandlersMixin:
         }
         author_obj = getattr(message, "author", None)
         if author_obj is not None:
-            channel_metadata["user_name"] = self._discord_actor_name(  # type: ignore[attr-defined]
+            channel_metadata["user_name"] = self._discord_actor_name(
                 author_obj,
                 str(getattr(author_obj, "id", "")),
             )
         metadata = self._metadata(channel_metadata=channel_metadata)  # type: ignore[attr-defined]
         actor_user_id = str(getattr(getattr(message, "author", None), "id", "")).strip() or "unknown"
-        actor_name = self._discord_actor_name(getattr(message, "author", None), actor_user_id)  # type: ignore[attr-defined]
-        actor_avatar_url = self._discord_actor_avatar_url(getattr(message, "author", None))  # type: ignore[attr-defined]
+        actor_name = self._discord_actor_name(getattr(message, "author", None), actor_user_id)
+        actor_avatar_url = self._discord_actor_avatar_url(getattr(message, "author", None))
         channel_id_str = str(getattr(getattr(message, "channel", None), "id", "")) or None
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
@@ -574,12 +574,12 @@ class GatewayHandlersMixin:
 
     async def _handle_thread_delete(self, payload: object) -> None:
         """Handle a Discord thread being deleted externally."""
-        thread_id = self._parse_optional_int(getattr(payload, "thread_id", None))  # type: ignore[attr-defined]
+        thread_id = self._parse_optional_int(getattr(payload, "thread_id", None))
         if thread_id is None:
             return
 
         if self._guild_id is not None:
-            payload_guild_id = self._parse_optional_int(getattr(payload, "guild_id", None))  # type: ignore[attr-defined]
+            payload_guild_id = self._parse_optional_int(getattr(payload, "guild_id", None))
             if payload_guild_id is not None and payload_guild_id != self._guild_id:
                 return
 
@@ -599,12 +599,12 @@ class GatewayHandlersMixin:
         if not archived:
             return
 
-        thread_id = self._parse_optional_int(getattr(payload, "thread_id", None))  # type: ignore[attr-defined]
+        thread_id = self._parse_optional_int(getattr(payload, "thread_id", None))
         if thread_id is None:
             return
 
         if self._guild_id is not None:
-            payload_guild_id = self._parse_optional_int(getattr(payload, "guild_id", None))  # type: ignore[attr-defined]
+            payload_guild_id = self._parse_optional_int(getattr(payload, "guild_id", None))
             if payload_guild_id is not None and payload_guild_id != self._guild_id:
                 return
 
@@ -620,8 +620,8 @@ class GatewayHandlersMixin:
             return True
         if bool(getattr(author, "bot", False)):
             return True
-        if self._client is not None and getattr(self._client, "user", None) is not None:  # type: ignore[attr-defined]
-            self_user_id = getattr(getattr(self._client, "user", None), "id", None)  # type: ignore[attr-defined]
+        if self._client is not None and getattr(self._client, "user", None) is not None:
+            self_user_id = getattr(getattr(self._client, "user", None), "id", None)
             if self_user_id is not None and self_user_id == getattr(author, "id", None):
                 return True
         return False
@@ -637,7 +637,7 @@ class GatewayHandlersMixin:
             return True
 
         channel = getattr(message, "channel", None)
-        channel_id = self._parse_optional_int(getattr(channel, "id", None))  # type: ignore[attr-defined]
+        channel_id = self._parse_optional_int(getattr(channel, "id", None))
 
         # Team text channels are managed
         if channel_id is not None and channel_id in self._team_channel_map:
@@ -648,12 +648,12 @@ class GatewayHandlersMixin:
         if channel_id in managed_ids:
             return True
 
-        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))  # type: ignore[attr-defined]
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
         if parent_id in managed_ids:
             return True
 
         parent_obj = getattr(channel, "parent", None)
-        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))  # type: ignore[attr-defined]
+        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))
         if parent_obj_id in managed_ids:
             return True
 
@@ -674,12 +674,12 @@ class GatewayHandlersMixin:
         if self._help_desk_channel_id is None:
             return True
         channel = getattr(message, "channel", None)
-        channel_id = self._parse_optional_int(getattr(channel, "id", None))  # type: ignore[attr-defined]
+        channel_id = self._parse_optional_int(getattr(channel, "id", None))
         if channel_id == self._help_desk_channel_id:
             return True
-        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))  # type: ignore[attr-defined]
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
         if parent_id == self._help_desk_channel_id:
             return True
         parent_obj = getattr(channel, "parent", None)
-        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))  # type: ignore[attr-defined]
+        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))
         return parent_obj_id == self._help_desk_channel_id

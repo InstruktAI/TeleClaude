@@ -27,7 +27,7 @@ def _load_settings_overrides(agent: str) -> dict[str, object] | None:  # guard: 
     path = SETTINGS_DIR / f"{agent}.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    return json.loads(path.read_text())  # type: ignore[no-any-return]
 
 
 # guard: loose-dict-func - JSON settings merge operates on arbitrary nested dicts
@@ -36,7 +36,7 @@ def _deep_merge(base: dict[str, object], overrides: dict[str, object]) -> dict[s
     merged = base.copy()
     for key, value in overrides.items():
         if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-            merged[key] = _deep_merge(merged[key], value)
+            merged[key] = _deep_merge(merged[key], value)  # type: ignore[arg-type]
         else:
             merged[key] = value
     return merged
@@ -66,7 +66,7 @@ def _load_json_settings(
 
     raw = path.read_text()
     try:
-        return json.loads(raw)
+        return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError as exc:
         print(f"Warning: Failed to load {label} settings (invalid JSON): {exc}")
         return None
@@ -320,10 +320,10 @@ def _configure_json_agent_hooks(
     allowed_events = set(hooks_map.keys())
 
     existing_hooks = settings.get("hooks", {})
-    settings["hooks"] = _prune_agent_hooks(existing_hooks, allowed_events)
+    settings["hooks"] = _prune_agent_hooks(existing_hooks, allowed_events)  # type: ignore[arg-type]
 
     current_hooks = settings.get("hooks", {})
-    settings["hooks"] = merge_hooks(current_hooks, hooks_map)
+    settings["hooks"] = merge_hooks(current_hooks, hooks_map)  # type: ignore[arg-type]
 
     if enable_hooks_flag:
         tools_cfg = settings.get("tools")

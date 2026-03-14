@@ -106,7 +106,7 @@ def setup_profile(profile_dir: Path) -> bool:
         # Store cookies captured before close
         cookies = []
 
-        def capture_cookies():
+        def capture_cookies():  # type: ignore[no-untyped-def]
             nonlocal cookies
             try:
                 cookies = context.cookies()
@@ -125,13 +125,13 @@ def setup_profile(profile_dir: Path) -> bool:
 
         try:
             while len(context.pages) > 0:
-                capture_cookies()
+                capture_cookies()  # type: ignore[no-untyped-call]
                 time.sleep(2)
         except Exception:
             pass
 
         # Final capture attempt
-        capture_cookies()
+        capture_cookies()  # type: ignore[no-untyped-call]
 
     cookie_names = {c["name"] for c in cookies}
     essential = {"SID", "HSID", "SSID", "APISID", "SAPISID"}
@@ -164,7 +164,7 @@ def refresh_cookies(
     Returns:
         True if successful
     """
-    from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]
+    from playwright.sync_api import sync_playwright  # type: ignore[unused-ignore]
 
     if not profile_dir.exists():
         print(f"Error: Profile not found at {profile_dir}", file=sys.stderr)
@@ -228,7 +228,7 @@ def refresh_cookies(
     return True
 
 
-def main():
+def main():  # type: ignore[no-untyped-def]
     parser = argparse.ArgumentParser(
         description="Refresh YouTube cookies via Playwright",
         epilog="First run with --setup to log in, then run without flags to refresh.",
@@ -270,4 +270,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main()  # type: ignore[no-untyped-call]

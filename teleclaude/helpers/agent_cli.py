@@ -147,7 +147,7 @@ def _extract_json_object(text: str) -> str:
     """Extract JSON object from text that may contain markdown fences or extra output."""
     fence_match = __import__("re").search(r"```(?:json)?\s*\n(.*?)\n```", text, __import__("re").DOTALL)
     if fence_match:
-        return fence_match.group(1).strip()
+        return fence_match.group(1).strip()  # type: ignore[no-any-return]
 
     brace_count = 0
     start_idx = -1
@@ -186,7 +186,7 @@ def _load_schema(
     else:
         raise ValueError("ERROR: schema is required (--schema-json or --schema-file)")
 
-    return json.loads(_extract_json_object(text))
+    return json.loads(_extract_json_object(text))  # type: ignore[no-any-return]
 
 
 def _pick_agent(preferred: AgentName | None) -> AgentName:

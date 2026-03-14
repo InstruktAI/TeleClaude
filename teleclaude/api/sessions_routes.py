@@ -567,7 +567,7 @@ async def end_session(
             await db.update_session(session_id, lifecycle_status="closing")
 
         event_bus.emit(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, close_context)
-        return JSONResponse(  # pyright: ignore[reportReturnType]
+        return JSONResponse(  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
             status_code=202,
             content={
                 "status": "accepted",

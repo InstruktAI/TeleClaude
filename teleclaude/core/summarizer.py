@@ -138,11 +138,11 @@ async def _call_summarizer(
 
 
 async def _call_title_summarizer(prompt: str) -> str | None:
-    return await _call_summarizer(prompt, TITLE_SCHEMA, _parse_title_response)
+    return await _call_summarizer(prompt, TITLE_SCHEMA, _parse_title_response)  # type: ignore[no-any-return]
 
 
 async def _call_summary_summarizer(prompt: str) -> str:
-    return await _call_summarizer(prompt, SUMMARY_SCHEMA, _parse_summary_response)
+    return await _call_summarizer(prompt, SUMMARY_SCHEMA, _parse_summary_response)  # type: ignore[no-any-return]
 
 
 def _parse_title_response(text: str) -> str | None:

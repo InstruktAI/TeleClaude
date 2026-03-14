@@ -50,7 +50,7 @@ def decode_message(data: bytes) -> JsonDict:
     """Decode a framed JSON message from raw bytes (body only, no header)."""
     if len(data) > _MAX_FRAME_BYTES:
         raise FrameTooLargeError(f"Message too large: {len(data)} bytes (max {_MAX_FRAME_BYTES})")
-    return json.loads(data.decode("utf-8"))
+    return json.loads(data.decode("utf-8"))  # type: ignore[no-any-return]
 
 
 async def read_frame(reader: asyncio.StreamReader) -> JsonDict:
@@ -60,7 +60,7 @@ async def read_frame(reader: asyncio.StreamReader) -> JsonDict:
     if length > _MAX_FRAME_BYTES:
         raise FrameTooLargeError(f"Incoming frame too large: {length} bytes (max {_MAX_FRAME_BYTES})")
     body = await reader.readexactly(length)
-    return json.loads(body.decode("utf-8"))
+    return json.loads(body.decode("utf-8"))  # type: ignore[no-any-return]
 
 
 async def write_frame(writer: asyncio.StreamWriter, obj: JsonDict) -> None:
@@ -80,9 +80,9 @@ def request_to_dict(req: SandboxRequest) -> JsonDict:
 
 def request_from_dict(d: JsonDict) -> SandboxRequest:
     return SandboxRequest(
-        cartridge_name=d["cartridge_name"],
-        envelope=d["envelope"],
-        catalog_snapshot=d.get("catalog_snapshot", []),
+        cartridge_name=d["cartridge_name"],  # type: ignore[arg-type]
+        envelope=d["envelope"],  # type: ignore[arg-type]
+        catalog_snapshot=d.get("catalog_snapshot", []),  # type: ignore[arg-type]
     )
 
 
@@ -99,7 +99,7 @@ def response_to_dict(resp: SandboxResponse) -> JsonDict:
 
 def response_from_dict(d: JsonDict) -> SandboxResponse:
     return SandboxResponse(
-        envelope=d.get("envelope"),
-        error=d.get("error"),
-        duration_ms=d.get("duration_ms", 0.0),
+        envelope=d.get("envelope"),  # type: ignore[arg-type]
+        error=d.get("error"),  # type: ignore[arg-type]
+        duration_ms=d.get("duration_ms", 0.0),  # type: ignore[arg-type]
     )

@@ -33,7 +33,7 @@ def migrate_state_files(todos_root: Path) -> dict[str, int]:
             data: object = json.loads(state_json.read_text(encoding="utf-8"))
 
             # Write YAML
-            yaml_content = cast(str, yaml.dump(data, default_flow_style=False, sort_keys=False))  # type: ignore[misc]
+            yaml_content = cast(str, yaml.dump(data, default_flow_style=False, sort_keys=False))
             state_yaml.write_text(yaml_content, encoding="utf-8")
 
             # Remove JSON file

@@ -52,4 +52,15 @@ echo "Running mypy"
 $MYPY
 
 echo "Running pylint"
-$PYLINT teleclaude
+# pylint 4.x returns non-zero for convention/refactor findings even with --fail-under.
+# We use --exit-zero and check the score ourselves.
+pylint_output=$($PYLINT teleclaude --exit-zero 2>&1)
+pylint_score=$(echo "$pylint_output" | grep "rated at" | grep -o '[0-9]*\.[0-9]*' | head -1)
+echo "$pylint_output" | tail -3
+if [ -n "$pylint_score" ]; then
+    required="9.00"
+    if [ "$(echo "$pylint_score < $required" | bc -l)" = "1" ]; then
+        echo "pylint score $pylint_score is below minimum $required"
+        exit 1
+    fi
+fi

@@ -546,8 +546,8 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
 
     for file_path, metadata in snippet_cache:
         snippet_id_val = metadata.get("id")
-        description = metadata.get("description")
-        snippet_type = metadata.get("type")
+        description = metadata.get("description")  # type: ignore[assignment]
+        snippet_type = metadata.get("type")  # type: ignore[assignment]
         snippet_scope = metadata.get("scope")
         if (
             not isinstance(snippet_id_val, str)

@@ -122,7 +122,7 @@ def _project_content_block(
             return
         yield ProjectedBlock(
             block_type="text",
-            block=block,
+            block=block,  # type: ignore[arg-type]
             role=role,
             timestamp=entry_ts,
             entry_index=entry_idx,
@@ -134,7 +134,7 @@ def _project_content_block(
         if policy.include_thinking and thinking_text.strip():
             yield ProjectedBlock(
                 block_type="thinking",
-                block=block,
+                block=block,  # type: ignore[arg-type]
                 role="assistant",
                 timestamp=entry_ts,
                 entry_index=entry_idx,
@@ -146,7 +146,7 @@ def _project_content_block(
         if tool_name in policy.visible_tool_names or policy.include_tools:
             yield ProjectedBlock(
                 block_type="tool_use",
-                block=block,
+                block=block,  # type: ignore[arg-type]
                 role="assistant",
                 timestamp=entry_ts,
                 entry_index=entry_idx,
@@ -156,7 +156,7 @@ def _project_content_block(
     if block_type == "tool_result" and policy.include_tool_results:
         yield ProjectedBlock(
             block_type="tool_result",
-            block=block,
+            block=block,  # type: ignore[arg-type]
             role="assistant",
             timestamp=entry_ts,
             entry_index=entry_idx,
@@ -178,7 +178,7 @@ def _project_message_blocks(
         return
 
     content = message.get("content")
-    if role == "user" and _is_user_tool_result_only_message(message):  # type: ignore[arg-type]
+    if role == "user" and _is_user_tool_result_only_message(message):
         yield from _project_user_tool_results(
             content,
             policy,
@@ -260,7 +260,7 @@ def project_entries(
         if not isinstance(message, dict):
             continue
         yield from _project_message_blocks(
-            message,
+            message,  # type: ignore[arg-type]
             policy,
             entry_ts=entry_ts,
             entry_idx=entry_idx,

@@ -22,8 +22,8 @@ class ElevenLabsBackend:
             True if successful, False otherwise
         """
         try:
-            from elevenlabs.client import ElevenLabs  # type: ignore[import-not-found]
-            from elevenlabs.play import play  # type: ignore[import-not-found]
+            from elevenlabs.client import ElevenLabs
+            from elevenlabs.play import play
 
             api_key = os.getenv("ELEVENLABS_API_KEY")
             if not api_key:

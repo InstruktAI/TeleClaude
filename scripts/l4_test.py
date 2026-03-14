@@ -80,15 +80,15 @@ async def ask_agent(
         system=system_prompt,
         messages=[{"role": "user", "content": question}],
     )
-    return response.content[0].text
+    return response.content[0].text  # type: ignore[union-attr]
 
 
 async def judge_equivalence(
     client: anthropic.AsyncAnthropic,
-    test: dict,
+    test: dict,  # type: ignore[type-arg]
     l1_response: str,
     l4_response: str,
-) -> dict:
+) -> dict:  # type: ignore[type-arg]
     """Have a judge model assess whether L4 response is behaviorally equivalent to L1."""
     judge_prompt = f"""You are evaluating whether two AI agent responses demonstrate equivalent behavioral compliance with a set of rules.
 
@@ -130,25 +130,25 @@ Respond with JSON only:
         max_tokens=500,
         messages=[{"role": "user", "content": judge_prompt}],
     )
-    text = response.content[0].text
+    text = response.content[0].text  # type: ignore[union-attr]
     # Extract JSON from response
     try:
         # Try to find JSON in the response
         start = text.index("{")
         end = text.rindex("}") + 1
-        return json.loads(text[start:end])
+        return json.loads(text[start:end])  # type: ignore[no-any-return]
     except (ValueError, json.JSONDecodeError):
         return {"equivalent": None, "score": 0, "verdict": f"Parse error: {text[:200]}"}
 
 
 async def run_test(
     client: anthropic.AsyncAnthropic,
-    test: dict,
+    test: dict,  # type: ignore[type-arg]
     l1_prompt: str,
     l4_prompt: str,
     idx: int,
     total: int,
-) -> dict:
+) -> dict:  # type: ignore[type-arg]
     """Run a single test: ask both agents, then judge."""
     print(f"  [{idx + 1}/{total}] {test['id']}...", end=" ", flush=True)
 
@@ -173,7 +173,7 @@ async def run_test(
     }
 
 
-async def main():
+async def main():  # type: ignore[no-untyped-def]
     if len(sys.argv) < 3:
         print(f"Usage: {sys.argv[0]} <l1_file> <l4_file> [output_json]")
         sys.exit(1)
@@ -220,4 +220,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())  # type: ignore[no-untyped-call]

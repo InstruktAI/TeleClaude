@@ -53,22 +53,22 @@ class SignalClusterCartridge:
         # Refine each group by embeddings
         refined: list[list[dict[str, object]]] = []
         for group in tag_groups:
-            refined.extend(refine_by_embeddings(group, self._config.embedding_similarity_threshold))
+            refined.extend(refine_by_embeddings(group, self._config.embedding_similarity_threshold))  # type: ignore[arg-type]
 
         recent_tags = await self._signal_db.get_recent_cluster_tags(hours=self._config.novelty_overlap_hours)
         clusters_formed = 0
 
-        for group in refined:
+        for group in refined:  # type: ignore[assignment]
             if len(group) < self._config.min_cluster_size:
                 continue
 
-            member_ids = [int(item["id"]) for item in group if item.get("id")]  # type: ignore[arg-type]
+            member_ids = [int(item["id"]) for item in group if item.get("id")]
             ikeys = [str(item.get("idempotency_key", "")) for item in group]
             cluster_key = build_cluster_key(ikeys)
 
             all_tags: list[str] = []
             for item in group:
-                all_tags.extend(item.get("tags", []))  # type: ignore[arg-type]
+                all_tags.extend(item.get("tags", []))
             unique_tags = list(dict.fromkeys(all_tags))
 
             is_burst = detect_burst(group, self._config.burst_threshold)
@@ -112,7 +112,7 @@ class SignalClusterCartridge:
                 payload={
                     "cluster_id": cluster_id,
                     "member_count": len(group),
-                    "tags": unique_tags,
+                    "tags": unique_tags,  # type: ignore[dict-item]
                     "is_burst": is_burst,
                     "is_novel": is_novel,
                     "summary": summary,

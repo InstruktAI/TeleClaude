@@ -154,8 +154,8 @@ async def emit_deployment_failed(
             "slug": slug,
             "branch": branch,
             "sha": sha,
-            "conflict_evidence": conflict_evidence or [],
-            "diagnostics": diagnostics or [],
+            "conflict_evidence": conflict_evidence or [],  # type: ignore[dict-item]
+            "diagnostics": diagnostics or [],  # type: ignore[dict-item]
             "next_action": next_action,
             "blocked_at": ts,
         },

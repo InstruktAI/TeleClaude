@@ -292,7 +292,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
             if not handed_off_at:
                 continue
             try:
-                handoff_time = datetime.fromisoformat(handed_off_at)
+                handoff_time = datetime.fromisoformat(handed_off_at)  # type: ignore[arg-type]
                 if (now - handoff_time).total_seconds() < _INTEGRATION_LEASE_TTL_SECONDS:
                     continue  # Fresh handoff — not yet recoverable
             except (ValueError, TypeError):
@@ -312,14 +312,14 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
             continue
 
         # Verify SHA not already ancestor of main
-        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
+        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)  # type: ignore[list-item]
         if rc == 0:
             continue
 
         candidates.append(
             ScannedCandidate(
-                key=CandidateKey(slug=slug, branch=branch, sha=sha),
-                ready_at=ready_at,
+                key=CandidateKey(slug=slug, branch=branch, sha=sha),  # type: ignore[arg-type]
+                ready_at=ready_at,  # type: ignore[arg-type]
             )
         )
 
@@ -354,7 +354,7 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
         if not handed_off_at:
             return None
         try:
-            handoff_time = datetime.fromisoformat(handed_off_at)
+            handoff_time = datetime.fromisoformat(handed_off_at)  # type: ignore[arg-type]
             if (datetime.now(tz=UTC) - handoff_time).total_seconds() < _INTEGRATION_LEASE_TTL_SECONDS:
                 return None
         except (ValueError, TypeError):
@@ -374,13 +374,13 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
         return None
 
     # Verify SHA not already ancestor of main
-    rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
+    rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)  # type: ignore[list-item]
     if rc == 0:
         return None
 
     return ScannedCandidate(
-        key=CandidateKey(slug=slug, branch=branch, sha=sha),
-        ready_at=ready_at,
+        key=CandidateKey(slug=slug, branch=branch, sha=sha),  # type: ignore[arg-type]
+        ready_at=ready_at,  # type: ignore[arg-type]
     )
 
 

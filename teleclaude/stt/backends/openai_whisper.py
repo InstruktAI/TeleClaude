@@ -55,8 +55,8 @@ class OpenAIWhisperBackend:
             if language:
                 params["language"] = language
 
-            transcript = await self._client.audio.transcriptions.create(**params)  # type: ignore[misc, call-overload]
+            transcript = await self._client.audio.transcriptions.create(**params)  # type: ignore
 
-        text: str = str(transcript.text).strip()  # type: ignore[misc]
+        text: str = str(transcript.text).strip()
         logger.debug("Whisper STT: transcribed %d chars", len(text))
         return text

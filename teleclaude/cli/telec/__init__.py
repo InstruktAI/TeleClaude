@@ -135,7 +135,7 @@ from teleclaude.cli.telec.help import (
 )
 
 # Re-export surface symbols
-from teleclaude.cli.telec.surface import (
+from teleclaude.cli.telec.surface import (  # type: ignore[attr-defined]
     _H,
     CLI_SURFACE,
     HELP_SUBCOMMAND_EXPANSIONS,

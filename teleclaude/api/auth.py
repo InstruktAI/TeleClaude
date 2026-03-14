@@ -299,7 +299,7 @@ def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
     return not is_command_allowed(tool_name, identity.system_role, human_role)
 
 
-def require_clearance(tool_name: str):
+def require_clearance(tool_name: str):  # type: ignore[no-untyped-def]
     """FastAPI dependency factory: check role clearance for a specific tool.
 
     Maps CLI endpoint names to command-surface names and checks role clearance.

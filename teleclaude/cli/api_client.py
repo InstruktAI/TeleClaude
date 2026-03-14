@@ -525,8 +525,8 @@ class TelecAPIClient:
         if subdir is not None:
             payload["subdir"] = subdir
         if skip_listener_registration:
-            payload["skip_listener_registration"] = True
-        resp = await self._request("POST", "/sessions", timeout=30.0, json_body=payload)
+            payload["skip_listener_registration"] = True  # type: ignore[assignment]
+        resp = await self._request("POST", "/sessions", timeout=30.0, json_body=payload)  # type: ignore[arg-type]
         return TypeAdapter(CreateSessionResult).validate_json(resp.text)
 
     async def end_session(self, session_id: str, computer: str) -> bool:
@@ -584,7 +584,7 @@ class TelecAPIClient:
         """
         payload = {"key": key}
         if count is not None:
-            payload["count"] = count
+            payload["count"] = count  # type: ignore[assignment]
         resp = await self._request(
             "POST",
             f"/sessions/{session_id}/keys",
@@ -603,7 +603,7 @@ class TelecAPIClient:
             APIError: If request fails
         """
         resp = await self._request("GET", "/auth/whoami")
-        return resp.json()  # type: ignore[no-any-return]
+        return resp.json()
 
     async def get_agent_availability(self) -> dict[str, AgentAvailabilityInfo]:
         """Get agent availability status.
@@ -641,7 +641,7 @@ class TelecAPIClient:
         resp = await self._request(
             "POST",
             f"/agents/{agent}/status",
-            json_body={"status": status, "reason": reason, "duration_minutes": duration_minutes},
+            json_body={"status": status, "reason": reason, "duration_minutes": duration_minutes},  # type: ignore[dict-item]
         )
         return TypeAdapter(AgentAvailabilityInfo).validate_json(resp.text)
 

@@ -109,9 +109,9 @@ def _load_checkout_root() -> Path:
     raw_obj = loaded_config if loaded_config is not None else {}
     if not isinstance(raw_obj, dict):
         return DEFAULT_CHECKOUT_ROOT
-    raw = cast(dict[str, object], raw_obj)
+    raw = cast(dict[str, object], raw_obj)  # guard: loose-dict - YAML parsed data — git repo config
     gh_obj = raw.get("git", {})
-    gh = cast(dict[str, object], gh_obj) if isinstance(gh_obj, dict) else {}
+    gh = cast(dict[str, object], gh_obj) if isinstance(gh_obj, dict) else {}  # guard: loose-dict - YAML parsed data — GitHub config section
     root = gh.get("checkout_root")
     if not isinstance(root, str) or not root:
         return DEFAULT_CHECKOUT_ROOT

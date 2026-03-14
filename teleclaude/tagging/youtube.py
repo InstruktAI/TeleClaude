@@ -301,7 +301,7 @@ def call_agent(
             thinking_mode=thinking_mode,
             system="You are a helpful assistant.",
             prompt=prompt,
-            schema=schema,
+            schema=schema,  # type: ignore[arg-type]
             tools="web_search" if use_web else "",
             timeout_s=60,
         )
@@ -349,7 +349,7 @@ def process_batch(
             item = by_id.get(row.channel_id, {})
             tagged = _safe_get_list(item, "tags")
             evidence = item.get("evidence")
-            valid = validate_tags(tagged, allowed_tags, evidence)
+            valid = validate_tags(tagged, allowed_tags, evidence)  # type: ignore[arg-type]
 
             if not valid:
                 # Retry once
@@ -360,7 +360,9 @@ def process_batch(
                     if retry_items and isinstance(retry_items[0], dict):
                         retry_item = retry_items[0]
                         valid = validate_tags(
-                            _safe_get_list(retry_item, "tags"), allowed_tags, retry_item.get("evidence")
+                            _safe_get_list(retry_item, "tags"),
+                            allowed_tags,
+                            retry_item.get("evidence"),  # type: ignore[arg-type]
                         )
                 valid = valid or ["n/a"]
 

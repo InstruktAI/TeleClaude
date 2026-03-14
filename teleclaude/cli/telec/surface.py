@@ -2,7 +2,7 @@
 
 from __future__ import annotations  # noqa: I001
 
-from .surface_types import (  # type: ignore[reportUnusedImport]
+from .surface_types import (
     CommandAuth,
     CommandDef,
     Flag,

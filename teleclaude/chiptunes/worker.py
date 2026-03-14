@@ -208,13 +208,13 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             if self._player is not None:
                 position = self._player.playback_position_seconds
             return ChiptunesRuntimeState(
-                playback=playback,
+                playback=playback,  # type: ignore[arg-type]
                 track_path=str(self._current_track) if self._current_track is not None else "",
                 position_seconds=max(0.0, position),
                 history=[str(item) for item in self._history],
                 history_index=self._history_index,
                 pending_command_id=self._pending_command_id,
-                pending_action=self._pending_action,
+                pending_action=self._pending_action,  # type: ignore[arg-type]
             )
 
     def handle_cmd(self, cmd: dict[str, object]) -> None:  # guard: loose-dict - cmd payload
@@ -260,7 +260,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                     self._player.stop()
 
                 player = ChiptunesPlayer(volume=self._volume)
-                player.on_track_end = lambda reason=None: self._on_track_end(reason, gen=gen)
+                player.on_track_end = lambda reason=None: self._on_track_end(reason, gen=gen)  # type: ignore[misc]
                 self._player = player
                 self._current_track = track
                 start_paused = self._paused_requested

@@ -15,12 +15,12 @@ from teleclaude.chiptunes.sid_parser import SIDHeader, is_pal, parse_sid_file, s
 from teleclaude.chiptunes.sid_renderer import SIDRenderer
 
 try:
-    import sounddevice as sd  # type: ignore[import-untyped]
+    import sounddevice as sd
 
     _sounddevice_available = True  # pylint: disable=invalid-name
 except ImportError:
     _sounddevice_available = False  # pylint: disable=invalid-name
-    sd = None  # type: ignore[assignment]
+    sd = None
 
 logger = get_logger(__name__)
 
@@ -175,7 +175,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 return
 
         self._log_stream_status(status)
-        out_view = memoryview(out)[:chunk_size]  # type: ignore[index]
+        out_view = memoryview(out)[:chunk_size]  # type: ignore[arg-type]
         pos = 0
 
         # Consume any carry-over first to preserve strict FIFO sample ordering.
@@ -271,8 +271,8 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             stream = self._stream
             self._stream = None
         try:
-            stream.stop()  # type: ignore[union-attr]
-            stream.close()  # type: ignore[union-attr]
+            stream.stop()  # type: ignore
+            stream.close()  # type: ignore
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.debug("Stream cleanup error: %s", exc)
 

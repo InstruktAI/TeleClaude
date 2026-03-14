@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 try:
-    from py65emu.cpu import CPU as _CPU  # type: ignore[import-untyped]
-    from py65emu.mmu import MMU  # type: ignore[import-untyped]
+    from py65emu.cpu import CPU as _CPU
+    from py65emu.mmu import MMU
 
     _py65emu_available = True  # pylint: disable=invalid-name
 except ImportError:
     _py65emu_available = False  # pylint: disable=invalid-name
-    _CPU = None  # type: ignore[assignment]
-    MMU = object  # type: ignore[misc, assignment]
+    _CPU = None  # type: ignore[unused-ignore]
+    MMU = object  # type: ignore[unused-ignore]
 
 if TYPE_CHECKING:
     from teleclaude.chiptunes.sid_parser import SIDHeader

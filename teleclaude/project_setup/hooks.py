@@ -89,7 +89,7 @@ def _add_precommit_framework_hook(config_path: Path) -> None:
         print("telec init: unexpected .pre-commit-config.yaml structure, skipping hook.")
         return
 
-    config = cast(dict[str, object], config_obj)
+    config = cast(dict[str, object], config_obj)  # guard: loose-dict - JSON config from external tool
 
     repos_obj = config.get("repos")
     if repos_obj is None:
@@ -101,7 +101,7 @@ def _add_precommit_framework_hook(config_path: Path) -> None:
         print("telec init: unexpected repos structure in .pre-commit-config.yaml, skipping hook.")
         return
 
-    teleclaude_hook: dict[str, object] = {
+    teleclaude_hook: dict[str, object] = {  # guard: loose-dict - JSON config construction for external tool
         "repo": "local",
         "hooks": [
             {

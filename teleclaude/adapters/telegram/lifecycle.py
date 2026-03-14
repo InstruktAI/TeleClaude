@@ -38,7 +38,7 @@ logger = get_logger(__name__)
 
 # Type alias for python-telegram-bot's Application generic.
 # The library uses dict for user/chat/bot data storage — intentional design.
-TelegramApp = Application[  # type: ignore[misc]
+TelegramApp = Application[
     ExtBot[None],
     ContextTypes.DEFAULT_TYPE,
     dict[object, object],  # User data storage
@@ -127,7 +127,7 @@ class LifecycleMixin:
         # Create application with concurrent updates enabled
         # CRITICAL: concurrent_updates must be > 0 or updates can be silently dropped
         # when handlers are busy (e.g., during active polling)
-        builder = Application.builder()  # type: ignore[misc]
+        builder = Application.builder()
         builder.token(self.bot_token)
         # Force IPv4 for Telegram API calls. Some networks advertise IPv6 (AAAA) without
         # providing a working IPv6 route, which can cause connect timeouts inside httpx.
@@ -142,9 +142,9 @@ class LifecycleMixin:
         # Requires python-telegram-bot[rate-limiter] (aiolimiter package).
         # If the dependency is missing, log a warning and continue without it.
         try:
-            from telegram.ext import AIORateLimiter  # type: ignore[attr-defined]
+            from telegram.ext import AIORateLimiter
 
-            builder.rate_limiter(AIORateLimiter(max_retries=3))  # type: ignore[misc]
+            builder.rate_limiter(AIORateLimiter(max_retries=3))
             logger.info("PTB AIORateLimiter enabled for Telegram transport-level rate control")
         except (ImportError, AttributeError):
             logger.warning(

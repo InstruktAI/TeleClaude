@@ -94,7 +94,7 @@ class MemorySearch:
                     sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                     params["identity_key"] = identity_key
                 sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-                result = await session.exec(text(sql).bindparams(**params))  # noqa: raw-sql
+                result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # noqa: raw-sql
                 rows = result.fetchall()
                 return [_row_to_search_result(row) for row in rows]
             except Exception:
@@ -117,7 +117,7 @@ class MemorySearch:
                 sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                 params["identity_key"] = identity_key
             sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-            result = await session.exec(text(sql).bindparams(**params))  # noqa: raw-sql
+            result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # noqa: raw-sql
             rows = result.fetchall()
             return [_row_to_search_result(row) for row in rows]
 
@@ -131,7 +131,7 @@ class MemorySearch:
         """Get observations around an anchor by created_at_epoch."""
         async with db._session() as session:
             # Get anchor epoch
-            result = await session.exec(
+            result = await session.exec(  # type: ignore[call-overload]
                 text(  # noqa: raw-sql
                     "SELECT created_at_epoch FROM memory_observations WHERE id = :id"
                 ).bindparams(id=anchor_id)
@@ -151,12 +151,12 @@ class MemorySearch:
                 before_sql += " AND project = :project"
                 params_before["project"] = project
             before_sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-            result = await session.exec(text(before_sql).bindparams(**params_before))  # noqa: raw-sql
+            result = await session.exec(text(before_sql).bindparams(**params_before))  # type: ignore[call-overload]    # noqa: raw-sql
             before_rows = list(reversed(result.fetchall()))
 
             # Anchor itself
             anchor_sql = f"SELECT {_SEARCH_COLUMNS} FROM memory_observations WHERE id = :id"  # noqa: raw-sql
-            result = await session.exec(text(anchor_sql).bindparams(id=anchor_id))  # noqa: raw-sql
+            result = await session.exec(text(anchor_sql).bindparams(id=anchor_id))  # type: ignore[call-overload]    # noqa: raw-sql
             anchor_rows = result.fetchall()
 
             # After anchor
@@ -169,7 +169,7 @@ class MemorySearch:
                 after_sql += " AND project = :project"
                 params_after["project"] = project
             after_sql += " ORDER BY created_at_epoch ASC LIMIT :limit"
-            result = await session.exec(text(after_sql).bindparams(**params_after))  # noqa: raw-sql
+            result = await session.exec(text(after_sql).bindparams(**params_after))  # type: ignore[call-overload]    # noqa: raw-sql
             after_rows = result.fetchall()
 
             all_rows = before_rows + list(anchor_rows) + list(after_rows)
@@ -192,7 +192,7 @@ class MemorySearch:
         sql += " ORDER BY created_at_epoch DESC"
 
         async with db._session() as session:
-            result = await session.exec(text(sql).bindparams(**params))  # noqa: raw-sql
+            result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # noqa: raw-sql
             rows = result.fetchall()
             return [_row_to_search_result(row) for row in rows]
 
@@ -206,8 +206,8 @@ class MemorySearch:
         """Sync search for hook receiver context generation."""
         engine = create_engine(f"sqlite:///{db_path}")
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # noqa: raw-sql
+            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # noqa: raw-sql
 
             # Try FTS5 first
             try:
@@ -220,7 +220,7 @@ class MemorySearch:
                     sql += " AND project = :project"
                     params["project"] = project
                 sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-                result = session.exec(text(sql).bindparams(**params))  # noqa: raw-sql
+                result = session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # noqa: raw-sql
                 rows = result.fetchall()
                 return [_row_to_search_result(row) for row in rows]
             except Exception:
@@ -237,6 +237,6 @@ class MemorySearch:
                 sql += " AND project = :project"
                 params["project"] = project
             sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-            result = session.exec(text(sql).bindparams(**params))  # noqa: raw-sql
+            result = session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # noqa: raw-sql
             rows = result.fetchall()
             return [_row_to_search_result(row) for row in rows]

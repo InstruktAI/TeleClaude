@@ -42,14 +42,14 @@ async def _prepare_step_input_assessment(
     from teleclaude.core.next_machine.prepare_helpers import stamp_audit
 
     _now = datetime.now(UTC).isoformat()
-    stamp_audit(state, "input_assessment", "started_at", _now)  # type: ignore[arg-type]
+    stamp_audit(state, "input_assessment", "started_at", _now)
 
     if check_file_has_content(cwd, f"todos/{slug}/requirements.md"):
         # Emit input_consumed event before transitioning (R13)
         from teleclaude.core.next_machine.prepare_helpers import record_input_consumed
 
         await asyncio.to_thread(record_input_consumed, cwd, slug)
-        stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())
         state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return True, ""  # loop
@@ -110,14 +110,14 @@ async def _prepare_step_requirements_review(
     """REQUIREMENTS_REVIEW: awaiting review verdict."""
     from teleclaude.core.next_machine.prepare_helpers import stamp_audit
 
-    stamp_audit(state, "requirements_review", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+    stamp_audit(state, "requirements_review", "started_at", datetime.now(UTC).isoformat())
 
     req_review = state.get("requirements_review", {})
     verdict = (isinstance(req_review, dict) and req_review.get("verdict")) or ""
 
     if verdict == "approve":
-        stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
-        stamp_audit(state, "requirements_review", "verdict", "approve")  # type: ignore[arg-type]
+        stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
+        stamp_audit(state, "requirements_review", "verdict", "approve")
         state["prepare_phase"] = PreparePhase.TEST_SPEC_BUILD.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
@@ -140,14 +140,14 @@ async def _prepare_step_requirements_review(
 
     if verdict == "needs_work":
         if isinstance(req_review, dict):
-            rounds = int(req_review.get("rounds", 0)) + 1
+            rounds = int(req_review.get("rounds", 0)) + 1  # type: ignore[arg-type]
             req_review["rounds"] = rounds
             req_review["verdict"] = ""
         else:
             rounds = 1
         # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
-            state["requirements_review"] = req_review  # type: ignore[assignment]
+            state["requirements_review"] = req_review
             state["prepare_phase"] = PreparePhase.BLOCKED.value
             await asyncio.to_thread(write_phase_state, cwd, slug, state)
             return False, (
@@ -165,10 +165,10 @@ async def _prepare_step_requirements_review(
             f"Requirements need revision: {open_count} unresolved finding(s). "
             f"See todos/{slug}/requirements-review-findings.md."
         )
-        stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
-        stamp_audit(state, "requirements_review", "verdict", "needs_work")  # type: ignore[arg-type]
-        stamp_audit(state, "requirements_review", "rounds", rounds)  # type: ignore[arg-type]
-        state["requirements_review"] = req_review  # type: ignore[assignment]
+        stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
+        stamp_audit(state, "requirements_review", "verdict", "needs_work")
+        stamp_audit(state, "requirements_review", "rounds", rounds)
+        state["requirements_review"] = req_review
         state["prepare_phase"] = PreparePhase.TRIANGULATION.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         # Compute diff context for re-dispatch (I-2)
@@ -187,7 +187,9 @@ async def _prepare_step_requirements_review(
             {
                 "slug": slug,
                 "finding_ids": [
-                    f.get("id", "") for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
+                    f.get("id", "")  # type: ignore[misc]
+                    for f in findings_list
+                    if isinstance(f, dict) and f.get("status") != "resolved"
                 ],
             },
         )
@@ -210,8 +212,8 @@ async def _prepare_step_requirements_review(
         if not isinstance(req_review_dict, dict):
             req_review_dict = {}
         req_review_dict["baseline_commit"] = head_sha.strip()
-        state["requirements_review"] = req_review_dict  # type: ignore[assignment]
-        stamp_audit(state, "requirements_review", "baseline_commit", head_sha.strip())  # type: ignore[arg-type]
+        state["requirements_review"] = req_review_dict
+        stamp_audit(state, "requirements_review", "baseline_commit", head_sha.strip())
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
@@ -234,10 +236,10 @@ async def _prepare_step_test_spec_build(
     """TEST_SPEC_BUILD: xfail test specs needed in worktree."""
     from teleclaude.core.next_machine.prepare_helpers import stamp_audit
 
-    stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+    stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())
 
     if await asyncio.to_thread(_has_test_spec_artifacts, cwd, slug):
-        stamp_audit(state, "test_spec_build", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "test_spec_build", "completed_at", datetime.now(UTC).isoformat())
         state["prepare_phase"] = PreparePhase.TEST_SPEC_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_drafted", {"slug": slug})
@@ -271,14 +273,14 @@ async def _prepare_step_test_spec_review(
     """TEST_SPEC_REVIEW: awaiting test spec review verdict."""
     from teleclaude.core.next_machine.prepare_helpers import stamp_audit
 
-    stamp_audit(state, "test_spec_review", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+    stamp_audit(state, "test_spec_review", "started_at", datetime.now(UTC).isoformat())
 
     spec_review = state.get("test_spec_review", {})
     verdict = (isinstance(spec_review, dict) and spec_review.get("verdict")) or ""
 
     if verdict == "approve":
-        stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
-        stamp_audit(state, "test_spec_review", "verdict", "approve")  # type: ignore[arg-type]
+        stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())
+        stamp_audit(state, "test_spec_review", "verdict", "approve")
         state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
@@ -286,14 +288,14 @@ async def _prepare_step_test_spec_review(
 
     if verdict == "needs_work":
         if isinstance(spec_review, dict):
-            rounds = int(spec_review.get("rounds", 0)) + 1
+            rounds = int(spec_review.get("rounds", 0)) + 1  # type: ignore[arg-type]
             spec_review["rounds"] = rounds
             spec_review["verdict"] = ""
         else:
             rounds = 1
         # Block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
-            state["test_spec_review"] = spec_review  # type: ignore[assignment]
+            state["test_spec_review"] = spec_review
             state["prepare_phase"] = PreparePhase.BLOCKED.value
             await asyncio.to_thread(write_phase_state, cwd, slug, state)
             return False, (
@@ -303,10 +305,10 @@ async def _prepare_step_test_spec_review(
                 f"  telec docs index\n"
                 f"Then use telec docs get to load the procedure for the role you are assuming."
             )
-        stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
-        stamp_audit(state, "test_spec_review", "verdict", "needs_work")  # type: ignore[arg-type]
-        stamp_audit(state, "test_spec_review", "rounds", rounds)  # type: ignore[arg-type]
-        state["test_spec_review"] = spec_review  # type: ignore[assignment]
+        stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())
+        stamp_audit(state, "test_spec_review", "verdict", "needs_work")
+        stamp_audit(state, "test_spec_review", "rounds", rounds)
+        state["test_spec_review"] = spec_review
         state["prepare_phase"] = PreparePhase.TEST_SPEC_BUILD.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         guidance = await compose_agent_guidance(db)
@@ -345,7 +347,7 @@ async def _prepare_step_plan_drafting(
     """PLAN_DRAFTING: implementation-plan.md needed."""
     from teleclaude.core.next_machine.prepare_helpers import stamp_audit
 
-    stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+    stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
     if check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md"):
         # R16: check that all referenced_paths exist before advancing to plan review
@@ -373,7 +375,7 @@ async def _prepare_step_plan_drafting(
                 additional_context=f"Missing referenced paths:\n{missing_list}",
             )
 
-        stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+        stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
         state["prepare_phase"] = PreparePhase.PLAN_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
@@ -404,14 +406,14 @@ async def _prepare_step_plan_review(
     """PLAN_REVIEW: awaiting plan review verdict."""
     from teleclaude.core.next_machine.prepare_helpers import stamp_audit
 
-    stamp_audit(state, "plan_review", "started_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
+    stamp_audit(state, "plan_review", "started_at", datetime.now(UTC).isoformat())
 
     plan_review = state.get("plan_review", {})
     verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
 
     if verdict == "approve":
-        stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
-        stamp_audit(state, "plan_review", "verdict", "approve")  # type: ignore[arg-type]
+        stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
+        stamp_audit(state, "plan_review", "verdict", "approve")
         state["prepare_phase"] = PreparePhase.GATE.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
@@ -434,14 +436,14 @@ async def _prepare_step_plan_review(
 
     if verdict == "needs_work":
         if isinstance(plan_review, dict):
-            rounds = int(plan_review.get("rounds", 0)) + 1
+            rounds = int(plan_review.get("rounds", 0)) + 1  # type: ignore[arg-type]
             plan_review["rounds"] = rounds
             plan_review["verdict"] = ""
         else:
             rounds = 1
         # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
-            state["plan_review"] = plan_review  # type: ignore[assignment]
+            state["plan_review"] = plan_review
             state["prepare_phase"] = PreparePhase.BLOCKED.value
             await asyncio.to_thread(write_phase_state, cwd, slug, state)
             return False, (
@@ -459,10 +461,10 @@ async def _prepare_step_plan_review(
             f"Implementation plan needs revision: {open_count} unresolved finding(s). "
             f"See todos/{slug}/plan-review-findings.md."
         )
-        stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())  # type: ignore[arg-type]
-        stamp_audit(state, "plan_review", "verdict", "needs_work")  # type: ignore[arg-type]
-        stamp_audit(state, "plan_review", "rounds", rounds)  # type: ignore[arg-type]
-        state["plan_review"] = plan_review  # type: ignore[assignment]
+        stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
+        stamp_audit(state, "plan_review", "verdict", "needs_work")
+        stamp_audit(state, "plan_review", "rounds", rounds)
+        state["plan_review"] = plan_review
         state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         # Compute diff context for re-dispatch (I-2)
@@ -481,7 +483,9 @@ async def _prepare_step_plan_review(
             {
                 "slug": slug,
                 "finding_ids": [
-                    f.get("id", "") for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved"
+                    f.get("id", "")  # type: ignore[misc]
+                    for f in findings_list
+                    if isinstance(f, dict) and f.get("status") != "resolved"
                 ],
             },
         )
@@ -504,8 +508,8 @@ async def _prepare_step_plan_review(
         if not isinstance(plan_review_dict, dict):
             plan_review_dict = {}
         plan_review_dict["baseline_commit"] = head_sha.strip()
-        state["plan_review"] = plan_review_dict  # type: ignore[assignment]
-        stamp_audit(state, "plan_review", "baseline_commit", head_sha.strip())  # type: ignore[arg-type]
+        state["plan_review"] = plan_review_dict
+        stamp_audit(state, "plan_review", "baseline_commit", head_sha.strip())
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
@@ -557,7 +561,7 @@ def _prepare_step_grounding_check(
 ) -> tuple[bool, str]:
     """GROUNDING_CHECK: mechanical freshness check (no agent dispatch)."""
     grounding = state.get("grounding", {})
-    grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore[arg-type]
+    grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
 
     base_sha = str(grounding_dict.get("base_sha", ""))
     stored_input_digest = str(grounding_dict.get("input_digest", ""))
@@ -583,7 +587,7 @@ def _prepare_step_grounding_check(
         grounding_dict["input_digest"] = current_input_digest
         grounding_dict["last_grounded_at"] = now
         grounding_dict["valid"] = True
-        state["grounding"] = grounding_dict  # type: ignore[assignment]
+        state["grounding"] = grounding_dict
         state["prepare_phase"] = PreparePhase.PREPARED.value
         write_phase_state(cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
@@ -597,7 +601,7 @@ def _prepare_step_grounding_check(
         grounding_dict["invalidated_at"] = now
         grounding_dict["invalidation_reason"] = reason
         grounding_dict["changed_paths"] = []
-        state["grounding"] = grounding_dict  # type: ignore[assignment]
+        state["grounding"] = grounding_dict
         state["prepare_phase"] = PreparePhase.RE_GROUNDING.value
         write_phase_state(cwd, slug, state)
         _emit_prepare_event(
@@ -623,7 +627,7 @@ def _prepare_step_grounding_check(
         rc2, diff_output, _ = _run_git_prepare(["diff", "--name-only", f"{base_sha}..{current_sha}"], cwd=cwd)
         if rc2 == 0:
             changed_files = {line.strip() for line in diff_output.splitlines() if line.strip()}
-            changed_paths = [p for p in referenced_paths if p in changed_files]
+            changed_paths = [p for p in referenced_paths if p in changed_files]  # type: ignore[misc]
 
     # Grounding staleness semantics:
     # - Always stale when input digest changed.
@@ -639,8 +643,8 @@ def _prepare_step_grounding_check(
         grounding_dict["valid"] = False
         grounding_dict["invalidated_at"] = now
         grounding_dict["invalidation_reason"] = reason
-        grounding_dict["changed_paths"] = changed_paths  # I1: persist actual changed paths
-        state["grounding"] = grounding_dict  # type: ignore[assignment]
+        grounding_dict["changed_paths"] = changed_paths  # type: ignore[assignment]  # I1: persist actual changed paths
+        state["grounding"] = grounding_dict
         state["prepare_phase"] = PreparePhase.RE_GROUNDING.value
         write_phase_state(cwd, slug, state)
         _emit_prepare_event(
@@ -654,7 +658,7 @@ def _prepare_step_grounding_check(
     grounding_dict["input_digest"] = current_input_digest
     grounding_dict["last_grounded_at"] = now
     grounding_dict["valid"] = True
-    state["grounding"] = grounding_dict  # type: ignore[assignment]
+    state["grounding"] = grounding_dict
     state["prepare_phase"] = PreparePhase.PREPARED.value
     write_phase_state(cwd, slug, state)
     _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
@@ -669,7 +673,7 @@ async def _prepare_step_re_grounding(
 ) -> tuple[bool, str]:
     """RE_GROUNDING: dispatch plan update against changed files."""
     grounding = state.get("grounding", {})
-    grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore[arg-type]
+    grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
     changed_paths = grounding_dict.get("changed_paths", [])  # I1: actual changed paths, not all referenced
     if not isinstance(changed_paths, list):
         changed_paths = []
@@ -682,10 +686,10 @@ async def _prepare_step_re_grounding(
     plan_review = state.get("plan_review", {})
     if isinstance(plan_review, dict):
         plan_review["verdict"] = ""
-    state["plan_review"] = plan_review  # type: ignore[assignment]
+    state["plan_review"] = plan_review
     await asyncio.to_thread(write_phase_state, cwd, slug, state)
 
-    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
+    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."  # type: ignore[arg-type]
     guidance = await compose_agent_guidance(db)
     result = format_tool_call(
         command=SlashCommand.NEXT_PREPARE_DRAFT,

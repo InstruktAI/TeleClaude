@@ -53,7 +53,7 @@ class RelayOperationsMixin:
         if not relay_channel_id:
             return
         try:
-            thread = await self._get_channel(int(relay_channel_id))  # type: ignore[attr-defined]
+            thread = await self._get_channel(int(relay_channel_id))
             if thread is None:
                 logger.error("Relay thread %s not found", relay_channel_id)
                 return
@@ -62,7 +62,7 @@ class RelayOperationsMixin:
             name = getattr(author, "display_name", None) or "Customer"
             origin = session.last_input_origin or "discord"
 
-            send_fn = self._require_async_callable(getattr(thread, "send", None), label="relay thread send")  # type: ignore[attr-defined]
+            send_fn = self._require_async_callable(getattr(thread, "send", None), label="relay thread send")
             await send_fn(f"**{name}** ({origin}): {text}")
         except Exception:
             logger.warning("Failed to forward message to relay thread %s", relay_channel_id)
@@ -91,7 +91,7 @@ class RelayOperationsMixin:
 
         metadata = MessageMetadata()
         try:
-            await self.client.send_message(session=session, text=text, metadata=metadata, ephemeral=False)  # type: ignore[attr-defined]
+            await self.client.send_message(session=session, text=text, metadata=metadata, ephemeral=False)
         except Exception:
             logger.warning("Failed to deliver relay message to customer session %s", session.session_id)
 
@@ -99,8 +99,8 @@ class RelayOperationsMixin:
         """Check if a message contains an @agent handback tag."""
         if "@agent" in text.lower():
             return True
-        if self._client and getattr(self._client, "user", None):  # type: ignore[attr-defined]
-            bot_id = getattr(getattr(self._client, "user", None), "id", None)  # type: ignore[attr-defined]
+        if self._client and getattr(self._client, "user", None):
+            bot_id = getattr(getattr(self._client, "user", None), "id", None)
             if bot_id and f"<@{bot_id}>" in text:
                 return True
         return False
@@ -135,7 +135,7 @@ class RelayOperationsMixin:
         """Read all messages from a relay thread since the given timestamp."""
         import re
 
-        thread = await self._get_channel(int(thread_id))  # type: ignore[attr-defined]
+        thread = await self._get_channel(int(thread_id))
         if not thread:
             return []
 

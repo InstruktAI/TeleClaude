@@ -47,7 +47,7 @@ from .ui_adapter import UiAdapter
 logger = get_logger(__name__)
 
 
-class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]
+class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
     PrivateHandlersMixin,
     LifecycleMixin,
     InputHandlersMixin,

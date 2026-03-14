@@ -353,7 +353,7 @@ class GlobalSky(Animation):
         if self.dark_mode:
             # 2. Stars at Z10 (behind clouds)
             for star in self.stars:
-                twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0
+                twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0  # type: ignore[operator]
                 if twinkle > 0.88:
                     buffer.add_pixel(Z10, star["pos"][0], star["pos"][1], star["char"])
 

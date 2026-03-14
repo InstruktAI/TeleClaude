@@ -40,7 +40,7 @@ def group_by_tags(items: list[SignalItemPayload], min_overlap: int = 1) -> list[
     # Build tag → item indices mapping
     tag_to_indices: dict[str, list[int]] = {}
     for idx, item in enumerate(items):
-        for tag in item.get("tags", []):  # type: ignore[union-attr]
+        for tag in item.get("tags", []):
             tag_str = str(tag)
             tag_to_indices.setdefault(tag_str, []).append(idx)
 
@@ -81,10 +81,7 @@ def refine_by_embeddings(group: list[SignalItemPayload], threshold: float) -> li
 
     Falls back to returning the original group as-is if embeddings are missing.
     """
-    embeddings: list[list[float] | None] = [
-        item.get("embedding")
-        for item in group  # type: ignore[misc]
-    ]
+    embeddings: list[list[float] | None] = [item.get("embedding") for item in group]
 
     # Degrade gracefully if any embedding is missing
     if any(e is None for e in embeddings):

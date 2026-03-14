@@ -169,7 +169,7 @@ async def _emit_synthetic_codex_event(
     await emit_agent_event(
         AgentEventContext(
             session_id=session_id,
-            event_type=event_type,
+            event_type=event_type,  # type: ignore[arg-type]
             data=payload,
         )
     )
@@ -351,7 +351,7 @@ async def schedule_polling(
             _skip_register=True,
         )
     )
-    task.add_done_callback(lambda t, sid=session_id: _handle_background_poller_result(t, sid))
+    task.add_done_callback(lambda t, sid=session_id: _handle_background_poller_result(t, sid))  # type: ignore[misc]
     return True
 
 

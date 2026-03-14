@@ -66,10 +66,10 @@ async def _get_pair_lock(session_a: str, session_b: str) -> asyncio.Lock:
     """Return a shared lock for a canonical direct-link session pair."""
     key = tuple(sorted((session_a, session_b)))
     async with _PAIR_LOCKS_GUARD:
-        lock = _PAIR_LOCKS.get(key)
+        lock = _PAIR_LOCKS.get(key)  # type: ignore[arg-type]
         if lock is None:
             lock = asyncio.Lock()
-            _PAIR_LOCKS[key] = lock
+            _PAIR_LOCKS[key] = lock  # type: ignore[index]
         return lock
 
 

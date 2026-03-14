@@ -459,7 +459,7 @@ class CallbackHandlersMixin:
             args=[],
             metadata=metadata,
         )
-        await get_command_service().create_session(cmd)
+        await get_command_service().create_session(cmd)  # type: ignore[arg-type]
 
     async def _handle_agent_start(self, query: object, agent_name: str, *, is_resume: bool, args: list[str]) -> None:
         """Handle agent start callbacks."""
@@ -514,4 +514,4 @@ class CallbackHandlersMixin:
             args=[],
             metadata=metadata,
         )
-        await get_command_service().create_session(cmd)
+        await get_command_service().create_session(cmd)  # type: ignore[arg-type]

@@ -482,7 +482,7 @@ class ChannelOperationsMixin:
 
         return message
 
-    async def poll_output_stream(  # type: ignore[override,misc]
+    async def poll_output_stream(
         self,
         session: Session,
         timeout: float = 300.0,

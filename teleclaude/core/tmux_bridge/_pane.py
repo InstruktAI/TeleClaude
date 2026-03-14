@@ -209,16 +209,16 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
 
                     # Get tmux processes and system metrics off the event loop to avoid blocking
                     def _collect_psutil_diag() -> tuple[list[object], object, object]:
-                        procs: list[object] = [  # type: ignore[misc]
+                        procs: list[object] = [
                             {"pid": p.pid, "create_time": p.create_time()}
-                            for p in psutil.process_iter(["pid", "name", "create_time"])  # type: ignore[misc]
-                            if Path(config.computer.tmux_binary).name.lower() in p.info["name"].lower()  # type: ignore[misc]
+                            for p in psutil.process_iter(["pid", "name", "create_time"])
+                            if Path(config.computer.tmux_binary).name.lower() in p.info["name"].lower()
                         ]
-                        mem = psutil.virtual_memory()  # type: ignore[misc]
-                        cpu = psutil.cpu_percent(interval=0.1)  # type: ignore[misc]
+                        mem = psutil.virtual_memory()
+                        cpu = psutil.cpu_percent(interval=0.1)
                         return procs, mem, cpu
 
-                    tmux_processes, memory, cpu_percent = await asyncio.to_thread(_collect_psutil_diag)  # type: ignore[misc]
+                    tmux_processes, memory, cpu_percent = await asyncio.to_thread(_collect_psutil_diag)
 
                     logger.error(
                         "Session %s does not exist (died unexpectedly)",
@@ -227,9 +227,9 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                             "session_name": session_name,
                             "stderr": stderr.decode().strip(),
                             "tmux_sessions_count": len([s for s in tmux_sessions if s]),
-                            "tmux_processes_count": len(tmux_processes),  # type: ignore[misc]
-                            "system_memory_used_mb": memory.used // 1024 // 1024,  # type: ignore[misc, attr-defined]
-                            "system_memory_percent": memory.percent,  # type: ignore[misc, attr-defined]
+                            "tmux_processes_count": len(tmux_processes),
+                            "system_memory_used_mb": memory.used // 1024 // 1024,  # type: ignore
+                            "system_memory_percent": memory.percent,  # type: ignore
                             "system_cpu_percent": cpu_percent,
                         },
                     )

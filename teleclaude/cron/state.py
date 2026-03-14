@@ -85,7 +85,9 @@ class CronState:
         if path.exists():
             try:
                 data_obj = json.loads(path.read_text(encoding="utf-8"))
-                data = cast(dict[str, object], data_obj) if isinstance(data_obj, dict) else {}
+                data = (  # guard: loose-dict - YAML state file — dynamic shape
+                    cast(dict[str, object], data_obj) if isinstance(data_obj, dict) else {}
+                )
                 jobs_obj = data.get("jobs", {})
                 jobs = cast(dict[str, JobStateDict], jobs_obj) if isinstance(jobs_obj, dict) else {}
                 for job_name, job_data in jobs.items():

@@ -115,7 +115,7 @@ class SignalDB:
                 str(payload.get("item_url", "")),
                 str(payload.get("raw_title", "")) if payload.get("raw_title") else None,
                 str(payload.get("summary", "")) if payload.get("summary") else None,
-                ",".join(str(t) for t in payload.get("tags", [])) if payload.get("tags") else None,  # type: ignore[arg-type]
+                ",".join(str(t) for t in payload.get("tags", [])) if payload.get("tags") else None,
                 json.dumps(payload.get("embedding")) if payload.get("embedding") else None,
                 str(payload.get("fetched_at", _now_iso())),
             ),

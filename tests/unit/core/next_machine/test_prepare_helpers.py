@@ -74,8 +74,8 @@ def test_record_artifact_produced_writes_digest_and_produced_at(tmp_path: Path) 
 
     state = _read_state(cwd, slug)
     artifacts = state.get("artifacts", {})
-    assert artifacts["input"]["digest"] == expected_digest
-    assert artifacts["input"]["produced_at"] != ""
+    assert artifacts["input"]["digest"] == expected_digest  # type: ignore[index]
+    assert artifacts["input"]["produced_at"] != ""  # type: ignore[index]
 
 
 # ---------------------------------------------------------------------------

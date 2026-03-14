@@ -37,7 +37,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
                 domain="software-development",
                 description=description,
                 entity=slug,
-                payload=dict(payload),
+                payload=dict(payload),  # type: ignore[arg-type]
             )
         except Exception:
             pass  # Never block prepare on event emission failure
@@ -166,9 +166,9 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
             continue
         overlap = [p for p in referenced if p in changed_set]
         if overlap:
-            grounding_dict: dict[str, bool | str | list[str] | int] = {
-                **DEFAULT_STATE["grounding"],  # type: ignore[arg-type]
-                **grounding,
+            grounding_dict: dict[str, bool | str | list[str] | int] = {  # type: ignore[unused-ignore]
+                **DEFAULT_STATE["grounding"],  # type: ignore
+                **grounding,  # type: ignore[dict-item]
             }
             grounding_dict["valid"] = False
             grounding_dict["invalidated_at"] = now
@@ -178,7 +178,7 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
             write_phase_state(cwd, slug, state)
             _emit_prepare_event(
                 "domain.software-development.prepare.grounding_invalidated",
-                {"slug": slug, "reason": "files_changed", "changed_paths": overlap},
+                {"slug": slug, "reason": "files_changed", "changed_paths": overlap},  # type: ignore[dict-item]
             )
             invalidated.append(slug)
 

@@ -242,7 +242,7 @@ async def _resolve_holder_slug(
     slug_resolution_started: float,
 ) -> tuple[str, str | None]:
     """Resolve runnable child work for holder todos."""
-    holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)
+    holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)  # type: ignore[arg-type]
     if holder_child:
         return holder_child, None
     if holder_reason == "complete":
@@ -292,7 +292,7 @@ async def _validate_explicit_slug_readiness(
     if phase == ItemPhase.DONE.value:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "item_done")
         return f"COMPLETE: Item '{slug}' is already done."
-    if await asyncio.to_thread(check_dependencies_satisfied, cwd, slug, deps):
+    if await asyncio.to_thread(check_dependencies_satisfied, cwd, slug, deps):  # type: ignore[arg-type]
         return None
     _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "deps_unsatisfied")
     return format_error(

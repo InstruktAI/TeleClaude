@@ -407,7 +407,7 @@ class PrepareQualityCartridge:
 
         start = time.monotonic()
         try:
-            await self._assess(slug, event, context)
+            await self._assess(slug, event, context)  # type: ignore[arg-type]
         except Exception:
             logger.exception("prepare-quality: assessment failed", slug=slug, event=event.event)
         elapsed = time.monotonic() - start

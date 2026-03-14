@@ -204,9 +204,9 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
 
     parsed_id = None
     if isinstance(meta.get("id"), str):
-        parsed_id, id_error = validate_snippet_id_format(meta["id"], domains=domains)
+        parsed_id, id_error = validate_snippet_id_format(meta["id"], domains=domains)  # type: ignore[arg-type]
         if id_error:
-            _warn("snippet_invalid_id_format", path=str(path), reason=id_error, snippet_id=meta["id"])
+            _warn("snippet_invalid_id_format", path=str(path), reason=id_error, snippet_id=meta["id"])  # type: ignore[arg-type]
     if expected_id and parsed_id and parsed_id.value() != expected_id:
         _warn(
             "snippet_id_path_mismatch",
@@ -438,7 +438,7 @@ def _validate_snippet_sections(
         snippet_type = _infer_type_from_path(path)
     if snippet_type:
         type_key = str(snippet_type).lower()
-        section_rules = _SCHEMA["sections"].get(type_key, {})
+        section_rules = _SCHEMA["sections"].get(type_key, {})  # type: ignore[var-annotated]
         required = [_normalize_section_title(s) for s in section_rules.get("required", [])]
         allowed = [_normalize_section_title(s) for s in section_rules.get("allowed", [])]
         for req in required:

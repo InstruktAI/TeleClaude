@@ -241,7 +241,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     ) -> PipelineContext:
         """Create the shared pipeline context."""
         return PipelineContext(
-            catalog=event_catalog,
+            catalog=event_catalog,  # type: ignore[arg-type]
             db=self._event_db,
             push_callbacks=push_callbacks,
             trust_config=TrustConfig(
@@ -287,12 +287,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 PrepareQualityCartridge(),
             ],
             context,
-            domain_runner=self._build_domain_runner(),
+            domain_runner=self._build_domain_runner(),  # type: ignore[arg-type]
         )
 
     def _start_sandbox_watch_task(self, coro: object, task_name: str) -> None:
         """Start and monitor a sandbox background task."""
-        asyncio.create_task(coro, name=task_name).add_done_callback(self._log_background_task_exception(task_name))
+        asyncio.create_task(coro, name=task_name).add_done_callback(self._log_background_task_exception(task_name))  # type: ignore[arg-type]
 
     def _register_sandbox_bridge(self, pipeline: Pipeline, event_producer: EventProducer) -> None:
         """Register the optional sandbox bridge."""
@@ -368,7 +368,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     ) -> None:
         """Attach signal AI integrations to the shared pipeline context."""
         context.ai_client = signal_ai
-        context.emit = event_producer.emit  # type: ignore[assignment]
+        context.emit = event_producer.emit
 
     def _start_signal_pipeline(
         self,
@@ -471,7 +471,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()
-        dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)
+        dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)  # type: ignore[arg-type]
         bridge = EventBusBridge(dispatcher)
         delivery_worker = WebhookDeliveryWorker()
         project_cfg_path = config_path.parent / "teleclaude.yml"

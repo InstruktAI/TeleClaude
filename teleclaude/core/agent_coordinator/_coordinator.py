@@ -99,7 +99,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                     try:
                         event_bus.emit(
                             TeleClaudeEvents.ERROR,
-                            {"message": f"Failed to update session title: {exc}", "severity": "warning"},
+                            {"message": f"Failed to update session title: {exc}", "severity": "warning"},  # type: ignore[arg-type]
                         )
                     except Exception:
                         pass
@@ -144,7 +144,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                 TeleClaudeEvents.AGENT_ACTIVITY,
                 AgentActivityEvent(
                     session_id=session_id,
-                    event_type=event_type,
+                    event_type=event_type,  # type: ignore[arg-type]
                     tool_name=tool_name,
                     tool_preview=tool_preview,
                     summary=summary,

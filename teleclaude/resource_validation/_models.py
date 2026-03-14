@@ -133,7 +133,7 @@ def _load_schema() -> SchemaConfig:
     raw_obj = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8")) or {}
     if not isinstance(raw_obj, dict):
         return {"global_": {}, "sections": {}}
-    raw = cast(dict[str, object], raw_obj)
+    raw = cast(dict[str, object], raw_obj)  # guard: loose-dict - YAML parsed data — validated downstream
 
     global_raw = raw.get("global", {})
     global_cfg: GlobalSchemaConfig = {}
@@ -166,7 +166,7 @@ def _load_schema() -> SchemaConfig:
         for section_name, section_raw in sections_raw.items():
             if not isinstance(section_raw, dict):
                 continue
-            section = cast(dict[str, object], section_raw)
+            section = cast(dict[str, object], section_raw)  # guard: loose-dict - YAML section — validated downstream
             required = _as_str_list(section.get("required"))
             allowed = _as_str_list(section.get("allowed"))
             sections[str(section_name)] = {"required": required, "allowed": allowed}

@@ -50,7 +50,7 @@ def _coerce_remote_computers(payload: object) -> list[RemoteComputerPayload]:
     computers: list[RemoteComputerPayload] = []
     for item in payload:
         if isinstance(item, dict):
-            computers.append(item)
+            computers.append(item)  # type: ignore[arg-type]
     return computers
 
 
@@ -60,7 +60,7 @@ def _coerce_remote_rows(payload: object) -> list[RemoteMirrorRow]:
     rows: list[RemoteMirrorRow] = []
     for item in payload:
         if isinstance(item, dict):
-            rows.append(item)
+            rows.append(item)  # type: ignore[arg-type]
     return rows
 
 
@@ -161,7 +161,7 @@ async def _remote_search(
         "limit": limit,
     }
     async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
-        response = await client.get("/api/mirrors/search", params=params)
+        response = await client.get("/api/mirrors/search", params=params)  # type: ignore[arg-type]
         response.raise_for_status()
         return {"computer": computer, "rows": _coerce_remote_rows(response.json())}
 
@@ -283,9 +283,9 @@ def show_transcript(
     if mirror and raw:
         transcript_path = mirror.metadata.get("transcript_path")
         if isinstance(transcript_path, str) and transcript_path:
-            path = Path(transcript_path).expanduser()
-            if path.exists():
-                print(_tail_text(path.read_text(encoding="utf-8"), tail_chars))
+            path = Path(transcript_path).expanduser()  # type: ignore[assignment]
+            if path.exists():  # type: ignore[attr-defined]
+                print(_tail_text(path.read_text(encoding="utf-8"), tail_chars))  # type: ignore[attr-defined]
                 return
 
     match = find_transcript(agents, session_id)
@@ -293,10 +293,10 @@ def show_transcript(
         print(f"No transcript found for session '{session_id}'")
         sys.exit(1)
 
-    path, agent = match
+    path, agent = match  # type: ignore[assignment]
     rendered = parse_session_transcript(
         str(path),
-        f"{agent.value} session - {path.stem}",
+        f"{agent.value} session - {path.stem}",  # type: ignore[attr-defined]
         agent_name=agent,
         tail_chars=tail_chars,
         include_thinking=include_thinking,

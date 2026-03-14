@@ -76,7 +76,7 @@ class CorrelationCartridge:
                     {
                         "crash_count": crash_count,
                         "window_start": window_start.isoformat(),
-                        "workers": workers,
+                        "workers": workers,  # type: ignore[dict-item]
                     },
                     context,
                 )

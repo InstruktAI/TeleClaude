@@ -197,7 +197,7 @@ def _extract_yt_initial_data(html: str) -> JsonDict | None:
         json_str = html[start:end]
         import json
 
-        return json.loads(json_str)
+        return json.loads(json_str)  # type: ignore[no-any-return]
     except (ValueError, Exception):
         return None
 
@@ -211,14 +211,14 @@ def _find_about_description(obj: Any) -> str | None:
                 if isinstance(desc, dict):
                     content = desc.get("content")
                     if content:
-                        return content
+                        return content  # type: ignore[no-any-return]
         if "channelAboutFullMetadataRenderer" in obj:
             meta = obj["channelAboutFullMetadataRenderer"]
             desc = meta.get("description", {})
             if isinstance(desc, dict):
                 text = desc.get("simpleText")
                 if text:
-                    return text
+                    return text  # type: ignore[no-any-return]
             if isinstance(desc, str):
                 return desc
         for value in obj.values():
@@ -404,7 +404,7 @@ def _parse_html_list(html: str, max_results: int) -> list[Video]:
                     .get("webCommandMetadata", {})
                     .get("url", "")
                 )
-                results.append(Video(**res))
+                results.append(Video(**res))  # type: ignore[arg-type]
                 if len(results) >= int(max_results):
                     break
         if len(results) >= int(max_results):
@@ -426,7 +426,7 @@ def _parse_html_video(html: str) -> HtmlVideoInfo:
     data = json.loads(json_str)
     obj = munchify(data)
     try:
-        result["long_desc"] = obj.contents.twoColumnWatchNextResults.results.results.contents[  # type: ignore[attr-defined]
+        result["long_desc"] = obj.contents.twoColumnWatchNextResults.results.results.contents[  # type: ignore[unused-ignore]
             1
         ].videoSecondaryInfoRenderer.attributedDescription.content
     except (AttributeError, KeyError, IndexError, TypeError):

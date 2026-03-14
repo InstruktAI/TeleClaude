@@ -314,7 +314,7 @@ def _people_edit(args: list[str], use_json: bool) -> None:
                     p.username = opts["username"]
                 if "expertise" in opts:
                     try:
-                        p.expertise = json.loads(opts["expertise"])  # type: ignore[assignment]
+                        p.expertise = json.loads(opts["expertise"])
                     except json.JSONDecodeError as e:
                         print(f"Error: --expertise must be valid JSON: {e}")
                         raise SystemExit(1)
@@ -606,12 +606,12 @@ def _handle_invite(args: list[str]) -> None:
     result = asyncio.run(_run_invite())
 
     if use_json:
-        print(json.dumps(result))  # type: ignore[arg-type]
+        print(json.dumps(result))
     else:
         if result["email_sent"]:
             print(f"Invite sent to {person.email} for {name}")
         else:
             print(f"Invite links for {name} (email delivery failed):")
-            for platform, link in result["links"].items():  # type: ignore[union-attr]
+            for platform, link in result["links"].items():
                 if link:
                     print(f"  {platform}: {link}")

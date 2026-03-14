@@ -62,8 +62,8 @@ def test_load_cartridge_module_returns_fresh_object_each_call():
         mod1 = _load_cartridge_module(tmpdir, "cart_obj")
         mod2 = _load_cartridge_module(tmpdir, "cart_obj")
         assert mod1 is not mod2
-        assert mod1.VALUE == 1  # type: ignore[attr-defined]
-        assert mod2.VALUE == 1  # type: ignore[attr-defined]
+        assert mod1.VALUE == 1
+        assert mod2.VALUE == 1
 
 
 # ---------------------------------------------------------------------------

@@ -52,7 +52,7 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
     # State: plan_drafting with referenced_paths pointing to non-existent files
     state = read_phase_state(cwd, slug)
     state["prepare_phase"] = "plan_drafting"
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",
         "findings_count": 0,
@@ -60,7 +60,7 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
         "baseline_commit": "",
         "findings": [],
     }
-    state["grounding"] = {  # type: ignore[assignment]
+    state["grounding"] = {
         "valid": True,
         "base_sha": "abc123",
         "input_digest": "",
@@ -118,7 +118,7 @@ async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
     # State: plan_drafting with all referenced_paths existing
     state = read_phase_state(cwd, slug)
     state["prepare_phase"] = "plan_drafting"
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",
         "findings_count": 0,
@@ -126,7 +126,7 @@ async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
         "baseline_commit": "",
         "findings": [],
     }
-    state["grounding"] = {  # type: ignore[assignment]
+    state["grounding"] = {
         "valid": True,
         "base_sha": "abc123",
         "input_digest": "",
@@ -175,7 +175,7 @@ async def test_plan_with_empty_referenced_paths_advances_normally(
 
     state = read_phase_state(cwd, slug)
     state["prepare_phase"] = "plan_drafting"
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",
         "findings_count": 0,
@@ -183,7 +183,7 @@ async def test_plan_with_empty_referenced_paths_advances_normally(
         "baseline_commit": "",
         "findings": [],
     }
-    state["grounding"] = {  # type: ignore[assignment]
+    state["grounding"] = {
         "valid": True,
         "base_sha": "abc123",
         "input_digest": "",

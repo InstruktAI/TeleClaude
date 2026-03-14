@@ -90,7 +90,7 @@ class Pipeline:
 
     async def _run_domain_pipelines(self, event: EventEnvelope) -> None:
         try:
-            results = await self._domain_runner.run_all(event, self._context)  # type: ignore[union-attr]
+            results = await self._domain_runner.run_all(event, self._context)
             logger.debug("Domain pipeline results: %s", {k: v is not None for k, v in results.items()})
         except asyncio.CancelledError:
             logger.debug("Domain pipeline fan-out cancelled during shutdown")

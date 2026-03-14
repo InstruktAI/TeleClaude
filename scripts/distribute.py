@@ -57,11 +57,11 @@ CODEX_NEXT_COMMAND_RE = re.compile(
 )
 
 
-class StableYAMLHandler(YAMLHandler):
+class StableYAMLHandler(YAMLHandler):  # type: ignore[misc]
     """Frontmatter YAML handler with stable ordering and wide line width."""
 
     def export(self, metadata: dict[str, object], **kwargs: object) -> str:  # guard: loose-dict - frontmatter contract
-        return yaml.safe_dump(
+        return yaml.safe_dump(  # type: ignore[no-any-return]
             metadata,
             sort_keys=False,
             width=1000,
@@ -82,7 +82,7 @@ def dump_frontmatter(post: Post) -> str:
     parameters = post.metadata.pop("parameters", None)
     if parameters:
         post.content = _inject_parameter_preamble(post.content, parameters)
-    return frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)
+    return frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)  # type: ignore[no-any-return]
 
 
 def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
@@ -185,7 +185,9 @@ ArtifactFrontmatter = TypedDict(
         "name": str,
         "argument-hint": str,
         "hooks": object,
-        "parameters": list[dict[str, object]],  # guard: loose-dict - Parameter dicts have variable schema per artifact type
+        "parameters": list[
+            dict[str, object]  # guard: loose-dict - TOML parsed data — pyproject config
+        ],  # guard: loose-dict - Parameter dicts have variable schema per artifact type
     },
     total=False,
 )
@@ -948,7 +950,7 @@ def main() -> None:  # noqa: C901
                 items = artifact_items[spec.name]
                 if not items:
                     continue
-                dest_dir = os.path.join(dist_dir, agent_name, os.path.basename(config[spec.dest_dir_key]))
+                dest_dir = os.path.join(dist_dir, agent_name, os.path.basename(config[spec.dest_dir_key]))  # type: ignore[literal-required]
                 os.makedirs(dest_dir, exist_ok=True)
                 for item in items:
                     item_path = ""
@@ -988,12 +990,12 @@ def main() -> None:  # noqa: C901
                                     transformed_content = transform_skill_to_gemini(prepared, skill_name)
                                 output_dir = os.path.join(dest_dir, item)
                                 os.makedirs(output_dir, exist_ok=True)
-                                output_filename = f"SKILL{config[spec.ext_key]}"
+                                output_filename = f"SKILL{config[spec.ext_key]}"  # type: ignore[literal-required]
                                 output_path = os.path.join(output_dir, output_filename)
                             else:
                                 transformed_content = config["transform"](prepared)
                                 base_name = os.path.splitext(item)[0]
-                                output_filename = f"{base_name}{config[spec.ext_key]}"
+                                output_filename = f"{base_name}{config[spec.ext_key]}"  # type: ignore[literal-required]
                                 output_path = os.path.join(dest_dir, output_filename)
                             with open(output_path, "w") as out_f:
                                 out_f.write(transformed_content.rstrip("\n") + "\n")

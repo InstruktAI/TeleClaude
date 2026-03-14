@@ -17,7 +17,7 @@ Integration:
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from jobs.base import Job, JobResult
@@ -56,7 +56,7 @@ class HelpDeskIntelligenceJob(Job):
 
     async def _run_async(self) -> JobResult:
         """Async implementation of the intelligence digest pipeline."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=self.lookback_hours)
 
         # Step 1: Query recent business memories
         memories = await self._query_recent_memories(cutoff)

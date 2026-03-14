@@ -447,7 +447,7 @@ def _validate_job_when_or_schedule(
                 JobWhenConfig.model_validate(when_raw)
                 has_valid_when = True
             except ValidationError as exc:
-                first = exc.errors()[0] if exc.errors() else {"msg": "invalid when config"}
+                first = exc.errors()[0] if exc.errors() else {"msg": "invalid when config"}  # type: ignore[typeddict-item]
                 errors.append(f"{config_path}: jobs.{name}.when {first['msg']}")
     if has_valid_when:
         return errors

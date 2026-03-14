@@ -97,15 +97,15 @@ class ReadinessProjection:
             payload = cast(ReviewApprovedPayload, event.payload)
             self._apply_review_approved(payload)
         elif event.event_type == "finalize_ready":
-            payload = cast(FinalizeReadyPayload, event.payload)
-            self._apply_finalize_ready(payload)
+            payload = cast(FinalizeReadyPayload, event.payload)  # type: ignore[assignment]
+            self._apply_finalize_ready(payload)  # type: ignore[arg-type]
         elif event.event_type == "branch_pushed":
-            payload = cast(BranchPushedPayload, event.payload)
-            self._apply_branch_pushed(payload)
+            payload = cast(BranchPushedPayload, event.payload)  # type: ignore[assignment]
+            self._apply_branch_pushed(payload)  # type: ignore[arg-type]
         else:
             # integration_blocked is operational telemetry and does not alter readiness state.
-            payload = cast(IntegrationBlockedPayload, event.payload)
-            self._apply_integration_blocked(payload)
+            payload = cast(IntegrationBlockedPayload, event.payload)  # type: ignore[assignment]
+            self._apply_integration_blocked(payload)  # type: ignore[arg-type]
 
         self._recompute()
 

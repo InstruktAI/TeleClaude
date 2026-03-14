@@ -91,7 +91,7 @@ def test_ghost_plan_not_treated_as_produced_v2(tmp_path: Path) -> None:
 
     state = _v2_state()
     state["artifacts"]["requirements"]["produced_at"] = "2025-01-01T00:00:00+00:00"  # type: ignore[index]
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "findings": [],
         "baseline_commit": "",
@@ -256,7 +256,7 @@ def _build_review_state(findings: list[dict[str, StateValue]], verdict: str = ""
             "findings_count": len(findings),
             "rounds": 0,
             "baseline_commit": "",
-            "findings": findings,
+            "findings": findings,  # type: ignore[dict-item]
         },
         "plan_review": {
             "verdict": "",
@@ -461,7 +461,7 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
 
     state = read_phase_state(cwd, slug)
     state["prepare_phase"] = "plan_drafting"
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",
         "findings_count": 0,
@@ -469,7 +469,7 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
         "baseline_commit": "",
         "findings": [],
     }
-    state["grounding"] = {  # type: ignore[assignment]
+    state["grounding"] = {
         "valid": True,
         "base_sha": "abc123",
         "input_digest": "",
@@ -520,7 +520,7 @@ async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
 
     state = read_phase_state(cwd, slug)
     state["prepare_phase"] = "plan_drafting"
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",
         "findings_count": 0,
@@ -528,7 +528,7 @@ async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
         "baseline_commit": "",
         "findings": [],
     }
-    state["grounding"] = {  # type: ignore[assignment]
+    state["grounding"] = {
         "valid": True,
         "base_sha": "abc123",
         "input_digest": "",
@@ -573,7 +573,7 @@ async def test_plan_with_empty_referenced_paths_advances_normally(
 
     state = read_phase_state(cwd, slug)
     state["prepare_phase"] = "plan_drafting"
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",
         "findings_count": 0,
@@ -581,7 +581,7 @@ async def test_plan_with_empty_referenced_paths_advances_normally(
         "baseline_commit": "",
         "findings": [],
     }
-    state["grounding"] = {  # type: ignore[assignment]
+    state["grounding"] = {
         "valid": True,
         "base_sha": "abc123",
         "input_digest": "",
@@ -641,7 +641,7 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
 
     state = read_phase_state(cwd, slug)
     state["prepare_phase"] = "requirements_review"
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",
         "findings_count": 0,

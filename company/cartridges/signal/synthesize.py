@@ -51,9 +51,7 @@ class SignalSynthesizeCartridge:
             logger.warning("signal.cluster.formed event missing cluster_id; passing through")
             return event
 
-        members = await self._signal_db.get_cluster_members(
-            int(cluster_id), limit=self._config.max_items_per_cluster
-        )
+        members = await self._signal_db.get_cluster_members(int(cluster_id), limit=self._config.max_items_per_cluster)  # type: ignore[arg-type]
         if not members:
             logger.warning("Cluster %s has no members; skipping synthesis", cluster_id)
             return event
@@ -73,20 +71,20 @@ class SignalSynthesizeCartridge:
         # Cross-source dedup: remove near-identical summaries
         deduped: list[dict[str, object]] = []
         seen_summaries: list[str] = []
-        for item in enriched:
+        for item in enriched:  # type: ignore[assignment]
             summary = str(item.get("summary", ""))
             if any(_near_duplicate(summary, s) for s in seen_summaries):
                 continue
             seen_summaries.append(summary)
-            deduped.append(item)
+            deduped.append(item)  # type: ignore[arg-type]
 
         try:
-            artifact = await self._ai.synthesise_cluster(deduped)
+            artifact = await self._ai.synthesise_cluster(deduped)  # type: ignore[arg-type]
         except Exception as e:
             logger.error("Synthesis failed for cluster %s: %s", cluster_id, e, exc_info=True)
             return event
         artifact_dict = artifact.model_dump()
-        await self._signal_db.insert_synthesis(int(cluster_id), artifact_dict)
+        await self._signal_db.insert_synthesis(int(cluster_id), artifact_dict)  # type: ignore[arg-type]
 
         description = artifact.summary[:200]
         return EventEnvelope(

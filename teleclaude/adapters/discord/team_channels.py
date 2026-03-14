@@ -69,7 +69,7 @@ class TeamChannelsMixin:
             try:
                 person_cfg = get_person_config(name)
                 if person_cfg.creds.discord:
-                    discord_user_id = self._parse_optional_int(person_cfg.creds.discord.user_id)  # type: ignore[attr-defined]
+                    discord_user_id = self._parse_optional_int(person_cfg.creds.discord.user_id)
             except Exception:
                 pass
 
@@ -103,7 +103,7 @@ class TeamChannelsMixin:
             ch_type = getattr(ch, "type", None)
             is_text = ch_type is not None and getattr(ch_type, "value", ch_type) == 0
             if isinstance(ch_name, str) and ch_name.lower() == name.lower() and is_text:
-                found_id = self._parse_optional_int(getattr(ch, "id", None))  # type: ignore[attr-defined]
+                found_id = self._parse_optional_int(getattr(ch, "id", None))
                 if found_id is not None:
                     return found_id
 
@@ -115,13 +115,13 @@ class TeamChannelsMixin:
             return None
 
         try:
-            create = self._require_async_callable(create_fn, label="guild.create_text_channel")  # type: ignore[attr-defined]
+            create = self._require_async_callable(create_fn, label="guild.create_text_channel")
             # guard: loose-dict - dynamic kwargs; category key conditionally added
             kwargs: dict[str, object] = {"name": name, "overwrites": overwrites}
             if category is not None:
                 kwargs["category"] = category
             channel = await create(**kwargs)
-            ch_id = self._parse_optional_int(getattr(channel, "id", None))  # type: ignore[attr-defined]
+            ch_id = self._parse_optional_int(getattr(channel, "id", None))
             if ch_id is not None:
                 logger.info("Created private Discord text channel: %s (id=%s)", name, ch_id)
             return ch_id
@@ -131,7 +131,7 @@ class TeamChannelsMixin:
 
     def _build_private_overwrites(self, guild: object, owner_user_id: int | None) -> dict[object, object]:
         """Build Discord permission overwrites: deny @everyone, allow owner + bot."""
-        PermissionOverwrite = getattr(self._discord, "PermissionOverwrite", None)  # type: ignore[attr-defined]
+        PermissionOverwrite = getattr(self._discord, "PermissionOverwrite", None)
         if PermissionOverwrite is None:
             return {}
 
@@ -143,7 +143,7 @@ class TeamChannelsMixin:
             overwrites[default_role] = PermissionOverwrite(view_channel=False, read_messages=False)
 
         # Allow the bot
-        bot_user = getattr(self._client, "user", None) if self._client is not None else None  # type: ignore[attr-defined]
+        bot_user = getattr(self._client, "user", None) if self._client is not None else None
         if bot_user is not None:
             overwrites[bot_user] = PermissionOverwrite(
                 view_channel=True, read_messages=True, send_messages=True, manage_messages=True
@@ -151,7 +151,7 @@ class TeamChannelsMixin:
 
         # Allow the person
         if owner_user_id is not None:
-            Object = getattr(self._discord, "Object", None)  # type: ignore[attr-defined]
+            Object = getattr(self._discord, "Object", None)
             get_member = getattr(guild, "get_member", None)
             member = get_member(owner_user_id) if callable(get_member) else None
             if member is not None:
@@ -166,7 +166,7 @@ class TeamChannelsMixin:
 
     async def _ensure_channel_private(self, channel_id: int, guild: object, owner_user_id: int) -> None:
         """Verify and fix permissions on an existing team channel."""
-        channel = await self._get_channel(channel_id)  # type: ignore[attr-defined]
+        channel = await self._get_channel(channel_id)
         if channel is None:
             return
 
@@ -186,7 +186,7 @@ class TeamChannelsMixin:
         edit_fn = getattr(channel, "edit", None)
         if callable(edit_fn):
             try:
-                await self._require_async_callable(edit_fn, label="channel.edit overwrites")(overwrites=overwrites_dict)  # type: ignore[attr-defined]
+                await self._require_async_callable(edit_fn, label="channel.edit overwrites")(overwrites=overwrites_dict)
                 logger.info("Applied private permissions to team channel %s", channel_id)
             except Exception as exc:
                 logger.warning("Failed to apply private permissions to channel %s: %s", channel_id, exc)

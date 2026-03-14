@@ -61,7 +61,7 @@ def record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:
     entry["produced_at"] = now
     entry["stale"] = False
     artifacts[key] = entry
-    state["artifacts"] = artifacts  # type: ignore[assignment]
+    state["artifacts"] = artifacts
     write_phase_state(cwd, slug, state)
 
     _emit_prepare_event(
@@ -108,10 +108,10 @@ def record_finding(cwd: str, slug: str, review_type: str, finding: dict[str, Sta
     review = state.get(review_type, {})
     if not isinstance(review, dict):
         review = {}
-    findings: list[object] = list(review.get("findings", []) or [])
+    findings: list[object] = list(review.get("findings", []) or [])  # type: ignore[arg-type]
     findings.append(finding)
     review["findings"] = findings  # type: ignore[assignment]
-    state[review_type] = review  # type: ignore[assignment]
+    state[review_type] = review
     write_phase_state(cwd, slug, state)
 
     _emit_prepare_event(
@@ -119,8 +119,8 @@ def record_finding(cwd: str, slug: str, review_type: str, finding: dict[str, Sta
         {
             "slug": slug,
             "review_type": review_type,
-            "severity": finding.get("severity", ""),
-            "summary": finding.get("summary", ""),
+            "severity": finding.get("severity", ""),  # type: ignore[dict-item]
+            "summary": finding.get("summary", ""),  # type: ignore[dict-item]
         },
     )
 
@@ -132,7 +132,7 @@ def resolve_finding(cwd: str, slug: str, review_type: str, finding_id: str, reso
     review = state.get(review_type, {})
     if not isinstance(review, dict):
         review = {}
-    findings: list[object] = list(review.get("findings", []) or [])
+    findings: list[object] = list(review.get("findings", []) or [])  # type: ignore[arg-type]
     matched = False
     for f in findings:
         if isinstance(f, dict) and f.get("id") == finding_id:
@@ -143,7 +143,7 @@ def resolve_finding(cwd: str, slug: str, review_type: str, finding_id: str, reso
         logger.warning("resolve_finding: finding_id=%s not found in %s/%s", finding_id, slug, review_type)
         return
     review["findings"] = findings  # type: ignore[assignment]
-    state[review_type] = review  # type: ignore[assignment]
+    state[review_type] = review
     write_phase_state(cwd, slug, state)
 
     _emit_prepare_event(

@@ -6,7 +6,7 @@ Provides Pydantic models for type-safe event metadata across adapters.
 from pydantic import BaseModel, Field
 
 
-class AdapterMetadata(BaseModel):  # type: ignore[explicit-any]
+class AdapterMetadata(BaseModel):
     """Standardized metadata for adapter events.
 
     This model ensures consistent metadata structure across all adapters

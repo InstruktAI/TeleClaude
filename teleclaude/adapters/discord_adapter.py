@@ -51,7 +51,7 @@ class DiscordClientLike(Protocol):
     async def close(self) -> None: ...
 
 
-class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,reportIncompatibleVariableOverride]
+class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,reportIncompatibleVariableOverride]  # type: ignore[misc]
     ChannelOperationsMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
@@ -200,7 +200,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
         if discord_meta.thread_id is None:
             logger.debug("Typing skipped: no thread_id for session %s", session.session_id)
             return
-        thread = await self._get_channel(discord_meta.thread_id)  # type: ignore[attr-defined]
+        thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
             logger.debug(
                 "Typing skipped: channel %s not found for session %s", discord_meta.thread_id, session.session_id
@@ -208,7 +208,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
             return
         typing_fn = getattr(thread, "typing", None)
         if typing_fn and callable(typing_fn):
-            await typing_fn()  # type: ignore[misc]
+            await typing_fn()  # type: ignore[unused-ignore]
             logger.debug("Typing fired: session=%s thread=%s", session.session_id, discord_meta.thread_id)
         else:
             logger.debug(
@@ -217,7 +217,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
                 session.session_id,
             )
 
-    async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def send_output_update(  # type: ignore[override, unused-ignore]  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         session: Session,
         output: str,
@@ -277,7 +277,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return  # No Discord thread for this session
-        status_text = self._format_lifecycle_status(context.status)  # type: ignore[attr-defined]
+        status_text = self._format_lifecycle_status(context.status)
         existing_id = discord_meta.status_message_id
         if existing_id:
             edited = await self.edit_message(session, existing_id, status_text)
@@ -319,7 +319,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
             discord_meta.thread_topper_message_id = topper_message_id
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
-        topper = self._build_thread_topper(session)  # type: ignore[attr-defined]
+        topper = self._build_thread_topper(session)
         edited = await self.edit_message(session, topper_message_id, topper)
         if not edited:
             logger.debug(

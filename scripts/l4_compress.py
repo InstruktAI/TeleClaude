@@ -106,13 +106,13 @@ async def compress_section(
             }
         ],
     )
-    compressed = response.content[0].text
+    compressed = response.content[0].text  # type: ignore[union-attr]
     ratio = len(compressed) / len(body) if body else 0
     print(f"  [{idx + 1}/{total}] {title} ({len(body)}→{len(compressed)} chars, {ratio:.0%})")
     return idx, compressed, len(body), len(compressed)
 
 
-async def main():
+async def main():  # type: ignore[no-untyped-def]
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} <input_file> [output_file]")
         sys.exit(1)
@@ -150,4 +150,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())  # type: ignore[no-untyped-call]

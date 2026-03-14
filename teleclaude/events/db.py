@@ -183,7 +183,7 @@ class EventDB:
             ),
         )
         await self._db().commit()
-        return cursor.lastrowid or 0  # type: ignore[union-attr]
+        return cursor.lastrowid or 0
 
     async def get_notification(self, id: int) -> NotificationRow | None:
         cursor = await self._db().execute("SELECT * FROM notifications WHERE id = ?", (id,))
@@ -245,7 +245,7 @@ class EventDB:
             (status, seen_at, now, id),
         )
         await self._db().commit()
-        return cursor.rowcount > 0  # type: ignore[union-attr]
+        return cursor.rowcount > 0
 
     async def update_agent_status(self, id: int, status: str, agent_id: str) -> bool:
         now = _now_iso()
@@ -260,7 +260,7 @@ class EventDB:
                 (status, agent_id, now, id),
             )
         await self._db().commit()
-        return cursor.rowcount > 0  # type: ignore[union-attr]
+        return cursor.rowcount > 0
 
     async def resolve_notification(self, id: int, resolution: JsonDict) -> bool:
         now = _now_iso()
@@ -269,7 +269,7 @@ class EventDB:
             (json.dumps(resolution), now, now, id),
         )
         await self._db().commit()
-        return cursor.rowcount > 0  # type: ignore[union-attr]
+        return cursor.rowcount > 0
 
     async def upsert_by_idempotency_key(self, envelope: EventEnvelope, schema: EventSchema) -> tuple[int, bool]:
         """Insert or update notification. Returns (notification_id, was_created)."""
@@ -320,7 +320,7 @@ class EventDB:
                 (description, json.dumps(payload), now, id),
             )
         await self._db().commit()
-        return cursor.rowcount > 0  # type: ignore[union-attr]
+        return cursor.rowcount > 0
 
     # --- Quarantine methods ---
 
@@ -339,7 +339,7 @@ class EventDB:
             ),
         )
         await self._db().commit()
-        return cursor.lastrowid or 0  # type: ignore[union-attr]
+        return cursor.lastrowid or 0
 
     async def list_quarantined(self, reviewed: bool | None = None, limit: int = 50) -> list[QuarantinedEventRow]:
         params: list[Any] = []

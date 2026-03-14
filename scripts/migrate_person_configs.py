@@ -98,7 +98,7 @@ def _migrate(data: YamlDict) -> tuple[YamlDict, list[str]]:
                 }
             )
             changes.append(f"  converted subscriptions.youtube -> YoutubeSubscription(source={youtube_source})")
-        data["subscriptions"] = new_subs
+        data["subscriptions"] = new_subs  # type: ignore[assignment]
         changes.append("  replaced old subscriptions dict with list[SubscriptionEntry]")
     elif isinstance(old_subs, list):
         # Already a list — append any channel-derived subs
@@ -107,7 +107,7 @@ def _migrate(data: YamlDict) -> tuple[YamlDict, list[str]]:
             existing.extend(new_subs)
     else:
         if new_subs:
-            data["subscriptions"] = new_subs
+            data["subscriptions"] = new_subs  # type: ignore[assignment]
 
     # 4. Remove notifications block
     if "notifications" in data:

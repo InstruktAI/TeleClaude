@@ -144,7 +144,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 start_polling=self._start_polling_for_session,
                 execute_terminal_command=self._execute_terminal_command,
                 execute_auto_command=self._execute_auto_command,
-                queue_background_task=self._queue_background_task,
+                queue_background_task=self._queue_background_task,  # type: ignore[arg-type]
                 bootstrap_session=self._bootstrap_session_resources,
             )
         )
@@ -227,7 +227,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 logger.debug("No handler for event: %s (skipped)", event_value)
 
         # Register non-TeleClaudeEvents handlers
-        event_bus.subscribe("system_command", self._handle_system_command)
+        event_bus.subscribe("system_command", self._handle_system_command)  # type: ignore[arg-type]
 
         # Note: Adapters are loaded in client.start(), not here
 
@@ -788,7 +788,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
-        import uvloop  # type: ignore[import-not-found]
+        import uvloop
 
         uvloop.run(main())
     except ImportError:

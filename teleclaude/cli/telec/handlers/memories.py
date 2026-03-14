@@ -104,7 +104,7 @@ def _handle_memories_search(args: list[str]) -> None:
         api = TelecAPIClient()
         await api.connect()
         try:
-            return await api.memory_search(query, limit=limit, obs_type=obs_type, project=project)  # type: ignore[arg-type]
+            return await api.memory_search(query, limit=limit, obs_type=obs_type, project=project)
         finally:
             await api.close()
 
@@ -187,7 +187,7 @@ def _handle_memories_save(args: list[str]) -> None:
         api = TelecAPIClient()
         await api.connect()
         try:
-            return await api.memory_save(text, title=title, obs_type=obs_type, project=project)  # type: ignore[arg-type]
+            return await api.memory_save(text, title=title, obs_type=obs_type, project=project)
         finally:
             await api.close()
 

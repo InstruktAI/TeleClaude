@@ -67,7 +67,7 @@ async def run_pending_migrations(db: aiosqlite.Connection) -> int:
             logger.error("Migration %s missing up() function", version)
             continue
 
-        await module.up(db)  # type: ignore[misc]  # Dynamic module load
+        await module.up(db)  # type: ignore[misc, unused-ignore]  # Dynamic module load
 
         # Record migration
         await db.execute(

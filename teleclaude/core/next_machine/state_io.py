@@ -235,7 +235,7 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
         state = {}
     # Deep-merge: preserves v2 nested sub-key defaults that are absent in older persisted state
     merged = _deep_merge_state(copy.deepcopy(DEFAULT_STATE), state)
-    merged["finalize"] = _normalize_finalize_state(state.get("finalize"))
+    merged["finalize"] = _normalize_finalize_state(state.get("finalize"))  # type: ignore[assignment]
 
     # Migration: derive phase from existing fields when missing from persisted state
     if "phase" not in state:
@@ -294,12 +294,12 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
 
         if status == PhaseStatus.CHANGES_REQUESTED.value:
             findings_ids = _extract_finding_ids(cwd, slug)
-            state["unresolved_findings"] = findings_ids
+            state["unresolved_findings"] = findings_ids  # type: ignore[assignment]
             # Keep resolved IDs stable and de-duplicated
             state["resolved_findings"] = list(dict.fromkeys(str(i) for i in resolved_ids))
         elif status == PhaseStatus.APPROVED.value:
             merged = list(dict.fromkeys([*(str(i) for i in resolved_ids), *(str(i) for i in unresolved_ids)]))
-            state["resolved_findings"] = merged
+            state["resolved_findings"] = merged  # type: ignore[assignment]
             state["unresolved_findings"] = []
     write_phase_state(cwd, slug, state)
     return state
@@ -327,7 +327,7 @@ def mark_prepare_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[
     if not isinstance(review_dict, dict):
         review_dict = {}
     review_dict["verdict"] = verdict
-    state[phase] = review_dict  # type: ignore[assignment]
+    state[phase] = review_dict
     write_phase_state(cwd, slug, state)
     return state
 
@@ -354,7 +354,7 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
 
     if status == PreparePhase.PREPARED.value:
         grounding = state.get("grounding", {})
-        grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore[arg-type]
+        grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
         rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
         if rc == 0 and current_sha.strip():
             grounding_dict["base_sha"] = current_sha.strip()
@@ -365,7 +365,7 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
         grounding_dict["last_grounded_at"] = datetime.now(UTC).isoformat()
         grounding_dict["invalidation_reason"] = ""
         grounding_dict["changed_paths"] = []
-        state["grounding"] = grounding_dict  # type: ignore[assignment]
+        state["grounding"] = grounding_dict
 
     write_phase_state(cwd, slug, state)
     return state
@@ -435,7 +435,7 @@ def _mark_finalize_handed_off(
         raise ValueError(f"finalize state for {slug} is not ready")
 
     state["finalize"] = {
-        **finalize,
+        **finalize,  # type: ignore[dict-item]
         "status": "handed_off",
         "handoff_session_id": handoff_session_id,
         "handed_off_at": datetime.now(UTC).isoformat(),
@@ -492,7 +492,7 @@ def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | N
     if breakdown is None or not isinstance(breakdown, dict):
         return None
     # At this point breakdown is dict with bool/list values from json
-    return dict(breakdown)  # type: ignore[return-value]
+    return dict(breakdown)  # type: ignore
 
 
 def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str]) -> None:
@@ -505,7 +505,7 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
         todos: List of todo slugs created from split (empty if no breakdown)
     """
     state = read_phase_state(cwd, slug)
-    state["breakdown"] = {"assessed": assessed, "todos": todos}
+    state["breakdown"] = {"assessed": assessed, "todos": todos}  # type: ignore[dict-item]
     write_phase_state(cwd, slug, state)
 
 

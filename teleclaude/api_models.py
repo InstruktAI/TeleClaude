@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
 
 
-class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
+class CreateSessionRequest(BaseModel):
     """Request to create a new session."""
 
     model_config = ConfigDict(frozen=True)
@@ -32,7 +32,7 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     metadata: dict[str, object] | None = None  # guard: loose-dict
 
 
-class CreateSessionResponseDTO(BaseModel):  # type: ignore[explicit-any]
+class CreateSessionResponseDTO(BaseModel):
     """Response from session creation."""
 
     model_config = ConfigDict(frozen=True)
@@ -44,7 +44,7 @@ class CreateSessionResponseDTO(BaseModel):  # type: ignore[explicit-any]
     error: str | None = None
 
 
-class SendMessageRequest(BaseModel):  # type: ignore[explicit-any]
+class SendMessageRequest(BaseModel):
     """Request to send a message to a session."""
 
     model_config = ConfigDict(frozen=True)
@@ -60,7 +60,7 @@ class SendMessageRequest(BaseModel):  # type: ignore[explicit-any]
         return self
 
 
-class KeysRequest(BaseModel):  # type: ignore[explicit-any]
+class KeysRequest(BaseModel):
     """Request to send a key command to a session."""
 
     model_config = ConfigDict(frozen=True)
@@ -69,7 +69,7 @@ class KeysRequest(BaseModel):  # type: ignore[explicit-any]
     count: int | None = Field(default=None, ge=1)
 
 
-class VoiceInputRequest(BaseModel):  # type: ignore[explicit-any]
+class VoiceInputRequest(BaseModel):
     """Request to send a voice input to a session."""
 
     model_config = ConfigDict(frozen=True)
@@ -80,7 +80,7 @@ class VoiceInputRequest(BaseModel):  # type: ignore[explicit-any]
     message_thread_id: int | None = None
 
 
-class FileUploadRequest(BaseModel):  # type: ignore[explicit-any]
+class FileUploadRequest(BaseModel):
     """Request to send a file input to a session."""
 
     model_config = ConfigDict(frozen=True)
@@ -91,7 +91,7 @@ class FileUploadRequest(BaseModel):  # type: ignore[explicit-any]
     file_size: int = 0
 
 
-class SessionDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionDTO(BaseModel):
     """DTO for session data in API responses."""
 
     model_config = ConfigDict(frozen=True)
@@ -152,7 +152,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
         )
 
 
-class PersonDTO(BaseModel):  # type: ignore[explicit-any]
+class PersonDTO(BaseModel):
     """DTO for person info (safe subset — no credentials)."""
 
     model_config = ConfigDict(frozen=True)
@@ -164,7 +164,7 @@ class PersonDTO(BaseModel):  # type: ignore[explicit-any]
     proficiency: Literal["novice", "intermediate", "advanced", "expert"] | None = None  # deprecated
 
 
-class ComputerDTO(BaseModel):  # type: ignore[explicit-any]
+class ComputerDTO(BaseModel):
     """DTO for computer info."""
 
     model_config = ConfigDict(frozen=True)
@@ -177,7 +177,7 @@ class ComputerDTO(BaseModel):  # type: ignore[explicit-any]
     tmux_binary: str | None = None
 
 
-class ProjectDTO(BaseModel):  # type: ignore[explicit-any]
+class ProjectDTO(BaseModel):
     """DTO for project info."""
 
     model_config = ConfigDict(frozen=True)
@@ -188,7 +188,7 @@ class ProjectDTO(BaseModel):  # type: ignore[explicit-any]
     description: str | None = None
 
 
-class TodoDTO(BaseModel):  # type: ignore[explicit-any]
+class TodoDTO(BaseModel):
     """DTO for todo info."""
 
     model_config = ConfigDict(frozen=True)
@@ -214,7 +214,7 @@ class TodoDTO(BaseModel):  # type: ignore[explicit-any]
     finalize_status: str | None = None
 
 
-class OperationStatusDTO(BaseModel):  # type: ignore[explicit-any]
+class OperationStatusDTO(BaseModel):
     """DTO for long-running operation receipts and status payloads."""
 
     model_config = ConfigDict(frozen=True)
@@ -252,7 +252,7 @@ class OperationStatusPayload(TypedDict):
     client_request_id: NotRequired[str]
 
 
-class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]
+class ProjectWithTodosDTO(ProjectDTO):
     """DTO for project with its todos."""
 
     model_config = ConfigDict(frozen=True)
@@ -261,7 +261,7 @@ class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]
     has_roadmap: bool = False
 
 
-class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]
+class AgentAvailabilityDTO(BaseModel):
     """DTO for agent availability."""
 
     model_config = ConfigDict(frozen=True)
@@ -275,7 +275,7 @@ class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]
     error: str | None = None
 
 
-class SetAgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
+class SetAgentStatusRequest(BaseModel):
     """Request to set agent status."""
 
     model_config = ConfigDict(frozen=True)
@@ -288,7 +288,7 @@ class SetAgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
 # WebSocket Event DTOs
 
 
-class SessionsInitialDataDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionsInitialDataDTO(BaseModel):
     """Data for sessions_initial event."""
 
     model_config = ConfigDict(frozen=True)
@@ -297,7 +297,7 @@ class SessionsInitialDataDTO(BaseModel):  # type: ignore[explicit-any]
     computer: str | None = None
 
 
-class SessionsInitialEventDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionsInitialEventDTO(BaseModel):
     """WebSocket event for initial sessions list."""
 
     model_config = ConfigDict(frozen=True)
@@ -306,7 +306,7 @@ class SessionsInitialEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: SessionsInitialDataDTO
 
 
-class ProjectsInitialDataDTO(BaseModel):  # type: ignore[explicit-any]
+class ProjectsInitialDataDTO(BaseModel):
     """Data for projects_initial event."""
 
     model_config = ConfigDict(frozen=True)
@@ -315,7 +315,7 @@ class ProjectsInitialDataDTO(BaseModel):  # type: ignore[explicit-any]
     computer: str | None = None
 
 
-class ProjectsInitialEventDTO(BaseModel):  # type: ignore[explicit-any]
+class ProjectsInitialEventDTO(BaseModel):
     """WebSocket event for initial projects list."""
 
     model_config = ConfigDict(frozen=True)
@@ -324,7 +324,7 @@ class ProjectsInitialEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: ProjectsInitialDataDTO
 
 
-class SessionStartedEventDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionStartedEventDTO(BaseModel):
     """WebSocket event for session creation."""
 
     model_config = ConfigDict(frozen=True)
@@ -333,7 +333,7 @@ class SessionStartedEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: SessionDTO
 
 
-class SessionUpdatedEventDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionUpdatedEventDTO(BaseModel):
     """WebSocket event for session updates."""
 
     model_config = ConfigDict(frozen=True)
@@ -342,7 +342,7 @@ class SessionUpdatedEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: SessionDTO
 
 
-class SessionClosedDataDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionClosedDataDTO(BaseModel):
     """Data for session_closed event."""
 
     model_config = ConfigDict(frozen=True)
@@ -350,7 +350,7 @@ class SessionClosedDataDTO(BaseModel):  # type: ignore[explicit-any]
     session_id: str
 
 
-class SessionClosedEventDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionClosedEventDTO(BaseModel):
     """WebSocket event for session closure."""
 
     model_config = ConfigDict(frozen=True)
@@ -359,7 +359,7 @@ class SessionClosedEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: SessionClosedDataDTO
 
 
-class RefreshDataDTO(BaseModel):  # type: ignore[explicit-any]
+class RefreshDataDTO(BaseModel):
     """Data for refresh events."""
 
     model_config = ConfigDict(frozen=True)
@@ -368,7 +368,7 @@ class RefreshDataDTO(BaseModel):  # type: ignore[explicit-any]
     project_path: str | None = None
 
 
-class RefreshEventDTO(BaseModel):  # type: ignore[explicit-any]
+class RefreshEventDTO(BaseModel):
     """WebSocket event for generic refreshes."""
 
     model_config = ConfigDict(frozen=True)
@@ -385,7 +385,7 @@ class RefreshEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: RefreshDataDTO
 
 
-class ErrorEventDataDTO(BaseModel):  # type: ignore[explicit-any]
+class ErrorEventDataDTO(BaseModel):
     """Data for error events."""
 
     model_config = ConfigDict(frozen=True)
@@ -399,7 +399,7 @@ class ErrorEventDataDTO(BaseModel):  # type: ignore[explicit-any]
     code: str | None = None
 
 
-class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]
+class ErrorEventDTO(BaseModel):
     """WebSocket event for errors."""
 
     model_config = ConfigDict(frozen=True)
@@ -408,7 +408,7 @@ class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: ErrorEventDataDTO
 
 
-class ChiptunesTrackEventDTO(BaseModel):  # type: ignore[explicit-any]
+class ChiptunesTrackEventDTO(BaseModel):
     """WebSocket event when a new chiptunes track starts playing."""
 
     model_config = ConfigDict(frozen=True)
@@ -418,7 +418,7 @@ class ChiptunesTrackEventDTO(BaseModel):  # type: ignore[explicit-any]
     sid_path: str = ""
 
 
-class ChiptunesStatusDTO(BaseModel):  # type: ignore[explicit-any]
+class ChiptunesStatusDTO(BaseModel):
     """Current chiptunes playback state."""
 
     model_config = ConfigDict(frozen=True)
@@ -435,7 +435,7 @@ class ChiptunesStatusDTO(BaseModel):  # type: ignore[explicit-any]
     pending_action: Literal["", "resume", "pause", "next", "prev"] = ""
 
 
-class ChiptunesStateEventDTO(BaseModel):  # type: ignore[explicit-any]
+class ChiptunesStateEventDTO(BaseModel):
     """WebSocket event for chiptunes playback state transitions."""
 
     model_config = ConfigDict(frozen=True)
@@ -453,7 +453,7 @@ class ChiptunesStateEventDTO(BaseModel):  # type: ignore[explicit-any]
     pending_action: Literal["", "resume", "pause", "next", "prev"] = ""
 
 
-class ChiptunesCommandReceiptDTO(BaseModel):  # type: ignore[explicit-any]
+class ChiptunesCommandReceiptDTO(BaseModel):
     """Receipt for accepted chiptunes command (asynchronous execution)."""
 
     model_config = ConfigDict(frozen=True)
@@ -463,7 +463,7 @@ class ChiptunesCommandReceiptDTO(BaseModel):  # type: ignore[explicit-any]
     action: Literal["resume", "pause", "next", "prev"]
 
 
-class SessionLifecycleStatusEventDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionLifecycleStatusEventDTO(BaseModel):
     """WebSocket event for canonical session lifecycle status transitions.
 
     Canonical contract fields (ucap-truthful-session-status):
@@ -487,7 +487,7 @@ class SessionLifecycleStatusEventDTO(BaseModel):  # type: ignore[explicit-any]
     delivery_scope: str | None = None
 
 
-class AgentActivityEventDTO(BaseModel):  # type: ignore[explicit-any]
+class AgentActivityEventDTO(BaseModel):
     """WebSocket event for agent activity (tool_use, tool_done, agent_stop).
 
     Canonical contract fields (ucap-canonical-contract):
@@ -512,7 +512,7 @@ class AgentActivityEventDTO(BaseModel):  # type: ignore[explicit-any]
     delivery_scope: str | None = None
 
 
-class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
+class TTSSettingsDTO(BaseModel):
     """TTS section of settings response."""
 
     model_config = ConfigDict(frozen=True)
@@ -520,7 +520,7 @@ class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
     enabled: bool = False
 
 
-class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
+class SettingsDTO(BaseModel):
     """Runtime settings response."""
 
     model_config = ConfigDict(frozen=True)
@@ -528,7 +528,7 @@ class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
     tts: TTSSettingsDTO
 
 
-class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
+class TTSSettingsPatchDTO(BaseModel):
     """TTS section of settings patch request."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -536,7 +536,7 @@ class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     enabled: bool | None = None
 
 
-class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
+class SettingsPatchDTO(BaseModel):
     """Settings patch request body."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -544,7 +544,7 @@ class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     tts: TTSSettingsPatchDTO | None = None
 
 
-class MessageDTO(BaseModel):  # type: ignore[explicit-any]
+class MessageDTO(BaseModel):
     """A single structured message from a session transcript."""
 
     model_config = ConfigDict(frozen=True)
@@ -557,7 +557,7 @@ class MessageDTO(BaseModel):  # type: ignore[explicit-any]
     file_index: int = 0
 
 
-class SessionMessagesDTO(BaseModel):  # type: ignore[explicit-any]
+class SessionMessagesDTO(BaseModel):
     """Response for GET /sessions/{session_id}/messages."""
 
     model_config = ConfigDict(frozen=True)
@@ -567,7 +567,7 @@ class SessionMessagesDTO(BaseModel):  # type: ignore[explicit-any]
     messages: list[MessageDTO] = Field(default_factory=list)
 
 
-class JobDTO(BaseModel):  # type: ignore[explicit-any]
+class JobDTO(BaseModel):
     """DTO for job info."""
 
     model_config = ConfigDict(frozen=True)
@@ -579,7 +579,7 @@ class JobDTO(BaseModel):  # type: ignore[explicit-any]
     status: str
 
 
-class RunSessionRequest(BaseModel):  # type: ignore[explicit-any]
+class RunSessionRequest(BaseModel):
     """Request to run an agent command in a new session (POST /sessions/run)."""
 
     model_config = ConfigDict(frozen=True)
@@ -595,7 +595,7 @@ class RunSessionRequest(BaseModel):  # type: ignore[explicit-any]
     additional_context: str = ""
 
 
-class SendResultRequest(BaseModel):  # type: ignore[explicit-any]
+class SendResultRequest(BaseModel):
     """Request to send a formatted result to the session's user (POST /sessions/self/result)."""
 
     model_config = ConfigDict(frozen=True)
@@ -604,7 +604,7 @@ class SendResultRequest(BaseModel):  # type: ignore[explicit-any]
     output_format: Literal["markdown", "html"] = "markdown"
 
 
-class RenderWidgetRequest(BaseModel):  # type: ignore[explicit-any]
+class RenderWidgetRequest(BaseModel):
     """Request to render a rich widget expression (POST /sessions/self/widget)."""
 
     model_config = ConfigDict(frozen=True)
@@ -612,7 +612,7 @@ class RenderWidgetRequest(BaseModel):  # type: ignore[explicit-any]
     data: dict[str, object]  # guard: loose-dict - widget expression blob
 
 
-class EscalateRequest(BaseModel):  # type: ignore[explicit-any]
+class EscalateRequest(BaseModel):
     """Request to escalate a customer session to Discord (POST /sessions/self/escalate)."""
 
     model_config = ConfigDict(frozen=True)
@@ -622,7 +622,7 @@ class EscalateRequest(BaseModel):  # type: ignore[explicit-any]
     context_summary: str | None = None
 
 
-class AgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
+class AgentStatusRequest(BaseModel):
     """Request to set agent dispatch status (POST /agents/{agent}/status)."""
 
     model_config = ConfigDict(frozen=True)

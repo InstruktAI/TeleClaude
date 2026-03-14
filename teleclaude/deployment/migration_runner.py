@@ -67,7 +67,7 @@ def _load_state(state_path: Path) -> set[str]:
     if not isinstance(raw_state_obj, dict):
         raise ValueError(f"Invalid migration state payload in {state_path}")
 
-    raw_state = cast(dict[str, object], raw_state_obj)
+    raw_state = cast(dict[str, object], raw_state_obj)  # guard: loose-dict - YAML state file — dynamic shape
     applied = raw_state.get("applied")
     if not isinstance(applied, list) or any(not isinstance(item, str) for item in applied):
         raise ValueError(f"Invalid migration state payload in {state_path}")

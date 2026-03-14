@@ -38,7 +38,9 @@ def _split_frontmatter(lines: list[str]) -> tuple[list[str], list[str]] | None:
 def _load_metadata(frontmatter_lines: list[str]) -> Mapping[str, object]:
     raw = "\n".join(frontmatter_lines)
     data_obj = yaml.safe_load(raw) or {}
-    return cast(dict[str, object], data_obj) if isinstance(data_obj, dict) else {}
+    return (  # guard: loose-dict - YAML parsed data — migration config
+        cast(dict[str, object], data_obj) if isinstance(data_obj, dict) else {}
+    )
 
 
 def _strip_requires_frontmatter(frontmatter_lines: list[str]) -> list[str]:

@@ -51,7 +51,7 @@ def seed_event_domains(_project_root: Path) -> None:
     for key, value in DEFAULT_EVENT_DOMAINS.items():
         if key == "domains":
             raw["event_domains"].setdefault("domains", {})
-            raw["event_domains"]["domains"].update(value)  # type: ignore[arg-type]
+            raw["event_domains"]["domains"].update(value)
         else:
             raw["event_domains"].setdefault(key, value)
 
@@ -60,7 +60,7 @@ def seed_event_domains(_project_root: Path) -> None:
             yaml.safe_dump(raw, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
         logger.info(
             "Seeded event_domains with %d default pillar configs",
-            len(DEFAULT_EVENT_DOMAINS.get("domains", {})),  # type: ignore[union-attr]
+            len(DEFAULT_EVENT_DOMAINS.get("domains", {})),  # type: ignore[arg-type]
         )
     except Exception as e:
         logger.error("Failed to write seeded event_domains to global config: %s", e)

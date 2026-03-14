@@ -22,7 +22,7 @@ class SessionLauncherView(discord.ui.View):
     def __init__(self, *, enabled_agents: list[str], on_launch: LaunchCallback) -> None:
         super().__init__(timeout=None)
         for agent_name in enabled_agents:
-            button = discord.ui.Button(
+            button = discord.ui.Button(  # type: ignore[var-annotated]
                 label=agent_name.capitalize(),
                 custom_id=f"launch:{agent_name}",
                 style=discord.ButtonStyle.primary,
@@ -31,5 +31,5 @@ class SessionLauncherView(discord.ui.View):
             async def _callback(interaction: object, selected_agent: str = agent_name) -> None:
                 await on_launch(interaction, selected_agent)
 
-            button.callback = _callback
+            button.callback = _callback  # type: ignore[method-assign]
             self.add_item(button)

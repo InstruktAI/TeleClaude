@@ -45,12 +45,12 @@ class DefaultSignalAIClient:
         client = self._anthropic_client()
         prompt = f"Summarise this article in one sentence (max 20 words).\n\nTitle: {title}\n\nContent: {body[:2000]}"
         try:
-            resp = await client.messages.create(  # type: ignore[union-attr]
+            resp = await client.messages.create(  # type: ignore
                 model="claude-haiku-4-5-20251001",
                 max_tokens=60,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return resp.content[0].text.strip()  # type: ignore[union-attr]
+            return resp.content[0].text.strip()  # type: ignore[no-any-return]
         except Exception as e:
             logger.warning("summarise failed: %s", e)
             raise
@@ -63,12 +63,12 @@ class DefaultSignalAIClient:
             f"Title: {title}\nSummary: {summary}"
         )
         try:
-            resp = await client.messages.create(  # type: ignore[union-attr]
+            resp = await client.messages.create(  # type: ignore
                 model="claude-haiku-4-5-20251001",
                 max_tokens=80,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = resp.content[0].text.strip()  # type: ignore[union-attr]
+            raw = resp.content[0].text.strip()
             tags = [t.strip().lower().replace(" ", "-") for t in raw.split(",") if t.strip()]
             return tags[:7]
         except Exception as e:
@@ -92,12 +92,12 @@ class DefaultSignalAIClient:
             '"sources": ["<url1>"], "confidence": 0.0, "recommended_action": null}'
         )
         try:
-            resp = await client.messages.create(  # type: ignore[union-attr]
+            resp = await client.messages.create(  # type: ignore
                 model="claude-haiku-4-5-20251001",
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = resp.content[0].text.strip()  # type: ignore[union-attr]
+            raw = resp.content[0].text.strip()
             # Extract JSON block if wrapped in markdown
             if "```" in raw:
                 raw = raw.split("```")[1]

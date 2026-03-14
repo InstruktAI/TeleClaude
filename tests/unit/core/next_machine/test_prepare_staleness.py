@@ -64,7 +64,7 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
 
     state = read_phase_state(cwd, slug)
     state["prepare_phase"] = "requirements_review"
-    state["requirements_review"] = {  # type: ignore[assignment]
+    state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",
         "findings_count": 0,

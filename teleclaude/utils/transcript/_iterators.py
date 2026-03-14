@@ -88,7 +88,7 @@ def _iter_jsonl_entries_tail(
             return
         tail_text = tail_text[first_newline + 1 :]
 
-    tail = deque(maxlen=max_entries)
+    tail = deque(maxlen=max_entries)  # type: ignore[var-annotated]
     for line in tail_text.splitlines():
         if not line.strip():
             continue
@@ -205,7 +205,7 @@ def _build_gemini_assistant_blocks(
         args = tool_call.get("args")
         input_payload: JsonDict = {}
         if isinstance(args, dict):
-            input_payload = cast(JsonDict, args)
+            input_payload = cast(JsonDict, args)  # type: ignore[redundant-cast]
         blocks.append({"type": "tool_use", "name": name, "input": input_payload})
 
         result_texts = _extract_gemini_tool_result_texts(tool_call)

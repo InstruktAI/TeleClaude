@@ -60,7 +60,7 @@ def parse_claude_transcript(
     try:
         entries = _iter_claude_entries(path)
         return _render_transcript_from_entries(
-            entries,
+            entries,  # type: ignore[arg-type]
             title,
             since_timestamp,
             until_timestamp,
@@ -91,7 +91,7 @@ def parse_codex_transcript(
     try:
         entries = _iter_codex_entries(path)
         return _render_transcript_from_entries(
-            entries,
+            entries,  # type: ignore[arg-type]
             title,
             since_timestamp,
             until_timestamp,
@@ -123,7 +123,7 @@ def parse_gemini_transcript(
     try:
         entries = _iter_gemini_entries(path)
         return _render_transcript_from_entries(
-            entries,
+            entries,  # type: ignore[arg-type]
             title,
             since_timestamp,
             until_timestamp,
@@ -174,7 +174,7 @@ def _append_clean_tool_use_block(
     tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
 
     formatted_name = f"**`{tool_name_safe}`**"
-    subject = _extract_tool_subject(block)
+    subject = _extract_tool_subject(block)  # type: ignore[arg-type]
 
     base_len = len(tool_name_safe)
     if subject:
@@ -251,13 +251,13 @@ def _append_standard_render_block(
 
     if block_type == "tool_use":
         lines.append("")
-        _process_tool_use_block(block, time_prefix, lines)
+        _process_tool_use_block(block, time_prefix, lines)  # type: ignore[arg-type]
         return True
 
     if block_type == "tool_result":
         lines.append("")
         _process_tool_result_block(
-            block,
+            block,  # type: ignore[arg-type]
             time_prefix,
             lines,
             collapse_tool_results=False,

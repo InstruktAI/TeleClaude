@@ -94,7 +94,7 @@ class InputHandlersMixin:
         for attachment in attachments:
             content_type = getattr(attachment, "content_type", None) or ""
             if content_type.startswith("audio/"):
-                return attachment
+                return attachment  # type: ignore[no-any-return]
         return None
 
     @staticmethod
@@ -135,7 +135,7 @@ class InputHandlersMixin:
         temp_file_path = temp_dir / f"voice_{message_id}{ext}"
 
         try:
-            save_fn = self._require_async_callable(getattr(attachment, "save", None), label="Discord attachment save")  # type: ignore[attr-defined]
+            save_fn = self._require_async_callable(getattr(attachment, "save", None), label="Discord attachment save")
             await save_fn(temp_file_path)
             logger.info("Downloaded Discord voice message to: %s", temp_file_path)
 
@@ -151,11 +151,11 @@ class InputHandlersMixin:
                     message_id=message_id,
                     origin=InputOrigin.DISCORD.value,
                     actor_id=f"discord:{getattr(getattr(message, 'author', None), 'id', 'unknown')}",
-                    actor_name=self._discord_actor_name(  # type: ignore[attr-defined]
+                    actor_name=self._discord_actor_name(
                         getattr(message, "author", None),
                         str(getattr(getattr(message, "author", None), "id", "unknown")),
                     ),
-                    actor_avatar_url=self._discord_actor_avatar_url(getattr(message, "author", None)),  # type: ignore[attr-defined]
+                    actor_avatar_url=self._discord_actor_avatar_url(getattr(message, "author", None)),
                 )
             )
         except Exception as exc:
@@ -196,7 +196,7 @@ class InputHandlersMixin:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 file_path = output_dir / filename
 
-                save_fn = self._require_async_callable(  # type: ignore[attr-defined]
+                save_fn = self._require_async_callable(
                     getattr(attachment, "save", None), label="Discord attachment save"
                 )
                 await save_fn(file_path)
@@ -235,7 +235,7 @@ class InputHandlersMixin:
             return None
 
         channel_id, thread_id = self._extract_channel_ids(message)
-        guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))  # type: ignore[attr-defined]
+        guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))
 
         session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
         if session and not session.human_role:
@@ -246,7 +246,7 @@ class InputHandlersMixin:
                 await db.update_session(session.session_id, human_role=identity.person_role)
                 session = await db.get_session(session.session_id) or session
         if session is None:
-            forum_type, project_path = self._resolve_forum_context(message)  # type: ignore[attr-defined]
+            forum_type, project_path = self._resolve_forum_context(message)
             session = await self._create_session_for_message(
                 message,
                 user_id,
@@ -273,11 +273,11 @@ class InputHandlersMixin:
     def _extract_channel_ids(self, message: object) -> tuple[int | None, int | None]:
         channel = getattr(message, "channel", None)
         if not self._is_thread_channel(channel):
-            return (self._parse_optional_int(getattr(channel, "id", None)), None)  # type: ignore[attr-defined]
+            return (self._parse_optional_int(getattr(channel, "id", None)), None)
 
-        thread_id = self._parse_optional_int(getattr(channel, "id", None))  # type: ignore[attr-defined]
+        thread_id = self._parse_optional_int(getattr(channel, "id", None))
         parent = getattr(channel, "parent", None)
-        parent_id = self._parse_optional_int(getattr(parent, "id", None))  # type: ignore[attr-defined]
+        parent_id = self._parse_optional_int(getattr(parent, "id", None))
         return (parent_id or thread_id, thread_id)
 
     async def _find_session(
@@ -308,17 +308,17 @@ class InputHandlersMixin:
         response = getattr(interaction, "response", None)
         response_defer = getattr(response, "defer", None)
         if callable(response_defer):
-            await self._require_async_callable(response_defer, label="Discord interaction response.defer")(  # type: ignore[attr-defined]
+            await self._require_async_callable(response_defer, label="Discord interaction response.defer")(
                 ephemeral=True
             )
 
-        forum_id = await self._resolve_interaction_forum_id(interaction)  # type: ignore[attr-defined]
-        project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None  # type: ignore[attr-defined]
+        forum_id = await self._resolve_interaction_forum_id(interaction)
+        project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
         if project_path is None:
             followup = getattr(interaction, "followup", None)
             followup_send = getattr(followup, "send", None)
             if callable(followup_send):
-                await self._require_async_callable(followup_send, label="Discord interaction followup.send")(  # type: ignore[attr-defined]
+                await self._require_async_callable(followup_send, label="Discord interaction followup.send")(
                     "Unable to resolve project for this forum.",
                     ephemeral=True,
                 )
@@ -337,12 +337,12 @@ class InputHandlersMixin:
         if not callable(followup_send):
             return
         if session_id:
-            await self._require_async_callable(followup_send, label="Discord interaction followup.send")(  # type: ignore[attr-defined]
+            await self._require_async_callable(followup_send, label="Discord interaction followup.send")(
                 f"Starting {agent_name}...",
                 ephemeral=True,
             )
             return
-        await self._require_async_callable(followup_send, label="Discord interaction followup.send")(  # type: ignore[attr-defined]
+        await self._require_async_callable(followup_send, label="Discord interaction followup.send")(
             f"Failed to start {agent_name}.",
             ephemeral=True,
         )
@@ -354,29 +354,29 @@ class InputHandlersMixin:
         if not callable(response_send):
             return
         if not self._is_thread_channel(channel):
-            await self._require_async_callable(response_send, label="Discord interaction response.send_message")(  # type: ignore[attr-defined]
+            await self._require_async_callable(response_send, label="Discord interaction response.send_message")(
                 "No active session in this thread.",
                 ephemeral=True,
             )
             return
 
-        thread_id = self._parse_optional_int(getattr(channel, "id", None))  # type: ignore[attr-defined]
+        thread_id = self._parse_optional_int(getattr(channel, "id", None))
         parent = getattr(channel, "parent", None)
-        parent_id = self._parse_optional_int(getattr(parent, "id", None))  # type: ignore[attr-defined]
+        parent_id = self._parse_optional_int(getattr(parent, "id", None))
         channel_id = parent_id or thread_id
 
         user_obj = getattr(interaction, "user", None)
         user_id = str(getattr(user_obj, "id", "")).strip()
         session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
         if session is None:
-            await self._require_async_callable(response_send, label="Discord interaction response.send_message")(  # type: ignore[attr-defined]
+            await self._require_async_callable(response_send, label="Discord interaction response.send_message")(
                 "No active session in this thread.",
                 ephemeral=True,
             )
             return
 
         cmd = KeysCommand(session_id=session.session_id, key="cancel", args=[])
-        await self._require_async_callable(response_send, label="Discord interaction response.send_message")(  # type: ignore[attr-defined]
+        await self._require_async_callable(response_send, label="Discord interaction response.send_message")(
             "Sent CTRL+C",
             ephemeral=True,
         )
@@ -410,7 +410,7 @@ class InputHandlersMixin:
             effective_path = project_path or config.computer.help_desk_dir
         else:
             forum_id, _ = self._extract_channel_ids(message)
-            forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None  # type: ignore[attr-defined]
+            forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
             effective_path = forum_project_path or project_path or config.computer.help_desk_dir
 
         # Bundle first message into agent startup so the bootstrap waits for
@@ -425,7 +425,7 @@ class InputHandlersMixin:
             project_path=effective_path,
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
-            channel_metadata=channel_metadata,
+            channel_metadata=channel_metadata,  # type: ignore[arg-type]
             auto_command=auto_command,
         )
         result = await get_command_service().create_session(create_cmd)
@@ -472,18 +472,18 @@ class InputHandlersMixin:
         *,
         metadata: MessageMetadata | None = None,
     ) -> object:
-        if self._client is None:  # type: ignore[attr-defined]
+        if self._client is None:
             raise AdapterError("Discord adapter not started")
 
         metadata_channel_id = (
-            self._parse_optional_int(metadata.channel_id) if metadata and metadata.channel_id else None  # type: ignore[attr-defined]
+            self._parse_optional_int(metadata.channel_id) if metadata and metadata.channel_id else None
         )
         discord_meta = session.get_metadata().get_ui().get_discord()
         destination_id = metadata_channel_id or discord_meta.thread_id or discord_meta.channel_id
         if destination_id is None:
             raise AdapterError(f"Session {session.session_id} missing discord channel mapping")
 
-        channel = await self._get_channel(destination_id)  # type: ignore[attr-defined]
+        channel = await self._get_channel(destination_id)
         if channel is None:
             # Channel was deleted from Discord — clear stale metadata so we stop retrying
             logger.warning(
@@ -507,7 +507,7 @@ class InputHandlersMixin:
         metadata: MessageMetadata | None = None,
     ) -> object:
         channel = await self._resolve_destination_channel(session, metadata=metadata)
-        fetch_fn = self._require_async_callable(  # type: ignore[attr-defined]
+        fetch_fn = self._require_async_callable(
             getattr(channel, "fetch_message", None), label="Discord channel fetch_message"
         )
         if not message_id.isdigit():
@@ -515,19 +515,19 @@ class InputHandlersMixin:
         return await fetch_fn(int(message_id))
 
     async def _get_channel(self, channel_id: int) -> object | None:
-        if self._client is None:  # type: ignore[attr-defined]
+        if self._client is None:
             return None
 
-        get_fn = getattr(self._client, "get_channel", None)  # type: ignore[attr-defined]
+        get_fn = getattr(self._client, "get_channel", None)
         if callable(get_fn):
             cached = get_fn(channel_id)
             if cached is not None:
-                return cached
+                return cached  # type: ignore[no-any-return]
 
-        fetch_fn = getattr(self._client, "fetch_channel", None)  # type: ignore[attr-defined]
+        fetch_fn = getattr(self._client, "fetch_channel", None)
         if callable(fetch_fn):
             try:
-                return await self._require_async_callable(fetch_fn, label="Discord client fetch_channel")(channel_id)  # type: ignore[attr-defined]
+                return await self._require_async_callable(fetch_fn, label="Discord client fetch_channel")(channel_id)
             except Exception as exc:
                 logger.debug("Discord fetch_channel(%s) failed: %s", channel_id, exc)
         return None
@@ -535,17 +535,17 @@ class InputHandlersMixin:
     async def _create_forum_thread(
         self, forum_channel: object, *, title: str, content: str = "Initializing Help Desk session..."
     ) -> tuple[int, str]:
-        create_thread_fn = self._require_async_callable(  # type: ignore[attr-defined]
+        create_thread_fn = self._require_async_callable(
             getattr(forum_channel, "create_thread", None), label="Discord forum create_thread"
         )
 
         # Discord channel names must be 1-100 characters
         if len(title) > 100:
             title = title[:97] + "..."
-        result = await create_thread_fn(name=title, content=self._fit_message_text(content, context="thread_starter"))  # type: ignore[attr-defined]
-        thread, starter_message = self._extract_forum_thread_result(result)  # type: ignore[attr-defined]
+        result = await create_thread_fn(name=title, content=self._fit_message_text(content, context="thread_starter"))
+        thread, starter_message = self._extract_forum_thread_result(result)
 
-        thread_id = self._parse_optional_int(getattr(thread, "id", None))  # type: ignore[attr-defined]
+        thread_id = self._parse_optional_int(getattr(thread, "id", None))
         if thread_id is None:
             raise AdapterError("Discord create_thread() returned invalid thread id")
         starter_message_id_raw = getattr(starter_message, "id", None)
@@ -561,14 +561,14 @@ class InputHandlersMixin:
         session_id: str,
     ) -> int:
         """Create a thread in the escalation forum channel for admin relay."""
-        escalation_channel_id = self._escalation_channel_id  # type: ignore[attr-defined]
+        escalation_channel_id = self._escalation_channel_id
         if not escalation_channel_id:
             raise AdapterError("escalation_channel_id not configured")
 
         forum = await self._get_channel(escalation_channel_id)
         if forum is None:
             raise AdapterError(f"Escalation channel {escalation_channel_id} not found")
-        if not self._is_forum_channel(forum):  # type: ignore[attr-defined]
+        if not self._is_forum_channel(forum):
             raise AdapterError(f"Escalation channel {escalation_channel_id} is not a Forum Channel")
 
         body = f"**Reason:** {reason}"

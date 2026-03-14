@@ -112,9 +112,9 @@ class CommandService:
         return await create_session(
             cmd,
             self.client,
-            self._execute_auto_command,
+            self._execute_auto_command,  # type: ignore[arg-type]
             self._queue_background_task,
-            self._bootstrap_session,
+            self._bootstrap_session,  # type: ignore[arg-type]
         )
 
     async def process_message(self, cmd: ProcessMessageCommand) -> None:
@@ -190,4 +190,4 @@ class CommandService:
             {"skip_listener_registration": detach},
             metadata,
         )
-        return await self.create_session(cmd)
+        return await self.create_session(cmd)  # type: ignore[arg-type]

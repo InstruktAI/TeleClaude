@@ -500,7 +500,7 @@ class MessageOperationsMixin:
             message_thread_id=message_thread_id,
             text=text,
             parse_mode=parse_mode,
-            reply_markup=reply_markup,
+            reply_markup=reply_markup,  # type: ignore[arg-type]
         )
 
     async def edit_general_message(

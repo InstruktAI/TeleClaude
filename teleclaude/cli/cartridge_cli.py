@@ -294,9 +294,9 @@ def _list_lifecycle_rows(
     manager: LifecycleManager, parsed: argparse.Namespace, cartridge_scope: type
 ) -> list[dict[str, str]]:
     if parsed.domain:
-        return manager.list_cartridges(cartridge_scope.domain, parsed.domain)
+        return manager.list_cartridges(cartridge_scope.domain, parsed.domain)  # type: ignore[attr-defined]
     if parsed.member:
-        return manager.list_cartridges(cartridge_scope.personal, parsed.member)
+        return manager.list_cartridges(cartridge_scope.personal, parsed.member)  # type: ignore[attr-defined]
 
     from teleclaude.config.loader import load_global_config  # pylint: disable=import-outside-toplevel
 
@@ -305,7 +305,7 @@ def _list_lifecycle_rows(
     event_domains = getattr(config, "event_domains", None)
     if event_domains:
         for domain_name in event_domains.domains:
-            rows.extend(manager.list_cartridges(cartridge_scope.domain, domain_name))
+            rows.extend(manager.list_cartridges(cartridge_scope.domain, domain_name))  # type: ignore[attr-defined]
     return rows
 
 

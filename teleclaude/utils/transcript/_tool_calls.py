@@ -185,7 +185,7 @@ def _handle_function_call_payload(
     call_id = str(payload.get("call_id", "")).strip()
     function_record = ToolCallRecord(
         tool_name=tool_name,
-        input_data=dict(_parse_function_call_arguments(payload.get("arguments", {}))),
+        input_data=dict(_parse_function_call_arguments(payload.get("arguments", {}))),  # type: ignore[arg-type]
         had_error=False,
         result_snippet="",
         timestamp=entry_dt,
@@ -612,7 +612,7 @@ def extract_structured_messages(
         if not include_entry:
             continue
 
-        if _append_compaction_message(messages, entry, entry_ts, idx):
+        if _append_compaction_message(messages, entry, entry_ts, idx):  # type: ignore[arg-type]
             continue
 
         message = normalize_transcript_entry_message(entry)

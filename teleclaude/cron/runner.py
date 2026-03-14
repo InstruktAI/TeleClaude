@@ -124,7 +124,7 @@ def _is_when_due(
     if not when.at:
         return None
     local_now = now.astimezone()
-    if not _is_allowed_weekday(local_now, when.weekdays):
+    if not _is_allowed_weekday(local_now, when.weekdays):  # type: ignore[arg-type]
         return False
     for at_time_str in [when.at] if isinstance(when.at, str) else when.at:
         scheduled_today = _scheduled_occurrence(local_now, at_time_str)
@@ -456,7 +456,7 @@ def run_due_jobs(
             continue
 
         if is_agent_job:
-            success = _run_agent_job(job_name, schedule_config)  # type: ignore[arg-type]
+            success = _run_agent_job(job_name, schedule_config)
             if success:
                 state.mark_success(job_name)
             else:

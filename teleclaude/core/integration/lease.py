@@ -316,9 +316,9 @@ def _record_from_payload(key: str, payload: dict[object, object]) -> LeaseRecord
         if not isinstance(value, str) or not value.strip():
             raise IntegrationLeaseError(f"lease field {field_name!r} for key {key!r} must be a non-empty string")
 
-    parsed_acquired = _parse_iso8601(acquired_at)
-    parsed_renewed = _parse_iso8601(renewed_at)
-    parsed_expires = _parse_iso8601(expires_at)
+    parsed_acquired = _parse_iso8601(acquired_at)  # type: ignore[arg-type]
+    parsed_renewed = _parse_iso8601(renewed_at)  # type: ignore[arg-type]
+    parsed_expires = _parse_iso8601(expires_at)  # type: ignore[arg-type]
     if parsed_acquired > parsed_renewed:
         raise IntegrationLeaseError(f"lease key {key!r} has acquired_at after renewed_at")
     if parsed_renewed > parsed_expires:
@@ -326,11 +326,11 @@ def _record_from_payload(key: str, payload: dict[object, object]) -> LeaseRecord
 
     return LeaseRecord(
         key=key,
-        owner_session_id=owner,
-        lease_token=token,
-        acquired_at=acquired_at,
-        renewed_at=renewed_at,
-        expires_at=expires_at,
+        owner_session_id=owner,  # type: ignore[arg-type]
+        lease_token=token,  # type: ignore[arg-type]
+        acquired_at=acquired_at,  # type: ignore[arg-type]
+        renewed_at=renewed_at,  # type: ignore[arg-type]
+        expires_at=expires_at,  # type: ignore[arg-type]
     )
 
 

@@ -80,7 +80,9 @@ def parse_sid_file(path: Path) -> SIDHeader:  # pylint: disable=too-many-locals
 
     flags = 0
     if version >= 2 and data_offset >= _HEADER_V1_SIZE + _HEADER_V2_EXTRA_SIZE:
-        extra_values = cast(tuple[int, int, int, int, int], struct.unpack_from(_HEADER_V2_EXTRA_FMT, data, _HEADER_V1_SIZE))
+        extra_values = cast(
+            tuple[int, int, int, int, int], struct.unpack_from(_HEADER_V2_EXTRA_FMT, data, _HEADER_V1_SIZE)
+        )
         flags = extra_values[0]
 
     payload = data[data_offset:]

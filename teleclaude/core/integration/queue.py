@@ -410,7 +410,7 @@ def _status_from_value(value: object) -> QueueStatus:
     allowed: tuple[QueueStatus, ...] = ("queued", "in_progress", "integrated", "blocked", "superseded")
     if value not in allowed:
         raise IntegrationQueueError(f"invalid queue status {value!r}")
-    return value
+    return value  # type: ignore[return-value]
 
 
 def _optional_status_from_value(value: object) -> QueueStatus | None:

@@ -62,7 +62,7 @@ def load_cartridge(path: Path) -> LoadedCartridge:
     # Register module in sys.modules under a unique key to isolate it from other cartridges
     sys.modules[f"_cartridge_{manifest.id}"] = module
     try:
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
+        spec.loader.exec_module(module)
     except Exception as e:
         del sys.modules[f"_cartridge_{manifest.id}"]
         raise CartridgeError(f"Failed to load module {module_file}: {e}") from e

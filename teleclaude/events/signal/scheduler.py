@@ -34,7 +34,7 @@ class IngestScheduler:
                 break
 
             try:
-                count = await self._cartridge.pull(self._context)  # type: ignore[union-attr]
+                count = await self._cartridge.pull(self._context)  # type: ignore
                 logger.info("IngestScheduler: pulled %d new items", count)
             except asyncio.CancelledError:
                 raise

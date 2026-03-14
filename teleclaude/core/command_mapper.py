@@ -184,7 +184,7 @@ class CommandMapper:
             origin = InputOrigin.REDIS.value
         launch_intent_obj: SessionLaunchIntent | None = None
         if isinstance(launch_intent, dict):
-            launch_intent_obj = SessionLaunchIntent.from_dict(launch_intent)
+            launch_intent_obj = SessionLaunchIntent.from_dict(launch_intent)  # type: ignore[arg-type]
         elif isinstance(launch_intent, SessionLaunchIntent):
             launch_intent_obj = launch_intent
 

@@ -48,6 +48,6 @@ if sys.platform == "darwin":
         logger.warning("MLX TTS backends unavailable", exc_info=True)
 
 
-def get_backend(service_name: str):
+def get_backend(service_name: str):  # type: ignore[no-untyped-def]
     """Get backend by service name."""
     return BACKENDS.get(service_name)

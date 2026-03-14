@@ -214,7 +214,7 @@ class WhatsAppAdapter(UiAdapter):
         response = await self._post_json(self._messages_url, payload)
         return self._extract_message_id(response)
 
-    async def send_message(  # pyright: ignore[reportIncompatibleMethodOverride]
+    async def send_message(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[override]
         self,
         session: Session,
         text: str,
@@ -332,7 +332,7 @@ class WhatsAppAdapter(UiAdapter):
     async def discover_peers(self) -> list[PeerInfo]:
         return []
 
-    async def poll_output_stream(  # type: ignore[override,misc]
+    async def poll_output_stream(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         session: Session,
         timeout: float = 300.0,

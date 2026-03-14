@@ -36,8 +36,8 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
     try:
         engine = create_engine(f"sqlite:///{db_path}")
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))
-            session.exec(text("PRAGMA busy_timeout = 5000"))
+            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]
+            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]
 
             # Recent observations (identity-scoped)
             obs_sql = "SELECT * FROM memory_observations WHERE project = :project"
@@ -46,12 +46,12 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
                 obs_sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                 obs_params["identity_key"] = identity_key
             obs_sql += " ORDER BY created_at_epoch DESC LIMIT 50"
-            result = session.exec(text(obs_sql).bindparams(**obs_params))
+            result = session.exec(text(obs_sql).bindparams(**obs_params))  # type: ignore[call-overload]
             obs_rows = result.fetchall()
             observations = [_row_to_observation(row) for row in obs_rows]
 
             # Recent summaries
-            result = session.exec(
+            result = session.exec(  # type: ignore[call-overload]
                 text(
                     "SELECT * FROM memory_summaries WHERE project = :project ORDER BY created_at_epoch DESC LIMIT 5"
                 ).bindparams(project=project)
@@ -81,7 +81,7 @@ async def _get_recent_observations(
             sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
             params["identity_key"] = identity_key
         sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-        result = await session.exec(text(sql).bindparams(**params))
+        result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]
         rows = result.fetchall()
         return [_row_to_observation(row) for row in rows]
 
@@ -89,7 +89,7 @@ async def _get_recent_observations(
 async def _get_recent_summaries(project: str, limit: int = 5) -> list[db_models.MemorySummary]:
     """Fetch recent summaries for a project."""
     async with db._session() as session:
-        result = await session.exec(
+        result = await session.exec(  # type: ignore[call-overload]
             text(
                 "SELECT * FROM memory_summaries WHERE project = :project ORDER BY created_at_epoch DESC LIMIT :limit"
             ).bindparams(project=project, limit=limit)
@@ -101,7 +101,7 @@ async def _get_recent_summaries(project: str, limit: int = 5) -> list[db_models.
 def _row_to_observation(row: object) -> db_models.MemoryObservation:
     """Convert a raw SQL row to MemoryObservation."""
     if hasattr(row, "_mapping"):
-        m = row._mapping  # type: ignore[attr-defined]
+        m = row._mapping
         return db_models.MemoryObservation(**dict(m))
     if isinstance(row, tuple):
         return db_models.MemoryObservation(
@@ -128,7 +128,7 @@ def _row_to_observation(row: object) -> db_models.MemoryObservation:
 def _row_to_summary(row: object) -> db_models.MemorySummary:
     """Convert a raw SQL row to MemorySummary."""
     if hasattr(row, "_mapping"):
-        m = row._mapping  # type: ignore[attr-defined]
+        m = row._mapping
         return db_models.MemorySummary(**dict(m))
     if isinstance(row, tuple):
         return db_models.MemorySummary(

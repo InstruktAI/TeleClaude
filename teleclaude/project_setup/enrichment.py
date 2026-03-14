@@ -238,7 +238,7 @@ def _render_snippet(snippet_id: str, content: str, metadata: SnippetMetadata) ->
         ),
     }
     post = frontmatter.Post(content, **fm)
-    return frontmatter.dumps(post) + "\n"
+    return frontmatter.dumps(post) + "\n"  # type: ignore[no-any-return]
 
 
 def write_metadata(

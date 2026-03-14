@@ -86,7 +86,7 @@ class SmartWatcher(FileSystemEventHandler):
             if isinstance(moved_dest, str) and moved_dest:
                 path_str = moved_dest
         try:
-            rel_path = Path(path_str).resolve().relative_to(self.project_root)
+            rel_path = Path(path_str).resolve().relative_to(self.project_root)  # type: ignore[arg-type]
         except ValueError:
             return  # Path not in project root
 

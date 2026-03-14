@@ -46,7 +46,7 @@ def _deep_merge(
     result = dict(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
+            result[key] = _deep_merge(result[key], value)  # type: ignore[arg-type]
         else:
             result[key] = value
     return result

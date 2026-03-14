@@ -195,9 +195,9 @@ class SandboxContainerManager:
             except Exception:
                 pass
             response = SandboxResponse(
-                envelope=raw.get("envelope"),
-                error=raw.get("error"),
-                duration_ms=raw.get("duration_ms", 0.0),
+                envelope=raw.get("envelope"),  # type: ignore[arg-type]
+                error=raw.get("error"),  # type: ignore[arg-type]
+                duration_ms=raw.get("duration_ms", 0.0),  # type: ignore[arg-type]
             )
             return response.error is None
         except Exception as exc:

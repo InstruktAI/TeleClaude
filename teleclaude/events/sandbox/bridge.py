@@ -58,7 +58,7 @@ class SandboxBridgeCartridge:
             result_entry = await self._invoke_cartridge(name, event, catalog_snapshot)
             results.append(result_entry)
 
-        event.payload["_sandbox_results"] = results
+        event.payload["_sandbox_results"] = results  # type: ignore[assignment]
         return event
 
     async def _invoke_cartridge(
@@ -75,7 +75,7 @@ class SandboxBridgeCartridge:
             try:
                 request = SandboxRequest(
                     cartridge_name=cartridge_name,
-                    envelope=event.to_stream_dict(),
+                    envelope=event.to_stream_dict(),  # type: ignore[arg-type]
                     catalog_snapshot=catalog_snapshot,
                 )
                 await write_frame(writer, request_to_dict(request))

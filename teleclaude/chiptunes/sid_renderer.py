@@ -6,8 +6,8 @@ import array
 from datetime import timedelta
 
 try:
-    from pyresidfp import SoundInterfaceDevice, WritableRegister  # type: ignore[import-untyped]
-    from pyresidfp._pyresidfp import ChipModel, SamplingMethod  # type: ignore[import-untyped]
+    from pyresidfp import SoundInterfaceDevice, WritableRegister
+    from pyresidfp._pyresidfp import ChipModel, SamplingMethod
 
     _pyresidfp_available = True  # pylint: disable=invalid-name
 
@@ -15,11 +15,11 @@ try:
     _REGISTER_MAP: list[WritableRegister] = list(WritableRegister)  # pyright: ignore[reportInvalidTypeForm]
 except ImportError:
     _pyresidfp_available = False  # pylint: disable=invalid-name
-    SoundInterfaceDevice = None  # type: ignore[assignment]
-    WritableRegister = None  # type: ignore[assignment]
-    ChipModel = None  # type: ignore[assignment]
-    SamplingMethod = None  # type: ignore[assignment]
-    _REGISTER_MAP = []  # type: ignore[assignment]
+    SoundInterfaceDevice = None  # type: ignore[misc]
+    WritableRegister = None  # type: ignore[misc]
+    ChipModel = None  # type: ignore[misc]
+    SamplingMethod = None  # type: ignore[misc]
+    _REGISTER_MAP = []  # type: ignore[unused-ignore]
 
 # SID chip clock frequencies
 _PAL_CLOCK = 985248  # Hz
@@ -90,7 +90,7 @@ class SIDRenderer:
 
     def reset(self) -> None:
         """Reset the SID chip state."""
-        self._sid.reset()
+        self._sid.reset()  # type: ignore[no-untyped-call]
 
     @property
     def sample_rate(self) -> int:

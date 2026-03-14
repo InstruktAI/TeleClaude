@@ -68,7 +68,7 @@ async def search_memory(
         default=None, description="Filter by observation type for progressive disclosure"
     ),
     identity_key: str | None = None,
-) -> list[dict]:
+) -> list[dict]:  # type: ignore[type-arg]
     """Search memory observations. Supports type and identity_key filters."""
     search = MemorySearch()
     results = await search.search(query, project, limit, obs_type=type, identity_key=identity_key)
@@ -81,7 +81,7 @@ async def timeline(
     depth_before: int = Query(default=3, ge=0, le=20),
     depth_after: int = Query(default=3, ge=0, le=20),
     project: str | None = None,
-) -> list[dict]:
+) -> list[dict]:  # type: ignore[type-arg]
     """Get observations around an anchor."""
     search = MemorySearch()
     results = await search.timeline(anchor, depth_before, depth_after, project)
@@ -89,7 +89,7 @@ async def timeline(
 
 
 @router.post("/batch")
-async def batch_fetch(body: BatchRequest) -> list[dict]:
+async def batch_fetch(body: BatchRequest) -> list[dict]:  # type: ignore[type-arg]
     """Bulk fetch observations by IDs."""
     search = MemorySearch()
     results = await search.batch_fetch(body.ids, body.project)
@@ -97,7 +97,7 @@ async def batch_fetch(body: BatchRequest) -> list[dict]:
 
 
 @router.delete("/{observation_id}")
-async def delete_observation(observation_id: int) -> dict:
+async def delete_observation(observation_id: int) -> dict:  # type: ignore[type-arg]
     """Delete a memory observation by ID."""
     store = MemoryStore()
     deleted = await store.delete_observation(observation_id)

@@ -41,21 +41,21 @@ class ProvisioningMixin:
 
     async def _resolve_guild(self) -> object | None:
         """Resolve the configured guild by ID."""
-        if self._client is None or self._guild_id is None:  # type: ignore[attr-defined]
+        if self._client is None or self._guild_id is None:
             return None
 
-        get_guild_fn = getattr(self._client, "get_guild", None)  # type: ignore[attr-defined]
+        get_guild_fn = getattr(self._client, "get_guild", None)
         guild = get_guild_fn(self._guild_id) if callable(get_guild_fn) else None
 
         if guild is None:
-            fetch_guild_fn = getattr(self._client, "fetch_guild", None)  # type: ignore[attr-defined]
+            fetch_guild_fn = getattr(self._client, "fetch_guild", None)
             if callable(fetch_guild_fn):
                 try:
-                    guild = await self._require_async_callable(fetch_guild_fn, label="fetch_guild")(self._guild_id)  # type: ignore[attr-defined]
+                    guild = await self._require_async_callable(fetch_guild_fn, label="fetch_guild")(self._guild_id)
                 except Exception as exc:
                     logger.debug("Failed to fetch guild %s: %s", self._guild_id, exc)
 
-        return guild
+        return guild  # type: ignore[no-any-return]
 
     async def _find_or_create_category(self, guild: object, name: str) -> object | None:
         """Find an existing category by name, or create one.
@@ -73,7 +73,7 @@ class ProvisioningMixin:
             cat_name = getattr(cat, "name", None)
             if isinstance(cat_name, str) and cat_name.lower() == name.lower():
                 logger.debug("Found existing Discord category: %s (id=%s)", name, getattr(cat, "id", "?"))
-                return cat
+                return cat  # type: ignore[no-any-return]
 
         # Cache is populated and category not found — safe to create.
         create_fn = getattr(guild, "create_category", None)
@@ -82,7 +82,7 @@ class ProvisioningMixin:
             return None
 
         try:
-            category = await self._require_async_callable(create_fn, label="guild.create_category")(name=name)  # type: ignore[attr-defined]
+            category = await self._require_async_callable(create_fn, label="guild.create_category")(name=name)
             logger.info("Created Discord category: %s (id=%s)", name, getattr(category, "id", "?"))
             return category
         except Exception as exc:
@@ -101,8 +101,8 @@ class ProvisioningMixin:
 
         for ch in channels:
             ch_name = getattr(ch, "name", None)
-            if isinstance(ch_name, str) and ch_name.lower() == name.lower() and self._is_forum_channel(ch):  # type: ignore[attr-defined]
-                found_id = self._parse_optional_int(getattr(ch, "id", None))  # type: ignore[attr-defined]
+            if isinstance(ch_name, str) and ch_name.lower() == name.lower() and self._is_forum_channel(ch):
+                found_id = self._parse_optional_int(getattr(ch, "id", None))
                 if found_id is not None:
                     logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
                     return found_id
@@ -114,12 +114,12 @@ class ProvisioningMixin:
             return None
 
         try:
-            create = self._require_async_callable(create_fn, label="guild.create_forum")  # type: ignore[attr-defined]
+            create = self._require_async_callable(create_fn, label="guild.create_forum")
             if category is not None:
                 forum = await create(name=name, topic=topic, category=category)
             else:
                 forum = await create(name=name, topic=topic)
-            forum_id = self._parse_optional_int(getattr(forum, "id", None))  # type: ignore[attr-defined]
+            forum_id = self._parse_optional_int(getattr(forum, "id", None))
             if forum_id is not None:
                 logger.info("Created Discord forum: %s (id=%s)", name, forum_id)
             return forum_id
@@ -143,7 +143,7 @@ class ProvisioningMixin:
             # discord.ChannelType.text has value 0
             is_text = ch_type is not None and getattr(ch_type, "value", ch_type) == 0
             if isinstance(ch_name, str) and ch_name.lower() == name.lower() and is_text:
-                found_id = self._parse_optional_int(getattr(ch, "id", None))  # type: ignore[attr-defined]
+                found_id = self._parse_optional_int(getattr(ch, "id", None))
                 if found_id is not None:
                     logger.debug("Found existing Discord text channel: %s (id=%s)", name, found_id)
                     return found_id
@@ -155,12 +155,12 @@ class ProvisioningMixin:
             return None
 
         try:
-            create = self._require_async_callable(create_fn, label="guild.create_text_channel")  # type: ignore[attr-defined]
+            create = self._require_async_callable(create_fn, label="guild.create_text_channel")
             if category is not None:
                 channel = await create(name=name, category=category)
             else:
                 channel = await create(name=name)
-            ch_id = self._parse_optional_int(getattr(channel, "id", None))  # type: ignore[attr-defined]
+            ch_id = self._parse_optional_int(getattr(channel, "id", None))
             if ch_id is not None:
                 logger.info("Created Discord text channel: %s (id=%s)", name, ch_id)
             return ch_id

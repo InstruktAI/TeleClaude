@@ -51,7 +51,7 @@ class EventBus:
 
         loop = asyncio.get_running_loop()
         for handler in handlers:
-            task = loop.create_task(handler(event, context))
+            task = loop.create_task(handler(event, context))  # type: ignore[arg-type, var-annotated]
             self._pending_tasks.add(task)
             task.add_done_callback(self._pending_tasks.discard)
 

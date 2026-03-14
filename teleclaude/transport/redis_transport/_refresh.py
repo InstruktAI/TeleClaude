@@ -179,7 +179,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
 
     def _spawn_refresh_task(self, coro: Awaitable[None], *, key: str) -> asyncio.Task[object]:
         if self.task_registry:
-            task = self.task_registry.spawn(coro, name=f"redis-refresh-{key}")
+            task = self.task_registry.spawn(coro, name=f"redis-refresh-{key}")  # type: ignore[var-annotated]
         else:
             task = asyncio.create_task(coro)
             task.add_done_callback(self._log_task_exception)

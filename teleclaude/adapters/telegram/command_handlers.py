@@ -113,7 +113,7 @@ class CommandHandlersMixin:
             args=context.args or [],
             metadata=metadata,
         )
-        await get_command_service().create_session(cmd)
+        await get_command_service().create_session(cmd)  # type: ignore[arg-type]
 
     async def _handle_claude_plan(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude_plan command - alias for /shift_tab 3 (navigate to Claude Code plan mode)."""
@@ -153,7 +153,7 @@ class CommandHandlersMixin:
             metadata,
             "start_agent",
             cmd.to_payload(),
-            lambda: get_command_service().start_agent(cmd),
+            lambda: get_command_service().start_agent(cmd),  # type: ignore[arg-type]
         )
 
     async def _handle_agent_resume_command(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -186,7 +186,7 @@ class CommandHandlersMixin:
             metadata,
             "resume_agent",
             cmd.to_payload(),
-            lambda: get_command_service().resume_agent(cmd),
+            lambda: get_command_service().resume_agent(cmd),  # type: ignore[arg-type]
         )
 
     async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -226,5 +226,5 @@ class CommandHandlersMixin:
             metadata,
             "restart_agent",
             cmd.to_payload(),
-            lambda: get_command_service().restart_agent(cmd),
+            lambda: get_command_service().restart_agent(cmd),  # type: ignore[arg-type]
         )

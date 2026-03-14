@@ -162,7 +162,7 @@ def _emit_prepare_event(event_type: str, payload: JsonDict) -> None:
     """Fire-and-forget prepare lifecycle event (mirrors core helper)."""
     from teleclaude.core.next_machine.core import _emit_prepare_event as _core_emit
 
-    _core_emit(event_type, payload)
+    _core_emit(event_type, payload)  # type: ignore[arg-type]
 
 
 def _inherit_parent_phase(
@@ -212,9 +212,9 @@ def _inherit_parent_phase(
 
     # Set inherited verdicts
     if req_approved:
-        child_state["requirements_review"] = dict(parent_req_review)  # type: ignore[assignment]
+        child_state["requirements_review"] = dict(parent_req_review)
     if plan_approved:
-        child_state["plan_review"] = dict(parent_plan_review)  # type: ignore[assignment]
+        child_state["plan_review"] = dict(parent_plan_review)
 
     # Set phase
     child_state["prepare_phase"] = inherited_phase
@@ -223,7 +223,7 @@ def _inherit_parent_phase(
     audit = child_state.get("audit")
     if not isinstance(audit, dict):
         audit = {}
-        child_state["audit"] = audit  # type: ignore[assignment]
+        child_state["audit"] = audit
     for phase in skipped_phases:
         audit[phase] = {"status": "skipped", "reason": "inherited_from_parent", "skipped_at": now}
 
@@ -325,7 +325,7 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
             f.unlink()
 
     # Reset parent state.yaml to container state
-    state["breakdown"] = {"assessed": True, "todos": child_slugs}
+    state["breakdown"] = {"assessed": True, "todos": child_slugs}  # type: ignore[dict-item]
     state["dor"] = {
         "score": 0,
         "status": "needs_work",

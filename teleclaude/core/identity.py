@@ -146,7 +146,7 @@ class IdentityResolver:
             user_id = channel_metadata.get("user_id")
             if user_id:
                 try:
-                    uid_int = int(user_id)
+                    uid_int = int(user_id)  # type: ignore[call-overload]
                     person = self._by_telegram_user_id.get(uid_int)
                     if person:
                         return IdentityContext(

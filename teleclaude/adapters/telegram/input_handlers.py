@@ -274,7 +274,7 @@ Usage:
             metadata,
             "process_message",
             cmd.to_payload(),
-            lambda: get_command_service().process_message(cmd),
+            lambda: get_command_service().process_message(cmd),  # type: ignore[arg-type]
         )
 
     async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:

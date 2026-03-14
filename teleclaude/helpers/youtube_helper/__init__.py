@@ -367,8 +367,8 @@ async def youtube_subscriptions(
             videos.append(vid)
 
         if channel:
-            ch = channel.lower()
-            videos = [v for v in videos if v.channel.lower() == ch]
+            ch = channel.lower()  # type: ignore[assignment]
+            videos = [v for v in videos if v.channel.lower() == ch]  # type: ignore[comparison-overlap]
 
         videos = videos[:max_results]
 

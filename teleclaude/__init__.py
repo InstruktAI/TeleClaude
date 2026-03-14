@@ -5,28 +5,20 @@ from __future__ import annotations
 import tomllib
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import cast
 
 
 def _version_from_pyproject() -> str:
     """Fallback to pyproject.toml when package metadata is unavailable."""
     pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
     try:
-        loaded_data: object = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
         return "0.0.0"
-    data_obj = loaded_data
-
-    if not isinstance(data_obj, dict):
-        return "0.0.0"
-
-    data = cast(dict[str, object], data_obj)
     project = data.get("project")
     if not isinstance(project, dict):
         return "0.0.0"
 
-    project_data = cast(dict[str, object], project)
-    project_version = project_data.get("version")
+    project_version = project.get("version")
     if not isinstance(project_version, str):
         return "0.0.0"
 

@@ -43,7 +43,7 @@ def _build_state(findings: list[dict[str, StateValue]], verdict: str = "") -> di
             "findings_count": len(findings),
             "rounds": 0,
             "baseline_commit": "",
-            "findings": findings,
+            "findings": findings,  # type: ignore[dict-item]
         },
         "plan_review": {
             "verdict": "",

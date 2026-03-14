@@ -44,7 +44,7 @@ async def resolve_telegram_bot_username(token_env: str = "TELEGRAM_BOT_TOKEN") -
             username = data["result"].get("username")
             if not username:
                 raise ValueError("Telegram bot has no username")
-            return username
+            return username  # type: ignore[no-any-return]
         except httpx.HTTPError as e:
             raise ValueError(f"Failed to resolve Telegram bot username: {e}") from e
 
@@ -65,7 +65,7 @@ async def resolve_discord_bot_user_id(token_env: str = "DISCORD_BOT_TOKEN") -> s
             user_id = data.get("id")
             if not user_id:
                 raise ValueError("Discord bot user ID not found in response")
-            return user_id
+            return user_id  # type: ignore[no-any-return]
         except httpx.HTTPError as e:
             raise ValueError(f"Failed to resolve Discord bot user ID: {e}") from e
 

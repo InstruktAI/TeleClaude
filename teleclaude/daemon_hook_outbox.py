@@ -519,21 +519,21 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 session_id=session_id,
                 message=str(data.get("message", "")),
                 source=str(data.get("source")) if "source" in data else None,
-                details=data.get("details") if isinstance(data.get("details"), dict) else None,
-                severity=severity if isinstance(severity, str) else "error",
+                details=data.get("details") if isinstance(data.get("details"), dict) else None,  # type: ignore[arg-type]
+                severity=severity if isinstance(severity, str) else "error",  # type: ignore[arg-type]
                 retryable=retryable if isinstance(retryable, bool) else False,
                 code=code if isinstance(code, str) else None,
             )
             event_bus.emit(TeleClaudeEvents.ERROR, context)
         else:
-            context = AgentEventContext(
+            context = AgentEventContext(  # type: ignore[assignment]
                 session_id=session_id,
-                event_type=cast(AgentHookEvents, event_type),
-                data=build_agent_payload(cast(AgentHookEvents, event_type), data),
+                event_type=cast(AgentHookEvents, event_type),  # type: ignore[arg-type]
+                data=build_agent_payload(cast(AgentHookEvents, event_type), data),  # type: ignore[arg-type]
             )
             # Directly await coordinator — outbox serialization depends on this completing
             # before the item is marked delivered. event_bus.emit would fire-and-forget.
-            await self._handle_agent_event(TeleClaudeEvents.AGENT_EVENT, context)
+            await self._handle_agent_event(TeleClaudeEvents.AGENT_EVENT, context)  # type: ignore[arg-type]
 
     async def _wal_checkpoint_loop(self) -> None:
         """Periodically checkpoint the SQLite WAL to prevent unbounded growth."""

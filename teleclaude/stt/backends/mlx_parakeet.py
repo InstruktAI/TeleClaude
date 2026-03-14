@@ -138,10 +138,10 @@ class MLXParakeetBackend:
         return await asyncio.to_thread(self._transcribe_local, audio_file_path)
 
     def _transcribe_local(self, audio_file_path: str) -> str:
-        result = self._model.generate(audio_file_path)  # type: ignore[union-attr]
+        result = self._model.generate(audio_file_path)  # type: ignore
         text = result.text.strip()
         logger.debug("Parakeet STT: transcribed %d chars (local)", len(text))
-        return text
+        return text  # type: ignore[no-any-return]
 
     def _transcribe_cli(self, audio_file_path: str, language: str | None = None) -> str:
         import json

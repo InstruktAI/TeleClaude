@@ -52,7 +52,7 @@ class MemoryStore:
             await session.commit()
             await session.refresh(obs)
 
-        return ObservationResult(id=obs.id, title=title, project=project)  # type: ignore[arg-type]
+        return ObservationResult(id=obs.id, title=title, project=project)
 
     def save_observation_sync(self, inp: ObservationInput, db_path: str) -> ObservationResult:
         """Save an observation via sync database access (for hook receiver)."""
@@ -63,8 +63,8 @@ class MemoryStore:
 
         engine = create_engine(f"sqlite:///{db_path}")
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # noqa: raw-sql
+            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # noqa: raw-sql
             obs = db_models.MemoryObservation(
                 memory_session_id=session_id,
                 project=project,
@@ -84,18 +84,18 @@ class MemoryStore:
             session.commit()
             session.refresh(obs)
 
-        return ObservationResult(id=obs.id, title=title, project=project)  # type: ignore[arg-type]
+        return ObservationResult(id=obs.id, title=title, project=project)
 
     async def delete_observation(self, observation_id: int) -> bool:
         """Delete an observation by ID. Returns True if deleted, False if not found."""
         async with db._session() as session:
-            result = await session.exec(
+            result = await session.exec(  # type: ignore[call-overload]
                 text(  # noqa: raw-sql
                     "DELETE FROM memory_observations WHERE id = :id"
                 ).bindparams(id=observation_id)
             )
             await session.commit()
-            return result.rowcount > 0  # type: ignore[union-attr]
+            return result.rowcount > 0  # type: ignore[no-any-return]
 
     async def get_by_ids(self, ids: list[int], project: str | None = None) -> list[db_models.MemoryObservation]:
         """Fetch observations by IDs."""
@@ -106,18 +106,18 @@ class MemoryStore:
         sql = f"SELECT * FROM memory_observations WHERE id IN ({placeholders})"  # noqa: raw-sql
         if project:
             sql += " AND project = :project"
-            params["project"] = project
+            params["project"] = project  # type: ignore[assignment]
         sql += " ORDER BY created_at_epoch DESC"
 
         async with db._session() as session:
-            result = await session.exec(text(sql).bindparams(**params))  # noqa: raw-sql
+            result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # noqa: raw-sql
             rows = result.fetchall()
             return [_row_to_observation(row) for row in rows]
 
     async def get_recent(self, project: str, limit: int = 50) -> list[db_models.MemoryObservation]:
         """Get recent observations for a project."""
         async with db._session() as session:
-            result = await session.exec(
+            result = await session.exec(  # type: ignore[call-overload]
                 text(  # noqa: raw-sql
                     "SELECT * FROM memory_observations WHERE project = :project "
                     "ORDER BY created_at_epoch DESC LIMIT :limit"
@@ -129,7 +129,7 @@ class MemoryStore:
     async def get_recent_summaries(self, project: str, limit: int = 5) -> list[db_models.MemorySummary]:
         """Get recent summaries for a project."""
         async with db._session() as session:
-            result = await session.exec(
+            result = await session.exec(  # type: ignore[call-overload]
                 text(  # noqa: raw-sql
                     "SELECT * FROM memory_summaries WHERE project = :project "
                     "ORDER BY created_at_epoch DESC LIMIT :limit"
@@ -141,14 +141,14 @@ class MemoryStore:
     async def _get_or_create_manual_session(self, project: str) -> str:
         """Get or create a manual session for API-created observations."""
         async with db._session() as session:
-            result = await session.exec(
+            result = await session.exec(  # type: ignore[call-overload]
                 text(  # noqa: raw-sql
                     "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"
                 ).bindparams(project=project)
             )
             row = result.first()
             if row:
-                return row[0] if isinstance(row, tuple) else row.memory_session_id  # type: ignore[union-attr]
+                return row[0] if isinstance(row, tuple) else row.memory_session_id  # type: ignore[no-any-return]
 
             session_id = str(uuid.uuid4())
             now_epoch = int(datetime.now(UTC).timestamp())
@@ -165,9 +165,9 @@ class MemoryStore:
         """Get or create a manual session synchronously."""
         engine = create_engine(f"sqlite:///{db_path}")
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
-            result = session.exec(
+            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # noqa: raw-sql
+            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # noqa: raw-sql
+            result = session.exec(  # type: ignore[call-overload]
                 text(  # noqa: raw-sql
                     "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"
                 ).bindparams(project=project)
@@ -201,7 +201,7 @@ def _auto_title(text: str) -> str:
 def _row_to_observation(row: object) -> db_models.MemoryObservation:
     """Convert a raw SQL row to MemoryObservation."""
     if hasattr(row, "_mapping"):
-        m = row._mapping  # type: ignore[attr-defined]
+        m = row._mapping
         return db_models.MemoryObservation(**dict(m))
     if isinstance(row, tuple):
         return db_models.MemoryObservation(
@@ -228,7 +228,7 @@ def _row_to_observation(row: object) -> db_models.MemoryObservation:
 def _row_to_summary(row: object) -> db_models.MemorySummary:
     """Convert a raw SQL row to MemorySummary."""
     if hasattr(row, "_mapping"):
-        m = row._mapping  # type: ignore[attr-defined]
+        m = row._mapping
         return db_models.MemorySummary(**dict(m))
     if isinstance(row, tuple):
         return db_models.MemorySummary(

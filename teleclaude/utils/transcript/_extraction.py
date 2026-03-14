@@ -346,7 +346,7 @@ def parse_session_transcript(
 
     tail_fn = _apply_tail_limit_codex if agent_name == AgentName.CODEX else _apply_tail_limit
     rendered = _render_transcript_from_entries(
-        iter_fn(path),
+        iter_fn(path),  # type: ignore[operator]
         title,
         since_timestamp,
         until_timestamp,

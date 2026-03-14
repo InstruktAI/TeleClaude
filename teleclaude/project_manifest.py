@@ -35,7 +35,7 @@ def _normalize_manifest_path(path: Path) -> Path:
 def _entry_from_raw(item: object) -> ProjectManifestEntry | None:
     if not isinstance(item, dict):
         return None
-    raw_item = cast(dict[str, object], item)
+    raw_item = cast(dict[str, object], item)  # guard: loose-dict - TOML parsed data — shape varies per manifest version
     name = raw_item.get("name")
     description = raw_item.get("description")
     index_path = raw_item.get("index_path")

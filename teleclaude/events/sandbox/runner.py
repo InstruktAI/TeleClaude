@@ -38,7 +38,7 @@ def _build_catalog_from_snapshot(snapshot: list[JsonDict]) -> EventCatalog:
     catalog = EventCatalog()
     for item in snapshot:
         try:
-            schema = EventSchema(**item)
+            schema = EventSchema(**item)  # type: ignore[arg-type]
             catalog.register(schema)
         except Exception as e:
             logger.warning("Skipping catalog snapshot entry: %s", e)
@@ -54,7 +54,7 @@ def _load_cartridge_module(cartridges_dir: str, cartridge_name: str) -> types.Mo
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot create module spec for: {path}")
     module = types.ModuleType(spec.name)
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    spec.loader.exec_module(module)
     return module
 
 
@@ -87,16 +87,16 @@ class SandboxRunner:
                 if not callable(process_fn):
                     raise AttributeError(f"Cartridge {request.cartridge_name!r} has no callable 'process'")
 
-                envelope = EventEnvelope.from_stream_dict(request.envelope)
+                envelope = EventEnvelope.from_stream_dict(request.envelope)  # type: ignore[arg-type]
                 catalog = _build_catalog_from_snapshot(request.catalog_snapshot)
-                context = PipelineContext(catalog=catalog, db=None)  # type: ignore[arg-type]
+                context = PipelineContext(catalog=catalog, db=None)
 
                 result: EventEnvelope | None = await asyncio.wait_for(
                     process_fn(envelope, context), timeout=_CARTRIDGE_TIMEOUT
                 )
                 duration_ms = (time.monotonic() - start) * 1000
                 result_dict = result.to_stream_dict() if result is not None else None
-                response = SandboxResponse(envelope=result_dict, error=None, duration_ms=duration_ms)
+                response = SandboxResponse(envelope=result_dict, error=None, duration_ms=duration_ms)  # type: ignore[arg-type]
             except TimeoutError:
                 duration_ms = (time.monotonic() - start) * 1000
                 logger.warning("Cartridge %r timed out after %.0fms", request.cartridge_name, duration_ms)

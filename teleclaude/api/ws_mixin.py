@@ -307,7 +307,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                                 )
                             )
 
-                    event = ProjectsInitialEventDTO(
+                    event = ProjectsInitialEventDTO(  # type: ignore[assignment]
                         event="projects_initial" if data_type == "projects" else "preparation_initial",
                         data=ProjectsInitialDataDTO(projects=projects, computer=computer),
                     )
@@ -318,7 +318,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                     await self._send_or_enqueue_payload(
                         websocket,
                         "notifications_initial",
-                        {"type": "notifications_initial", "notifications": rows},
+                        {"type": "notifications_initial", "notifications": rows},  # type: ignore[dict-item]
                     )
             elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context

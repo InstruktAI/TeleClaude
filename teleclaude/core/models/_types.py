@@ -10,7 +10,7 @@ JsonDict = dict[str, JsonValue]
 
 
 class _DataclassInstance(Protocol):
-    __dataclass_fields__: ClassVar[dict[str, object]]
+    __dataclass_fields__: ClassVar[dict[str, object]]  # guard: loose-dict - dataclass introspection interface
 
 
 def asdict_exclude_none(obj: object) -> JsonDict:

@@ -18,10 +18,10 @@ from teleclaude.core.event_bus import event_bus
 try:
     import instrukt_ai_logging
 
-    def _noop_configure_logging(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+    def _noop_configure_logging(*_args, **_kwargs):
         return None
 
-    instrukt_ai_logging.configure_logging = _noop_configure_logging  # type: ignore[assignment]
+    instrukt_ai_logging.configure_logging = _noop_configure_logging
     logging.getLogger("teleclaude").handlers.clear()
     logging.getLogger().handlers.clear()
 except Exception:
@@ -48,7 +48,7 @@ def _reset_event_bus():
 
 
 @pytest.fixture(autouse=True)
-def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):
+def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Isolate TUI sticky state from user ~/.teleclaude/tui_state.json."""
     from teleclaude import paths
     from teleclaude.cli.tui import state_store
@@ -60,7 +60,7 @@ def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):
+def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Provide a consistent, isolated test environment for parallel runs."""
     project_root = tmp_path / "project"
     project_root.mkdir(parents=True, exist_ok=True)

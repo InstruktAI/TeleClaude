@@ -78,7 +78,7 @@ def _build_generate_payload(prompt: str) -> dict:  # type: ignore[type-arg]
     }
 
 
-def _build_edit_payload(prompt: str, image_b64: str, mime_type: str) -> dict:
+def _build_edit_payload(prompt: str, image_b64: str, mime_type: str) -> dict:  # type: ignore[type-arg]
     """Build the API request payload for image-to-image editing."""
     return {
         "contents": [
@@ -111,8 +111,8 @@ def _detect_mime_type(path: Path) -> str:
 async def _call_gemini(
     api_key: str,
     model: str,
-    payload: dict,
-) -> dict:
+    payload: dict,  # type: ignore[type-arg]
+) -> dict:  # type: ignore[type-arg]
     """Call the Gemini generateContent API and return the response."""
     url = f"{GEMINI_API_BASE}/{model}:generateContent?key={api_key}"
     logger.info("Calling Gemini API: model=%s", model)
@@ -128,10 +128,10 @@ async def _call_gemini(
                 body = await resp.text()
                 logger.error("Gemini API error: status=%d body=%s", resp.status, body[:500])
                 raise RuntimeError(f"Gemini API returned {resp.status}: {body[:500]}")
-            return await resp.json()
+            return await resp.json()  # type: ignore[no-any-return]
 
 
-def _extract_image_from_response(response: dict) -> tuple[bytes, str] | None:
+def _extract_image_from_response(response: dict) -> tuple[bytes, str] | None:  # type: ignore[type-arg]
     """Extract the first image from a Gemini generateContent response.
 
     Returns (image_bytes, mime_type) or None if no image found.
@@ -149,7 +149,7 @@ def _extract_image_from_response(response: dict) -> tuple[bytes, str] | None:
     return None
 
 
-def _extract_text_from_response(response: dict) -> str:
+def _extract_text_from_response(response: dict) -> str:  # type: ignore[type-arg]
     """Extract text content from a Gemini generateContent response."""
     candidates = response.get("candidates", [])
     texts = []
@@ -185,7 +185,7 @@ async def generate_image(
     output_dir: Path,
     output_name: str | None,
     api_key: str,
-) -> dict:
+) -> dict:  # type: ignore[type-arg]
     """Generate an image from a text prompt."""
     payload = _build_generate_payload(prompt)
     response = await _call_gemini(api_key, model, payload)
@@ -231,7 +231,7 @@ async def edit_image(
     output_dir: Path,
     output_name: str | None,
     api_key: str,
-) -> dict:
+) -> dict:  # type: ignore[type-arg]
     """Edit an image with a text prompt (image-to-image)."""
     if not input_image.exists():
         return {"success": False, "error": f"Input image not found: {input_image}"}
@@ -326,7 +326,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _resolve_output_dir(args: argparse.Namespace) -> Path:
     """Resolve the output directory from args or session env."""
     if args.output_dir:
-        return args.output_dir
+        return args.output_dir  # type: ignore[no-any-return]
     session_id = os.environ.get("TELECLAUDE_SESSION_ID", "default")
     return Path(f"workspace/{session_id}")
 

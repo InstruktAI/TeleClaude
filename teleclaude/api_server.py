@@ -368,7 +368,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         _TRUSTED_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
         @self.app.middleware("http")
-        async def _validate_identity_headers(request, call_next):  # pyright: ignore
+        async def _validate_identity_headers(request, call_next):  # type: ignore[no-untyped-def]
             """Reject identity headers from non-trusted sources."""
             has_identity = any(h in _IDENTITY_HEADERS for h in request.headers)
             if has_identity:
@@ -386,7 +386,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             return await call_next(request)
 
         @self.app.middleware("http")
-        async def _track_requests(request, call_next):  # pyright: ignore
+        async def _track_requests(request, call_next):  # type: ignore[no-untyped-def]
             """Track in-flight requests to detect stalls."""
             self._request_seq += 1
             req_id = self._request_seq

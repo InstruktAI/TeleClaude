@@ -101,7 +101,7 @@ class MessageOperationsMixin:
 
     def drop_pending_output(self, session_id: str) -> int:
         """Drop pending QoS payloads for a session to prevent stale output after turn break."""
-        return self._qos_scheduler.drop_pending(session_id)  # type: ignore[attr-defined]
+        return self._qos_scheduler.drop_pending(session_id)
 
     # =========================================================================
     # Send / Edit / Delete
@@ -120,7 +120,7 @@ class MessageOperationsMixin:
             logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id)
             return "0"
 
-        destination = await self._resolve_destination_channel(session, metadata=metadata)  # type: ignore[attr-defined]
+        destination = await self._resolve_destination_channel(session, metadata=metadata)
 
         if multi_message and len(text) > self.max_message_size:
             chunks = self._split_message_chunks(text)
@@ -146,7 +146,7 @@ class MessageOperationsMixin:
             if webhook_message_id:
                 return webhook_message_id
 
-        send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")  # type: ignore[attr-defined]
+        send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")
         sent = await send_fn(text)
         message_id = getattr(sent, "id", None)
         if message_id is None:
@@ -166,7 +166,7 @@ class MessageOperationsMixin:
         thread = destination if self._is_thread_channel(destination) else None
         webhook_channel = getattr(destination, "parent", None) if thread is not None else destination
 
-        channel_id = self._parse_optional_int(getattr(webhook_channel, "id", None))  # type: ignore[attr-defined]
+        channel_id = self._parse_optional_int(getattr(webhook_channel, "id", None))
         if channel_id is None:
             return None
 
@@ -174,7 +174,7 @@ class MessageOperationsMixin:
         if webhook is None:
             return None
 
-        send_fn = self._require_async_callable(getattr(webhook, "send", None), label="Discord webhook send")  # type: ignore[attr-defined]
+        send_fn = self._require_async_callable(getattr(webhook, "send", None), label="Discord webhook send")
         text = self._fit_message_text(text, context="reflection_webhook")
         try:
             if thread is not None and metadata.reflection_actor_avatar_url:
@@ -220,12 +220,12 @@ class MessageOperationsMixin:
         webhooks_fn = getattr(channel, "webhooks", None)
         if callable(webhooks_fn):
             try:
-                webhooks = await self._require_async_callable(webhooks_fn, label="Discord channel webhooks")()  # type: ignore[attr-defined]
+                webhooks = await self._require_async_callable(webhooks_fn, label="Discord channel webhooks")()
                 if isinstance(webhooks, list):
                     for webhook in webhooks:
                         if getattr(webhook, "name", None) == "TeleClaude Reflections":
                             self._reflection_webhook_cache[channel_id] = webhook
-                            return webhook
+                            return webhook  # type: ignore[no-any-return]
             except Exception as exc:
                 logger.debug("Failed to list Discord webhooks for channel %s: %s", channel_id, exc)
 
@@ -233,7 +233,7 @@ class MessageOperationsMixin:
         if not callable(create_fn):
             return None
         try:
-            webhook = await self._require_async_callable(create_fn, label="Discord channel create_webhook")(  # type: ignore[attr-defined]
+            webhook = await self._require_async_callable(create_fn, label="Discord channel create_webhook")(
                 name="TeleClaude Reflections"
             )
             self._reflection_webhook_cache[channel_id] = webhook
@@ -271,10 +271,10 @@ class MessageOperationsMixin:
         text = self._fit_message_text(text, context="edit_message")
         logger.debug("[DISCORD EDIT] text=%r", text[:100])
         try:
-            message = await self._fetch_destination_message(session, message_id, metadata=metadata)  # type: ignore[attr-defined]
+            message = await self._fetch_destination_message(session, message_id, metadata=metadata)
         except AdapterError:
             return False
-        edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")  # type: ignore[attr-defined]
+        edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
         try:
             await edit_fn(content=text)
             return True
@@ -284,10 +284,10 @@ class MessageOperationsMixin:
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
         try:
-            message = await self._fetch_destination_message(session, message_id)  # type: ignore[attr-defined]
+            message = await self._fetch_destination_message(session, message_id)
         except AdapterError:
             return False
-        delete_fn = self._require_async_callable(getattr(message, "delete", None), label="Discord message delete")  # type: ignore[attr-defined]
+        delete_fn = self._require_async_callable(getattr(message, "delete", None), label="Discord message delete")
         try:
             await delete_fn()
             return True
@@ -305,9 +305,9 @@ class MessageOperationsMixin:
     ) -> str:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
-        destination = await self._resolve_destination_channel(session, metadata=metadata)  # type: ignore[attr-defined]
-        send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")  # type: ignore[attr-defined]
-        discord_file = self._discord.File(file_path)  # type: ignore[attr-defined]
+        destination = await self._resolve_destination_channel(session, metadata=metadata)
+        send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")
+        discord_file = self._discord.File(file_path)
         safe_caption = self._fit_message_text(caption, context="send_file_caption") if caption else None
         sent = await send_fn(content=safe_caption, file=discord_file)
         message_id = getattr(sent, "id", None)
@@ -350,12 +350,12 @@ class MessageOperationsMixin:
         The base class truncates raw output to max_message_size, but format_output()
         wraps it in triple backticks (adding 8 chars). Account for that overhead.
         """
-        formatted = self.format_output(tmux_output)  # type: ignore[attr-defined]
+        formatted = self.format_output(tmux_output)
         if len(formatted) <= self.max_message_size:
             return formatted
         overhead = len("```\n\n```")
         max_body = self.max_message_size - overhead
-        return self.format_output(tmux_output[-max_body:]) if max_body > 0 else ""  # type: ignore[attr-defined]
+        return self.format_output(tmux_output[-max_body:]) if max_body > 0 else ""
 
     def get_max_message_length(self) -> int:
         return self.max_message_size
@@ -381,7 +381,7 @@ class MessageOperationsMixin:
     async def discover_peers(self) -> list[PeerInfo]:
         return []
 
-    async def poll_output_stream(  # type: ignore[override,misc]
+    async def poll_output_stream(
         self,
         session: Session,
         timeout: float = 300.0,

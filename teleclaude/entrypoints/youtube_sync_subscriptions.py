@@ -55,7 +55,7 @@ def _load_tags(path: Path, scope: str = "person") -> list[str]:
     if scope == "global":
         config = load_global_config(path)
     else:
-        config = load_person_config(path)
+        config = load_person_config(path)  # type: ignore[assignment]
 
     tags = config.interests
     if not tags:
@@ -175,7 +175,7 @@ def _call_agent_cli(
             thinking_mode=thinking_mode,
             system="You are a helpful assistant.",
             prompt=prompt,
-            schema=schema,
+            schema=schema,  # type: ignore[arg-type]
             debug_raw=debug,
             tools=tools,
             timeout_s=60,
@@ -288,9 +288,9 @@ def _validate_tags(raw_tags: object, allowed: set[str], evidence: str | None) ->
 def _configure_stdio() -> None:
     try:
         if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+            sys.stdout.reconfigure(line_buffering=True)  # type: ignore[unused-ignore]
         if hasattr(sys.stderr, "reconfigure"):
-            sys.stderr.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+            sys.stderr.reconfigure(line_buffering=True)  # type: ignore[unused-ignore]
     except Exception:
         pass
 
@@ -461,7 +461,7 @@ def _retry_single_row(
     allowed_tags: set[str],
     logger: logging.Logger,
 ) -> list[str]:
-    agent = next(rr)
+    agent = next(rr)  # type: ignore[call-overload]
     retry_prompt = _build_web_prompt([row], tags, retry=True) if use_web else _build_prompt(row, tags, retry=True)
     result = _call_agent_cli(
         agent,
@@ -482,7 +482,7 @@ def _retry_single_row(
         tagged = by_id.get(row.get("channel_id", ""), [])
     else:
         tagged = _safe_get_list(result, "tags")
-    valid = _validate_tags(tagged, allowed_tags, result.get("evidence"))
+    valid = _validate_tags(tagged, allowed_tags, result.get("evidence"))  # type: ignore[arg-type]
     return valid or ["n/a"]
 
 
@@ -551,7 +551,7 @@ def _single_group_result(
     else:
         tagged = _safe_get_list(result, "tags")
         evidence = result.get("evidence")
-    valid = _validate_tags(tagged, allowed_tags, evidence) or _retry_single_row(
+    valid = _validate_tags(tagged, allowed_tags, evidence) or _retry_single_row(  # type: ignore[arg-type]
         row,
         rr=rr,
         use_web=use_web,
@@ -612,7 +612,7 @@ def _batch_group_result(
     for row in group:
         cid = row.get("channel_id", "")
         item = by_id.get(cid, {})
-        valid = _validate_tags(_safe_get_list(item, "tags"), allowed_tags, item.get("evidence")) or _retry_single_row(
+        valid = _validate_tags(_safe_get_list(item, "tags"), allowed_tags, item.get("evidence")) or _retry_single_row(  # type: ignore[arg-type]
             row,
             rr=rr,
             use_web=use_web,
@@ -724,7 +724,7 @@ def _run_chunks(
                 executor.submit(
                     _process_group,
                     group,
-                    next(rr),
+                    next(rr),  # type: ignore[call-overload]
                     rr=rr,
                     use_web=use_web,
                     tags=tags,

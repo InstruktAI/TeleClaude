@@ -68,7 +68,7 @@ def load_report(path: Path) -> LaneReport | None:
         print(f"WARNING: {path} payload is not an object", file=sys.stderr)
         return None
 
-    data = cast(dict[str, object], data_obj)
+    data = cast(dict[str, object], data_obj)  # guard: loose-dict - TOML parsed data — release config
 
     classification = data.get("classification")
     if classification not in VALID_CLASSIFICATIONS:
