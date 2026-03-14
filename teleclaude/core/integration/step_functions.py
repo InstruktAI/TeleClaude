@@ -136,11 +136,6 @@ def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None
     return None
 
 
-def _is_bug_slug(cwd: str, slug: str) -> bool:
-    """Heuristic: check for a bug.md in todos/{slug}/."""
-    return (Path(cwd) / "todos" / slug / "bug.md").exists()
-
-
 def _integration_worktree_path(cwd: str) -> Path:
     """Compute the persistent integration worktree path."""
     return Path(cwd) / WORKTREE_DIR / "_integration"
@@ -628,12 +623,17 @@ def _step_delivery_bookkeeping(
     wt = str(_integration_worktree_path(cwd))
 
     # --- Delivery bookkeeping in integration worktree ---
-    is_bug = _is_bug_slug(cwd, key.slug)
-    if not is_bug:
-        from teleclaude.core.next_machine.core import deliver_to_delivered
+    from teleclaude.core.next_machine.core import deliver_to_delivered
 
-        if not deliver_to_delivered(wt, key.slug):
-            logger.warning("deliver_to_delivered failed for %s (not in roadmap or delivered)", key.slug)
+    if not deliver_to_delivered(wt, key.slug):
+        logger.warning("deliver_to_delivered failed for %s (not in roadmap or delivered)", key.slug)
+
+    # Reconcile stale entries that squash merges may re-introduce
+    from teleclaude.core.next_machine.delivery import reconcile_roadmap_after_merge
+
+    removed = reconcile_roadmap_after_merge(wt)
+    if removed:
+        logger.info("Reconciled stale roadmap entries after merge: %s", removed)
 
     _run_git(["add", "todos/roadmap.yaml", "todos/delivered.yaml"], cwd=wt)
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)

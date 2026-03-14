@@ -16,7 +16,7 @@ from git.exc import InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.next_machine._types import DeliveredDict, DeliveredEntry
+from teleclaude.core.next_machine._types import DeliveredDict, DeliveredEntry, RoadmapEntry
 from teleclaude.core.next_machine.icebox import clean_dependency_references
 from teleclaude.core.next_machine.roadmap import load_roadmap, save_roadmap
 from teleclaude.core.next_machine.state_io import read_text_sync, write_text_sync
@@ -125,6 +125,37 @@ def deliver_to_delivered(
     )
     save_delivered(cwd, delivered)
     return True
+
+
+def reconcile_roadmap_after_merge(cwd: str) -> list[str]:
+    """Remove stale entries from roadmap that squash merges may re-introduce.
+
+    Two cases:
+    1. Ghost entries: slug exists in both roadmap and delivered.yaml
+    2. Orphan entries: slug in roadmap with no todo directory and not delivered
+
+    Returns list of removed slugs for logging.
+    """
+    entries = load_roadmap(cwd)
+    delivered_slugs = load_delivered_slugs(cwd)
+    todos_dir = Path(cwd) / "todos"
+
+    keep: list[RoadmapEntry] = []
+    removed: list[str] = []
+
+    for entry in entries:
+        is_ghost = entry.slug in delivered_slugs
+        is_orphan = not (todos_dir / entry.slug).exists() and entry.slug not in delivered_slugs
+        if is_ghost or is_orphan:
+            removed.append(entry.slug)
+            clean_dependency_references(cwd, entry.slug)
+        else:
+            keep.append(entry)
+
+    if removed:
+        save_roadmap(cwd, keep)
+
+    return removed
 
 
 def _run_git_cmd(
