@@ -461,7 +461,7 @@ class GatewayHandlersMixin:
             return  # No text — if attachments existed, they were already handled above
 
         try:
-            session = await self._resolve_or_create_session(message)  # type: ignore[attr-defined]
+            session = await self._resolve_or_create_session(message, first_message=text)  # type: ignore[attr-defined]
         except Exception as exc:
             logger.error("Discord session resolution failed: %s", exc, exc_info=True)
             return
@@ -476,6 +476,11 @@ class GatewayHandlersMixin:
         # Relay mode: divert customer messages to the relay thread instead of the AI session
         if session.relay_status == "active" and session.relay_discord_channel_id:
             await self._forward_to_relay_thread(session, text, message)  # type: ignore[attr-defined]
+            return
+
+        # If the session was just created, the first message was bundled into
+        # the auto_command (agent_then_message) — skip the separate delivery.
+        if session.lifecycle_status == "initializing":
             return
 
         message_id = str(getattr(message, "id", ""))

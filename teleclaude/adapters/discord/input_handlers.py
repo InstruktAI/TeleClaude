@@ -224,7 +224,9 @@ class InputHandlersMixin:
     # Session Resolution
     # =========================================================================
 
-    async def _resolve_or_create_session(self, message: object) -> Session | None:
+    async def _resolve_or_create_session(
+        self, message: object, *, first_message: str | None = None,
+    ) -> Session | None:
         user_id = str(getattr(getattr(message, "author", None), "id", ""))
         if not user_id:
             return None
@@ -243,7 +245,8 @@ class InputHandlersMixin:
         if session is None:
             forum_type, project_path = self._resolve_forum_context(message)  # type: ignore[attr-defined]
             session = await self._create_session_for_message(
-                message, user_id, forum_type=forum_type, project_path=project_path
+                message, user_id, forum_type=forum_type, project_path=project_path,
+                first_message=first_message,
             )
             if session is None:
                 return None
@@ -380,6 +383,7 @@ class InputHandlersMixin:
         *,
         forum_type: str = "help_desk",
         project_path: str | None = None,
+        first_message: str | None = None,
     ) -> Session | None:
         from teleclaude.config import config
         from teleclaude.core.agents import get_default_agent
@@ -394,15 +398,22 @@ class InputHandlersMixin:
             "platform": "discord",
         }
 
+        agent = get_default_agent()
         if forum_type == "help_desk":
             channel_metadata["human_role"] = "customer"
             effective_path = project_path or config.computer.help_desk_dir
-            auto_command = f"agent {get_default_agent()}"
         else:
             forum_id, _ = self._extract_channel_ids(message)
             forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None  # type: ignore[attr-defined]
             effective_path = forum_project_path or project_path or config.computer.help_desk_dir
-            auto_command = f"agent {get_default_agent()}"
+
+        # Bundle first message into agent startup so the bootstrap waits for
+        # the agent to be ready before injecting text.  Without this, the
+        # message races the agent boot and Enter may arrive before the prompt.
+        if first_message:
+            auto_command = f"agent_then_message {agent} slow {first_message}"
+        else:
+            auto_command = f"agent {agent}"
 
         create_cmd = CreateSessionCommand(
             project_path=effective_path,
