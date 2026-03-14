@@ -39,7 +39,7 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SlashCommand
+from teleclaude.constants import SlashCommand
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
@@ -216,9 +216,7 @@ async def revive_session(
 
     # When agent is provided, resolve native session ID to TeleClaude session ID.
     if agent:
-        resolved = await db.get_session_by_field(
-            "native_session_id", session_id, include_initializing=True
-        )
+        resolved = await db.get_session_by_field("native_session_id", session_id, include_initializing=True)
         if resolved:
             if resolved.active_agent and resolved.active_agent != agent:
                 raise HTTPException(
@@ -254,7 +252,6 @@ async def revive_session(
                 native_log_file=None,
                 project_path=project_path,
                 subdir=subdir,
-                human_role=identity.human_role or HUMAN_ROLE_CUSTOMER,
             )
             session_id = new_session_id
 
@@ -554,9 +551,7 @@ async def send_result_endpoint(
 
     meta = MessageMetadata(parse_mode=parse_mode)
     try:
-        message_id = await _client.send_message(
-            session=session, text=formatted_content, metadata=meta, ephemeral=False
-        )
+        message_id = await _client.send_message(session=session, text=formatted_content, metadata=meta, ephemeral=False)
         return {"status": "success", "message_id": message_id}
     except Exception as e:
         logger.warning("send_result formatted send failed, retrying as plain text: %s", e)
@@ -573,9 +568,7 @@ async def send_result_endpoint(
                 "warning": "Sent as plain text due to formatting error",
             }
         except Exception as fallback_error:
-            raise HTTPException(
-                status_code=500, detail=f"Failed to send result: {fallback_error}"
-            ) from fallback_error
+            raise HTTPException(status_code=500, detail=f"Failed to send result: {fallback_error}") from fallback_error
 
 
 @router.post("/sessions/self/widget")

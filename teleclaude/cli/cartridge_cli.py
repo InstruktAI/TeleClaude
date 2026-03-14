@@ -14,13 +14,11 @@ import argparse
 import ast
 import datetime
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-from teleclaude.cli.session_auth import resolve_cli_caller_role
-from teleclaude.constants import HUMAN_ROLE_ADMIN
 
 if TYPE_CHECKING:
     from teleclaude.events.lifecycle import LifecycleManager
@@ -50,8 +48,32 @@ def _get_lifecycle_manager() -> LifecycleManager:
 
 
 def _caller_is_admin() -> bool:
-    """Determine if the current session caller has admin role."""
-    return resolve_cli_caller_role() == HUMAN_ROLE_ADMIN
+    """Determine if the current session caller has admin role.
+
+    Reads the session ID from $TMPDIR/teleclaude_session_id and looks up
+    human_role via sync DB query, matching the pattern in config_cli.py.
+    Returns False when not in a session context or on any error (fail closed).
+    """
+    tmpdir = os.environ.get("TMPDIR", "")
+    if not tmpdir:
+        return False
+    session_file = Path(tmpdir) / "teleclaude_session_id"
+    if not session_file.exists():
+        return False
+    try:
+        session_id = session_file.read_text(encoding="utf-8").strip()
+    except Exception:
+        return False
+    if not session_id:
+        return False
+    try:
+        from teleclaude.config import config
+        from teleclaude.core.db import get_session_field_sync
+
+        role = get_session_field_sync(config.database.path, session_id, "human_role")
+        return role == "admin"
+    except Exception:
+        return False
 
 
 def _get_sandbox_dir() -> Path:
@@ -81,12 +103,14 @@ def _list_sandbox_cartridges(use_json: bool) -> None:
     rows = []
     for path in sorted(sandbox_dir.glob("*.py")):
         stat = path.stat()
-        rows.append({
-            "id": path.stem,
-            "file": path.name,
-            "size_bytes": stat.st_size,
-            "modified": datetime.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
-        })
+        rows.append(
+            {
+                "id": path.stem,
+                "file": path.name,
+                "size_bytes": stat.st_size,
+                "modified": datetime.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
 
     if use_json:
         print(json.dumps(rows))
@@ -145,8 +169,19 @@ def _promote_from_sandbox(parsed: argparse.Namespace, use_json: bool) -> None:
     src.unlink()
 
     if use_json:
-        print(json.dumps({"ok": True, "action": "promote", "id": cartridge_id, "from": "sandbox", "to": to_scope,
-                          "domain": target_domain, "dest": str(dest)}))
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "action": "promote",
+                    "id": cartridge_id,
+                    "from": "sandbox",
+                    "to": to_scope,
+                    "domain": target_domain,
+                    "dest": str(dest),
+                }
+            )
+        )
     else:
         print(f"Promoted {src.name} to domain/{target_domain}/cartridges/")
         print("Next: wire it into the domain pipeline configuration, then commit.")
@@ -185,8 +220,12 @@ def handle_cartridge_cli(args: list[str]) -> None:
 
     # list
     p_list = subparsers.add_parser("list", help="List installed cartridges")
-    p_list.add_argument("--scope", default=None, choices=["personal", "domain", "platform", "sandbox"],
-                        help="Filter by scope (sandbox lists ~/.teleclaude/sandbox-cartridges/)")
+    p_list.add_argument(
+        "--scope",
+        default=None,
+        choices=["personal", "domain", "platform", "sandbox"],
+        help="Filter by scope (sandbox lists ~/.teleclaude/sandbox-cartridges/)",
+    )
     p_list.add_argument("--domain", default=None, help="Filter by domain name")
     p_list.add_argument("--member", default=None, help="Filter by member id")
     p_list.add_argument("--json", action="store_true", help="Output JSON")
@@ -255,9 +294,7 @@ def handle_cartridge_cli(args: list[str]) -> None:
                 if use_json:
                     print(json.dumps(result))
                 else:
-                    print(
-                        f"Promoted cartridge '{parsed.cartridge_id}' from {parsed.from_scope} to {parsed.to_scope}"
-                    )
+                    print(f"Promoted cartridge '{parsed.cartridge_id}' from {parsed.from_scope} to {parsed.to_scope}")
 
         elif parsed.action == "list":
             scope_filter = getattr(parsed, "scope", None)
