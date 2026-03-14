@@ -49,8 +49,6 @@
   group: chartest
 - slug: chartest-core-db
   group: chartest
-- slug: chartest-core-next-machine
-  group: chartest
 - slug: chartest-core-agent-coord
   group: chartest
 - slug: chartest-core-cmd-handlers
