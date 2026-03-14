@@ -116,7 +116,7 @@ class DaemonLifecycle:
     async def _warm_local_sessions_cache(self) -> None:
         """Seed cache with current local sessions for initial UI state."""
         try:
-            sessions = await db.list_sessions(computer_name=config.computer.name)
+            sessions = await db.list_sessions(computer_name=config.computer.name, include_headless=True)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to warm session cache: %s", exc, exc_info=True)
             return

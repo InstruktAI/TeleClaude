@@ -11,7 +11,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core.activity_contract import serialize_activity_event
-from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -28,15 +27,10 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.status_contract import (
-    AWAITING_OUTPUT_THRESHOLD_SECONDS,
-    STALL_THRESHOLD_SECONDS,
-    serialize_status_event,
-)
+from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
-from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils import strip_ansi_codes
 
 from ._fanout import _FanoutMixin
@@ -77,8 +71,6 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         # Serialize incremental rendering/sending per session to avoid
         # concurrent poll/hook races emitting the same payload twice.
         self._incremental_output_locks: dict[str, asyncio.Lock] = {}
-        # Stall detection: one pending task per session, cancelled on output arrival (R4)
-        self._stall_tasks: dict[str, asyncio.Task[object]] = {}
         # Track last emitted lifecycle status per session for guard checks.
         self._last_emitted_status: dict[str, str] = {}
 
@@ -227,52 +219,6 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                 extra={"session_id": session_id, "status": status},
             )
 
-    def _cancel_stall_task(self, session_id: str) -> None:
-        """Cancel any pending stall detection task for a session."""
-        task = self._stall_tasks.pop(session_id, None)
-        if task and not task.done():
-            task.cancel()
-
-    def _schedule_stall_detection(self, session_id: str, last_activity_at: str) -> None:
-        """Schedule background stall detection after user_prompt_submit (R4).
-
-        Sequence:
-          t=0                    → accepted emitted (caller)
-          t=AWAITING_THRESHOLD   → awaiting_output
-          t=STALL_THRESHOLD      → stalled
-        Cancelled automatically when output arrives (tool_use or agent_stop).
-        """
-        self._cancel_stall_task(session_id)
-
-        async def _stall_watcher() -> None:
-            try:
-                await asyncio.sleep(AWAITING_OUTPUT_THRESHOLD_SECONDS)
-                self._emit_status_event(
-                    session_id,
-                    "awaiting_output",
-                    "awaiting_output_timeout",
-                    last_activity_at=last_activity_at,
-                )
-                await asyncio.sleep(STALL_THRESHOLD_SECONDS - AWAITING_OUTPUT_THRESHOLD_SECONDS)
-                self._emit_status_event(
-                    session_id,
-                    "stalled",
-                    "stall_timeout",
-                    last_activity_at=last_activity_at,
-                )
-            except asyncio.CancelledError:
-                pass  # Cancelled by output arrival — normal flow
-            except Exception as exc:
-                logger.error(
-                    "Stall watcher failed for session %s: %s",
-                    session_id,
-                    exc,
-                    exc_info=True,
-                )
-
-        task = asyncio.create_task(_stall_watcher())
-        self._stall_tasks[session_id] = task
-
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
@@ -301,8 +247,9 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         if native_log_file:
             update_kwargs["native_log_file"] = str(native_log_file)
 
+        session = await db.get_session(context.session_id)
+
         if isinstance(raw_cwd, str) and raw_cwd:
-            session = await db.get_session(context.session_id)
             if session and not session.project_path:
                 update_kwargs["project_path"] = raw_cwd
                 update_kwargs["subdir"] = None
@@ -324,8 +271,9 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
             str(native_session_id),
         )
 
-        # Emit canonical lifecycle status: active — agent confirmed alive
-        self._emit_status_event(context.session_id, "active", "agent_session_started")
+        # Headless state flows through session data, not status events.
+        if not session or session.lifecycle_status != "headless":
+            self._emit_status_event(context.session_id, "active", "agent_session_started")
 
         await self._maybe_send_headless_snapshot(context.session_id)
         await self._speak_session_start(context.session_id)
@@ -335,7 +283,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
 
         For ALL sessions: write last_message_sent to DB (captures direct terminal input).
         Refresh title from the latest accepted real user input.
-        For headless sessions: also route through process_message for tmux adoption.
+        For headless sessions: broadcast to adapters for display without tmux adoption.
         """
         session_id = context.session_id
         payload = cast(UserPromptSubmitPayload, context.data)
@@ -464,20 +412,16 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         if is_threaded_output_enabled(session.active_agent):
             await self.client.break_threaded_turn(session)
 
-        # Emit activity event for UI updates.
-        # Synthetic Codex prompts are still real input events.
+        # Emit activity event for all sessions
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
-
-        # Emit canonical lifecycle status: accepted → schedule stall detection (R2, R4)
-        now_ts = datetime.now(UTC).isoformat()
-        self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
-        self._schedule_stall_detection(session_id, last_activity_at=now_ts)
 
         hook_actor_name = _resolve_hook_actor_name(session)
 
-        # Non-headless: DB write done above, no further routing needed
-        # (the agent already received the input directly)
         if session.lifecycle_status != "headless":
+            # Emit canonical lifecycle status: accepted (R2)
+            now_ts = datetime.now(UTC).isoformat()
+            self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
+
             if is_recent_routed_echo:
                 logger.debug(
                     "Skipping duplicate non-headless hook reflection for session %s",
@@ -495,22 +439,16 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                 await broadcast_result
             return
 
-        # Headless: route through unified process_message path
-        # This handles tmux adoption and polling start
-        cmd = ProcessMessageCommand(
-            session_id=session_id,
-            text=prompt_text,
-            origin=InputOrigin.TERMINAL.value,
+        # Headless: broadcast to adapters for display, no tmux adoption.
+        broadcast_result = self.client.broadcast_user_input(
+            session,
+            prompt_text,
+            InputOrigin.TERMINAL.value,
             actor_id=f"terminal:{config.computer.name}:{session_id}",
             actor_name=hook_actor_name,
         )
-
-        logger.debug(
-            "Routing headless session %s through process_message for tmux adoption",
-            session_id,
-        )
-
-        await get_command_service().process_message(cmd)
+        if inspect.isawaitable(broadcast_result):
+            await broadcast_result
 
     async def handle_agent_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped."""
@@ -617,9 +555,6 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         if feedback_update_kwargs:
             await db.update_session(session_id, **feedback_update_kwargs)
 
-        # Cancel stall detection — turn complete (R4)
-        self._cancel_stall_task(session_id)
-
         # Emit activity event for UI updates (summary flows to TUI via event, not DB)
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
 
@@ -695,8 +630,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
             tool_preview=tool_preview,
         )
 
-        # Output evidence observed → active_output; cancel any pending stall (R4)
-        self._cancel_stall_task(session_id)
+        # Output evidence observed → active_output
         now_ts = datetime.now(UTC).isoformat()
         self._emit_status_event(session_id, "active_output", "output_observed", last_activity_at=now_ts)
 

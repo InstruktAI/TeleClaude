@@ -449,8 +449,8 @@ class SessionStatusContext:
     """Context for canonical session lifecycle status transition events.
 
     Canonical contract fields (ucap-truthful-session-status):
-      status: Canonical lifecycle status value (accepted, awaiting_output,
-              active_output, stalled, completed, error, closed).
+      status: Canonical lifecycle status value (accepted, active,
+              active_output, completed, error, closed).
       reason: Reason code for the transition.
       last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
       message_intent: Routing intent (ctrl_status).

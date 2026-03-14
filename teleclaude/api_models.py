@@ -467,8 +467,8 @@ class SessionLifecycleStatusEventDTO(BaseModel):  # type: ignore[explicit-any]
     """WebSocket event for canonical session lifecycle status transitions.
 
     Canonical contract fields (ucap-truthful-session-status):
-      status: Lifecycle status vocabulary value (accepted, awaiting_output,
-              active_output, stalled, completed, error, closed).
+      status: Lifecycle status vocabulary value (accepted, active,
+              active_output, completed, error, closed).
       reason: Reason code for the transition.
       last_activity_at: ISO 8601 UTC timestamp of last observed activity (optional).
       message_intent: Routing intent (ctrl_status).

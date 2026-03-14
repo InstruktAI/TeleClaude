@@ -505,9 +505,7 @@ class UiAdapter(ThreadedOutputMixin, OutputDeliveryMixin, BaseAdapter):
         _EMOJI: dict[str, str] = {
             "accepted": "⏱",
             "active": "💬",
-            "awaiting_output": "🟡",
             "active_output": "🔄",
-            "stalled": "🔴",
             "completed": "✅",
             "error": "❌",
             "closed": "🔒",

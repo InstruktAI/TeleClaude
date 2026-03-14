@@ -94,8 +94,8 @@ class TelecAppWsMixin:
             self.post_message(SessionClosed(event.data.session_id))  # type: ignore[attr-defined]
 
         elif isinstance(event, SessionLifecycleStatusEvent):
-            # Surface stall and error transitions as TUI notifications.
-            if event.status in ("stalled", "error"):
+            # Surface error transitions as TUI notifications.
+            if event.status == "error":
                 if event.reason == "close_failed":
                     self.notify(f"Session {event.session_id} failed to close", severity="error")  # type: ignore[attr-defined]
                     self._refresh_data()  # type: ignore[attr-defined]

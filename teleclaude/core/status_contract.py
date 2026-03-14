@@ -1,16 +1,14 @@
 """Canonical lifecycle status contract for TeleClaude sessions.
 
 Defines the canonical outbound lifecycle status vocabulary, transition rules,
-timing thresholds, and shared serializer/validator utilities. All lifecycle
-status transition producers must route through this module before fan-out to
-ensure schema consistency.
+and shared serializer/validator utilities. All lifecycle status transition
+producers must route through this module before fan-out to ensure schema
+consistency.
 
 Canonical lifecycle status values (outbound vocabulary):
   - accepted        — user prompt accepted, agent response imminent
   - active          — agent session started, confirmed alive and working
-  - awaiting_output — optimistic accepted window expired, still waiting
   - active_output   — agent is actively producing output
-  - stalled         — extended inactivity, no output evidence
   - completed       — agent turn finished successfully
   - error           — agent encountered an error
   - closed          — session closed
@@ -35,9 +33,7 @@ logger = get_logger(__name__)
 LifecycleStatus = Literal[
     "accepted",
     "active",
-    "awaiting_output",
     "active_output",
-    "stalled",
     "completed",
     "error",
     "closed",
@@ -48,24 +44,12 @@ LIFECYCLE_STATUSES: frozenset[str] = frozenset(
     {
         "accepted",
         "active",
-        "awaiting_output",
         "active_output",
-        "stalled",
         "completed",
         "error",
         "closed",
     }
 )
-
-# ---------------------------------------------------------------------------
-# Core-owned stall timing thresholds (R4, deterministic across all adapters)
-# ---------------------------------------------------------------------------
-
-# After user_prompt_submit: transition from `accepted` to `awaiting_output`
-AWAITING_OUTPUT_THRESHOLD_SECONDS: float = 30.0
-
-# After `awaiting_output`: transition to `stalled` when no output arrives
-STALL_THRESHOLD_SECONDS: float = 120.0
 
 # ---------------------------------------------------------------------------
 # Routing metadata for status events
@@ -81,8 +65,6 @@ STATUS_DELIVERY_SCOPE: Literal["CTRL"] = "CTRL"
 StatusReason = Literal[
     "user_prompt_accepted",
     "agent_session_started",
-    "awaiting_output_timeout",
-    "stall_timeout",
     "output_observed",
     "output_resumed",
     "agent_turn_complete",
