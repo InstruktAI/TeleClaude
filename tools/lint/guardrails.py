@@ -59,52 +59,33 @@ def main() -> None:
 # The cap exists to make config erosion VISIBLE — not to prevent all change.
 
 PYRIGHT_MAX_IGNORE_FILES = 8
-PYRIGHT_ALLOWED_NONE_REPORTS = frozenset(
-    {
-        "reportOptionalSubscript",
-        "reportOptionalMemberAccess",
-        "reportOptionalCall",
-        "reportOptionalIterable",
-        "reportOptionalContextManager",
-        "reportOptionalOperand",
-        "reportArgumentType",
-        "reportMissingTypeStubs",
-        "reportUnknownArgumentType",
-        "reportUnknownMemberType",
-        "reportUnknownParameterType",
-        "reportUnknownVariableType",
-        "reportPrivateUsage",
-    }
-)
+PYRIGHT_ALLOWED_NONE_REPORTS = frozenset({
+    "reportOptionalSubscript",
+    "reportOptionalMemberAccess",
+    "reportOptionalCall",
+    "reportOptionalIterable",
+    "reportOptionalContextManager",
+    "reportOptionalOperand",
+    "reportArgumentType",
+    "reportMissingTypeStubs",
+    "reportUnknownArgumentType",
+    "reportUnknownMemberType",
+    "reportUnknownParameterType",
+    "reportUnknownVariableType",
+    "reportPrivateUsage",
+})
 
 RUFF_REQUIRED_RULE_GROUPS = {"E", "F", "I", "C90", "B", "UP", "RUF"}
 # guard: ratchet-down — 8 includes 5 tech-debt items (UP042, RUF012, RUF005, RUF006, B905)
 RUFF_MAX_GLOBAL_IGNORES = 8
-# guard: ratchet-down — 50 entries after adding per-file-ignores for decomposed submodules
-RUFF_MAX_PER_FILE_IGNORE_ENTRIES = 52
+# guard: ratchet-down — 43 entries, mostly C901 complexity violations to decompose
+RUFF_MAX_PER_FILE_IGNORE_ENTRIES = 43
 
 MYPY_MAX_OVERRIDE_SECTIONS = 13
 MYPY_ALLOWED_IGNORE_ERRORS_MODULES = frozenset({"teleclaude.hooks.*"})
 
-# File size gate: max lines per module.
-# guard: ratchet-down — known-large files pending decomposition; caps must only decrease.
-# tmux_bridge, agent_coordinator, adapter_client already decomposed by rlf-core-infra.
+# File size gate: max lines per module. No exceptions.
 MODULE_MAX_LINES = 1000
-MODULE_SIZE_ALLOWLIST: dict[str, int] = {
-    "teleclaude/cli/telec.py": 4500,
-    "teleclaude/core/next_machine/core.py": 5000,
-    "teleclaude/core/db.py": 2700,
-    "teleclaude/utils/transcript.py": 2400,
-    "teleclaude/core/command_handlers.py": 2100,
-    "teleclaude/transport/redis_transport.py": 2000,
-    "teleclaude/cli/tool_commands.py": 1500,
-    "teleclaude/helpers/youtube_helper.py": 1400,
-    "teleclaude/hooks/checkpoint.py": 1250,
-    "teleclaude/core/integration/state_machine.py": 1250,
-    "teleclaude/resource_validation.py": 1200,
-    "teleclaude/core/models.py": 1150,
-    "teleclaude/hooks/receiver.py": 1100,
-}
 
 
 def _check_pyright_invariants(pyright: dict[str, object]) -> None:  # guard: loose-dict-func - JSON config is untyped
@@ -134,9 +115,7 @@ def _check_ruff_invariants(pyproject: str) -> None:
     the capture, hiding ignored rules from the cap check.
     """
     parsed = tomllib.loads(pyproject)
-    ruff_lint = (
-        parsed.get("tool", {}).get("ruff", {}).get("lint", {})
-    )  # guard: loose-dict - TOML parse result is untyped
+    ruff_lint = parsed.get("tool", {}).get("ruff", {}).get("lint", {})  # guard: loose-dict - TOML parse result is untyped
 
     # Required rule groups must be present in select
     selected_rules = set(ruff_lint.get("select", []))
@@ -248,9 +227,8 @@ def _check_module_sizes(repo_root: Path) -> None:
             except OSError:
                 continue
 
-            max_lines = MODULE_SIZE_ALLOWLIST.get(rel, MODULE_MAX_LINES)
-            if line_count > max_lines:
-                violations.append(f"{rel}: {line_count} lines (max: {max_lines})")
+            if line_count > MODULE_MAX_LINES:
+                violations.append(f"{rel}: {line_count} lines (max: {MODULE_MAX_LINES})")
 
     if violations:
         formatted = "\n".join(f"- {v}" for v in violations)
@@ -290,9 +268,7 @@ def _check_test_companions(repo_root: Path) -> None:
         expected_source = _test_to_source_path(test_path, tests_root)
         if expected_source is None:
             continue
-        # Accept either a flat module (.py) or a package (__init__.py in same-named dir)
-        package_init = expected_source.removesuffix(".py") + "/__init__.py"
-        if not (source_root / expected_source).exists() and not (source_root / package_init).exists():
+        if not (source_root / expected_source).exists():
             full_expected = f"teleclaude/{expected_source}"
             orphans.append((rel_test, full_expected))
 
@@ -501,8 +477,7 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
     if not matches:
         return
 
-    # guard: ratchet-down — 78 pre-existing violations; cap must only decrease as typing is fixed
-    max_allowed = 78  # TODO: Reduce to 0 as we type everything (see todos/reduce-loose-dict-typings/)
+    max_allowed = 0  # TODO: Reduce to 0 as we type everything (see todos/reduce-loose-dict-typings/)
     if len(matches) > max_allowed:
         formatted = "\n".join(f"- {match}" for match in matches)
         _fail(
@@ -511,6 +486,9 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
             "FIX by replacing with typed dicts!!\n"
             f"{formatted}\n"
         )
+
+    if len(matches) > 0:
+        _fail("guardrails warning: loose dict typings detected\n")
 
 
 def _collect_function_guard_ranges(lines: list[str]) -> list[tuple[int, int]]:

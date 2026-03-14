@@ -150,7 +150,9 @@ class DomainPipelineRunner:
             )
             for member_id, presult in zip(self._personal_pipelines.keys(), personal_results):
                 if isinstance(presult, BaseException):
-                    logger.error("Personal pipeline '%s' failed: %s", member_id, presult, exc_info=presult)
+                    logger.error(
+                        "Personal pipeline '%s' failed: %s", member_id, presult, exc_info=presult
+                    )
 
         return results
 

@@ -82,7 +82,9 @@ def _prompt_release_channel(project_root: Path) -> None:
         print(f"  Pinned minor: {current_pinned}")
 
     try:
-        choice = input(f"Release channel ({'/'.join(_RELEASE_CHANNELS)}) [{current_channel}]: ").strip().lower()
+        choice = input(
+            f"Release channel ({'/'.join(_RELEASE_CHANNELS)}) [{current_channel}]: "
+        ).strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
         return
@@ -130,15 +132,10 @@ def _launch_enrichment(project_root: Path) -> None:
     """Launch the telec-init-analyze session for project enrichment."""
     print("\nStarting project analysis...")
     cmd = [
-        sys.executable,
-        "-m",
-        "teleclaude.cli.telec",
-        "sessions",
-        "run",
-        "--command",
-        "/telec-init-analyze",
-        "--project",
-        str(project_root),
+        sys.executable, "-m", "teleclaude.cli.telec",
+        "sessions", "run",
+        "--command", "/telec-init-analyze",
+        "--project", str(project_root),
     ]
     try:
         result = subprocess.run(cmd, check=False, timeout=300, capture_output=True, text=True)

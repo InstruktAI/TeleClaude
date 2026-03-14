@@ -306,9 +306,7 @@ class _DaemonEventPlatformMixin:
                         name="sandbox_health_watcher",
                     ).add_done_callback(self._log_background_task_exception("sandbox_health_watcher"))
                     self._sandbox_manager = _sandbox_manager
-                    logger.info(
-                        "Sandbox bridge cartridge registered (socket=%s, dir=%s)", _sandbox_socket, _sandbox_dir
-                    )
+                    logger.info("Sandbox bridge cartridge registered (socket=%s, dir=%s)", _sandbox_socket, _sandbox_dir)
                 except Exception as exc:
                     logger.error("Sandbox subsystem init failed — skipping: %s", exc, exc_info=True)
 

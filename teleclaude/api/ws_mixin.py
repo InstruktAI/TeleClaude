@@ -20,9 +20,9 @@ from teleclaude.api_models import (
     SessionClosedDataDTO,
     SessionClosedEventDTO,
     SessionDTO,
+    SessionStartedEventDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
-    SessionStartedEventDTO,
     SessionUpdatedEventDTO,
     TodoDTO,
 )

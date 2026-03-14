@@ -112,7 +112,9 @@ async def set_agent_status(
             elif normalized_status == "degraded":
                 degraded_until: str | None = None
                 if request.duration_minutes is not None:
-                    degraded_until = (datetime.now(UTC) + timedelta(minutes=request.duration_minutes)).isoformat()
+                    degraded_until = (
+                        datetime.now(UTC) + timedelta(minutes=request.duration_minutes)
+                    ).isoformat()
                 await db.mark_agent_degraded(
                     agent_name,
                     request.reason or "degraded",
@@ -122,7 +124,10 @@ async def set_agent_status(
                 if not request.reason:
                     raise HTTPException(status_code=400, detail="reason required when marking unavailable")
                 minutes = request.duration_minutes or 30
-                expiry = request.unavailable_until or (datetime.now(UTC) + timedelta(minutes=minutes)).isoformat()
+                expiry = (
+                    request.unavailable_until
+                    or (datetime.now(UTC) + timedelta(minutes=minutes)).isoformat()
+                )
                 await db.mark_agent_unavailable(agent_name, expiry, request.reason)
 
         info = await db.get_agent_availability(agent_name)

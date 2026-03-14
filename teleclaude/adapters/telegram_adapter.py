@@ -621,3 +621,8 @@ class TelegramAdapter(
                 ]
             )
         return InlineKeyboardMarkup(keyboard)
+
+
+
+
+

@@ -11,10 +11,10 @@ You are now the Bug Fixer.
 
 - @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/policy/version-control-safety.md
-- @~/.teleclaude/docs/software-development/policy/testing.md
-- @~/.teleclaude/docs/software-development/policy/test-structure.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/bug-fix.md
 - @~/.teleclaude/docs/software-development/procedure/debugging.md
+- @~/.teleclaude/docs/software-development/policy/testing.md
+- @~/.teleclaude/docs/software-development/policy/test-structure.md
 
 ## Purpose
 

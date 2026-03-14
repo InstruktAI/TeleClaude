@@ -141,8 +141,7 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
         restored_hidden = {
             session.session_id
             for session in sessions
-            if session.session_id in self._optimistically_hidden_session_ids
-            and session.status not in HIDDEN_SESSION_STATUSES
+            if session.session_id in self._optimistically_hidden_session_ids and session.status not in HIDDEN_SESSION_STATUSES
         }
         if restored_hidden:
             self._optimistically_hidden_session_ids.difference_update(restored_hidden)

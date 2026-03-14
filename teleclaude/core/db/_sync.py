@@ -5,7 +5,7 @@ These are standalone functions, not class methods.
 
 from typing import TYPE_CHECKING
 
-from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_CUSTOMER
 
 from .. import db_models
 
@@ -106,18 +106,18 @@ def resolve_session_principal(session: "Session") -> tuple[str, str]:
     Rules:
     - Inherited principal (session.principal set by parent): reuse it with the
       session's human_role (preserving the identity chain across agent spawns).
-    - Human session (human_email present): principal="human:<email>", role=human_role or "admin"
+    - Human session (human_email present): principal="human:<email>", role=human_role or "customer"
     - System/job session: principal="system:<session_id>", role="admin"
 
     The full session_id is used as the stable identifier for system principals
     to ensure traceability without truncation.
     """
     if session.principal:
-        return session.principal, session.human_role or HUMAN_ROLE_ADMIN
+        return session.principal, session.human_role or HUMAN_ROLE_CUSTOMER
     if session.human_email:
         principal = f"human:{session.human_email}"
-        role = session.human_role or HUMAN_ROLE_ADMIN
+        role = session.human_role or HUMAN_ROLE_CUSTOMER
         return principal, role
     # System/job session — use full session_id as the stable identifier.
     principal = f"system:{session.session_id}"
-    return principal, HUMAN_ROLE_ADMIN
+    return principal, session.human_role or HUMAN_ROLE_ADMIN

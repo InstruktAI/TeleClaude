@@ -60,9 +60,7 @@ _SNIPPET_ID_RE = re.compile(r"^project/(" + "|".join(TAXONOMY_TYPES) + r")/[a-z]
 _BASELINE_DIRS = ("design", "policy", "spec")
 
 # Required keys in .telec-init-meta.yaml for a valid AnalysisMetadata.
-_REQUIRED_META_KEYS = frozenset(
-    {"last_analyzed_at", "analyzed_by", "files_analyzed", "snippets_generated", "snippets_preserved"}
-)
+_REQUIRED_META_KEYS = frozenset({"last_analyzed_at", "analyzed_by", "files_analyzed", "snippets_generated", "snippets_preserved"})
 
 
 def validate_snippet_id(snippet_id: str) -> bool:

@@ -60,7 +60,9 @@ def register_creative_production(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
             idempotency_fields=["asset_id"],
-            lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["feedback"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="asset_id", meaningful_fields=["feedback"]
+            ),
         )
     )
     catalog.register(
@@ -113,7 +115,9 @@ def register_creative_production(catalog: EventCatalog) -> None:
             default_level=EventLevel.BUSINESS,
             domain="creative-production",
             idempotency_fields=["asset_id", "format"],
-            lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["error", "format"]),
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="asset_id", meaningful_fields=["error", "format"]
+            ),
             actionable=True,
         )
     )

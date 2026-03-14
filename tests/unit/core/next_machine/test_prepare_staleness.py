@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -46,11 +47,7 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     cwd, slug = _make_todo(tmp_path)
     long_content = "This is the original content that is long enough to pass the scaffold content check in teleclaude."
     input_file = _write_file(tmp_path / "todos" / slug, "input.md", long_content)
-    _write_file(
-        tmp_path / "todos" / slug,
-        "requirements.md",
-        "Requirements document with enough content to pass scaffold threshold for testing purposes.",
-    )
+    _write_file(tmp_path / "todos" / slug, "requirements.md", "Requirements document with enough content to pass scaffold threshold for testing purposes.")
 
     # Record input artifact
     record_artifact_produced(cwd, slug, "input.md")
@@ -103,11 +100,7 @@ async def test_next_prepare_no_staleness_proceeds_normally(
     from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
 
     cwd, slug = _make_todo(tmp_path)
-    _write_file(
-        tmp_path / "todos" / slug,
-        "input.md",
-        "This is stable input that has enough content to pass scaffold threshold for the test.",
-    )
+    _write_file(tmp_path / "todos" / slug, "input.md", "This is stable input that has enough content to pass scaffold threshold for the test.")
 
     # Record input artifact — no changes after
     record_artifact_produced(cwd, slug, "input.md")
@@ -131,3 +124,5 @@ async def test_next_prepare_no_staleness_proceeds_normally(
     assert not any("artifact_invalidated" in call for call in all_calls)
     # Result is a dispatch instruction (not blocked/errored)
     assert "DISPATCH" in result or "next-prepare-discovery" in result
+
+

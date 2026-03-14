@@ -70,11 +70,11 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 flowchart LR
     subgraph "Phase A — Prepare"
         Input["input.md"] --> Discovery
-        Discovery --> ReqReview["Requirements<br/>Review"]
-        ReqReview --> PlanDraft["Plan<br/>Drafting"]
-        PlanDraft --> PlanReview["Plan<br/>Review"]
-        PlanReview --> Gate["DOR<br/>Gate"]
-        Gate --> Grounding["Grounding<br/>Check"]
+        Discovery --> ReqReview["Requirements\nReview"]
+        ReqReview --> PlanDraft["Plan\nDrafting"]
+        PlanDraft --> PlanReview["Plan\nReview"]
+        PlanReview --> Gate["DOR\nGate"]
+        Gate --> Grounding["Grounding\nCheck"]
     end
 
     subgraph "Phase B — Work"
@@ -85,8 +85,8 @@ flowchart LR
     end
 
     subgraph "Phase C — Integrate"
-        Queue["FIFO Queue"] --> Merge["Squash<br/>Merge"]
-        Merge --> Push["Push to<br/>main"]
+        Queue["FIFO Queue"] --> Merge["Squash\nMerge"]
+        Merge --> Push["Push to\nmain"]
         Push --> Cleanup
     end
 

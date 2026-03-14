@@ -131,19 +131,7 @@ JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dic
 JsonObject: TypeAlias = dict[str, JsonValue]
 
 
-WsEvent: TypeAlias = (
-    SessionsInitialEvent
-    | ProjectsInitialEvent
-    | SessionStartedEvent
-    | SessionUpdatedEvent
-    | SessionClosedEvent
-    | SessionLifecycleStatusEvent
-    | RefreshEvent
-    | ErrorEvent
-    | AgentActivityEvent
-    | ChiptunesStateEvent
-    | ChiptunesTrackEvent
-)
+WsEvent: TypeAlias = SessionsInitialEvent | ProjectsInitialEvent | SessionStartedEvent | SessionUpdatedEvent | SessionClosedEvent | SessionLifecycleStatusEvent | RefreshEvent | ErrorEvent | AgentActivityEvent | ChiptunesStateEvent | ChiptunesTrackEvent
 
 
 # Subscribe/Unsubscribe requests (not DTOs, strictly for CLI -> Server)

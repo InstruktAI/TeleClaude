@@ -185,14 +185,7 @@ def _inherit_parent_phase(
     # Determine inherited phase and skipped phases
     if plan_approved:
         inherited_phase = "prepared"
-        skipped_phases = [
-            "input_assessment",
-            "triangulation",
-            "requirements_review",
-            "plan_drafting",
-            "plan_review",
-            "gate",
-        ]
+        skipped_phases = ["input_assessment", "triangulation", "requirements_review", "plan_drafting", "plan_review", "gate"]
     else:
         # req_approved only
         inherited_phase = "plan_drafting"
@@ -266,7 +259,9 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
     state = read_phase_state(str(project_root), parent_slug)
     breakdown = state.get("breakdown", {})
     if isinstance(breakdown, dict) and breakdown.get("todos"):
-        raise ValueError(f"Todo '{parent_slug}' is already a container with children: {breakdown['todos']}")
+        raise ValueError(
+            f"Todo '{parent_slug}' is already a container with children: {breakdown['todos']}"
+        )
 
     # Validate all child slugs and check they don't exist
     for child in child_slugs:

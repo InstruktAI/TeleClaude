@@ -1,5 +1,5 @@
-project_root: ~/.teleclaude
-snippets_root: ~/.teleclaude/docs
+project_root: /Users/Morriz/.teleclaude
+snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
 - id: creative/concept/image-generation
   description: "Image generation capability \u2014 text-to-image, editing, and iteration.\

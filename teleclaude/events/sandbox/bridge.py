@@ -42,7 +42,11 @@ class SandboxBridgeCartridge:
             return event
 
     async def _process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope:
-        if not self._manager.has_cartridges or self._manager.permanently_failed or self._manager.docker_unavailable:
+        if (
+            not self._manager.has_cartridges
+            or self._manager.permanently_failed
+            or self._manager.docker_unavailable
+        ):
             return event
 
         cartridge_names = scan_cartridges(self._manager.cartridges_dir)
@@ -53,7 +57,8 @@ class SandboxBridgeCartridge:
 
         # Build catalog snapshot from context
         catalog_snapshot = [
-            schema.model_dump() for schema in (context.catalog.list_all() if context.catalog is not None else [])
+            schema.model_dump()
+            for schema in (context.catalog.list_all() if context.catalog is not None else [])
         ]
 
         for name in cartridge_names:

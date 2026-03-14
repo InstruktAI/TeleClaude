@@ -275,7 +275,10 @@ async def spawn_integrator_session(
     # Guard: skip spawn if an integrator session is already active.
     try:
         sessions = await db.list_sessions()
-        if any(s.session_metadata and s.session_metadata.job == JobRole.INTEGRATOR for s in sessions):
+        if any(
+            s.session_metadata and s.session_metadata.job == JobRole.INTEGRATOR
+            for s in sessions
+        ):
             logger.info("Integrator session already running; candidate %s queued for drain", slug)
             return None
     except Exception:

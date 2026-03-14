@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -105,13 +106,7 @@ async def test_all_findings_resolved_yields_approve(mock_emit: MagicMock, tmp_pa
 
     findings = [
         {"id": "f1", "severity": "trivial", "summary": "formatting", "status": "resolved", "resolved_at": "2025-01-01"},
-        {
-            "id": "f2",
-            "severity": "substantive",
-            "summary": "coverage",
-            "status": "resolved",
-            "resolved_at": "2025-01-01",
-        },
+        {"id": "f2", "severity": "substantive", "summary": "coverage", "status": "resolved", "resolved_at": "2025-01-01"},
     ]
     state = _build_state(findings, verdict="approve")
     write_phase_state(cwd, slug, state)
@@ -204,13 +199,8 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
         },
         "plan_review": {"verdict": "", "findings_count": 0, "rounds": 0},
         "grounding": {
-            "valid": False,
-            "base_sha": "",
-            "input_digest": "",
-            "referenced_paths": [],
-            "last_grounded_at": "",
-            "invalidated_at": "",
-            "invalidation_reason": "",
+            "valid": False, "base_sha": "", "input_digest": "",
+            "referenced_paths": [], "last_grounded_at": "", "invalidated_at": "", "invalidation_reason": "",
         },
     }
     write_phase_state(cwd, slug, state)
@@ -222,3 +212,5 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
     # Should dispatch reviewer without raising
     assert keep_going is False
     assert instruction  # some instruction returned
+
+

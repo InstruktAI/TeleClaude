@@ -105,8 +105,12 @@ class IntegrationTriggerCartridge:
                             if asyncio.iscoroutine(result):
                                 await result
                         except Exception:
-                            logger.exception("Integration trigger spawn callback failed for %s", first_slug)
+                            logger.exception(
+                                "Integration trigger spawn callback failed for %s", first_slug
+                            )
             except Exception:
-                logger.exception("Integration trigger ingest callback failed for %s event", event.event)
+                logger.exception(
+                    "Integration trigger ingest callback failed for %s event", event.event
+                )
 
         return event

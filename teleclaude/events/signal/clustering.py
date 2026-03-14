@@ -74,14 +74,15 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def refine_by_embeddings(group: list[dict[str, object]], threshold: float) -> list[list[dict[str, object]]]:
+def refine_by_embeddings(
+    group: list[dict[str, object]], threshold: float
+) -> list[list[dict[str, object]]]:
     """Split a group into sub-groups based on embedding cosine similarity.
 
     Falls back to returning the original group as-is if embeddings are missing.
     """
     embeddings: list[list[float] | None] = [
-        item.get("embedding")
-        for item in group  # type: ignore[misc]
+        item.get("embedding") for item in group  # type: ignore[misc]
     ]
 
     # Degrade gracefully if any embedding is missing

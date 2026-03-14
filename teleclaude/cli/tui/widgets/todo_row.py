@@ -108,18 +108,9 @@ def integration_phase_label(phase: str | None, finalize_status: str | None) -> t
 
     return None
 
-
 # Status colors: dark/light table (like agent colors)
-_STATUS_COLORS_DARK = {
-    _TODO_STATUS_DRAFT: "color(244)",
-    _TODO_STATUS_READY: "color(71)",
-    _TODO_STATUS_ACTIVE: "color(178)",
-}
-_STATUS_COLORS_LIGHT = {
-    _TODO_STATUS_DRAFT: "color(244)",
-    _TODO_STATUS_READY: "color(28)",
-    _TODO_STATUS_ACTIVE: "color(136)",
-}
+_STATUS_COLORS_DARK = {_TODO_STATUS_DRAFT: "color(244)", _TODO_STATUS_READY: "color(71)", _TODO_STATUS_ACTIVE: "color(178)"}
+_STATUS_COLORS_LIGHT = {_TODO_STATUS_DRAFT: "color(244)", _TODO_STATUS_READY: "color(28)", _TODO_STATUS_ACTIVE: "color(136)"}
 
 # Phase value colors
 _OK_DARK = "color(71)"
@@ -260,14 +251,18 @@ class TodoRow(TelecMixin, Widget):
         if p_result is not None:
             p_label, p_value, p_color = p_result
             result.append_text(dor_text)
-            result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))
+            result.append_text(
+                self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True))
+            )
             return result
 
         # 2. Active or queued integration phase
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
         if i_result is not None:
             i_label, i_value, i_color = i_result
-            result.append_text(self._build_col(i_label, i_value, w.get("I", 0), Style(color=i_color, bold=True)))
+            result.append_text(
+                self._build_col(i_label, i_value, w.get("I", 0), Style(color=i_color, bold=True))
+            )
             return result
 
         # 3. Work phase (build != pending) — existing B/R/F/D path
@@ -277,17 +272,13 @@ class TodoRow(TelecMixin, Widget):
 
             b_val = bs if bs and bs != _TODO_STATUS_PENDING else ""
             result.append_text(
-                self._build_col(
-                    "B", b_val, w.get("B", 0), Style(color=ok if bs == _TODO_STATUS_COMPLETE else gold, bold=True)
-                )
+                self._build_col("B", b_val, w.get("B", 0), Style(color=ok if bs == _TODO_STATUS_COMPLETE else gold, bold=True))
             )
 
             rs = self.todo.review_status
             r_val = rs if rs and rs != _TODO_STATUS_PENDING else ""
             result.append_text(
-                self._build_col(
-                    "R", r_val, w.get("R", 0), Style(color=ok if rs == _TODO_STATUS_APPROVED else gold, bold=True)
-                )
+                self._build_col("R", r_val, w.get("R", 0), Style(color=ok if rs == _TODO_STATUS_APPROVED else gold, bold=True))
             )
 
             fc = self.todo.findings_count

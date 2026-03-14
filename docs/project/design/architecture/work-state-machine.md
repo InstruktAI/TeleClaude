@@ -147,7 +147,7 @@ flowchart TD
     DispatchFix["Dispatch /next-fix-review"]
     DispatchDefer["Dispatch /next-defer"]
     DispatchFinalize["Dispatch /next-finalize"]
-    Handoff["Emit integration events<br/>Mark finalize=handed_off"]
+    Handoff["Emit integration events\nMark finalize=handed_off"]
 
     Start --> ReadState
     ReadState --> BuildCheck
@@ -171,15 +171,15 @@ Before routing to any sub-phase, the Work machine runs these checks in order:
 
 ```mermaid
 flowchart TD
-    P1["1. Resolve slug<br/>(explicit or first ready item)"]
-    P2["2. Dependency gating<br/>(all deps must be done)"]
-    P3["3. Stash debt check<br/>(git stash forbidden)"]
-    P4["4. Artifact existence<br/>(requirements.md + plan + test specs)"]
-    P4b["4b. Test spec verification<br/>(expected-failure test specs exist in worktree)"]
-    P5["5. Preparation freshness<br/>(grounding must be valid)"]
-    P6["6. Worktree management<br/>(ensure + prep + sync)"]
-    P7["7. Clean check<br/>(uncommitted changes)"]
-    P8["8. Claim item<br/>(pending -> in_progress)"]
+    P1["1. Resolve slug\n(explicit or first ready item)"]
+    P2["2. Dependency gating\n(all deps must be done)"]
+    P3["3. Stash debt check\n(git stash forbidden)"]
+    P4["4. Artifact existence\n(requirements.md + plan + test specs)"]
+    P4b["4b. Test spec verification\n(expected-failure test specs exist in worktree)"]
+    P5["5. Preparation freshness\n(grounding must be valid)"]
+    P6["6. Worktree management\n(ensure + prep + sync)"]
+    P7["7. Clean check\n(uncommitted changes)"]
+    P8["8. Claim item\n(pending -> in_progress)"]
 
     P1 --> P2 --> P3 --> P4 --> P4b --> P5 --> P6 --> P7 --> P8
 ```

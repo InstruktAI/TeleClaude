@@ -33,16 +33,17 @@ Files over 1,000 lines are unmanageable. We have 20 files exceeding this thresho
 
 ## Context
 
-- All existing tests have been deleted. The test suite will be rebuilt from scratch AFTER this refactoring completes (see test-suite-overhaul todo which depends on this).
-- No tests need to be written as part of this work. Zero. The entire test-suite-overhaul pipeline is sequenced after this.
-- The goal is pure structural decomposition: split large files into focused, cohesive modules. No behavior changes. Imports must remain valid throughout.
-- Target: no file over ~500 lines after refactoring. Hard ceiling: 800 lines.
+- Existing tests must keep passing. `make test` must pass after every commit. Do not add new tests — the full test suite rebuild is sequenced after this refactoring (see test-suite-overhaul todo). But existing tests must not break.
+- The goal is not just splitting files — it is making the code DRY. Before and during decomposition, identify and extract shared utilities, duplicated patterns, and redundant bootstrapping into shared modules. Splitting without deduplication is a failure.
+- Public API and observable runtime behavior must not change. Internal restructuring — extracting shared utilities, consolidating duplicated logic, renaming private helpers — is explicitly required and expected.
+- Target: no file over ~800 lines after refactoring. Hard ceiling: 1000 lines.
 - Each file can be refactored independently, making this highly parallelizable.
-- After all splitting, a full lint pass (`make lint`) and runtime smoke test (daemon starts, TUI renders, CLI responds) must pass.
+- `make lint` must pass. Do not touch lint or type-checker configuration. Do not add `# noqa` suppressions. Do not add useless comments. The code itself must be clean.
+- Runtime smoke test (daemon starts, TUI renders, CLI responds) must pass.
 
 ## Constraints
 
-- No behavior changes. Only structural decomposition.
+- No behavior changes to public API or observable runtime behavior. Internal consolidation and deduplication is the point.
 - All imports across the codebase must be updated to reflect new module locations.
 - Public API (what other modules import) must not break.
 - Use `__init__.py` re-exports where needed for backward compatibility during the transition.

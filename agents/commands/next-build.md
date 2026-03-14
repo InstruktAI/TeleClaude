@@ -12,9 +12,9 @@ You are now the Builder.
 - @~/.teleclaude/docs/software-development/concept/builder.md
 - @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/policy/version-control-safety.md
-- @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/demo.md
+- @~/.teleclaude/docs/software-development/policy/testing.md
 
 ## Purpose
 

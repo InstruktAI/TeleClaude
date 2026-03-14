@@ -9,7 +9,7 @@ description: 'Data modeling, validation, and resource representation rules.'
 
 ## Rules
 
-- Core models are dataclasses in `teleclaude/core/models/` package.
+- Core models are dataclasses in `teleclaude/core/models.py`.
 - Pydantic validation is used only at system boundaries (API, WS).
 - API responses are resource-only (no nested aggregates).
 - Project IDs are derived from absolute filesystem paths.

@@ -36,7 +36,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
 
-
 @dataclass
 class CodexTurnState:
     """Per-session state for synthetic codex turn/tool events."""
@@ -46,7 +45,6 @@ class CodexTurnState:
     prompt_visible_last: bool = False
     initialized: bool = False
     last_tool_signature: str = ""
-
 
 _codex_turn_state: dict[str, CodexTurnState] = {}
 

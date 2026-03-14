@@ -49,7 +49,7 @@ async def test_startup_binds_api_before_project_warm_and_adapter_start():
         shutdown_event=shutdown_event,
         task_registry=task_registry,
         runtime_settings=None,
-        log_background_task_exception=lambda _name: lambda _task: None,
+        log_background_task_exception=lambda _name: (lambda _task: None),
         init_voice_handler=init_voice_handler,
         api_restart_max=5,
         api_restart_window_s=60.0,

@@ -184,7 +184,11 @@ async def list_sessions(
 
         # Job filter: narrows existing visibility results
         if job:
-            merged = [s for s in merged if s.session_metadata is not None and s.session_metadata.job == job]
+            merged = [
+                s for s in merged
+                if s.session_metadata is not None
+                and s.session_metadata.job == job
+            ]
 
         return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
     except Exception as e:
@@ -319,7 +323,9 @@ async def create_session(
                     if direct_caller_session and direct_caller_session.title
                     else identity.session_id
                 )
-                caller_computer = direct_caller_session.computer_name if direct_caller_session else config.computer.name
+                caller_computer = (
+                    direct_caller_session.computer_name if direct_caller_session else config.computer.name
+                )
                 direct_message = _format_direct_conversation_intro(
                     caller_session_id=identity.session_id,
                     caller_label=caller_label,
@@ -347,7 +353,9 @@ async def create_session(
             auto_command = f"agent {launch_intent.agent} {launch_intent.thinking_mode}"
         elif launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
             quoted_message = shlex.quote(launch_intent.message or "")
-            auto_command = f"agent_then_message {launch_intent.agent} {launch_intent.thinking_mode} {quoted_message}"
+            auto_command = (
+                f"agent_then_message {launch_intent.agent} {launch_intent.thinking_mode} {quoted_message}"
+            )
         elif launch_intent.kind == SessionLaunchKind.AGENT_RESUME:
             if launch_intent.native_session_id:
                 auto_command = f"agent_resume {launch_intent.agent} {launch_intent.native_session_id}"
@@ -413,7 +421,9 @@ async def create_session(
 
             caller_session = direct_caller_session or await db.get_session(identity.session_id)
             target_session = await db.get_session(str(session_id))
-            caller_label = caller_session.title if caller_session and caller_session.title else identity.session_id
+            caller_label = (
+                caller_session.title if caller_session and caller_session.title else identity.session_id
+            )
             target_label = target_session.title if target_session and target_session.title else title
             caller_computer = caller_session.computer_name if caller_session else config.computer.name
             target_computer = target_session.computer_name if target_session else config.computer.name
@@ -556,7 +566,9 @@ async def send_message_endpoint(
             caller_session = await db.get_session(identity.session_id)
             if target_session is None:
                 target_session = await db.get_session(session_id)
-            caller_label = caller_session.title if caller_session and caller_session.title else identity.session_id
+            caller_label = (
+                caller_session.title if caller_session and caller_session.title else identity.session_id
+            )
             target_label = target_session.title if target_session and target_session.title else session_id
             caller_computer = caller_session.computer_name if caller_session else config.computer.name
             target_computer = target_session.computer_name if target_session else config.computer.name
@@ -676,3 +688,4 @@ async def send_message_endpoint(
     except Exception as e:
         logger.error("process_message failed (session=%s): %s", session_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
+

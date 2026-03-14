@@ -21,8 +21,12 @@ async def up(db: aiosqlite.Connection) -> None:
         )
         """
     )
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_session_tokens_session ON session_tokens(session_id)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_session_tokens_expires ON session_tokens(expires_at)")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_session_tokens_session ON session_tokens(session_id)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_session_tokens_expires ON session_tokens(expires_at)"
+    )
     await db.commit()
 
 

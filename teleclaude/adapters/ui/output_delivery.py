@@ -323,7 +323,9 @@ class OutputDeliveryMixin:
             # Edit failed (stale message) — clear tracked ID and skip.
             # Do NOT fall back to sending a new message here; the next
             # render cycle will create a fresh footer naturally.
-            logger.debug("[FOOTER] Edit failed for session=%s, clearing stale id %s", session.session_id, existing_id)
+            logger.debug(
+                "[FOOTER] Edit failed for session=%s, clearing stale id %s", session.session_id, existing_id
+            )
             await self._clear_footer_message_id(session)
             return None
 

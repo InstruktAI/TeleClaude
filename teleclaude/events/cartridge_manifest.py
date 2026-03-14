@@ -32,3 +32,5 @@ class CartridgeDependencyError(CartridgeError):
 
 class CartridgeScopeError(CartridgeError):
     """Raised when a cartridge is used outside its declared domain affinity."""
+
+

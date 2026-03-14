@@ -193,10 +193,18 @@ class TelecFooter(Widget):
             with Horizontal(id="footer-actions"):
                 yield Static("", id="footer-pane-toggle", classes="footer-token")
                 yield Static("", id="footer-tts-toggle", classes="footer-token")
-                yield FooterActionButton("\u23ee", id="footer-prev", classes="footer-action-button")
-                yield FooterActionButton("\u25b6", id="footer-play", classes="footer-action-button")
-                yield FooterActionButton("\u23ed", id="footer-next", classes="footer-action-button")
-                yield FooterActionButton("\u2b50", id="footer-fav", classes="footer-action-button -last-action")
+                yield FooterActionButton(
+                    "\u23ee", id="footer-prev", classes="footer-action-button"
+                )
+                yield FooterActionButton(
+                    "\u25b6", id="footer-play", classes="footer-action-button"
+                )
+                yield FooterActionButton(
+                    "\u23ed", id="footer-next", classes="footer-action-button"
+                )
+                yield FooterActionButton(
+                    "\u2b50", id="footer-fav", classes="footer-action-button -last-action"
+                )
                 yield Static("", id="footer-anim-toggle", classes="footer-token -last-token")
 
     def on_mount(self) -> None:
