@@ -58,7 +58,7 @@ class SandboxBridgeCartridge:
             result_entry = await self._invoke_cartridge(name, event, catalog_snapshot)
             results.append(result_entry)
 
-        event.payload["_sandbox_results"] = results  # type: ignore[assignment]
+        event.payload["_sandbox_results"] = results
         return event
 
     async def _invoke_cartridge(

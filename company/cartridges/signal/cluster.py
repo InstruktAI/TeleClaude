@@ -112,7 +112,7 @@ class SignalClusterCartridge:
                 payload={
                     "cluster_id": cluster_id,
                     "member_count": len(group),
-                    "tags": unique_tags,  # type: ignore[dict-item]
+                    "tags": unique_tags,
                     "is_burst": is_burst,
                     "is_novel": is_novel,
                     "summary": summary,

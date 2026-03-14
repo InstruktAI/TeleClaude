@@ -86,7 +86,7 @@ async def test_attaches_sandbox_results_on_success():
     assert result is event
     assert "_sandbox_results" in result.payload
     assert len(result.payload["_sandbox_results"]) == 1
-    assert result.payload["_sandbox_results"][0]["cartridge"] == "echo_cart"  # type: ignore[index]
+    assert result.payload["_sandbox_results"][0]["cartridge"] == "echo_cart"
 
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_timeout_produces_error_entry():
 
     assert result is event
     assert "_sandbox_results" in result.payload
-    assert result.payload["_sandbox_results"][0]["error"] == "timeout"  # type: ignore[index]
+    assert result.payload["_sandbox_results"][0]["error"] == "timeout"
 
 
 @pytest.mark.asyncio
@@ -127,4 +127,4 @@ async def test_connection_error_produces_error_entry():
         result = await bridge.process(event, context)
 
     assert result is event
-    assert result.payload["_sandbox_results"][0]["error"] == "unavailable"  # type: ignore[index]
+    assert result.payload["_sandbox_results"][0]["error"] == "unavailable"

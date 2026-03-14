@@ -41,7 +41,7 @@ class TrustCartridge:
 
         if outcome == TrustOutcome.FLAG:
             updated_payload = dict(event.payload)
-            updated_payload["_trust_flags"] = flags  # type: ignore[assignment]
+            updated_payload["_trust_flags"] = flags
             return event.model_copy(update={"payload": updated_payload})
 
         if outcome == TrustOutcome.QUARANTINE:

@@ -100,7 +100,7 @@ def _handle_content_dump(args: list[str]) -> None:
                 payload={
                     "inbox_path": str(entry_dir.relative_to(project_root)),
                     "author": resolved_author,
-                    "tags": resolved_tags,  # type: ignore[dict-item]
+                    "tags": resolved_tags,
                 },
             )
             tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)

@@ -103,7 +103,7 @@ class SignalIngestCartridge:
                         "source_id": source_id,
                         "item_url": item.get("url", ""),
                         "raw_title": item.get("title", ""),
-                        "tags": tags,  # type: ignore[dict-item]
+                        "tags": tags,
                         "published_at": item.get("published", ""),
                         "fetched_at": fetched_at,
                     },

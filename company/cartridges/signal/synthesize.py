@@ -51,7 +51,7 @@ class SignalSynthesizeCartridge:
             logger.warning("signal.cluster.formed event missing cluster_id; passing through")
             return event
 
-        members = await self._signal_db.get_cluster_members(int(cluster_id), limit=self._config.max_items_per_cluster)  # type: ignore[arg-type]
+        members = await self._signal_db.get_cluster_members(int(cluster_id), limit=self._config.max_items_per_cluster)
         if not members:
             logger.warning("Cluster %s has no members; skipping synthesis", cluster_id)
             return event
@@ -84,7 +84,7 @@ class SignalSynthesizeCartridge:
             logger.error("Synthesis failed for cluster %s: %s", cluster_id, e, exc_info=True)
             return event
         artifact_dict = artifact.model_dump()
-        await self._signal_db.insert_synthesis(int(cluster_id), artifact_dict)  # type: ignore[arg-type]
+        await self._signal_db.insert_synthesis(int(cluster_id), artifact_dict)
 
         description = artifact.summary[:200]
         return EventEnvelope(

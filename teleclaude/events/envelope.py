@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from enum import Enum, IntEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,8 +55,8 @@ class EventEnvelope(BaseModel):
     entity: str | None = None
     description: str = ""
     visibility: EventVisibility = EventVisibility.LOCAL
-    # Data
-    payload: JsonDict = Field(default_factory=dict)
+    # Data  # guard: loose-dict - JsonValue is recursive; pydantic cannot resolve it without infinite recursion
+    payload: dict[str, Any] = Field(default_factory=dict)
     # Affordances (structural, not processed in core phase)
     actions: dict[str, ActionDescriptor] | None = None
     # Resolution

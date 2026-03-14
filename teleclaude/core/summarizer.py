@@ -53,7 +53,7 @@ def _build_agent_output_summary_prompt(agent_output: str, max_summary_words: int
 {agent_output}
 
 ## Output:
-1. **summary** (max {max_summary_words} words): Write as the assistant in first person, describing what you did. Omit strange strings. such as UUIDs etc. If trivial or very short, return verbatim.
+1. **summary** (max {max_summary_words} words): Capture what actually happened in this turn. Use first person only when the agent performed concrete actions. For monitoring, waiting, or status reporting, use natural phrasing (e.g. "Monitoring workers", "Waiting on build results"). Omit UUIDs and opaque strings. If trivial or very short, return verbatim.
 """
 
 
