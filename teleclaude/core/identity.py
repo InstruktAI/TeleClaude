@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from teleclaude.core.models import SessionAdapterMetadata
 
 logger = get_logger(__name__)
-CUSTOMER_ROLE = "customer"
 
 
 @dataclass
@@ -132,7 +131,7 @@ class IdentityResolver:
                 if normalized_phone:
                     self._by_whatsapp_phone[normalized_phone] = person
 
-    def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> IdentityContext | None:
+    def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> IdentityContext:
         """Resolve identity from origin and metadata.
 
         Args:
@@ -140,7 +139,8 @@ class IdentityResolver:
             channel_metadata: Dictionary of metadata from the channel.
 
         Returns:
-            IdentityContext if resolved, None if unauthorized/unknown.
+            IdentityContext with person_role always set (never None).
+            Unknown identity defaults to HUMAN_ROLE_CUSTOMER.
         """
         self._reload_if_stale()
         if origin == "telegram":
@@ -187,7 +187,7 @@ class IdentityResolver:
                         platform_user_id=discord_uid_str,
                     )
                 return IdentityContext(
-                    person_role=CUSTOMER_ROLE,
+                    person_role=HUMAN_ROLE_CUSTOMER,
                     platform="discord",
                     platform_user_id=discord_uid_str,
                 )
@@ -207,12 +207,12 @@ class IdentityResolver:
                     )
                 if normalized_phone:
                     return IdentityContext(
-                        person_role=CUSTOMER_ROLE,
+                        person_role=HUMAN_ROLE_CUSTOMER,
                         platform="whatsapp",
                         platform_user_id=normalized_phone,
                     )
 
-        return None
+        return IdentityContext(person_role=HUMAN_ROLE_CUSTOMER)
 
 
 def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
@@ -244,62 +244,3 @@ def get_identity_resolver() -> IdentityResolver:
     return _resolver_instance
 
 
-def resolve_cli_caller_role() -> str | None:
-    """Resolve the effective human role for the current CLI caller.
-
-    Three paths (tried in order):
-    1. Env var: TELECLAUDE_PRINCIPAL_ROLE injected at session bootstrap.
-    2. TTY auth: terminal human logged in via ``telec auth login``.
-    3. Daemon API: dual-factor auth (session_id + tmux session name).
-
-    Returns the effective human role, or None if unidentifiable.
-    """
-    import os
-
-    # Path 1: env var injected at bootstrap
-    env_role = os.environ.get("TELECLAUDE_PRINCIPAL_ROLE")
-    if env_role:
-        return env_role
-
-    # Path 2: TTY auth file → IdentityResolver
-    from teleclaude.cli.session_auth import read_current_session_email
-
-    email = read_current_session_email()
-    if email:
-        resolver = get_identity_resolver()
-        person = resolver._by_email.get(email.lower())
-        if person:
-            return resolver._normalize_role(person.role)
-
-    # Path 3: daemon API — works for any TeleClaude-managed session
-    return _resolve_role_via_daemon()
-
-
-def _resolve_role_via_daemon() -> str | None:
-    """Query the daemon API for this session's human_role via dual-factor auth."""
-    import asyncio
-    import os
-
-    # Only attempt if we have a session ID (indicates a TeleClaude-managed session)
-    tmpdir = os.environ.get("TMPDIR", "")
-    if not tmpdir:
-        return None
-    session_id_path = Path(tmpdir) / "teleclaude_session_id"
-    if not session_id_path.exists():
-        return None
-
-    try:
-        from teleclaude.cli.api_client import TelecAPIClient
-
-        async def _fetch() -> str | None:
-            api = TelecAPIClient()
-            await api.connect()
-            try:
-                data = await api.get_auth_whoami()
-            finally:
-                await api.close()
-            return data.get("role")
-
-        return asyncio.run(_fetch())
-    except Exception:
-        return None

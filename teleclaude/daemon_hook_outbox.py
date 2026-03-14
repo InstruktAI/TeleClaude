@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import HookOutboxRow, db
@@ -395,6 +396,7 @@ class _DaemonHookOutboxMixin:
             native_log_file=str(native_log_file) if native_log_file else None,
             project_path=project_path,
             subdir=subdir,
+            human_role=HUMAN_ROLE_CUSTOMER,
         )
 
         event_bus.emit(

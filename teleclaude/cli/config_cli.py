@@ -19,6 +19,9 @@ from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.session_auth import resolve_cli_caller_role
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+
 from teleclaude.cli.config_handlers import (
     add_person,
     check_env_vars,
@@ -44,36 +47,11 @@ class InviteResult(TypedDict):
 
 
 def _check_customer_guard() -> None:
-    """Block customer-role sessions from mutating config commands.
-
-    Reads session ID from $TMPDIR/teleclaude_session_id and checks human_role
-    via sync DB lookup. Skips check when not in a session context.
-    """
-    tmpdir = os.environ.get("TMPDIR", "")
-    if not tmpdir:
-        return
-    marker = Path(tmpdir) / "teleclaude_session_id"
-    if not marker.exists():
-        return
-    try:
-        session_id = marker.read_text(encoding="utf-8").strip()
-    except Exception:
-        return
-    if not session_id:
-        return
-    try:
-        from teleclaude.config import config
-        from teleclaude.core.db import get_session_field_sync
-
-        role = get_session_field_sync(config.database.path, session_id, "human_role")
-        if role in ("customer", "public"):
-            print("Error: Permission denied. This operation requires member role or higher.")
-            raise SystemExit(1)
-    except SystemExit:
-        raise
-    except Exception:
-        # DB unavailable or session not found — allow (fail open for human terminals)
-        pass
+    """Block customer-role sessions from mutating config commands."""
+    role = resolve_cli_caller_role()
+    if role == HUMAN_ROLE_CUSTOMER:
+        print("Error: Permission denied. This operation requires member role or higher.")
+        raise SystemExit(1)
 
 
 @dataclass
