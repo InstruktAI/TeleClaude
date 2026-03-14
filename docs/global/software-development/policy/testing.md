@@ -19,7 +19,7 @@ type: 'policy'
 3. Never commit code with failing hooks, lint violations, or type errors
 4. **Test behavioral contracts, not human-facing text**
 5. **Literal string assertions on any human-facing output are forbidden unless the exact text is execution-significant**
-6. **Write failing tests before production code — no exceptions**
+6. **Write failing tests before production code — no exceptions** (for new/modified code; see Characterization Testing for existing untested code)
 
 ### Test-Driven Development
 
@@ -41,19 +41,19 @@ Verification checkpoints:
 
 **Rationalizations to reject:**
 
-| Excuse                           | Reality                                                                           |
-| -------------------------------- | --------------------------------------------------------------------------------- |
-| "Too simple to test"             | Small code breaks. Test takes 30 seconds.                                         |
-| "I'll test after"                | Tests passing immediately prove nothing — you never saw them catch the bug.       |
-| "Tests after achieve same goals" | Tests-after answer "what does this do?" Tests-first answer "what should this do?" |
-| "Already manually tested"        | Ad-hoc and non-repeatable. No record, can't re-run.                               |
-| "Already wrote a lot of code"    | Sunk cost. Keeping unverified code is technical debt. Delete and restart.         |
-| "Keep as reference"              | You'll adapt it. That's testing after. Delete means delete.                       |
-| "Need to explore first"          | Fine. Throw away exploration, start with tests.                                   |
-| "Hard to test"                   | Hard to test = hard to use. Simplify the design.                                  |
-| "TDD slows me down"              | TDD is faster than debugging. Test-first is pragmatic.                            |
-| "I can fix while I'm here"       | Mixed concerns hide behavior changes. Keep scope to the test.                     |
-| "Existing code has no tests"     | You're improving it. Add tests for the code you touch.                            |
+| Excuse                           | Reality                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| "Too simple to test"             | Small code breaks. Test takes 30 seconds.                                                              |
+| "I'll test after"                | Tests passing immediately prove nothing — you never saw them catch the bug.                            |
+| "Tests after achieve same goals" | Tests-after answer "what does this do?" Tests-first answer "what should this do?"                      |
+| "Already manually tested"        | Ad-hoc and non-repeatable. No record, can't re-run.                                                    |
+| "Already wrote a lot of code"    | Sunk cost. Keeping unverified code is technical debt. Delete and restart.                              |
+| "Keep as reference"              | You'll adapt it. That's testing after. Delete means delete.                                            |
+| "Need to explore first"          | Fine. Throw away exploration, start with tests.                                                        |
+| "Hard to test"                   | Hard to test = hard to use. Simplify the design.                                                       |
+| "TDD slows me down"              | TDD is faster than debugging. Test-first is pragmatic.                                                 |
+| "I can fix while I'm here"       | Mixed concerns hide behavior changes. Keep scope to the test.                                          |
+| "Existing code has no tests"     | If changing it: characterize first, then TDD the change. If covering it: use characterization testing. |
 
 **Red flags — stop and restart with a test:**
 
@@ -63,9 +63,67 @@ Verification checkpoints:
 - Rationalizing "just this once."
 - "It's about spirit not ritual" — violating the letter is violating the spirit.
 
+### Characterization Testing — Legacy Coverage
+
+TDD drives design of new behavior. It cannot be applied to code that already exists and works — the
+test would pass immediately, which TDD itself flags as a red flag. **Characterization testing** is
+the sanctioned approach for systematically covering existing untested code.
+
+A characterization test pins what the code _actually does_ at a meaningful boundary. It is a safety
+net, not a specification. Its job is to detect unintended changes when the code is later modified.
+
+**When characterization testing applies:**
+
+- Systematic coverage campaigns for existing untested code.
+- Covering a module before modifying it (characterize first, then TDD the change).
+- Establishing regression guards for critical paths that lack tests.
+
+**When characterization testing does NOT apply:**
+
+- New features — use TDD.
+- Bug fixes — use reproduction test delivery (RED first).
+- Modifying existing behavior — characterize the current state, then TDD the change.
+
+**OBSERVE-ASSERT-VERIFY cycle:**
+
+1. **OBSERVE** — Run the code with representative inputs. Record actual outputs, side effects,
+   return values, exceptions, and state changes.
+2. **ASSERT** — Write a test that asserts the observed behavior at a public boundary. The test
+   passes immediately — this is expected and correct for characterization.
+3. **VERIFY** — Mutate the production code (introduce a deliberate fault). Confirm the test
+   catches the mutation. If it doesn't, the test is too shallow — strengthen or discard it.
+
+The mutation check in step 3 is what distinguishes a useful characterization test from a tautology.
+A test that survives production mutations pins nothing.
+
+**Characterization tests follow all other policy rules:**
+
+- Behavioral contracts, not implementation details.
+- No string assertions on human-facing text.
+- Maximum 5 mock patches per test.
+- Descriptive names that serve as behavioral specifications.
+- One clear expectation per test.
+- Mock at architectural boundaries only.
+- Must answer: "What real bug in OUR code would this catch?"
+
+**Boundary selection:** Characterize at public API boundaries — the functions and methods that
+other modules actually call. Do not characterize private helpers, internal state, or implementation
+details. If the boundary is hard to test, that signals design debt — document it, don't work
+around it with deep mocking.
+
+**Evolution:** When a module gets modified through TDD, its characterization tests either evolve
+into specification tests or get pruned when the pinned behavior is intentionally changed. The safety
+net gradually becomes the spec. This is organic — do not force the transition.
+
+**Relationship to TDD iron law:** The iron law ("no production code without a failing test first")
+governs all new and modified production code. Characterization testing governs coverage of existing
+stable code. These are complementary, not competing — an agent doing coverage work follows
+OBSERVE-ASSERT-VERIFY; an agent building new features follows RED-GREEN-REFACTOR. The distinction
+is temporal: if the code exists, characterize; if it doesn't, TDD.
+
 ### Output Text Assertion Guardrail
 
-Assert on data, structure, and behavior — never on how text reads. If the exact string could be reworded without changing what the system does, it is not a valid assertion target. Test the function that *produces* the output, not the rendered text itself.
+Assert on data, structure, and behavior — never on how text reads. If the exact string could be reworded without changing what the system does, it is not a valid assertion target. Test the function that _produces_ the output, not the rendered text itself.
 
 - **Allowed:** exact-string assertions for execution-significant text (parser markers, schema keys, command tokens, protocol identifiers, required reference prefixes) where runtime behavior depends on exact text.
 - **Forbidden:** exact-string assertions on any human-facing output — composed messages, CLI help text, formatted reports, notification content, error prose, checkpoint messages, status output, agent artifacts, documentation. If the wording can change without changing behavior, the assertion is a prose-lock.

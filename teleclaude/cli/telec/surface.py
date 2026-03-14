@@ -413,6 +413,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "mark-ready": CommandDef(
+                desc="Fast-track a todo to work-ready state, bypassing prepare lifecycle",
+                args="<slug> [<slug> ...]",
+                flags=[_H],
+                notes=[
+                    "Promotes input.md → requirements.md, generates implementation-plan.md and quality-checklist.md.",
+                    "Sets DOR 8, prepare_phase=prepared, grounding=valid, reviews=approved.",
+                    "Use for straightforward work items that don't need the full prepare ceremony.",
+                    "Accepts multiple slugs to fast-track a batch in one call.",
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "mark-finalize-ready": CommandDef(
                 desc="Record finalize readiness in worktree state.yaml",
                 args="<slug>",

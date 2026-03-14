@@ -572,6 +572,142 @@ def check_review_status(cwd: str, slug: str) -> str:
     return PhaseStatus.CHANGES_REQUESTED.value
 
 
+_QUALITY_CHECKLIST_TEMPLATE = """\
+# Quality Checklist: {slug}
+
+This checklist is the execution projection of `definition-of-done.md` for this todo.
+
+Ownership:
+
+- Build section: Builder updates only this section.
+- Review section: Reviewer updates only this section.
+- Finalize section: Finalizer updates only this section.
+
+## Build Gates (Builder)
+
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo validated (`telec todo demo validate {slug}` exits 0, or exception noted)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
+
+## Review Gates (Reviewer)
+
+- [ ] Requirements traced to implemented behavior
+- [ ] Deferrals justified and not hiding required scope
+- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
+- [ ] Findings written in `review-findings.md`
+- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [ ] Critical issues resolved or explicitly blocked
+"""
+
+
+def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
+    """Fast-track a todo to work-ready state, bypassing the full prepare lifecycle.
+
+    Sets all state.yaml fields required by the work state machine entry checks:
+    - phase: pending, build: pending
+    - dor.score >= 8, dor.status: pass
+    - prepare_phase: prepared, grounding.valid: true
+    - requirements_review.verdict: approve, plan_review.verdict: approve
+
+    Requires requirements.md and implementation-plan.md to already exist with real
+    content. Generates quality-checklist.md if missing (always the same template).
+    Does NOT attempt to derive artifacts from input.md — that's a separate concern.
+
+    Returns:
+        (success, message) tuple.
+    """
+    todo_dir = Path(cwd) / "todos" / slug
+    if not todo_dir.exists():
+        return False, f"Todo directory not found: todos/{slug}/"
+
+    # --- Validate required artifacts ---
+    input_path = todo_dir / "input.md"
+    requirements_path = todo_dir / "requirements.md"
+    plan_path = todo_dir / "implementation-plan.md"
+    checklist_path = todo_dir / "quality-checklist.md"
+
+    if not requirements_path.exists() or not _has_content(requirements_path):
+        return False, f"Missing requirements.md with content in todos/{slug}/"
+
+    if not plan_path.exists() or not _has_content(plan_path):
+        return False, f"Missing implementation-plan.md with content in todos/{slug}/"
+
+    # Quality checklist can be generated — it's always the same template
+    if not checklist_path.exists() or not _has_content(checklist_path):
+        checklist_path.write_text(
+            _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug),
+            encoding="utf-8",
+        )
+
+    # --- State update ---
+    now_iso = datetime.now(UTC).isoformat()
+    state = read_phase_state(cwd, slug)
+
+    state["phase"] = ItemPhase.PENDING.value
+    state["build"] = PhaseStatus.PENDING.value
+    state["review"] = PhaseStatus.PENDING.value
+    state["prepare_phase"] = PreparePhase.PREPARED.value
+
+    # DOR
+    state["dor"] = {
+        "last_assessed_at": now_iso,
+        "score": 8,
+        "status": "pass",
+        "schema_version": 1,
+        "blockers": [],
+        "actions_taken": {
+            "requirements_updated": False,
+            "implementation_plan_updated": False,
+        },
+    }
+
+    # Review verdicts
+    state["requirements_review"] = {
+        "verdict": "approve",
+        "reviewed_at": now_iso,
+        "findings_count": 0,
+    }
+    state["plan_review"] = {
+        "verdict": "approve",
+        "reviewed_at": now_iso,
+        "findings_count": 0,
+    }
+
+    # Grounding
+    rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
+    grounding: dict[str, StateValue] = {
+        **DEFAULT_STATE["grounding"],  # type: ignore[dict-item]
+        "valid": True,
+        "last_grounded_at": now_iso,
+        "invalidation_reason": "",
+        "changed_paths": [],
+    }
+    if rc == 0 and current_sha.strip():
+        grounding["base_sha"] = current_sha.strip()
+    if input_path.exists():
+        grounding["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
+    state["grounding"] = grounding
+
+    write_phase_state(cwd, slug, state)
+
+    return True, f"✓ {slug} fast-tracked to work-ready (DOR 8, prepared, grounded)"
+
+
+def _has_content(path: Path) -> bool:
+    """Check if a file has non-trivial content (beyond whitespace and headings)."""
+    if not path.exists():
+        return False
+    text = path.read_text(encoding="utf-8").strip()
+    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    return len(lines) > 0
+
+
 __all__ = [
     "_file_sha256",
     "_is_review_round_limit_reached",
@@ -588,6 +724,7 @@ __all__ = [
     "mark_phase",
     "mark_prepare_phase",
     "mark_prepare_verdict",
+    "mark_ready",
     "read_breakdown_state",
     "read_phase_state",
     "read_text_sync",

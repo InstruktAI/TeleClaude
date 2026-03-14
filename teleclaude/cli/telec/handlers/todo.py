@@ -15,11 +15,42 @@ __all__ = [
     "_handle_todo",
     "_handle_todo_create",
     "_handle_todo_dump",
+    "_handle_todo_mark_ready",
     "_handle_todo_remove",
     "_handle_todo_split",
     "_handle_todo_validate",
     "_handle_todo_verify_artifacts",
 ]
+
+
+def _handle_todo_mark_ready(args: list[str]) -> None:
+    """Handle telec todo mark-ready <slug> [<slug> ...].
+
+    Fast-track one or more TODOs to work-ready state, bypassing the full prepare lifecycle.
+    Promotes input.md → requirements.md, generates implementation-plan.md and quality-checklist.md,
+    and sets state.yaml to satisfy all work state machine entry conditions.
+    """
+    from teleclaude.core.next_machine.state_io import mark_ready
+
+    if not args:
+        print("Usage: telec todo mark-ready <slug> [<slug> ...]")
+        raise SystemExit(1)
+
+    slugs = [a for a in args if not a.startswith("-")]
+    if not slugs:
+        print("Missing required argument: <slug>")
+        raise SystemExit(1)
+
+    cwd = str(Path.cwd())
+    failed = 0
+    for slug in slugs:
+        ok, msg = mark_ready(cwd, slug)
+        print(msg)
+        if not ok:
+            failed += 1
+
+    if failed:
+        raise SystemExit(1)
 
 
 def _handle_todo(args: list[str]) -> None:
@@ -68,6 +99,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_dump(args[1:])
     elif subcommand == "split":
         _handle_todo_split(args[1:])
+    elif subcommand == "mark-ready":
+        _handle_todo_mark_ready(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))

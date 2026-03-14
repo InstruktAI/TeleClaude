@@ -34,69 +34,6 @@
 - slug: session-runtime-overhaul
   description: 'Render-aware session runtime: wake-driven capture, adaptive cadence,
     and reduced idle tmux overhead for all session types'
-- slug: test-suite-overhaul
-  description: 'Clean-slate test suite: behavioral contracts, 1:1 mapping, zero string
-    snapshots. Depends on refactored codebase.'
-- slug: tso-adapters
-  group: test-suite-overhaul
-  after:
-  - tso-infra
-  description: 'Test overhaul: adapters/, transport/ (~19 source files)'
-- slug: tso-api
-  group: test-suite-overhaul
-  after:
-  - tso-infra
-  description: 'Test overhaul: api/, services/ (~16 source files)'
-- slug: tso-cli
-  group: test-suite-overhaul
-  after:
-  - tso-infra
-  description: 'Test overhaul: cli/ non-TUI, config/, entrypoints/ (~21 source files)'
-- slug: tso-tui
-  group: test-suite-overhaul
-  after:
-  - tso-infra
-  description: 'Test overhaul: cli/tui/ full tree (~60 source files)'
-- slug: tso-core-data
-  group: test-suite-overhaul
-  after:
-  - tso-infra
-  description: 'Test overhaul: core/ data model layer + migrations (~59 source files)'
-- slug: tso-core-logic
-  group: test-suite-overhaul
-  after:
-  - tso-infra
-  description: 'Test overhaul: core/ behavioral layer, state machines, integration
-    (~44 source files)'
-- slug: tso-hooks
-  group: test-suite-overhaul
-  after:
-  - tso-infra
-  description: 'Test overhaul: hooks/ full tree (~23 source files)'
-- slug: tso-peripherals
-  group: test-suite-overhaul
-  after:
-  - tso-infra
-  description: 'Test overhaul: channels, chiptunes, cron, memory, mirrors, tts, stt,
-    utils, root files (~112 source files)'
-- slug: tso-integration
-  group: test-suite-overhaul
-  after:
-  - tso-adapters
-  - tso-api
-  - tso-cli
-  - tso-tui
-  - tso-core-data
-  - tso-core-logic
-  - tso-hooks
-  - tso-peripherals
-  description: Triage tests/integration/, enforce cross-module boundary
-- slug: tso-validate
-  group: test-suite-overhaul
-  after:
-  - tso-integration
-  description: 'Final validation: full suite, 1:1 mapping check, success criteria
-    audit'
 - slug: session-polling-baseline
   group: session-runtime-overhaul
   description: Immediate corrections + replay corpus (split from session-runtime-overhaul)
@@ -108,12 +45,59 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: rlf-core-data
-  group: refactor-large-files
-  description: 'Decompose data layer: core/db.py (2,506), core/models.py (1,095),
-    core/command_handlers.py (2,023)'
-- slug: rlf-core-infra
-  group: refactor-large-files
-  description: 'Decompose core infra: core/agent_coordinator.py (1,619), core/tmux_bridge.py
-    (1,402), core/adapter_client.py (1,161)'
-- slug: refactor-large-files
+- slug: chartest
+  description: Characterization tests for full codebase coverage (27 batches)
+- slug: chartest-core-domain
+  group: chartest
+- slug: chartest-core-db
+  group: chartest
+- slug: chartest-core-integration
+  group: chartest
+- slug: chartest-core-next-machine
+  group: chartest
+- slug: chartest-core-agent-coord
+  group: chartest
+- slug: chartest-core-cmd-handlers
+  group: chartest
+- slug: chartest-core-adapter-client
+  group: chartest
+- slug: chartest-core-tmux
+  group: chartest
+- slug: chartest-core-models
+  group: chartest
+- slug: chartest-core-operations
+  group: chartest
+- slug: chartest-adapters-telegram
+  group: chartest
+- slug: chartest-adapters-discord
+  group: chartest
+- slug: chartest-adapters-ui-qos
+  group: chartest
+- slug: chartest-api-routes
+  group: chartest
+- slug: chartest-api-server
+  group: chartest
+- slug: chartest-hooks
+  group: chartest
+- slug: chartest-events-core
+  group: chartest
+- slug: chartest-events-cartridges
+  group: chartest
+- slug: chartest-events-schemas
+  group: chartest
+- slug: chartest-cli-telec
+  group: chartest
+- slug: chartest-cli-misc
+  group: chartest
+- slug: chartest-tui-views
+  group: chartest
+- slug: chartest-tui-engine
+  group: chartest
+- slug: chartest-tui-animations
+  group: chartest
+- slug: chartest-memory-mirrors
+  group: chartest
+- slug: chartest-transport-redis
+  group: chartest
+- slug: chartest-peripherals
+  group: chartest
