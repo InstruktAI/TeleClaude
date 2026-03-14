@@ -31,6 +31,10 @@ class IdentityContext:
     platform_user_id: str | None = None
 
 
+_GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
+_PEOPLE_DIR = Path("~/.teleclaude/people").expanduser()
+
+
 class IdentityResolver:
     """Resolves human identity from channel metadata."""
 
@@ -40,6 +44,8 @@ class IdentityResolver:
         self._by_telegram_user_id: dict[int, PersonEntry] = {}
         self._by_discord_user_id: dict[str, PersonEntry] = {}
         self._by_whatsapp_phone: dict[str, PersonEntry] = {}
+        self._config_mtime_ns: int | None = None
+        self._people_mtime_ns: int | None = None
         self._load_config()
 
     @staticmethod
@@ -59,8 +65,31 @@ class IdentityResolver:
         """Normalize phone number to numeric digits without leading plus."""
         return "".join(ch for ch in phone_number if ch.isdigit())
 
+    def _reload_if_stale(self) -> None:
+        """Reload config if any source file changed (mtime-based)."""
+        try:
+            config_mtime = _GLOBAL_CONFIG_PATH.stat().st_mtime_ns
+        except OSError:
+            config_mtime = 0
+        try:
+            people_mtime = _PEOPLE_DIR.stat().st_mtime_ns
+        except OSError:
+            people_mtime = 0
+
+        if config_mtime == self._config_mtime_ns and people_mtime == self._people_mtime_ns:
+            return
+        self._config_mtime_ns = config_mtime
+        self._people_mtime_ns = people_mtime
+        self._load_config()
+
     def _load_config(self) -> None:
         """Load global and per-person configuration to build lookup maps."""
+        self._by_email.clear()
+        self._by_username.clear()
+        self._by_telegram_user_id.clear()
+        self._by_discord_user_id.clear()
+        self._by_whatsapp_phone.clear()
+
         try:
             global_config = load_global_config()
         except Exception as e:
@@ -113,6 +142,7 @@ class IdentityResolver:
         Returns:
             IdentityContext if resolved, None if unauthorized/unknown.
         """
+        self._reload_if_stale()
         if origin == "telegram":
             user_id = channel_metadata.get("user_id")
             if user_id:
