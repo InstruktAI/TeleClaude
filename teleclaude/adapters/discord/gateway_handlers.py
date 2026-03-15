@@ -16,6 +16,7 @@ from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.models import SessionMetadata
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -304,9 +305,9 @@ class GatewayHandlersMixin:
                 channel_metadata={
                     "user_id": user_id,
                     "discord_user_id": user_id,
-                    "human_role": identity.person_role or "member",
                     "platform": "discord",
                 },
+                session_metadata=SessionMetadata(human_role=identity.person_role or "member"),
                 auto_command=f"agent {get_default_agent()}",
             )
             result = await get_command_service().create_session(create_cmd)
@@ -383,9 +384,9 @@ class GatewayHandlersMixin:
             channel_metadata={
                 "user_id": user_id,
                 "discord_user_id": user_id,
-                "human_role": "member",
                 "platform": "discord",
             },
+            session_metadata=SessionMetadata(human_role="member"),
             auto_command=f"agent {get_default_agent()}",
         )
         result = await get_command_service().create_session(create_cmd)  # type: ignore[assignment]

@@ -398,6 +398,8 @@ class InputHandlersMixin:
         display_name = str(
             getattr(author, "display_name", None) or getattr(author, "name", None) or f"discord-{user_id}"
         )
+        from teleclaude.core.models import SessionMetadata
+
         channel_metadata: dict[str, str] = {
             "user_id": user_id,
             "discord_user_id": user_id,
@@ -405,8 +407,9 @@ class InputHandlersMixin:
         }
 
         agent = get_default_agent()
+        session_meta: SessionMetadata | None = None
         if forum_type == "help_desk":
-            channel_metadata["human_role"] = "customer"
+            session_meta = SessionMetadata(human_role="customer")
             effective_path = project_path or config.computer.help_desk_dir
         else:
             forum_id, _ = self._extract_channel_ids(message)
@@ -426,6 +429,7 @@ class InputHandlersMixin:
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
             channel_metadata=channel_metadata,  # type: ignore[arg-type]
+            session_metadata=session_meta,
             auto_command=auto_command,
         )
         result = await get_command_service().create_session(create_cmd)

@@ -103,26 +103,16 @@ async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Se
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
 
-    # Resolve identity
-    metadata_human_email: str | None = None
-    metadata_human_role: str | None = None
-    metadata_principal: str | None = None
-    if cmd.channel_metadata:
-        raw_email = cmd.channel_metadata.get("human_email")
-        raw_role = cmd.channel_metadata.get("human_role")
-        raw_principal = cmd.channel_metadata.get("principal")
-        if isinstance(raw_email, str) and raw_email.strip():
-            metadata_human_email = raw_email.strip()
-        if isinstance(raw_role, str) and raw_role.strip():
-            metadata_human_role = raw_role.strip().lower()
-        if isinstance(raw_principal, str) and raw_principal.strip():
-            metadata_principal = raw_principal.strip()
+    # Resolve identity — session_metadata is the authoritative carrier for
+    # identity fields (human_email, human_role, principal).  The identity
+    # resolver is a fallback for platform origins where the adapter didn't
+    # set explicit identity on session_metadata.
+    sm = metadata_from_cmd
+    metadata_human_email = sm.human_email if sm else None
+    metadata_human_role = sm.human_role.strip().lower() if sm and sm.human_role else None
+    metadata_principal = sm.principal if sm else None
 
     identity = get_identity_resolver().resolve(origin, cmd.channel_metadata or {})
-    # Channel metadata carries identity from the API auth layer (verify_caller),
-    # which is authoritative for API-origin sessions. The identity resolver is a
-    # fallback for platform origins (telegram, discord, etc.) where channel_metadata
-    # doesn't carry role/email.
     human_email = metadata_human_email or identity.person_email
     human_role = metadata_human_role or identity.person_role
 
@@ -135,13 +125,17 @@ async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Se
             human_role = parent_session.human_role
         if not principal and parent_session.principal:
             principal = parent_session.principal
+
+    # System-role sessions (workers, orchestrators, integrators) are trusted
+    # internal principals — they bypass help-desk routing entirely.
+    system_role = sm.system_role if sm else None
     raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
     configured_help_desk_path = (
         raw_help_desk_path
         if isinstance(raw_help_desk_path, str) and raw_help_desk_path.strip()
         else os.path.join(WORKING_DIR, "help-desk")
     )
-    if human_role and human_role != HUMAN_ROLE_ADMIN:
+    if not system_role and human_role and human_role != HUMAN_ROLE_ADMIN:
         logger.info(
             "Restricted session attempt from origin=%s role=%s. Jailing to help-desk.",
             origin,

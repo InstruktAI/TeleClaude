@@ -15,7 +15,7 @@ from teleclaude.config import config
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import MessageMetadata, SessionMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.hooks.webhook_models import HookEvent
@@ -41,9 +41,9 @@ async def _resolve_or_create_session(phone_number: str) -> object | None:
         origin=InputOrigin.WHATSAPP.value,
         channel_metadata={
             "phone_number": phone_number,
-            "human_role": "customer",
             "platform": "whatsapp",
         },
+        session_metadata=SessionMetadata(human_role="customer"),
         auto_command=f"agent {get_default_agent()}",
     )
     result = await get_command_service().create_session(create_cmd)

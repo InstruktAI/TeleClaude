@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_SM_FIELDS = {"system_role", "job", "human_email", "human_role", "principal"}
+
 
 class DbBase:
     """Database base class: init, lifecycle, and shared helpers."""
@@ -71,7 +73,7 @@ class DbBase:
             try:
                 _raw = json.loads(row.session_metadata)
                 if isinstance(_raw, dict):
-                    session_metadata = SessionMetadata(**{k: v for k, v in _raw.items() if k in {"system_role", "job"}})
+                    session_metadata = SessionMetadata(**{k: v for k, v in _raw.items() if k in _SM_FIELDS})
             except json.JSONDecodeError:
                 pass
 

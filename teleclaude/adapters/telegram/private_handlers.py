@@ -16,7 +16,7 @@ from telegram.ext import ContextTypes
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import MessageMetadata, Session, SessionMetadata
 from teleclaude.types.commands import CloseSessionCommand, KeysCommand
 
 logger = get_logger(__name__)
@@ -141,10 +141,10 @@ class PrivateHandlersMixin:
             channel_metadata={
                 "user_id": int(user_id),
                 "telegram_user_id": int(user_id),
-                "human_role": "member",
                 "platform": "telegram",
                 "chat_type": "private",
             },
+            session_metadata=SessionMetadata(human_role="member"),
             auto_command=f"agent {get_default_agent()}",
         )
         result_dict = await get_command_service().create_session(create_cmd)
@@ -211,10 +211,10 @@ class PrivateHandlersMixin:
                 channel_metadata={
                     "user_id": int(user_id),
                     "telegram_user_id": int(user_id),
-                    "human_role": identity.person_role or "member",
                     "platform": "telegram",
                     "chat_type": "private",
                 },
+                session_metadata=SessionMetadata(human_role=identity.person_role or "member"),
                 auto_command=f"agent {get_default_agent()}",
             )
             result_dict = await get_command_service().create_session(create_cmd)

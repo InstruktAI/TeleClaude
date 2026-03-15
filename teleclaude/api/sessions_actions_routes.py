@@ -449,26 +449,24 @@ async def run_session(
         working_slug = normalized_args.split()[0]
 
     channel_metadata: dict[str, str] | None = None
-    if identity.human_role:
-        channel_metadata = {"human_role": identity.human_role}
     if identity.session_id and not identity.session_id.startswith("web:"):
         channel_metadata = channel_metadata or {}
         channel_metadata["initiator_session_id"] = identity.session_id
     if working_slug:
         channel_metadata = channel_metadata or {}
         channel_metadata["working_slug"] = working_slug
-    if identity.principal:
-        channel_metadata = channel_metadata or {}
-        channel_metadata["principal"] = identity.principal
 
     try:
         slash_cmd = SlashCommand(normalized_cmd)
     except ValueError:
         slash_cmd = None
     role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
-    session_meta: SessionMetadata | None = None
-    if role_info:
-        session_meta = SessionMetadata(system_role=role_info[0], job=role_info[1].value)
+    session_meta = SessionMetadata(
+        system_role=role_info[0] if role_info else None,
+        job=role_info[1].value if role_info else None,
+        human_role=identity.human_role,
+        principal=identity.principal,
+    )
 
     metadata = _build_metadata(
         title=full_command,

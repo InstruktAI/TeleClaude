@@ -25,10 +25,13 @@ class ChannelMetadata:
 
 @dataclass(frozen=True)
 class SessionMetadata:
-    """Typed metadata for slash-command-spawned sessions."""
+    """Typed metadata for session identity and role."""
 
     system_role: str | None = None  # ROLE_* constant
     job: str | None = None  # JobRole value
+    human_email: str | None = None
+    human_role: str | None = None
+    principal: str | None = None
 
 
 @dataclass
@@ -269,7 +272,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
 
         session_metadata_raw = data.get("session_metadata")
         session_metadata: SessionMetadata | None = None
-        _sm_fields = {"system_role", "job"}
+        _sm_fields = {"system_role", "job", "human_email", "human_role", "principal"}
         if isinstance(session_metadata_raw, dict):
             session_metadata = SessionMetadata(**{k: v for k, v in session_metadata_raw.items() if k in _sm_fields})
         elif isinstance(session_metadata_raw, str):

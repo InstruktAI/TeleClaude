@@ -156,7 +156,13 @@ class SessionSnapshot:
         sm_raw = data.get("session_metadata")
         sm: SessionMetadata | None = None
         if isinstance(sm_raw, dict):
-            sm = SessionMetadata(**{k: v for k, v in sm_raw.items() if k in {"system_role", "job"}})
+            sm = SessionMetadata(
+                **{
+                    k: v
+                    for k, v in sm_raw.items()
+                    if k in {"system_role", "job", "human_email", "human_role", "principal"}
+                }
+            )
         return cls(
             session_id=str(data["session_id"]),
             last_input_origin=str(data.get("last_input_origin")) if data.get("last_input_origin") else None,

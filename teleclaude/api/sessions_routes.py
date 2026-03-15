@@ -133,15 +133,8 @@ def _build_channel_metadata(
     request: CreateSessionRequest,
     identity: CallerIdentity,
 ) -> dict[str, str] | None:
-    """Build channel metadata for session creation."""
-    effective_human_role = request.human_role or identity.human_role
+    """Build channel metadata for session creation (adapter/platform context only)."""
     channel_metadata: dict[str, str] | None = None
-    if request.human_email or effective_human_role:
-        channel_metadata = {}
-        if request.human_email:
-            channel_metadata["human_email"] = request.human_email
-        if effective_human_role:
-            channel_metadata["human_role"] = effective_human_role
 
     if request.direct and not identity.session_id:
         raise HTTPException(
@@ -158,13 +151,22 @@ def _build_channel_metadata(
 
 def _build_request_session_metadata(
     metadata: JsonDict | None,
+    *,
+    human_email: str | None = None,
+    human_role: str | None = None,
+    principal: str | None = None,
 ) -> SessionMetadata | None:
-    """Normalize request metadata into SessionMetadata."""
-    if not metadata:
+    """Normalize request metadata into SessionMetadata, merging identity fields."""
+    base_system_role = str(metadata.get("system_role") or "") or None if metadata else None
+    base_job = str(metadata.get("job") or "") or None if metadata else None
+    if not any((base_system_role, base_job, human_email, human_role, principal)):
         return None
     return SessionMetadata(
-        system_role=str(metadata.get("system_role") or "") or None,
-        job=str(metadata.get("job") or "") or None,
+        system_role=base_system_role,
+        job=base_job,
+        human_email=human_email,
+        human_role=human_role,
+        principal=principal,
     )
 
 
@@ -433,14 +435,18 @@ async def create_session(
     # Normalize request into internal command.
 
     channel_metadata = _build_channel_metadata(request, identity)
-    request_session_meta = _build_request_session_metadata(request.metadata)
+    effective_human_role = request.human_role or identity.human_role
+    request_session_meta = _build_request_session_metadata(
+        request.metadata,
+        human_email=request.human_email,
+        human_role=effective_human_role,
+    )
     metadata = _build_metadata(
         title=request.title or "Untitled",
         project_path=request.project_path,
         subdir=request.subdir,
         channel_metadata=channel_metadata,
         session_metadata=request_session_meta,
-        # launch_intent and auto_command logic will be simplified or moved
     )
 
     # Extract title from message if not provided (legacy behavior)
