@@ -71,7 +71,17 @@ cd "$WORKTREE_DIR"
 
 # Check if uv is available
 if command -v uv &> /dev/null; then
-    uv sync --group dev
+    # If worktree lacks a lockfile, symlink from main repo to enable --frozen install
+    if [ ! -f "uv.lock" ] && [ -f "$TOOL_ROOT/uv.lock" ]; then
+        ln -sf "../../uv.lock" uv.lock
+        print_info "Symlinked uv.lock from main repo"
+    fi
+    # Use --frozen when lockfile exists to avoid fetching git deps over network
+    if [ -f "uv.lock" ]; then
+        uv sync --frozen --group dev
+    else
+        uv sync --group dev
+    fi
 else
     print_warning "uv not found, falling back to pip"
     # Create venv if it doesn't exist
