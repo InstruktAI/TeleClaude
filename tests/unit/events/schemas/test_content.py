@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from teleclaude.events.catalog import EventCatalog
+import pytest
+
+from teleclaude.events.catalog import EventCatalog, EventSchema
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.schemas.content import register_content
 
@@ -64,11 +66,7 @@ def test_content_published_lifecycle_resolves() -> None:
 
 
 def test_catalog_rejects_duplicate_registration() -> None:
-    from teleclaude.events.catalog import EventSchema
-
     catalog = _catalog()
-    import pytest
-
     with pytest.raises(ValueError, match="already registered"):
         catalog.register(
             EventSchema(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from teleclaude.events.signal.ai import DefaultSignalAIClient, SignalAIClient, SynthesisArtifact
 
 
@@ -43,11 +45,9 @@ def test_default_client_satisfies_protocol() -> None:
     assert isinstance(client, SignalAIClient)
 
 
-def test_default_client_embed_returns_none() -> None:
-    import asyncio
-
+async def test_default_client_embed_returns_none() -> None:
     client = DefaultSignalAIClient(ai_client=object())
-    result = asyncio.get_event_loop().run_until_complete(client.embed("some text"))
+    result = await client.embed("some text")
     assert result is None
 
 
@@ -59,8 +59,6 @@ async def test_default_client_summarise_propagates_exceptions() -> None:
                 raise RuntimeError("api error")
 
     client = DefaultSignalAIClient(ai_client=FakeClient())
-    import pytest
-
     with pytest.raises(RuntimeError):
         await client.summarise("title", "body")
 
