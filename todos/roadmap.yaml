@@ -49,8 +49,6 @@
   group: chartest
 - slug: chartest-core-agent-coord
   group: chartest
-- slug: chartest-core-cmd-handlers
-  group: chartest
 - slug: chartest-adapters-telegram
   group: chartest
 - slug: chartest-adapters-discord
