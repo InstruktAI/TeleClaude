@@ -49,5 +49,3 @@
   group: chartest
 - slug: chartest-tui-views
   group: chartest
-- slug: chartest-memory-mirrors
-  group: chartest
