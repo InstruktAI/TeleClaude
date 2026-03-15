@@ -657,7 +657,9 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     mock_db.scalar_one_or_none = AsyncMock(return_value=None)
 
     with patch(
-        "teleclaude.core.next_machine.core.compose_agent_guidance", return_value=AsyncMock(return_value="guidance")()
+        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
+        new_callable=AsyncMock,
+        return_value="guidance",
     ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
             with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):

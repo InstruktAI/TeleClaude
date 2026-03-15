@@ -12,8 +12,8 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/core/command_handlers/_agent.py` → `tests/unit/core/command_handlers/test__agent.py`
-- [ ] Characterize `teleclaude/core/command_handlers/_keys.py` → `tests/unit/core/command_handlers/test__keys.py`
-- [ ] Characterize `teleclaude/core/command_handlers/_message.py` → `tests/unit/core/command_handlers/test__message.py`
-- [ ] Characterize `teleclaude/core/command_handlers/_session.py` → `tests/unit/core/command_handlers/test__session.py`
-- [ ] Characterize `teleclaude/core/command_handlers/_utils.py` → `tests/unit/core/command_handlers/test__utils.py`
+- [x] Characterize `teleclaude/core/command_handlers/_agent.py` → `tests/unit/core/command_handlers/test__agent.py`
+- [x] Characterize `teleclaude/core/command_handlers/_keys.py` → `tests/unit/core/command_handlers/test__keys.py`
+- [x] Characterize `teleclaude/core/command_handlers/_message.py` → `tests/unit/core/command_handlers/test__message.py`
+- [x] Characterize `teleclaude/core/command_handlers/_session.py` → `tests/unit/core/command_handlers/test__session.py`
+- [x] Characterize `teleclaude/core/command_handlers/_utils.py` → `tests/unit/core/command_handlers/test__utils.py`

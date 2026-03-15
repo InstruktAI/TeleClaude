@@ -10,15 +10,24 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate chartest-core-cmd-handlers` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate chartest-core-cmd-handlers` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+Build Notes:
+
+- Verified `pytest tests/unit/core/command_handlers -v` passed with 34 characterization tests covering `_agent.py`, `_keys.py`, `_message.py`, `_session.py`, and `_utils.py`.
+- Verified `telec todo demo validate chartest-core-cmd-handlers` passed with 2 executable demo blocks.
+- Verified `make lint` passed.
+- Verified `make test` passed (`794 passed`).
+- Closed the flaky suite failure by fixing `tests/unit/core/next_machine/test_core.py` to patch the live `prepare_steps.compose_agent_guidance` async boundary instead of the re-export in `core.py`.
+- Final `git status --short` only showed orchestrator-managed drift: `todos/chartest-core-cmd-handlers/state.yaml`.
 
 ## Review Gates (Reviewer)
 
