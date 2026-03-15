@@ -324,10 +324,16 @@ class InputHandlersMixin:
                 )
             return
 
+        user_obj = getattr(interaction, "user", None)
+        user_id = str(getattr(user_obj, "id", "")).strip()
+
         create_cmd = CreateSessionCommand(
             project_path=project_path,
             auto_command=f"agent {agent_name}",
             origin=InputOrigin.DISCORD.value,
+            channel_metadata={"user_id": user_id, "discord_user_id": user_id, "platform": "discord"}
+            if user_id
+            else None,
         )
         result = await get_command_service().create_session(create_cmd)
         session_id = str(result.get("session_id", ""))
