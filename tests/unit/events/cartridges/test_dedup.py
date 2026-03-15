@@ -135,3 +135,16 @@ async def test_creates_and_updates_schema_does_dedup():
     result = await cartridge.process(event, ctx)
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_idempotency_key_built_with_event_type_and_payload():
+    """catalog.build_idempotency_key is called with event type and full payload dict."""
+    schema = _make_schema()
+    cartridge = DeduplicationCartridge()
+    event = _make_event(event_type="test.event", payload={"id": "abc", "extra": "val"})
+    ctx = _make_context(schema=schema, idempotency_key="test.event:abc", key_exists=False)
+
+    await cartridge.process(event, ctx)
+
+    ctx.catalog.build_idempotency_key.assert_called_once_with("test.event", {"id": "abc", "extra": "val"})

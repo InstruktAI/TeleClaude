@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from teleclaude.core.models import JsonDict
 from teleclaude.events.cartridges.integration_trigger import (
     INTEGRATION_EVENT_TYPES,
     IntegrationTriggerCartridge,
@@ -175,3 +176,52 @@ async def test_deployment_completed_passes_through_without_ingest():
 
     assert result is event
     ingest.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_deployment_started_calls_ingest_with_finalize_ready():
+    """deployment.started maps to 'finalize_ready' canonical type via process()."""
+    ingest = MagicMock(return_value=[])
+    cartridge = IntegrationTriggerCartridge(ingest_callback=ingest)
+    event = _make_event(
+        "domain.software-development.deployment.started",
+        payload={"slug": "s", "branch": "b", "sha": "c"},
+    )
+    ctx = MagicMock()
+
+    result = await cartridge.process(event, ctx)
+
+    assert result is event
+    ingest.assert_called_once()
+    assert ingest.call_args[0][0] == "finalize_ready"
+
+
+@pytest.mark.asyncio
+async def test_process_passes_sanitized_payload_to_ingest():
+    """process() strips underscore-prefixed pipeline metadata before forwarding to ingest."""
+    received: list[JsonDict] = []
+
+    def capture_ingest(canonical_type: str, payload: JsonDict) -> list[tuple[str, str, str]]:
+        received.append(dict(payload))
+        return []
+
+    cartridge = IntegrationTriggerCartridge(ingest_callback=capture_ingest)
+    event = _make_event(
+        "domain.software-development.review.approved",
+        payload={
+            "slug": "x",
+            "branch": "main",
+            "sha": "abc",
+            "_trust_flags": ["trusted"],
+            "_classification": {"label": "ok"},
+        },
+    )
+    ctx = MagicMock()
+
+    await cartridge.process(event, ctx)
+
+    assert len(received) == 1
+    payload = received[0]
+    assert "slug" in payload
+    assert "_trust_flags" not in payload
+    assert "_classification" not in payload

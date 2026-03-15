@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
 from teleclaude.events.cartridges.prepare_quality import (
     PrepareQualityCartridge,
@@ -31,6 +32,64 @@ def _make_event(
         visibility=EventVisibility.LOCAL,
         payload={"slug": slug},
     )
+
+
+def _full_requirements_content() -> str:
+    return """
+# Goal
+
+Assess prepare quality for this todo.
+
+## Scope
+
+### In scope
+- score prepare artifacts
+
+### Out of scope
+- production code changes
+
+## Acceptance Criteria
+- [ ] DOR result is recorded
+
+## FR1: Score artifacts
+
+Evaluate requirements and plan quality.
+
+## FR2: Persist assessment
+
+Write artifacts and state updates.
+
+## Dependency
+
+- prior-slug
+
+## Constraints
+
+- keep the assessment deterministic
+"""
+
+
+def _full_plan_content() -> str:
+    return """
+# Phase 1
+
+## Task 1.1 (FR1)
+
+- [ ] Inspect `teleclaude/events/cartridges/prepare_quality.py`
+- [ ] Update `tests/unit/events/cartridges/test_prepare_quality.py`
+
+**Verification:** run `pytest tests/unit/events/cartridges/test_prepare_quality.py`
+
+## Task 1.2 (FR2)
+
+- [ ] Write `todos/my-slug/dor-report.md`
+
+**Verification:** run `pytest tests/unit/events/cartridges/test_prepare_quality.py -k process`
+
+## Risks
+
+- filesystem write failures
+"""
 
 
 # ── score_requirements ────────────────────────────────────────────────────────
@@ -331,3 +390,109 @@ async def test_assessment_failure_does_not_propagate():
         result = await cartridge.process(event, ctx)
 
     assert result is event
+
+
+# ── PrepareQualityCartridge._assess public behavior ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> None:
+    """process() scores artifacts, writes dor-report.md, and updates state.yaml dor section."""
+    todo_dir = tmp_path / "todos" / "my-slug"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "requirements.md").write_text(_full_requirements_content())
+    (todo_dir / "implementation-plan.md").write_text(_full_plan_content())
+    (todo_dir / "state.yaml").write_text("phase: active\n")
+
+    ctx = MagicMock()
+    ctx.db.find_by_group_key = AsyncMock(return_value={"id": 17})
+    ctx.db.update_agent_status = AsyncMock()
+    ctx.db.resolve_notification = AsyncMock()
+
+    cartridge = PrepareQualityCartridge()
+    event = _make_event()
+
+    with (
+        patch("teleclaude.events.cartridges.prepare_quality._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.prepare_quality._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.prepare_quality.emit_event", new_callable=AsyncMock) as emit_event,
+    ):
+        result = await cartridge.process(event, ctx)
+
+    assert result is event
+    assert (todo_dir / "dor-report.md").exists(), "dor-report.md must be written"
+    state = yaml.safe_load((todo_dir / "state.yaml").read_text())
+    assert "dor" in state
+    assert state["dor"]["status"] == "pass"
+    assert state["dor"]["score"] == 10
+    assert state["dor"]["assessed_commit"] == "abc123"
+    ctx.db.update_agent_status.assert_awaited_once_with(17, "claimed", "prepare-quality-runner")
+    ctx.db.resolve_notification.assert_awaited_once()
+    assert ctx.db.resolve_notification.await_args.args[0] == 17
+    resolve_payload = ctx.db.resolve_notification.await_args.args[1]
+    assert resolve_payload["verdict"] == "pass"
+    assert resolve_payload["score"] == 10
+    emit_event.assert_awaited_once()
+    emitted = emit_event.await_args.kwargs
+    assert emitted["event"] == "domain.software-development.planning.dor_assessed"
+    assert emitted["payload"]["slug"] == "my-slug"
+    assert emitted["payload"]["score"] == 10
+    assert emitted["payload"]["verdict"] == "pass"
+
+
+@pytest.mark.asyncio
+async def test_process_claims_and_resolves_notification(tmp_path: Path) -> None:
+    """process() claims the notification before assessment and resolves it after."""
+    todo_dir = tmp_path / "todos" / "my-slug"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "requirements.md").write_text("# Goal\n\nSome goal.\n")
+
+    ctx = MagicMock()
+    ctx.db.find_by_group_key = AsyncMock(return_value={"id": 42})
+    ctx.db.update_agent_status = AsyncMock()
+    ctx.db.resolve_notification = AsyncMock()
+
+    cartridge = PrepareQualityCartridge()
+    event = _make_event()
+
+    with (
+        patch("teleclaude.events.cartridges.prepare_quality._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.prepare_quality._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.prepare_quality.emit_event", new_callable=AsyncMock),
+    ):
+        result = await cartridge.process(event, ctx)
+
+    assert result is event
+    ctx.db.update_agent_status.assert_called_once_with(42, "claimed", "prepare-quality-runner")
+    ctx.db.resolve_notification.assert_called_once()
+    assert ctx.db.resolve_notification.call_args[0][0] == 42
+
+
+@pytest.mark.asyncio
+async def test_process_emits_dor_assessed_event(tmp_path: Path) -> None:
+    """process() emits domain.software-development.planning.dor_assessed with slug and score."""
+    todo_dir = tmp_path / "todos" / "my-slug"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "requirements.md").write_text("# Goal\n\nSome goal.\n")
+
+    ctx = MagicMock()
+    ctx.db.find_by_group_key = AsyncMock(return_value=None)
+
+    cartridge = PrepareQualityCartridge()
+    event = _make_event()
+
+    emit_mock = AsyncMock()
+    with (
+        patch("teleclaude.events.cartridges.prepare_quality._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.prepare_quality._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.prepare_quality.emit_event", emit_mock),
+    ):
+        result = await cartridge.process(event, ctx)
+
+    assert result is event
+    emit_mock.assert_called_once()
+    call_kwargs = emit_mock.call_args[1]
+    assert call_kwargs["event"] == "domain.software-development.planning.dor_assessed"
+    assert call_kwargs["payload"]["slug"] == "my-slug"
+    assert "score" in call_kwargs["payload"]
+    assert "verdict" in call_kwargs["payload"]

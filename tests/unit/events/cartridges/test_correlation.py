@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -129,11 +129,21 @@ async def test_crash_cascade_detected():
     producer.emit = AsyncMock()
     cartridge = CorrelationCartridge()
     event = _make_event("system.worker.crashed", entity="worker-1")
-    ctx = _make_context(burst_count=0, crash_count=3, producer=producer)
+    fixed_clock = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+    ctx = _make_context(burst_count=0, crash_count=3, producer=producer, clock=fixed_clock)
 
     result = await cartridge.process(event, ctx)
 
     assert result is event
+    window_start = fixed_clock - timedelta(seconds=300)
+    prune_before = fixed_clock - timedelta(seconds=600)
+    ctx.db.prune_correlation_windows.assert_awaited_once_with(older_than=prune_before)
+    ctx.db.increment_correlation_window.assert_awaited_once_with("system.worker.crashed", "worker-1", fixed_clock)
+    assert ctx.db.get_correlation_count.await_args_list == [
+        call("system.worker.crashed", None, window_start),
+        call("system.worker.crashed", None, window_start),
+        call("system.worker.crashed", "worker-1", window_start),
+    ]
     assert producer.emit.call_count >= 1
     cascade_calls = [c for c in producer.emit.call_args_list if c[0][0].event == "system.failure_cascade.detected"]
     assert len(cascade_calls) == 1
@@ -173,6 +183,14 @@ async def test_entity_degraded_detected_for_failure_event():
     result = await cartridge.process(event, ctx)
 
     assert result is event
+    window_start = fixed_clock - timedelta(seconds=300)
+    prune_before = fixed_clock - timedelta(seconds=600)
+    db.prune_correlation_windows.assert_awaited_once_with(older_than=prune_before)
+    db.increment_correlation_window.assert_awaited_once_with("service.error", "svc-1", fixed_clock)
+    assert db.get_correlation_count.await_args_list == [
+        call("service.error", None, window_start),
+        call("service.error", "svc-1", window_start),
+    ]
     degraded_calls = [c for c in producer.emit.call_args_list if c[0][0].event == "system.entity.degraded"]
     assert len(degraded_calls) == 1
     emitted: EventEnvelope = degraded_calls[0][0][0]
@@ -205,3 +223,37 @@ async def test_non_failure_event_does_not_trigger_entity_degraded():
 
     degraded_calls = [c for c in producer.emit.call_args_list if c[0][0].event == "system.entity.degraded"]
     assert len(degraded_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_db_calls_use_correct_window_arguments():
+    """prune, increment, and get_correlation_count receive time-window args derived from config clock."""
+    fixed_clock = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
+    config = CorrelationConfig(
+        window_seconds=300,
+        burst_threshold=100,  # high — no synthetic emits
+        crash_cascade_threshold=100,
+        entity_failure_threshold=100,
+        clock=lambda: fixed_clock,
+    )
+    db = MagicMock()
+    db.prune_correlation_windows = AsyncMock()
+    db.increment_correlation_window = AsyncMock()
+    db.get_correlation_count = AsyncMock(return_value=0)
+    ctx = MagicMock()
+    ctx.correlation_config = config
+    ctx.db = db
+    ctx.catalog = MagicMock(spec=EventCatalog)
+    ctx.catalog.get.return_value = None
+    ctx.producer = None
+
+    cartridge = CorrelationCartridge()
+    event = _make_event("test.event", entity="svc-1")
+    await cartridge.process(event, ctx)
+
+    expected_window_start = fixed_clock - timedelta(seconds=300)
+    expected_prune_before = fixed_clock - timedelta(seconds=600)
+
+    db.prune_correlation_windows.assert_called_once_with(older_than=expected_prune_before)
+    db.increment_correlation_window.assert_called_once_with("test.event", "svc-1", fixed_clock)
+    db.get_correlation_count.assert_called_once_with("test.event", None, expected_window_start)

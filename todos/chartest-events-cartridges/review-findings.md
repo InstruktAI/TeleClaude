@@ -44,22 +44,24 @@ Lane: test coverage analysis (reviewer direct + explorer review passes)
 
 Verification run during review:
 
-- `uv run pytest tests/unit/events/cartridges/ -q --tb=short` -> 81 passed
+- `uv run pytest tests/unit/events/cartridges/ -q --tb=short` -> 90 passed
 - `uv run pytest tests/unit/events/cartridges/ --cov=teleclaude.events.cartridges.classification --cov=teleclaude.events.cartridges.correlation --cov=teleclaude.events.cartridges.dedup --cov=teleclaude.events.cartridges.enrichment --cov=teleclaude.events.cartridges.integration_trigger --cov=teleclaude.events.cartridges.notification --cov=teleclaude.events.cartridges.prepare_quality --cov=teleclaude.events.cartridges.trust --cov-branch --cov-report=term-missing -q`
 
-### Important
+### Resolved During Review
 
-1. **`tests/unit/events/cartridges/test_prepare_quality.py:10-18,186-333` does not characterize the cartridge's primary public behavior.**
-   The file imports and asserts private helpers (`_build_dependency_section`, `_fill_plan_gaps`, `_fill_requirements_gaps`, `_is_slug_delivered_or_frozen`) and only exercises `PrepareQualityCartridge.process()` on early-return/error paths. The actual public work in `teleclaude/events/cartridges/prepare_quality.py:396-572` — scoring artifacts, writing `dor-report.md`, updating `state.yaml`, claiming/resolving notifications, and emitting `domain.software-development.planning.dor_assessed` — is untested. The review coverage run reflects that gap: `prepare_quality.py` is only 54.09% covered.
+1. **`prepare_quality` public behavior is now characterized.**
+   The suite now drives `PrepareQualityCartridge.process()` through real success-path work: writing `dor-report.md`, updating `state.yaml`, claiming/resolving notifications, and emitting `domain.software-development.planning.dor_assessed`. Coverage for `teleclaude/events/cartridges/prepare_quality.py` increased from 54.09% to 80.50%.
 
-2. **`tests/unit/events/cartridges/test_integration_trigger.py:43-60,147-177` leaves the public integration contract partially unpinned.**
-   `IntegrationTriggerCartridge.process()` strips underscore-prefixed pipeline metadata before invoking ingest and maps `domain.software-development.deployment.started` to `finalize_ready` (`teleclaude/events/cartridges/integration_trigger.py:78-100`). The suite never drives a `deployment.started` event through `process()`, and payload sanitization is asserted only via the private helper `_strip_pipeline_metadata` rather than via `process()`. A regression in either the canonical mapping or metadata stripping can slip through while these tests still pass.
+2. **`integration_trigger` now pins the public ingest contract.**
+   The suite drives `domain.software-development.deployment.started` through `IntegrationTriggerCartridge.process()` and asserts the `finalize_ready` canonical mapping plus underscore-prefixed metadata stripping at the process boundary.
 
-3. **`tests/unit/events/cartridges/test_correlation.py:30-56,73-207` mocks away the time-window contract it is supposed to characterize.**
-   `CorrelationCartridge.process()` depends on correct `older_than`, `window_start`, and `entity` arguments when calling `prune_correlation_windows`, `increment_correlation_window`, and `get_correlation_count` (`teleclaude/events/cartridges/correlation.py:44-87`). The tests inject canned counts and assert on emitted synthetic events, but they never assert those DB call arguments. A regression that queries the wrong window or entity would still satisfy the current suite.
+3. **`correlation` now asserts the time-window/query contract.**
+   The suite now verifies `prune_correlation_windows`, `increment_correlation_window`, and `get_correlation_count` arguments on the general, crash-cascade, and entity-failure paths, including exact `window_start`, `older_than`, event type, and entity values derived from the fixed clock.
 
-4. **`tests/unit/events/cartridges/test_dedup.py:27-40,70-137` and `tests/unit/events/cartridges/test_enrichment.py:74-156` do not pin the catalog/DB query inputs that define the behavior.**
-   `DeduplicationCartridge.process()` relies on `context.catalog.build_idempotency_key(event.event, event.payload)` (`teleclaude/events/cartridges/dedup.py:17-35`), while `EnrichmentCartridge` relies on exact query parameters such as `payload_filter={"success": False}`, the `system.worker.crashed` event name, and the 24-hour cutoff (`teleclaude/events/cartridges/enrichment.py:50-69`). The tests stub return values but never assert the input arguments sent to those collaborators, so wrong key generation or wrong enrichment queries would still pass.
+4. **`dedup` and `enrichment` now pin collaborator input contracts.**
+   The suite now asserts `build_idempotency_key(event.event, event.payload)` in `DeduplicationCartridge`, and exact enrichment query behavior in `EnrichmentCartridge`, including `payload_filter={"success": False}`, `system.worker.crashed`, both todo payload lookups, and a 24-hour `since` cutoff.
+
+No findings.
 
 ## Errors
 
@@ -116,12 +118,20 @@ No findings.
 
 - `telec todo demo validate chartest-events-cartridges` -> passed after review-side demo hardening
 - `./.venv/bin/python -m pytest tests/unit/events/cartridges/test_classification.py tests/unit/events/cartridges/test_trust.py tests/unit/events/cartridges/test_dedup.py -q --tb=short` -> 20 passed
-- `./.venv/bin/python -m pytest tests/unit/events/cartridges/ --collect-only -q` -> 81 tests collected
+- `uv run pytest tests/unit/events/cartridges/ -q --tb=short` -> 90 passed
+- `uv run pytest tests/unit/events/cartridges/ --collect-only -q` -> 90 tests collected
+
+## Why No Issues
+
+1. **Paradigm-fit verified:** the delivery still follows the repo's cartridge-test pattern: one test file per source cartridge, local factories for events/context, and characterization at the `process()` boundary rather than via transport adapters.
+2. **Requirements validated:** all 8 in-scope cartridge modules have corresponding unit test files, and the four review gaps are now covered at public boundaries without changing production code.
+3. **Copy-paste duplication checked:** shared test helpers remain local to each cartridge file; no new cross-file utility abstraction or redundant cross-home coverage was introduced.
+4. **Security reviewed:** the diff adds only synthetic test data and markdown updates. No secrets, no sensitive logs, and no new injection or authorization surface were introduced.
 
 ---
 
-**Verdict: REQUEST CHANGES**
+**Verdict: APPROVE**
 
 Critical: 0
-Important: 4
+Important: 0
 Suggestions: 0

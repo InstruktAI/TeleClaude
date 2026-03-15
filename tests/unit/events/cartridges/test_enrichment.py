@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -168,3 +169,48 @@ async def test_unknown_entity_type_passes_through():
 
     assert result is event
     assert "_enrichment" not in result.payload
+
+
+@pytest.mark.asyncio
+async def test_todo_enrichment_queries_correct_event_and_filter():
+    """_enrich_todo queries build.completed with success=False filter for the entity URI."""
+    cartridge = EnrichmentCartridge()
+    event = _make_event(entity="telec://todo/my-slug")
+    db = MagicMock(spec=EventDB)
+    db.count_events_by_entity = AsyncMock(return_value=0)
+    db.get_latest_event_payload = AsyncMock(return_value=None)
+    ctx = _make_context(db)
+
+    await cartridge.process(event, ctx)
+
+    db.count_events_by_entity.assert_called_once_with(
+        "telec://todo/my-slug",
+        "domain.software-development.build.completed",
+        payload_filter={"success": False},
+    )
+    assert db.get_latest_event_payload.call_args_list == [
+        call("telec://todo/my-slug", "dor_assessed"),
+        call("telec://todo/my-slug", "todo_activated"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_worker_enrichment_queries_correct_event_and_since_kwarg():
+    """_enrich_worker queries system.worker.crashed with a since= cutoff for the entity URI."""
+    cartridge = EnrichmentCartridge()
+    event = _make_event(entity="telec://worker/worker-1")
+    db = MagicMock(spec=EventDB)
+    db.count_events_by_entity = AsyncMock(return_value=0)
+    db.get_latest_event_payload = AsyncMock(return_value=None)
+    ctx = _make_context(db)
+    lower_bound = datetime.now(UTC) - timedelta(hours=24, seconds=1)
+
+    await cartridge.process(event, ctx)
+
+    db.count_events_by_entity.assert_called_once()
+    args = db.count_events_by_entity.call_args
+    assert args[0][0] == "telec://worker/worker-1"
+    assert args[0][1] == "system.worker.crashed"
+    assert "since" in args[1]
+    assert lower_bound <= args[1]["since"] <= datetime.now(UTC) - timedelta(hours=24) + timedelta(seconds=1)
+    db.get_latest_event_payload.assert_called_once_with("telec://worker/worker-1", "system.worker.crashed")
