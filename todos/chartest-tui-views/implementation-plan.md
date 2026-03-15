@@ -27,7 +27,7 @@ Commit after completing each file's characterization tests.
 - [x] Characterize `teleclaude/cli/tui/widgets/activity_row.py` → `tests/unit/cli/tui/widgets/test_activity_row.py`
 - [x] Characterize `teleclaude/cli/tui/widgets/agent_badge.py` → `tests/unit/cli/tui/widgets/test_agent_badge.py`
 - [x] Characterize `teleclaude/cli/tui/widgets/agent_status.py` → `tests/unit/cli/tui/widgets/test_agent_status.py`
-- [ ] Characterize `teleclaude/cli/tui/widgets/banner.py` → `tests/unit/cli/tui/widgets/test_banner.py`
+- [x] Characterize `teleclaude/cli/tui/widgets/banner.py` → `tests/unit/cli/tui/widgets/test_banner.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/box_tab_bar.py` → `tests/unit/cli/tui/widgets/test_box_tab_bar.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/computer_header.py` → `tests/unit/cli/tui/widgets/test_computer_header.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/group_separator.py` → `tests/unit/cli/tui/widgets/test_group_separator.py`
