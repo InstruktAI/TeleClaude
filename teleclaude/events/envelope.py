@@ -127,3 +127,6 @@ class EventEnvelope(BaseModel):
             resolution_shape=resolution_shape,
             **extra,
         )
+
+
+EventEnvelope.model_rebuild()

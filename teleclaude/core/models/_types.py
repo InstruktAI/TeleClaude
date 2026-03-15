@@ -1,12 +1,22 @@
 """Shared JSON type aliases and utility functions for models."""
 
 from dataclasses import asdict
-from typing import ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, ClassVar, Protocol, TypeAlias, cast
+
+from typing_extensions import TypeAliasType
 
 # JSON-serializable types for database storage
-JsonPrimitive = str | int | float | bool | None
-JsonValue = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
-JsonDict = dict[str, JsonValue]
+if TYPE_CHECKING:
+    JsonPrimitive: TypeAlias = str | int | float | bool | None
+    JsonValue: TypeAlias = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
+    JsonDict: TypeAlias = dict[str, JsonValue]
+else:
+    JsonPrimitive = str | int | float | bool | None
+    JsonValue = TypeAliasType(
+        "JsonValue",
+        "str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]",
+    )
+    JsonDict = TypeAliasType("JsonDict", "dict[str, JsonValue]")
 
 
 class _DataclassInstance(Protocol):
