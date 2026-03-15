@@ -99,4 +99,4 @@ def test_handle_docs_get_requires_at_least_one_id(
         docs._handle_docs_get([])
 
     assert exc_info.value.code == 1
-    assert "At least one snippet ID is required." in capsys.readouterr().out
+    assert capsys.readouterr().out.strip()

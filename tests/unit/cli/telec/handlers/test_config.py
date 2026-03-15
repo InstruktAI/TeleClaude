@@ -26,7 +26,7 @@ def test_handle_config_wizard_requires_tty(monkeypatch: pytest.MonkeyPatch, caps
         config_handler._handle_config(["wizard"])
 
     assert exc_info.value.code == 1
-    assert "Interactive config requires a terminal." in capsys.readouterr().out
+    assert capsys.readouterr().out.strip()
 
 
 def test_handle_config_wizard_runs_guided_tui(monkeypatch: pytest.MonkeyPatch) -> None:

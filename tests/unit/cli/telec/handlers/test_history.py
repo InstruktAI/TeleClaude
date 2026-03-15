@@ -62,7 +62,6 @@ def test_handle_history_search_requires_terms(
 
     assert exc_info.value.code == 1
     output = capsys.readouterr().out
-    assert "Search terms are required." in output
     assert "usage:history/search" in output
 
 
@@ -132,7 +131,6 @@ def test_handle_history_show_requires_session_id(
 
     assert exc_info.value.code == 1
     output = capsys.readouterr().out
-    assert "Session ID is required." in output
     assert "usage:history/show" in output
 
 

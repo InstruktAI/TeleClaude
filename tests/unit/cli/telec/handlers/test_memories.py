@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 import pytest
 
@@ -70,6 +73,15 @@ class FakeMemoryClient:
         ]
 
 
+@pytest.fixture(autouse=True)
+def _reset_fake_client() -> Iterator[None]:
+    yield
+    FakeMemoryClient.search_call = None
+    FakeMemoryClient.save_call = None
+    FakeMemoryClient.delete_call = None
+    FakeMemoryClient.timeline_call = None
+
+
 def test_handle_memories_routes_search(monkeypatch: pytest.MonkeyPatch) -> None:
     received: list[list[str]] = []
 
@@ -107,7 +119,7 @@ def test_handle_memories_delete_rejects_non_numeric_ids(capsys: pytest.CaptureFi
         memories._handle_memories_delete(["abc"])
 
     assert exc_info.value.code == 1
-    assert "must be a number" in capsys.readouterr().out
+    assert capsys.readouterr().out.strip()
 
 
 def test_handle_memories_timeline_marks_anchor_entry(

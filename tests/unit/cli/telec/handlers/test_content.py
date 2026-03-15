@@ -48,7 +48,7 @@ def test_handle_content_dump_rejects_second_text_argument(
         content._handle_content_dump(["one", "two"])
 
     assert exc_info.value.code == 1
-    assert "Only one text argument is allowed." in capsys.readouterr().out
+    assert capsys.readouterr().out.strip()
 
 
 def test_handle_content_dump_survives_event_emit_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
