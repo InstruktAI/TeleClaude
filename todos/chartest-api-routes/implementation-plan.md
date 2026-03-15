@@ -12,22 +12,22 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/api/agents_routes.py` → `tests/unit/api/test_agents_routes.py`
-- [ ] Characterize `teleclaude/api/chiptunes_routes.py` → `tests/unit/api/test_chiptunes_routes.py`
-- [ ] Characterize `teleclaude/api/computers_routes.py` → `tests/unit/api/test_computers_routes.py`
-- [ ] Characterize `teleclaude/api/data_routes.py` → `tests/unit/api/test_data_routes.py`
-- [ ] Characterize `teleclaude/api/event_routes.py` → `tests/unit/api/test_event_routes.py`
-- [ ] Characterize `teleclaude/api/jobs_routes.py` → `tests/unit/api/test_jobs_routes.py`
-- [ ] Characterize `teleclaude/api/notifications_routes.py` → `tests/unit/api/test_notifications_routes.py`
-- [ ] Characterize `teleclaude/api/operations_routes.py` → `tests/unit/api/test_operations_routes.py`
-- [ ] Characterize `teleclaude/api/people_routes.py` → `tests/unit/api/test_people_routes.py`
-- [ ] Characterize `teleclaude/api/projects_routes.py` → `tests/unit/api/test_projects_routes.py`
-- [ ] Characterize `teleclaude/api/session_access.py` → `tests/unit/api/test_session_access.py`
-- [ ] Characterize `teleclaude/api/sessions_actions_routes.py` → `tests/unit/api/test_sessions_actions_routes.py`
-- [ ] Characterize `teleclaude/api/sessions_routes.py` → `tests/unit/api/test_sessions_routes.py`
-- [ ] Characterize `teleclaude/api/settings_routes.py` → `tests/unit/api/test_settings_routes.py`
-- [ ] Characterize `teleclaude/api/streaming.py` → `tests/unit/api/test_streaming.py`
-- [ ] Characterize `teleclaude/api/todo_routes.py` → `tests/unit/api/test_todo_routes.py`
-- [ ] Characterize `teleclaude/api/transcript_converter.py` → `tests/unit/api/test_transcript_converter.py`
-- [ ] Characterize `teleclaude/api/ws_constants.py` → `tests/unit/api/test_ws_constants.py`
-- [ ] Characterize `teleclaude/api/ws_mixin.py` → `tests/unit/api/test_ws_mixin.py`
+- [x] Characterize `teleclaude/api/agents_routes.py` → `tests/unit/api/test_agents_routes.py`
+- [x] Characterize `teleclaude/api/chiptunes_routes.py` → `tests/unit/api/test_chiptunes_routes.py`
+- [x] Characterize `teleclaude/api/computers_routes.py` → `tests/unit/api/test_computers_routes.py`
+- [x] Characterize `teleclaude/api/data_routes.py` → `tests/unit/api/test_data_routes.py`
+- [x] Characterize `teleclaude/api/event_routes.py` → `tests/unit/api/test_event_routes.py`
+- [x] Characterize `teleclaude/api/jobs_routes.py` → `tests/unit/api/test_jobs_routes.py`
+- [x] Characterize `teleclaude/api/notifications_routes.py` → `tests/unit/api/test_notifications_routes.py`
+- [x] Characterize `teleclaude/api/operations_routes.py` → `tests/unit/api/test_operations_routes.py`
+- [x] Characterize `teleclaude/api/people_routes.py` → `tests/unit/api/test_people_routes.py`
+- [x] Characterize `teleclaude/api/projects_routes.py` → `tests/unit/api/test_projects_routes.py`
+- [x] Characterize `teleclaude/api/session_access.py` → `tests/unit/api/test_session_access.py`
+- [x] Characterize `teleclaude/api/sessions_actions_routes.py` → `tests/unit/api/test_sessions_actions_routes.py`
+- [x] Characterize `teleclaude/api/sessions_routes.py` → `tests/unit/api/test_sessions_routes.py`
+- [x] Characterize `teleclaude/api/settings_routes.py` → `tests/unit/api/test_settings_routes.py`
+- [x] Characterize `teleclaude/api/streaming.py` → `tests/unit/api/test_streaming.py`
+- [x] Characterize `teleclaude/api/todo_routes.py` → `tests/unit/api/test_todo_routes.py`
+- [x] Characterize `teleclaude/api/transcript_converter.py` → `tests/unit/api/test_transcript_converter.py`
+- [x] Characterize `teleclaude/api/ws_constants.py` → `tests/unit/api/test_ws_constants.py`
+- [x] Characterize `teleclaude/api/ws_mixin.py` → `tests/unit/api/test_ws_mixin.py`

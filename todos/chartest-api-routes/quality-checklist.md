@@ -10,15 +10,22 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate chartest-api-routes` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate chartest-api-routes` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+### Build Notes
+
+- Verification: `make test` passed with 821 tests.
+- Verification: `make lint` passed; Ruff reported pre-existing invalid `# noqa` directive warnings outside this todo scope, but the lint target exited successfully.
+- Verification: `telec todo demo validate chartest-api-routes` passed with 2 executable blocks, and `demos/chartest-api-routes/demo.md` was promoted from the todo artifact.
+- Manual verification: user-visible behavior was not changed; validation focused on the new characterization suite and build gates.
 
 ## Review Gates (Reviewer)
 
