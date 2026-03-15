@@ -1,5 +1,7 @@
 # Demo: chartest-cli-telec
 
+<!-- no-demo: internal characterization-test coverage only; no user-visible behavior change -->
+
 ## Validation
 
 <!-- Bash code blocks that prove the feature works. -->

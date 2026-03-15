@@ -1,0 +1,1 @@
+"""telec handler characterization tests."""
