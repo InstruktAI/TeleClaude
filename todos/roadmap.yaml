@@ -49,8 +49,6 @@
   group: chartest
 - slug: chartest-cli-telec
   group: chartest
-- slug: chartest-cli-misc
-  group: chartest
 - slug: chartest-tui-views
   group: chartest
 - slug: chartest-tui-engine
