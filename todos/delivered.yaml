@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: chartest-adapters-ui-qos
+  date: '2026-03-15'
+  commit: 04a0468d00f4
 - slug: chartest-api-server
   date: '2026-03-15'
   commit: a33fd73a4a68

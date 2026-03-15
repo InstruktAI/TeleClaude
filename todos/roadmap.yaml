@@ -47,8 +47,6 @@
   - session-adaptive-runtime
 - slug: chartest-adapters-discord
   group: chartest
-- slug: chartest-adapters-ui-qos
-  group: chartest
 - slug: chartest-api-routes
   group: chartest
 - slug: chartest-hooks
