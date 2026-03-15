@@ -3,6 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "aiohttp",
+#     "python-dotenv",
 # ]
 # ///
 """Nano Banana image generation helper.
@@ -29,12 +30,29 @@ import uuid
 from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import TypedDict
 
 import aiohttp
+from dotenv import load_dotenv
+
+
+class _InlineData(TypedDict):
+    mimeType: str
+    data: str
+
+
+class _TextPart(TypedDict):
+    text: str
+
+
+class _InlineDataPart(TypedDict):
+    inlineData: _InlineData
+
 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
+
 
 LOG_DIR = Path("~/.claude/logs").expanduser()
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -59,7 +77,13 @@ logger.addHandler(_ch)
 # ---------------------------------------------------------------------------
 
 VALID_ASPECT_RATIOS = ("1:1", "3:4", "4:3", "9:16", "16:9")
-DEFAULT_MODEL = "gemini-2.0-flash-exp"
+
+QUALITY_MODELS = {
+    "low": "gemini-2.5-flash-image",
+    "medium": "gemini-3.1-flash-image-preview",
+    "high": "gemini-3-pro-image-preview",
+}
+
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
@@ -73,24 +97,23 @@ def _build_generate_payload(prompt: str) -> dict:  # type: ignore[type-arg]
     return {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"],
+            "responseModalities": ["IMAGE"],
         },
     }
 
 
-def _build_edit_payload(prompt: str, image_b64: str, mime_type: str) -> dict:  # type: ignore[type-arg]
-    """Build the API request payload for image-to-image editing."""
+def _build_edit_payload(prompt: str, images_data: list[tuple[str, str]]) -> dict:  # type: ignore[type-arg]
+    """Build the API request payload for image-to-image editing.
+    images_data is a list of tuples (base64_data, mime_type).
+    """
+    parts: list[_TextPart | _InlineDataPart] = [_TextPart(text=prompt)]
+    for b64, mime in images_data:
+        parts.append(_InlineDataPart(inlineData=_InlineData(mimeType=mime, data=b64)))
+
     return {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt},
-                    {"inlineData": {"mimeType": mime_type, "data": image_b64}},
-                ]
-            }
-        ],
+        "contents": [{"parts": parts}],
         "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"],
+            "responseModalities": ["IMAGE"],
         },
     }
 
@@ -114,8 +137,10 @@ async def _call_gemini(
     payload: dict,  # type: ignore[type-arg]
 ) -> dict:  # type: ignore[type-arg]
     """Call the Gemini generateContent API and return the response."""
-    url = f"{GEMINI_API_BASE}/{model}:generateContent?key={api_key}"
-    logger.info("Calling Gemini API: model=%s", model)
+    # Ensure model string doesn't have prefix if it was passed in
+    clean_model = model.replace("models/", "")
+    url = f"{GEMINI_API_BASE}/{clean_model}:generateContent?key={api_key}"
+    logger.info("Calling Gemini API: model=%s", clean_model)
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -124,11 +149,11 @@ async def _call_gemini(
             headers={"Content-Type": "application/json"},
             timeout=aiohttp.ClientTimeout(total=120),
         ) as resp:
+            body = await resp.text()
             if resp.status != 200:
-                body = await resp.text()
-                logger.error("Gemini API error: status=%d body=%s", resp.status, body[:500])
+                logger.error("Gemini API error body: %s", body)
                 raise RuntimeError(f"Gemini API returned {resp.status}: {body[:500]}")
-            return await resp.json()  # type: ignore[no-any-return]
+            return json.loads(body)  # type: ignore[no-any-return]
 
 
 def _extract_image_from_response(response: dict) -> tuple[bytes, str] | None:  # type: ignore[type-arg]
@@ -180,15 +205,22 @@ def _mime_to_ext(mime_type: str) -> str:
 
 async def generate_image(
     prompt: str,
-    model: str,
+    model: str | None,
+    quality: str,
     aspect_ratio: str,
     output_dir: Path,
     output_name: str | None,
     api_key: str,
 ) -> dict:  # type: ignore[type-arg]
     """Generate an image from a text prompt."""
+    target_model = model if model else QUALITY_MODELS.get(quality, QUALITY_MODELS["medium"])
     payload = _build_generate_payload(prompt)
-    response = await _call_gemini(api_key, model, payload)
+
+    try:
+        response = await _call_gemini(api_key, target_model, payload)
+    except Exception as e:
+        logger.error("Image generation failed: %s", e)
+        return {"success": False, "error": str(e)}
 
     result = _extract_image_from_response(response)
     if result is None:
@@ -198,7 +230,6 @@ async def generate_image(
             "success": False,
             "error": "No image generated",
             "text_response": text,
-            "model": model,
         }
 
     image_bytes, mime_type = result
@@ -217,30 +248,41 @@ async def generate_image(
         "filename": filename,
         "size_bytes": len(image_bytes),
         "mime_type": mime_type,
-        "model": model,
         "prompt": prompt,
         "aspect_ratio": aspect_ratio,
+        "quality": quality,
+        "model_used": target_model,
         "generated_at": datetime.now(UTC).isoformat(),
     }
 
 
 async def edit_image(
     prompt: str,
-    input_image: Path,
-    model: str,
+    input_images: list[Path],
+    model: str | None,
+    quality: str,
     output_dir: Path,
     output_name: str | None,
     api_key: str,
 ) -> dict:  # type: ignore[type-arg]
-    """Edit an image with a text prompt (image-to-image)."""
-    if not input_image.exists():
-        return {"success": False, "error": f"Input image not found: {input_image}"}
+    """Edit an image with a text prompt (image-to-image), supporting multiple input images."""
+    target_model = model if model else QUALITY_MODELS.get(quality, QUALITY_MODELS["medium"])
 
-    image_b64 = base64.b64encode(input_image.read_bytes()).decode()
-    mime_type = _detect_mime_type(input_image)
+    images_data = []
+    for img_path in input_images:
+        if not img_path.exists():
+            return {"success": False, "error": f"Input image not found: {img_path}"}
+        image_b64 = base64.b64encode(img_path.read_bytes()).decode()
+        mime_type = _detect_mime_type(img_path)
+        images_data.append((image_b64, mime_type))
 
-    payload = _build_edit_payload(prompt, image_b64, mime_type)
-    response = await _call_gemini(api_key, model, payload)
+    payload = _build_edit_payload(prompt, images_data)
+
+    try:
+        response = await _call_gemini(api_key, target_model, payload)
+    except Exception as e:
+        logger.error("Image editing failed: %s", e)
+        return {"success": False, "error": str(e)}
 
     result = _extract_image_from_response(response)
     if result is None:
@@ -250,7 +292,6 @@ async def edit_image(
             "success": False,
             "error": "No image generated from edit",
             "text_response": text,
-            "model": model,
         }
 
     image_bytes, out_mime = result
@@ -269,9 +310,10 @@ async def edit_image(
         "filename": filename,
         "size_bytes": len(image_bytes),
         "mime_type": out_mime,
-        "model": model,
         "prompt": prompt,
-        "input_image": str(input_image),
+        "input_images": [str(p) for p in input_images],
+        "quality": quality,
+        "model_used": target_model,
         "generated_at": datetime.now(UTC).isoformat(),
     }
 
@@ -291,7 +333,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # Generate
     gen = subparsers.add_parser("generate", help="Text-to-image generation")
     gen.add_argument("--prompt", required=True, help="Text prompt for image generation")
-    gen.add_argument("--model", default=DEFAULT_MODEL, help=f"Gemini model (default: {DEFAULT_MODEL})")
+    gen.add_argument("--model", default=None, help="Gemini model override")
+    gen.add_argument(
+        "--quality", choices=["low", "medium", "high"], default="medium", help="Image quality mode (default: medium)"
+    )
     gen.add_argument(
         "--aspect-ratio",
         default="1:1",
@@ -305,8 +350,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # Edit
     edit = subparsers.add_parser("edit", help="Image-to-image editing")
     edit.add_argument("--prompt", required=True, help="Text prompt for editing")
-    edit.add_argument("--input-image", type=Path, required=True, help="Path to input image")
-    edit.add_argument("--model", default=DEFAULT_MODEL, help=f"Gemini model (default: {DEFAULT_MODEL})")
+    edit.add_argument("--input-image", type=Path, nargs="+", required=True, help="Path to one or more input images")
+    edit.add_argument("--model", default=None, help="Gemini model override")
+    edit.add_argument(
+        "--quality", choices=["low", "medium", "high"], default="medium", help="Image quality mode (default: medium)"
+    )
     edit.add_argument("--output-dir", type=Path, help="Output directory")
     edit.add_argument("--output-name", help="Output filename (without extension)")
     edit.add_argument("--api-key-env", default="GOOGLE_API_KEY", help="Env var for API key")
@@ -314,8 +362,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # Iterate (alias for edit)
     iterate = subparsers.add_parser("iterate", help="Multi-turn iteration (alias for edit)")
     iterate.add_argument("--prompt", required=True, help="Text prompt for iteration")
-    iterate.add_argument("--input-image", type=Path, required=True, help="Path to input image")
-    iterate.add_argument("--model", default=DEFAULT_MODEL, help=f"Gemini model (default: {DEFAULT_MODEL})")
+    iterate.add_argument("--input-image", type=Path, nargs="+", required=True, help="Path to one or more input images")
+    iterate.add_argument("--model", default=None, help="Gemini model override")
+    iterate.add_argument(
+        "--quality", choices=["low", "medium", "high"], default="medium", help="Image quality mode (default: medium)"
+    )
     iterate.add_argument("--output-dir", type=Path, help="Output directory")
     iterate.add_argument("--output-name", help="Output filename (without extension)")
     iterate.add_argument("--api-key-env", default="GOOGLE_API_KEY", help="Env var for API key")
@@ -332,6 +383,10 @@ def _resolve_output_dir(args: argparse.Namespace) -> Path:
 
 
 def main() -> None:
+    # Load .env from current directory to ensure we get project-specific keys
+    # instead of relying on global environment variables.
+    load_dotenv(override=True)
+
     parser = _build_parser()
     args = parser.parse_args()
 
@@ -342,7 +397,7 @@ def main() -> None:
     # Resolve API key
     api_key = os.environ.get(args.api_key_env, "")
     if not api_key:
-        print(json.dumps({"success": False, "error": f"Missing API key: set {args.api_key_env}"}))
+        print(json.dumps({"success": False, "error": f"Missing API key: set {args.api_key_env} or place it in .env"}))
         sys.exit(1)
 
     output_dir = _resolve_output_dir(args)
@@ -352,6 +407,7 @@ def main() -> None:
             generate_image(
                 prompt=args.prompt,
                 model=args.model,
+                quality=args.quality,
                 aspect_ratio=args.aspect_ratio,
                 output_dir=output_dir,
                 output_name=args.output_name,
@@ -362,8 +418,9 @@ def main() -> None:
         result = asyncio.run(
             edit_image(
                 prompt=args.prompt,
-                input_image=args.input_image,
+                input_images=args.input_image,
                 model=args.model,
+                quality=args.quality,
                 output_dir=output_dir,
                 output_name=args.output_name,
                 api_key=api_key,

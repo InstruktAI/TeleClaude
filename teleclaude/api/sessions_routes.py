@@ -20,6 +20,7 @@ from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
     SendMessageRequest,
+    SendMessageResponseDTO,
     SessionDTO,
 )
 from teleclaude.config import config
@@ -591,13 +592,13 @@ def _active_direct_link_response(
     link_id: str,
     *,
     already_active: bool,
-) -> JsonDict:
+) -> SendMessageResponseDTO:
     """Return the standard response for blocked direct-link sends."""
-    return {
-        "status": "error",
-        "mode": "direct",
-        "link_id": link_id,
-        "message": (
+    return SendMessageResponseDTO(
+        status="error",
+        mode="direct",
+        link_id=link_id,
+        message=(
             (
                 "A direct link is already active with this peer. "
                 if already_active
@@ -609,7 +610,7 @@ def _active_direct_link_response(
                 "Your turn-complete output is automatically shared — just talk."
             )
         ),
-    }
+    )
 
 
 async def _process_api_message(
@@ -647,7 +648,7 @@ async def _handle_close_link_request(
     session_id: str,
     request: SendMessageRequest,
     identity: CallerIdentity,
-) -> JsonDict:
+) -> SendMessageResponseDTO:
     """Handle close-link requests, optionally delivering a final message first."""
     from teleclaude.core.session_listeners import close_link_for_member, resolve_link_for_sender_target
 
@@ -659,7 +660,7 @@ async def _handle_close_link_request(
         target_session_id=session_id,
     )
     if not active_link:
-        return {"status": "error", "message": "no active direct link found"}
+        return SendMessageResponseDTO(status="error", message="no active direct link found")
 
     if request.message:
         await _process_api_message(session_id, request.message, _build_metadata())
@@ -668,7 +669,12 @@ async def _handle_close_link_request(
         caller_session_id=identity.session_id,
         target_session_id=session_id,
     )
-    return {"status": "success", "mode": "direct", "action": "closed", "link_id": closed_link_id}
+    return SendMessageResponseDTO(
+        status="success",
+        mode="direct",
+        action="closed",
+        link_id=closed_link_id,
+    )
 
 
 async def _handle_direct_message_request(
@@ -678,7 +684,7 @@ async def _handle_direct_message_request(
     identity: CallerIdentity,
     target_session: Session | None,
     metadata: MessageMetadata,
-) -> JsonDict:
+) -> SendMessageResponseDTO:
     """Create or reuse a direct link and deliver the message to active peers."""
     from teleclaude.core.session_listeners import (
         create_or_reuse_direct_link,
@@ -749,27 +755,27 @@ async def _handle_direct_message_request(
         delivered_to += 1
 
     if delivered_to == 0:
-        return {
-            "status": "error",
-            "mode": "direct",
-            "link_id": link.link_id,
-            "message": "No active target sessions available for delivery",
-        }
+        return SendMessageResponseDTO(
+            status="error",
+            mode="direct",
+            link_id=link.link_id,
+            message="No active target sessions available for delivery",
+        )
 
-    return {
-        "status": "success",
-        "mode": "direct",
-        "link_id": link.link_id,
-        "link_state": "created",
-        "delivered_to": delivered_to,
-        "members": len(members),
-    }
+    return SendMessageResponseDTO(
+        status="success",
+        mode="direct",
+        link_id=link.link_id,
+        link_state="created",
+        delivered_to=delivered_to,
+        members=len(members),
+    )
 
 
 async def _reject_existing_direct_link(
     session_id: str,
     identity: CallerIdentity,
-) -> JsonDict | None:
+) -> SendMessageResponseDTO | None:
     """Return the standard error response if a work send conflicts with a direct link."""
     from teleclaude.core.session_listeners import resolve_link_for_sender_target
 
@@ -785,14 +791,14 @@ async def _reject_existing_direct_link(
     return _active_direct_link_response(existing_link[0].link_id, already_active=False)
 
 
-@router.post("/sessions/{session_id}/message")
+@router.post("/sessions/{session_id}/message", response_model_exclude_none=True)
 async def send_message_endpoint(
     http_request: Request,
     session_id: str,
     request: SendMessageRequest,
     computer: str | None = Query(None),
     identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_SEND),
-) -> JsonDict:
+) -> SendMessageResponseDTO:
     """Send message to session."""
     from teleclaude.api.session_access import check_session_access
 
@@ -825,7 +831,7 @@ async def send_message_endpoint(
             return existing_link_response
 
         await _process_api_message(session_id, request.message, metadata)
-        return {"status": "success", "mode": "work"}
+        return SendMessageResponseDTO(status="success", mode="work")
     except SessionMessageRejectedError as exc:
         raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
     except HTTPException:

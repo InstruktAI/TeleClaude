@@ -12,7 +12,7 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/core/tmux_bridge/_keys.py` → `tests/unit/core/tmux_bridge/test__keys.py`
-- [ ] Characterize `teleclaude/core/tmux_bridge/_pane.py` → `tests/unit/core/tmux_bridge/test__pane.py`
-- [ ] Characterize `teleclaude/core/tmux_bridge/_session.py` → `tests/unit/core/tmux_bridge/test__session.py`
-- [ ] Characterize `teleclaude/core/tmux_bridge/_subprocess.py` → `tests/unit/core/tmux_bridge/test__subprocess.py`
+- [x] Characterize `teleclaude/core/tmux_bridge/_keys.py` → `tests/unit/core/tmux_bridge/test__keys.py`
+- [x] Characterize `teleclaude/core/tmux_bridge/_pane.py` → `tests/unit/core/tmux_bridge/test__pane.py`
+- [x] Characterize `teleclaude/core/tmux_bridge/_session.py` → `tests/unit/core/tmux_bridge/test__session.py`
+- [x] Characterize `teleclaude/core/tmux_bridge/_subprocess.py` → `tests/unit/core/tmux_bridge/test__subprocess.py`

@@ -64,15 +64,37 @@ you want" is more productive than twenty questions about color preferences.
 When looking for visual references, use sites that curate specific design
 dimensions rather than browsing generically:
 
-- **Hero sections**: [Threed.ai](https://threed.ai) / similar hero-focused
-  galleries — curated 3D and animated hero patterns.
-- **Interaction design**: [Web Interactions Gallery](https://webinteractions.gallery)
-  — motion, micro-interactions, scroll-driven animations.
-- **Color-driven discovery**: [Realtime Colors](https://realtimecolors.com) —
-  find real websites filtered by color palette, useful for matching brand
-  direction to existing examples.
-- **Component inspiration**: [CLUI](https://clui.com) — daily UI component
-  updates and patterns.
+**Animation examples and effects** — curated showcase of website animation techniques:
+
+- **SVGator Blog**: [svgator.com/blog/website-animation-examples-and-effects](https://www.svgator.com/blog/website-animation-examples-and-effects/)
+  — categorized animation examples with breakdowns of techniques and effects.
+
+**Dark landing page galleries** — browse for overall mood, layout, and color:
+
+- **Dark Mode Design**: [darkmodedesign.com](https://www.darkmodedesign.com/)
+  — exclusively dark mode sites, curated and categorized.
+- **One Page Love**: [onepagelove.com](https://onepagelove.com/)
+  — 900+ one-pagers, many dark. Great for single-page scroller references.
+- **Lapa Ninja (Black)**: [lapa.ninja/color/black](https://www.lapa.ninja/color/black/)
+  — 1,750 black landing pages with full screenshots.
+- **Godly**: [godly.website](https://godly.website/)
+  — curated beautiful websites with animated previews. No login required.
+- **landing.love**: [landing.love/style/dark-mode](https://www.landing.love/style/dark-mode/)
+  — full-page video recordings of landing pages (500+ dark mode).
+
+**Scroll animation references** — browse for motion language and interaction patterns:
+
+- **Scroll-Driven Animations**: [scroll-driven-animations.style](https://scroll-driven-animations.style/)
+  — pure CSS scroll animation demos and techniques.
+- **Awwwards Scrolling**: [awwwards.com/websites/scrolling](https://www.awwwards.com/websites/scrolling/)
+  — award-winning scroll-based sites, free to browse.
+- **FreeFrontend**: [freefrontend.com/css-scroll-driven](https://freefrontend.com/css-scroll-driven/)
+  — CSS scroll-driven animation examples with source code.
+
+**Color-driven discovery**: [Realtime Colors](https://realtimecolors.com) —
+find real websites filtered by color palette, useful for matching brand
+direction to existing examples.
+
 - **Full-page screenshots**: GoFullPage (Chrome extension) — capture entire
   pages for reference analysis.
 

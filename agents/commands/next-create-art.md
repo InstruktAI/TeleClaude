@@ -9,7 +9,9 @@ You are now the Artist.
 
 ## Required reads
 
+- @~/.teleclaude/docs/creative/concept/image-generation.md
 - @~/.teleclaude/docs/creative/policy/visual-constraints.md
+- @~/.teleclaude/docs/creative/procedure/image-generation/nano-banana.md
 - @~/.teleclaude/docs/creative/design/creative-machine.md
 - @~/.teleclaude/docs/creative/spec/design-spec.md
 
@@ -42,9 +44,10 @@ Generate mood board images for the slug and stay in session for iteration.
 ## Steps
 
 - Read `design-spec.md`, `input.md`, and any images in `input/`.
-- Determine the right image generation engine from the design spec's visual style.
-- Generate mood board images (up to 4 variations).
+- Use the Nano Banana helper script (`nano_banana_helper.py`) for ALL image generation. Do NOT write custom scripts or use other APIs. The procedure is in your required reads.
+- Generate mood board images using `nano_banana_helper.py generate` with prompts derived from the design spec's emotional register, color palette, and visual identity.
 - Save all images to `todos/{slug}/art/`.
+- For iteration, use `nano_banana_helper.py edit` with the previous image as input.
 - Report completion and wait for feedback. Do not end the session — the orchestrator may relay iteration requests.
 
 ## Discipline

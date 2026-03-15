@@ -44,6 +44,21 @@ class CreateSessionResponseDTO(BaseModel):
     error: str | None = None
 
 
+class SendMessageResponseDTO(BaseModel):
+    """Response from sending a message to a session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["success", "error"]
+    mode: Literal["work", "direct"] | None = None
+    action: Literal["closed"] | None = None
+    link_id: str | None = None
+    link_state: Literal["created"] | None = None
+    delivered_to: int | None = None
+    members: int | None = None
+    message: str | None = None
+
+
 class SendMessageRequest(BaseModel):
     """Request to send a message to a session."""
 

@@ -10,15 +10,23 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate chartest-adapters-discord` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate chartest-adapters-discord` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+### Build Notes
+
+- Characterization-only delivery: production adapter code was left untouched, so no comment/docstring changes were required.
+- Development verification used targeted pytest runs for each new characterization file before its per-task commit.
+- Full repo verification passed with `make test` and `make lint`.
+- Demo validation passed with `telec todo demo validate chartest-adapters-discord`.
+- Manual verification for this non-UI delivery was the runnable demo plus the focused Discord adapter characterization slice; both completed successfully.
 
 ## Review Gates (Reviewer)
 

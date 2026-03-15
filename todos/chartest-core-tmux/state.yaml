@@ -27,6 +27,9 @@ requirements_review:
   verdict: approve
   reviewed_at: '2026-03-14T20:18:34.250380+00:00'
   findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
 test_spec_review:
   verdict: ''
   reviewed_at: ''
@@ -36,6 +39,9 @@ plan_review:
   verdict: approve
   reviewed_at: '2026-03-14T20:18:34.250380+00:00'
   findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
 artifacts:
   input:
     digest: ''
@@ -86,3 +92,4 @@ dor:
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
+integration_phase: merge_clean

@@ -19,3 +19,22 @@ review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
 schema_version: 1
+creative:
+  phase: art_generation_required
+  design_spec:
+    confirmed: true
+    confirmed_at: '2026-03-15T16:30:00Z'
+    confirmed_by: human
+  art:
+    approved: false
+    approved_at: null
+    approved_by: null
+    iteration_count: 0
+  visuals:
+    approved: false
+    approved_at: null
+    approved_by: null
+    selected_version: null
+    iteration_count: 0
+  started_at: '2026-03-15T12:00:00Z'
+  completed_at: null
