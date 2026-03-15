@@ -10,15 +10,25 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate chartest-peripherals` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate chartest-peripherals` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+### Build Notes
+
+- Manual verification: Ran the full `chartest-peripherals` mapped pytest batch derived from `requirements.md`; result `464 passed`.
+- Manual verification: Confirmed the generated `tests/unit/...` paths cover all 97 required source files with zero missing mappings.
+- Manual verification: Ran `make test`; result `1388 passed`.
+- Manual verification: Ran `make lint`; result `PASS`.
+- Manual verification: Ran `telec todo demo validate chartest-peripherals`; result `2 executable block(s) found`.
+- Notes: Added package markers under duplicated test subdirectories so pytest imports sibling `test_*.py` basenames without collection conflicts.
+- Notes: Remaining uncommitted drift outside the task is limited to orchestrator-managed `todos/chartest-peripherals/state.yaml`, which is intentionally excluded from the build commit.
 
 ## Review Gates (Reviewer)
 
