@@ -45,8 +45,6 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: chartest-adapters-discord
-  group: chartest
 - slug: chartest-api-routes
   group: chartest
 - slug: chartest-hooks
