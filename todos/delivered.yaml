@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: chartest-core-db
+  date: '2026-03-15'
+  commit: 36e5aa7f448b
 - slug: chartest-core-cmd-handlers
   date: '2026-03-15'
   commit: 3915077dc190
