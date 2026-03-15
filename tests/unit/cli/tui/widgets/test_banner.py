@@ -107,8 +107,8 @@ def test_logo_height_equals_logo_lines_plus_one() -> None:
 
 
 @pytest.mark.unit
-def test_logo_width_is_positive() -> None:
-    assert LOGO_WIDTH > 0
+def test_logo_width_pinned() -> None:
+    assert LOGO_WIDTH == 40
 
 
 # --- _apply_sky_entity ---

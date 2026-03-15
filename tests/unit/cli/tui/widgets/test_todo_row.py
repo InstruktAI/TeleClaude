@@ -52,9 +52,10 @@ def test_prepare_phase_label_input_assessment_maps_to_discovery() -> None:
 def test_prepare_phase_label_blocked_returns_gold_color() -> None:
     result = prepare_phase_label(PreparePhase.BLOCKED.value)
     assert result is not None
-    _, _, color = result
-    # Color should be gold-ish (non-green)
-    assert color is not None
+    prefix, value, color = result
+    assert prefix == "P"
+    assert value == "blocked"
+    assert str(color) == "color(136)"
 
 
 @pytest.mark.unit
@@ -78,33 +79,40 @@ def test_integration_phase_label_returns_none_for_none_phase_and_no_finalize() -
 def test_integration_phase_label_started_for_candidate_dequeued() -> None:
     result = integration_phase_label(IntegrationPhase.CANDIDATE_DEQUEUED.value, None)
     assert result is not None
-    prefix, value, _ = result
+    prefix, value, color = result
     assert prefix == "I"
     assert value == "started"
+    assert str(color) == "color(28)"
 
 
 @pytest.mark.unit
 def test_integration_phase_label_delivered_for_completed() -> None:
     result = integration_phase_label(IntegrationPhase.COMPLETED.value, None)
     assert result is not None
-    _, value, _ = result
+    prefix, value, color = result
+    assert prefix == "I"
     assert value == "delivered"
+    assert str(color) == "color(28)"
 
 
 @pytest.mark.unit
 def test_integration_phase_label_failed_for_push_rejected() -> None:
     result = integration_phase_label(IntegrationPhase.PUSH_REJECTED.value, None)
     assert result is not None
-    _, value, _ = result
+    prefix, value, color = result
+    assert prefix == "I"
     assert value == "failed"
+    assert str(color) == "color(136)"
 
 
 @pytest.mark.unit
 def test_integration_phase_label_queued_when_finalize_handed_off() -> None:
     result = integration_phase_label(None, "handed_off")
     assert result is not None
-    _, value, _ = result
+    prefix, value, color = result
+    assert prefix == "I"
     assert value == "queued"
+    assert str(color) == "color(28)"
 
 
 # --- TodoRow.compute_col_widths ---

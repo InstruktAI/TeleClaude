@@ -22,6 +22,6 @@ def test_next_command_returns_base_only_when_no_slug() -> None:
 
 
 @pytest.mark.unit
-def test_next_command_prefixes_with_slash() -> None:
+def test_next_command_with_different_base_and_slug() -> None:
     result = PreparationViewActionsMixin._next_command("prepare", "feat-x")
-    assert result.startswith("/")
+    assert result == "/prepare feat-x"

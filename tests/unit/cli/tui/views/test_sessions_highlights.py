@@ -16,8 +16,8 @@ from teleclaude.cli.tui.views.sessions_highlights import (
 
 
 @pytest.mark.unit
-def test_preview_highlight_duration_is_positive() -> None:
-    assert PREVIEW_HIGHLIGHT_DURATION > 0
+def test_preview_highlight_duration_pinned() -> None:
+    assert PREVIEW_HIGHLIGHT_DURATION == 3.0
 
 
 @pytest.mark.unit

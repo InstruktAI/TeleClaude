@@ -80,6 +80,14 @@ def test_load_persisted_state_ignores_invalid_animation_mode() -> None:
 
 
 @pytest.mark.unit
+def test_load_persisted_state_ignores_invalid_pane_theming_mode() -> None:
+    bar = StatusBar()
+    bar.pane_theming_mode = "off"
+    bar.load_persisted_state({"pane_theming_mode": "bogus-invalid"})
+    assert bar.pane_theming_mode == "off"
+
+
+@pytest.mark.unit
 def test_load_persisted_state_ignores_missing_animation_mode() -> None:
     bar = StatusBar()
     bar.animation_mode = "party"

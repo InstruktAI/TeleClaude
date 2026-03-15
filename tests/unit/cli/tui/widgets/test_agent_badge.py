@@ -1,7 +1,7 @@
 """Characterization tests for teleclaude.cli.tui.widgets.agent_badge.
 
-AgentBadge is a minimal Textual Widget whose render() delegates entirely to
-resolve_style(). The only testable public behavior without a mounted app is
+AgentBadge is a minimal Textual Widget whose render() uses resolve_style() to
+determine styling. Without a mounted app, the testable surface is limited to
 the default reactive value.
 """
 
