@@ -49,8 +49,6 @@
   group: chartest
 - slug: chartest-events-cartridges
   group: chartest
-- slug: chartest-events-schemas
-  group: chartest
 - slug: chartest-cli-telec
   group: chartest
 - slug: chartest-cli-misc
