@@ -21,7 +21,7 @@ Commit after completing each file's characterization tests.
 - [x] Characterize `teleclaude/memory/context/renderer.py` → `tests/unit/memory/context/test_renderer.py`
 - [x] Characterize `teleclaude/mirrors/api_routes.py` → `tests/unit/mirrors/test_api_routes.py`
 - [x] Characterize `teleclaude/mirrors/event_handlers.py` → `tests/unit/mirrors/test_event_handlers.py`
-- [ ] Characterize `teleclaude/mirrors/generator.py` → `tests/unit/mirrors/test_generator.py`
+- [x] Characterize `teleclaude/mirrors/generator.py` → `tests/unit/mirrors/test_generator.py`
 - [ ] Characterize `teleclaude/mirrors/processors.py` → `tests/unit/mirrors/test_processors.py`
 - [ ] Characterize `teleclaude/mirrors/store.py` → `tests/unit/mirrors/test_store.py`
 - [ ] Characterize `teleclaude/mirrors/worker.py` → `tests/unit/mirrors/test_worker.py`
