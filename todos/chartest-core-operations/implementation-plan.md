@@ -12,4 +12,4 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/core/operations/service.py` → `tests/unit/core/operations/test_service.py`
+- [x] Characterize `teleclaude/core/operations/service.py` → `tests/unit/core/operations/test_service.py`
