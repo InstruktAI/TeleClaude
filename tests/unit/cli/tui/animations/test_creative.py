@@ -12,9 +12,8 @@ from teleclaude.cli.tui.animations.creative import (
     LavaLamp,
     NeonFlicker,
     Plasma,
-    _hue_to_hex,
-    _pick_hue,
 )
+from teleclaude.cli.tui.pixel_mapping import BIG_BANNER_LETTERS, PixelMap
 
 
 def _palette() -> SpectrumPalette:
@@ -31,184 +30,138 @@ def _update(anim: Animation, frame: int = 0) -> dict[tuple[int, int], str | int]
     return result
 
 
-class TestHelpers:
-    def test_hue_to_hex_returns_hex_string(self) -> None:
-        result = _hue_to_hex(180.0)
-        assert result.startswith("#")
-        assert len(result) == 7
-
-    def test_pick_hue_returns_valid_degrees(self) -> None:
-        import random
-
-        rng = random.Random(42)
-        hue = _pick_hue(rng)
-        assert 0.0 <= hue <= 360.0
+def _big_letter_pixel_count() -> int:
+    return sum(len(PixelMap.get_letter_pixels(True, idx)) for idx in range(len(BIG_BANNER_LETTERS)))
 
 
 class TestNeonFlicker:
     def test_theme_filter_dark(self) -> None:
         assert NeonFlicker.theme_filter == "dark"
 
-    def test_update_returns_non_empty(self) -> None:
-        anim = _make(NeonFlicker)
-        result = _update(anim)
-        assert len(result) > 0
+    def test_same_seed_reproduces_first_frame(self) -> None:
+        first = _update(_make(NeonFlicker), 0)
+        second = _update(_make(NeonFlicker), 0)
 
-    def test_update_values_are_hex_strings(self) -> None:
-        anim = _make(NeonFlicker)
-        result = _update(anim)
-        for v in result.values():
-            assert isinstance(v, str)
-            assert v.startswith("#")
+        assert first == second
 
-    def test_lazy_init_on_first_update(self) -> None:
+    def test_consecutive_frames_shift_letter_intensities(self) -> None:
         anim = _make(NeonFlicker)
-        assert not anim._initialized
-        _update(anim)
-        assert anim._initialized
 
-    def test_subsequent_updates_no_reinit(self) -> None:
-        anim = _make(NeonFlicker)
-        _update(anim, 0)
-        main_color = anim._main_color
-        _update(anim, 1)
-        assert anim._main_color == main_color
+        assert _update(anim, 0) != _update(anim, 1)
+
+    def test_update_covers_all_big_letter_pixels(self) -> None:
+        result = _update(_make(NeonFlicker), 0)
+
+        assert len(result) == _big_letter_pixel_count()
+        assert len(set(result.values())) > 1
 
 
 class TestPlasma:
-    def test_update_returns_non_empty(self) -> None:
-        anim = _make(Plasma)
-        result = _update(anim)
-        assert len(result) > 0
+    def test_same_seed_reproduces_first_frame(self) -> None:
+        first = _update(_make(Plasma), 0)
+        second = _update(_make(Plasma), 0)
 
-    def test_update_values_are_hex_strings(self) -> None:
-        anim = _make(Plasma)
-        result = _update(anim)
-        for v in result.values():
-            assert isinstance(v, str)
-            assert v.startswith("#")
+        assert first == second
 
-    def test_lazy_init(self) -> None:
+    def test_frames_change_color_field_over_time(self) -> None:
         anim = _make(Plasma)
-        assert anim._params is None
-        _update(anim)
-        assert anim._params is not None
+
+        assert _update(anim, 0) != _update(anim, 10)
+
+    def test_update_covers_all_big_letter_pixels(self) -> None:
+        result = _update(_make(Plasma), 0)
+
+        assert len(result) == _big_letter_pixel_count()
+        assert all(isinstance(value, str) and value.startswith("#") for value in result.values())
 
 
 class TestGlitch:
-    def test_update_returns_non_empty(self) -> None:
-        anim = _make(Glitch)
-        result = _update(anim)
-        assert len(result) > 0
+    def test_burst_frame_contains_corruption_colors(self) -> None:
+        result = _update(_make(Glitch), 0)
 
-    def test_lazy_init(self) -> None:
-        anim = _make(Glitch)
-        assert anim._params is None
-        _update(anim)
-        assert anim._params is not None
+        assert "#ffffff" in result.values()
+        assert len(set(result.values())) > 1
 
-    def test_burst_window_produces_glitch_colors(self) -> None:
-        anim = _make(Glitch)
-        _update(anim)  # init
-        # Frame 0 is within burst window (0 % 12 < 3) with sufficient rng
-        result = _update(anim, 0)
-        # At least some pixels should be present
-        assert len(result) > 0
+    def test_non_burst_frame_settles_to_single_base_color(self) -> None:
+        result = _update(_make(Glitch), 5)
+
+        assert len(set(result.values())) == 1
 
 
 class TestEQBars:
-    def test_update_returns_non_empty(self) -> None:
-        anim = _make(EQBars)
-        result = _update(anim)
-        assert len(result) > 0
+    def test_update_covers_all_big_letter_pixels(self) -> None:
+        result = _update(_make(EQBars), 0)
 
-    def test_lazy_init(self) -> None:
-        anim = _make(EQBars)
-        assert anim._params is None
-        _update(anim)
-        assert anim._params is not None
+        assert len(result) == _big_letter_pixel_count()
 
-    def test_gradient_lut_populated(self) -> None:
-        anim = _make(EQBars)
-        _update(anim)
-        assert len(anim._gradient_lut) > 0
+    def test_update_contains_dark_and_lit_bars(self) -> None:
+        result = _update(_make(EQBars), 0)
+        values = set(result.values())
 
-    def test_dark_pixels_present(self) -> None:
+        assert "#080808" in values
+        assert len(values) > 1
+
+    def test_frames_change_column_levels(self) -> None:
         anim = _make(EQBars)
-        result = _update(anim, 0)
-        # Below the bar level, pixels should be dark
-        dark_pixels = [v for v in result.values() if v == "#080808"]
-        assert len(dark_pixels) > 0
+
+        assert _update(anim, 0) != _update(anim, 10)
 
 
 class TestLavaLamp:
-    def test_update_returns_non_empty(self) -> None:
-        anim = _make(LavaLamp)
-        result = _update(anim)
-        assert len(result) > 0
+    def test_update_covers_all_big_letter_pixels(self) -> None:
+        result = _update(_make(LavaLamp), 0)
 
-    def test_lazy_init(self) -> None:
-        anim = _make(LavaLamp)
-        assert anim._blobs is None
-        _update(anim)
-        assert anim._blobs is not None
+        assert len(result) == _big_letter_pixel_count()
 
-    def test_num_blobs(self) -> None:
-        anim = _make(LavaLamp)
-        _update(anim)
-        assert len(anim._blobs) == LavaLamp._NUM_BLOBS
+    def test_update_contains_background_and_blob_colors(self) -> None:
+        result = _update(_make(LavaLamp), 0)
+        values = set(result.values())
 
-    def test_background_color_for_empty_pixels(self) -> None:
+        assert "#050512" in values
+        assert len(values) > 1
+
+    def test_frames_shift_visible_blob_mix(self) -> None:
         anim = _make(LavaLamp)
-        result = _update(anim, 0)
-        # Some pixels should have background color
-        bg_pixels = [v for v in result.values() if v == "#050512"]
-        assert len(bg_pixels) > 0
+
+        assert _update(anim, 0) != _update(anim, 10)
 
 
 class TestColorSweep:
     def test_theme_filter_dark(self) -> None:
         assert ColorSweep.theme_filter == "dark"
 
-    def test_update_returns_dict(self) -> None:
-        anim = _make(ColorSweep)
-        result = anim.update(0)
-        assert isinstance(result, dict)
+    def test_same_seed_reproduces_first_frame(self) -> None:
+        first = _update(_make(ColorSweep), 0)
+        second = _update(_make(ColorSweep), 0)
 
-    def test_lazy_init(self) -> None:
-        anim = _make(ColorSweep)
-        assert anim._params is None
-        anim.update(0)
-        assert anim._params is not None
+        assert first == second
 
-    def test_direction_is_valid(self) -> None:
+    def test_first_frame_lights_only_subset_of_letters(self) -> None:
+        result = _update(_make(ColorSweep), 0)
+
+        assert 0 < len(result) < _big_letter_pixel_count()
+
+    def test_lit_region_moves_over_time(self) -> None:
         anim = _make(ColorSweep)
-        anim.update(0)
-        valid_dirs = {"lr", "rl", "tb", "bt", "diag_dr", "diag_dl", "radial"}
-        assert anim._params["direction"] in valid_dirs
+
+        assert _update(anim, 0) != _update(anim, 10)
 
 
 class TestLaserScan:
     def test_theme_filter_dark(self) -> None:
         assert LaserScan.theme_filter == "dark"
 
-    def test_update_returns_non_empty(self) -> None:
-        anim = _make(LaserScan)
-        result = _update(anim)
-        assert len(result) > 0
+    def test_update_covers_all_big_letter_pixels(self) -> None:
+        result = _update(_make(LaserScan), 0)
 
-    def test_lazy_init_sets_glow(self) -> None:
-        anim = _make(LaserScan)
-        assert anim._glow is None
-        _update(anim)
-        assert anim._glow is not None
-        assert anim._glow.startswith("#")
+        assert len(result) == _big_letter_pixel_count()
 
-    def test_white_hot_core_at_beam(self) -> None:
+    def test_scanning_frame_contains_white_hot_core(self) -> None:
+        result = _update(_make(LaserScan), 2)
+
+        assert "#ffffff" in result.values()
+
+    def test_beam_position_changes_visible_colors(self) -> None:
         anim = _make(LaserScan)
-        _update(anim)  # init
-        result = _update(anim, 0)
-        # Some pixels should be white (core)
-        white_pixels = [v for v in result.values() if v == "#ffffff"]
-        # White core may or may not exist depending on beam position
-        assert isinstance(white_pixels, list)
+
+        assert _update(anim, 0) != _update(anim, 2)

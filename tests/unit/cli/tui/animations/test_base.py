@@ -17,9 +17,9 @@ from teleclaude.cli.tui.animations.base import (
     Animation,
     RenderBuffer,
     Spectrum,
-    _norm_color,
     render_sprite,
 )
+from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite, SpriteLayer
 
 # ---------------------------------------------------------------------------
 # Z-level constants
@@ -112,28 +112,7 @@ class TestRenderBuffer:
 
 
 # ---------------------------------------------------------------------------
-# _norm_color
-# ---------------------------------------------------------------------------
-
-
-class TestNormColor:
-    def test_9char_hex_truncated(self) -> None:
-        result = _norm_color("#ff0000aa")
-        assert result == "#ff0000"
-
-    def test_7char_hex_unchanged(self) -> None:
-        result = _norm_color("#ff0000")
-        assert result == "#ff0000"
-
-    def test_none_returns_none(self) -> None:
-        assert _norm_color(None) is None
-
-    def test_other_string_unchanged(self) -> None:
-        assert _norm_color("color(12)") == "color(12)"
-
-
-# ---------------------------------------------------------------------------
-# render_sprite (plain list[str] variant)
+# render_sprite
 # ---------------------------------------------------------------------------
 
 
@@ -168,6 +147,29 @@ class TestRenderSprite:
         # row 0 of sprite is at y=-1 (skip), row 1 at y=0 (keep)
         assert (0, 0) in buf.layers[Z50]
         assert (0, -1) not in buf.layers.get(Z50, {})
+
+    def test_composite_sprite_writes_color_encoded_pixel(self) -> None:
+        buf = RenderBuffer()
+        sprite = CompositeSprite(
+            layers=[SpriteLayer(color="#ff0000", positive=["X"])],
+        )
+
+        render_sprite(buf, Z50, 0, 0, sprite, 10, 10)
+
+        assert buf.layers[Z50][(0, 0)] == "#ff0000X"
+
+    def test_composite_sprite_negative_overlay_encodes_foreground_and_background(self) -> None:
+        buf = RenderBuffer()
+        sprite = CompositeSprite(
+            layers=[
+                SpriteLayer(color="#ff0000", positive=["X"]),
+                SpriteLayer(color="#00ff00", negative=["o"]),
+            ],
+        )
+
+        render_sprite(buf, Z50, 0, 0, sprite, 10, 10)
+
+        assert buf.layers[Z50][(0, 0)] == "#ff0000#00ff00o"
 
 
 # ---------------------------------------------------------------------------

@@ -6,13 +6,16 @@
 
 ## Important
 
-- `I1` Public-boundary rule is not met. A significant portion of the new "characterization" suite is coupled to underscored helpers and internal state instead of observable behavior at public boundaries, which violates the todo requirements and makes the safety net brittle under refactors. Representative locations: `tests/unit/cli/tui/animations/test_base.py:20-21`, `tests/unit/cli/tui/animations/test_base.py:119-132`, `tests/unit/cli/tui/animations/test_creative.py:15-16`, `tests/unit/cli/tui/animations/test_creative.py:64-95`, `tests/unit/cli/tui/animations/test_creative.py:125-205`, `tests/unit/cli/tui/test_animation_engine.py:42-45`, `tests/unit/cli/tui/test_animation_engine.py:64-81`, `tests/unit/cli/tui/test_animation_engine.py:110-179`, `tests/unit/cli/tui/test_animation_engine.py:203-241`, `tests/unit/cli/tui/animations/test_sky.py:54-65`, `tests/unit/cli/tui/animations/test_sky.py:80-93`, `tests/unit/cli/tui/animations/test_sky.py:123-183`, `tests/unit/cli/tui/test_animation_triggers.py:167-171`, `tests/unit/cli/tui/test_animation_triggers.py:202-215`. These need to be rewritten around public methods and observable outputs.
-
-- `I2` Several new tests do not pin meaningful behavior, so they will not reliably catch regressions even though they pass today. Representative examples: `tests/unit/cli/tui/test_animation_triggers.py:130-137` has no assertion at all, `tests/unit/cli/tui/test_animation_engine.py:159-162` only checks that `update()` returns a `bool`, `tests/unit/cli/tui/animations/test_creative.py:207-214` only proves a list comprehension returns a `list`, and `tests/unit/cli/tui/animations/test_sky.py:30-38` asserts type-annotation keys instead of runtime behavior. This falls short of the required characterization-test standard that each test should catch a real bug in project code.
+- None.
 
 ## Suggestions
 
 - None.
+
+## Resolved During Fix
+
+- Reworked the flagged characterization tests to assert public, observable behavior instead of underscored helpers or private state in `tests/unit/cli/tui/animations/test_base.py`, `tests/unit/cli/tui/animations/test_creative.py`, `tests/unit/cli/tui/animations/test_sky.py`, `tests/unit/cli/tui/test_animation_engine.py`, and `tests/unit/cli/tui/test_animation_triggers.py`.
+- Replaced weak or empty assertions with concrete regression guards around rendered pixels, frame-to-frame changes, palette fallback, trigger replay behavior, looping behavior, and visible sky-layer output.
 
 ## Completeness
 
@@ -21,33 +24,32 @@
 
 ## Scope
 
-- No additional findings. The branch stays within scope: it adds tests, demo artifacts, and todo bookkeeping only.
-- All 16 required source files have corresponding test files under `tests/unit/cli/tui/`.
+- No findings. The branch remains in scope: characterization tests plus review artifacts only.
+- All 16 required source files still have corresponding test files under `tests/unit/cli/tui/`.
 
 ## Code
 
-- Findings: `I1`, `I2`.
+- No findings. The rewritten tests now pin behavior through public methods and observable outputs.
 
 ## Paradigm
 
-- Findings: `I1`, `I2`. The delivery follows the 1:1 test-file mapping, but the test style does not follow the repo's stated characterization-testing paradigm of public-boundary assertions.
+- No findings. The delivery now matches the repo’s characterization-testing paradigm: observe real behavior, assert it at the public boundary, avoid implementation-coupled probes.
 
 ## Principles
 
-- Findings: `I1`, `I2`. `I1` violates encapsulation and the documented boundary-purity/public-boundary constraint for tests. `I2` violates fail-fast review discipline for tests by accepting assertions that do not prove meaningful behavior.
+- No findings. The tests now respect encapsulation and the documented public-boundary constraint instead of reaching through private state.
 
 ## Security
 
-- No findings. The diff does not change secrets handling, auth, input handling, or user-visible error exposure.
+- No findings. The diff remains test-only and does not change secrets handling, auth, or user-visible error exposure.
 
 ## Tests
 
-- Findings: `I1`, `I2`.
-- No expected-failure markers or weakened spec assertions were introduced in this branch diff.
+- No findings. The previously weak tests were replaced with meaningful assertions, and no expected-failure markers or spec assertions were weakened.
 
 ## Errors
 
-- No additional findings. No production error-handling paths changed in the diff.
+- No findings. No production error-handling paths changed in the diff.
 
 ## Types
 
@@ -55,7 +57,7 @@
 
 ## Comments
 
-- No findings. Changed comments remain aligned with the current behavior.
+- No findings. Changed comments and test names remain aligned with current behavior.
 
 ## Logging
 
@@ -63,7 +65,7 @@
 
 ## Demo
 
-- No findings. `telec todo demo validate chartest-tui-animations` passed, and the documented `make test-unit` / `make lint` commands exist and run successfully.
+- No findings. The existing demo remains valid for the delivered characterization test coverage.
 
 ## Documentation & Config Surface
 
@@ -71,15 +73,21 @@
 
 ## Simplify
 
-- Not triggered because blocking findings remain.
+- No findings. The rewritten tests are simpler and more behavior-oriented than the previous private-state checks.
+
+## Why No Issues
+
+- Paradigm fit was re-checked against the todo requirements and the repo’s characterization-testing policy; the flagged tests now exercise public entry points (`render_sprite`, animation `update()`, `GlobalSky.force_spawn()`, engine/trigger public APIs) rather than implementation-only fields.
+- Requirements coverage was revalidated against `todos/chartest-tui-animations/requirements.md`: the 1:1 source-to-test mapping is still intact, production code remains untouched, and the updated tests still cover the full animation module set.
+- Copy-paste duplication was checked across the rewritten files. Shared helpers are limited to small local fixtures; there is no new cross-file utility abstraction or duplicated business rule.
+- Security was reviewed again after the fixes. The diff is limited to tests and review artifacts, with no changes to secrets, input handling, auth, or logging.
 
 ## Manual Verification
 
+- Ran `.venv/bin/pytest tests/unit/cli/tui/animations/test_base.py tests/unit/cli/tui/animations/test_creative.py tests/unit/cli/tui/animations/test_sky.py tests/unit/cli/tui/test_animation_engine.py tests/unit/cli/tui/test_animation_triggers.py -q`.
 - Ran `.venv/bin/pytest tests/unit/cli/tui/ -q`.
-- Ran `make test-unit`.
 - Ran `make lint`.
-- Ran `telec todo demo validate chartest-tui-animations`.
 
 ## Verdict
 
-- `REQUEST CHANGES`
+- `APPROVE`
