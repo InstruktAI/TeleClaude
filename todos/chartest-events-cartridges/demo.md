@@ -2,11 +2,27 @@
 
 ## Validation
 
-<!-- Bash code blocks that prove the feature works. -->
-<!-- Blocks are validated by `telec todo demo validate chartest-events-cartridges` (structural check) during build. -->
-<!-- Execution (`telec todo demo run chartest-events-cartridges`) happens on main after merge. -->
+```bash
+./.venv/bin/python -m pytest tests/unit/events/cartridges/ -q --tb=short
+```
+
+```bash
+./.venv/bin/python -m pytest tests/unit/events/cartridges/test_classification.py tests/unit/events/cartridges/test_trust.py tests/unit/events/cartridges/test_dedup.py -v --tb=short
+```
 
 ## Guided Presentation
 
-<!-- Walk through the delivery step by step. For each step: what to do, what to observe, why it matters. -->
-<!-- The AI presenter reads this top-to-bottom and executes. Write it as a continuous sequence. -->
+Eight cartridges now have characterization test coverage. The test suite proves current
+behavior at public boundaries, providing a safety net for future refactoring.
+
+Run all cartridge tests to observe coverage:
+
+```bash
+./.venv/bin/python -m pytest tests/unit/events/cartridges/ -v --tb=short
+```
+
+Check the test count:
+
+```bash
+./.venv/bin/python -m pytest tests/unit/events/cartridges/ --collect-only -q
+```
