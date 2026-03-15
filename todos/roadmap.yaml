@@ -51,8 +51,6 @@
   group: chartest
 - slug: chartest-api-routes
   group: chartest
-- slug: chartest-api-server
-  group: chartest
 - slug: chartest-hooks
   group: chartest
 - slug: chartest-events-core
