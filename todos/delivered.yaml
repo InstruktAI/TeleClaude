@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: chartest-core-models
+  date: '2026-03-15'
+  commit: 462e1cef324c
 - slug: chartest-core-tmux
   date: '2026-03-15'
   commit: e0180c7c96b1

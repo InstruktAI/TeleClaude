@@ -53,8 +53,6 @@
   group: chartest
 - slug: chartest-core-adapter-client
   group: chartest
-- slug: chartest-core-models
-  group: chartest
 - slug: chartest-adapters-telegram
   group: chartest
 - slug: chartest-adapters-discord
