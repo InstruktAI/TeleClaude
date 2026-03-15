@@ -12,9 +12,9 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/adapters/ui_adapter.py` → `tests/unit/adapters/test_ui_adapter.py`
-- [ ] Characterize `teleclaude/adapters/ui/output_delivery.py` → `tests/unit/adapters/ui/test_output_delivery.py`
-- [ ] Characterize `teleclaude/adapters/ui/threaded_output.py` → `tests/unit/adapters/ui/test_threaded_output.py`
-- [ ] Characterize `teleclaude/adapters/qos/output_scheduler.py` → `tests/unit/adapters/qos/test_output_scheduler.py`
-- [ ] Characterize `teleclaude/adapters/qos/policy.py` → `tests/unit/adapters/qos/test_policy.py`
-- [ ] Characterize `teleclaude/adapters/whatsapp_adapter.py` → `tests/unit/adapters/test_whatsapp_adapter.py`
+- [x] Characterize `teleclaude/adapters/ui_adapter.py` → `tests/unit/adapters/test_ui_adapter.py`
+- [x] Characterize `teleclaude/adapters/ui/output_delivery.py` → `tests/unit/adapters/ui/test_output_delivery.py`
+- [x] Characterize `teleclaude/adapters/ui/threaded_output.py` → `tests/unit/adapters/ui/test_threaded_output.py`
+- [x] Characterize `teleclaude/adapters/qos/output_scheduler.py` → `tests/unit/adapters/qos/test_output_scheduler.py`
+- [x] Characterize `teleclaude/adapters/qos/policy.py` → `tests/unit/adapters/qos/test_policy.py`
+- [x] Characterize `teleclaude/adapters/whatsapp_adapter.py` → `tests/unit/adapters/test_whatsapp_adapter.py`
