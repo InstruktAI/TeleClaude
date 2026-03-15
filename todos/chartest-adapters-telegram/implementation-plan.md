@@ -12,9 +12,9 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/adapters/telegram_adapter.py` → `tests/unit/adapters/test_telegram_adapter.py`
-- [ ] Characterize `teleclaude/adapters/telegram/callback_handlers.py` → `tests/unit/adapters/telegram/test_callback_handlers.py`
-- [ ] Characterize `teleclaude/adapters/telegram/channel_ops.py` → `tests/unit/adapters/telegram/test_channel_ops.py`
-- [ ] Characterize `teleclaude/adapters/telegram/input_handlers.py` → `tests/unit/adapters/telegram/test_input_handlers.py`
-- [ ] Characterize `teleclaude/adapters/telegram/message_ops.py` → `tests/unit/adapters/telegram/test_message_ops.py`
-- [ ] Characterize `teleclaude/adapters/telegram/private_handlers.py` → `tests/unit/adapters/telegram/test_private_handlers.py`
+- [x] Characterize `teleclaude/adapters/telegram_adapter.py` → `tests/unit/adapters/test_telegram_adapter.py`
+- [x] Characterize `teleclaude/adapters/telegram/callback_handlers.py` → `tests/unit/adapters/telegram/test_callback_handlers.py`
+- [x] Characterize `teleclaude/adapters/telegram/channel_ops.py` → `tests/unit/adapters/telegram/test_channel_ops.py`
+- [x] Characterize `teleclaude/adapters/telegram/input_handlers.py` → `tests/unit/adapters/telegram/test_input_handlers.py`
+- [x] Characterize `teleclaude/adapters/telegram/message_ops.py` → `tests/unit/adapters/telegram/test_message_ops.py`
+- [x] Characterize `teleclaude/adapters/telegram/private_handlers.py` → `tests/unit/adapters/telegram/test_private_handlers.py`
