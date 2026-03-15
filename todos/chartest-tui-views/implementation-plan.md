@@ -17,7 +17,7 @@ Commit after completing each file's characterization tests.
 - [x] Characterize `teleclaude/cli/tui/views/config.py` → `tests/unit/cli/tui/views/test_config.py`
 - [x] Characterize `teleclaude/cli/tui/views/config_editing.py` → `tests/unit/cli/tui/views/test_config_editing.py`
 - [x] Characterize `teleclaude/cli/tui/views/config_render.py` → `tests/unit/cli/tui/views/test_config_render.py`
-- [ ] Characterize `teleclaude/cli/tui/views/interaction.py` → `tests/unit/cli/tui/views/test_interaction.py`
+- [x] Characterize `teleclaude/cli/tui/views/interaction.py` → `tests/unit/cli/tui/views/test_interaction.py`
 - [ ] Characterize `teleclaude/cli/tui/views/jobs.py` → `tests/unit/cli/tui/views/test_jobs.py`
 - [ ] Characterize `teleclaude/cli/tui/views/preparation.py` → `tests/unit/cli/tui/views/test_preparation.py`
 - [ ] Characterize `teleclaude/cli/tui/views/preparation_actions.py` → `tests/unit/cli/tui/views/test_preparation_actions.py`
