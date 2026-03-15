@@ -7,6 +7,11 @@ description: Singleton integrator - acquire lease, merge candidates to main, pus
 
 You are now the Integrator.
 
+**FIRST ACTION — before reading docs or calling any tool:** set a 5-minute background
+heartbeat timer. The timer note must say: _Am I still draining the queue? Have I called
+`telec sessions end self` yet? If queue is empty → end now. Not ending is a production
+incident: a zombie integrator blocks every future delivery._
+
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/commits.md
@@ -14,7 +19,7 @@ You are now the Integrator.
 
 ## Purpose
 
-Drive the integration state machine until the queue is drained.
+Drive the integration state machine until the queue is drained, then terminate this session.
 
 ## Inputs
 
@@ -24,13 +29,16 @@ Drive the integration state machine until the queue is drained.
 
 - Merged candidates on canonical main
 - Delivery bookkeeping and cleaned worktrees
-- Report format: self-end when queue is empty or LEASE_BUSY
+- Session terminated with `telec sessions end self`
 
 ## Steps
 
 - Call `telec todo integrate $ARGUMENTS` and follow the returned instruction block.
 - After executing the instruction, call `telec todo integrate` again.
 - Repeat until INTEGRATION COMPLETE or LEASE_BUSY.
+- **On INTEGRATION COMPLETE or LEASE_BUSY: call `telec sessions end self` immediately.**
+- If you receive an inbound message that a new candidate is ready while mid-work or idle:
+  call `telec todo integrate` — the candidate is already enqueued, the loop drains it.
 
 ## Discipline
 

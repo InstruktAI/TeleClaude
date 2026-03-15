@@ -260,23 +260,49 @@ async def spawn_integrator_session(
     """Spawn or wake the singleton integrator session.
 
     Checks if an integrator session is already running via the DB directly.
-    If not, spawns one using the internal CommandService (no CLI subprocess).
-    The integrator drains the durable queue itself, so the wake-up command
-    stays generic and does not target a specific slug. If one is already
-    running, the candidate is already queued and the running integrator will
-    drain it.
+    If one is running, sends it a message to process the new candidate — whether
+    the session is legitimately mid-work or a zombie that failed to self-terminate.
+    If none is running, spawns a fresh integrator.
 
-    Returns session info dict on spawn, or None if integrator already active.
+    Returns session info dict on spawn, or None if integrator was notified.
     """
     from teleclaude.constants import JobRole, SlashCommand
     from teleclaude.core.command_registry import get_command_service
     from teleclaude.core.db import db
+    from teleclaude.core.origins import InputOrigin
+    from teleclaude.types.commands import ProcessMessageCommand
 
-    # Guard: skip spawn if an integrator session is already active.
+    # If an integrator session is already active, wake it with a message instead of
+    # spawning a duplicate. This handles both the mid-work case and zombie sessions
+    # that failed to call `telec sessions end self`.
     try:
         sessions = await db.list_sessions()
-        if any(s.session_metadata and s.session_metadata.job == JobRole.INTEGRATOR for s in sessions):
-            logger.info("Integrator session already running; candidate %s queued for drain", slug)
+        integrator_session = next(
+            (s for s in sessions if s.session_metadata and s.session_metadata.job == JobRole.INTEGRATOR),
+            None,
+        )
+        if integrator_session:
+            logger.info(
+                "Integrator session %s already running; notifying of new candidate %s",
+                integrator_session.session_id[:8],
+                slug,
+            )
+            try:
+                cmd = ProcessMessageCommand(
+                    session_id=integrator_session.session_id,
+                    text=(
+                        f"New integration candidate ready: {slug} ({branch}@{sha[:8]}). "
+                        "Please run `telec todo integrate` to drain the queue."
+                    ),
+                    origin=InputOrigin.API.value,
+                )
+                await get_command_service().process_message(cmd)
+            except Exception:
+                logger.exception(
+                    "Failed to notify integrator session %s of candidate %s; candidate is queued",
+                    integrator_session.session_id[:8],
+                    slug,
+                )
             return None
     except Exception:
         logger.warning("Could not check for running integrator sessions; proceeding to spawn")
