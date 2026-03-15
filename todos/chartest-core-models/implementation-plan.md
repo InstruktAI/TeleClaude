@@ -12,7 +12,7 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/core/models/_adapter.py` → `tests/unit/core/models/test__adapter.py`
-- [ ] Characterize `teleclaude/core/models/_context.py` → `tests/unit/core/models/test__context.py`
-- [ ] Characterize `teleclaude/core/models/_session.py` → `tests/unit/core/models/test__session.py`
-- [ ] Characterize `teleclaude/core/models/_snapshot.py` → `tests/unit/core/models/test__snapshot.py`
+- [x] Characterize `teleclaude/core/models/_adapter.py` → `tests/unit/core/models/test__adapter.py`
+- [x] Characterize `teleclaude/core/models/_context.py` → `tests/unit/core/models/test__context.py`
+- [x] Characterize `teleclaude/core/models/_session.py` → `tests/unit/core/models/test__session.py`
+- [x] Characterize `teleclaude/core/models/_snapshot.py` → `tests/unit/core/models/test__snapshot.py`
