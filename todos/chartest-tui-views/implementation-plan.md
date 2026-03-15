@@ -22,7 +22,7 @@ Commit after completing each file's characterization tests.
 - [x] Characterize `teleclaude/cli/tui/views/preparation.py` → `tests/unit/cli/tui/views/test_preparation.py`
 - [x] Characterize `teleclaude/cli/tui/views/preparation_actions.py` → `tests/unit/cli/tui/views/test_preparation_actions.py`
 - [x] Characterize `teleclaude/cli/tui/views/sessions.py` → `tests/unit/cli/tui/views/test_sessions.py`
-- [ ] Characterize `teleclaude/cli/tui/views/sessions_actions.py` → `tests/unit/cli/tui/views/test_sessions_actions.py`
+- [x] Characterize `teleclaude/cli/tui/views/sessions_actions.py` → `tests/unit/cli/tui/views/test_sessions_actions.py`
 - [ ] Characterize `teleclaude/cli/tui/views/sessions_highlights.py` → `tests/unit/cli/tui/views/test_sessions_highlights.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/activity_row.py` → `tests/unit/cli/tui/widgets/test_activity_row.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/agent_badge.py` → `tests/unit/cli/tui/widgets/test_agent_badge.py`
