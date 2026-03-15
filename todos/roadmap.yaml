@@ -57,7 +57,5 @@
   group: chartest
 - slug: chartest-memory-mirrors
   group: chartest
-- slug: chartest-transport-redis
-  group: chartest
 - slug: chartest-peripherals
   group: chartest
