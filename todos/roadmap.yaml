@@ -45,8 +45,6 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: chartest-events-core
-  group: chartest
 - slug: chartest-events-cartridges
   group: chartest
 - slug: chartest-cli-telec
