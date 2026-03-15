@@ -1,0 +1,1 @@
+"""telec CLI characterization tests."""
