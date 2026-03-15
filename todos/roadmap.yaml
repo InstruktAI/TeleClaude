@@ -45,5 +45,3 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: chartest-tui-views
-  group: chartest
