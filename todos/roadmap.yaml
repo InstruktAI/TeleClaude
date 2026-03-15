@@ -45,7 +45,5 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: chartest-cli-telec
-  group: chartest
 - slug: chartest-tui-views
   group: chartest
