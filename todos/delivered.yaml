@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: chartest-tui-engine
+  date: '2026-03-15'
+  commit: 55370aeedeb5
 - slug: chartest-transport-redis
   date: '2026-03-15'
   commit: 0af39e877741

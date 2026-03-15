@@ -51,8 +51,6 @@
   group: chartest
 - slug: chartest-tui-views
   group: chartest
-- slug: chartest-tui-engine
-  group: chartest
 - slug: chartest-tui-animations
   group: chartest
 - slug: chartest-memory-mirrors
