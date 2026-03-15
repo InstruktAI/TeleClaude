@@ -12,7 +12,7 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/core/adapter_client/_channels.py` → `tests/unit/core/adapter_client/test__channels.py`
-- [ ] Characterize `teleclaude/core/adapter_client/_client.py` → `tests/unit/core/adapter_client/test__client.py`
-- [ ] Characterize `teleclaude/core/adapter_client/_output.py` → `tests/unit/core/adapter_client/test__output.py`
-- [ ] Characterize `teleclaude/core/adapter_client/_remote.py` → `tests/unit/core/adapter_client/test__remote.py`
+- [x] Characterize `teleclaude/core/adapter_client/_channels.py` → `tests/unit/core/adapter_client/test__channels.py`
+- [x] Characterize `teleclaude/core/adapter_client/_client.py` → `tests/unit/core/adapter_client/test__client.py`
+- [x] Characterize `teleclaude/core/adapter_client/_output.py` → `tests/unit/core/adapter_client/test__output.py`
+- [x] Characterize `teleclaude/core/adapter_client/_remote.py` → `tests/unit/core/adapter_client/test__remote.py`
