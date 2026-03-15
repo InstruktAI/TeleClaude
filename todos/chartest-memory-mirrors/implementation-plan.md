@@ -12,7 +12,7 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/memory/api_routes.py` → `tests/unit/memory/test_api_routes.py`
+- [x] Characterize `teleclaude/memory/api_routes.py` → `tests/unit/memory/test_api_routes.py`
 - [ ] Characterize `teleclaude/memory/migrate_from_claude_mem.py` → `tests/unit/memory/test_migrate_from_claude_mem.py`
 - [ ] Characterize `teleclaude/memory/search.py` → `tests/unit/memory/test_search.py`
 - [ ] Characterize `teleclaude/memory/store.py` → `tests/unit/memory/test_store.py`
