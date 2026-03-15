@@ -13,7 +13,7 @@ Commit after completing each file's characterization tests.
 ## Tasks
 
 - [ ] Characterize `teleclaude/cli/telec/_run_tui.py` → `tests/unit/cli/telec/test__run_tui.py`
-- [ ] Characterize `teleclaude/cli/telec/_shared.py` → `tests/unit/cli/telec/test__shared.py`
+- [x] Characterize `teleclaude/cli/telec/_shared.py` → `tests/unit/cli/telec/test__shared.py`
 - [ ] Characterize `teleclaude/cli/telec/handlers/auth_cmds.py` → `tests/unit/cli/telec/handlers/test_auth_cmds.py`
 - [ ] Characterize `teleclaude/cli/telec/handlers/bugs.py` → `tests/unit/cli/telec/handlers/test_bugs.py`
 - [ ] Characterize `teleclaude/cli/telec/handlers/config.py` → `tests/unit/cli/telec/handlers/test_config.py`
