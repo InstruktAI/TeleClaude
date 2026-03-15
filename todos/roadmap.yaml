@@ -45,8 +45,6 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: chartest-core-agent-coord
-  group: chartest
 - slug: chartest-adapters-telegram
   group: chartest
 - slug: chartest-adapters-discord

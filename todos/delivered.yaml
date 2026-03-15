@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: chartest-core-agent-coord
+  date: '2026-03-15'
+  commit: 90c981f7426e
 - slug: chartest-core-db
   date: '2026-03-15'
   commit: 36e5aa7f448b
