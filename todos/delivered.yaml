@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: chartest-adapters-telegram
+  date: '2026-03-15'
+  commit: 13415e6849d3
 - slug: chartest-core-agent-coord
   date: '2026-03-15'
   commit: 90c981f7426e
