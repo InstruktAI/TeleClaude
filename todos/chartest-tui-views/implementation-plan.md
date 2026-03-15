@@ -29,7 +29,7 @@ Commit after completing each file's characterization tests.
 - [x] Characterize `teleclaude/cli/tui/widgets/agent_status.py` → `tests/unit/cli/tui/widgets/test_agent_status.py`
 - [x] Characterize `teleclaude/cli/tui/widgets/banner.py` → `tests/unit/cli/tui/widgets/test_banner.py`
 - [x] Characterize `teleclaude/cli/tui/widgets/box_tab_bar.py` → `tests/unit/cli/tui/widgets/test_box_tab_bar.py`
-- [ ] Characterize `teleclaude/cli/tui/widgets/computer_header.py` → `tests/unit/cli/tui/widgets/test_computer_header.py`
+- [x] Characterize `teleclaude/cli/tui/widgets/computer_header.py` → `tests/unit/cli/tui/widgets/test_computer_header.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/group_separator.py` → `tests/unit/cli/tui/widgets/test_group_separator.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/job_row.py` → `tests/unit/cli/tui/widgets/test_job_row.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/modals.py` → `tests/unit/cli/tui/widgets/test_modals.py`
