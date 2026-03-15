@@ -32,7 +32,7 @@ Commit after completing each file's characterization tests.
 - [x] Characterize `teleclaude/cli/tui/widgets/computer_header.py` → `tests/unit/cli/tui/widgets/test_computer_header.py`
 - [x] Characterize `teleclaude/cli/tui/widgets/group_separator.py` → `tests/unit/cli/tui/widgets/test_group_separator.py`
 - [x] Characterize `teleclaude/cli/tui/widgets/job_row.py` → `tests/unit/cli/tui/widgets/test_job_row.py`
-- [ ] Characterize `teleclaude/cli/tui/widgets/modals.py` → `tests/unit/cli/tui/widgets/test_modals.py`
+- [x] Characterize `teleclaude/cli/tui/widgets/modals.py` → `tests/unit/cli/tui/widgets/test_modals.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/project_header.py` → `tests/unit/cli/tui/widgets/test_project_header.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/status_bar.py` → `tests/unit/cli/tui/widgets/test_status_bar.py`
 - [ ] Characterize `teleclaude/cli/tui/widgets/telec_footer.py` → `tests/unit/cli/tui/widgets/test_telec_footer.py`
