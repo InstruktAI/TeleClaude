@@ -12,7 +12,7 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/cli/tui/views/_config_constants.py` → `tests/unit/cli/tui/views/test__config_constants.py`
+- [x] Characterize `teleclaude/cli/tui/views/_config_constants.py` → `tests/unit/cli/tui/views/test__config_constants.py`
 - [ ] Characterize `teleclaude/cli/tui/views/base.py` → `tests/unit/cli/tui/views/test_base.py`
 - [ ] Characterize `teleclaude/cli/tui/views/config.py` → `tests/unit/cli/tui/views/test_config.py`
 - [ ] Characterize `teleclaude/cli/tui/views/config_editing.py` → `tests/unit/cli/tui/views/test_config_editing.py`
