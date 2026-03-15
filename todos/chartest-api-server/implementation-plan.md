@@ -12,5 +12,5 @@ Commit after completing each file's characterization tests.
 
 ## Tasks
 
-- [ ] Characterize `teleclaude/api_models.py` → `tests/unit/test_api_models.py`
-- [ ] Characterize `teleclaude/api_server.py` → `tests/unit/test_api_server.py`
+- [x] Characterize `teleclaude/api_models.py` → `tests/unit/test_api_models.py`
+- [x] Characterize `teleclaude/api_server.py` → `tests/unit/test_api_server.py`
