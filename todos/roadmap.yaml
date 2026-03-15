@@ -51,8 +51,6 @@
   group: chartest
 - slug: chartest-core-cmd-handlers
   group: chartest
-- slug: chartest-core-adapter-client
-  group: chartest
 - slug: chartest-adapters-telegram
   group: chartest
 - slug: chartest-adapters-discord
