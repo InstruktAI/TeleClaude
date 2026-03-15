@@ -111,6 +111,85 @@ class TestDeleteObservationRoute:
 
         assert exc_info.value.status_code == 404
 
+    async def test_delete_observation_returns_id_on_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class FakeStore:
+            async def delete_observation(self, _observation_id: int) -> bool:
+                return True
+
+        monkeypatch.setattr(api_routes, "MemoryStore", FakeStore)
+
+        response = await api_routes.delete_observation(42)
+
+        assert response == {"deleted": 42}
+
+
+class TestTimelineRoute:
+    async def test_timeline_delegates_to_search_and_serializes_results(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        timeline_calls: list[tuple[int, int, int, str | None]] = []
+
+        class FakeSearch:
+            async def timeline(
+                self, anchor: int, depth_before: int, depth_after: int, project: str | None
+            ) -> list[SearchResult]:
+                timeline_calls.append((anchor, depth_before, depth_after, project))
+                return [
+                    SearchResult(
+                        id=10,
+                        title="Anchor observation",
+                        subtitle=None,
+                        type="discovery",
+                        project="alpha",
+                        narrative="Central event",
+                        facts=None,
+                        created_at="2025-01-01T00:00:00+00:00",
+                        created_at_epoch=1735689600,
+                    )
+                ]
+
+        monkeypatch.setattr(api_routes, "MemorySearch", FakeSearch)
+
+        response = await api_routes.timeline(anchor=10, depth_before=2, depth_after=3, project="alpha")
+
+        assert len(response) == 1
+        assert response[0]["id"] == 10
+        assert response[0]["title"] == "Anchor observation"
+        assert response[0]["project"] == "alpha"
+        assert timeline_calls == [(10, 2, 3, "alpha")]
+
+
+class TestBatchFetchRoute:
+    async def test_batch_fetch_delegates_to_search_and_serializes_results(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        batch_calls: list[tuple[list[int], str | None]] = []
+
+        class FakeSearch:
+            async def batch_fetch(self, ids: list[int], project: str | None) -> list[SearchResult]:
+                batch_calls.append((ids, project))
+                return [
+                    SearchResult(
+                        id=5,
+                        title="Fetched observation",
+                        subtitle=None,
+                        type="gotcha",
+                        project="beta",
+                        narrative="Fetched content",
+                        facts=["fact-a"],
+                        created_at="2025-06-01T00:00:00+00:00",
+                        created_at_epoch=1748736000,
+                    )
+                ]
+
+        monkeypatch.setattr(api_routes, "MemorySearch", FakeSearch)
+
+        response = await api_routes.batch_fetch(api_routes.BatchRequest(ids=[5, 6], project="beta"))
+
+        assert len(response) == 1
+        assert response[0]["id"] == 5
+        assert response[0]["type"] == "gotcha"
+        assert response[0]["facts"] == ["fact-a"]
+        assert batch_calls == [([5, 6], "beta")]
+
 
 class TestInjectContextRoute:
     async def test_inject_context_uses_first_project_name(self, monkeypatch: pytest.MonkeyPatch) -> None:

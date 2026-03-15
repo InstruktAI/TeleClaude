@@ -106,6 +106,21 @@ def _observation_row(row_id: int, identity_key: str | None = None) -> RowValue:
     )
 
 
+def _summary_row(row_id: int) -> RowValue:
+    return (
+        row_id,
+        "session-1",
+        "alpha",
+        "Request text",
+        "Investigated text",
+        "Learned text",
+        "Completed text",
+        "Next steps text",
+        "2025-01-01T00:00:00+00:00",
+        1735689600,
+    )
+
+
 class TestMemoryStore:
     async def test_save_observation_defaults_project_and_serializes_lists(
         self, monkeypatch: pytest.MonkeyPatch
@@ -198,3 +213,35 @@ class TestMemoryStore:
         assert session.statements[0].compile().params["id_0"] == 3
         assert session.statements[0].compile().params["id_1"] == 4
         assert session.statements[0].compile().params["project"] == "alpha"
+
+    async def test_get_recent_builds_project_filtered_query_and_converts_rows(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = FakeAsyncSession(exec_results=[FakeExecResult(rows=[_observation_row(8)])])
+        monkeypatch.setattr(store_module.db, "_session", lambda: FakeAsyncSessionContext(session))
+
+        results = await store_module.MemoryStore().get_recent("alpha", limit=10)
+
+        assert len(results) == 1
+        assert results[0].id == 8
+        assert results[0].project == "alpha"
+        assert results[0].type == "discovery"
+        params = session.statements[0].compile().params
+        assert params["project"] == "alpha"
+        assert params["limit"] == 10
+
+    async def test_get_recent_summaries_builds_project_filtered_query_and_converts_rows(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = FakeAsyncSession(exec_results=[FakeExecResult(rows=[_summary_row(3)])])
+        monkeypatch.setattr(store_module.db, "_session", lambda: FakeAsyncSessionContext(session))
+
+        results = await store_module.MemoryStore().get_recent_summaries("alpha", limit=5)
+
+        assert len(results) == 1
+        assert results[0].id == 3
+        assert results[0].project == "alpha"
+        assert results[0].request == "Request text"
+        params = session.statements[0].compile().params
+        assert params["project"] == "alpha"
+        assert params["limit"] == 5
