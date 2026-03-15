@@ -193,13 +193,43 @@ async def test_run_slash_command_unmapped_command_produces_no_metadata():
 # ---------------------------------------------------------------------------
 
 
-async def test_spawn_integrator_session_guard_returns_none_when_active():
-    """Guard branch: if an integrator session is already running, return None."""
+async def test_spawn_integrator_session_notifies_running_session():
+    """Guard branch: if an integrator session is already running, send it a ProcessMessageCommand."""
     running = MagicMock()
+    running.session_id = "dead-beef-1234"
     running.session_metadata = SessionMetadata(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value)
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[running])
     mock_svc = MagicMock()
+    mock_svc.process_message = AsyncMock()
+
+    with (
+        patch("teleclaude.core.db.db", mock_db),
+        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+    ):
+        from teleclaude.core.integration_bridge import spawn_integrator_session
+
+        result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456")
+
+    assert result is None
+    mock_svc.run_slash_command.assert_not_called()
+    mock_svc.process_message.assert_awaited_once()
+    cmd = mock_svc.process_message.call_args[0][0]
+    assert cmd.session_id == "dead-beef-1234"
+    assert "my-slug" in cmd.text
+    assert "my-branch" in cmd.text
+    assert "abc123de" in cmd.text  # first 8 chars of sha
+
+
+async def test_spawn_integrator_session_notify_failure_returns_none():
+    """If process_message raises, log and return None — candidate stays in queue."""
+    running = MagicMock()
+    running.session_id = "dead-beef-1234"
+    running.session_metadata = SessionMetadata(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value)
+    mock_db = MagicMock()
+    mock_db.list_sessions = AsyncMock(return_value=[running])
+    mock_svc = MagicMock()
+    mock_svc.process_message = AsyncMock(side_effect=RuntimeError("session gone"))
 
     with (
         patch("teleclaude.core.db.db", mock_db),
@@ -232,8 +262,8 @@ async def test_spawn_integrator_session_spawns_when_none_running():
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123")
 
     assert result is not None
-    assert result["status"] == "spawned"
-    assert result["slug"] == "my-slug"
+    assert result.get("status") == "spawned"
+    assert result.get("slug") == "my-slug"
     mock_svc.run_slash_command.assert_called_once()
 
 
@@ -254,4 +284,4 @@ async def test_spawn_integrator_session_db_error_falls_through_to_spawn():
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123")
 
     assert result is not None
-    assert result["status"] == "spawned"
+    assert result.get("status") == "spawned"
