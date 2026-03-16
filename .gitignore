@@ -13,6 +13,7 @@ tmp/
 
 # Virtual Environment
 uv.*
+!uv.lock
 .venv
 .venv/
 venv/
