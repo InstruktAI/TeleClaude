@@ -13,10 +13,9 @@ from pathlib import Path
 
 import pytest
 
-# Override the integration config path set by the top-level conftest.
-# Unit tests run against the worktree root config.yml, which always exists.
+# Ensure test config path is set (respects CI env var if already set).
 _worktree_root = Path(__file__).resolve().parents[2]
-os.environ["TELECLAUDE_CONFIG_PATH"] = str(_worktree_root / "config.yml")
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_worktree_root / "tests" / "integration" / "config.yml"))
 
 
 @pytest.fixture(autouse=True)

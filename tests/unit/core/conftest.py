@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# Point to the real config.yml that exists in the worktree root.
+# Ensure test config path is set (respects CI env var if already set).
 # This must run at module-import time (before any test imports db.py).
 _worktree_root = Path(__file__).resolve().parents[3]
-os.environ["TELECLAUDE_CONFIG_PATH"] = str(_worktree_root / "config.yml")
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_worktree_root / "tests" / "integration" / "config.yml"))
