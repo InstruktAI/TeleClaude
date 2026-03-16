@@ -12,11 +12,6 @@ jobs:
     name: Lint and Test
     runs-on: [self-hosted, macOS, ARM64]
     env:
-      # Self-hosted runner reports lowercase HOME (/Users/morriz) but APFS
-      # is case-sensitive and the real home is /Users/Morriz. Fix globally
-      # so uv, pyright, and all tools find their caches.
-      HOME: /Users/Morriz
-      UV_CACHE_DIR: /Users/Morriz/.cache/uv
       TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
       TELECLAUDE_ENV_PATH: tests/integration/.env
       INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs
@@ -24,39 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Upgrade uv to match local version
-        run: brew upgrade uv 2>/dev/null || true
-
-      - name: Verify environment
-        run: |
-          echo "HOME=$HOME"
-          echo "UV_CACHE_DIR=$UV_CACHE_DIR"
-          echo "CWD=$(pwd)"
-          uv --version
-          echo "--- Cache structure ---"
-          ls "$UV_CACHE_DIR/" 2>/dev/null || echo "cache dir missing"
-          echo "--- Transformers versions ---"
-          ls -la "$UV_CACHE_DIR/wheels-v5/pypi/transformers/" 2>/dev/null || echo "transformers not in cache"
-          echo "--- Archive dir ---"
-          ls "$UV_CACHE_DIR/archive-v0/" 2>/dev/null | wc -l
-          echo "--- id ---"
-          id
-
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci
         timeout-minutes: 5
 
       - name: Run lint
-        run: |
-          # Re-enter workspace via correct-cased path (runner CWD has lowercase
-          # /Users/morriz which breaks pyright on case-sensitive APFS).
-          cd "${HOME}/Apps/actions-runner/_work/${GITHUB_REPOSITORY#*/}/${GITHUB_REPOSITORY#*/}"
-          ./tools/lint.sh
+        run: ./tools/lint.sh
         timeout-minutes: 5
 
       - name: Run tests
-        run: |
-          cd "${HOME}/Apps/actions-runner/_work/${GITHUB_REPOSITORY#*/}/${GITHUB_REPOSITORY#*/}"
-          ./tools/test.sh
+        run: ./tools/test.sh
         timeout-minutes: 10
         continue-on-error: false
