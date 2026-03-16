@@ -28,21 +28,25 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 
 1. Read `requirements.md` to confirm intent and constraints.
 2. Read `implementation-plan.md` and identify unchecked tasks.
-3. Execute tasks sequentially:
-   - For each task, first remove the expected-failure marker from the test specification(s) the task targets, then write the implementation that makes the test pass.
+3. Determine the build mode from the nature of the work:
+   - **Spec-satisfaction (default):** Pre-written xfail test specs exist. For each task, remove the expected-failure marker, then write the implementation that makes the test pass. This is the standard RED-GREEN-REFACTOR flow.
+   - **Characterization:** The deliverable is test coverage for existing untested code (no pre-written specs). Follow the OBSERVE-ASSERT-VERIFY cycle from the testing policy. Coverage depth at meaningful public boundaries is the primary output — pin actual behavior, verify each test catches mutations, discard shallow tests that survive production faults.
+4. Execute tasks sequentially:
+   - Follow the build mode determined in step 3.
    - Commit changes for the task (one commit per task).
    - Update the task checkbox to `[x]` and include that change in the same commit.
    - Do not use `git stash`/`git stash pop`; keep the flow commit-based inside the current worktree.
    - When a test or check disagrees with the current code, do the intent-resolution work before fixing either side. Ascertain what is leading for the active objective, then fix the stale side of the mismatch.
    - When adding or updating tests, assert behavioral contracts; avoid exact wording assertions on docs/agent prose unless execution depends on that exact token.
-4. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
+5. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
 
 ## Pre-completion checklist
 
 1. All tasks in `implementation-plan.md` are `[x]`.
 2. Tests pass: `make test`.
-3. All expected-failure markers removed for in-scope test specifications.
-4. No test assertions weakened or deleted from spec-delivered tests.
+3. All expected-failure markers removed for in-scope test specifications (spec-satisfaction mode).
+4. No test assertions weakened or deleted from spec-delivered tests (spec-satisfaction mode).
+   For characterization mode: each test verified via mutation check (VERIFY step).
 5. Lint passes: `make lint`.
 6. Demo validates: `telec todo demo validate {slug}`. Confirms executable blocks exist.
    The `<!-- no-demo: reason -->` marker is reserved for pure internal refactors with zero

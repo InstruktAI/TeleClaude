@@ -213,12 +213,19 @@ Auto-remediation is appropriate when all of the following are true:
 
 1. The fix does not change requirement intent or approved scope.
 2. The fix does not introduce a new architectural decision.
-3. The fix is localized (for example: tests, typing, docs/help text, plan/demo
+3. The fix is localized (for example: typing, docs/help text, plan/demo
    consistency, straightforward bug fix in touched area).
 4. The reviewer can re-run the relevant checks and validate correctness.
 
 Do not auto-remediate when uncertainty is high, product decisions are unresolved,
 or changes require broad refactoring. Keep those findings unresolved and request
+changes.
+
+**Missing test coverage is never auto-remediated.** For new functionality, test
+specs are expected to have been delivered upfront — a gap means the spec or build
+phase fell short, not something the reviewer patches. For existing code, coverage
+is characterization work that requires the builder's implementation context
+(OBSERVE-ASSERT-VERIFY cycle). In both cases, report the finding and request
 changes.
 
 #### Bug fix review
