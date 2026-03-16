@@ -355,6 +355,7 @@ orphan-exclude = [
     "tests/unit/test_youtube_scraper.py",                     # Tests youtube scraper helpers
     "tests/unit/cli/telec/test_surface_export.py",            # Tests export_surface_markdown() in surface.py
     "tests/unit/scripts/test_release_consolidator.py",        # Tests scripts/release_consolidator.py (path mismatch)
+    "tests/unit/test_todo_from_main.py",                     # Tests create_from_main_skeleton() in todo_scaffold.py
 ]
 
 [tool.coverage.run]

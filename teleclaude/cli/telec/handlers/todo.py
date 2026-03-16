@@ -15,6 +15,7 @@ __all__ = [
     "_handle_todo",
     "_handle_todo_create",
     "_handle_todo_dump",
+    "_handle_todo_from_main",
     "_handle_todo_mark_ready",
     "_handle_todo_remove",
     "_handle_todo_split",
@@ -101,6 +102,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_split(args[1:])
     elif subcommand == "mark-ready":
         _handle_todo_mark_ready(args[1:])
+    elif subcommand == "from-main":
+        _handle_todo_from_main(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -391,3 +394,43 @@ def _handle_todo_remove(args: list[str]) -> None:
         raise SystemExit(1) from exc
 
     print(f"Removed todo: {slug}")
+
+
+def _handle_todo_from_main(args: list[str]) -> None:
+    """Handle telec todo from-main --slug <name> [--description <desc>]."""
+    from teleclaude.todo_scaffold import create_from_main_skeleton
+
+    slug: str | None = None
+    description: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--slug" and i + 1 < len(args):
+            slug = args[i + 1]
+            i += 2
+        elif arg == "--description" and i + 1 < len(args):
+            description = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "from-main"))
+            raise SystemExit(1)
+        else:
+            print(f"Unexpected argument: {arg}")
+            print(_usage("todo", "from-main"))
+            raise SystemExit(1)
+
+    if not slug:
+        print("Missing required flag: --slug <name>")
+        print(_usage("todo", "from-main"))
+        raise SystemExit(1)
+
+    project_root = str(Path.cwd())
+    try:
+        output = create_from_main_skeleton(project_root, slug, description=description)
+    except (ValueError, RuntimeError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    print(output)

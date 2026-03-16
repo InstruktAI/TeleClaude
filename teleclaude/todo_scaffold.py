@@ -428,3 +428,208 @@ def remove_todo(project_root: Path, slug: str) -> None:
     # Error only if slug is completely unknown
     if not (found_directory or found_in_roadmap or found_in_icebox or found_worktree):
         raise FileNotFoundError(f"Todo '{slug}' not found in directory, roadmap, icebox, or worktree")
+
+
+def _classify_porcelain_status(
+    status_output: str,
+) -> tuple[list[str], list[str], list[str]]:
+    """Classify git porcelain status lines into modified, untracked, deleted."""
+    modified: list[str] = []
+    untracked: list[str] = []
+    deleted: list[str] = []
+    for line in status_output.rstrip().splitlines():
+        if len(line) < 4:
+            continue
+        code = line[:2]
+        filepath = line[3:].strip()
+        if " -> " in filepath:
+            filepath = filepath.split(" -> ", 1)[1]
+        if code == "??":
+            untracked.append(filepath)
+        elif code.strip().startswith("D"):
+            deleted.append(filepath)
+        else:
+            modified.append(filepath)
+    return modified, untracked, deleted
+
+
+def _transfer_files_to_worktree(
+    project_root: Path,
+    worktree_path: Path,
+    modified: list[str],
+    untracked: list[str],
+    deleted: list[str],
+) -> None:
+    """Copy changed files from main to worktree and remove deleted files."""
+    for filepath in modified + untracked:
+        src = project_root / filepath
+        dst = worktree_path / filepath
+        if src.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dst))
+
+    for filepath in deleted:
+        dst = worktree_path / filepath
+        if dst.exists():
+            dst.unlink()
+
+
+def _clean_main_working_tree(
+    repo: object,
+    project_root: Path,
+    modified: list[str],
+    untracked: list[str],
+) -> None:
+    """Restore tracked files from HEAD and remove untracked files."""
+    for filepath in modified:
+        try:
+            clean_content = repo.git.show(f"HEAD:{filepath}")  # type: ignore[union-attr]
+            src = project_root / filepath
+            src.write_text(clean_content, encoding="utf-8")
+        except Exception:
+            pass
+
+    for filepath in untracked:
+        src = project_root / filepath
+        if src.exists():
+            src.unlink()
+            parent = src.parent
+            while parent != project_root and not any(parent.iterdir()):
+                parent.rmdir()
+                parent = parent.parent
+
+    try:
+        repo.git.reset("HEAD")  # type: ignore[union-attr]
+    except Exception:
+        pass
+
+
+def create_from_main_skeleton(
+    cwd: str,
+    slug: str,
+    *,
+    description: str | None = None,
+) -> str:
+    """Transfer uncommitted changes from main into a todo worktree for review.
+
+    Steps:
+    1. Validate preconditions (on main, has uncommitted changes)
+    2. Capture change metadata
+    3. Scaffold todo artifacts
+    4. Push scaffold to remote
+    5. Create worktree
+    6. Transfer files to worktree
+    7. Clean main working tree
+    8. Set state for review dispatch
+
+    Returns:
+        Human-readable status output with next-step instructions.
+
+    Raises:
+        ValueError: If not on main or no uncommitted changes
+        RuntimeError: If scaffold push or worktree creation fails
+    """
+    from git import Repo
+    from git.exc import InvalidGitRepositoryError
+
+    from teleclaude.core.next_machine.state_io import mark_phase, mark_ready
+    from teleclaude.core.next_machine.worktrees import (
+        _create_or_attach_worktree,
+        _decide_worktree_prep,
+        _ensure_todo_on_remote_main,
+        _prepare_worktree,
+        _write_worktree_prep_state,
+    )
+
+    # --- 5a. Validate preconditions ---
+    validate_slug(slug)
+    slug = slug.strip()
+
+    try:
+        repo = Repo(cwd)
+    except InvalidGitRepositoryError as exc:
+        raise ValueError(f"Not a git repository: {cwd}") from exc
+
+    branch = repo.active_branch.name
+    if branch != "main":
+        raise ValueError(f"from-main requires being on the main branch. Current branch: {branch}")
+
+    status_output = repo.git.status("--porcelain")
+    if not status_output.strip():
+        raise ValueError("No uncommitted changes on main. Nothing to transfer.")
+
+    # --- 5b. Capture uncommitted changes ---
+    modified_files, untracked_files, deleted_files = _classify_porcelain_status(status_output)
+    all_changed = modified_files + untracked_files + deleted_files
+
+    # Capture diff stat for requirements
+    try:
+        diff_stat = repo.git.diff("HEAD", "--stat")
+    except Exception:
+        diff_stat = f"{len(all_changed)} file(s) changed"
+
+    # --- 5c. Scaffold todo artifacts ---
+    project_root = Path(cwd)
+    todos_root = project_root / "todos"
+    slug = ensure_unique_slug(todos_root, slug)
+    todo_dir = create_todo_skeleton(project_root, slug)
+
+    # Overwrite requirements.md with context
+    desc_text = description or "See diff for details."
+    requirements_content = (
+        f"# Requirements: {slug}\n\n"
+        "## Context\n"
+        "Inline work submitted for review via `telec todo from-main`.\n\n"
+        "## Changes\n"
+        f"```\n{diff_stat}\n```\n\n"
+        "## Description\n"
+        f"{desc_text}\n\n"
+        "## Acceptance criteria\n"
+        "- Changes are correct and complete\n"
+        "- Tests cover new/changed behavior\n"
+        "- Code quality meets project standards\n"
+    )
+    _write_file(todo_dir / "requirements.md", requirements_content)
+
+    # Overwrite implementation-plan.md
+    plan_content = (
+        f"# Implementation Plan: {slug}\n\n## Tasks\n- [x] Implement changes (see worktree diff for details)\n"
+    )
+    _write_file(todo_dir / "implementation-plan.md", plan_content)
+
+    # --- 5d. Push todo scaffold to remote ---
+    pushed, push_reason = _ensure_todo_on_remote_main(cwd, slug)
+    if not pushed and push_reason not in ("already_on_remote",):
+        raise RuntimeError(f"Failed to push todo scaffold to remote: {push_reason}")
+
+    # --- 5e. Create worktree ---
+    created = _create_or_attach_worktree(cwd, slug)
+    worktree_path = project_root / WORKTREE_DIR / slug
+
+    # Run prep if needed
+    prep_decision = _decide_worktree_prep(cwd, slug, created=created)
+    if prep_decision.should_prepare:
+        _prepare_worktree(cwd, slug)
+        _write_worktree_prep_state(cwd, slug, prep_decision.inputs_digest)
+
+    # --- 5f. Transfer changes to worktree ---
+    _transfer_files_to_worktree(project_root, worktree_path, modified_files, untracked_files, deleted_files)
+
+    # --- 5g. Clean main working tree ---
+    _clean_main_working_tree(repo, project_root, modified_files, untracked_files)
+
+    # --- 5h. Set state for review dispatch ---
+    worktree_cwd = str(worktree_path)
+    mark_ready(worktree_cwd, slug)
+    mark_phase(worktree_cwd, slug, "build", "complete")
+
+    # --- 5i. Return instructions ---
+    return (
+        f"Todo created: {slug}\n"
+        f"Worktree: {WORKTREE_DIR}/{slug}/\n"
+        "\n"
+        "Next steps:\n"
+        f"  1. cd {WORKTREE_DIR}/{slug}\n"
+        '  2. git add -A && git commit -m "your commit message"\n'
+        f"  3. telec sessions run --command /next-work --args {slug} --project {cwd} --detach"
+    )

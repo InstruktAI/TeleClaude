@@ -106,4 +106,35 @@ if [ "$_subcmd" = "reset" ]; then
     done
 fi
 
+# Block commits on main (agents must use review pipeline)
+if [ "$_subcmd" = "commit" ]; then
+    _current_branch="$(_real_git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [ "$_current_branch" = "main" ] && [ "${TELECLAUDE_ALLOW_MAIN_COMMIT:-}" != "1" ]; then
+        cat >&2 <<'MSG'
+ERROR: Commits on main are blocked for agent sessions.
+Your changes must go through the review pipeline.
+
+Run:  telec todo from-main --slug <meaningful-name>
+
+This creates a worktree with your changes, scaffolds a todo,
+and prepares everything for the review cycle.
+MSG
+        exit 1
+    fi
+fi
+
+# Block pushes from main (only integrator may push)
+if [ "$_subcmd" = "push" ]; then
+    _current_branch="$(_real_git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [ "$_current_branch" = "main" ] && [ "${TELECLAUDE_ALLOW_MAIN_PUSH:-}" != "1" ]; then
+        cat >&2 <<'MSG'
+ERROR: Push from main is blocked for agent sessions.
+Only the integrator may push to remote.
+
+If you have uncommitted work, run: telec todo from-main --slug <meaningful-name>
+MSG
+        exit 1
+    fi
+fi
+
 _real_git "$@"

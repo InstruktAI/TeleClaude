@@ -531,6 +531,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "from-main": CommandDef(
+                desc="Create a reviewed todo from uncommitted changes on main",
+                args="--slug <name>",
+                flags=[
+                    _H,
+                    Flag("--slug", desc="Meaningful slug name for the todo"),
+                    Flag("--description", desc="Optional description of the changes"),
+                ],
+                notes=[
+                    "Transfers uncommitted changes from main into a worktree for review.",
+                    "Creates todo scaffold, sets state to build:complete, ready for review.",
+                    "After running, follow the printed instructions to commit and dispatch.",
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+            ),
         },
     ),
     "roadmap": CommandDef(
