@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -268,3 +268,24 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
 
     assert (10, "stale:user_prompt_submit") in delivered_calls
     assert daemon_instance._hook_outbox_stale_dropped_count == 1
+
+
+@pytest.mark.unit
+async def test_ensure_headless_session_uses_resolved_caller_role() -> None:
+    """_ensure_headless_session must pass resolve_cli_caller_role() result as human_role."""
+    daemon_instance = _TestDaemon()
+    fake_session = MagicMock()
+
+    with (
+        patch("teleclaude.daemon_hook_outbox.resolve_cli_caller_role", return_value="admin"),
+        patch("teleclaude.daemon_hook_outbox.db") as mock_db,
+        patch("teleclaude.daemon_hook_outbox.config"),
+        patch("teleclaude.daemon_hook_outbox.event_bus"),
+    ):
+        mock_db.create_headless_session = AsyncMock(return_value=fake_session)
+        result = await daemon_instance._ensure_headless_session("sess-headless", {})
+
+    assert result is fake_session
+    mock_db.create_headless_session.assert_called_once()
+    _, kwargs = mock_db.create_headless_session.call_args
+    assert kwargs["human_role"] == "admin"

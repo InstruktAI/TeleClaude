@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.session_auth import resolve_cli_caller_role
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -418,8 +419,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             agent=agent_str,
             project_path=project_path or "",
         )
-        from teleclaude.constants import HUMAN_ROLE_CUSTOMER  # pylint: disable=import-outside-toplevel
-
         session = await db.create_headless_session(
             session_id=session_id,
             computer_name=config.computer.name,
@@ -430,7 +429,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             native_log_file=str(native_log_file) if native_log_file else None,
             project_path=project_path,
             subdir=subdir,
-            human_role=HUMAN_ROLE_CUSTOMER,
+            human_role=resolve_cli_caller_role(),
         )
 
         event_bus.emit(
