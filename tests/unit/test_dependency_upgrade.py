@@ -352,7 +352,7 @@ class TestGitCommitAndPush:
         capture, captured = self._make_capture()
         with patch.object(job, "_run_command", side_effect=capture):
             job._git_commit_and_push("aggressive")
-        envs_with_vars = [kw.get("env") for _cmd, kw in captured if kw.get("env") is not None]
+        envs_with_vars = [kw["env"] for _cmd, kw in captured if kw.get("env") is not None]
         assert len(envs_with_vars) >= 3
         for env in envs_with_vars:
             assert env["TELECLAUDE_ALLOW_MAIN_COMMIT"] == "1"

@@ -1,155 +1,262 @@
-"""Characterization tests for teleclaude.chiptunes.manager."""
+"""Tests for teleclaude.chiptunes.manager — subprocess IPC client."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import json
+import os
+import socket
+import threading
+from collections.abc import Generator, Mapping
 from pathlib import Path
 
 import pytest
 
 import teleclaude.chiptunes.manager as manager_module
-from teleclaude.config.runtime_settings import ChiptunesRuntimeState
+from teleclaude.chiptunes.manager import ChiptunesManager
 
 
-class _FakeWorker:
-    instances: list[_FakeWorker] = []
+class _FakeWorkerServer:
+    """Minimal Unix socket server simulating the chiptunes worker subprocess."""
 
-    def __init__(
-        self,
-        pick_random_track: Callable[[], Path | None],
-        volume: float,
-        on_track_start: Callable[[str, str], None] | None,
-        on_state_change: Callable[[], None] | None,
-    ) -> None:
-        self.pick_random_track = pick_random_track
-        self.volume = volume
-        self.on_track_start = on_track_start
-        self.on_state_change = on_state_change
-        self.enable_calls: list[bool] = []
-        self.started_states: list[ChiptunesRuntimeState] = []
-        self.disable_calls = 0
-        self.pause_calls = 0
-        self.resume_calls = 0
-        self.command_payloads: list[Mapping[str, str]] = []
-        self.command_queue: list[tuple[str, str]] = []
-        self.is_playing = False
-        self.is_paused = False
-        self.current_track_label = ""
-        self.current_track: Path | None = None
-        self.runtime_state = ChiptunesRuntimeState()
-        _FakeWorker.instances.append(self)
+    def __init__(self, socket_path: str) -> None:
+        self._socket_path = socket_path
+        self._server: socket.socket | None = None
+        self._conn: socket.socket | None = None
+        self._received: list[Mapping[str, object]] = []
+        self._thread: threading.Thread | None = None
+        self._running = False
 
-    def enable(self, *, start_paused: bool = False) -> None:
-        self.enable_calls.append(start_paused)
+    def start(self) -> None:
+        self._running = True
+        self._server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._server.bind(self._socket_path)
+        self._server.listen(1)
+        self._server.settimeout(2.0)
+        self._thread = threading.Thread(target=self._accept_loop, daemon=True)
+        self._thread.start()
 
-    def start_from_state(self, state: ChiptunesRuntimeState) -> None:
-        self.started_states.append(state)
+    def _accept_loop(self) -> None:
+        assert self._server is not None
+        while self._running:
+            try:
+                conn, _ = self._server.accept()
+                self._conn = conn
+                self._read_loop(conn)
+            except TimeoutError:
+                continue
+            except OSError:
+                break
 
-    def disable(self) -> None:
-        self.disable_calls += 1
+    def _read_loop(self, conn: socket.socket) -> None:
+        buf = b""
+        try:
+            while self._running:
+                conn.settimeout(0.5)
+                try:
+                    data = conn.recv(4096)
+                except TimeoutError:
+                    continue
+                if not data:
+                    break
+                buf += data
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    self._received.append(json.loads(line.decode()))
+        except OSError:
+            pass
 
-    def pause(self) -> None:
-        self.pause_calls += 1
+    def send_event(self, event: Mapping[str, object]) -> None:
+        if self._conn is not None:
+            self._conn.sendall((json.dumps(event) + "\n").encode())
 
-    def resume(self) -> None:
-        self.resume_calls += 1
+    @property
+    def received(self) -> list[Mapping[str, object]]:
+        return self._received
 
-    def handle_cmd(self, payload: Mapping[str, str]) -> None:
-        self.command_payloads.append(payload)
+    def stop(self) -> None:
+        self._running = False
+        if self._conn:
+            try:
+                self._conn.close()
+            except OSError:
+                pass
+        if self._server:
+            try:
+                self._server.close()
+            except OSError:
+                pass
+        if os.path.exists(self._socket_path):
+            os.unlink(self._socket_path)
 
-    def enqueue_command(self, command_id: str, action: str) -> None:
-        self.command_queue.append((command_id, action))
 
-    def capture_runtime_state(self) -> ChiptunesRuntimeState:
-        return self.runtime_state
+@pytest.fixture()
+def fake_worker() -> Generator[_FakeWorkerServer]:
+    # Use /tmp to stay within macOS AF_UNIX path length limit (104 bytes)
+    import tempfile
+
+    fd, sock_path = tempfile.mkstemp(prefix="tc_ct_", suffix=".sock", dir="/tmp")
+    os.close(fd)
+    os.unlink(sock_path)
+    server = _FakeWorkerServer(sock_path)
+    server.start()
+    yield server
+    server.stop()
 
 
-def _make_manager(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> manager_module.ChiptunesManager:
-    _FakeWorker.instances.clear()
-    monkeypatch.setattr(manager_module, "_Worker", _FakeWorker)
-    return manager_module.ChiptunesManager(tmp_path / "music", volume=0.25)
+def _make_manager(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    socket_path: str,
+    pid_path: str | None = None,
+) -> ChiptunesManager:
+    """Create a manager patched to use a custom socket/pid path."""
+    monkeypatch.setattr(manager_module, "SOCKET_PATH", socket_path)
+    if pid_path is None:
+        pid_path = str(tmp_path / "chiptunes.pid")
+    monkeypatch.setattr(manager_module, "PID_PATH", pid_path)
+    return ChiptunesManager(tmp_path / "music", volume=0.25)
 
 
 @pytest.mark.unit
-class TestChiptunesManager:
-    def test_start_stop_and_navigation_delegate_to_worker(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+class TestChiptunesManagerIPC:
+    def test_send_cmd_delivers_json_to_socket(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        fake_worker: _FakeWorkerServer,
     ) -> None:
-        manager = _make_manager(monkeypatch, tmp_path)
-        worker = _FakeWorker.instances[-1]
+        sock_path = fake_worker._socket_path
+        manager = _make_manager(monkeypatch, tmp_path, sock_path)
+        manager._connect()
 
-        manager.start(paused=True)
-        manager.pause()
-        manager.resume()
-        manager.next_track()
-        manager.prev_track()
-        manager.enqueue_command("cmd-1", "next")
-        manager.stop()
+        manager._send_cmd({"cmd": "pause"})
+        threading.Event().wait(0.2)
 
-        assert manager.enabled is False
-        assert worker.enable_calls == [True]
-        assert worker.pause_calls == 1
-        assert worker.resume_calls == 1
-        assert worker.command_payloads == [{"cmd": "next"}, {"cmd": "prev"}]
-        assert worker.command_queue == [("cmd-1", "next")]
-        assert worker.disable_calls == 1
+        assert any(msg.get("cmd") == "pause" for msg in fake_worker.received)
+        manager._disconnect()
 
-    def test_track_properties_and_callbacks_are_forwarded(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    def test_handle_track_start_event_updates_cached_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        fake_worker: _FakeWorkerServer,
     ) -> None:
-        manager = _make_manager(monkeypatch, tmp_path)
-        worker = _FakeWorker.instances[-1]
-        worker.current_track = tmp_path / "Great_Giana_Sisters.sid"
-        worker.current_track_label = "Great Giana Sisters"
-
+        sock_path = fake_worker._socket_path
+        manager = _make_manager(monkeypatch, tmp_path, sock_path)
         started: list[tuple[str, str]] = []
-        state_changes: list[str] = []
-        manager.on_track_start = lambda track_label, sid_path: started.append((track_label, sid_path))
-        manager.on_state_change = lambda: state_changes.append("changed")
+        manager.on_track_start = lambda label, path: started.append((label, path))
 
-        manager._on_track_start("Great Giana Sisters", str(worker.current_track))
-        manager._on_state_change()
+        manager._connect()
+        threading.Event().wait(0.2)
 
-        assert manager.current_track == "Great Giana Sisters"
-        assert manager.current_sid_path == str(worker.current_track)
-        assert started == [("Great Giana Sisters", str(worker.current_track))]
-        assert state_changes == ["changed"]
+        fake_worker.send_event(
+            {
+                "event": "track_start",
+                "track": "Lazy Jones",
+                "sid_path": "/music/Lazy_Jones.sid",
+            }
+        )
+        threading.Event().wait(0.3)
 
-    def test_capture_runtime_state_updates_enabled_based_on_playback(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+        assert manager._cached_state.track_path == "/music/Lazy_Jones.sid"
+        assert manager._cached_state.playback == "playing"
+        assert started == [("Lazy Jones", "/music/Lazy_Jones.sid")]
+        manager._disconnect()
+
+    def test_handle_state_update_event_applies_full_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        fake_worker: _FakeWorkerServer,
     ) -> None:
-        manager = _make_manager(monkeypatch, tmp_path)
-        worker = _FakeWorker.instances[-1]
+        sock_path = fake_worker._socket_path
+        manager = _make_manager(monkeypatch, tmp_path, sock_path)
+        changes: list[str] = []
+        manager.on_state_change = lambda: changes.append("changed")
 
-        worker.runtime_state = ChiptunesRuntimeState(playback="playing")
-        assert manager.capture_runtime_state().playback == "playing"
+        manager._connect()
+        threading.Event().wait(0.2)
+
+        fake_worker.send_event(
+            {
+                "event": "state_update",
+                "state": {
+                    "playback": "paused",
+                    "track_path": "/music/Delta.sid",
+                    "position_seconds": 12.5,
+                    "history": ["/music/Delta.sid"],
+                    "history_index": 0,
+                },
+            }
+        )
+        threading.Event().wait(0.3)
+
+        assert manager._cached_state.playback == "paused"
+        assert manager._cached_state.track_path == "/music/Delta.sid"
+        assert manager._cached_state.position_seconds == 12.5
+        assert changes
+        manager._disconnect()
+
+    def test_disconnect_does_not_kill_worker(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        fake_worker: _FakeWorkerServer,
+    ) -> None:
+        sock_path = fake_worker._socket_path
+        pid_path = str(tmp_path / "chiptunes.pid")
+        Path(pid_path).write_text(str(os.getpid()))
+
+        manager = _make_manager(monkeypatch, tmp_path, sock_path, pid_path=pid_path)
+        manager._connect()
+        threading.Event().wait(0.1)
+
+        manager.shutdown()
+
+        assert manager._sock is None
+        assert ChiptunesManager._worker_alive()
+        manager._disconnect()
+
+
+@pytest.mark.unit
+class TestChiptunesManagerProperties:
+    def test_is_playing_reflects_cached_state(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
+        assert manager.is_playing is False
+
+        manager._cached_state.playback = "playing"
+        assert manager.is_playing is True
+
+    def test_is_paused_reflects_cached_state(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
+        manager._cached_state.playback = "paused"
+        assert manager.is_paused is True
+
+    def test_current_track_extracts_label_from_path(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
+        manager._cached_state.track_path = "/music/Great_Giana_Sisters.sid"
+        assert manager.current_track == "Great Giana Sisters"
+
+    def test_capture_runtime_state_toggles_enabled(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
+        manager._cached_state.playback = "playing"
+        state = manager.capture_runtime_state()
+        assert state.playback == "playing"
         assert manager.enabled is True
 
-        worker.runtime_state = ChiptunesRuntimeState(playback="cold")
-        assert manager.capture_runtime_state().playback == "cold"
+        manager._cached_state.playback = "cold"
+        state = manager.capture_runtime_state()
         assert manager.enabled is False
 
-    def test_pick_random_track_caches_discovery_results(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        manager = _make_manager(monkeypatch, tmp_path)
-        track = tmp_path / "music" / "track.sid"
-        calls: list[str] = []
 
-        monkeypatch.setattr(manager_module.random, "choice", lambda items: items[-1])
-        monkeypatch.setattr(manager, "_discover_tracks", lambda: calls.append("discover") or [track])
+@pytest.mark.unit
+class TestWorkerAlive:
+    def test_worker_alive_returns_true_for_own_pid(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        pid_path = str(tmp_path / "chiptunes.pid")
+        Path(pid_path).write_text(str(os.getpid()))
+        monkeypatch.setattr(manager_module, "PID_PATH", pid_path)
+        assert ChiptunesManager._worker_alive() is True
 
-        assert manager._pick_random_track() == track
-        assert manager._pick_random_track() == track
-        assert calls == ["discover"]
-
-    def test_discover_tracks_filters_rsid_files(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        music_dir = tmp_path / "music"
-        music_dir.mkdir()
-        psid = music_dir / "good.sid"
-        rsid = music_dir / "skip.sid"
-        psid.write_bytes(b"PSIDpayload")
-        rsid.write_bytes(b"RSIDpayload")
-
-        manager = _make_manager(monkeypatch, tmp_path)
-        manager._music_dir = music_dir
-
-        assert manager._discover_tracks() == [psid]
+    def test_worker_alive_returns_false_for_missing_pid(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(manager_module, "PID_PATH", str(tmp_path / "nope.pid"))
+        assert ChiptunesManager._worker_alive() is False

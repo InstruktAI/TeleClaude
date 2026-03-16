@@ -54,17 +54,23 @@ Candidate: {slug} (branch: {branch})
 The squash merge of {branch} into main encountered conflicts in trees/_integration/:
 {file_list}
 
-## Your Task
-1. Examine each conflicted file in trees/_integration/ and understand the code context
-2. Resolve all conflict markers (<<<< ==== >>>>)
-3. Stage resolved files: git -C trees/_integration add <files>
-4. Compose a commit message capturing the delivery intent (same quality as squash commit)
-5. Run: git -C trees/_integration commit -m '<your message>'
-6. Then call: telec todo integrate
+## Resolution Rules
 
-If conflicts are unresolvable, call: telec todo integrate
-(The state machine will detect no commit was made and re-prompt.
-To explicitly block the candidate, the agent must mark_blocked via queue.)
+**Cardinal rule: preserve the best of both worlds.** Never pick one side wholesale.
+Both branches contain intentional work — merge both contributions.
+
+Full procedure: `telec docs get software-development/procedure/lifecycle/integrate`
+(see CONFLICT RESOLUTION REQUIRED section)
+
+## Steps
+1. Read each conflicted file — understand the **intent** on both sides
+2. Merge both contributions (do not use `--theirs` or `--ours`)
+3. Verify: all API surface and behavior from both sides preserved
+4. Stage: git -C trees/_integration add <files>
+5. Commit with delivery-quality message noting conflict resolution
+6. Call: telec todo integrate
+
+If unresolvable, call telec todo integrate without committing.
 
 NEXT: Resolve conflicts in trees/_integration, stage, commit, then call telec todo integrate"""
 

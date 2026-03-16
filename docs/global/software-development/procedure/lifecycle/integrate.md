@@ -49,12 +49,37 @@ staged changes are ready.
 
 The squash merge encountered conflicts in the integration worktree.
 
-1. Read each conflicted file in `trees/_integration/`; understand the code on both sides.
-2. Resolve all conflict markers (`<<<<`, `====`, `>>>>`).
-3. Stage resolved files with `git -C trees/_integration add <files>`.
-4. Compose a commit message (same quality standard as squash commit).
-5. Run `git -C trees/_integration commit -m '<message>'`, then call `telec todo integrate`.
-6. If conflicts are genuinely unresolvable, call `telec todo integrate` without
+**Cardinal rule: preserve the best of both worlds.** Conflicts mean two branches
+independently evolved the same files. Neither side is "the winner." Both contain
+intentional work that must survive. Picking one side wholesale destroys the other's
+contributions — this is the #1 cause of silent regression in multi-agent workflows.
+
+**Resolution procedure:**
+
+1. Read each conflicted file in `trees/_integration/`; understand the **intent** on both sides.
+   - What feature, fix, or architectural change does each side introduce?
+   - Are the changes orthogonal (touching different concerns in the same file) or
+     genuinely contradictory (mutually exclusive designs for the same concern)?
+2. For **orthogonal changes** (the common case): merge both. If side A adds a new method
+   and side B refactors an existing one, the resolved file contains both the new method
+   and the refactored code.
+3. For **architectural conflicts** (rare): identify which design is more evolved, then
+   carry forward the features and fixes from the other side into that design. Example:
+   if side A introduced subprocess isolation and side B added playlist controls, the
+   resolution uses the subprocess architecture with the playlist features integrated.
+4. **Never resolve by choosing one side entirely.** If `git checkout --theirs` or
+   `--ours` is the resolution for a file, that is almost certainly wrong. The only
+   exception is when one side made no meaningful changes to that file (e.g., a
+   whitespace-only diff).
+5. After resolving, verify the merged file is functionally complete:
+   - Does it preserve all public API surface from both sides?
+   - Does it preserve all behavioral features (not just code) from both sides?
+   - Are tests from both sides still valid against the merged implementation?
+6. Stage resolved files with `git -C trees/_integration add <files>`.
+7. Compose a commit message (same quality standard as squash commit). In the body,
+   note which conflicts were resolved and how both sides' contributions were preserved.
+8. Run `git -C trees/_integration commit -m '<message>'`, then call `telec todo integrate`.
+9. If conflicts are genuinely unresolvable, call `telec todo integrate` without
    committing — the state machine will detect this and re-prompt.
 
 ### PUSH REJECTION RECOVERY
@@ -109,11 +134,11 @@ from the last persisted phase. No manual checkpoint editing is required.
 
 ### Automatic crash recovery
 
-| Crash point                          | What happens on re-entry                                              |
-| ------------------------------------ | --------------------------------------------------------------------- |
-| After dequeue, before merge          | Resumes at merge. No work lost.                                       |
-| After merge, before agent commits    | Re-prompts for commit. Git index (staged changes) persists on disk.   |
-| After commit, before push            | Pushes squash commit from integration worktree.                       |
-| After push rejection                 | Re-checks if integration worktree HEAD matches remote main.           |
-| During cleanup                       | Re-runs cleanup (idempotent). Missing worktrees/branches are no-ops.  |
-| After candidate delivered            | Marks integrated, resets to IDLE, loops for next candidate.           |
+| Crash point                       | What happens on re-entry                                             |
+| --------------------------------- | -------------------------------------------------------------------- |
+| After dequeue, before merge       | Resumes at merge. No work lost.                                      |
+| After merge, before agent commits | Re-prompts for commit. Git index (staged changes) persists on disk.  |
+| After commit, before push         | Pushes squash commit from integration worktree.                      |
+| After push rejection              | Re-checks if integration worktree HEAD matches remote main.          |
+| During cleanup                    | Re-runs cleanup (idempotent). Missing worktrees/branches are no-ops. |
+| After candidate delivered         | Marks integrated, resets to IDLE, loops for next candidate.          |

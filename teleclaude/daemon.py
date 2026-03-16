@@ -601,10 +601,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await self.tts_manager.shutdown()
             logger.info("TTS manager stopped")
 
-        # Stop chiptunes playback
+        # Disconnect from chiptunes worker (music keeps playing through restart)
         if hasattr(self, "chiptunes_manager"):
-            self.chiptunes_manager.stop()
-            logger.info("ChipTunes manager stopped")
+            self.chiptunes_manager.shutdown()
+            logger.info("ChipTunes manager disconnected (worker persists)")
 
         # Shutdown task registry (cancel all tracked background tasks)
         if hasattr(self, "task_registry"):

@@ -1,14 +1,15 @@
-"""Characterization tests for teleclaude.chiptunes.worker."""
+"""Tests for teleclaude.chiptunes.worker — subprocess playback worker."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
 
 import teleclaude.chiptunes.worker as worker_module
-from teleclaude.config.runtime_settings import ChiptunesRuntimeState
+from teleclaude.chiptunes.worker import _WorkerProcess
 
 
 class _ImmediateThread:
@@ -35,8 +36,9 @@ class _ImmediateThread:
 class _FakePlayer:
     instances: list[_FakePlayer] = []
 
-    def __init__(self, volume: float) -> None:
+    def __init__(self, volume: float, max_track_duration: float = 300.0) -> None:
         self.volume = volume
+        self.max_track_duration = max_track_duration
         self.play_calls: list[tuple[Path, bool, float]] = []
         self.stop_calls = 0
         self.pause_calls = 0
@@ -45,7 +47,7 @@ class _FakePlayer:
         self.is_paused = False
         self.playback_position_seconds = 0.0
         self.track_end_reason: str | None = None
-        self.on_track_end = None
+        self.on_track_end: Callable[[str | None], None] | None = None
         type(self).instances.append(self)
 
     def play(self, track: Path, *, start_paused: bool = False, start_position_seconds: float = 0.0) -> None:
@@ -76,110 +78,147 @@ def _patch_worker_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(worker_module, "ChiptunesPlayer", _FakePlayer)
 
 
-@pytest.mark.unit
-class TestWorker:
-    def test_enable_starts_first_track_and_records_history(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        _patch_worker_runtime(monkeypatch)
-        track = tmp_path / "Lazy_Jones.sid"
-        changes: list[str] = []
-        worker = worker_module._Worker(lambda: track, volume=0.4, on_state_change=lambda: changes.append("state"))
+def _make_worker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    tracks: list[Path] | None = None,
+) -> _WorkerProcess:
+    _patch_worker_runtime(monkeypatch)
+    music_dir = tmp_path / "music"
+    worker = _WorkerProcess(music_dir, volume=0.4)
+    if tracks is not None:
+        remaining = list(tracks)
+        worker._track_list = remaining
+        worker._pick_random_track = lambda: remaining.pop(0) if remaining else None
+    return worker
 
-        worker.enable(start_paused=True)
+
+@pytest.mark.unit
+class TestWorkerProcess:
+    def test_start_plays_first_track_and_emits_event(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        track = tmp_path / "Lazy_Jones.sid"
+        worker = _make_worker(monkeypatch, tmp_path, tracks=[track])
+        emitted: list[Mapping[str, object]] = []
+        worker._emit = lambda event, **kw: emitted.append({"event": event, **kw})
+        worker._enabled = True
+        worker._play_next()
 
         player = _FakePlayer.instances[-1]
-        assert worker.current_track == track
-        assert worker.current_track_label == "Lazy Jones"
-        assert player.play_calls == [(track, True, 0.0)]
-        assert worker.capture_runtime_state() == ChiptunesRuntimeState(
-            playback="paused",
-            track_path=str(track),
-            position_seconds=0.0,
-            history=[str(track)],
-            history_index=0,
-            pending_command_id="",
-            pending_action="",
-        )
-        assert changes
+        assert player.play_calls == [(track, False, 0.0)]
+        assert worker._current_track == track
+        assert any(e.get("event") == "track_start" for e in emitted)
 
-    def test_start_from_state_reloads_current_track_with_saved_position(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        _patch_worker_runtime(monkeypatch)
+    def test_start_paused_creates_paused_player(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         track = tmp_path / "Commando.sid"
-        state = ChiptunesRuntimeState(
-            playback="paused",
-            track_path=str(track),
-            position_seconds=7.25,
-            history=[str(track)],
-            history_index=0,
-        )
-        worker = worker_module._Worker(lambda: track, volume=0.4)
+        worker = _make_worker(monkeypatch, tmp_path, tracks=[track])
+        worker._emit = lambda event, **kw: None
+        worker._enabled = True
+        worker._paused_requested = True
+        worker._play_next()
 
-        worker.start_from_state(state)
+        player = _FakePlayer.instances[-1]
+        assert player.play_calls == [(track, True, 0.0)]
+
+    def test_restore_state_resumes_track_at_position(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        track = tmp_path / "Delta.sid"
+        worker = _make_worker(monkeypatch, tmp_path, tracks=[track])
+        worker._emit = lambda event, **kw: None
+        worker._restore_state(
+            {
+                "playback": "paused",
+                "track_path": str(track),
+                "position_seconds": 7.25,
+                "history": [str(track)],
+                "history_index": 0,
+            }
+        )
 
         player = _FakePlayer.instances[-1]
         assert player.play_calls == [(track, True, 7.25)]
-        assert worker.current_track == track
-        assert worker.is_paused is True
+        assert worker._current_track == track
 
-    def test_disable_stops_player_and_clears_runtime_state(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        _patch_worker_runtime(monkeypatch)
-        track = tmp_path / "Delta.sid"
-        worker = worker_module._Worker(lambda: track, volume=0.4)
-        worker.enable()
+    def test_disable_stops_player_and_clears_state(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        track = tmp_path / "Last_Ninja.sid"
+        worker = _make_worker(monkeypatch, tmp_path, tracks=[track])
+        worker._emit = lambda event, **kw: None
+        worker._enabled = True
+        worker._play_next()
         player = _FakePlayer.instances[-1]
 
-        worker.disable()
+        worker._disable()
 
         assert player.stop_calls == 1
-        assert worker.current_track is None
-        assert worker.capture_runtime_state().playback == "cold"
+        assert worker._current_track is None
+        assert worker._enabled is False
 
-    def test_pause_and_resume_delegate_to_loaded_player(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        _patch_worker_runtime(monkeypatch)
-        track = tmp_path / "Last_Ninja.sid"
-        worker = worker_module._Worker(lambda: track, volume=0.4)
-        worker.enable()
+    def test_pause_and_resume_delegate_to_player(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        track = tmp_path / "Parallax.sid"
+        worker = _make_worker(monkeypatch, tmp_path, tracks=[track])
+        worker._emit = lambda event, **kw: None
+        worker._enabled = True
+        worker._play_next()
         player = _FakePlayer.instances[-1]
         player.playback_position_seconds = 12.5
 
-        worker.pause()
-        worker.resume()
-
+        worker._do_pause()
         assert player.pause_calls == 1
+        assert worker._paused_requested is True
+
+        worker._do_resume()
         assert player.resume_calls == 1
-        assert worker.capture_runtime_state().playback == "playing"
 
-    def test_history_navigation_moves_between_previous_and_new_tracks(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        _patch_worker_runtime(monkeypatch)
+    def test_history_navigation_prev_next(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         tracks = [tmp_path / "A.sid", tmp_path / "B.sid"]
-        worker = worker_module._Worker(lambda: tracks.pop(0), volume=0.4)
-        worker.enable()
+        worker = _make_worker(monkeypatch, tmp_path, tracks=tracks)
+        worker._emit = lambda event, **kw: None
+        worker._enabled = True
+        worker._play_next()  # plays A
+        worker._play_next()  # plays B
+        worker._play_prev()  # back to A
 
-        worker.handle_cmd({"cmd": "next"})
-        worker.handle_cmd({"cmd": "prev"})
-
-        assert worker.current_track == tmp_path / "A.sid"
-        assert worker.capture_runtime_state().history == [str(tmp_path / "A.sid"), str(tmp_path / "B.sid")]
-        assert worker.capture_runtime_state().history_index == 0
+        assert worker._current_track == tmp_path / "A.sid"
+        assert worker._history_index == 0
 
     def test_track_end_auto_advances_only_for_normal_completion(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        _patch_worker_runtime(monkeypatch)
         tracks = [tmp_path / "First.sid", tmp_path / "Second.sid"]
-        worker = worker_module._Worker(lambda: tracks.pop(0), volume=0.4)
-        worker.enable()
+        worker = _make_worker(monkeypatch, tmp_path, tracks=tracks)
+        worker._emit = lambda event, **kw: None
+        worker._enabled = True
+        worker._play_next()
         current_gen = worker._playback_gen
 
         worker._on_track_end("track_completed", gen=current_gen)
-        assert worker.current_track == tmp_path / "Second.sid"
+        assert worker._current_track == tmp_path / "Second.sid"
 
         worker._on_track_end("init_failed", gen=worker._playback_gen)
-        assert worker.current_track == tmp_path / "Second.sid"
+        assert worker._current_track == tmp_path / "Second.sid"
+
+    def test_stale_generation_callback_ignored(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        tracks = [tmp_path / "One.sid", tmp_path / "Two.sid"]
+        worker = _make_worker(monkeypatch, tmp_path, tracks=tracks)
+        worker._emit = lambda event, **kw: None
+        worker._enabled = True
+        worker._play_next()
+        stale_gen = worker._playback_gen
+
+        worker._play_next()  # advances gen
+        worker._on_track_end("track_completed", gen=stale_gen)
+
+        # Should not have advanced beyond Two.sid
+        assert worker._current_track == tmp_path / "Two.sid"
+
+    def test_process_command_dispatches_json(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        track = tmp_path / "Sanxion.sid"
+        worker = _make_worker(monkeypatch, tmp_path, tracks=[track])
+        worker._emit = lambda event, **kw: None
+        worker._process_command(json.dumps({"cmd": "start"}))
+        assert worker._current_track == track
+
+        worker._process_command(json.dumps({"cmd": "pause"}))
+        player = _FakePlayer.instances[-1]
+        assert player.pause_calls == 1
+
+        worker._process_command(json.dumps({"cmd": "capture_state"}))
+        # Should not crash — emits state update
