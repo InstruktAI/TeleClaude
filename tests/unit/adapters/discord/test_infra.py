@@ -52,7 +52,8 @@ def test_resolve_parent_forum_id_prefers_parent_id_then_parent_object() -> None:
     assert adapter._resolve_parent_forum_id(SimpleNamespace(parent_id=None, parent=None)) is None
 
 
-def test_build_session_launcher_view_uses_enabled_agents_for_button_labels_and_ids() -> None:
+@pytest.mark.asyncio
+async def test_build_session_launcher_view_uses_enabled_agents_for_button_labels_and_ids() -> None:
     adapter = DummyInfrastructure()
 
     view = adapter._build_session_launcher_view()
