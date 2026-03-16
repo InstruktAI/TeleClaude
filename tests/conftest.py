@@ -101,6 +101,21 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
     yield
 
 
+@pytest.fixture(autouse=True)
+def _neutralize_launcher_binaries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent any un-mocked subprocess call from executing real macOS launcher binaries."""
+    from teleclaude.config import config as tc_config
+    from teleclaude.runtime import binaries as binaries_mod
+
+    # Neutralize already-resolved config values
+    monkeypatch.setattr(tc_config.computer, "tmux_binary", "/dev/null/tmux-NEUTERED")
+    for agent_cfg in tc_config.agents.values():
+        monkeypatch.setattr(agent_cfg, "binary", f"/dev/null/{agent_cfg.binary}-NEUTERED")
+
+    # Prevent re-resolution from returning real launcher paths
+    monkeypatch.setattr(binaries_mod, "_is_macos", lambda: False)
+
+
 # TUI Test Fixtures
 
 

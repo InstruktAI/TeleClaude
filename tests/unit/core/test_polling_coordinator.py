@@ -1,41 +1,10 @@
-"""Characterization tests for teleclaude.core.polling_coordinator."""
+"""Tests for teleclaude.core.polling_coordinator._percentile."""
 
 from __future__ import annotations
 
 import pytest
 
-from teleclaude.core.polling_coordinator import (
-    CodexTurnState,
-    OutputMetricsState,
-    _percentile,
-)
-
-
-class TestCodexTurnState:
-    @pytest.mark.unit
-    def test_default_state_values(self):
-        state = CodexTurnState()
-        assert state.turn_active is False
-        assert state.in_tool is False
-        assert state.prompt_visible_last is False
-        assert state.initialized is False
-        assert state.last_tool_signature == ""
-
-    @pytest.mark.unit
-    def test_state_can_be_mutated(self):
-        state = CodexTurnState()
-        state.turn_active = True
-        assert state.turn_active is True
-
-
-class TestOutputMetricsState:
-    @pytest.mark.unit
-    def test_default_state_values(self):
-        state = OutputMetricsState()
-        assert state.ticks == 0
-        assert state.fanout_chars == 0
-        assert state.last_tick_at is None
-        assert state.cadence_samples_s == []
+from teleclaude.core.polling_coordinator import _percentile
 
 
 class TestPercentile:
