@@ -24,6 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Upgrade uv to match local version
+        run: brew upgrade uv 2>/dev/null || true
+
       - name: Verify environment
         run: |
           echo "HOME=$HOME"
