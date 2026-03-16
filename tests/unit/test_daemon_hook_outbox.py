@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -160,11 +162,109 @@ def test_stale_user_prompt_submit_detected() -> None:
     assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is True
 
 
-def test_stale_session_start_not_detected() -> None:
-    row = _make_outbox_row("session_start", age_seconds=600)
+def test_staleness_just_under_ttl_is_not_stale() -> None:
+    """One second under TTL (299s) should NOT be stale — the check is strictly greater-than."""
+    row = _make_outbox_row("user_prompt_submit", age_seconds=299)
+    assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is False
+
+
+def test_staleness_one_second_past_ttl_is_stale() -> None:
+    row = _make_outbox_row("user_prompt_submit", age_seconds=301)
+    assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is True
+
+
+def test_stale_lifecycle_events_are_all_exempt() -> None:
+    """Every lifecycle event type in the exempt set survives staleness regardless of age."""
+    for event_type in daemon_hook_outbox.HOOK_EVENT_STALENESS_EXEMPT:
+        row = _make_outbox_row(event_type, age_seconds=600)
+        assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is False, (
+            f"{event_type} should be exempt from staleness"
+        )
+
+
+def test_stale_row_with_missing_created_at_is_not_stale() -> None:
+    row: HookOutboxRow = {
+        "id": 1,
+        "session_id": "sess-1",
+        "event_type": "user_prompt_submit",
+        "payload": "{}",
+        "created_at": None,
+        "attempt_count": 0,
+    }
     assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is False
 
 
 def test_fresh_user_prompt_submit_not_stale() -> None:
     row = _make_outbox_row("user_prompt_submit", age_seconds=10)
     assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is False
+
+
+@pytest.mark.unit
+async def test_worker_passes_paused_sessions_to_db_fetch() -> None:
+    """The worker must pass the paused-session snapshot to the DB query."""
+    daemon_instance = _TestDaemon()
+    daemon_instance.shutdown_event = asyncio.Event()
+    daemon_instance._hook_outbox_claim_paused_sessions = {"paused-sess-A", "paused-sess-B"}
+
+    captured_exclude: list[frozenset[str] | None] = []
+
+    async def fake_fetch(
+        now_iso: str,
+        limit: int,
+        lock_cutoff_iso: str,
+        exclude_session_ids: frozenset[str] | None = None,
+    ) -> list[HookOutboxRow]:
+        captured_exclude.append(exclude_session_ids)
+        # Return empty to end the iteration quickly.
+        daemon_instance.shutdown_event.set()
+        return []
+
+    with patch("teleclaude.daemon_hook_outbox.db") as mock_db:
+        mock_db.fetch_hook_outbox_batch = fake_fetch
+        await daemon_instance._hook_outbox_worker()
+
+    assert len(captured_exclude) == 1
+    assert captured_exclude[0] == frozenset({"paused-sess-A", "paused-sess-B"})
+
+
+@pytest.mark.unit
+async def test_worker_drops_stale_rows_and_increments_counter() -> None:
+    """Stale rows must be marked delivered with 'stale:{event_type}' and counted."""
+    daemon_instance = _TestDaemon()
+    daemon_instance.shutdown_event = asyncio.Event()
+
+    stale_row = _make_outbox_row("user_prompt_submit", age_seconds=400, row_id=10, session_id="sess-flood")
+    fresh_row = _make_outbox_row("session_start", age_seconds=2, row_id=20, session_id="sess-healthy")
+    iteration_count = 0
+
+    delivered_calls: list[tuple[int, str | None]] = []
+
+    async def fake_fetch(
+        now_iso: str,
+        limit: int,
+        lock_cutoff_iso: str,
+        exclude_session_ids: frozenset[str] | None = None,
+    ) -> list[HookOutboxRow]:
+        nonlocal iteration_count
+        iteration_count += 1
+        if iteration_count == 1:
+            return [stale_row, fresh_row]
+        daemon_instance.shutdown_event.set()
+        return []
+
+    async def fake_mark_delivered(row_id: int, error: str | None = None) -> None:
+        delivered_calls.append((row_id, error))
+
+    async def fake_claim_batch(row_ids: list[int], now_iso: str, lock_cutoff_iso: str) -> set[int]:
+        return set(row_ids)
+
+    with patch("teleclaude.daemon_hook_outbox.db") as mock_db:
+        mock_db.fetch_hook_outbox_batch = fake_fetch
+        mock_db.mark_hook_outbox_delivered = fake_mark_delivered
+        mock_db.claim_hook_outbox_batch = fake_claim_batch
+        # Stub enqueue to avoid real session worker spawning.
+        daemon_instance._enqueue_session_outbox_item = AsyncMock()
+        await daemon_instance._hook_outbox_worker()
+
+    assert (10, "stale:user_prompt_submit") in delivered_calls
+    assert daemon_instance._hook_outbox_stale_dropped_count == 1

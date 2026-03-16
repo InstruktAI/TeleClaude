@@ -156,8 +156,8 @@ async def test_fetch_hook_outbox_batch_excludes_specified_sessions(db: Db) -> No
 
 
 async def test_fetch_hook_outbox_batch_empty_exclusion_returns_all(db: Db) -> None:
-    await db.enqueue_hook_event("sess-A", "user_prompt_submit", {"n": 1})
-    await db.enqueue_hook_event("sess-B", "tool_use", {"n": 2})
+    id_a = await db.enqueue_hook_event("sess-A", "user_prompt_submit", {"n": 1})
+    id_b = await db.enqueue_hook_event("sess-B", "tool_use", {"n": 2})
 
     now_iso = datetime.now(UTC).isoformat()
     lock_cutoff_iso = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
@@ -169,4 +169,21 @@ async def test_fetch_hook_outbox_batch_empty_exclusion_returns_all(db: Db) -> No
         exclude_session_ids=frozenset(),
     )
 
-    assert len(batch) == 2
+    assert [row["id"] for row in batch] == [id_a, id_b]
+
+
+async def test_fetch_hook_outbox_batch_none_exclusion_returns_all(db: Db) -> None:
+    id_a = await db.enqueue_hook_event("sess-A", "user_prompt_submit", {"n": 1})
+    id_b = await db.enqueue_hook_event("sess-B", "tool_use", {"n": 2})
+
+    now_iso = datetime.now(UTC).isoformat()
+    lock_cutoff_iso = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+
+    batch = await db.fetch_hook_outbox_batch(
+        now_iso=now_iso,
+        limit=10,
+        lock_cutoff_iso=lock_cutoff_iso,
+        exclude_session_ids=None,
+    )
+
+    assert [row["id"] for row in batch] == [id_a, id_b]
