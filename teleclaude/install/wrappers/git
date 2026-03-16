@@ -118,6 +118,8 @@ Run:  telec todo from-main --slug <meaningful-name>
 
 This creates a worktree with your changes, scaffolds a todo,
 and prepares everything for the review cycle.
+
+Then run:  telec todo work <slug>
 MSG
         exit 1
     fi
@@ -132,6 +134,7 @@ ERROR: Push from main is blocked for agent sessions.
 Only the integrator may push to remote.
 
 If you have uncommitted work, run: telec todo from-main --slug <meaningful-name>
+Then run:  telec todo work <slug>
 MSG
         exit 1
     fi

@@ -20,8 +20,8 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 ## Preconditions
 
-- `todos/{slug}/requirements.md` exists (or `bug.md` for bug fixes).
-- `todos/{slug}/implementation-plan.md` exists (unless bug fix).
+- `todos/{slug}/requirements.md` exists (or `bug.md` for bug fixes). For ad-hoc items created via `telec todo from-main`, requirements and implementation plan are stubs — see "Ad-hoc items" below.
+- `todos/{slug}/implementation-plan.md` exists (unless bug fix or ad-hoc item).
 - `todos/{slug}/quality-checklist.md` exists and includes Build/Review sections (unless bug fix).
 - Build phase completed for the slug.
 
@@ -83,6 +83,13 @@ Before proceeding to lane details, verify every lane whose trigger condition is 
 section in `review-findings.md` — even if no issues were found. A lane section that
 says "No findings" proves the lane ran. A missing lane section means the review is
 incomplete — stop and execute the missing lane before writing the verdict.
+
+#### Ad-hoc items (from-main)
+
+Items created via `telec todo from-main` have stub requirements and implementation plans.
+For these items, the scope and demo lanes are not applicable — skip them and note "Ad-hoc
+review" in the findings header. All other lanes remain mandatory. The reviewer should focus
+on whether the delivered code meets project quality policies.
 
 ### 4. Lane detail reference
 
