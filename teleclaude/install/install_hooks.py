@@ -463,13 +463,14 @@ def configure_codex(repo_root: Path) -> None:
             notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
 
             if NOTIFY_KEY in config:
-                # Check if existing notify is our hook (contains receiver.py and --agent codex)
+                # Check if existing notify is our hook (contains receiver and --agent codex)
                 is_our_hook = False
-                joined = " ".join(str(part) for part in existing_notify)
                 if isinstance(existing_notify, list):
-                    has_receiver = RECEIVER_TOKEN in joined
-                    has_codex_agent = f"{AGENT_FLAG} {CODEX_AGENT}" in joined
-                    is_our_hook = has_receiver and has_codex_agent
+                    str_parts = [str(part) for part in existing_notify]
+                    has_receiver = any(RECEIVER_TOKEN in part for part in str_parts)
+                    has_agent_flag = AGENT_FLAG in str_parts
+                    has_codex_name = CODEX_AGENT in str_parts
+                    is_our_hook = has_receiver and has_agent_flag and has_codex_name
 
                 if not is_our_hook:
                     print(f"Warning: Existing notify hook in {config_path} is not ours, skipping")
