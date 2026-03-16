@@ -21,11 +21,35 @@ jobs:
       - name: Verify CLI credentials
         run: |
           errors=0
+          echo "HOME=$HOME"
+          echo "Resolved home: $(python3 -c 'from pathlib import Path; print(Path.home())')"
 
-          # Claude: macOS Keychain
+          # Claude: macOS Keychain + functional probe
           if ! security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
             echo "::error::Claude CLI credentials not found in Keychain. Run: claude login"
             errors=$((errors + 1))
+          else
+            echo "Claude keychain entry found"
+            CLAUDE_BIN="$HOME/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher"
+            if [ ! -x "$CLAUDE_BIN" ]; then
+              CLAUDE_BIN="$(which claude 2>/dev/null || true)"
+            fi
+            if [ -n "$CLAUDE_BIN" ] && [ -x "$CLAUDE_BIN" ]; then
+              echo "Claude binary: $CLAUDE_BIN"
+              PROBE=$("$CLAUDE_BIN" -p "reply ok" --output-format json --no-session-persistence \
+                --dangerously-skip-permissions --no-chrome \
+                --settings '{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": [], "disableAllHooks": true}' \
+                --tools "" 2>&1 | head -5 || true)
+              if echo "$PROBE" | grep -qi "not logged in"; then
+                echo "::error::Claude CLI credential expired or invalid. Run: claude login"
+                errors=$((errors + 1))
+              else
+                echo "Claude auth probe passed"
+              fi
+            else
+              echo "::error::Claude binary not found at $HOME/Applications/ClaudeLauncher.app or in PATH"
+              errors=$((errors + 1))
+            fi
           fi
 
           # Codex: ~/.codex/auth.json
@@ -41,7 +65,7 @@ jobs:
           fi
 
           if [ "$errors" -gt 0 ]; then
-            echo "::error::$errors CLI credential(s) missing — cannot run release analysis without OAuth"
+            echo "::error::$errors CLI credential(s) missing or invalid — cannot run release analysis without OAuth"
             exit 1
           fi
           echo "All CLI credentials verified"

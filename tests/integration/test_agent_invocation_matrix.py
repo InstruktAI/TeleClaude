@@ -50,7 +50,7 @@ def run_cli(
     prompt_file: Path | None = None,
     schema_file: Path | None = None,
     schema_json: str | None = None,
-    timeout: int = 15,
+    timeout: int = 60,
 ) -> dict[str, object]:  # guard: loose-dict - CLI JSON output is untyped
     """Invoke agent CLI and return parsed JSON."""
     if not _agent_enabled(agent):
@@ -120,13 +120,13 @@ def _assert_valid_report(
 class TestTransport:
     """CLI plumbing for all agents without tools or MCP."""
 
-    @pytest.mark.timeout(20)
+    @pytest.mark.timeout(90)
     def test_inline_arg(self, agent: str) -> None:
         """Prompt as CLI argument returns valid dogfood JSON."""
         payload = run_cli(agent, prompt=TRANSPORT_PROMPT, schema_file=SCHEMA_FILE)
         _assert_valid_report(payload, agent)
 
-    @pytest.mark.timeout(20)
+    @pytest.mark.timeout(90)
     def test_stdin_pipe(self, agent: str, tmp_path: Path) -> None:
         """Prompt piped via stdin returns valid dogfood JSON."""
         pf = tmp_path / "prompt.txt"
@@ -134,12 +134,12 @@ class TestTransport:
         payload = run_cli(agent, prompt_file=pf, schema_file=SCHEMA_FILE)
         _assert_valid_report(payload, agent)
 
-    @pytest.mark.timeout(45)
+    @pytest.mark.timeout(120)
     def test_large_payload_stdin(self, agent: str, tmp_path: Path) -> None:
         """100KB payload via stdin doesn't hit ARG_MAX."""
         filler = "x" * 100_000
         content = f"Ignore padding: {filler}\n\n{TRANSPORT_PROMPT}"
         pf = tmp_path / "large.txt"
         pf.write_text(content, encoding="utf-8")
-        payload = run_cli(agent, prompt_file=pf, schema_file=SCHEMA_FILE, timeout=30)
+        payload = run_cli(agent, prompt_file=pf, schema_file=SCHEMA_FILE, timeout=90)
         _assert_valid_report(payload, agent)
