@@ -45,9 +45,6 @@ dependencies = [
     "httpx>=0.28.0",
     "websockets>=12.0",
     "python-frontmatter>=1.1.0",
-    "sqlalchemy>=2.0.0",
-    "sqlmodel>=0.0.16",
-    "greenlet>=3.3.0",
     "elevenlabs>=2.31.0",
     "watchdog>=4.0.0",
     "pathspec>=0.12.0",
@@ -77,6 +74,7 @@ dev = [
     "pylint>=3.0.0",
     "pre-commit>=3.6.0",
     "mypy>=1.8.0",
+    "packaging>=24.0",
 ]
 
 [tool.uv.sources]
@@ -352,6 +350,7 @@ orphan-exclude = [
     "tests/unit/test_principal_inheritance.py",               # Cross-module principal inheritance behavior
     "tests/unit/test_session_token_lifecycle.py",             # Cross-module session token lifecycle
     "tests/unit/test_session_tokens.py",                      # Cross-module session token behavior
+    "tests/unit/test_dependency_upgrade.py",                   # Tests jobs/dependency_upgrade.py (path mismatch)
     "tests/unit/test_youtube_scraper.py",                     # Tests youtube scraper helpers
     "tests/unit/cli/telec/test_surface_export.py",            # Tests export_surface_markdown() in surface.py
     "tests/unit/scripts/test_release_consolidator.py",        # Tests scripts/release_consolidator.py (path mismatch)

@@ -49,6 +49,7 @@ jobs:
             errors=$((errors + 1))
           elif ! python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert d.get('oauth:tokenCache')" "$CLAUDE_CONFIG" 2>/dev/null; then
             echo "::error::Claude config exists but has no oauth:tokenCache. Run: claude login"
+            echo "Config keys: $(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(list(d.keys()))" "$CLAUDE_CONFIG" 2>&1)"
             errors=$((errors + 1))
           else
             echo "Claude OAuth token found"

@@ -6,7 +6,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CANONICAL_ROOT="{{CANONICAL_ROOT}}"
+
+# Resolve CANONICAL_ROOT at runtime by following symlinks to the real script,
+# then walking up to the repo root. The wrapper lives 4 levels deep:
+#   teleclaude/install/wrappers/gh -> repo root = ../../..
+_SOURCE="$0"
+while [ -L "$_SOURCE" ]; do
+  _DIR="$(cd "$(dirname "$_SOURCE")" && pwd)"
+  _TARGET="$(readlink "$_SOURCE")"
+  if [[ "$_TARGET" == /* ]]; then
+    _SOURCE="$_TARGET"
+  else
+    _SOURCE="$_DIR/$_TARGET"
+  fi
+done
+CANONICAL_ROOT="$(cd "$(dirname "$_SOURCE")/../../.." && pwd)"
 MARKER="TELECLAUDE_GH_MAIN_MERGE_GUARD_BLOCK"
 LOG_FILE="${HOME}/.teleclaude/logs/guardrails.log"
 

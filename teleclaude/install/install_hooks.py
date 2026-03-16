@@ -596,27 +596,32 @@ def _ensure_codex_mcp_servers(content: str, mcp_servers_spec: dict[str, dict[str
 
 
 def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
-    """Install an agent-session wrapper into ~/.teleclaude/bin from template."""
-    template_path = WRAPPER_TEMPLATE_DIR / wrapper_name
-    if not template_path.exists():
-        print(f"Warning: wrapper template missing: {template_path}")
+    """Install an agent-session wrapper as a symlink into ~/.teleclaude/bin.
+
+    Creates a symlink from ~/.teleclaude/bin/{name} -> {repo_root}/teleclaude/install/wrappers/{name}.
+    Migrates from old rendered-copy installs by replacing regular files with symlinks.
+    """
+    _ = repo_root  # kept for call-site compatibility; source path uses WRAPPER_TEMPLATE_DIR
+    source_path = WRAPPER_TEMPLATE_DIR / wrapper_name
+    if not source_path.exists():
+        print(f"Warning: wrapper source missing: {source_path}")
         return
 
     bin_dir = Path.home() / ".teleclaude" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     target_path = bin_dir / wrapper_name
 
-    template = template_path.read_text(encoding="utf-8")
-    rendered = template.replace("{{CANONICAL_ROOT}}", str(repo_root))
-    existing = target_path.read_text(encoding="utf-8") if target_path.exists() else None
-
-    if existing == rendered:
-        print(f"{wrapper_name} wrapper already configured at {target_path}")
+    # Already a correct symlink — nothing to do
+    if target_path.is_symlink() and target_path.resolve() == source_path.resolve():
+        print(f"{wrapper_name} wrapper already linked at {target_path}")
         return
 
-    target_path.write_text(rendered, encoding="utf-8")
-    target_path.chmod(0o755)
-    print(f"{wrapper_name} wrapper installed at {target_path}")
+    # Remove stale file or incorrect symlink before creating new symlink
+    if target_path.exists() or target_path.is_symlink():
+        target_path.unlink()
+
+    target_path.symlink_to(source_path)
+    print(f"{wrapper_name} wrapper linked at {target_path} -> {source_path}")
 
 
 def resolve_main_repo_root(start: Path | None = None) -> Path:
