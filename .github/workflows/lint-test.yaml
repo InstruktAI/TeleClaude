@@ -12,6 +12,10 @@ jobs:
     name: Lint and Test
     runs-on: [self-hosted, macOS, ARM64]
     env:
+      # Self-hosted runner reports lowercase HOME (/Users/morriz) but APFS
+      # is case-sensitive and the real home is /Users/Morriz. Fix globally
+      # so uv, pyright, and all tools find their caches.
+      HOME: /Users/Morriz
       TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
       TELECLAUDE_ENV_PATH: tests/integration/.env
       INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs

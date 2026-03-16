@@ -365,7 +365,7 @@ install_python_deps() {
     # packages for any platform. No extras, no flags, no fragility.
     print_info "Syncing Python environment with uv..."
     if [ "$CI_MODE" = true ]; then
-        (cd "$INSTALL_DIR" && uv sync --frozen)
+        (cd "$INSTALL_DIR" && uv sync --frozen --offline)
     else
         (cd "$INSTALL_DIR" && uv sync)
     fi
