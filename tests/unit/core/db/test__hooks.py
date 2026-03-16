@@ -133,3 +133,40 @@ async def test_hook_outbox_batch_claim_retry_and_delivery_follow_persisted_state
     assert delivered.delivered_at is not None
     assert delivered.last_error == "prior-failure"
     assert DbHooksMixin._parse_iso_datetime("not-an-iso-string") is None
+
+
+async def test_fetch_hook_outbox_batch_excludes_specified_sessions(db: Db) -> None:
+    await db.enqueue_hook_event("sess-A", "user_prompt_submit", {"n": 1})
+    await db.enqueue_hook_event("sess-A", "user_prompt_submit", {"n": 2})
+    id_b = await db.enqueue_hook_event("sess-B", "tool_use", {"n": 3})
+
+    now_iso = datetime.now(UTC).isoformat()
+    lock_cutoff_iso = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+
+    batch = await db.fetch_hook_outbox_batch(
+        now_iso=now_iso,
+        limit=10,
+        lock_cutoff_iso=lock_cutoff_iso,
+        exclude_session_ids=frozenset({"sess-A"}),
+    )
+
+    assert len(batch) == 1
+    assert batch[0]["id"] == id_b
+    assert batch[0]["session_id"] == "sess-B"
+
+
+async def test_fetch_hook_outbox_batch_empty_exclusion_returns_all(db: Db) -> None:
+    await db.enqueue_hook_event("sess-A", "user_prompt_submit", {"n": 1})
+    await db.enqueue_hook_event("sess-B", "tool_use", {"n": 2})
+
+    now_iso = datetime.now(UTC).isoformat()
+    lock_cutoff_iso = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+
+    batch = await db.fetch_hook_outbox_batch(
+        now_iso=now_iso,
+        limit=10,
+        lock_cutoff_iso=lock_cutoff_iso,
+        exclude_session_ids=frozenset(),
+    )
+
+    assert len(batch) == 2

@@ -26,6 +26,7 @@ class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
         self._session_outbox_workers = {}
         self._hook_outbox_processed_count = 0
         self._hook_outbox_coalesced_count = 0
+        self._hook_outbox_stale_dropped_count = 0
         self._hook_outbox_lag_samples_s: list[float] = []
         self._hook_outbox_last_summary_at = 0.0
         self._hook_outbox_last_backlog_warn_at: dict[str, float] = {}
@@ -135,3 +136,35 @@ async def test_should_pause_hook_outbox_claims_uses_watermark_hysteresis() -> No
 
     assert await daemon_instance._should_pause_hook_outbox_claims(session_id) is False
     assert session_id not in daemon_instance._hook_outbox_claim_paused_sessions
+
+
+def _make_outbox_row(
+    event_type: str,
+    age_seconds: float,
+    row_id: int = 1,
+    session_id: str = "sess-1",
+) -> HookOutboxRow:
+    created_at = (datetime.now(UTC) - timedelta(seconds=age_seconds)).isoformat()
+    return {
+        "id": row_id,
+        "session_id": session_id,
+        "event_type": event_type,
+        "payload": "{}",
+        "created_at": created_at,
+        "attempt_count": 0,
+    }
+
+
+def test_stale_user_prompt_submit_detected() -> None:
+    row = _make_outbox_row("user_prompt_submit", age_seconds=400)
+    assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is True
+
+
+def test_stale_session_start_not_detected() -> None:
+    row = _make_outbox_row("session_start", age_seconds=600)
+    assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is False
+
+
+def test_fresh_user_prompt_submit_not_stale() -> None:
+    row = _make_outbox_row("user_prompt_submit", age_seconds=10)
+    assert daemon_hook_outbox._DaemonHookOutboxMixin._is_stale_outbox_row(row) is False

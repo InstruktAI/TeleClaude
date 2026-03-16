@@ -239,6 +239,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._session_outbox_workers: dict[str, asyncio.Task[None]] = {}
         self._hook_outbox_processed_count = 0
         self._hook_outbox_coalesced_count = 0
+        self._hook_outbox_stale_dropped_count = 0
         self._hook_outbox_lag_samples_s: list[float] = []
         self._hook_outbox_last_summary_at = time.monotonic()
         self._hook_outbox_last_backlog_warn_at: dict[str, float] = {}

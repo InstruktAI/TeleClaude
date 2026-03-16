@@ -66,6 +66,16 @@ HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD: int = int(os.getenv("HOOK_OUTBOX_BACKLOG_WAR
 HOOK_OUTBOX_LAG_WARN_THRESHOLD_S: float = float(os.getenv("HOOK_OUTBOX_LAG_WARN_THRESHOLD_S", "3"))
 HOOK_OUTBOX_WARN_LOG_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_WARN_LOG_INTERVAL_S", "15"))
 HOOK_OUTBOX_MAX_LAG_SAMPLES: int = int(os.getenv("HOOK_OUTBOX_MAX_LAG_SAMPLES", "2048"))
+HOOK_OUTBOX_STALENESS_TTL_S: float = float(os.getenv("HOOK_OUTBOX_STALENESS_TTL_S", "300"))
+
+HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
+    {
+        AgentHookEvents.AGENT_SESSION_START,
+        AgentHookEvents.AGENT_SESSION_END,
+        AgentHookEvents.AGENT_STOP,
+        AgentHookEvents.AGENT_ERROR,
+    }
+)
 
 if HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK > HOOK_OUTBOX_SESSION_MAX_PENDING:
     HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK = HOOK_OUTBOX_SESSION_MAX_PENDING  # pyright: ignore[reportConstantRedefinition]
@@ -127,6 +137,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         _hook_outbox_last_backlog_warn_at: dict[str, float]
         _hook_outbox_last_lag_warn_at: dict[str, float]
         _hook_outbox_claim_paused_sessions: set[str]
+        _hook_outbox_stale_dropped_count: int
         cache: DaemonCache
 
         def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None: ...
@@ -182,6 +193,24 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 logger.error("Background task failed (%s): %s", label, exc, exc_info=True)
 
         task.add_done_callback(_on_done)
+
+    @staticmethod
+    def _is_stale_outbox_row(row: HookOutboxRow) -> bool:
+        """Return True when a non-lifecycle row exceeds the staleness TTL."""
+        event_type = str(row.get("event_type") or "")
+        if event_type in HOOK_EVENT_STALENESS_EXEMPT:
+            return False
+        created_at_raw = row.get("created_at")
+        if not isinstance(created_at_raw, str) or not created_at_raw:
+            return False
+        try:
+            created_at = datetime.fromisoformat(created_at_raw.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        age_s = (datetime.now(UTC) - created_at).total_seconds()
+        return age_s > HOOK_OUTBOX_STALENESS_TTL_S
 
     @staticmethod
     def _classify_hook_event(event_type: str) -> Literal["critical", "bursty"]:
@@ -317,10 +346,13 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         for state in self._session_outbox_queues.values():
             queue_depth += len(state.pending)
 
+        stale_dropped = self._hook_outbox_stale_dropped_count
+
         if (
             not force
             and self._hook_outbox_processed_count == 0
             and self._hook_outbox_coalesced_count == 0
+            and stale_dropped == 0
             and queue_depth == 0
         ):
             self._hook_outbox_last_summary_at = now
@@ -332,6 +364,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             "Hook outbox summary",
             processed=self._hook_outbox_processed_count,
             coalesced=self._hook_outbox_coalesced_count,
+            stale_dropped=stale_dropped,
             queue_depth=queue_depth,
             lag_sample_count=len(self._hook_outbox_lag_samples_s),
             p95_lag_s=round(p95_lag, 3) if p95_lag is not None else None,
@@ -552,21 +585,53 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         Dispatch model:
         - One logical serial worker per session (strict ordering inside session).
         - Different sessions are handled in parallel.
+        - Paused sessions are excluded at the DB level to prevent head-of-line blocking.
+        - Stale non-lifecycle rows are dropped before claiming.
         """
         try:
             while not self.shutdown_event.is_set():
                 now = datetime.now(UTC)
                 now_iso = now.isoformat()
                 lock_cutoff = (now - timedelta(seconds=HOOK_OUTBOX_LOCK_TTL_S)).isoformat()
-                rows = await db.fetch_hook_outbox_batch(now_iso, HOOK_OUTBOX_BATCH_SIZE, lock_cutoff)
+
+                # Snapshot paused sessions and exclude them at the DB level so their
+                # rows don't consume batch slots (prevents head-of-line blocking).
+                paused_snapshot = frozenset(self._hook_outbox_claim_paused_sessions)
+                rows = await db.fetch_hook_outbox_batch(
+                    now_iso, HOOK_OUTBOX_BATCH_SIZE, lock_cutoff, exclude_session_ids=paused_snapshot
+                )
 
                 if not rows:
                     self._maybe_log_hook_outbox_summary()
                     await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
                     continue
 
-                claimable_rows: list[HookOutboxRow] = []
+                # Drop stale non-lifecycle rows before claiming.
+                stale_row_ids: list[int] = []
+                fresh_rows: list[HookOutboxRow] = []
                 for row in rows:
+                    if self._is_stale_outbox_row(row):
+                        stale_row_ids.append(int(row["id"]))
+                    else:
+                        fresh_rows.append(row)
+
+                if stale_row_ids:
+                    for stale_id in stale_row_ids:
+                        stale_row = next(r for r in rows if int(r["id"]) == stale_id)
+                        event_type = str(stale_row.get("event_type") or "")
+                        logger.info(
+                            "Dropping stale outbox row",
+                            row_id=stale_id,
+                            event_type=event_type,
+                            session_id=str(stale_row.get("session_id") or ""),
+                        )
+                        await db.mark_hook_outbox_delivered(stale_id, error=f"stale:{event_type}")
+                    self._hook_outbox_stale_dropped_count += len(stale_row_ids)
+
+                # Defense-in-depth: re-check pause state for rows that passed the DB
+                # filter (catches snapshot-to-fetch races).
+                claimable_rows: list[HookOutboxRow] = []
+                for row in fresh_rows:
                     session_id = str(row["session_id"])
                     if await self._should_pause_hook_outbox_claims(session_id):
                         continue

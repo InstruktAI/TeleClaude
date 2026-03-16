@@ -210,6 +210,7 @@ class DbHooksMixin:
         now_iso: str,
         limit: int,
         lock_cutoff_iso: str,
+        exclude_session_ids: frozenset[str] | None = None,
     ) -> list[HookOutboxRow]:
         """Fetch a batch of due hook events."""
         from sqlmodel import select
@@ -219,9 +220,10 @@ class DbHooksMixin:
             .where(db_models.HookOutbox.delivered_at.is_(None))
             .where(db_models.HookOutbox.next_attempt_at <= now_iso)
             .where((db_models.HookOutbox.locked_at.is_(None)) | (db_models.HookOutbox.locked_at <= lock_cutoff_iso))
-            .order_by(db_models.HookOutbox.created_at)
-            .limit(limit)
         )
+        if exclude_session_ids:
+            stmt = stmt.where(db_models.HookOutbox.session_id.notin_(exclude_session_ids))
+        stmt = stmt.order_by(db_models.HookOutbox.created_at).limit(limit)
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             rows = result.all()
