@@ -55,7 +55,7 @@ def test_prepare_phase_label_blocked_returns_gold_color() -> None:
     prefix, value, color = result
     assert prefix == "P"
     assert value == "blocked"
-    assert str(color) == "color(136)"
+    assert str(color) == "color(178)"
 
 
 @pytest.mark.unit
@@ -82,7 +82,7 @@ def test_integration_phase_label_started_for_candidate_dequeued() -> None:
     prefix, value, color = result
     assert prefix == "I"
     assert value == "started"
-    assert str(color) == "color(28)"
+    assert str(color) == "color(71)"
 
 
 @pytest.mark.unit
@@ -92,7 +92,7 @@ def test_integration_phase_label_delivered_for_completed() -> None:
     prefix, value, color = result
     assert prefix == "I"
     assert value == "delivered"
-    assert str(color) == "color(28)"
+    assert str(color) == "color(71)"
 
 
 @pytest.mark.unit
@@ -102,7 +102,7 @@ def test_integration_phase_label_failed_for_push_rejected() -> None:
     prefix, value, color = result
     assert prefix == "I"
     assert value == "failed"
-    assert str(color) == "color(136)"
+    assert str(color) == "color(178)"
 
 
 @pytest.mark.unit
@@ -112,7 +112,7 @@ def test_integration_phase_label_queued_when_finalize_handed_off() -> None:
     prefix, value, color = result
     assert prefix == "I"
     assert value == "queued"
-    assert str(color) == "color(28)"
+    assert str(color) == "color(71)"
 
 
 # --- TodoRow.compute_col_widths ---
