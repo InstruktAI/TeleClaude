@@ -51,10 +51,21 @@ def _api_server_harness(
     cache: object | None = None,
 ) -> Generator[tuple[object, dict[str, types.SimpleNamespace]], None, None]:
     fake_modules = {name: _make_route_module() for name in _ROUTE_MODULE_NAMES}
-    with (
-        patch.dict(sys.modules, fake_modules),
-        patch("teleclaude.api_server.event_bus.subscribe"),
-    ):
+    # Patch both sys.modules AND the parent package attributes so that
+    # `from teleclaude.api import sessions_routes` inside the cache setter
+    # resolves the fake module (Python checks package attrs before sys.modules).
+    from contextlib import ExitStack
+
+    with ExitStack() as stack:
+        stack.enter_context(patch.dict(sys.modules, fake_modules))
+        stack.enter_context(patch("teleclaude.api_server.event_bus.subscribe"))
+        for fqn, mod in fake_modules.items():
+            parts = fqn.rsplit(".", 1)
+            if len(parts) == 2:
+                parent_mod = sys.modules.get(parts[0])
+                if parent_mod is not None:
+                    stack.enter_context(patch.object(parent_mod, parts[1], mod, create=True))
+
         from teleclaude.api_server import APIServer
 
         server = APIServer(
