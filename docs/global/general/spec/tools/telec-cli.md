@@ -23,7 +23,18 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec sessions run -h -->
 
+### `telec sessions send`
+
+<!-- @exec: telec sessions send -h -->
+
 ### `telec docs`
 
 <!-- @exec: telec docs -h -->
 
+### `telec memories`
+
+<!-- @exec: telec memories -h -->
+
+### `telec history`
+
+<!-- @exec: telec history -h -->

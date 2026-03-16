@@ -41,3 +41,47 @@ You are working with me: Maurice Faber <maurice@instrukt.ai> aka Morriz aka Mo. 
 - What did I say about using THE FORCE? USE IT TO YOUR ADVANTAGE!
 - When the user intends a full commit, first inspect the entire change set, then commit the full working tree as-is (no selective scoping) with a clear, meaningful intent-based commit message.
 - Never edit AGENTS.md directly; it is generated—edit source artifacts and regenerate.
+
+## Context Gates
+
+Before acting on the codebase, load the required context. This is not optional.
+Execute the relevant `telec docs get` command before your first edit.
+
+### Mandatory
+
+These gates are absolute. Load before the first edit, every time.
+
+**Functional code or tests** (write, modify, refactor, or fix):
+
+```
+telec docs get software-development/policy/testing software-development/policy/code-quality-practices software-development/policy/test-structure software-development/policy/linting-requirements software-development/policy/definition-of-done
+```
+
+Additionally, load the language-specific policy for the code you are touching:
+
+- Python: `telec docs get software-development/policy/python/core`
+- TypeScript: `telec docs get software-development/policy/typescript/core`
+
+**Documentation snippets** (create or edit):
+
+```
+telec docs get general/procedure/doc-snippet-authoring general/spec/snippet-authoring-schema
+```
+
+**Agent artifacts** (create or edit):
+
+```
+telec docs get general/procedure/agent-artifact-authoring general/spec/agent-artifacts
+```
+
+### Conditional
+
+Load when you sense the trigger condition. If the condition applies, the load is mandatory.
+
+| When you encounter...                 | Load                                                                                                   |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| A bug or unexpected behavior          | `telec docs get software-development/procedure/debugging software-development/principle/failure-modes` |
+| Architectural or structural decisions | `telec docs get software-development/principle/design-fundamentals`                                    |
+| Changes to existing behavior          | `telec docs get software-development/policy/regression-zero-tolerance`                                 |
+| Security-sensitive code paths         | `telec docs get software-development/policy/security-awareness`                                        |
+| Public API or interface changes       | `telec docs get software-development/policy/backward-compatibility-hygiene`                            |

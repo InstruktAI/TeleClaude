@@ -102,6 +102,15 @@ def _maybe_show_help(cmd: str, args: list[str]) -> bool:
     return True
 
 
+def _inline_flags(flags: list[Flag]) -> str:
+    """Format visible flags compactly for inline display in usage lines."""
+    visible = [f for f in flags if f.long != "--help"]
+    if not visible:
+        return ""
+    names = " ".join(f.long for f in visible)
+    return f" [{names}]"
+
+
 def _usage_main() -> str:
     """Generate main help overview. Hidden flags are excluded."""
     col = 42
@@ -127,12 +136,12 @@ def _usage_main() -> str:
                     # Two-level nesting: expand leaf subcommands inline
                     for child_name, child_cmd in sub_cmd.subcommands.items():
                         child_args = f" {child_cmd.args}" if child_cmd.args else ""
-                        child_flag_str = " [options]" if child_cmd.visible_flags else ""
+                        child_flag_str = _inline_flags(child_cmd.flags)
                         entry = f"telec {name} {sub_name} {child_name}{child_args}{child_flag_str}"
                         lines.append(f"  {entry:<{col}}# {child_cmd.desc}")
                     continue
                 sub_args = f" {sub_cmd.args}" if sub_cmd.args else ""
-                sub_flag_str = " [options]" if sub_cmd.visible_flags else ""
+                sub_flag_str = _inline_flags(sub_cmd.flags)
                 entry = f"telec {name} {sub_name}{sub_args}{sub_flag_str}"
                 lines.append(f"  {entry:<{col}}# {sub_cmd.desc}")
         else:
@@ -265,7 +274,7 @@ def _append_grouped_command_usage(lines: list[str], cmd_name: str, cmd: CommandD
     visible_cmd_flags = _visible_flags(cmd.flags)
     if cmd.standalone:
         args_str = f" {cmd.args}" if cmd.args else ""
-        flag_hints = " [options]" if cmd.flags else ""
+        flag_hints = _inline_flags(cmd.flags)
         entry = f"telec {cmd_name}{args_str}{flag_hints}"
         lines.append(f"  {entry:<{col}}# {cmd.desc}")
         _append_flag_section(lines, "Options", visible_cmd_flags)
@@ -302,12 +311,12 @@ def _iter_subcommand_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[s
         if sub_cmd.subcommands:
             for child_name, child_cmd in sub_cmd.subcommands.items():
                 child_args = f" {child_cmd.args}" if child_cmd.args else ""
-                child_flag_hints = " [options]" if child_cmd.flags else ""
+                child_flag_hints = _inline_flags(child_cmd.flags)
                 entry = f"telec {cmd_name} {sub_name} {child_name}{child_args}{child_flag_hints}"
                 entries.append(f"  {entry:<{col}}# {child_cmd.desc}")
             continue
         args_str = f" {sub_cmd.args}" if sub_cmd.args else ""
-        flag_hints = " [options]" if sub_cmd.flags else ""
+        flag_hints = _inline_flags(sub_cmd.flags)
         entry = f"telec {cmd_name} {sub_name}{args_str}{flag_hints}"
         entries.append(f"  {entry:<{col}}# {sub_cmd.desc}")
     return entries
