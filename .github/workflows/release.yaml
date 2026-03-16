@@ -20,25 +20,16 @@ jobs:
 
       - name: Resolve canonical HOME
         run: |
-          # Runners may report a HOME whose case differs from the actual
-          # filesystem entry (e.g. /Users/morriz vs /Users/Morriz).
-          # Resolve by matching the username against /Users/ entries.
-          CANONICAL=$(python3 -c "
-          import os
-          user = os.getenv('USER', '')
-          base = '/Users' if os.path.isdir('/Users') else '/home'
-          for entry in os.listdir(base):
-              if entry.lower() == user.lower():
-                  print(f'{base}/{entry}')
-                  break
-          else:
-              print(os.environ.get('HOME', f'{base}/{user}'))
-          ")
+          # CI runners may set HOME differently from the user's login
+          # shell (e.g. lowercase on macOS). Agent CLIs match credentials
+          # to the HOME that was active at login time. Resolve by
+          # sourcing the user's login shell profile.
+          LOGIN_HOME=$("${SHELL:-/bin/bash}" -l -c 'echo $HOME' 2>/dev/null) || LOGIN_HOME=""
           echo "Runner HOME=$HOME"
-          echo "Canonical HOME=$CANONICAL"
-          if [ "$HOME" != "$CANONICAL" ]; then
+          echo "Login shell HOME=$LOGIN_HOME"
+          if [ -n "$LOGIN_HOME" ] && [ "$HOME" != "$LOGIN_HOME" ]; then
             echo "Overriding HOME for all subsequent steps"
-            echo "HOME=$CANONICAL" >> "$GITHUB_ENV"
+            echo "HOME=$LOGIN_HOME" >> "$GITHUB_ENV"
           fi
 
       - name: Verify CLI credentials
