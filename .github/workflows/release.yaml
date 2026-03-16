@@ -20,15 +20,17 @@ jobs:
 
       - name: Resolve canonical HOME
         run: |
-          # CI runners may set HOME differently from the user's login
-          # shell (e.g. lowercase on macOS). Agent CLIs match credentials
-          # to the HOME that was active at login time. Resolve by
-          # sourcing the user's login shell profile.
-          LOGIN_HOME=$("${SHELL:-/bin/bash}" -l -c 'echo $HOME' 2>/dev/null) || LOGIN_HOME=""
+          # The CI runner may resolve HOME differently from an interactive
+          # login. Get the user's configured shell and source its profile
+          # to discover the effective HOME (catches .zprofile/.zshenv overrides).
+          USER_SHELL=$(dscl . -read /Users/"$(whoami)" UserShell 2>/dev/null | awk '{print $2}') || USER_SHELL=""
+          USER_SHELL="${USER_SHELL:-${SHELL:-/bin/bash}}"
           echo "Runner HOME=$HOME"
+          echo "User shell=$USER_SHELL"
+          LOGIN_HOME=$("$USER_SHELL" -l -c 'echo $HOME' 2>/dev/null) || LOGIN_HOME=""
           echo "Login shell HOME=$LOGIN_HOME"
           if [ -n "$LOGIN_HOME" ] && [ "$HOME" != "$LOGIN_HOME" ]; then
-            echo "Overriding HOME for all subsequent steps"
+            echo "Overriding HOME → $LOGIN_HOME"
             echo "HOME=$LOGIN_HOME" >> "$GITHUB_ENV"
           fi
 
@@ -43,6 +45,10 @@ jobs:
             errors=$((errors + 1))
           else
             echo "Claude keychain entry found"
+            # Check if we can actually read the credential (keychain must be unlocked)
+            if ! security find-generic-password -s "Claude Code-credentials" -w >/dev/null 2>&1; then
+              echo "::warning::Keychain entry exists but password is not readable (locked keychain?)"
+            fi
             CLAUDE_BIN="$HOME/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher"
             if [ ! -x "$CLAUDE_BIN" ]; then
               CLAUDE_BIN="$(which claude 2>/dev/null || true)"
@@ -51,7 +57,7 @@ jobs:
               echo "Claude binary: $CLAUDE_BIN"
               PROBE=$("$CLAUDE_BIN" -p "reply ok" --output-format json --no-session-persistence \
                 --dangerously-skip-permissions --no-chrome \
-                --settings '{"enabledMcpjsonServers": [], "disableAllHooks": true}' \
+                --settings '{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": [], "disableAllHooks": true}' \
                 --tools "" 2>&1 | head -10 || true)
               echo "Claude probe output: $PROBE"
               if echo "$PROBE" | grep -qi "not logged in"; then
