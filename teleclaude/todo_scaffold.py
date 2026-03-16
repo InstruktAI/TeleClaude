@@ -465,14 +465,21 @@ def _transfer_files_to_worktree(
     for filepath in modified + untracked:
         src = project_root / filepath
         dst = worktree_path / filepath
-        if src.exists():
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(src), str(dst))
+        if not src.exists():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
 
     for filepath in deleted:
         dst = worktree_path / filepath
         if dst.exists():
-            dst.unlink()
+            if dst.is_dir():
+                shutil.rmtree(dst)
+            else:
+                dst.unlink()
 
 
 def _clean_main_working_tree(
@@ -492,12 +499,16 @@ def _clean_main_working_tree(
 
     for filepath in untracked:
         src = project_root / filepath
-        if src.exists():
+        if not src.exists():
+            continue
+        if src.is_dir():
+            shutil.rmtree(src)
+        else:
             src.unlink()
-            parent = src.parent
-            while parent != project_root and not any(parent.iterdir()):
-                parent.rmdir()
-                parent = parent.parent
+        parent = src.parent
+        while parent != project_root and parent.exists() and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
 
     try:
         repo.git.reset("HEAD")
@@ -505,13 +516,24 @@ def _clean_main_working_tree(
         pass
 
 
+def _filter_by_paths(file_list: list[str], paths: list[str]) -> list[str]:
+    """Filter file list to only include entries matching any of the given path prefixes."""
+    return [f for f in file_list if any(f == p or f.startswith(p + "/") for p in paths)]
+
+
 def create_from_main_skeleton(
     cwd: str,
     slug: str,
     *,
     description: str | None = None,
+    paths: list[str] | None = None,
 ) -> str:
     """Transfer uncommitted changes from main into a todo worktree for review.
+
+    Args:
+        paths: Optional list of file paths to scope the transfer. When provided,
+            only files matching these paths (exact or prefix) are transferred.
+            Without this, ALL dirty files from git status are transferred.
 
     Steps:
     1. Validate preconditions (on main, has uncommitted changes)
@@ -561,13 +583,16 @@ def create_from_main_skeleton(
 
     # --- 5b. Capture uncommitted changes ---
     modified_files, untracked_files, deleted_files = _classify_porcelain_status(status_output)
-    all_changed = modified_files + untracked_files + deleted_files
 
-    # Capture diff stat for requirements
-    try:
-        diff_stat = repo.git.diff("HEAD", "--stat")
-    except Exception:
-        diff_stat = f"{len(all_changed)} file(s) changed"
+    # Scope to caller's files when --paths is provided
+    if paths:
+        modified_files = _filter_by_paths(modified_files, paths)
+        untracked_files = _filter_by_paths(untracked_files, paths)
+        deleted_files = _filter_by_paths(deleted_files, paths)
+
+    all_changed = modified_files + untracked_files + deleted_files
+    if not all_changed:
+        raise ValueError("No matching uncommitted changes for the given paths.")
 
     # --- 5c. Scaffold todo artifacts ---
     project_root = Path(cwd)
@@ -575,28 +600,16 @@ def create_from_main_skeleton(
     slug = ensure_unique_slug(todos_root, slug)
     todo_dir = create_todo_skeleton(project_root, slug)
 
-    # Overwrite requirements.md with context
+    # Overwrite all artifacts with from-main markers.
+    # The human authored these changes directly — build gates and reviewers
+    # recognize the marker and handle accordingly.
+    from_main_marker = "<!-- from-main: inline work delivered under human supervision -->"
     desc_text = description or "See diff for details."
-    requirements_content = (
-        f"# Requirements: {slug}\n\n"
-        "## Context\n"
-        "Inline work submitted for review via `telec todo from-main`.\n\n"
-        "## Changes\n"
-        f"```\n{diff_stat}\n```\n\n"
-        "## Description\n"
-        f"{desc_text}\n\n"
-        "## Acceptance criteria\n"
-        "- Changes are correct and complete\n"
-        "- Tests cover new/changed behavior\n"
-        "- Code quality meets project standards\n"
-    )
-    _write_file(todo_dir / "requirements.md", requirements_content)
 
-    # Overwrite implementation-plan.md
-    plan_content = (
-        f"# Implementation Plan: {slug}\n\n## Tasks\n- [x] Implement changes (see worktree diff for details)\n"
-    )
-    _write_file(todo_dir / "implementation-plan.md", plan_content)
+    _write_file(todo_dir / "requirements.md", f"{from_main_marker}\n# Requirements: {slug}\n\n{desc_text}\n")
+    _write_file(todo_dir / "implementation-plan.md", f"{from_main_marker}\n# Implementation Plan: {slug}\n")
+    _write_file(todo_dir / "quality-checklist.md", f"{from_main_marker}\n# Quality Checklist: {slug}\n")
+    _write_file(todo_dir / "demo.md", f"<!-- no-demo: from-main inline work -->\n# Demo: {slug}\n")
 
     # --- 5d. Push todo scaffold to remote ---
     pushed, push_reason = _ensure_todo_on_remote_main(cwd, slug)

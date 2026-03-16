@@ -117,14 +117,16 @@ class TestCreateFromMainSkeleton:
         assert (todo_dir / "implementation-plan.md").exists()
         assert (todo_dir / "state.yaml").exists()
 
-        # Verify requirements content
-        req_content = (todo_dir / "requirements.md").read_text()
-        assert "Test changes" in req_content
-        assert "from-main" in req_content
+        requirements = (todo_dir / "requirements.md").read_text(encoding="utf-8")
+        implementation_plan = (todo_dir / "implementation-plan.md").read_text(encoding="utf-8")
+        quality_checklist = (todo_dir / "quality-checklist.md").read_text(encoding="utf-8")
+        demo = (todo_dir / "demo.md").read_text(encoding="utf-8")
 
-        # Verify plan content
-        plan_content = (todo_dir / "implementation-plan.md").read_text()
-        assert "[x]" in plan_content
+        assert requirements.startswith("<!-- from-main:")
+        assert "Test changes" in requirements
+        assert implementation_plan.startswith("<!-- from-main:")
+        assert quality_checklist.startswith("<!-- from-main:")
+        assert demo.startswith("<!-- no-demo: from-main")
 
         # Verify files were transferred to worktree
         assert (worktree_path / "src" / "app.py").exists()
@@ -206,3 +208,53 @@ class TestCreateFromMainSkeleton:
 
         req_content = (project / "todos" / "no-desc" / "requirements.md").read_text()
         assert "See diff for details." in req_content
+
+    def test_paths_scope_transfer_and_cleanup_to_requested_files(self, tmp_path: Path) -> None:
+        """When --paths is used, only matching files should move into the worktree."""
+        from teleclaude.todo_scaffold import create_from_main_skeleton
+
+        project = _setup_project(tmp_path)
+        (project / "docs").mkdir()
+        (project / "docs" / "guide.md").write_text("modified guide", encoding="utf-8")
+        (project / "docs" / "new.md").write_text("new doc", encoding="utf-8")
+
+        worktree_path = project / "trees" / "scoped-slug"
+        worktree_path.mkdir(parents=True)
+        (worktree_path / "src").mkdir(parents=True)
+        (worktree_path / "docs").mkdir(parents=True)
+
+        repo = _make_repo_ns(status=" M src/app.py\n M docs/guide.md\n?? src/new.py\n?? docs/new.md")
+
+        with (
+            patch("git.Repo", return_value=repo),
+            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
+            patch(f"{_WT}._create_or_attach_worktree", return_value=True),
+            patch(
+                f"{_WT}._decide_worktree_prep",
+                return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
+            ),
+            patch(f"{_SI}.mark_ready"),
+            patch(f"{_SI}.mark_phase"),
+        ):
+            create_from_main_skeleton(str(project), "scoped-slug", paths=["src"])
+
+        assert (worktree_path / "src" / "app.py").exists()
+        assert (worktree_path / "src" / "new.py").exists()
+        assert not (worktree_path / "docs" / "guide.md").exists()
+        assert not (worktree_path / "docs" / "new.md").exists()
+        assert not (project / "src" / "new.py").exists()
+        assert (project / "docs" / "guide.md").read_text(encoding="utf-8") == "modified guide"
+        assert (project / "docs" / "new.md").read_text(encoding="utf-8") == "new doc"
+
+    def test_paths_requires_at_least_one_matching_change(self, tmp_path: Path) -> None:
+        """--paths should fail fast when no dirty files match the requested scope."""
+        from teleclaude.todo_scaffold import create_from_main_skeleton
+
+        project = _setup_project(tmp_path)
+        repo = _make_repo_ns(status=" M src/app.py\n?? src/new.py")
+
+        with (
+            patch("git.Repo", return_value=repo),
+            pytest.raises(ValueError, match="No matching uncommitted changes"),
+        ):
+            create_from_main_skeleton(str(project), "missing-paths", paths=["docs"])

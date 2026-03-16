@@ -36,6 +36,17 @@ def test_check_file_has_content_rejects_scaffold_templates_and_accepts_authored_
     assert check_file_has_content(str(tmp_path), "todos/slug/implementation-plan.md") is True
 
 
+def test_check_file_has_content_accepts_from_main_marker_content(tmp_path: Path) -> None:
+    from_main_requirements = tmp_path / "todos" / "slug" / "requirements.md"
+    from_main_requirements.parent.mkdir(parents=True)
+    from_main_requirements.write_text(
+        "<!-- from-main: inline work delivered under human supervision -->\n# Requirements: slug\n",
+        encoding="utf-8",
+    )
+
+    assert check_file_has_content(str(tmp_path), "todos/slug/requirements.md") is True
+
+
 def test_run_build_gates_retries_last_failed_tests_before_failing_the_gate(tmp_path: Path) -> None:
     pytest_path = tmp_path / ".venv" / "bin" / "pytest"
     pytest_path.parent.mkdir(parents=True)

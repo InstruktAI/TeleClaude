@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import Unpack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
 import teleclaude.core.operations.service as service_module
 from teleclaude.core.db_models import Operation

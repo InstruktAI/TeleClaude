@@ -317,11 +317,11 @@ class TestGitCommitAndPush:
 
     def _make_capture(
         self, *, diff_output: str = ""
-    ) -> tuple[Callable[..., tuple[bool, str]], list[tuple[list[str], dict[str, Any]]]]:
+    ) -> tuple[Callable[..., tuple[bool, str]], list[tuple[list[str], dict[str, dict[str, str] | None]]]]:
         """Return a mock _run_command that captures all calls."""
-        captured: list[tuple[list[str], dict[str, Any]]] = []
+        captured: list[tuple[list[str], dict[str, dict[str, str] | None]]] = []
 
-        def capture(cmd: list[str], **kw: Any) -> tuple[bool, str]:
+        def capture(cmd: list[str], **kw: dict[str, str] | None) -> tuple[bool, str]:
             captured.append((cmd, kw))
             if cmd[:2] == ["git", "diff"]:
                 return True, diff_output

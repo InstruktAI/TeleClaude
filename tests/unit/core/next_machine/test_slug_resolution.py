@@ -12,6 +12,7 @@ import yaml
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, RoadmapEntry
 from teleclaude.core.next_machine.roadmap import save_roadmap
 from teleclaude.core.next_machine.slug_resolution import (
+    is_ready_for_work,
     resolve_canonical_project_root,
     resolve_first_runnable_holder_child,
     resolve_holder_children,
@@ -95,6 +96,12 @@ def test_resolve_slug_ready_only_skips_ready_items_with_unsatisfied_dependencies
     resolved = resolve_slug(str(tmp_path), None, True, {"blocked": ["dep"]})
 
     assert resolved == ("runnable", True, "ready item")
+
+
+def test_is_ready_for_work_accepts_pending_item_with_completed_build(tmp_path: Path) -> None:
+    _write_state(tmp_path / "todos" / "from-main-slug", {"phase": "pending", "build": "complete"})
+
+    assert is_ready_for_work(str(tmp_path), "from-main-slug") is True
 
 
 def test_resolve_canonical_project_root_falls_back_to_requested_cwd_on_git_error() -> None:

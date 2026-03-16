@@ -225,9 +225,13 @@ async def _resolve_explicit_work_slug(
         if holder_error is not None:
             return "", holder_error
 
-    phase = await asyncio.to_thread(get_item_phase, cwd, slug)
+    # Prefer worktree state — the orchestrator maintains state there, not on main.
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    state_cwd = str(worktree_path) if worktree_path.exists() else cwd
+
+    phase = await asyncio.to_thread(get_item_phase, state_cwd, slug)
     readiness_error = await _validate_explicit_slug_readiness(
-        cwd, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
+        state_cwd, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
     )
     if readiness_error is not None:
         return "", readiness_error

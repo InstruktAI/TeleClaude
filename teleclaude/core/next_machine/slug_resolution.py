@@ -252,12 +252,15 @@ def get_item_phase(cwd: str, slug: str) -> str:
 
 
 def is_ready_for_work(cwd: str, slug: str) -> bool:
-    """Check if item is ready for work: pending phase + DOR score >= threshold."""
+    """Check if item is ready for work: pending phase + (build complete OR DOR score >= threshold)."""
     state = read_phase_state(cwd, slug)
     phase = state.get("phase")
     if phase != ItemPhase.PENDING.value:
         return False
     build = state.get(PhaseName.BUILD.value)
+    # Build already complete (e.g. from-main items) — ready for review cycle
+    if build == PhaseStatus.COMPLETE.value:
+        return True
     if build != PhaseStatus.PENDING.value:
         return False
     dor = state.get("dor")

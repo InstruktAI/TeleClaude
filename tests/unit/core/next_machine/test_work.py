@@ -12,6 +12,7 @@ from teleclaude.core.next_machine.work import (
     _dispatch_pre_review,
     _dispatch_review_approved,
     _DispatchState,
+    _resolve_explicit_work_slug,
     _select_precondition_root,
     _validate_required_artifacts,
     _validate_work_preconditions,
@@ -86,6 +87,40 @@ async def test_validate_work_preconditions_reports_stash_debt_when_git_stash_exi
     assert error is not None
     assert "ERROR: STASH_DEBT" in error
     assert "1 git stash entry" in error
+
+
+@pytest.mark.asyncio
+async def test_resolve_explicit_work_slug_prefers_worktree_state_for_readiness_checks(tmp_path: Path) -> None:
+    worktree_path = tmp_path / "trees" / "slug-review"
+    worktree_path.mkdir(parents=True)
+
+    with (
+        patch("teleclaude.core.next_machine.work.load_roadmap_deps", return_value={}),
+        patch("teleclaude.core.next_machine.work.is_bug_todo", return_value=False),
+        patch("teleclaude.core.next_machine.work.slug_in_roadmap", return_value=True),
+        patch(
+            "teleclaude.core.next_machine.work._resolve_holder_slug",
+            new=AsyncMock(return_value=("slug-review", None)),
+        ),
+        patch("teleclaude.core.next_machine.work.get_item_phase", return_value="pending") as get_item_phase,
+        patch(
+            "teleclaude.core.next_machine.work._validate_explicit_slug_readiness",
+            new=AsyncMock(return_value=None),
+        ) as validate_readiness,
+    ):
+        resolved, error = await _resolve_explicit_work_slug(str(tmp_path), "slug-review", "slug-review", 0.0)
+
+    assert (resolved, error) == ("slug-review", None)
+    get_item_phase.assert_called_once_with(str(worktree_path), "slug-review")
+    validate_readiness.assert_awaited_once_with(
+        str(worktree_path),
+        "slug-review",
+        "pending",
+        {},
+        False,
+        "slug-review",
+        0.0,
+    )
 
 
 @pytest.mark.asyncio

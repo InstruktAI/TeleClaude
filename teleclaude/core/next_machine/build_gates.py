@@ -158,6 +158,14 @@ def _extract_checklist_section(content: str, section_name: str) -> str | None:
     return "\n".join(section_lines)
 
 
+FROM_MAIN_MARKER = "<!-- from-main:"
+
+
+def _has_from_main_marker(content: str) -> bool:
+    """Check if content starts with a from-main HTML comment marker."""
+    return content.lstrip().startswith(FROM_MAIN_MARKER)
+
+
 def _is_scaffold_template(content: str) -> bool:
     """Check if a todo artifact is an unfilled scaffold template.
 
@@ -243,7 +251,7 @@ def check_file_has_content(cwd: str, relative_path: str) -> bool:
         content = fpath.read_text(encoding="utf-8")
     except OSError:
         return False
-    return not _is_scaffold_template(content)
+    return _has_from_main_marker(content) or not _is_scaffold_template(content)
 
 
 def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool = False) -> tuple[bool, str]:
@@ -359,6 +367,9 @@ def _verify_implementation_plan(todo_base: Path, results: list[str]) -> bool:
         results.append("FAIL: implementation-plan.md does not exist")
         return False
     content = plan_path.read_text(encoding="utf-8")
+    if _has_from_main_marker(content):
+        results.append("PASS: implementation-plan.md — from-main marker (human-supervised)")
+        return True
     unchecked = re.findall(r"^\s*-\s*\[ \]", content, re.MULTILINE)
     if unchecked:
         results.append(
@@ -459,6 +470,10 @@ def _verify_checklist_section(todo_base: Path, section_name: str, results: list[
         return False
 
     content = checklist_path.read_text(encoding="utf-8")
+    if _has_from_main_marker(content):
+        results.append(f"PASS: quality-checklist.md {section_name} — from-main marker (human-supervised)")
+        return True
+
     section = _extract_checklist_section(content, section_name)
     if section is None:
         results.append(f"FAIL: quality-checklist.md missing '## {section_name}' section")

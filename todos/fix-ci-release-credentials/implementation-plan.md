@@ -1,4 +1,3 @@
-# Implementation Plan: fix-ci-release-credentials
+<!-- from-main: inline work delivered under human supervision -->
 
-## Tasks
-- [x] Implement changes (see worktree diff for details)
+# Implementation Plan: fix-ci-release-credentials
