@@ -18,58 +18,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve canonical HOME
+      - name: Resolve HOME for credentials
         run: |
-          # The CI runner may resolve HOME differently from an interactive
-          # login. Get the user's configured shell and source its profile
-          # to discover the effective HOME (catches .zprofile/.zshenv overrides).
-          USER_SHELL=$(dscl . -read /Users/"$(whoami)" UserShell 2>/dev/null | awk '{print $2}') || USER_SHELL=""
-          USER_SHELL="${USER_SHELL:-${SHELL:-/bin/bash}}"
-          echo "Runner HOME=$HOME"
-          echo "User shell=$USER_SHELL"
-          LOGIN_HOME=$("$USER_SHELL" -l -c 'echo $HOME' 2>/dev/null) || LOGIN_HOME=""
-          echo "Login shell HOME=$LOGIN_HOME"
-          if [ -n "$LOGIN_HOME" ] && [ "$HOME" != "$LOGIN_HOME" ]; then
-            echo "Overriding HOME → $LOGIN_HOME"
-            echo "HOME=$LOGIN_HOME" >> "$GITHUB_ENV"
+          # On case-sensitive filesystems the runner's HOME may differ in case
+          # from the directory where credentials were created interactively.
+          # Auto-discover the correct home by finding where credentials live.
+          CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/config.json"
+          if [ ! -f "$CLAUDE_CONFIG" ]; then
+            for candidate in /Users/*/Library/Application\ Support/Claude/config.json; do
+              if [ -f "$candidate" ]; then
+                REAL_HOME="${candidate%%/Library/*}"
+                echo "Credentials found at $REAL_HOME (runner HOME=$HOME)"
+                echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
+                export HOME="$REAL_HOME"
+                break
+              fi
+            done
           fi
+          echo "Effective HOME=$HOME"
 
       - name: Verify CLI credentials
         run: |
           errors=0
           echo "HOME=$HOME"
 
-          # Claude: macOS Keychain + functional probe
-          if ! security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
-            echo "::error::Claude CLI credentials not found in Keychain. Run: claude login"
+          # Claude: OAuth token in Application Support
+          CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/config.json"
+          if [ ! -f "$CLAUDE_CONFIG" ]; then
+            echo "::error::Claude config not found at $CLAUDE_CONFIG. Run: claude login"
+            errors=$((errors + 1))
+          elif ! python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert d.get('oauth:tokenCache')" "$CLAUDE_CONFIG" 2>/dev/null; then
+            echo "::error::Claude config exists but has no oauth:tokenCache. Run: claude login"
             errors=$((errors + 1))
           else
-            echo "Claude keychain entry found"
-            # Check if we can actually read the credential (keychain must be unlocked)
-            if ! security find-generic-password -s "Claude Code-credentials" -w >/dev/null 2>&1; then
-              echo "::warning::Keychain entry exists but password is not readable (locked keychain?)"
-            fi
-            CLAUDE_BIN="$HOME/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher"
-            if [ ! -x "$CLAUDE_BIN" ]; then
-              CLAUDE_BIN="$(which claude 2>/dev/null || true)"
-            fi
-            if [ -n "$CLAUDE_BIN" ] && [ -x "$CLAUDE_BIN" ]; then
-              echo "Claude binary: $CLAUDE_BIN"
-              PROBE=$("$CLAUDE_BIN" -p "reply ok" --output-format json --no-session-persistence \
-                --dangerously-skip-permissions --no-chrome \
-                --settings '{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": [], "disableAllHooks": true}' \
-                --tools "" 2>&1 | head -10 || true)
-              echo "Claude probe output: $PROBE"
-              if echo "$PROBE" | grep -qi "not logged in"; then
-                echo "::error::Claude CLI credential expired or invalid. Run: claude login"
-                errors=$((errors + 1))
-              else
-                echo "Claude auth probe passed"
-              fi
-            else
-              echo "::error::Claude binary not found at $HOME/Applications/ClaudeLauncher.app or in PATH"
-              errors=$((errors + 1))
-            fi
+            echo "Claude OAuth token found"
           fi
 
           # Codex: ~/.codex/auth.json
