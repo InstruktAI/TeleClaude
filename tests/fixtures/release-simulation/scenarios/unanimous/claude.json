@@ -1,0 +1,6 @@
+{
+  "classification": "patch",
+  "rationale": "Internal daemon fix only — no public surface changes detected.",
+  "contract_changes": [],
+  "release_notes": "Fix daemon restart race condition in session cleanup."
+}

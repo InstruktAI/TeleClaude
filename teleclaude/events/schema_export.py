@@ -16,6 +16,22 @@ from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventEnvelope
 
 
+def export_events_markdown() -> str:
+    """Return the EventEnvelope JSON Schema wrapped in markdown for inspector prompts.
+
+    Pure function — no I/O, no daemon. Safe for CI usage.
+    """
+    schema = export_json_schema()
+    title = schema.get("title", "EventEnvelope")
+    lines = [
+        f"# {title} — Event Schema\n",
+        "```json",
+        json.dumps(schema, indent=2),
+        "```\n",
+    ]
+    return "\n".join(lines)
+
+
 def export_json_schema() -> JsonDict:
     """Return the JSON Schema document for EventEnvelope."""
     return EventEnvelope.model_json_schema()

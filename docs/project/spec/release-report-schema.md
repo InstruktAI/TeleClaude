@@ -45,7 +45,7 @@ Standardized JSON schema for AI Release Inspector reports. All AI Release Inspec
         "properties": {
           "surface": {
             "type": "string",
-            "enum": ["cli", "mcp", "events", "config"],
+            "enum": ["cli", "events", "config"],
             "description": "Which public surface was affected."
           },
           "item": {

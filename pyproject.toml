@@ -353,6 +353,8 @@ orphan-exclude = [
     "tests/unit/test_session_token_lifecycle.py",             # Cross-module session token lifecycle
     "tests/unit/test_session_tokens.py",                      # Cross-module session token behavior
     "tests/unit/test_youtube_scraper.py",                     # Tests youtube scraper helpers
+    "tests/unit/cli/telec/test_surface_export.py",            # Tests export_surface_markdown() in surface.py
+    "tests/unit/scripts/test_release_consolidator.py",        # Tests scripts/release_consolidator.py (path mismatch)
 ]
 
 [tool.coverage.run]

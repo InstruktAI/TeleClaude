@@ -1,0 +1,6 @@
+{
+  "classification": "patch",
+  "rationale": "Hook adapter refactored but external behavior unchanged.",
+  "contract_changes": [],
+  "release_notes": "Refactor hook adapters to protocol pattern."
+}

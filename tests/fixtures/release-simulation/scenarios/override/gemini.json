@@ -1,0 +1,19 @@
+{
+  "classification": "patch",
+  "rationale": "New CLI tool surface detected in config spec changes.",
+  "contract_changes": [
+    {
+      "surface": "cli",
+      "item": "telec_new_command",
+      "change_type": "added",
+      "details": "New CLI command registered in tool surface manifest"
+    },
+    {
+      "surface": "config",
+      "item": "new_setting",
+      "change_type": "added",
+      "details": "New configuration key added to teleclaude.yml schema"
+    }
+  ],
+  "release_notes": "Patch: new CLI command and config setting added."
+}

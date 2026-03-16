@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-from teleclaude.events.schema_export import export_json_schema, export_json_schema_file
+from teleclaude.events.schema_export import export_events_markdown, export_json_schema, export_json_schema_file
 
 
 def _props() -> dict[str, Any]:  # guard: loose-dict-func - JSON schema properties are untyped at runtime
@@ -58,3 +58,33 @@ class TestExportJsonSchemaFile:
         from_file = json.loads(output.read_text())
         from_function = export_json_schema()
         assert from_file == from_function
+
+
+class TestExportEventsMarkdown:
+    """Verify export_events_markdown() produces inspector-ready markdown."""
+
+    def test_returns_string(self) -> None:
+        result = export_events_markdown()
+        assert isinstance(result, str)
+        assert len(result) > 50
+
+    def test_contains_schema_content(self) -> None:
+        result = export_events_markdown()
+        assert "EventEnvelope" in result or "properties" in result
+
+    def test_contains_json_block(self) -> None:
+        result = export_events_markdown()
+        assert "```json" in result
+
+    def test_wraps_existing_json_schema(self) -> None:
+        """The markdown export must include all content from the JSON schema."""
+        json_schema = export_json_schema()
+        md = export_events_markdown()
+        for key in ("title", "properties", "type"):
+            if key in json_schema:
+                assert key in md
+
+    def test_is_pure_no_side_effects(self) -> None:
+        first = export_events_markdown()
+        second = export_events_markdown()
+        assert first == second

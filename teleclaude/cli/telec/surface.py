@@ -19,7 +19,58 @@ from .surface_types import (
     _HR_MEMBER_CONTRIB_NEWCOMER,
 )
 
-__all__ = ["CLI_SURFACE", "CommandAuth", "CommandDef", "Flag", "TelecCommand"]
+__all__ = ["CLI_SURFACE", "CommandAuth", "CommandDef", "Flag", "TelecCommand", "export_surface_markdown"]
+
+
+def export_surface_markdown() -> str:
+    """Return a markdown document describing the full CLI surface.
+
+    Walks CLI_SURFACE recursively and renders command hierarchy, flags,
+    args, and descriptions. Pure function — no I/O, no daemon.
+    """
+    lines: list[str] = ["# TeleClaude CLI Surface\n"]
+
+    for cmd_name, cmd_def in CLI_SURFACE.items():
+        if cmd_def.hidden:
+            continue
+        _render_command(lines, cmd_name, cmd_def, depth=2)
+
+    return "\n".join(lines)
+
+
+def _render_command(lines: list[str], path: str, cmd: CommandDef, depth: int) -> None:
+    """Recursively render a command and its subcommands to markdown lines."""
+    prefix = "#" * depth
+    lines.append(f"{prefix} `telec {path}`")
+    lines.append("")
+    lines.append(cmd.desc)
+    lines.append("")
+
+    if cmd.args:
+        lines.append(f"**Usage:** `telec {path} {cmd.args}`")
+        lines.append("")
+
+    visible_flags = cmd.visible_flags
+    if visible_flags:
+        lines.append("**Flags:**")
+        lines.append("")
+        for flag in visible_flags:
+            short = f" (`{flag.short}`)" if flag.short else ""
+            lines.append(f"- `{flag.long}`{short}: {flag.desc}")
+        lines.append("")
+
+    if cmd.notes:
+        lines.append("**Notes:**")
+        lines.append("")
+        for note in cmd.notes:
+            lines.append(f"- {note}")
+        lines.append("")
+
+    for sub_name, sub_def in cmd.subcommands.items():
+        if sub_def.hidden:
+            continue
+        _render_command(lines, f"{path} {sub_name}", sub_def, depth=min(depth + 1, 6))
+
 
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(

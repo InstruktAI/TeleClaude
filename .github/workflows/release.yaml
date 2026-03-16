@@ -71,10 +71,9 @@ jobs:
             --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
 
           MANIFESTS:
-          CLI: $(cat docs/project/spec/telec-cli-surface.md)
-          MCP: $(cat docs/project/spec/mcp-tool-surface.md)
-          Events: $(cat docs/project/spec/event-vocabulary.md)
-          Config: $(cat docs/project/spec/teleclaude-config.md)
+          CLI: $(./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())")
+          Events: $(./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())")
+          Config: $(./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())")
 
           DIFF:
           $(cat release-diff.txt)" \
@@ -87,10 +86,9 @@ jobs:
             --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
 
           MANIFESTS:
-          CLI: $(cat docs/project/spec/telec-cli-surface.md)
-          MCP: $(cat docs/project/spec/mcp-tool-surface.md)
-          Events: $(cat docs/project/spec/event-vocabulary.md)
-          Config: $(cat docs/project/spec/teleclaude-config.md)
+          CLI: $(./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())")
+          Events: $(./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())")
+          Config: $(./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())")
 
           DIFF:
           $(cat release-diff.txt)" \
@@ -103,10 +101,9 @@ jobs:
             --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
 
           MANIFESTS:
-          CLI: $(cat docs/project/spec/telec-cli-surface.md)
-          MCP: $(cat docs/project/spec/mcp-tool-surface.md)
-          Events: $(cat docs/project/spec/event-vocabulary.md)
-          Config: $(cat docs/project/spec/teleclaude-config.md)
+          CLI: $(./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())")
+          Events: $(./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())")
+          Config: $(./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())")
 
           DIFF:
           $(cat release-diff.txt)" \
