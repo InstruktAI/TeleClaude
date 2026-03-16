@@ -47,10 +47,16 @@ jobs:
         timeout-minutes: 5
 
       - name: Run lint
-        run: ./tools/lint.sh
+        run: |
+          # Re-enter workspace via correct-cased path (runner CWD has lowercase
+          # /Users/morriz which breaks pyright on case-sensitive APFS).
+          cd "${HOME}/Apps/actions-runner/_work/${GITHUB_REPOSITORY#*/}/${GITHUB_REPOSITORY#*/}"
+          ./tools/lint.sh
         timeout-minutes: 5
 
       - name: Run tests
-        run: ./tools/test.sh
+        run: |
+          cd "${HOME}/Apps/actions-runner/_work/${GITHUB_REPOSITORY#*/}/${GITHUB_REPOSITORY#*/}"
+          ./tools/test.sh
         timeout-minutes: 10
         continue-on-error: false
