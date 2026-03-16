@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -475,7 +476,7 @@ def _transfer_files_to_worktree(
 
 
 def _clean_main_working_tree(
-    repo: object,
+    repo: Any,
     project_root: Path,
     modified: list[str],
     untracked: list[str],
@@ -483,7 +484,7 @@ def _clean_main_working_tree(
     """Restore tracked files from HEAD and remove untracked files."""
     for filepath in modified:
         try:
-            clean_content = repo.git.show(f"HEAD:{filepath}")  # type: ignore[union-attr]
+            clean_content = repo.git.show(f"HEAD:{filepath}")
             src = project_root / filepath
             src.write_text(clean_content, encoding="utf-8")
         except Exception:
@@ -499,7 +500,7 @@ def _clean_main_working_tree(
                 parent = parent.parent
 
     try:
-        repo.git.reset("HEAD")  # type: ignore[union-attr]
+        repo.git.reset("HEAD")
     except Exception:
         pass
 
