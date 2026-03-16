@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-ci-release-credentials
+  date: '2026-03-16'
+  commit: 53f699b08683
 - slug: chartest-tui-views
   date: '2026-03-15'
   commit: 9a165eb354cc

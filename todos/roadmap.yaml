@@ -45,8 +45,4 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
-- slug: chartest-weak-purge
-- slug: fix-ci-release-credentials
-  after:
-  - fix-integration-queue-ghost
 - slug: fix-integration-queue-ghost
