@@ -220,7 +220,10 @@ def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
             )
             try:
                 repo.git.add("--", *commit_paths)
-                repo.git.commit("-m", msg, "--only", "--", *commit_paths)
+                # --no-verify: pre-commit stash/restore conflicts with --only
+                # (index corruption). Safe to skip — this is scaffold markdown,
+                # not code, and the commit is already [skip ci].
+                repo.git.commit("-m", msg, "--no-verify", "--only", "--", *commit_paths)
             except GitCommandError as exc:
                 logger.warning("Failed to commit todo artifacts for %s: %s", slug, exc)
                 return False, "commit_skipped"
