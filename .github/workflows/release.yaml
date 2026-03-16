@@ -51,8 +51,9 @@ jobs:
               echo "Claude binary: $CLAUDE_BIN"
               PROBE=$("$CLAUDE_BIN" -p "reply ok" --output-format json --no-session-persistence \
                 --dangerously-skip-permissions --no-chrome \
-                --settings '{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": [], "disableAllHooks": true}' \
-                --tools "" 2>&1 | head -5 || true)
+                --settings '{"enabledMcpjsonServers": [], "disableAllHooks": true}' \
+                --tools "" 2>&1 | head -10 || true)
+              echo "Claude probe output: $PROBE"
               if echo "$PROBE" | grep -qi "not logged in"; then
                 echo "::error::Claude CLI credential expired or invalid. Run: claude login"
                 errors=$((errors + 1))
