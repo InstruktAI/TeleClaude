@@ -219,7 +219,10 @@ async def test_worker_passes_paused_sessions_to_db_fetch() -> None:
         daemon_instance.shutdown_event.set()
         return []
 
-    with patch("teleclaude.daemon_hook_outbox.db") as mock_db:
+    with (
+        patch("teleclaude.daemon_hook_outbox.db") as mock_db,
+        patch("teleclaude.daemon_hook_outbox.HOOK_OUTBOX_POLL_INTERVAL_S", 0),
+    ):
         mock_db.fetch_hook_outbox_batch = fake_fetch
         await daemon_instance._hook_outbox_worker()
 
@@ -258,7 +261,10 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
     async def fake_claim_batch(row_ids: list[int], now_iso: str, lock_cutoff_iso: str) -> set[int]:
         return set(row_ids)
 
-    with patch("teleclaude.daemon_hook_outbox.db") as mock_db:
+    with (
+        patch("teleclaude.daemon_hook_outbox.db") as mock_db,
+        patch("teleclaude.daemon_hook_outbox.HOOK_OUTBOX_POLL_INTERVAL_S", 0),
+    ):
         mock_db.fetch_hook_outbox_batch = fake_fetch
         mock_db.mark_hook_outbox_delivered = fake_mark_delivered
         mock_db.claim_hook_outbox_batch = fake_claim_batch
