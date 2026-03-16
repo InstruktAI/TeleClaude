@@ -1,6 +1,6 @@
 """System statistics type definitions."""
 
-from typing_extensions import TypedDict
+from typing import TypedDict
 
 
 class MemoryStats(TypedDict):

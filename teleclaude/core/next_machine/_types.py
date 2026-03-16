@@ -10,10 +10,10 @@ import re
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TypeAlias, TypedDict
+from typing import TypedDict
 
-StateScalar: TypeAlias = str | bool | int | None
-StateValue: TypeAlias = StateScalar | list["StateValue"] | dict[str, "StateValue"]
+type StateScalar = str | bool | int | None
+type StateValue = StateScalar | list[StateValue] | dict[str, StateValue]
 
 
 class FinalizeState(TypedDict, total=False):

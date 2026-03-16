@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = []
 # ///
 """One-shot agent runner with schema-required JSON output.
@@ -21,9 +21,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
-
-from typing_extensions import TypedDict
+from typing import Literal, TypedDict
 
 # Anchor imports at repo root for teleclaude constants access.
 _REPO_ROOT = Path(__file__).resolve().parents[2]

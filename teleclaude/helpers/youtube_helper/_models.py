@@ -1,7 +1,8 @@
 """YouTube data models and type definitions."""
 
+from typing import TypedDict
+
 from pydantic import BaseModel
-from typing_extensions import TypedDict
 
 from teleclaude.core.models import JsonDict
 

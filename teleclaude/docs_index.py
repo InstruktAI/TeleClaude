@@ -11,12 +11,11 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import NotRequired
+from typing import NotRequired, TypedDict
 
 import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
-from typing_extensions import TypedDict
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, SNIPPET_VISIBILITY_VALUES, TYPE_SUFFIX

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
-
 
 class BaseView:
     """Base class for all TUI views.
@@ -24,10 +22,7 @@ class BaseView:
         raise NotImplementedError(f"{self.__class__.__name__} must implement get_render_lines()")
 
 
-T = TypeVar("T")
-
-
-class ScrollableViewMixin(Generic[T]):
+class ScrollableViewMixin[T]:
     """Mixin providing scroll behavior for views with flat_items list.
 
     Requires these attributes on the class:

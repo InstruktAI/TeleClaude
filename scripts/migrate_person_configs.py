@@ -14,13 +14,13 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-from typing import TypeAlias, cast
+from typing import cast
 
 import yaml
 
-YamlPrimitive: TypeAlias = str | int | float | bool | None
-YamlValue: TypeAlias = YamlPrimitive | list["YamlValue"] | dict[str, "YamlValue"]
-YamlDict = dict[str, YamlValue]
+type YamlPrimitive = str | int | float | bool | None
+type YamlValue = YamlPrimitive | list[YamlValue] | dict[str, YamlValue]
+type YamlDict = dict[str, YamlValue]
 
 
 def _as_yaml_dict(value: object) -> YamlDict | None:

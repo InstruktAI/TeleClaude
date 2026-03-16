@@ -10,7 +10,6 @@ import time
 from collections.abc import Callable
 from http import HTTPMethod
 from pathlib import Path
-from typing import TypeAlias
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -53,7 +52,7 @@ API_CONNECT_RETRY_DELAYS_S = (0.1, 0.3, 0.6)
 
 __all__ = ["APIError", "TelecAPIClient"]
 
-WsPayload: TypeAlias = dict[str, dict[str, str | list[str]]]
+type WsPayload = dict[str, dict[str, str | list[str]]]
 
 
 class APIError(Exception):

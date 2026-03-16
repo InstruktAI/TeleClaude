@@ -5,10 +5,9 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 import yaml
-from typing_extensions import TypedDict
 
 # ---------------------------------------------------------------------------
 # Repo root (package form: three levels up from this file)

@@ -5,7 +5,6 @@ from __future__ import annotations
 import curses
 from dataclasses import dataclass
 from enum import Enum
-from typing import TypeAlias
 
 
 class NodeType(str, Enum):
@@ -83,4 +82,4 @@ class StickySessionInfo:
     session_id: str
 
 
-CursesWindow: TypeAlias = curses.window
+type CursesWindow = curses.window

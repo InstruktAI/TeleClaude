@@ -3,10 +3,9 @@
 import functools
 import os
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypedDict
 
 from instrukt_ai_logging import get_logger
-from typing_extensions import TypedDict
 
 from teleclaude.core.db import db
 
@@ -47,10 +46,9 @@ class SessionDataPayload(TypedDict, total=False):
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
 
 # Decorator to inject session from context (removes boilerplate)
-R = TypeVar("R")
 
 
-def with_session(
+def with_session[R](
     func: Callable[..., Awaitable[R]],
 ) -> Callable[..., Awaitable[R]]:
     """Decorator that extracts and injects session from a command object."""

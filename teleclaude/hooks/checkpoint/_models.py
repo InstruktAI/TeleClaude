@@ -1,8 +1,7 @@
 """Checkpoint data models and TypedDicts."""
 
 from dataclasses import dataclass, field
-
-from typing_extensions import TypedDict
+from typing import TypedDict
 
 from teleclaude.core.agents import AgentName
 

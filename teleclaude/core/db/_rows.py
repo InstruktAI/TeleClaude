@@ -1,6 +1,6 @@
 """Row TypedDicts for db queue tables."""
 
-from typing_extensions import TypedDict
+from typing import TypedDict
 
 
 class HookOutboxRow(TypedDict):

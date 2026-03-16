@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import TypeVar
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -9,8 +8,6 @@ from teleclaude.config.schema import GlobalConfig, PersonConfig, ProjectConfig
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
-
-T = TypeVar("T", bound=BaseModel)
 
 
 def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
@@ -34,7 +31,7 @@ def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
                     _warn_unknown_keys(item, f"{path}.{field_name}[{idx}]", config_path)
 
 
-def load_config(path: Path, model_class: type[T]) -> T:
+def load_config[T: BaseModel](path: Path, model_class: type[T]) -> T:
     """Load YAML config from ``path`` and validate it with ``model_class``.
 
     Args:

@@ -8,7 +8,6 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Generic, TypeVar
 
 from instrukt_ai_logging import get_logger
 
@@ -17,10 +16,8 @@ from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot, T
 
 logger = get_logger(__name__)
 
-T = TypeVar("T")
 
-
-class CachedItem(Generic[T]):
+class CachedItem[T]:
     """Wrapper for cached items with timestamp tracking."""
 
     def __init__(self, data: T, cached_at: datetime | None = None) -> None:

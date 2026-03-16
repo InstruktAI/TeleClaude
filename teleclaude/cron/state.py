@@ -6,9 +6,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
-
-from typing_extensions import TypedDict
+from typing import TypedDict, cast
 
 from teleclaude.paths import CRON_STATE_PATH
 

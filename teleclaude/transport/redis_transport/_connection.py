@@ -6,14 +6,14 @@ import asyncio
 import random
 import ssl
 import time
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
 
 logger = get_logger(__name__)
 
-_RedisKwargValue: TypeAlias = str | int | float | bool | None | ssl.VerifyMode
+type _RedisKwargValue = str | int | float | bool | None | ssl.VerifyMode
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache

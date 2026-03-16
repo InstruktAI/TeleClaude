@@ -7,8 +7,7 @@ is_command_allowed() from teleclaude.cli.telec as the single source of truth.
 """
 
 from collections.abc import Iterator
-
-from typing_extensions import TypedDict
+from typing import TypedDict
 
 from teleclaude.cli.telec.surface import CommandDef
 

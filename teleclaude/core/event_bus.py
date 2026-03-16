@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Literal
+from typing import Literal, TypedDict
 
 from instrukt_ai_logging import get_logger
-from typing_extensions import TypedDict
 
 from teleclaude.core.event_guard import create_event_guard
 from teleclaude.core.events import EventContext, EventType

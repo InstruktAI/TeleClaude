@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import TypedDict
 
-from typing_extensions import TypedDict
-
-JsonPrimitive: TypeAlias = str | int | float | bool | None
-JsonValue: TypeAlias = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
+type JsonPrimitive = str | int | float | bool | None
+type JsonValue = JsonPrimitive | list[JsonValue] | dict[str, JsonValue]
 
 
 class ChannelInfo(TypedDict):

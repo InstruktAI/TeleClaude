@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TypeAlias
-
 from teleclaude.api_models import (
     AgentActivityEventDTO as AgentActivityEvent,
 )
@@ -127,11 +125,11 @@ __all__ = [
     "WsEvent",
 ]
 
-JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
-JsonObject: TypeAlias = dict[str, JsonValue]
+type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+type JsonObject = dict[str, JsonValue]
 
 
-WsEvent: TypeAlias = (
+type WsEvent = (
     SessionsInitialEvent
     | ProjectsInitialEvent
     | SessionStartedEvent

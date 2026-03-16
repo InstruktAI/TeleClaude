@@ -11,13 +11,13 @@ description = "Control terminal sessions on multiple computers remotely via Tele
 readme = "README.md"
 classifiers = [
   "Intended Audience :: Developers",
-  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Typing :: Typed",
   "Topic :: Communications :: Chat",
   "Topic :: System :: Shells",
 ]
 keywords = ["telegram", "terminal", "tmux", "remote-control"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "python-telegram-bot[rate-limiter]>=22.5",
     "discord.py>=2.4.0",
@@ -96,7 +96,7 @@ homepage = "https://github.com/InstruktAI/TeleClaude"
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 extend-exclude = [".venv", "venv", ".mypy_cache", ".pytest_cache", "coverage"]
 
 [tool.ruff.format]
@@ -157,7 +157,7 @@ max-complexity = 20
 
 [tool.mypy]
 # MAXIMUM STRICTNESS - No Any, no untyped dict/list, no isinstance abuse
-python_version = "3.11"
+python_version = "3.12"
 files = ["teleclaude", "company", "jobs", "scripts", "tests", "tools", "*.py"]
 exclude = ["^venv/", "^.venv/", "^trees/"]
 follow_imports = "silent"  # TODO: Revisit - changed from "skip" to allow pydantic BaseModel resolution

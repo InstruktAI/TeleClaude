@@ -8,11 +8,11 @@ import uuid
 from collections.abc import Callable
 from contextvars import ContextVar, Token
 from datetime import UTC, datetime, timedelta
+from typing import TypedDict
 
 from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
-from typing_extensions import TypedDict
 
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation

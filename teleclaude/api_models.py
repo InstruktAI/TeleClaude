@@ -1,10 +1,9 @@
 """API request/response models for API server."""
 
 import dataclasses
-from typing import TYPE_CHECKING, Literal, NotRequired
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
