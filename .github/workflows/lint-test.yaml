@@ -31,8 +31,16 @@ jobs:
         run: |
           echo "HOME=$HOME"
           echo "UV_CACHE_DIR=$UV_CACHE_DIR"
+          echo "CWD=$(pwd)"
           uv --version
-          ls "$UV_CACHE_DIR/wheels-v5/pypi/transformers/" 2>/dev/null || echo "transformers not in cache"
+          echo "--- Cache structure ---"
+          ls "$UV_CACHE_DIR/" 2>/dev/null || echo "cache dir missing"
+          echo "--- Transformers versions ---"
+          ls -la "$UV_CACHE_DIR/wheels-v5/pypi/transformers/" 2>/dev/null || echo "transformers not in cache"
+          echo "--- Archive dir ---"
+          ls "$UV_CACHE_DIR/archive-v0/" 2>/dev/null | wc -l
+          echo "--- id ---"
+          id
 
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci

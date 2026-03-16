@@ -366,11 +366,11 @@ install_python_deps() {
     print_info "Syncing Python environment with uv..."
     MAIN_VENV="$HOME/Workspace/InstruktAI/TeleClaude/.venv"
     if [ "$CI_MODE" = true ] && [ -d "$MAIN_VENV" ]; then
-        # CI on self-hosted runner: reuse main checkout's venv via symlink.
-        # Requires HOME to be set correctly (case-sensitive FS).
-        print_info "Linking main checkout .venv for CI..."
+        # CI on self-hosted runner: copy main checkout's venv to avoid
+        # symlink resolution issues with pyright on case-sensitive FS.
+        print_info "Copying main checkout .venv for CI..."
         rm -rf "$INSTALL_DIR/.venv"
-        ln -s "$MAIN_VENV" "$INSTALL_DIR/.venv"
+        cp -a "$MAIN_VENV" "$INSTALL_DIR/.venv"
     elif [ "$CI_MODE" = true ]; then
         (cd "$INSTALL_DIR" && uv sync --frozen)
     else
