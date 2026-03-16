@@ -1,0 +1,8 @@
+# Minimal test configuration — all keys fall back to DEFAULT_CONFIG.
+# See teleclaude/config/__init__.py for the full default structure.
+#
+# CI and tools/test.sh point TELECLAUDE_CONFIG_PATH here so that
+# importing teleclaude.config succeeds without a real deployment config.
+
+agents:
+  default: claude
