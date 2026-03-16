@@ -16,12 +16,20 @@ jobs:
       # is case-sensitive and the real home is /Users/Morriz. Fix globally
       # so uv, pyright, and all tools find their caches.
       HOME: /Users/Morriz
+      UV_CACHE_DIR: /Users/Morriz/.cache/uv
       TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
       TELECLAUDE_ENV_PATH: tests/integration/.env
       INSTRUKT_AI_LOG_ROOT: /tmp/teleclaude-logs
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify environment
+        run: |
+          echo "HOME=$HOME"
+          echo "UV_CACHE_DIR=$UV_CACHE_DIR"
+          uv --version
+          ls "$UV_CACHE_DIR/wheels-v5/pypi/transformers/" 2>/dev/null || echo "transformers not in cache"
 
       - name: Full TeleClaude Bootstrap
         run: make bootstrap-ci
