@@ -21,8 +21,15 @@ jobs:
       - name: Verify CLI credentials
         run: |
           errors=0
+          # Resolve real home — GitHub Actions may report lowercase on case-sensitive APFS
+          REAL_HOME=$(dscl . -read /Users/"$(whoami)" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || echo "$HOME")
           echo "HOME=$HOME"
-          echo "Resolved home: $(python3 -c 'from pathlib import Path; print(Path.home())')"
+          echo "Real home (dscl): $REAL_HOME"
+          echo "whoami: $(whoami)"
+          if [ "$HOME" != "$REAL_HOME" ] && [ -d "$REAL_HOME" ]; then
+            echo "Correcting HOME from $HOME to $REAL_HOME (case-sensitive FS)"
+            export HOME="$REAL_HOME"
+          fi
 
           # Claude: macOS Keychain + functional probe
           if ! security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
@@ -36,10 +43,13 @@ jobs:
             fi
             if [ -n "$CLAUDE_BIN" ] && [ -x "$CLAUDE_BIN" ]; then
               echo "Claude binary: $CLAUDE_BIN"
+              echo "Claude config dir: $HOME/.claude"
+              ls -la "$HOME/.claude/" 2>&1 | head -5 || echo "(no .claude dir)"
               PROBE=$("$CLAUDE_BIN" -p "reply ok" --output-format json --no-session-persistence \
                 --dangerously-skip-permissions --no-chrome \
                 --settings '{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": [], "disableAllHooks": true}' \
-                --tools "" 2>&1 | head -5 || true)
+                --tools "" 2>&1 | head -10 || true)
+              echo "Claude probe output: $PROBE"
               if echo "$PROBE" | grep -qi "not logged in"; then
                 echo "::error::Claude CLI credential expired or invalid. Run: claude login"
                 errors=$((errors + 1))
