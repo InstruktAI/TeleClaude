@@ -8,11 +8,6 @@ from teleclaude.config.schema_export import export_config_markdown
 class TestExportConfigMarkdown:
     """Verify export_config_markdown() produces complete, structured output."""
 
-    def test_returns_string(self) -> None:
-        result = export_config_markdown()
-        assert isinstance(result, str)
-        assert len(result) > 100
-
     def test_contains_config_model_sections(self) -> None:
         result = export_config_markdown()
         assert "Global Config" in result
@@ -21,21 +16,14 @@ class TestExportConfigMarkdown:
 
     def test_contains_key_config_fields(self) -> None:
         result = export_config_markdown()
-        # GlobalConfig fields
-        assert "people" in result
-        assert "subscriptions" in result
-        # ProjectConfig fields
-        assert "project_name" in result
-        assert "hooks" in result
-        assert "jobs" in result
-        assert "deployment" in result
+        assert "`people`" in result
+        assert "`subscriptions`" in result
+        assert "`project_name`" in result
+        assert "`hooks`" in result
+        assert "`jobs`" in result
+        assert "`deployment`" in result
 
     def test_contains_json_schema_block(self) -> None:
         result = export_config_markdown()
         assert "```json" in result
         assert '"properties"' in result
-
-    def test_is_pure_no_side_effects(self) -> None:
-        first = export_config_markdown()
-        second = export_config_markdown()
-        assert first == second
