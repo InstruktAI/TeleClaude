@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-integration-cwd-resolution
+  date: '2026-03-17'
+  commit: e970cadac810
 - slug: fix-tui-new-session-ux
   date: '2026-03-17'
   commit: 30ed52e4af82
