@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-from-main-scoping
+  date: '2026-03-17'
+  commit: 1de9be23e753
 - slug: pattern-scanner-noqa-hygiene
   date: '2026-03-17'
   commit: 6c51a4d800ab
