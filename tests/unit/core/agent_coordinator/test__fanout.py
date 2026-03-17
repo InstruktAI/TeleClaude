@@ -92,34 +92,6 @@ class TestExtractUserInputForCodex:
         assert result is None
 
 
-class TestMaybeSendHeadlessSnapshot:
-    @pytest.mark.unit
-    async def test_no_session_returns_early(self):
-        mixin = _make_fanout()
-        with patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=None)
-            await mixin._maybe_send_headless_snapshot("sess-001")
-        mixin.headless_snapshot_service.send_snapshot.assert_not_called()  # pyright: ignore[reportAttributeAccessIssue]
-
-    @pytest.mark.unit
-    async def test_non_headless_session_returns_early(self):
-        mixin = _make_fanout()
-        session = _make_session(lifecycle_status="active")
-        with patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            await mixin._maybe_send_headless_snapshot("sess-001")
-        mixin.headless_snapshot_service.send_snapshot.assert_not_called()  # pyright: ignore[reportAttributeAccessIssue]
-
-    @pytest.mark.unit
-    async def test_headless_without_agent_skips_snapshot(self):
-        mixin = _make_fanout()
-        session = _make_session(lifecycle_status="headless", active_agent=None)
-        with patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            await mixin._maybe_send_headless_snapshot("sess-001")
-        mixin.headless_snapshot_service.send_snapshot.assert_not_called()  # pyright: ignore[reportAttributeAccessIssue]
-
-
 class TestFanoutLinkedStopOutput:
     @pytest.mark.unit
     async def test_no_links_returns_zero(self):

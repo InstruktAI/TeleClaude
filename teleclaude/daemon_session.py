@@ -198,16 +198,8 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                         ),
                     )
 
-    async def _handle_session_started(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Handler for session_started events (headless snapshot bootstrap)."""
-        session = await db.get_session(context.session_id)
-        if not session:
-            return
-
-        if session.lifecycle_status != "headless":
-            return
-
-        await self.headless_snapshot_service.send_snapshot(session, reason="session_started", client=self.client)
+    async def _handle_session_started(self, _event: str, _context: SessionLifecycleContext) -> None:
+        """No-op handler; headless snapshot delivery is event-driven via the coordinator."""
 
     async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
         """Handler for SYSTEM_COMMAND events.

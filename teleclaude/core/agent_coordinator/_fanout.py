@@ -107,15 +107,6 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         await db.update_session(session_id, title=new_title)
         logger.info("Updated session title from user input: %s", new_title)
 
-    async def _maybe_send_headless_snapshot(self, session_id: str) -> None:
-        session = await db.get_session(session_id)
-        if not session or session.lifecycle_status != "headless":
-            return
-        if not session.active_agent or not session.native_log_file:
-            logger.debug("Headless snapshot skipped (missing agent or transcript)", session=session_id)
-            return
-        await self.headless_snapshot_service.send_snapshot(session, reason="agent_session_start", client=self.client)
-
     async def _speak_session_start(self, session_id: str) -> None:
         if not SESSION_START_MESSAGES:
             return

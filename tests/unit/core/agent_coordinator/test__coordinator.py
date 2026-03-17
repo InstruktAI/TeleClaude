@@ -250,6 +250,10 @@ class TestHandleToolDone:
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.serialize_activity_event") as mock_serial,
             patch("teleclaude.core.agent_coordinator._coordinator.event_bus") as mock_bus,
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.db",
+                new=MagicMock(get_session=AsyncMock(return_value=None)),
+            ),
         ):
             mock_canonical = MagicMock()
             mock_canonical.canonical_type = "agent_output_update"
@@ -300,7 +304,6 @@ class TestHandleSessionStart:
             mock_db.update_session = AsyncMock()
             mock_db.get_voice = AsyncMock(return_value=None)
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_headless_snapshot = AsyncMock()
             coord._speak_session_start = AsyncMock()
             await coord.handle_session_start(context)
 
@@ -322,7 +325,6 @@ class TestHandleSessionStart:
             mock_db.update_session = AsyncMock()
             mock_db.get_voice = AsyncMock(return_value=None)
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_headless_snapshot = AsyncMock()
             coord._speak_session_start = AsyncMock()
             await coord.handle_session_start(context)
 
@@ -343,7 +345,6 @@ class TestHandleSessionStart:
             mock_db.update_session = AsyncMock()
             mock_db.get_voice = AsyncMock(return_value=None)
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_headless_snapshot = AsyncMock()
             coord._speak_session_start = AsyncMock()
             await coord.handle_session_start(context)
 
@@ -364,7 +365,6 @@ class TestHandleSessionStart:
             mock_db.update_session = AsyncMock()
             mock_db.get_voice = AsyncMock(return_value=None)
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_headless_snapshot = AsyncMock()
             coord._speak_session_start = AsyncMock()
             await coord.handle_session_start(context)
 
@@ -385,11 +385,9 @@ class TestHandleSessionStart:
             mock_db.update_session = AsyncMock()
             mock_db.get_voice = AsyncMock(return_value=None)
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_headless_snapshot = AsyncMock()
             coord._speak_session_start = AsyncMock()
             await coord.handle_session_start(context)
 
-        coord._maybe_send_headless_snapshot.assert_called_once_with("sess-001")
         coord._speak_session_start.assert_called_once_with("sess-001")
 
 

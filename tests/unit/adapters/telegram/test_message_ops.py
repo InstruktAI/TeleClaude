@@ -183,16 +183,13 @@ async def test_send_message_formats_cross_source_reflection_before_send():
     assert ops.waited_for_topic == [(23, "Test Session")]
 
 
-async def test_send_message_raises_when_topic_id_is_missing():
+async def test_send_message_returns_empty_when_topic_id_is_missing():
     ops = _StubMessageOps()
     session = _make_session(topic_id=None)
 
-    try:
-        await ops.send_message(session, "hello")
-    except RuntimeError as exc:
-        assert "Telegram topic_id missing" in str(exc)
-    else:
-        raise AssertionError("Expected RuntimeError when topic_id is missing")
+    result = await ops.send_message(session, "hello")
+    assert result == ""
+    ops.bot.send_message.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

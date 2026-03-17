@@ -152,12 +152,12 @@ class MessageOperationsMixin:
                 if not text.endswith("---\n"):
                     text = f"{text}\n\n---\n"
 
-        # Gracefully skip if channel not ready yet (fire-and-forget channel creation)
+        # Skip when topic_id absent (channel still creating, or headless session without a topic).
         telegram_meta = session.get_metadata().get_ui().get_telegram()
         topic_id = telegram_meta.topic_id
         if not topic_id:
             logger.debug("send_message: skipping, topic_id not ready for session %s", session.session_id)
-            raise RuntimeError("Telegram topic_id missing (topic_id=None)")
+            return ""
 
         # Extract reply_markup and parse_mode from metadata
         reply_markup = metadata.reply_markup
@@ -440,12 +440,12 @@ class MessageOperationsMixin:
         """Send file to session's topic."""
         self._ensure_started()
 
-        # Gracefully skip if channel not ready yet (fire-and-forget channel creation)
+        # Skip when topic_id absent (channel still creating, or headless session without a topic).
         telegram_meta = session.get_metadata().get_ui().get_telegram()
         topic_id = telegram_meta.topic_id
         if not topic_id:
             logger.debug("send_file: skipping, topic_id not ready for session %s", session.session_id)
-            raise RuntimeError("Telegram topic_id missing (topic_id=None)")
+            return ""
 
         message = await self._send_document_with_retry(
             self.supergroup_id,

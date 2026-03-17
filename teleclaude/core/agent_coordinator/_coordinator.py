@@ -74,6 +74,8 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         self._incremental_output_locks: dict[str, asyncio.Lock] = {}
         # Track last emitted lifecycle status per session for guard checks.
         self._last_emitted_status: dict[str, str] = {}
+        # Debounced headless pull timers keyed by session_id.
+        self._headless_pull_handles: dict[str, asyncio.TimerHandle] = {}
 
     def _queue_background_task(
         self,
@@ -105,6 +107,59 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                         pass
 
         task.add_done_callback(_on_done)
+
+    async def _schedule_headless_pull(self, session_id: str, *, immediate: bool = False) -> None:
+        """Schedule a debounced transcript pull for a headless session.
+
+        Non-headless sessions are skipped. When ``immediate`` is True the
+        snapshot is sent synchronously (used on agent_stop). Otherwise a
+        1-second debounce timer coalesces rapid events into a single pull,
+        matching the cadence of tmux-based scraping for non-headless sessions.
+        """
+        session = await db.get_session(session_id)
+        if not session or session.lifecycle_status != "headless":
+            return
+
+        if immediate:
+            # Cancel any pending debounce and pull now.
+            self._cancel_headless_pull(session_id)
+            logger.debug("headless pull: immediate snapshot for %s", session_id)
+            await self.headless_snapshot_service.send_snapshot(
+                session, reason="headless_event_pull", client=self.client
+            )
+            return
+
+        # If a timer is already pending, let it fire — no-op.
+        if session_id in self._headless_pull_handles:
+            return
+
+        loop = asyncio.get_running_loop()
+
+        def _fire() -> None:
+            self._headless_pull_handles.pop(session_id, None)
+            logger.debug("headless pull: debounce fired for %s", session_id)
+            self._queue_background_task(
+                self._do_headless_pull(session_id),
+                f"headless-pull:{session_id}",
+            )
+
+        handle = loop.call_later(1.0, _fire)
+        self._headless_pull_handles[session_id] = handle
+        logger.debug("headless pull: scheduled debounce for %s", session_id)
+
+    async def _do_headless_pull(self, session_id: str) -> None:
+        """Execute a single headless snapshot pull (called from debounce timer)."""
+        session = await db.get_session(session_id)
+        if not session or session.lifecycle_status != "headless":
+            return
+        await self.headless_snapshot_service.send_snapshot(session, reason="headless_event_pull", client=self.client)
+
+    def _cancel_headless_pull(self, session_id: str) -> None:
+        """Cancel a pending debounced headless pull timer."""
+        handle = self._headless_pull_handles.pop(session_id, None)
+        if handle is not None:
+            handle.cancel()
+            logger.debug("headless pull: cancelled pending timer for %s", session_id)
 
     def _emit_activity_event(
         self,
@@ -276,7 +331,8 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         if not session or session.lifecycle_status != "headless":
             self._emit_status_event(context.session_id, "active", "agent_session_started")
 
-        await self._maybe_send_headless_snapshot(context.session_id)
+        # Headless snapshot delivery is now event-driven (_schedule_headless_pull)
+        # rather than firing at session start before output exists.
         await self._speak_session_start(context.session_id)
 
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
@@ -476,6 +532,9 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         now_ts = datetime.now(UTC).isoformat()
         self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=now_ts)
 
+        # Immediate headless pull on stop — final output must be captured.
+        await self._schedule_headless_pull(session_id, immediate=True)
+
         # 2. Incremental threaded output (final turn portion)
         await self._maybe_send_incremental_output(session_id, payload)
 
@@ -650,6 +709,9 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         # Output fanout is transcript-driven from polling; hooks stay control-plane only.
         # tool_use still emits activity + checkpoint timing metadata.
 
+        # Drive headless output delivery via debounced transcript pull.
+        await self._schedule_headless_pull(session_id)
+
     async def handle_tool_done(self, context: AgentEventContext) -> None:
         """Handle tool_done event — tool execution completed, output available."""
         session_id = context.session_id
@@ -657,7 +719,11 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         # Emit activity event for UI updates
         self._emit_activity_event(session_id, AgentHookEvents.TOOL_DONE)
 
+        # Drive headless output delivery via debounced transcript pull.
+        await self._schedule_headless_pull(session_id)
+
     async def handle_session_end(self, context: AgentEventContext) -> None:
         """Handle session_end event - agent session ended."""
         _payload = cast(AgentSessionEndPayload, context.data)
+        self._cancel_headless_pull(context.session_id)
         logger.info("Agent %s for session %s", AgentHookEvents.AGENT_SESSION_END, context.session_id)

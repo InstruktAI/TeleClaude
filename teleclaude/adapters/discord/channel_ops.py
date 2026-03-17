@@ -198,12 +198,13 @@ class ChannelOperationsMixin:
         from teleclaude.core.session_utils import get_short_project_name
 
         description = session.title or "Untitled"
+        headless_prefix = "[HEADLESS] " if session.lifecycle_status == "headless" else ""
         # If routing to a project-specific forum, use description only
         if target_forum_id != self._all_sessions_channel_id:
-            return description
+            return f"{headless_prefix}{description}"
         # Catch-all: prefix with project name
         short_name = get_short_project_name(session.project_path, session.subdir)
-        return f"{short_name}: {description}"
+        return f"{headless_prefix}{short_name}: {description}"
 
     @staticmethod
     def _is_customer_session(session: Session) -> bool:
