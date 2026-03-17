@@ -1,4 +1,23 @@
-<!-- from-main: inline work delivered under human supervision -->
 # Requirements: role-git-wrapper
 
-Replace per-command env var overrides with TELECLAUDE_GIT_ROLE role model in git wrapper
+## Goal
+
+- Define the intended outcome for this todo.
+
+## Scope
+
+- ## In scope:
+- ## Out of scope:
+
+## Success Criteria
+
+- [ ]
+- [ ]
+
+## Constraints
+
+-
+
+## Risks
+
+-
