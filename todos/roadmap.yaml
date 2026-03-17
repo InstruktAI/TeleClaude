@@ -45,3 +45,4 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
+- slug: fix-tui-auto-select-focus
