@@ -15,6 +15,7 @@ Policy (version-control-safety) says: 'Never use git checkout, git restore, git 
 ## Reproduction
 
 In any agent session on main:
+
 ```
 git add somefile.py
 git reset HEAD   # succeeds — should be blocked or scoped
@@ -48,12 +49,20 @@ Date: 2026-03-17
 
 ## Investigation
 
-<!-- Fix worker fills this during debugging -->
+- Confirmed that `git reset` (bare) and `git reset HEAD~1` (commit-targeted) were allowed by the current git wrapper.
+- Verified that the current implementation only blocked `reset` if explicit flags like `--hard`, `--merge`, or `--keep` were present.
+- Identified that `git reset` and `git reset <commit>` were passing through because they had no such flags, despite moving HEAD or clearing the staging area.
+- Discovered a bash arithmetic bug where `((var++))` returns 1 (error) if `var` is 0, which triggers `set -e` and causes the wrapper to exit silently.
 
 ## Root Cause
 
-<!-- Fix worker fills this after investigation -->
+The git wrapper's `reset` guard was too narrow, only looking for specific destructive flags. It lacked logic to distinguish between "pathspec resets" (which are safe as they only affect the index) and "commit resets" (which are dangerous as they move HEAD). Additionally, a bare `git reset` without arguments was completely unchecked.
 
 ## Fix Applied
 
-<!-- Fix worker fills this after committing the fix -->
+- Updated `teleclaude/install/wrappers/git` to use a more robust `reset` detection logic.
+- The new logic counts non-flag arguments and checks for the `--` separator.
+- **Allowed:** Pathspec resets that are unambiguous (using `--` separator or having at least 2 non-flag arguments like `git reset HEAD <path>`).
+- **Blocked:** Bare `git reset` and 1-argument resets like `git reset <commit>` or `git reset <path>` without a separator. This forces agents to be explicit and avoid ambiguous commands that might accidentally move HEAD.
+- Fixed the bash arithmetic increment bug by using `_non_flag_args=$((_non_flag_args + 1))` instead of `((_non_flag_args++))`.
+- Added comprehensive test cases to `tests/unit/install/test_git_wrapper_permissions.py` covering bare reset, commit reset, pathspec reset with `HEAD`, pathspec reset with `--`, and `--hard` reset across different roles.

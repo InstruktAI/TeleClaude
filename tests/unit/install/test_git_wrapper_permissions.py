@@ -174,6 +174,75 @@ class TestPushFromMainPermissions:
         assert "blocked" in result.stderr.lower()
 
 
+class TestResetPermissions:
+    def test_bare_reset_blocked(self, tmp_path: Path) -> None:
+        """git reset (bare) should be blocked."""
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        result = _run_wrapper(["reset"], cwd=str(tmp_path))
+        assert result.returncode != 0
+        assert "prohibited" in result.stderr.lower()
+
+    def test_reset_commit_blocked(self, tmp_path: Path) -> None:
+        """git reset <commit> should be blocked."""
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        (tmp_path / "f.txt").write_text("x")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
+        (tmp_path / "f.txt").write_text("y")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "second"], capture_output=True)
+
+        result = _run_wrapper(["reset", "HEAD~1"], cwd=str(tmp_path))
+        assert result.returncode != 0
+        assert "prohibited" in result.stderr.lower()
+
+    def test_reset_head_path_allowed(self, tmp_path: Path) -> None:
+        """git reset HEAD <path> should be allowed."""
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        (tmp_path / "f.txt").write_text("x")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
+        (tmp_path / "f.txt").write_text("y")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
+
+        result = _run_wrapper(["reset", "HEAD", "f.txt"], cwd=str(tmp_path))
+        assert "prohibited" not in result.stderr.lower()
+        assert result.returncode == 0
+
+    def test_reset_separator_allowed(self, tmp_path: Path) -> None:
+        """git reset -- <path> should be allowed."""
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        (tmp_path / "f.txt").write_text("x")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
+        (tmp_path / "f.txt").write_text("y")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
+
+        result = _run_wrapper(["reset", "--", "f.txt"], cwd=str(tmp_path))
+        assert "prohibited" not in result.stderr.lower()
+        assert result.returncode == 0
+
+    def test_reset_bare_separator_blocked(self, tmp_path: Path) -> None:
+        """git reset -- (separator, no pathspec) should be blocked."""
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        (tmp_path / "f.txt").write_text("x")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
+        (tmp_path / "f.txt").write_text("y")
+        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
+
+        result = _run_wrapper(["reset", "--"], cwd=str(tmp_path))
+        assert result.returncode != 0
+        assert "prohibited" in result.stderr.lower()
+
+    def test_reset_hard_blocked(self) -> None:
+        """git reset --hard should be blocked for all roles."""
+        for role in ["worker", "integrator", "system"]:
+            result = _run_wrapper(["reset", "--hard"], role=role)
+            assert result.returncode != 0
+            assert "prohibited" in result.stderr.lower()
+
+
 class TestInvalidRolePermissions:
     """Typoed or invalid roles should fall back to worker (fail-closed)."""
 
@@ -194,11 +263,6 @@ class TestAlwaysBlocked:
 
     def test_clean_blocked(self) -> None:
         result = _run_wrapper(["clean", "-fd"], role="integrator")
-        assert result.returncode != 0
-        assert "prohibited" in result.stderr
-
-    def test_reset_hard_blocked(self) -> None:
-        result = _run_wrapper(["reset", "--hard"], role="system")
         assert result.returncode != 0
         assert "prohibited" in result.stderr
 

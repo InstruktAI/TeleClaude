@@ -111,16 +111,59 @@ MSG
         ;;
 esac
 
-# Block reset with destructive flags
+# Block reset variants that move HEAD (version-control-safety policy)
 if [ "$_subcmd" = "reset" ]; then
-    for arg in "$@"; do
-        case "$arg" in
+    _has_separator=0
+    _non_flag_args=0
+    
+    _is_subcmd=0
+    for _arg in "$@"; do
+        if [ "$_is_subcmd" -eq 0 ]; then
+            [ "$_arg" = "reset" ] && _is_subcmd=1
+            continue
+        fi
+        
+        case "$_arg" in
             --hard|--merge|--keep)
-                echo "ERROR: 'git reset $arg' is prohibited in agent sessions. Do not discard commits." >&2
+                echo "ERROR: 'git reset $_arg' is prohibited in agent sessions. Do not discard commits." >&2
                 exit 1
+                ;;
+            --)
+                _has_separator=1
+                ;;
+            -*)
+                ;;
+            *)
+                _non_flag_args=$((_non_flag_args + 1))
                 ;;
         esac
     done
+
+    # Pathspec reset (allowed): git reset [<tree-ish>] [--] <pathspec>...
+    # Commit reset (prohibited): git reset [<mode>] [<commit>]
+    
+    # We allow pathspec resets if they are unambiguous:
+    # 1. Contain '--' separator
+    # 2. Contain at least 2 non-flag arguments (likely <tree-ish> <pathspec>)
+    if [ "$_has_separator" -eq 1 ] && [ "$_non_flag_args" -ge 1 ]; then
+        : # allowed — pathspec reset (separator + at least one pathspec arg)
+    elif [ "$_non_flag_args" -ge 2 ]; then
+        : # allowed — likely 'git reset <tree-ish> <pathspec>...'
+    else
+        # 0 or 1 non-flag args without '--' is either bare reset or ambiguous 'git reset <commit|path>'.
+        # We block these to prevent accidental HEAD movement or full index reset.
+        cat >&2 <<'MSG'
+ERROR: 'git reset' without explicit pathspecs is prohibited.
+
+To unstage specific files, use:
+  git reset HEAD <path>
+  git reset -- <path>
+
+Bare 'git reset' or 'git reset <commit>' are blocked because they move HEAD
+or discard the entire staging area, which violates safety policy.
+MSG
+        exit 1
+    fi
 fi
 
 # Block commits on main (agents must use review pipeline)
