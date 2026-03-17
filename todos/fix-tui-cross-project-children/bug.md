@@ -38,12 +38,21 @@ Date: 2026-03-17
 
 ## Investigation
 
-<!-- Fix worker fills this during debugging -->
+Traced the tree building logic in `teleclaude/cli/tui/tree.py`. At line 124 (pre-fix), sessions are classified into `sessions_by_initiator` or `root_sessions` based solely on whether `initiator_session_id` exists and points to a session in the current set. No project affinity check is performed.
+
+When `_build_session_node` recursively adds children (line 235), it pulls from `sessions_by_initiator` without considering whether the child session belongs to the same project. A cross-project child (e.g., project B worker initiated by project A orchestrator) gets nested under the parent in project A's tree.
 
 ## Root Cause
 
-<!-- Fix worker fills this after investigation -->
+`build_tree` classifies sessions into parent-child relationships using `initiator_session_id` alone (line 124-126). It does not compare `project_path` between the child and initiator. Cross-project children are incorrectly nested under their initiator's project tree node instead of appearing as top-level sessions in their own project group.
 
 ## Fix Applied
 
-<!-- Fix worker fills this after committing the fix -->
+Added two helper functions to `tree.py`:
+
+- `_base_project_path(path)`: Strips worktree suffix (`/trees/...`) to resolve the base project path.
+- `_same_project(path_a, path_b)`: Compares two session project paths by their resolved base projects.
+
+Modified the session classification loop to check `_same_project(session.project_path, initiator.project_path)` before nesting. Cross-project children now fall through to `root_sessions` and render as top-level nodes in their own project group.
+
+The `initiator_session_id` relationship is preserved in the data — this change only affects display grouping.

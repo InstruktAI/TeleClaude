@@ -71,6 +71,26 @@ def is_session_node(node: TreeNode) -> TypeGuard[SessionNode]:
     return node.type == NodeType.SESSION
 
 
+def _base_project_path(project_path: str) -> str:
+    """Extract base project path, stripping any worktree suffix.
+
+    A worktree path like ``/repo/trees/my-task`` resolves to ``/repo``.
+    A plain project path is returned unchanged.
+    """
+    marker = os.sep + WORKTREE_DIR + os.sep
+    idx = project_path.find(marker)
+    if idx != -1:
+        return project_path[:idx]
+    return project_path
+
+
+def _same_project(path_a: str | None, path_b: str | None) -> bool:
+    """Return True when both paths resolve to the same base project."""
+    if not path_a or not path_b:
+        return path_a == path_b
+    return _base_project_path(path_a) == _base_project_path(path_b)
+
+
 def build_tree(
     computers: list[ComputerDisplayInfo],
     projects: list[ProjectInfo],
@@ -115,15 +135,21 @@ def build_tree(
             )
         )
 
-    # Index sessions by initiator for AI-to-AI nesting
+    # Index sessions by initiator for AI-to-AI nesting.
+    # Only nest when child belongs to the same project as the initiator;
+    # cross-project children render as top-level nodes in their own project.
     sessions_by_initiator: dict[str, list[SessionInfo]] = {}
     root_sessions: list[SessionInfo] = []
 
-    session_ids = {s.session_id for s in sessions}
+    session_lookup = {s.session_id: s for s in sessions}
     for session in sessions:
         initiator_id = session.initiator_session_id
-        if initiator_id and initiator_id in session_ids:
-            sessions_by_initiator.setdefault(initiator_id, []).append(session)
+        if initiator_id and initiator_id in session_lookup:
+            initiator = session_lookup[initiator_id]
+            if _same_project(session.project_path, initiator.project_path):
+                sessions_by_initiator.setdefault(initiator_id, []).append(session)
+            else:
+                root_sessions.append(session)
         else:
             root_sessions.append(session)
 

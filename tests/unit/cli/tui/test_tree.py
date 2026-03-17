@@ -69,3 +69,56 @@ def test_build_tree_nests_initiated_sessions_under_their_parent_session() -> Non
     assert child_session.data.session.session_id == "s2"
     assert child_session.data.display_index == "1.1"
     assert child_session.parent is root_session
+
+
+@pytest.mark.unit
+def test_build_tree_cross_project_child_renders_as_top_level_in_own_project() -> None:
+    """Child session in a different project should not nest under its initiator.
+
+    When an orchestrator in project A dispatches a worker in project B,
+    the worker should appear as a top-level session under project B, not
+    nested under the orchestrator in project A.
+    """
+    computers = [
+        ComputerDisplayInfo(
+            ComputerDTO(name="c1", status="online", user="alice", host="host", is_local=True),
+            session_count=0,
+            recent_activity=False,
+        )
+    ]
+    projects = [
+        ProjectDTO(computer="c1", name="projA", path="/repoA", description=None),
+        ProjectDTO(computer="c1", name="projB", path="/repoB", description=None),
+    ]
+    sessions = [
+        SessionDTO(session_id="s1", title="orchestrator", status="idle", project_path="/repoA", computer="c1"),
+        SessionDTO(
+            session_id="s2",
+            title="cross-project-worker",
+            status="idle",
+            project_path="/repoB",
+            computer="c1",
+            initiator_session_id="s1",
+        ),
+    ]
+
+    roots = build_tree(computers, projects, sessions)
+    computer_node = roots[0]
+    assert is_computer_node(computer_node)
+
+    # Find project nodes
+    project_nodes = {child.data.path: child for child in computer_node.children if is_project_node(child)}
+    proj_a = project_nodes["/repoA"]
+    proj_b = project_nodes["/repoB"]
+
+    # Orchestrator in project A should have NO nested children
+    orchestrator = proj_a.children[0]
+    assert is_session_node(orchestrator)
+    assert orchestrator.data.session.session_id == "s1"
+    assert len(orchestrator.children) == 0
+
+    # Cross-project worker should be a top-level session under project B
+    worker = proj_b.children[0]
+    assert is_session_node(worker)
+    assert worker.data.session.session_id == "s2"
+    assert worker.parent is proj_b
