@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-scaffold-push-to-remote
+  date: '2026-03-17'
+  commit: 22c64ed045e9
 - slug: fix-telegram-message-not-delivered
   date: '2026-03-17'
   commit: bc52a5cd36f0
