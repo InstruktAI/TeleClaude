@@ -164,6 +164,29 @@ class TestRuntimeSettingsLoading:
         assert len(manager.start_from_state_calls) == 1
         assert manager.start_from_state_calls[0].position_seconds == 12.5
 
+    @pytest.mark.unit
+    def test_bootstrap_chiptunes_clears_stale_pending_fields(self, tmp_path: Path) -> None:
+        payload = {
+            "chiptunes": {
+                "playback": "paused",
+                "track_path": "music/song.sid",
+                "pending_command_id": "stale-cmd",
+                "pending_action": "next",
+            }
+        }
+        manager = StubChiptunesManager()
+        settings, _, _ = _make_settings(tmp_path, payload=payload, chiptunes_manager=manager)
+
+        # Before bootstrap, they are loaded from payload
+        assert settings.get_state().chiptunes.pending_command_id == "stale-cmd"
+        assert settings.get_state().chiptunes.pending_action == "next"
+
+        settings.bootstrap_chiptunes()
+
+        # After bootstrap, they should be cleared
+        assert settings.get_state().chiptunes.pending_command_id == ""
+        assert settings.get_state().chiptunes.pending_action == ""
+
 
 class TestRuntimeSettingsMutation:
     @pytest.mark.unit
@@ -250,6 +273,38 @@ class TestRuntimeSettingsMutation:
         assert settings.get_state().chiptunes.pending_action == "next"
         assert settings.chiptunes_state_version == 1
         assert manager.enqueue_calls == [("abc123", "next")]
+
+    @pytest.mark.unit
+    def test_issue_chiptunes_command_cold_starts_without_track(self, tmp_path: Path) -> None:
+        manager = StubChiptunesManager(enabled=False)
+        settings, _, _ = _make_settings(tmp_path, chiptunes_manager=manager)
+        settings.get_state().chiptunes.track_path = ""
+
+        with patch("teleclaude.config.runtime_settings.uuid4", return_value=SimpleNamespace(hex="abc123")):
+            command_id = settings.issue_chiptunes_command("resume")
+
+        assert command_id == "abc123"
+        # Pending state should be cleared immediately in cold-start path
+        assert settings.get_state().chiptunes.pending_command_id == ""
+        assert settings.get_state().chiptunes.pending_action == ""
+        assert manager.start_calls == [False]
+        assert manager.enqueue_calls == []
+
+    @pytest.mark.unit
+    def test_issue_chiptunes_command_cold_starts_with_track(self, tmp_path: Path) -> None:
+        manager = StubChiptunesManager(enabled=False)
+        settings, _, _ = _make_settings(tmp_path, chiptunes_manager=manager)
+        settings.get_state().chiptunes.track_path = "music/song.sid"
+        settings.get_state().chiptunes.position_seconds = 10.0
+
+        with patch("teleclaude.config.runtime_settings.uuid4", return_value=SimpleNamespace(hex="abc123")):
+            command_id = settings.issue_chiptunes_command("resume")
+
+        assert command_id == "abc123"
+        assert settings.get_state().chiptunes.pending_command_id == ""
+        assert len(manager.start_from_state_calls) == 1
+        assert manager.start_from_state_calls[0].track_path == "music/song.sid"
+        assert manager.enqueue_calls == []
 
     @pytest.mark.unit
     def test_issue_chiptunes_command_requires_manager(self, tmp_path: Path) -> None:

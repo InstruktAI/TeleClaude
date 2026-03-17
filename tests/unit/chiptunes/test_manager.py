@@ -217,6 +217,27 @@ class TestChiptunesManagerIPC:
         assert ChiptunesManager._worker_alive()
         manager._disconnect()
 
+    def test_enqueue_command_reconnects_when_socket_is_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        fake_worker: _FakeWorkerServer,
+    ) -> None:
+        sock_path = fake_worker._socket_path
+        manager = _make_manager(monkeypatch, tmp_path, sock_path)
+        # Ensure _sock is None (default)
+        assert manager._sock is None
+
+        # Mock _ensure_worker to avoid subprocess spawning
+        monkeypatch.setattr(manager, "_ensure_worker", lambda: None)
+
+        manager.enqueue_command("cmd-abc", "next")
+        threading.Event().wait(0.2)
+
+        assert manager._sock is not None
+        assert any(msg.get("cmd") == "next" and msg.get("command_id") == "cmd-abc" for msg in fake_worker.received)
+        manager._disconnect()
+
 
 @pytest.mark.unit
 class TestChiptunesManagerProperties:

@@ -125,6 +125,9 @@ class ChiptunesManager:
     def enqueue_command(self, command_id: str, action: CommandAction) -> None:
         """Enqueue a user command for asynchronous execution."""
         self._enabled = True
+        if self._sock is None:
+            self._ensure_worker()
+            self._connect()
         self._send_cmd({"cmd": action, "command_id": command_id})
 
     @property
@@ -326,7 +329,7 @@ class ChiptunesManager:
         if isinstance(track_path, str):
             self._cached_state.track_path = track_path
         position = state.get("position_seconds")
-        if isinstance(position, (int, float)):
+        if isinstance(position, int | float):
             self._cached_state.position_seconds = max(0.0, float(position))
         history = state.get("history")
         if isinstance(history, list):

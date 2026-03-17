@@ -117,6 +117,16 @@ class RuntimeSettings:
         manager = self._chiptunes_manager
         if manager is None:
             return
+        # Clear stale pending commands from previous daemon session —
+        # the worker that would have completed them is gone.
+        if self._state.chiptunes.pending_command_id:
+            logger.debug(
+                "Clearing stale chiptunes pending command: %s (%s)",
+                self._state.chiptunes.pending_command_id,
+                self._state.chiptunes.pending_action,
+            )
+        self._state.chiptunes.pending_command_id = ""
+        self._state.chiptunes.pending_action = ""
         manager.restore_runtime_state(self._state.chiptunes)
         if self._state.chiptunes.playback == "playing":
             manager.start_from_runtime_state(self._state.chiptunes)
@@ -161,7 +171,22 @@ class RuntimeSettings:
         self._state.chiptunes.pending_command_id = command_id
         self._state.chiptunes.pending_action = action
         self._state.chiptunes_state_version += 1
-        manager.enqueue_command(command_id, action)
+
+        # Cold start: if the worker isn't running, launch it before sending.
+        if action == "resume" and not manager.enabled:
+            resume_state = self._state.chiptunes
+            if not resume_state.track_path:
+                manager.start(paused=False)
+            else:
+                manager.start_from_runtime_state(resume_state)
+            # Playback starts directly — no command_done event will arrive,
+            # so clear the pending receipt to avoid a stuck TUI indicator.
+            logger.debug("Cold start resume: clearing pending chiptunes command receipt")
+            self._state.chiptunes.pending_command_id = ""
+            self._state.chiptunes.pending_action = ""
+        else:
+            manager.enqueue_command(command_id, action)
+
         self._schedule_flush()
         return command_id
 
@@ -227,7 +252,7 @@ class RuntimeSettings:
             if isinstance(track_path, str):
                 self._state.chiptunes.track_path = track_path
             position = chiptunes_raw.get("position_seconds")
-            if isinstance(position, (int, float)):
+            if isinstance(position, int | float):
                 self._state.chiptunes.position_seconds = max(0.0, float(position))
             history = chiptunes_raw.get("history")
             if isinstance(history, list):
