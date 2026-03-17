@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-gemini-command-injection
+  date: '2026-03-17'
+  commit: f68946b475ad
 - slug: fix-git-wrapper-reset
   date: '2026-03-17'
   commit: eb86f5b20ee6
