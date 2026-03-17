@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: git-role-permissions
+  date: '2026-03-17'
+  commit: e3dc53f29f37
 - slug: fix-from-main-scoping
   date: '2026-03-17'
   commit: 1de9be23e753
