@@ -348,11 +348,11 @@ def _extract_turn_file_signals(timeline: TurnTimeline, project_path: str) -> tup
         # Shell tools can mutate files but usually expose only freeform command text.
         if tool_name in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
             command = _extract_shell_command(record.input_data)
-            shell_touched = _extract_shell_touched_paths(command, project_path)
-            if shell_touched:
-                touched_files.update(shell_touched)
             if _command_likely_mutates_files(command):
                 saw_mutation_signal = True
+                shell_touched = _extract_shell_touched_paths(command, project_path)
+                if shell_touched:
+                    touched_files.update(shell_touched)
 
     return touched_files, saw_mutation_signal
 

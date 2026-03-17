@@ -94,6 +94,25 @@ class TestGitDiffHelpers:
         assert scoped == ["docs/guide.md", "tests/unit/hooks/test_git.py"]
 
     @pytest.mark.unit
+    def test_scope_git_files_to_current_turn_ignores_read_only_shell_commands_for_dirty_files(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                ToolCallRecord(
+                    tool_name="functions.exec_command",
+                    input_data={"cmd": "grep -n checkpoint teleclaude/core/integration/state_machine.py"},
+                )
+            ]
+        )
+        git_files = ["teleclaude/core/integration/state_machine.py"]
+
+        touched_files, saw_mutation = _git._extract_turn_file_signals(timeline, "/repo")
+        scoped = _git._scope_git_files_to_current_turn(git_files, timeline, "/repo")
+
+        assert touched_files == set()
+        assert saw_mutation is False
+        assert scoped == []
+
+    @pytest.mark.unit
     def test_categorize_files_marks_test_only_diffs_and_docs_only_files(self) -> None:
         categories = _git._categorize_files(["tests/unit/hooks/test_inbound.py"])
 
