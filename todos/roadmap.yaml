@@ -48,3 +48,4 @@
 - slug: chartest-weak-purge
 - slug: fix-integration-queue-ghost
 - slug: fix-tui-new-session-ux
+- slug: fix-integration-cwd-resolution

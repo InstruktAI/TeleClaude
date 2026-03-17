@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import (
     CLEARANCE_TODOS_CREATE,
@@ -45,6 +46,8 @@ from teleclaude.core.next_machine.core import (
 )
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -133,7 +136,11 @@ async def todo_integrate(  # pyright: ignore
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    result = await next_integrate(db, slug, cwd, identity.session_id)
+    try:
+        result = await next_integrate(db, slug, cwd, identity.session_id)
+    except Exception:
+        logger.exception("next_integrate raised (slug=%s, cwd=%s, session=%s)", slug, cwd, identity.session_id)
+        raise
     return {"result": result}
 
 

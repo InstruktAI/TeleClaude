@@ -465,7 +465,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "mark-ready": CommandDef(
-                desc="Fast-track a todo to work-ready state, bypassing prepare lifecycle",
+                desc="Sets build: pending. Fast-track a todo to work-ready state, bypassing prepare lifecycle",
                 args="<slug> [<slug> ...]",
                 flags=[_H],
                 notes=[

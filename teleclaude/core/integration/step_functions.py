@@ -685,8 +685,12 @@ def _step_push_rejected(
         return False, _format_error("INVALID_STATE", "PUSH_REJECTED phase has no candidate key")
 
     wt = str(_integration_worktree_path(cwd))
+    logger.info("PUSH_REJECTED recovery check: wt=%s", wt)
     local_head = _get_head_sha(wt)
     remote_head = _get_remote_main_sha(wt)
+    logger.info(
+        "PUSH_REJECTED shas: local_head=%s remote_head=%s match=%s", local_head, remote_head, local_head == remote_head
+    )
     if local_head and remote_head and local_head == remote_head:
         # Recovery detected
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
@@ -776,7 +780,9 @@ def _do_cleanup(
     checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
     checkpoint.items_processed += 1
     _write_checkpoint(checkpoint_path, checkpoint)
-    _mirror_integration_phase(cwd, key.slug, IntegrationPhase.CANDIDATE_DELIVERED.value)
+    # Do NOT mirror phase here — cleanup already deleted the todo directory.
+    # Calling _mirror_integration_phase would recreate todos/{slug}/state.yaml
+    # as an orphaned untracked file.
     logger.info("%s slug=%s phase=CANDIDATE_DELIVERED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
     return True, ""  # loop to pop next candidate

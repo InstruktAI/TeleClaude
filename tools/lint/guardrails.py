@@ -45,6 +45,7 @@ def main() -> None:
     _check_test_companions(repo_root)
 
     # Existing guardrails
+    _remove_empty_claude_md(repo_root)
     _warn_for_debug_probes(repo_root)
     _fail_on_stash_commands_in_agent_artifacts(repo_root)
     _warn_for_loose_dicts(repo_root)
@@ -321,6 +322,44 @@ def _load_orphan_exclusions(repo_root: Path) -> set[str]:
 # ---------------------------------------------------------------------------
 # Existing guardrails
 # ---------------------------------------------------------------------------
+
+
+def _remove_empty_claude_md(repo_root: Path) -> None:
+    """Find and remove empty CLAUDE.md files from the filesystem.
+
+    CLAUDE.md is gitignored, so these are always untracked files created by
+    agent sessions. They pollute Claude's startup context loading without
+    providing value.
+
+    A CLAUDE.md is considered empty if — after stripping <claude-mem-context>
+    wrapper tags and whitespace — no content remains. Files with real content
+    (e.g. @./AGENTS.md references) are left alone.
+    """
+    removed: list[str] = []
+    for path in sorted(repo_root.rglob("CLAUDE.md")):
+        rel = path.relative_to(repo_root).as_posix()
+        # Skip worktrees — managed separately
+        if rel.startswith("trees/"):
+            continue
+        try:
+            content = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        # Strip claude-mem-context wrapper to check if anything real remains
+        cleaned = re.sub(r"</?claude-mem-context>", "", content).strip()
+        if cleaned:
+            continue
+        path.unlink()
+        removed.append(rel)
+
+    if removed:
+        formatted = "\n".join(f"  - {r}" for r in removed)
+        _fail(
+            f"removed {len(removed)} empty CLAUDE.md file(s):\n"
+            f"{formatted}\n"
+            "Do not create CLAUDE.md files without content. "
+            "Legitimate CLAUDE.md files are generated from AGENTS.master.md."
+        )
 
 
 def _warn_for_debug_probes(repo_root: Path) -> None:

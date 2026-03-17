@@ -68,6 +68,17 @@ def _dispatch_sync(
 ) -> str:
     """Synchronous state machine loop. Returns instruction string for the agent."""
     _tls.loop = loop
+
+    # Resolve cwd to the main repo root so callers inside worktrees don't
+    # cause double-nested paths (e.g. trees/_integration/trees/_integration).
+    # --git-common-dir returns the shared .git dir; its parent is the main repo root.
+    rc, common_dir_out, _ = _run_git(["rev-parse", "--git-common-dir"], cwd=cwd)
+    if rc == 0 and common_dir_out.strip():
+        resolved = str(Path(common_dir_out.strip()).resolve().parent)
+        if resolved != cwd:
+            logger.info("Resolved cwd from worktree %s to repo root %s", cwd, resolved)
+            cwd = resolved
+
     checkpoint_path = state_dir / "integrate-state.json"
     lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
 
@@ -109,15 +120,24 @@ def _dispatch_sync(
         )
 
         # Each handler returns (continue_loop: bool, instruction: str)
-        keep_going, instruction = _step(
-            phase=phase,
-            checkpoint=checkpoint,
-            checkpoint_path=checkpoint_path,
-            lease_store=lease_store,
-            session_id=session_id,
-            slug=slug,
-            cwd=cwd,
-            started=started,
+        try:
+            keep_going, instruction = _step(
+                phase=phase,
+                checkpoint=checkpoint,
+                checkpoint_path=checkpoint_path,
+                lease_store=lease_store,
+                session_id=session_id,
+                slug=slug,
+                cwd=cwd,
+                started=started,
+            )
+        except Exception:
+            logger.exception(
+                "_step raised: phase=%s slug=%s iter=%d", phase.value, checkpoint.candidate_slug or slug, _iter
+            )
+            raise
+        logger.info(
+            "_step returned: phase=%s keep_going=%s instruction_len=%d", phase.value, keep_going, len(instruction)
         )
         if not keep_going:
             return instruction
