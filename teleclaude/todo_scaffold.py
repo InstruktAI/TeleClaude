@@ -642,6 +642,11 @@ def create_from_main_skeleton(
         f"Todo created: {slug}\n"
         f"Worktree: {WORKTREE_DIR}/{slug}/\n"
         "\n"
+        "IMPORTANT: Your uncommitted changes have been transferred to the worktree.\n"
+        "The repo root main branch has been cleaned. Do NOT commit, push, or sync\n"
+        "any files back to the main branch. All work happens exclusively inside\n"
+        f"the worktree at {WORKTREE_DIR}/{slug}/. The main branch is off-limits.\n"
+        "\n"
         "Next steps:\n"
         f"  1. cd {WORKTREE_DIR}/{slug}\n"
         '  2. git add -A && git commit -m "your commit message"\n'

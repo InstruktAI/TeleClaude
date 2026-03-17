@@ -22,6 +22,12 @@ jobs:
       - ai
       - devtools
 
+  temp_reaper:
+    category: system
+    when:
+      every: '60m'
+    script: jobs/temp_reaper.py
+
   dependency_upgrade:
     category: system
     when:
