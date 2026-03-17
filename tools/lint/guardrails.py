@@ -7,6 +7,7 @@ import json
 import re
 import tomllib
 from pathlib import Path
+from typing import NamedTuple
 
 
 def _fail(message: str) -> None:
@@ -44,10 +45,11 @@ def main() -> None:
     # Test structure enforcement
     _check_test_companions(repo_root)
 
+    # Source pattern guardrails (table-driven)
+    _check_source_patterns(repo_root)
+
     # Existing guardrails
     _remove_empty_claude_md(repo_root)
-    _warn_for_debug_probes(repo_root)
-    _fail_on_stash_commands_in_agent_artifacts(repo_root)
     _warn_for_loose_dicts(repo_root)
 
 
@@ -362,84 +364,73 @@ def _remove_empty_claude_md(repo_root: Path) -> None:
         )
 
 
-def _warn_for_debug_probes(repo_root: Path) -> None:
-    """Fail on leftover ad-hoc debug probes in non-test Python code."""
-    scan_roots = [
-        repo_root / "teleclaude",
-        repo_root / "scripts",
-        repo_root / "tools",
-        repo_root / "bin",
-    ]
-    matches: list[str] = []
-    for root in scan_roots:
-        if not root.exists():
-            continue
-        for path in root.rglob("*.py"):
-            rel = path.relative_to(repo_root).as_posix()
-            if rel.startswith("tools/lint/"):
+class PatternRule(NamedTuple):
+    name: str
+    pattern: re.Pattern[str]
+    scan_dirs: list[str]
+    glob: str
+    exclude_prefixes: tuple[str, ...]
+    exception_marker: str | None  # None = no exceptions allowed
+    message: str
+
+
+SOURCE_PATTERN_RULES: list[PatternRule] = [
+    PatternRule(
+        name="invalid-noqa",
+        pattern=re.compile(r"#\s*noqa:\s*[a-z]"),
+        scan_dirs=["teleclaude", "tests", "scripts", "tools"],
+        glob="*.py",
+        exclude_prefixes=("tools/lint/",),
+        exception_marker=None,
+        message="invalid # noqa directive — use ruff codes (# noqa: E501) or guard markers (# guard: raw-sql)",
+    ),
+    PatternRule(
+        name="debug-probes",
+        pattern=re.compile(r"print\(.*DEBUG:"),
+        scan_dirs=["teleclaude", "scripts", "tools", "bin"],
+        glob="*.py",
+        exclude_prefixes=("tools/lint/", "scripts/fixtures/"),
+        exception_marker=None,
+        message="leftover debug probes — use structured logging",
+    ),
+    PatternRule(
+        name="stash-in-artifacts",
+        pattern=re.compile(r"\bgit\s+stash(?:\s+(?:pop|apply|push|drop|list|show))?\b"),
+        scan_dirs=["agents", ".agents"],
+        glob="*.md",
+        exclude_prefixes=(),
+        exception_marker="guard: allow-git-stash",
+        message="git stash in agent artifacts — use commits and worktrees",
+    ),
+]
+
+
+def _check_source_patterns(repo_root: Path) -> None:
+    """Table-driven pattern scanner for source hygiene rules."""
+    for rule in SOURCE_PATTERN_RULES:
+        matches: list[str] = []
+        for dirname in rule.scan_dirs:
+            root = repo_root / dirname
+            if not root.exists():
                 continue
-            if rel.startswith("scripts/fixtures/"):
-                continue
-            try:
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except OSError:
-                continue
-            for lineno, line in enumerate(lines, start=1):
-                stripped = line.strip()
-                if "print(" in stripped and "DEBUG:" in stripped:
-                    matches.append(f"{rel}:{lineno}: {stripped}")
-
-    if not matches:
-        return
-
-    formatted = "\n".join(f"- {match}" for match in matches)
-    _fail(
-        "leftover debug probe prints detected.\n"
-        "Use structured logger calls and remove temporary probes before commit.\n"
-        f"{formatted}\n"
-    )
-
-
-def _fail_on_stash_commands_in_agent_artifacts(repo_root: Path) -> None:
-    """Fail when agent instruction artifacts include git stash workflows.
-
-    Stash state is repository-wide, so stash pop/apply is unsafe in multi-worktree automation.
-    """
-    scan_roots = [
-        repo_root / "agents",
-        repo_root / ".agents",
-    ]
-    # Match command-like stash usage, including common subcommands.
-    stash_pattern = re.compile(r"\bgit\s+stash(?:\s+(?:pop|apply|push|drop|list|show))?\b")
-    marker = "guard: allow-git-stash"
-    matches: list[str] = []
-
-    for root in scan_roots:
-        if not root.exists():
-            continue
-        for path in root.rglob("*.md"):
-            rel = path.relative_to(repo_root).as_posix()
-            try:
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except OSError:
-                continue
-            for lineno, line in enumerate(lines, start=1):
-                if marker in line:
+            for path in root.rglob(rule.glob):
+                rel = path.relative_to(repo_root).as_posix()
+                if any(rel.startswith(p) for p in rule.exclude_prefixes):
                     continue
-                if lineno > 1 and marker in lines[lineno - 2]:
+                try:
+                    lines = path.read_text(encoding="utf-8").splitlines()
+                except OSError:
                     continue
-                if stash_pattern.search(line):
-                    matches.append(f"{rel}:{lineno}: {line.strip()}")
-
-    if not matches:
-        return
-
-    formatted = "\n".join(f"- {match}" for match in matches)
-    _fail(
-        "forbidden git stash command usage detected in agent artifacts.\n"
-        "Use explicit commits and worktrees instead of stash workflows.\n"
-        f"{formatted}\n"
-    )
+                for lineno, line in enumerate(lines, start=1):
+                    if rule.exception_marker and rule.exception_marker in line:
+                        continue
+                    if rule.exception_marker and lineno > 1 and rule.exception_marker in lines[lineno - 2]:
+                        continue
+                    if rule.pattern.search(line):
+                        matches.append(f"{rel}:{lineno}: {line.strip()}")
+        if matches:
+            formatted = "\n".join(f"- {m}" for m in matches)
+            _fail(f"{rule.name}: {rule.message}\n{formatted}\n")
 
 
 def _warn_for_loose_dicts(repo_root: Path) -> None:

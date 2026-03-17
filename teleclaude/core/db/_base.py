@@ -158,15 +158,15 @@ class DbBase:
         # Ensure schema + migrations via aiosqlite (single-shot bootstrap)
         self.conn = await aiosqlite.connect(db_path, uri=use_uri)
         self.conn.row_factory = aiosqlite.Row
-        await self.conn.execute("PRAGMA journal_mode = WAL")  # noqa: raw-sql
-        await self.conn.execute("PRAGMA synchronous = NORMAL")  # noqa: raw-sql
-        await self.conn.execute("PRAGMA busy_timeout = 5000")  # noqa: raw-sql
+        await self.conn.execute("PRAGMA journal_mode = WAL")  # guard: raw-sql
+        await self.conn.execute("PRAGMA synchronous = NORMAL")  # guard: raw-sql
+        await self.conn.execute("PRAGMA busy_timeout = 5000")  # guard: raw-sql
 
         schema_path = Path(__file__).parent.parent / "schema.sql"
         with open(schema_path, encoding="utf-8") as f:
             schema_sql = f.read()
 
-        await self.conn.executescript(schema_sql)  # noqa: raw-sql
+        await self.conn.executescript(schema_sql)  # guard: raw-sql
         await self.conn.commit()
 
         await run_pending_migrations(self.conn)
@@ -177,7 +177,7 @@ class DbBase:
 
         # Async engine for runtime access
         db_url = f"sqlite+aiosqlite:///{db_path}"
-        from sqlalchemy import event  # noqa: raw-sql - PRAGMAs require raw SQL
+        from sqlalchemy import event  # guard: raw-sql - PRAGMAs require raw SQL
         from sqlalchemy.ext.asyncio import create_async_engine
         from sqlalchemy.orm import sessionmaker
 
@@ -197,10 +197,10 @@ class DbBase:
         @event.listens_for(self._engine.sync_engine, "connect")
         def _set_sqlite_pragmas(dbapi_conn, _connection_record):  # type: ignore[no-untyped-def]
             cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA journal_mode = WAL")  # noqa: raw-sql
-            cursor.execute("PRAGMA synchronous = NORMAL")  # noqa: raw-sql
-            cursor.execute("PRAGMA busy_timeout = 5000")  # noqa: raw-sql
-            cursor.execute("PRAGMA cache_size = -8000")  # noqa: raw-sql  8MB per connection
+            cursor.execute("PRAGMA journal_mode = WAL")  # guard: raw-sql
+            cursor.execute("PRAGMA synchronous = NORMAL")  # guard: raw-sql
+            cursor.execute("PRAGMA busy_timeout = 5000")  # guard: raw-sql
+            cursor.execute("PRAGMA cache_size = -8000")  # guard: raw-sql  8MB per connection
             cursor.close()
 
         await self._normalize_adapter_metadata()
@@ -261,9 +261,9 @@ class DbBase:
     async def wal_checkpoint(self) -> None:
         """Run WAL checkpoint to prevent unbounded WAL growth."""
         async with self._session() as session:
-            from sqlalchemy import text  # noqa: raw-sql - PRAGMA requires raw SQL
+            from sqlalchemy import text  # guard: raw-sql - PRAGMA requires raw SQL
 
-            result = await session.exec(text("PRAGMA wal_checkpoint(TRUNCATE)"))  # noqa: raw-sql
+            result = await session.exec(text("PRAGMA wal_checkpoint(TRUNCATE)"))  # guard: raw-sql
             row = result.first()
             if row:
                 logger.debug("WAL checkpoint: busy=%s, log=%s, checkpointed=%s", *row)

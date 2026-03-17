@@ -1,22 +1,94 @@
-kind: todo
-build: pending
-review: pending
+schema_version: 1
+phase: in_progress
+build: complete
+review: approved
 deferrals_processed: false
+finalize:
+  status: pending
 breakdown:
   assessed: false
   todos: []
+review_round: 2
+max_review_rounds: 3
+review_baseline_commit: 8bdec5e71715be4d8ced45de5ac65d9af5d5c4c5
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: prepared
+grounding:
+  valid: true
+  base_sha: ff87704e93086cc6f3931dfeb42950ead049f9a6
+  input_digest: a9c449c30450f947d3e6bf6fc055f28309d6e8b54a1f9dc2282de2d56efbbfb8
+  referenced_paths: []
+  last_grounded_at: '2026-03-17T12:05:32.825921+00:00'
+  invalidated_at: ''
+  invalidation_reason: ''
+  changed_paths: []
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-17T12:05:32.825921+00:00'
+  findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+test_spec_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-17T12:05:32.825921+00:00'
+  findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+artifacts:
+  input:
+    digest: ''
+    produced_at: ''
+    stale: false
+  requirements:
+    digest: ''
+    produced_at: ''
+    stale: false
+  implementation_plan:
+    digest: ''
+    produced_at: ''
+    stale: false
+audit:
+  input_assessment:
+    started_at: ''
+    completed_at: ''
+  triangulation:
+    started_at: ''
+    completed_at: ''
+  requirements_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  plan_drafting:
+    started_at: ''
+    completed_at: ''
+  plan_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  gate:
+    started_at: ''
+    completed_at: ''
+kind: todo
 dor:
-  last_assessed_at: null
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-03-17T12:05:32.825921+00:00'
+  score: 8
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []
-schema_version: 1

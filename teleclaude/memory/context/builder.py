@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync memory access
+from sqlalchemy import create_engine, text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
 from teleclaude.core import db_models

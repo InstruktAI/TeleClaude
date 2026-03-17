@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import create_engine, text  # noqa: raw-sql - Sync memory access
+from sqlalchemy import create_engine, text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
 from teleclaude.core import db_models
@@ -63,8 +63,8 @@ class MemoryStore:
 
         engine = create_engine(f"sqlite:///{db_path}")
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # noqa: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # noqa: raw-sql
+            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
+            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
             obs = db_models.MemoryObservation(
                 memory_session_id=session_id,
                 project=project,
@@ -90,7 +90,7 @@ class MemoryStore:
         """Delete an observation by ID. Returns True if deleted, False if not found."""
         async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
-                text(  # noqa: raw-sql
+                text(  # guard: raw-sql
                     "DELETE FROM memory_observations WHERE id = :id"
                 ).bindparams(id=observation_id)
             )
@@ -103,14 +103,14 @@ class MemoryStore:
             return []
         placeholders = ", ".join([":id_" + str(i) for i in range(len(ids))])
         params = {f"id_{i}": id_val for i, id_val in enumerate(ids)}
-        sql = f"SELECT * FROM memory_observations WHERE id IN ({placeholders})"  # noqa: raw-sql
+        sql = f"SELECT * FROM memory_observations WHERE id IN ({placeholders})"  # guard: raw-sql
         if project:
             sql += " AND project = :project"
             params["project"] = project  # type: ignore[assignment]
         sql += " ORDER BY created_at_epoch DESC"
 
         async with db._session() as session:
-            result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # noqa: raw-sql
+            result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
             rows = result.fetchall()
             return [_row_to_observation(row) for row in rows]
 
@@ -118,7 +118,7 @@ class MemoryStore:
         """Get recent observations for a project."""
         async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
-                text(  # noqa: raw-sql
+                text(  # guard: raw-sql
                     "SELECT * FROM memory_observations WHERE project = :project "
                     "ORDER BY created_at_epoch DESC LIMIT :limit"
                 ).bindparams(project=project, limit=limit)
@@ -130,7 +130,7 @@ class MemoryStore:
         """Get recent summaries for a project."""
         async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
-                text(  # noqa: raw-sql
+                text(  # guard: raw-sql
                     "SELECT * FROM memory_summaries WHERE project = :project "
                     "ORDER BY created_at_epoch DESC LIMIT :limit"
                 ).bindparams(project=project, limit=limit)
@@ -142,7 +142,7 @@ class MemoryStore:
         """Get or create a manual session for API-created observations."""
         async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
-                text(  # noqa: raw-sql
+                text(  # guard: raw-sql
                     "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"
                 ).bindparams(project=project)
             )
@@ -165,10 +165,10 @@ class MemoryStore:
         """Get or create a manual session synchronously."""
         engine = create_engine(f"sqlite:///{db_path}")
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # noqa: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # noqa: raw-sql
+            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
+            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
             result = session.exec(  # type: ignore[call-overload]
-                text(  # noqa: raw-sql
+                text(  # guard: raw-sql
                     "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"
                 ).bindparams(project=project)
             )

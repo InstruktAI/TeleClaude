@@ -18,7 +18,7 @@ def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | Non
 
     guard: allow-string-compare
     """
-    from sqlalchemy import create_engine, text  # noqa: raw-sql
+    from sqlalchemy import create_engine, text  # guard: raw-sql
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session as SqlSession
     from sqlmodel import select
@@ -36,8 +36,8 @@ def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | Non
 
     engine = create_engine(f"sqlite:///{db_path}")
     with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+        session.exec(text("PRAGMA journal_mode = WAL"))  # guard: raw-sql
+        session.exec(text("PRAGMA busy_timeout = 5000"))  # guard: raw-sql
         column = getattr(db_models.Session, field, None)
         if column is None:
             raise ValueError(f"Invalid field '{field}' for Session lookup")
@@ -69,7 +69,7 @@ def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None
 
 def get_session_field_sync(db_path: str, session_id: str, field: str) -> object | None:
     """Sync helper to fetch a single field from a session by ID."""
-    from sqlalchemy import create_engine, text  # noqa: raw-sql
+    from sqlalchemy import create_engine, text  # guard: raw-sql
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session as SqlSession
     from sqlmodel import select
@@ -86,8 +86,8 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
 
     engine = create_engine(f"sqlite:///{db_path}")
     with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-        session.exec(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+        session.exec(text("PRAGMA journal_mode = WAL"))  # guard: raw-sql
+        session.exec(text("PRAGMA busy_timeout = 5000"))  # guard: raw-sql
         column = getattr(db_models.Session, field, None)
         if column is None:
             raise ValueError(f"Invalid field '{field}'")

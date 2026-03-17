@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check for raw SQL usage without noqa markers in db.py and hooks/receiver.py
+# Check for raw SQL usage without guard markers in database modules
 # Usage: scripts/check-raw-sql.sh
 
 set -euo pipefail
@@ -36,8 +36,11 @@ PROJECT_ROOT="$(cd "${PROJECT_ROOT}" && pwd)"
 
 # Files to check for raw SQL
 FILES=(
-    "${PROJECT_ROOT}/teleclaude/core/db.py"
-    "${PROJECT_ROOT}/teleclaude/hooks/receiver.py"
+    "${PROJECT_ROOT}/teleclaude/core/db/_base.py"
+    "${PROJECT_ROOT}/teleclaude/core/db/_sync.py"
+    "${PROJECT_ROOT}/teleclaude/memory/search.py"
+    "${PROJECT_ROOT}/teleclaude/memory/store.py"
+    "${PROJECT_ROOT}/teleclaude/memory/context/builder.py"
 )
 
 found_violations=0
@@ -49,8 +52,8 @@ for file in "${FILES[@]}"; do
 
     # Pattern 1: import of text from sqlalchemy
     while IFS=: read -r line_num line_content; do
-        if [[ -n "$line_num" && ! "$line_content" =~ "noqa: raw-sql" ]]; then
-            echo "ERROR: $file:$line_num: Raw SQL import without 'noqa: raw-sql' marker"
+        if [[ -n "$line_num" && ! "$line_content" =~ "guard: raw-sql" ]]; then
+            echo "ERROR: $file:$line_num: Raw SQL import without 'guard: raw-sql' marker"
             echo "  $line_content"
             found_violations=1
         fi
@@ -59,12 +62,12 @@ for file in "${FILES[@]}"; do
     # Pattern 2: text(, execute(...), executescript(...), or cursor.execute(...) used for SQL.
     # Match common SQL execution primitives while skipping non-SQL text helpers.
     while IFS=: read -r line_num line_content; do
-        if [[ -n "$line_num" && ! "$line_content" =~ "noqa: raw-sql" ]]; then
+        if [[ -n "$line_num" && ! "$line_content" =~ "guard: raw-sql" ]]; then
             # Skip false positives like read_text, write_text, _text, Text\(|Context
             if [[ "$line_content" =~ (read_text|write_text|_text|Text\(|Context) ]]; then
                 continue
             fi
-            echo "ERROR: $file:$line_num: Raw SQL without 'noqa: raw-sql' marker"
+            echo "ERROR: $file:$line_num: Raw SQL without 'guard: raw-sql' marker"
             echo "  $line_content"
             found_violations=1
         fi
@@ -73,7 +76,7 @@ done
 
 if [[ $found_violations -eq 1 ]]; then
     echo ""
-    echo "To allow raw SQL, add '# noqa: raw-sql' comment to the line."
+    echo "To allow raw SQL, add '# guard: raw-sql' comment to the line."
     echo "Raw SQL is only permitted for PRAGMAs, migrations, and sync helpers."
     exit 1
 fi
