@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: checkpoint-shell-read-false-positive
+  date: '2026-03-17'
+  commit: c09677f3a8df
 - slug: fix-tui-cross-project-children
   date: '2026-03-17'
   commit: 13836c9cec0c
