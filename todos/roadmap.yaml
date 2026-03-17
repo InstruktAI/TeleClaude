@@ -46,4 +46,3 @@
   after:
   - session-adaptive-runtime
 - slug: fix-from-main-scoping
-  description: Session-scoped from-main file transfer
