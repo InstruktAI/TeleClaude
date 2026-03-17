@@ -18,53 +18,36 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve HOME for credentials
+      - name: Resolve credentials
         run: |
-          # On case-sensitive APFS the runner's HOME (/Users/morriz) may differ
-          # in case from the real home directory (/Users/Morriz). Use dscl as the
-          # authoritative source, then fall back to glob discovery.
-          CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/config.json"
-          if [ ! -f "$CLAUDE_CONFIG" ]; then
-            # Method 1: dscl (authoritative on macOS)
-            REAL_HOME="$(dscl . -read /Users/"$(whoami)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-            if [ -n "$REAL_HOME" ] && [ -f "$REAL_HOME/Library/Application Support/Claude/config.json" ]; then
-              echo "Credentials found via dscl at $REAL_HOME (runner HOME=$HOME)"
-              echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
-              export HOME="$REAL_HOME"
-            else
-              # Method 2: glob fallback
-              for candidate in /Users/*/Library/Application\ Support/Claude/config.json; do
-                if [ -f "$candidate" ]; then
-                  REAL_HOME="${candidate%%/Library/*}"
-                  echo "Credentials found via glob at $REAL_HOME (runner HOME=$HOME)"
-                  echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
-                  export HOME="$REAL_HOME"
-                  break
-                fi
-              done
-            fi
+          # Resolve real HOME via dscl (runner HOME may have wrong case on
+          # case-sensitive APFS).
+          REAL_HOME="$(dscl . -read /Users/"$(whoami)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+          if [ -n "$REAL_HOME" ] && [ "$REAL_HOME" != "$HOME" ]; then
+            echo "Correcting HOME: $HOME -> $REAL_HOME"
+            echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
+            export HOME="$REAL_HOME"
           fi
-          echo "Effective HOME=$HOME"
 
-      - name: Verify CLI credentials
-        run: |
-          errors=0
-          echo "HOME=$HOME"
-
-          # Claude: OAuth token in Application Support
-          CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/config.json"
-          if [ ! -f "$CLAUDE_CONFIG" ]; then
-            echo "::error::Claude config not found at $CLAUDE_CONFIG. Run: claude login"
-            errors=$((errors + 1))
-          elif ! python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert d.get('oauth:tokenCache')" "$CLAUDE_CONFIG" 2>/dev/null; then
-            echo "::error::Claude config exists but has no oauth:tokenCache. Run: claude login"
-            echo "Config keys: $(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(list(d.keys()))" "$CLAUDE_CONFIG" 2>&1)"
-            errors=$((errors + 1))
-          else
-            echo "Claude OAuth token found"
+          # Claude: extract OAuth access token from macOS keychain and export
+          # as ANTHROPIC_API_KEY. The desktop app config file is unreliable
+          # on CI (case-sensitive path issues); the keychain is authoritative.
+          CREDS="$(security find-generic-password -s 'Claude Code-credentials' -w 2>/dev/null || true)"
+          if [ -z "$CREDS" ]; then
+            echo "::error::Claude Code credentials not found in keychain. Run: claude login"
+            exit 1
           fi
+          ACCESS_TOKEN="$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])" 2>/dev/null || true)"
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "::error::Could not extract accessToken from keychain credentials"
+            exit 1
+          fi
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "ANTHROPIC_API_KEY=$ACCESS_TOKEN" >> "$GITHUB_ENV"
+          echo "Claude API key extracted from keychain"
 
           # Codex: ~/.codex/auth.json
+          errors=0
           if [ ! -f "$HOME/.codex/auth.json" ]; then
             echo "::error::Codex credentials not found at ~/.codex/auth.json. Run: codex auth login"
             errors=$((errors + 1))
@@ -77,7 +60,7 @@ jobs:
           fi
 
           if [ "$errors" -gt 0 ]; then
-            echo "::error::$errors CLI credential(s) missing or invalid — cannot run release analysis without OAuth"
+            echo "::error::$errors CLI credential(s) missing or invalid"
             exit 1
           fi
           echo "All CLI credentials verified"
