@@ -360,6 +360,7 @@ orphan-exclude = [
     "tests/unit/adapters/telegram/test_send_message_topic_guard.py", # Tests topic_id guard in message_ops.py
     "tests/unit/tools/lint/test_guardrails.py",                  # Tests tools/lint/guardrails.py (outside teleclaude/ package)
     "tests/unit/cli/tui/test_resource_cleanup.py",             # Tests resource cleanup across app.py, app_media.py, sessions.py
+    "tests/unit/install/test_git_wrapper_permissions.py",       # Tests shell wrapper at teleclaude/install/wrappers/git
 ]
 
 [tool.coverage.run]

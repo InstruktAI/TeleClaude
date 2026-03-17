@@ -350,7 +350,7 @@ class TestGitCommitAndPush:
         msg = commit_cmds[0][commit_cmds[0].index("-m") + 1]
         assert mode in msg
 
-    def test_passes_main_commit_and_push_env_vars(self) -> None:
+    def test_passes_system_role_to_git_commands(self) -> None:
         job = DependencyUpgradeJob()
         capture, captured = self._make_capture()
         with patch.object(job, "_run_command", side_effect=capture):
@@ -358,8 +358,7 @@ class TestGitCommitAndPush:
         envs_with_vars = [kw["env"] for _cmd, kw in captured if kw.get("env") is not None]
         assert len(envs_with_vars) >= 3
         for env in envs_with_vars:
-            assert env["TELECLAUDE_ALLOW_MAIN_COMMIT"] == "1"
-            assert env["TELECLAUDE_ALLOW_MAIN_PUSH"] == "1"
+            assert env["TELECLAUDE_SYSTEM_ROLE"] == "system"
 
     def test_returns_failure_when_git_add_fails(self) -> None:
         job = DependencyUpgradeJob()

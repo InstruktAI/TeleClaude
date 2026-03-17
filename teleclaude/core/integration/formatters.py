@@ -125,14 +125,14 @@ starting work on local main will see stale files as truth.
    Confirm when ready."
 2. Wait for the user's confirmation.
 3. Run the following commands in sequence:
-   TELECLAUDE_INTEGRATION_STASH=1 git stash
+   git stash
    git pull --ff-only origin main
-   TELECLAUDE_INTEGRATION_STASH=1 git stash pop
+   git stash pop
 4. If stash pop succeeds cleanly, call: telec todo integrate
 5. If stash pop produces conflicts:
    - Files deleted by the delivery that had local edits are obsolete — accept the delivered version
    - Real work that should be ported to new locations: move manually, then stage
-   - After all conflicts resolved: TELECLAUDE_INTEGRATION_STASH=1 git stash drop
+   - After all conflicts resolved: git stash drop
    - Then call: telec todo integrate
 
 NEXT: Inform user, wait for confirmation, stash/pull/pop, resolve conflicts if any, then call telec todo integrate"""

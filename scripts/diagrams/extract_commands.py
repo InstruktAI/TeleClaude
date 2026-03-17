@@ -17,14 +17,14 @@ COMMAND_ROLES: dict[str, str] = {
     "next-prepare-discovery": "worker",
     "next-prepare-draft": "worker",
     "next-prepare-gate": "worker",
-    "next-work": "orchestrator",
+    "next-work": "system",
     "next-build": "worker",
     "next-review-build": "worker",
     "next-fix-review": "worker",
-    "next-defer": "orchestrator",
+    "next-defer": "system",
     "next-finalize": "worker",
     "next-research": "worker",
-    "prime-orchestrator": "orchestrator",
+    "prime-orchestrator": "system",
 }
 
 
@@ -177,7 +177,7 @@ def generate_mermaid(
         description = command["description"]
         role = COMMAND_ROLES.get(name, "worker")
 
-        if role in {"orchestrator", "router"}:
+        if role in {"system", "router"}:
             lines.append(f'    {safe_name}{{{{"{name}<br/>{description}"}}}}')
         else:
             lines.append(f'    {safe_name}["{name}<br/>{description}"]')

@@ -25,7 +25,14 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from teleclaude.cli.telec import is_command_allowed
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLES, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER
+from teleclaude.constants import (
+    HUMAN_ROLE_ADMIN,
+    HUMAN_ROLES,
+    ROLE_INTEGRATOR,
+    ROLE_ORCHESTRATOR,
+    ROLE_SYSTEM,
+    ROLE_WORKER,
+)
 from teleclaude.core import db_models
 from teleclaude.core.db import db
 
@@ -167,7 +174,7 @@ def _derive_session_system_role(session: Session) -> str | None:
     """
     if session.session_metadata and session.session_metadata.system_role:
         normalized = session.session_metadata.system_role.strip().lower()
-        if normalized in {ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}:
+        if normalized in {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR}:
             return normalized
 
     if session.working_slug:

@@ -22,6 +22,7 @@ from instrukt_ai_logging import get_logger
 from packaging.version import InvalidVersion, Version
 
 from jobs.base import Job, JobResult
+from teleclaude.constants import ROLE_SYSTEM
 
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -135,8 +136,7 @@ class DependencyUpgradeJob(Job):
     def _git_commit_and_push(self, mode: str) -> tuple[bool, str]:
         """Commit uv.lock and any lint-modified files, then push to main."""
         env_vars = {
-            "TELECLAUDE_ALLOW_MAIN_COMMIT": "1",
-            "TELECLAUDE_ALLOW_MAIN_PUSH": "1",
+            "TELECLAUDE_SYSTEM_ROLE": ROLE_SYSTEM,
         }
 
         # Stage uv.lock

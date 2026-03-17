@@ -173,7 +173,7 @@ def test_repo_root_pull_failure_returns_pull_blocked(tmp_path: Path) -> None:
     assert ok is False, "pull failure must stop the loop and return instruction"
     assert cp.phase == IntegrationPhase.CLEANUP.value, "checkpoint must advance to CLEANUP"
     assert "REPO ROOT SYNC BLOCKED" in msg
-    assert "TELECLAUDE_INTEGRATION_STASH=1" in msg
+    assert "git stash" in msg
     assert "my-feature" in msg
 
 

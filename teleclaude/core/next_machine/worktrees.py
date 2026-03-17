@@ -19,7 +19,7 @@ from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import ROLE_SYSTEM, WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     _PREP_INPUT_FILES,
     _PREP_ROOT_INPUT_FILES,
@@ -198,8 +198,7 @@ def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
 
     # Bypass git wrapper commit/push gates — this is automation bookkeeping
     old_env = repo.git.update_environment(
-        TELECLAUDE_ALLOW_MAIN_COMMIT="1",
-        TELECLAUDE_ALLOW_MAIN_PUSH="1",
+        TELECLAUDE_SYSTEM_ROLE=ROLE_SYSTEM,
     )
     try:
         # Commit if there are uncommitted todo artifacts

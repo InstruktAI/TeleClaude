@@ -45,7 +45,7 @@ All Committizen types are allowed.
 - Include migration notes when schema or data shape changes.
 - Avoid committing generated artifacts unless explicitly required.
 - Squash noisy fixups before merge to keep history readable.
-- **No direct commits on main.** Agent sessions cannot commit or push on repo root main. Use `telec todo from-main --slug <name>` to transfer uncommitted work into a review worktree. The git wrapper enforces this — commits and pushes on main are blocked unless automation explicitly bypasses the gate.
+- **No direct commits on main.** Agent sessions cannot commit or push on repo root main. Use `telec todo from-main --slug <name>` to transfer uncommitted work into a review worktree. The git wrapper enforces this — commits and pushes on main are blocked unless the `system` role is used.
 - **`[skip ci]` for automation bookkeeping.** Any commit pushed to origin/main that contains only scaffolding, roadmap updates, or other non-code bookkeeping MUST include `[skip ci]` in the commit subject line. CI runs are reserved for actual code delivery. The integration push from `trees/_integration/` is the only push that should trigger CI.
 
 ## Rationale

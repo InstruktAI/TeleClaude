@@ -13,7 +13,13 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+from teleclaude.constants import (
+    ROLE_INTEGRATOR,
+    ROLE_ORCHESTRATOR,
+    ROLE_SYSTEM,
+    ROLE_WORKER,
+    UI_MESSAGE_MAX_CHARS,
+)
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.db import db, resolve_session_principal
 from teleclaude.core.error_feedback import get_user_facing_error_message
@@ -45,6 +51,8 @@ if TYPE_CHECKING:
     from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 
 logger = get_logger(__name__)
+
+_VALID_SYSTEM_ROLES = {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR}
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -290,10 +298,17 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         env_vars["TELECLAUDE_PRINCIPAL"] = principal
         env_vars["TELECLAUDE_PRINCIPAL_ROLE"] = role
 
-        # Integrator sessions need commit/push access on main
-        if session.session_metadata and session.session_metadata.job == "integrator":
-            env_vars["TELECLAUDE_ALLOW_MAIN_COMMIT"] = "1"
-            env_vars["TELECLAUDE_ALLOW_MAIN_PUSH"] = "1"
+        # Expose system_role to the git wrapper for permission decisions
+        if session.session_metadata and session.session_metadata.system_role:
+            role = session.session_metadata.system_role.strip().lower()
+            if role in _VALID_SYSTEM_ROLES:
+                env_vars["TELECLAUDE_SYSTEM_ROLE"] = role
+            else:
+                logger.warning(
+                    "Session %s has unrecognized system_role=%r, defaulting to worker",
+                    session_id,
+                    role,
+                )
 
         created = await tmux_bridge.ensure_tmux_session(
             name=session.tmux_session_name,

@@ -281,7 +281,7 @@ class TestCommandAuthAllows:
     def test_agent_denied_when_system_role_not_in_set(self):
         from teleclaude.cli.telec import CommandAuth
 
-        auth = CommandAuth(system=frozenset({"orchestrator"}), human=frozenset({"admin"}))
+        auth = CommandAuth(system=frozenset({"system"}), human=frozenset({"admin"}))
         assert auth.allows(system_role="worker", human_role=None) is False
 
     @pytest.mark.unit
@@ -311,7 +311,7 @@ class TestCommandAuthAllows:
         from teleclaude.cli.telec import CommandAuth
 
         auth = CommandAuth(
-            system=frozenset({"worker", "orchestrator", "integrator"}),
+            system=frozenset({"worker", "system", "integrator"}),
             human=frozenset({"member", "contributor", "newcomer", "customer"}),
         )
         assert auth.allows(system_role=None, human_role="admin") is False

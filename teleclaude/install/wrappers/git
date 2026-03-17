@@ -3,6 +3,9 @@
 # Blocks destructive git operations in agent sessions.
 # Push-to-main protection is handled by the pre-push hook (.githooks/pre-push).
 # Installed via `telec init` into ~/.teleclaude/bin/git.
+#
+# Permissions are derived from TELECLAUDE_SYSTEM_ROLE (set by the daemon from
+# session_metadata.system_role). Roles: worker (default), orchestrator, integrator, system.
 
 set -euo pipefail
 
@@ -46,15 +49,29 @@ for _arg in "$@"; do
     esac
 done
 
+_role="${TELECLAUDE_SYSTEM_ROLE:-worker}"
+
 # Blocked subcommands (version-control-safety policy)
 case "$_subcmd" in
     stash)
-        echo "ERROR: 'git stash' is prohibited in agent sessions. Use commits instead." >&2
-        exit 1
+        if [ "$_role" != "integrator" ]; then
+            echo "ERROR: 'git stash' is prohibited in agent sessions. Use commits instead." >&2
+            exit 1
+        fi
         ;;
     checkout)
-        echo "ERROR: 'git checkout' is prohibited in agent sessions. Use 'git switch' for branches or commits for file changes." >&2
-        exit 1
+        # File-scoped checkout (contains '--' separator) is allowed for integrator and system roles.
+        # Branch/bare checkout is always blocked.
+        _has_separator=0
+        for _carg in "$@"; do
+            [ "$_carg" = "--" ] && _has_separator=1
+        done
+        if [ "$_has_separator" -eq 1 ] && { [ "$_role" = "integrator" ] || [ "$_role" = "system" ]; }; then
+            : # allowed — file-scoped checkout
+        else
+            echo "ERROR: 'git checkout' is prohibited in agent sessions. Use 'git switch' for branches or commits for file changes." >&2
+            exit 1
+        fi
         ;;
     restore)
         echo "ERROR: 'git restore' is prohibited in agent sessions. Commit or discard intentionally." >&2
@@ -109,7 +126,7 @@ fi
 # Block commits on main (agents must use review pipeline)
 if [ "$_subcmd" = "commit" ]; then
     _current_branch="$(_real_git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ "$_current_branch" = "main" ] && [ "${TELECLAUDE_ALLOW_MAIN_COMMIT:-}" != "1" ]; then
+    if [ "$_current_branch" = "main" ] && [ "$_role" != "system" ]; then
         cat >&2 <<'MSG'
 ERROR: Commits on main are blocked for agent sessions.
 Your changes must go through the review pipeline.
@@ -125,13 +142,13 @@ MSG
     fi
 fi
 
-# Block pushes from main (only integrator may push)
+# Block pushes from main (only system role may push)
 if [ "$_subcmd" = "push" ]; then
     _current_branch="$(_real_git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ "$_current_branch" = "main" ] && [ "${TELECLAUDE_ALLOW_MAIN_PUSH:-}" != "1" ]; then
+    if [ "$_current_branch" = "main" ] && [ "$_role" != "system" ]; then
         cat >&2 <<'MSG'
 ERROR: Push from main is blocked for agent sessions.
-Only the integrator may push to remote.
+Only the system role may push to remote.
 
 If you have uncommitted work, run: telec todo from-main --slug <meaningful-name>
 Then run:  telec todo work <slug>

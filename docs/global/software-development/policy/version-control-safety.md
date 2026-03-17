@@ -35,7 +35,12 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 ## Enforcement
 
 - **Git wrapper** (`~/.teleclaude/bin/git`): A PATH-based binary wrapper prepended to all agent tmux sessions via `tmux_bridge.py`. Blocks `stash`, `checkout`, `restore`, `clean`, and `reset --hard/--merge/--keep` at the shell level, below AI reasoning. Agents cannot bypass this. `git revert` requires `--confirmed` flag; bare `git revert` is blocked with a warning explaining the inspection requirement.
-- **Main-branch gate override:** The wrapper checks `TELECLAUDE_ALLOW_MAIN_COMMIT=1` and `TELECLAUDE_ALLOW_MAIN_PUSH=1` to bypass the commit/push blocks on main. **These overrides may only be used when the user explicitly authorizes them for the current task.** An agent must never set these variables on its own initiative. Typical use: the user directs an agent to commit documentation or policy changes directly on main without the full review pipeline.
+- **System role permissions:** The wrapper reads `TELECLAUDE_SYSTEM_ROLE` (set by the daemon from `session_metadata.system_role`) to determine permission scope. Four roles:
+  - `worker` (default): Standard restrictions.
+  - `orchestrator`: Auth-only; equivalent to worker permissions.
+  - `integrator`: stash + file-scoped checkout.
+  - `system`: commit/push on main + file-scoped checkout (stash remains blocked).
+    Agents must never set this variable on their own initiative.
 - Never discard or overwrite uncommitted work unless told to.
 - Do not stop, reroute, or escalate solely because unrelated files are dirty.
 - Agent instruction artifacts must not include stash workflows.

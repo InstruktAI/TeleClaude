@@ -50,7 +50,7 @@ A failed merge that reaches main is harder to fix than a blocked integration que
 After pushing to origin/main, the machine syncs local main via git pull. If the
 pull is blocked by dirty local files, you receive a REPO ROOT SYNC BLOCKED instruction.
 Tell the user what happened, wait for confirmation, then run the instructed
-stash/pull/pop sequence with `TELECLAUDE_INTEGRATION_STASH=1`. <!-- guard: allow-git-stash -->
+stash/pull/pop sequence (your session has `TELECLAUDE_SYSTEM_ROLE=integrator` which grants stash access). <!-- guard: allow-git-stash -->
 If stash pop produces conflicts, accept delivered versions for files deleted by the
 delivery and port any real local work to the new locations. After recovery, call
 `telec todo integrate` to complete cleanup.

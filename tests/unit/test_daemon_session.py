@@ -86,6 +86,88 @@ async def test_handle_session_closed_cleans_state_and_cancels_worker(monkeypatch
 
 
 @pytest.mark.unit
+async def test_bootstrap_injects_system_role_into_tmux_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When a session has system_role in metadata, it reaches the tmux env."""
+    from teleclaude.constants import ROLE_INTEGRATOR
+    from teleclaude.core.models import SessionMetadata
+
+    daemon_inst = _TestDaemon()
+    captured_env: dict[str, str] = {}
+
+    session = SimpleNamespace(
+        session_id="sess-role",
+        tmux_session_name="tc_sess-role",
+        project_path="/tmp/proj",
+        subdir=None,
+        lifecycle_status="initializing",
+        session_metadata=SessionMetadata(system_role=ROLE_INTEGRATOR, job="integrator"),
+        principal=None,
+        human_email=None,
+        human_role=None,
+    )
+
+    async def fake_ensure_tmux(*, name: str, working_dir: str, session_id: str, env_vars: dict[str, str]) -> bool:
+        captured_env.update(env_vars)
+        return True
+
+    db_stub = SimpleNamespace(
+        get_session=AsyncMock(return_value=session),
+        get_voice=AsyncMock(return_value=None),
+        issue_session_token=AsyncMock(return_value="tok"),
+        update_session=AsyncMock(),
+    )
+    monkeypatch.setattr(daemon_session, "db", db_stub)
+    monkeypatch.setattr(daemon_session, "resolve_session_principal", lambda s: ("system:sess-role", "admin"))
+    monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda p, s: "/tmp/proj")
+    monkeypatch.setattr(daemon_session, "tmux_bridge", SimpleNamespace(ensure_tmux_session=fake_ensure_tmux))
+    monkeypatch.setattr(daemon_inst, "_start_polling_for_session", AsyncMock())
+
+    await daemon_inst._bootstrap_session_resources("sess-role", None)
+
+    assert "TELECLAUDE_SYSTEM_ROLE" in captured_env
+    assert captured_env["TELECLAUDE_SYSTEM_ROLE"] == ROLE_INTEGRATOR
+
+
+@pytest.mark.unit
+async def test_bootstrap_omits_system_role_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When a session has no system_role, TELECLAUDE_SYSTEM_ROLE is not set."""
+    daemon_inst = _TestDaemon()
+    captured_env: dict[str, str] = {}
+
+    session = SimpleNamespace(
+        session_id="sess-plain",
+        tmux_session_name="tc_sess-plain",
+        project_path="/tmp/proj",
+        subdir=None,
+        lifecycle_status="initializing",
+        session_metadata=None,
+        principal=None,
+        human_email=None,
+        human_role=None,
+    )
+
+    async def fake_ensure_tmux(*, name: str, working_dir: str, session_id: str, env_vars: dict[str, str]) -> bool:
+        captured_env.update(env_vars)
+        return True
+
+    db_stub = SimpleNamespace(
+        get_session=AsyncMock(return_value=session),
+        get_voice=AsyncMock(return_value=None),
+        issue_session_token=AsyncMock(return_value="tok"),
+        update_session=AsyncMock(),
+    )
+    monkeypatch.setattr(daemon_session, "db", db_stub)
+    monkeypatch.setattr(daemon_session, "resolve_session_principal", lambda s: ("system:sess-plain", "admin"))
+    monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda p, s: "/tmp/proj")
+    monkeypatch.setattr(daemon_session, "tmux_bridge", SimpleNamespace(ensure_tmux_session=fake_ensure_tmux))
+    monkeypatch.setattr(daemon_inst, "_start_polling_for_session", AsyncMock())
+
+    await daemon_inst._bootstrap_session_resources("sess-plain", None)
+
+    assert "TELECLAUDE_SYSTEM_ROLE" not in captured_env
+
+
+@pytest.mark.unit
 async def test_handle_session_close_requested_restores_active_status_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

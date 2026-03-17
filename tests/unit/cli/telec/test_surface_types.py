@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib
 
-from teleclaude.constants import HUMAN_ROLE_MEMBER, ROLE_ORCHESTRATOR
+from teleclaude.constants import HUMAN_ROLE_MEMBER, ROLE_SYSTEM
 
 surface_types = importlib.import_module("teleclaude.cli.telec.surface_types")
 
@@ -42,5 +42,5 @@ def test_command_def_tuples_reflect_flags_and_subcommands() -> None:
 
 
 def test_auth_shorthand_sets_include_expected_roles() -> None:
-    assert ROLE_ORCHESTRATOR in surface_types._SYS_ORCH
+    assert ROLE_SYSTEM in surface_types._SYS_ORCH
     assert HUMAN_ROLE_MEMBER in surface_types._HR_MEMBER

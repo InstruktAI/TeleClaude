@@ -555,14 +555,14 @@ After pushing to origin/main, `_step_push_succeeded` syncs local main via `git p
 3. The agent informs the user and waits for confirmation (other agent sessions may be active).
 4. After confirmation, the agent runs:
    ```bash
-   TELECLAUDE_INTEGRATION_STASH=1 git stash
+   git stash
    git pull --ff-only origin main
-   TELECLAUDE_INTEGRATION_STASH=1 git stash pop
+   git stash pop
    ```
 5. If stash pop succeeds, the agent calls `telec todo integrate` — the machine resumes at CLEANUP.
 6. If stash pop produces conflicts, the agent resolves them (files deleted by delivery with local edits are obsolete), then calls `telec todo integrate`.
 
-**`TELECLAUDE_INTEGRATION_STASH` env var:** The git wrapper (`~/.teleclaude/bin/git`) blocks `git stash` in agent sessions by default (version-control-safety policy). Setting `TELECLAUDE_INTEGRATION_STASH=1` bypasses this block specifically for integration recovery. The env var is only used in the pull-blocked recovery sequence after explicit user confirmation.
+**System role permissions:** The git wrapper (`~/.teleclaude/bin/git`) blocks `git stash` in agent sessions by default (version-control-safety policy). Integrator sessions have `TELECLAUDE_SYSTEM_ROLE=integrator` set by the daemon from `session_metadata.system_role`, which grants stash and file-scoped checkout permissions. No per-command env var prefix is needed.
 
 ```mermaid
 sequenceDiagram
@@ -582,10 +582,10 @@ sequenceDiagram
 
     Note over Agent: Agent informs user,<br/>waits for confirmation
 
-    Agent->>Root: TELECLAUDE_INTEGRATION_STASH=1 git stash
+    Agent->>Root: git stash
     Agent->>Root: git pull --ff-only origin main
     Note over Root: Pull succeeds
-    Agent->>Root: TELECLAUDE_INTEGRATION_STASH=1 git stash pop
+    Agent->>Root: git stash pop
 
     alt Clean pop
         Agent->>SM: telec todo integrate
@@ -593,7 +593,7 @@ sequenceDiagram
     else Conflicts
         Note over Agent: Resolve conflicts<br/>(obsolete files = accept delivered)
         Agent->>Root: git add resolved files
-        Agent->>Root: TELECLAUDE_INTEGRATION_STASH=1 git stash drop
+        Agent->>Root: git stash drop
         Agent->>SM: telec todo integrate
         SM->>SM: Resume at CLEANUP → COMPLETED
     end
