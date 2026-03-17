@@ -20,14 +20,17 @@ jobs:
 
       - name: Resolve credentials
         run: |
-          # Resolve real HOME via dscl — the runner may report HOME with wrong
-          # case on case-sensitive APFS. Always trust dscl over $HOME.
-          REAL_HOME="$(dscl . -read /Users/"$(whoami)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-          echo "dscl HOME=$REAL_HOME, runner HOME=$HOME"
-          if [ -n "$REAL_HOME" ]; then
-            echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
-            export HOME="$REAL_HOME"
+          # The runner's HOME may have wrong case on case-sensitive APFS.
+          # Neither $HOME nor dscl are reliable — resolve from disk.
+          if [ ! -d "$HOME/.teleclaude" ]; then
+            REAL_HOME="$(find /Users -maxdepth 1 -iname "$(whoami)" -type d 2>/dev/null | head -1)"
+            if [ -n "$REAL_HOME" ] && [ "$REAL_HOME" != "$HOME" ]; then
+              echo "Correcting HOME: $HOME -> $REAL_HOME"
+              echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
+              export HOME="$REAL_HOME"
+            fi
           fi
+          echo "Effective HOME=$HOME"
 
           # Claude: extract OAuth access token from macOS keychain and export
           # as ANTHROPIC_API_KEY. The desktop app config file is unreliable
