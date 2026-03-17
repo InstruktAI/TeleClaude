@@ -71,14 +71,15 @@ def _dispatch_sync(
 
     # Resolve cwd to the main repo root so callers inside worktrees don't
     # cause double-nested paths (e.g. trees/_integration/trees/_integration).
-    # --git-common-dir returns the shared .git dir; its parent is the main repo root.
-    rc, common_dir_out, _ = _run_git(["rev-parse", "--git-common-dir"], cwd=cwd)
+    # --path-format=absolute ensures git returns an absolute path regardless
+    # of whether cwd is the repo root (.git → relative) or a worktree (absolute).
+    # The parent of the common git dir is the main repo root.
+    rc, common_dir_out, _ = _run_git(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=cwd)
     if rc == 0 and common_dir_out.strip():
-        resolved = str(Path(common_dir_out.strip()).resolve().parent)
+        resolved = str(Path(common_dir_out.strip()).parent)
         if resolved != cwd:
             logger.info("Resolved cwd from worktree %s to repo root %s", cwd, resolved)
             cwd = resolved
-
     checkpoint_path = state_dir / "integrate-state.json"
     lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
 
