@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-telegram-message-not-delivered
+  date: '2026-03-17'
+  commit: bc52a5cd36f0
 - slug: git-role-permissions
   date: '2026-03-17'
   commit: e3dc53f29f37
