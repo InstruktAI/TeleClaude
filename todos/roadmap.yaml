@@ -51,3 +51,4 @@
 - slug: fix-integration-cwd-resolution
 - slug: headless-output-pipeline
 - slug: fix-chiptunes-cold-start
+- slug: fix-tui-resource-leaks
