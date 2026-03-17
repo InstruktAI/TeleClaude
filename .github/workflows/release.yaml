@@ -87,20 +87,29 @@ jobs:
             git ls-files > release-diff.txt
           fi
 
+          # Build the full prompt to a file so it doesn't blow the arg limit
+          {
+            cat docs/project/spec/release-inspector-prompt.md
+            echo ""
+            echo "MANIFESTS:"
+            echo "CLI:"
+            ./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())"
+            echo "Events:"
+            ./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())"
+            echo "Config:"
+            ./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())"
+            echo ""
+            echo "DIFF:"
+            cat release-diff.txt
+          } > release-prompt.txt
+          echo "Prompt size: $(wc -c < release-prompt.txt) bytes"
+
       - name: Claude Release Lane
         continue-on-error: true
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent claude --thinking-mode slow \
-            --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-
-          MANIFESTS:
-          CLI: $(./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())")
-          Events: $(./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())")
-          Config: $(./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())")
-
-          DIFF:
-          $(cat release-diff.txt)" \
+            --prompt-file release-prompt.txt \
             --schema-file docs/project/spec/release-report-schema.md > claude-report.json
 
       - name: Codex Release Lane
@@ -108,15 +117,7 @@ jobs:
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
-            --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-
-          MANIFESTS:
-          CLI: $(./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())")
-          Events: $(./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())")
-          Config: $(./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())")
-
-          DIFF:
-          $(cat release-diff.txt)" \
+            --prompt-file release-prompt.txt \
             --schema-file docs/project/spec/release-report-schema.md > codex-report.json
 
       - name: Gemini Release Lane
@@ -124,15 +125,7 @@ jobs:
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
-            --prompt "$(cat docs/project/spec/release-inspector-prompt.md)
-
-          MANIFESTS:
-          CLI: $(./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())")
-          Events: $(./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())")
-          Config: $(./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())")
-
-          DIFF:
-          $(cat release-diff.txt)" \
+            --prompt-file release-prompt.txt \
             --schema-file docs/project/spec/release-report-schema.md > gemini-report.json
 
       - name: Verify quorum (2 of 3 lanes)
