@@ -23,20 +23,20 @@ The Integration state machine is the **only role authorized to push canonical `m
 
 ### Referenced files
 
-| File | Purpose |
-|------|---------|
+| File                                                                                                       | Purpose                                                                    |
+| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | [`teleclaude/core/integration/state_machine.py`](../../../../teleclaude/core/integration/state_machine.py) | State machine implementation (`IntegrationPhase` enum, `next_integrate()`) |
-| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py) | Durable FIFO queue for integration candidates |
-| [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py) | Singleton lease for serialized integration |
+| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py)                 | Durable FIFO queue for integration candidates                              |
+| [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py)                 | Singleton lease for serialized integration                                 |
 
 ### Referenced doc snippets
 
-| Snippet ID | Content |
-|------------|---------|
-| `software-development/procedure/lifecycle/integration` | Integration procedure with agent actions |
-| `project/spec/integration-orchestrator` | Full integrator contract (events, lease, queue, lifecycle) |
-| `software-development/policy/version-control-safety` | Git safety rules for all agents |
-| `software-development/policy/commits` | Commit format and attribution |
+| Snippet ID                                             | Content                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------- |
+| `software-development/procedure/lifecycle/integration` | Integration procedure with agent actions                   |
+| `project/spec/integration-orchestrator`                | Full integrator contract (events, lease, queue, lifecycle) |
+| `software-development/policy/version-control-safety`   | Git safety rules for all agents                            |
+| `software-development/policy/commits`                  | Commit format and attribution                              |
 
 ## Inputs/Outputs
 
@@ -130,20 +130,20 @@ stateDiagram-v2
 
 ### States reference
 
-| State | Description | Agent Action Required | Auto-advance |
-|-------|-------------|----------------------|--------------|
-| `IDLE` | No candidate in progress. Pop next from queue or complete. | No | Yes |
-| `CANDIDATE_DEQUEUED` | Candidate popped. Route to merge or skip. | No | Yes |
-| `MERGE_CLEAN` | Squash merge succeeded. Staged changes await commit. | **Yes** — compose squash commit message | No |
-| `MERGE_CONFLICTED` | Squash merge produced conflicts. | **Yes** — resolve conflicts + commit | No |
-| `AWAITING_COMMIT` | Re-entry check: did the agent commit? | No | Yes |
-| `COMMITTED` | Agent committed. Run delivery bookkeeping. | No | Yes |
-| `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin. | No | Yes |
-| `PUSH_SUCCEEDED` | Push landed. Proceed to cleanup. | No | Yes |
-| `PUSH_REJECTED` | Push rejected (non-fast-forward). | **Yes** — rebase + push | No |
-| `CLEANUP` | Remove worktree, branch, todo dir. | No | Yes |
-| `CANDIDATE_DELIVERED` | Candidate fully integrated. Mark and reset. | No | Yes |
-| `COMPLETED` | Queue empty. Terminal state. | **Yes** — self-end session | — |
+| State                  | Description                                                | Agent Action Required                   | Auto-advance |
+| ---------------------- | ---------------------------------------------------------- | --------------------------------------- | ------------ |
+| `IDLE`                 | No candidate in progress. Pop next from queue or complete. | No                                      | Yes          |
+| `CANDIDATE_DEQUEUED`   | Candidate popped. Route to merge or skip.                  | No                                      | Yes          |
+| `MERGE_CLEAN`          | Squash merge succeeded. Staged changes await commit.       | **Yes** — compose squash commit message | No           |
+| `MERGE_CONFLICTED`     | Squash merge produced conflicts.                           | **Yes** — resolve conflicts + commit    | No           |
+| `AWAITING_COMMIT`      | Re-entry check: did the agent commit?                      | No                                      | Yes          |
+| `COMMITTED`            | Agent committed. Run delivery bookkeeping.                 | No                                      | Yes          |
+| `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin.                          | No                                      | Yes          |
+| `PUSH_SUCCEEDED`       | Push landed. Proceed to cleanup.                           | No                                      | Yes          |
+| `PUSH_REJECTED`        | Push rejected (non-fast-forward).                          | **Yes** — rebase + push                 | No           |
+| `CLEANUP`              | Remove worktree, branch, todo dir.                         | No                                      | Yes          |
+| `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark and reset.                | No                                      | Yes          |
+| `COMPLETED`            | Queue empty. Terminal state.                               | **Yes** — self-end session              | —            |
 
 ### Single candidate flow
 
@@ -405,16 +405,16 @@ flowchart LR
     Break --> Acquire
 ```
 
-| Property | Value |
-|----------|-------|
-| Lease key | `integration/main` |
-| TTL | 120 seconds |
-| Renew interval | 30 seconds |
-| Acquisition | Atomic compare-and-swap |
-| Stale break | Allowed after expiry |
-| Queue order | FIFO by `ready_at` timestamp |
-| Queue deduplication | By `(slug, branch, sha)` |
-| Queue item states | `queued` → `in_progress` → `integrated` / `blocked` / `superseded` |
+| Property            | Value                                                              |
+| ------------------- | ------------------------------------------------------------------ |
+| Lease key           | `integration/main`                                                 |
+| TTL                 | 120 seconds                                                        |
+| Renew interval      | 30 seconds                                                         |
+| Acquisition         | Atomic compare-and-swap                                            |
+| Stale break         | Allowed after expiry                                               |
+| Queue order         | FIFO by `ready_at` timestamp                                       |
+| Queue deduplication | By `(slug, branch, sha)`                                           |
+| Queue item states   | `queued` → `in_progress` → `integrated` / `blocked` / `superseded` |
 
 ### Already-integrated detection
 
@@ -503,29 +503,29 @@ flowchart LR
     C6 --> R6
 ```
 
-| Crash Point | Checkpoint Phase | Recovery |
-|-------------|-----------------|----------|
-| After dequeue, before merge | `CANDIDATE_DEQUEUED` | Routes to merge. No work lost. |
-| After merge, before commit | `MERGE_CLEAN` / `MERGE_CONFLICTED` | Re-prompts agent. Staged changes persist in git index. |
-| After commit, before push | `COMMITTED` | Re-runs delivery bookkeeping (idempotent). Then pushes. |
-| After push rejection | `PUSH_REJECTED` | Re-checks if heads match. Re-prompts if not. |
-| During cleanup | `CLEANUP` | Re-runs cleanup (idempotent). Missing worktrees are no-ops. |
-| After candidate delivered | `CANDIDATE_DELIVERED` | Marks integrated, resets to IDLE, loops for next. |
+| Crash Point                 | Checkpoint Phase                   | Recovery                                                    |
+| --------------------------- | ---------------------------------- | ----------------------------------------------------------- |
+| After dequeue, before merge | `CANDIDATE_DEQUEUED`               | Routes to merge. No work lost.                              |
+| After merge, before commit  | `MERGE_CLEAN` / `MERGE_CONFLICTED` | Re-prompts agent. Staged changes persist in git index.      |
+| After commit, before push   | `COMMITTED`                        | Re-runs delivery bookkeeping (idempotent). Then pushes.     |
+| After push rejection        | `PUSH_REJECTED`                    | Re-checks if heads match. Re-prompts if not.                |
+| During cleanup              | `CLEANUP`                          | Re-runs cleanup (idempotent). Missing worktrees are no-ops. |
+| After candidate delivered   | `CANDIDATE_DELIVERED`              | Marks integrated, resets to IDLE, loops for next.           |
 
 ### Lifecycle events
 
-| Event | Emitted When |
-|-------|-------------|
-| `integration.started` | First candidate dequeued in a session |
-| `integration.candidate.dequeued` | Candidate popped from queue |
+| Event                                  | Emitted When                                |
+| -------------------------------------- | ------------------------------------------- |
+| `integration.started`                  | First candidate dequeued in a session       |
+| `integration.candidate.dequeued`       | Candidate popped from queue                 |
 | `integration.candidate.already_merged` | Candidate skipped (ancestry or empty merge) |
-| `integration.merge.succeeded` | Clean squash merge completed |
-| `integration.merge.conflicted` | Squash merge produced conflicts |
-| `integration.candidate.committed` | Agent commit detected (HEAD advanced) |
-| `integration.push.succeeded` | Push to origin succeeded |
-| `integration.push.rejected` | Push to origin rejected |
-| `integration.candidate.delivered` | Candidate fully integrated and cleaned up |
-| `integration.candidate.blocked` | Candidate blocked (via queue mark) |
+| `integration.merge.succeeded`          | Clean squash merge completed                |
+| `integration.merge.conflicted`         | Squash merge produced conflicts             |
+| `integration.candidate.committed`      | Agent commit detected (HEAD advanced)       |
+| `integration.push.succeeded`           | Push to origin succeeded                    |
+| `integration.push.rejected`            | Push to origin rejected                     |
+| `integration.candidate.delivered`      | Candidate fully integrated and cleaned up   |
+| `integration.candidate.blocked`        | Candidate blocked (via queue mark)          |
 
 ### Internal loop
 
