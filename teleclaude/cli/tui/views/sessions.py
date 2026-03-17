@@ -111,11 +111,11 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
         from textual.timer import Timer
 
         self._highlight_timers: dict[str, Timer] = {}
-        # Track sessions already mounted this process — headless sessions
+        # Track sessions already mounted this process — new sessions
         # auto-expand only on first mount, not on tree rebuilds
         self._ever_mounted_sessions: set[str] = set()
         # Pending auto-select: session_id to select+preview once it appears
-        # in the tree with a tmux pane ready
+        # in the tree
         self._pending_select_session_id: str | None = None
         # Position cursor at preview session on first tree build only
         self._initial_cursor_positioned = False
@@ -240,16 +240,15 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
         """Request auto-selection of a session once it appears in the tree.
 
         Called when a new session is created — the session may not yet be in
-        the tree or may not yet have a tmux pane. The pending ID is applied
-        after the next tree rebuild.
+        the tree. The pending ID is applied after the next tree rebuild.
         """
         self._pending_select_session_id = session_id
 
     def _apply_pending_selection(self) -> None:
-        """Apply pending auto-select if the session is in the tree and ready.
+        """Apply pending auto-select once the session appears in the tree.
 
-        A session is "ready" when it has a tmux_session_name (pane exists).
-        If not ready yet, the pending ID is kept for the next data update.
+        Selects the session immediately — the pane bridge handles the case
+        where the tmux pane doesn't exist yet.
         """
         if not self._pending_select_session_id:
             return
@@ -257,18 +256,13 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
         target_id = self._pending_select_session_id
         for i, widget in enumerate(self._nav_items):
             if isinstance(widget, SessionRow) and widget.session_id == target_id:
-                # Found in tree — check if it has a tmux pane
-                if not widget.session.tmux_session_name:
-                    # Not ready yet — keep pending for next update
-                    return
-                # Ready — select, preview, and focus
                 self._pending_select_session_id = None
                 self.cursor_index = i
                 self._update_cursor_highlight()
                 self._scroll_to_cursor()
                 self.preview_session_id = target_id
                 self._clear_session_highlights(target_id)
-                self.post_message(PreviewChanged(target_id, request_focus=False))
+                self.post_message(PreviewChanged(target_id, request_focus=True))
                 self._notify_state_changed()
                 return
 
@@ -391,9 +385,8 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
                 display_index=session_data.display_index,
                 depth=node.depth,
             )
-            # Headless sessions auto-expand on first mount
-            is_headless = (session.status or "").startswith("headless") or not session.tmux_session_name
-            if is_headless and session.session_id not in self._ever_mounted_sessions:
+            # Auto-expand new sessions on first mount
+            if session.session_id not in self._ever_mounted_sessions:
                 self._collapsed_sessions.add(session.session_id)
             self._ever_mounted_sessions.add(session.session_id)
 
