@@ -55,6 +55,7 @@ Report summary and readiness for re-review.
    feedback inline, address findings iteratively, and update the verdict to APPROVE
    when all findings are resolved. Silence is a valid response when the reviewer's
    message requires only action.
+6. Commit all files in the worktree. Everything in the worktree belongs to the task.
 
 ## Outputs
 

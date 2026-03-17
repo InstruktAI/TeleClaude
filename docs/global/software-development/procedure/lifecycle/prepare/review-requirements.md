@@ -128,7 +128,7 @@ if present.
 
 ### 5. Commit and report
 
-Commit the verdict and any findings. Report:
+Commit all files in the worktree. Report:
 
 ```
 REQUIREMENTS REVIEW: {slug}

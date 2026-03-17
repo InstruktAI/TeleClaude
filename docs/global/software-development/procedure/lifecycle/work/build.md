@@ -62,14 +62,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    `quality-checklist.md` under the Build section. If verification is not possible
    in the build environment, note the gap explicitly.
 9. Working tree is clean: `git status`.
-   - If not clean, commit remaining build-phase changes following the commits policy.
-   - Treat pre-existing out-of-scope drift as non-blocking.
-   - Orchestrator-managed planning/state drift is a common non-blocking case:
-     - `todos/roadmap.yaml`
-     - `todos/{slug}/state.yaml`
-   - Do not commit those orchestrator-managed drift files unless the active task explicitly requires planning/state edits.
-   - If dirty files are limited to that drift allowlist, continue without escalation.
-   - If dirty files do not overlap this slug's build scope, continue; do not force-commit unrelated files during build unless the task explicitly requires editing them.
+   - If not clean, commit all remaining files in the worktree. Everything in the worktree belongs to the task.
 10. Verify commits exist: `git log --oneline -10`.
 
 ## Report format

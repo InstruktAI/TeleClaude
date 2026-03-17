@@ -44,12 +44,7 @@ git diff $(git merge-base HEAD main)..HEAD --name-only
 git diff $(git merge-base HEAD main)..HEAD
 ```
 
-Treat orchestrator-managed planning/state drift as non-blocking review noise:
-
-- `todos/roadmap.yaml`
-- `todos/{slug}/state.yaml`
-
-Do not raise findings solely for this drift unless review scope explicitly includes planning/state edits.
+Orchestrator-managed files (`todos/roadmap.yaml`, `todos/{slug}/state.yaml`) are part of the task context. Do not raise findings for changes in these files unless review scope explicitly includes planning/state edits.
 
 ### 2. Completeness checks
 
@@ -260,8 +255,9 @@ Verdict rules — **verdict is arithmetic, not judgement:**
 If all findings were remediated inline, record a short "Resolved During Review"
 section so the caller can trace what changed.
 
-Commit review findings. Do not edit `state.yaml` in the reviewer session. Report
-summary and verdict to the caller.
+Commit all files in the worktree. Do not edit `state.yaml` in the reviewer session
+(the orchestrator records the verdict), but do commit any orchestrator-written
+changes alongside review findings. Report summary and verdict to the caller.
 
 ## Report format
 

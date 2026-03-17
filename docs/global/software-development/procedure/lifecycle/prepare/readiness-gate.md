@@ -110,7 +110,7 @@ Update `todos/{slug}/dor-report.md` with:
 
 ### 7. Commit and go idle
 
-Commit all todo artifact changes. The commit is the delivery mechanism — your
+Commit all files in the worktree. The commit is the delivery mechanism — your
 caller verifies the commit exists, not the file state on disk.
 
 Go idle. Your caller will read the committed verdict and may open a direct

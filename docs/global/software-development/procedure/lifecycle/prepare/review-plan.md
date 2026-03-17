@@ -157,7 +157,7 @@ If no unresolved findings remain, remove stale `plan-review-findings.md` if pres
 
 ### 10. Commit and report
 
-Commit the verdict and any findings. Report:
+Commit all files in the worktree. Report:
 
 ```
 PLAN REVIEW: {slug}

@@ -37,7 +37,7 @@ All Committizen types are allowed.
 
 - One logical change per commit
 - Keep commits small and focused
-- **Inspect before committing.** Run `git diff --staged` (or `git status`) and verify every file in the changeset belongs to the current task. Never commit files outside your task scope. In a multi-agent environment, dirty working trees contain other agents' in-progress work — sweeping unrelated files into your commit corrupts their state.
+- **Inspect before committing.** Run `git diff --staged` (or `git status`) and review the changeset. In a worktree, all files belong to the task — commit everything. On repo root main, verify every file belongs to the current task before staging.
 - Commit message explains WHY, not WHAT (code shows what)
 - Never commit broken code
 - Never use `--no-verify` to bypass hooks unless asked to do so

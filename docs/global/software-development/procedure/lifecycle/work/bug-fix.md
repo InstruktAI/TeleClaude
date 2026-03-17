@@ -35,7 +35,7 @@ findings in `bug.md` for reviewer verification.
 9. Commit the fix and `bug.md` updates together.
 10. Run tests: `make test`.
 11. Run lint: `make lint`.
-12. Verify no unexpected dirty files remain.
+12. Commit all remaining files in the worktree. Everything in the worktree belongs to the task.
 
 ## Pre-completion checklist
 
