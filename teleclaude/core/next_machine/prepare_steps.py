@@ -25,7 +25,11 @@ from teleclaude.core.next_machine._types import (
 from teleclaude.core.next_machine.build_gates import check_file_has_content
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import format_prepared, format_tool_call
-from teleclaude.core.next_machine.prepare_events import _emit_prepare_event, _has_test_spec_artifacts
+from teleclaude.core.next_machine.prepare_events import (
+    _emit_prepare_event,
+    _has_test_spec_artifacts,
+    _is_artifact_produced_v2,
+)
 from teleclaude.core.next_machine.state_io import _run_git_prepare, write_phase_state
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
@@ -44,7 +48,11 @@ async def _prepare_step_input_assessment(
     _now = datetime.now(UTC).isoformat()
     stamp_audit(state, "input_assessment", "started_at", _now)
 
-    if check_file_has_content(cwd, f"todos/{slug}/requirements.md"):
+    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
+    # Ghost artifact protection: v2 state requires produced_at stamp, not just file presence
+    if has_requirements and not _is_artifact_produced_v2(state, "requirements"):
+        has_requirements = False
+    if has_requirements:
         # Emit input_consumed event before transitioning (R13)
         from teleclaude.core.next_machine.prepare_helpers import record_input_consumed
 
@@ -78,7 +86,11 @@ async def _prepare_step_triangulation(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TRIANGULATION: requirements.md still needs discovery or revision."""
-    if check_file_has_content(cwd, f"todos/{slug}/requirements.md"):
+    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
+    # Ghost artifact protection: v2 state requires produced_at stamp, not just file presence
+    if has_requirements and not _is_artifact_produced_v2(state, "requirements"):
+        has_requirements = False
+    if has_requirements:
         # Transition to REQUIREMENTS_REVIEW
         state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
@@ -238,7 +250,11 @@ async def _prepare_step_test_spec_build(
 
     stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())
 
-    if await asyncio.to_thread(_has_test_spec_artifacts, cwd, slug):
+    has_test_specs = await asyncio.to_thread(_has_test_spec_artifacts, cwd, slug)
+    # Ghost artifact protection: v2 state requires produced_at stamp, not just file presence
+    if has_test_specs and not _is_artifact_produced_v2(state, "test_specs"):
+        has_test_specs = False
+    if has_test_specs:
         stamp_audit(state, "test_spec_build", "completed_at", datetime.now(UTC).isoformat())
         state["prepare_phase"] = PreparePhase.TEST_SPEC_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
@@ -349,7 +365,11 @@ async def _prepare_step_plan_drafting(
 
     stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
-    if check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md"):
+    has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
+    # Ghost artifact protection: v2 state requires produced_at stamp, not just file presence
+    if has_plan and not _is_artifact_produced_v2(state, "implementation_plan"):
+        has_plan = False
+    if has_plan:
         # R16: check that all referenced_paths exist before advancing to plan review
         grounding = state.get("grounding", {})
         referenced_paths: list[str] = []

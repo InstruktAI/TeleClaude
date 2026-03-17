@@ -342,6 +342,9 @@ from teleclaude.core.next_machine.state_io import (
     _DEEP_MERGE_KEYS as _DEEP_MERGE_KEYS,
 )
 from teleclaude.core.next_machine.state_io import (
+    _PREPARE_ARTIFACT_PHASES as _PREPARE_ARTIFACT_PHASES,
+)
+from teleclaude.core.next_machine.state_io import (
     _PREPARE_PHASE_VALUES as _PREPARE_PHASE_VALUES,
 )
 from teleclaude.core.next_machine.state_io import (
@@ -412,6 +415,9 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_io import (
     mark_phase as mark_phase,
+)
+from teleclaude.core.next_machine.state_io import (
+    mark_prepare_artifact as mark_prepare_artifact,
 )
 from teleclaude.core.next_machine.state_io import (
     mark_prepare_phase as mark_prepare_phase,

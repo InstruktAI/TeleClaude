@@ -42,6 +42,48 @@ def test_format_tool_call_includes_pre_dispatch_block_before_dispatch_step() -> 
     assert output.index("STEP 0 - BEFORE DISPATCHING:") < output.index("STEP 1 - DISPATCH:")
 
 
+def test_format_tool_call_for_prepare_discovery_stamps_requirements_before_next_call() -> None:
+    output = format_tool_call(
+        command="next-prepare-discovery",
+        args="slug-c",
+        project="/repo",
+        guidance="guidance block",
+        subfolder="",
+        next_call="telec todo prepare slug-c",
+    )
+
+    assert "telec todo mark-phase slug-c --phase requirements --status complete" in output
+    assert "Call telec todo prepare slug-c" in output
+
+
+def test_format_tool_call_for_prepare_draft_stamps_implementation_plan_before_next_call() -> None:
+    output = format_tool_call(
+        command="next-prepare-draft",
+        args="slug-d",
+        project="/repo",
+        guidance="guidance block",
+        subfolder="",
+        next_call="telec todo prepare slug-d",
+    )
+
+    assert "telec todo mark-phase slug-d --phase implementation_plan --status complete" in output
+    assert "Call telec todo prepare slug-d" in output
+
+
+def test_format_tool_call_for_build_specs_stamps_test_specs_before_next_call() -> None:
+    output = format_tool_call(
+        command="next-build-specs",
+        args="slug-e",
+        project="/repo",
+        guidance="guidance block",
+        subfolder="trees/slug-e",
+        next_call="telec todo prepare slug-e",
+    )
+
+    assert "telec todo mark-phase slug-e --phase test_specs --status complete" in output
+    assert "Call telec todo prepare slug-e" in output
+
+
 def test_format_finalize_handoff_complete_lists_child_session_cleanup_commands() -> None:
     output = format_finalize_handoff_complete("slug-c", "telec todo work", ["child-1", "child-2"])
 

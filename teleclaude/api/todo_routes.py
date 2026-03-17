@@ -30,6 +30,7 @@ from teleclaude.core.db import db
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine import next_create, next_prepare
 from teleclaude.core.next_machine.core import (
+    _PREPARE_ARTIFACT_PHASES,
     _PREPARE_PHASE_VALUES,
     _PREPARE_VERDICT_PHASES,
     _PREPARE_VERDICT_VALUES,
@@ -40,6 +41,7 @@ from teleclaude.core.next_machine.core import (
     load_roadmap_deps,
     mark_finalize_ready,
     mark_phase,
+    mark_prepare_artifact,
     mark_prepare_phase,
     mark_prepare_verdict,
     save_roadmap,
@@ -171,6 +173,14 @@ async def todo_mark_phase(  # pyright: ignore
         updated_state = mark_prepare_verdict(cwd, slug, phase, status)
         return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(updated_state)}
 
+    # Artifact stamp phases: produce a lifecycle stamp, operate on main repo
+    if phase in _PREPARE_ARTIFACT_PHASES:
+        updated_state = mark_prepare_artifact(cwd, slug, phase)
+        return {
+            "result": f"OK: {slug} state updated - artifacts.{phase}.produced_at stamped",
+            "state": str(updated_state),
+        }
+
     # Direct prepare_phase advancement, operate on main repo
     if phase == "prepare":
         if status not in _PREPARE_PHASE_VALUES:
@@ -183,7 +193,7 @@ async def todo_mark_phase(  # pyright: ignore
 
     # Work phases: build/review, operate on worktree
     if phase not in ("build", "review"):
-        all_phases = ("build", "review", "prepare", *_PREPARE_VERDICT_PHASES)
+        all_phases = ("build", "review", "prepare", *_PREPARE_VERDICT_PHASES, *_PREPARE_ARTIFACT_PHASES)
         raise HTTPException(status_code=400, detail=f"invalid phase '{phase}': must be one of {', '.join(all_phases)}")
     valid_statuses = ("pending", "started", "complete", "approved", "changes_requested")
     if status not in valid_statuses:

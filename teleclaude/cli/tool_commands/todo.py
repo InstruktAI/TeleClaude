@@ -315,16 +315,25 @@ def handle_todo_mark_phase(args: list[str]) -> None:
                 plan_drafting, plan_review, gate, grounding_check,
                 re_grounding, prepared, blocked
 
+    Artifact stamp phases (requirements, test_specs, implementation_plan):
+      Stamps lifecycle metadata in state.yaml. File-backed artifacts also record
+      the current digest. Operates on the main repo.
+      No --status value is checked; any non-empty value is accepted.
+
     Options:
       <slug>          Work item slug
-      --phase <p>     Phase: build, review, prepare, requirements_review, plan_review
-      --status <s>    New status or verdict (see above)
+      --phase <p>     Phase: build, review, prepare, requirements_review, plan_review,
+                      requirements, test_specs, implementation_plan
+      --status <s>    New status or verdict (see above; use 'complete' for artifact phases)
 
     Examples:
       telec todo mark-phase my-slug --phase build --status complete
       telec todo mark-phase my-slug --phase review --status approved
       telec todo mark-phase my-slug --phase plan_review --status approve
       telec todo mark-phase my-slug --phase prepare --status prepared
+      telec todo mark-phase my-slug --phase requirements --status complete
+      telec todo mark-phase my-slug --phase test_specs --status complete
+      telec todo mark-phase my-slug --phase implementation_plan --status complete
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_mark_phase.__doc__ or "")

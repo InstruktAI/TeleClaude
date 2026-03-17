@@ -107,14 +107,35 @@ WHEN WORKER COMPLETES:
    - Report the error status and session ID to the user for manual intervention
 8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
-    "next-build-specs": """WHEN WORKER COMPLETES:
+    "next-prepare-discovery": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. telec sessions end <session_id>
-3. Call {next_call}
-4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+2. telec todo mark-phase {args} --phase requirements --status complete
+3. telec sessions end <session_id>
+4. Call {next_call}
+5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+""",
+    "next-prepare-draft": """WHEN WORKER COMPLETES:
+1. Read worker output via get_session_data
+2. telec todo mark-phase {args} --phase implementation_plan --status complete
+3. telec sessions end <session_id>
+4. Call {next_call}
+5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+""",
+    "next-build-specs": """WHEN WORKER COMPLETES:
+1. Read worker output via get_session_data
+2. telec todo mark-phase {args} --phase test_specs --status complete
+3. telec sessions end <session_id>
+4. Call {next_call}
+5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-specs": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data

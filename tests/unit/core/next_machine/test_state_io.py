@@ -11,6 +11,7 @@ import yaml
 
 from teleclaude.core.next_machine.state_io import (
     mark_phase,
+    mark_prepare_artifact,
     mark_prepare_phase,
     mark_ready,
     read_phase_state,
@@ -113,3 +114,66 @@ def test_mark_ready_generates_quality_checklist_and_ready_state(tmp_path: Path) 
     assert state["dor"]["score"] == 8  # type: ignore[index]
     assert grounding["base_sha"] == "headsha"
     assert (todo_dir / "quality-checklist.md").exists()
+
+
+def test_mark_prepare_artifact_stamps_produced_at_for_test_specs(tmp_path: Path) -> None:
+    """mark_prepare_artifact writes artifacts.test_specs.produced_at to state.yaml."""
+    todo_dir = tmp_path / "todos" / "slug-f"
+    _write_state(
+        todo_dir, {"schema_version": 2, "artifacts": {"test_specs": {"digest": "", "produced_at": "", "stale": False}}}
+    )
+
+    state = mark_prepare_artifact(str(tmp_path), "slug-f", "test_specs")
+
+    artifacts = state.get("artifacts")
+    assert isinstance(artifacts, dict)
+    test_specs = artifacts.get("test_specs")
+    assert isinstance(test_specs, dict)
+    assert test_specs["produced_at"] != ""
+    persisted = read_phase_state(str(tmp_path), "slug-f")
+    persisted_artifacts = persisted.get("artifacts")
+    assert isinstance(persisted_artifacts, dict)
+    assert persisted_artifacts["test_specs"]["produced_at"] != ""  # type: ignore[index]
+
+
+def test_mark_prepare_artifact_records_digest_for_requirements_file(tmp_path: Path) -> None:
+    """mark_prepare_artifact records digest + produced_at for file-backed requirements."""
+    todo_dir = tmp_path / "todos" / "slug-g"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "requirements.md").write_text("grounded requirements\n", encoding="utf-8")
+    _write_state(
+        todo_dir,
+        {"schema_version": 2, "artifacts": {"requirements": {"digest": "", "produced_at": "", "stale": False}}},
+    )
+
+    state = mark_prepare_artifact(str(tmp_path), "slug-g", "requirements")
+
+    artifacts = state.get("artifacts")
+    assert isinstance(artifacts, dict)
+    requirements = artifacts.get("requirements")
+    assert isinstance(requirements, dict)
+    assert requirements["digest"] != ""
+    assert requirements["produced_at"] != ""
+
+
+def test_mark_prepare_artifact_records_digest_for_implementation_plan_file(tmp_path: Path) -> None:
+    """mark_prepare_artifact records digest + produced_at for file-backed plans."""
+    todo_dir = tmp_path / "todos" / "slug-h"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "implementation-plan.md").write_text("grounded plan\n", encoding="utf-8")
+    _write_state(
+        todo_dir,
+        {
+            "schema_version": 2,
+            "artifacts": {"implementation_plan": {"digest": "", "produced_at": "", "stale": False}},
+        },
+    )
+
+    state = mark_prepare_artifact(str(tmp_path), "slug-h", "implementation_plan")
+
+    artifacts = state.get("artifacts")
+    assert isinstance(artifacts, dict)
+    implementation_plan = artifacts.get("implementation_plan")
+    assert isinstance(implementation_plan, dict)
+    assert implementation_plan["digest"] != ""
+    assert implementation_plan["produced_at"] != ""

@@ -117,6 +117,9 @@ def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> 
 
     # After requirements approved: check test spec phase
     has_test_specs = _has_test_spec_artifacts(cwd, slug)
+    # Ghost artifact protection (R5): v2 requires stamp, not just filesystem presence
+    if has_test_specs and not _is_artifact_produced_v2(state, "test_specs"):
+        has_test_specs = False
     if not has_test_specs:
         return PreparePhase.TEST_SPEC_BUILD
 

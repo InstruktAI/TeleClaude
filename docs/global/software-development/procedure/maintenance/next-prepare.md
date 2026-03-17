@@ -47,7 +47,12 @@ The discovery worker owns requirements production. It decides whether solo disco
 is enough or whether to triangulate with a complementary partner. Both paths converge
 to the same output: `requirements.md`.
 
-After requirements are written or revised, call `telec todo prepare [slug]` again.
+After requirements are written or revised, stamp the artifact lifecycle record
+before re-entering prepare:
+
+- `telec todo mark-phase <slug> --phase requirements --status complete`
+
+Then call `telec todo prepare [slug]` again.
 
 #### REQUIREMENTS REVIEW REQUIRED
 
@@ -74,8 +79,12 @@ The dispatch note includes `additional_context` when:
   to the findings file, and the plan diff since review baseline.
 - Referenced paths do not exist — contains a formatted list of missing file paths.
 
-After the plan is written or the split is materialized, call
-`telec todo prepare [slug]` again.
+When plan drafting produces `implementation-plan.md`, stamp the plan artifact
+lifecycle record before re-entering prepare:
+
+- `telec todo mark-phase <slug> --phase implementation_plan --status complete`
+
+Then call `telec todo prepare [slug]` again.
 
 #### PLAN REVIEW REQUIRED
 
@@ -84,6 +93,18 @@ to validate the plan against policies, DoD gates, and review lane expectations.
 The reviewer writes a verdict to `state.yaml`.
 
 After review, call `telec todo prepare [slug]` again.
+
+#### TEST SPEC BUILD REQUIRED
+
+Requirements are approved and test specifications must be written. Dispatch
+`next-build-specs` to a worker session.
+
+After test specs are written, stamp the lifecycle record before re-entering
+prepare:
+
+- `telec todo mark-phase <slug> --phase test_specs --status complete`
+
+Then call `telec todo prepare [slug]` again.
 
 #### INPUT ASSESSMENT / STALENESS CASCADE
 

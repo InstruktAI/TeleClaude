@@ -32,6 +32,9 @@ Drive the prepare state machine by calling `telec todo prepare` in a loop, dispa
 
 - Follow the next-prepare procedure.
 - Call `telec todo prepare [slug]` and execute the returned instruction.
+- When a prepare worker finishes and the execution script tells you to stamp an
+  artifact, run the `telec todo mark-phase ...` step before calling
+  `telec todo prepare` again.
 - Call again after each instruction completes. Repeat until terminal state.
 
 ## Discipline

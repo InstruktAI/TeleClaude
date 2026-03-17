@@ -13,7 +13,11 @@ from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, PreparePhas
 from teleclaude.core.next_machine.prepare_steps import (
     _prepare_dispatch,
     _prepare_step_grounding_check,
+    _prepare_step_input_assessment,
+    _prepare_step_plan_drafting,
     _prepare_step_re_grounding,
+    _prepare_step_test_spec_build,
+    _prepare_step_triangulation,
 )
 
 
@@ -224,3 +228,101 @@ async def test_prepare_dispatch_requests_gate_worker_when_dor_is_below_threshold
     assert keep_going is False
     assert 'telec sessions run --command "/next-prepare-gate" --args "slug-i"' in instruction
     assert f"state.yaml.dor.score >= {DOR_READY_THRESHOLD}" in instruction
+
+
+@pytest.mark.asyncio
+async def test_ghost_requirements_not_loop_in_input_assessment_step_v2(tmp_path: Path) -> None:
+    """v2: requirements.md on disk but no produced_at → dispatches discovery worker, not loop."""
+    todo_dir = tmp_path / "todos" / "slug-req1"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "input.md").write_text("input content here", encoding="utf-8")
+    (todo_dir / "requirements.md").write_text(
+        "Authored requirements that are long enough to pass the scaffold check gate.\n",
+        encoding="utf-8",
+    )
+    _write_state(todo_dir, {})
+    state: dict[str, StateValue] = {
+        "schema_version": 2,
+        "artifacts": {
+            "requirements": {"digest": "", "produced_at": "", "stale": False},
+        },
+    }
+
+    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"):
+        keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), "slug-req1", str(tmp_path), state)
+
+    assert keep_going is False
+    assert 'telec sessions run --command "/next-prepare-discovery"' in instruction
+
+
+@pytest.mark.asyncio
+async def test_ghost_requirements_not_loop_in_triangulation_step_v2(tmp_path: Path) -> None:
+    """v2: requirements.md on disk but no produced_at → dispatches discovery worker, not loop."""
+    todo_dir = tmp_path / "todos" / "slug-req2"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "requirements.md").write_text(
+        "Authored requirements that are long enough to pass the scaffold check gate.\n",
+        encoding="utf-8",
+    )
+    _write_state(todo_dir, {})
+    state: dict[str, StateValue] = {
+        "schema_version": 2,
+        "artifacts": {
+            "requirements": {"digest": "", "produced_at": "", "stale": False},
+        },
+    }
+
+    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"):
+        keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), "slug-req2", str(tmp_path), state)
+
+    assert keep_going is False
+    assert 'telec sessions run --command "/next-prepare-discovery"' in instruction
+
+
+@pytest.mark.asyncio
+async def test_ghost_test_specs_not_treated_as_produced_in_step_v2(tmp_path: Path) -> None:
+    """v2: xfail test files exist in worktree but test_specs.produced_at is empty → dispatches spec build worker."""
+    todo_dir = tmp_path / "todos" / "slug-spec1"
+    _write_state(todo_dir, {})
+    worktree = tmp_path / "trees" / "slug-spec1" / "tests"
+    worktree.mkdir(parents=True)
+    (worktree / "test_example.py").write_text("pytestmark = pytest.mark.xfail\n", encoding="utf-8")
+    state: dict[str, StateValue] = {
+        "schema_version": 2,
+        "artifacts": {
+            "test_specs": {"digest": "", "produced_at": "", "stale": False},
+        },
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.prepare_steps.ensure_worktree_with_policy_async"),
+        patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"),
+    ):
+        keep_going, instruction = await _prepare_step_test_spec_build(AsyncMock(), "slug-spec1", str(tmp_path), state)
+
+    assert keep_going is False
+    assert 'telec sessions run --command "/next-build-specs"' in instruction
+
+
+@pytest.mark.asyncio
+async def test_ghost_plan_not_loop_in_plan_drafting_step_v2(tmp_path: Path) -> None:
+    """v2: implementation-plan.md on disk but no produced_at → dispatches draft worker, not loop."""
+    todo_dir = tmp_path / "todos" / "slug-plan1"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "implementation-plan.md").write_text(
+        "Authored implementation plan that is long enough to pass the scaffold check gate.\n",
+        encoding="utf-8",
+    )
+    _write_state(todo_dir, {})
+    state: dict[str, StateValue] = {
+        "schema_version": 2,
+        "artifacts": {
+            "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
+        },
+    }
+
+    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"):
+        keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), "slug-plan1", str(tmp_path), state)
+
+    assert keep_going is False
+    assert 'telec sessions run --command "/next-prepare-draft"' in instruction

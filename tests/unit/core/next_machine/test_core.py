@@ -481,6 +481,14 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
         "invalidated_at": "",
         "invalidation_reason": "",
     }
+    # Plan was previously produced: stamp required by v2 ghost artifact protection
+    artifacts = state.get("artifacts", {})
+    if isinstance(artifacts, dict):
+        impl_plan = artifacts.get("implementation_plan", {})
+        if isinstance(impl_plan, dict):
+            impl_plan["produced_at"] = "2025-01-01T00:00:00+00:00"
+            artifacts["implementation_plan"] = impl_plan
+    state["artifacts"] = artifacts
     write_phase_state(cwd, slug, state)
 
     mock_db = MagicMock()

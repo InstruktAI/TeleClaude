@@ -699,6 +699,53 @@ def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
     return True, f"✓ {slug} fast-tracked to work-ready (DOR 8, prepared, grounded)"
 
 
+# Artifact keys that can be stamped via mark-phase after worker output is verified.
+_PREPARE_ARTIFACT_FILES = {
+    "requirements": "requirements.md",
+    "implementation_plan": "implementation-plan.md",
+}
+_PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_FILES.keys(), "test_specs")
+
+
+def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateValue]:
+    """Stamp an artifact as produced in state.yaml by setting produced_at.
+
+    File-backed artifacts record both digest and produced_at. Directory-backed
+    artifacts (currently test_specs) record produced_at only.
+
+    Args:
+        cwd: Project root directory (not worktree)
+        slug: Work item slug
+        artifact_key: Artifact state key (e.g. test_specs)
+
+    Returns:
+        Updated state dict
+    """
+    if artifact_key not in _PREPARE_ARTIFACT_PHASES:
+        raise ValueError(f"invalid artifact key '{artifact_key}': must be one of {', '.join(_PREPARE_ARTIFACT_PHASES)}")
+
+    artifact_file = _PREPARE_ARTIFACT_FILES.get(artifact_key)
+    if artifact_file is not None:
+        from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
+
+        record_artifact_produced(cwd, slug, artifact_file)
+        return read_phase_state(cwd, slug)
+
+    state = read_phase_state(cwd, slug)
+    artifacts = state.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+    entry = artifacts.get(artifact_key, {})
+    if not isinstance(entry, dict):
+        entry = {}
+    entry["produced_at"] = datetime.now(UTC).isoformat()
+    entry["stale"] = False
+    artifacts[artifact_key] = entry
+    state["artifacts"] = artifacts
+    write_phase_state(cwd, slug, state)
+    return state
+
+
 def _has_content(path: Path) -> bool:
     """Check if a file has non-trivial content (beyond whitespace and headings)."""
     if not path.exists():
@@ -722,6 +769,7 @@ __all__ = [
     "is_review_changes_requested",
     "mark_finalize_ready",
     "mark_phase",
+    "mark_prepare_artifact",
     "mark_prepare_phase",
     "mark_prepare_verdict",
     "mark_ready",

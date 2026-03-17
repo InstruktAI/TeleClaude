@@ -216,6 +216,7 @@ DEFAULT_STATE: dict[str, StateValue] = {
     "artifacts": {
         "input": {"digest": "", "produced_at": "", "stale": False},
         "requirements": {"digest": "", "produced_at": "", "stale": False},
+        "test_specs": {"digest": "", "produced_at": "", "stale": False},
         "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
     },
     "audit": {
