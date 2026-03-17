@@ -317,6 +317,15 @@ class PreparationViewActionsMixin:
                 return
             filename = "input.md"
 
+        # --- Commit and push scaffold to remote ---
+        from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+
+        pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
+        if pushed:
+            self.app.notify(f"Scaffold for {slug} pushed to remote", severity="information")  # type: ignore[attr-defined]
+        elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
+            self.app.notify(f"Warning: Scaffold for {slug} not pushed to remote: {reason}", severity="warning")  # type: ignore[attr-defined]
+
         filepath = str(todo_dir / filename)
         self.post_message(  # type: ignore[attr-defined]
             DocEditRequest(

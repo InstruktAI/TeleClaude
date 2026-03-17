@@ -4,6 +4,7 @@ type: 'design'
 scope: 'project'
 description: 'Physical architecture and animation catalog for the TUI cinematic rooftop banner.'
 ---
+
 # TUI Animation Specification: The Cinematic Rooftop — Design
 
 ## Purpose
@@ -149,9 +150,9 @@ Sun (day) and moon (night) render as a quarter disc anchored at the top-right co
 
 ## Failure modes
 
-| Scenario                            | Behavior                                                                              |
-| ----------------------------------- | ------------------------------------------------------------------------------------- |
-| Color falls below minimum RGB floor | Boost algorithm raises value to 120 RGB average minimum in Dark Mode.                 |
-| Animation paints background black   | Invariant violation — animation must return transparent sentinel (-1) for inactives.  |
+| Scenario                            | Behavior                                                                                |
+| ----------------------------------- | --------------------------------------------------------------------------------------- |
+| Color falls below minimum RGB floor | Boost algorithm raises value to 120 RGB average minimum in Dark Mode.                   |
+| Animation paints background black   | Invariant violation — animation must return transparent sentinel (-1) for inactives.    |
 | Focus state inconsistency           | `resolve_haze()` is the single source of truth; widgets must not perform manual checks. |
-| Terminal width changes mid-render   | Quarter celestial recalculates center from `term_width-1` on each render pass.        |
+| Terminal width changes mid-render   | Quarter celestial recalculates center from `term_width-1` on each render pass.          |

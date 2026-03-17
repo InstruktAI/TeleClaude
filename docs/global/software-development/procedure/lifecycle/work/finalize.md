@@ -56,7 +56,7 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
    FINALIZE_READY: {slug}
    ```
 
-5. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
+7. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
    The orchestrator records durable finalize-ready state after verifying the report.
 
 ### Stage B — Orchestrator: finalize handoff

@@ -9,6 +9,7 @@ type: 'design'
 # Next Machine — Design
 
 > **Detailed state machine documentation:**
+>
 > - [Lifecycle State Machines — Overview](lifecycle-state-machines.md) — end-to-end flow, roles, how the three phases connect
 > - [Prepare State Machine (Phase A)](prepare-state-machine.md) — 10 states, sequential artifact production with review gates
 > - [Work State Machine (Phase B)](work-state-machine.md) — build/review/fix/finalize routing

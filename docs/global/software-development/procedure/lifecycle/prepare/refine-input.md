@@ -54,8 +54,8 @@ Update `todos/{slug}/state.yaml` to signal that preparation artifacts need recon
 ```yaml
 grounding:
   valid: false
-  invalidated_at: "<now ISO8601>"
-  invalidation_reason: "input_updated"
+  invalidated_at: '<now ISO8601>'
+  invalidation_reason: 'input_updated'
 ```
 
 If the `grounding` section does not exist yet, create it. Do not modify other sections of state.yaml.

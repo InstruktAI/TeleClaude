@@ -22,9 +22,11 @@ Two tracks apply depending on how the bug was discovered: inline (internal) or v
 ## Preconditions
 
 **Track 1 — Inline:**
+
 - You discovered a bug during your current work.
 
 **Track 2 — Maintenance:**
+
 - Bug reports exist as GitHub Issues (labeled `bug`).
 - The maintenance runner (jobs/maintenance.py) triggers periodically.
 
@@ -57,10 +59,12 @@ Two tracks apply depending on how the bug was discovered: inline (internal) or v
 ## Outputs
 
 **Track 1:**
+
 - Bug fixed and committed on the current branch, or
 - New work item in `todos/` with the issue promoted to a roadmap entry.
 
 **Track 2:**
+
 - PRs created for each resolved issue, referencing the GitHub Issue number.
 - Issues auto-closed when PRs merge.
 

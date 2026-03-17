@@ -103,7 +103,7 @@ contract the builder must satisfy. Quality rules:
 
 Plans must provide enough detail for a builder to execute without guessing:
 
-- Every task has a rationale explaining *why* this approach, not just *what*.
+- Every task has a rationale explaining _why_ this approach, not just _what_.
 - Every task has a verification step that references specific expected-failure
   tests it makes GREEN: a test to satisfy, behavior to observe, or check to run.
 - Tasks trace to requirements. No orphan tasks (gold-plating) and no orphan

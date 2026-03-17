@@ -50,7 +50,7 @@ Core decides delivery scope and broadcasts accordingly. Adapters decide how to p
 | `feedback_notice_error_status`       | `ORIGIN_ONLY` | Includes notices, feedback prompts, and user-facing errors.                           |
 | `last_output_summary`                | `ORIGIN_ONLY` | Origin UX only, non-threaded/in-edit presentation only.                               |
 | `output_stream_chunk_final_threaded` | `DUAL`        | Includes incremental chunks, final output, and threaded blocks.                       |
-| `input_reflection_text`              | `DUAL`        | Broadcast to all adapters; each adapter routes locally (admin, suppress, etc.).        |
+| `input_reflection_text`              | `DUAL`        | Broadcast to all adapters; each adapter routes locally (admin, suppress, etc.).       |
 | `input_reflection_voice`             | `DUAL`        | Same reflection lane policy as text input.                                            |
 | `input_reflection_mcp`               | `DUAL`        | Same reflection lane policy as text/voice input.                                      |
 | `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not UI content. |

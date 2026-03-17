@@ -18,26 +18,26 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 ### Referenced files
 
-| File | Purpose |
-|------|---------|
-| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py) | State machine implementation (`next_work()`) |
-| [`docs/software-development/procedure/lifecycle/work/build.md`](../../../software-development/procedure/lifecycle/work/build.md) | Build procedure |
-| [`docs/software-development/procedure/lifecycle/work/review.md`](../../../software-development/procedure/lifecycle/work/review.md) | Review procedure |
-| [`docs/software-development/procedure/lifecycle/work/fix-review.md`](../../../software-development/procedure/lifecycle/work/fix-review.md) | Fix review procedure |
-| [`docs/software-development/procedure/lifecycle/work/finalize.md`](../../../software-development/procedure/lifecycle/work/finalize.md) | Finalize procedure |
-| [`docs/general/procedure/orchestration.md`](../../../general/procedure/orchestration.md) | Orchestration loop procedure |
+| File                                                                                                                                       | Purpose                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py)                                                 | State machine implementation (`next_work()`) |
+| [`docs/software-development/procedure/lifecycle/work/build.md`](../../../software-development/procedure/lifecycle/work/build.md)           | Build procedure                              |
+| [`docs/software-development/procedure/lifecycle/work/review.md`](../../../software-development/procedure/lifecycle/work/review.md)         | Review procedure                             |
+| [`docs/software-development/procedure/lifecycle/work/fix-review.md`](../../../software-development/procedure/lifecycle/work/fix-review.md) | Fix review procedure                         |
+| [`docs/software-development/procedure/lifecycle/work/finalize.md`](../../../software-development/procedure/lifecycle/work/finalize.md)     | Finalize procedure                           |
+| [`docs/general/procedure/orchestration.md`](../../../general/procedure/orchestration.md)                                                   | Orchestration loop procedure                 |
 
 ### Referenced doc snippets
 
-| Snippet ID | Content |
-|------------|---------|
-| `software-development/procedure/lifecycle/work/build` | Build phase — implement plan, commit per task |
-| `software-development/procedure/lifecycle/work/review` | Review phase — parallel lanes, structured findings |
-| `software-development/procedure/lifecycle/work/fix-review` | Fix phase — address findings, peer conversation |
-| `software-development/procedure/lifecycle/work/finalize` | Finalize — two-stage: worker prepare, orchestrator apply |
-| `general/procedure/orchestration` | Orchestration loop and dispatch rules |
-| `software-development/policy/definition-of-done` | Quality gates for completion |
-| `software-development/policy/testing` | Pre-commit quality gates |
+| Snippet ID                                                 | Content                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------- |
+| `software-development/procedure/lifecycle/work/build`      | Build phase — implement plan, commit per task            |
+| `software-development/procedure/lifecycle/work/review`     | Review phase — parallel lanes, structured findings       |
+| `software-development/procedure/lifecycle/work/fix-review` | Fix phase — address findings, peer conversation          |
+| `software-development/procedure/lifecycle/work/finalize`   | Finalize — two-stage: worker prepare, orchestrator apply |
+| `general/procedure/orchestration`                          | Orchestration loop and dispatch rules                    |
+| `software-development/policy/definition-of-done`           | Quality gates for completion                             |
+| `software-development/policy/testing`                      | Pre-commit quality gates                                 |
 
 ## Inputs/Outputs
 
@@ -62,13 +62,13 @@ The Work state machine routes implementation through four sub-phases: **Build �
 ### State YAML structure
 
 ```yaml
-phase: in_progress              # pending | in_progress | done
-build: pending                  # pending | started | complete
-review: pending                 # pending | approved | changes_requested
+phase: in_progress # pending | in_progress | done
+build: pending # pending | started | complete
+review: pending # pending | approved | changes_requested
 deferrals_processed: false
 
 finalize:
-  status: pending               # pending | ready | handed_off
+  status: pending # pending | ready | handed_off
   branch: my-feature
   sha: abc123...
   ready_at: 2026-03-09T10:00:00+00:00
@@ -76,12 +76,12 @@ finalize:
   handed_off_at: null
   handoff_session_id: null
 
-review_round: 0                 # counter for review iterations
-max_review_rounds: 3            # limit (configurable)
-review_baseline_commit: ""      # SHA for incremental review scope
+review_round: 0 # counter for review iterations
+max_review_rounds: 3 # limit (configurable)
+review_baseline_commit: '' # SHA for incremental review scope
 
-unresolved_findings: []         # R1-F1, R1-F2, ...
-resolved_findings: []           # R1-F1, R1-F2, ...
+unresolved_findings: [] # R1-F1, R1-F2, ...
+resolved_findings: [] # R1-F1, R1-F2, ...
 ```
 
 ## Invariants
@@ -274,26 +274,26 @@ sequenceDiagram
 
 ### Command dispatch map
 
-| Sub-Phase | Command | Worker Role | Thinking Mode | Output |
-|-----------|---------|-------------|---------------|--------|
-| Build | `/next-build` | Builder | `med` | Code, tests, commits |
-| Build (bug) | `/next-bugs-fix` | Builder | `med` | Bug fix, investigation |
-| Review | `/next-review-build` | Reviewer | `slow` (mandatory) | `review-findings.md`, verdict |
-| Fix | `/next-fix-review` | Fixer | `med` | Fix commits |
-| Deferrals | `/next-defer` | Orchestrator | — | New todos from deferrals |
-| Finalize | `/next-finalize` | Finalizer | `med` | Branch pushed, FINALIZE_READY |
+| Sub-Phase   | Command              | Worker Role  | Thinking Mode      | Output                        |
+| ----------- | -------------------- | ------------ | ------------------ | ----------------------------- |
+| Build       | `/next-build`        | Builder      | `med`              | Code, tests, commits          |
+| Build (bug) | `/next-bugs-fix`     | Builder      | `med`              | Bug fix, investigation        |
+| Review      | `/next-review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict |
+| Fix         | `/next-fix-review`   | Fixer        | `med`              | Fix commits                   |
+| Deferrals   | `/next-defer`        | Orchestrator | —                  | New todos from deferrals      |
+| Finalize    | `/next-finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY |
 
 ### Lifecycle events
 
-| Event | Emitted When |
-|-------|-------------|
-| `build.started` | Builder worker dispatched |
-| `build.complete` | Build phase marked complete |
-| `review.started` | Reviewer worker dispatched |
-| `review.approved` | Review verdict = APPROVE |
+| Event                      | Emitted When                     |
+| -------------------------- | -------------------------------- |
+| `build.started`            | Builder worker dispatched        |
+| `build.complete`           | Build phase marked complete      |
+| `review.started`           | Reviewer worker dispatched       |
+| `review.approved`          | Review verdict = APPROVE         |
 | `review.changes_requested` | Review verdict = REQUEST CHANGES |
-| `branch.pushed` | Finalize worker pushed branch |
-| `deployment.started` | Integration handoff initiated |
+| `branch.pushed`            | Finalize worker pushed branch    |
+| `deployment.started`       | Integration handoff initiated    |
 
 ## Failure modes
 

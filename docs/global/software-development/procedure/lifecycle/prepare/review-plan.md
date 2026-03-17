@@ -67,7 +67,7 @@ reviewer. If scope fails, mark `needs_work`.
 Apply the plan-specific quality rules from the preparation artifact quality
 policy:
 
-- Every task has a rationale explaining *why* this approach. Task with no
+- Every task has a rationale explaining _why_ this approach. Task with no
   rationale -> Important. Rationale that contradicts codebase patterns or
   loaded domain specs -> Critical.
 - Every task has a verification step. Task with no verification -> Important.

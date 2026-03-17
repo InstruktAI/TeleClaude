@@ -4,6 +4,7 @@ id: 'project/design/architecture/operation-receipts'
 scope: 'project'
 type: 'design'
 ---
+
 # Operation Receipts — Design
 
 ## Purpose

@@ -96,15 +96,15 @@ The platform registers the following root-level event families as built-in catal
 Each family uses a flat prefix pattern. The existing `system.*` and `domain.*` families
 coexist alongside the newer flat families — both patterns are valid.
 
-| Family         | Levels                    | Visibility | Description                              |
-| -------------- | ------------------------- | ---------- | ---------------------------------------- |
-| `system`       | INFRASTRUCTURE, OPERATIONAL | CLUSTER  | Platform health and worker lifecycle     |
-| `domain`       | WORKFLOW, BUSINESS        | LOCAL      | Domain-specific events (e.g. software-development) |
-| `node`         | INFRASTRUCTURE, OPERATIONAL | CLUSTER  | Node presence and metadata updates       |
-| `deployment`   | WORKFLOW, BUSINESS        | LOCAL      | Deployment lifecycle (start → complete → fail → rollback) |
-| `content`      | WORKFLOW, BUSINESS        | LOCAL      | Content capture, processing, publication |
-| `notification` | WORKFLOW, BUSINESS        | LOCAL      | Escalation and resolution meta-events    |
-| `schema`       | OPERATIONAL               | CLUSTER    | Schema change proposals and adoptions    |
+| Family         | Levels                      | Visibility | Description                                               |
+| -------------- | --------------------------- | ---------- | --------------------------------------------------------- |
+| `system`       | INFRASTRUCTURE, OPERATIONAL | CLUSTER    | Platform health and worker lifecycle                      |
+| `domain`       | WORKFLOW, BUSINESS          | LOCAL      | Domain-specific events (e.g. software-development)        |
+| `node`         | INFRASTRUCTURE, OPERATIONAL | CLUSTER    | Node presence and metadata updates                        |
+| `deployment`   | WORKFLOW, BUSINESS          | LOCAL      | Deployment lifecycle (start → complete → fail → rollback) |
+| `content`      | WORKFLOW, BUSINESS          | LOCAL      | Content capture, processing, publication                  |
+| `notification` | WORKFLOW, BUSINESS          | LOCAL      | Escalation and resolution meta-events                     |
+| `schema`       | OPERATIONAL                 | CLUSTER    | Schema change proposals and adoptions                     |
 
 ### Event type registration
 
@@ -117,16 +117,16 @@ cartridges may register additional types in the same catalog.
 The `domain.software-development.prepare.*` family covers every observable transition
 in the prepare state machine. All events carry `slug` as a payload field unless noted.
 
-| Event type | Level | Description | Key payload fields |
-|---|---|---|---|
-| `prepare.phase_skipped` | WORKFLOW | Phase skipped via split inheritance | `slug`, `phase`, `reason` |
-| `prepare.input_consumed` | WORKFLOW | Input consumed by discovery, requirements production started | `slug` |
-| `prepare.artifact_produced` | WORKFLOW | Artifact written and lifecycle-tracked in state | `slug`, `artifact`, `digest` |
-| `prepare.artifact_invalidated` | OPERATIONAL | Upstream change cascaded staleness to artifact | `slug`, `artifact` |
-| `prepare.finding_recorded` | WORKFLOW | Finding recorded by reviewer with severity and summary | `slug`, `finding_id`, `severity`, `summary` |
-| `prepare.finding_resolved` | WORKFLOW | Finding resolved via auto-remediation or human action | `slug`, `finding_id`, `resolution_method` |
-| `prepare.review_scoped` | WORKFLOW | Scoped re-review dispatched targeting open findings | `slug`, `finding_ids` |
-| `prepare.split_inherited` | WORKFLOW | Child todo inherited parent's approved prepare phase | `parent_slug`, `child_slug`, `inherited_phase` |
+| Event type                     | Level       | Description                                                  | Key payload fields                             |
+| ------------------------------ | ----------- | ------------------------------------------------------------ | ---------------------------------------------- |
+| `prepare.phase_skipped`        | WORKFLOW    | Phase skipped via split inheritance                          | `slug`, `phase`, `reason`                      |
+| `prepare.input_consumed`       | WORKFLOW    | Input consumed by discovery, requirements production started | `slug`                                         |
+| `prepare.artifact_produced`    | WORKFLOW    | Artifact written and lifecycle-tracked in state              | `slug`, `artifact`, `digest`                   |
+| `prepare.artifact_invalidated` | OPERATIONAL | Upstream change cascaded staleness to artifact               | `slug`, `artifact`                             |
+| `prepare.finding_recorded`     | WORKFLOW    | Finding recorded by reviewer with severity and summary       | `slug`, `finding_id`, `severity`, `summary`    |
+| `prepare.finding_resolved`     | WORKFLOW    | Finding resolved via auto-remediation or human action        | `slug`, `finding_id`, `resolution_method`      |
+| `prepare.review_scoped`        | WORKFLOW    | Scoped re-review dispatched targeting open findings          | `slug`, `finding_ids`                          |
+| `prepare.split_inherited`      | WORKFLOW    | Child todo inherited parent's approved prepare phase         | `parent_slug`, `child_slug`, `inherited_phase` |
 
 ### Expansion Joint
 

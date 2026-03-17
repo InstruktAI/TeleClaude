@@ -187,6 +187,27 @@ class TestCreateFromMainSkeleton:
         ):
             create_from_main_skeleton(str(project), "push-fail")
 
+    def test_push_skips_when_not_a_repo(self, tmp_path: Path) -> None:
+        """If scaffold push fails because not a repo, do not raise."""
+        from teleclaude.todo_scaffold import create_from_main_skeleton
+
+        project = _setup_project(tmp_path)
+        repo = _make_repo_ns()
+
+        with (
+            patch("git.Repo", return_value=repo),
+            patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
+            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(False, "not_a_repo")),
+            patch(f"{_WT}._create_or_attach_worktree", return_value=True),
+            patch(
+                f"{_WT}._decide_worktree_prep",
+                return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
+            ),
+            patch(f"{_SI}.mark_ready"),
+            patch(f"{_SI}.mark_phase"),
+        ):
+            create_from_main_skeleton(str(project), "not-a-repo-slug")
+
     def test_description_defaults_to_see_diff(self, tmp_path: Path) -> None:
         """Without --description, requirements.md shows default text."""
         from teleclaude.todo_scaffold import create_from_main_skeleton

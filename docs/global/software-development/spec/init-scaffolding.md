@@ -22,15 +22,15 @@ Analysis dimensions map to taxonomy types as guidance. The analysis session
 decides which snippets to produce based on what it finds — this mapping is not
 a fixed checklist.
 
-| Analysis Dimension | Taxonomy Type | Snippet ID Pattern |
-|---|---|---|
-| Architecture patterns, module organization | `design` | `project/design/{slug}` |
-| Naming conventions, code style, error handling | `policy` | `project/policy/{slug}` |
-| Dependency inventory, entry points, config | `spec` | `project/spec/{slug}` |
-| Test strategy, coverage model | `design` | `project/design/{slug}` |
-| Build/deploy pipeline | `spec` | `project/spec/{slug}` |
-| Key abstractions, domain model | `concept` | `project/concept/{slug}` |
-| Operational procedures | `procedure` | `project/procedure/{slug}` |
+| Analysis Dimension                             | Taxonomy Type | Snippet ID Pattern         |
+| ---------------------------------------------- | ------------- | -------------------------- |
+| Architecture patterns, module organization     | `design`      | `project/design/{slug}`    |
+| Naming conventions, code style, error handling | `policy`      | `project/policy/{slug}`    |
+| Dependency inventory, entry points, config     | `spec`        | `project/spec/{slug}`      |
+| Test strategy, coverage model                  | `design`      | `project/design/{slug}`    |
+| Build/deploy pipeline                          | `spec`        | `project/spec/{slug}`      |
+| Key abstractions, domain model                 | `concept`     | `project/concept/{slug}`   |
+| Operational procedures                         | `procedure`   | `project/procedure/{slug}` |
 
 ### Snippet ID Conventions
 

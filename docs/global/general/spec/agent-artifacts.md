@@ -132,6 +132,7 @@ parameters:
 ```
 
 Rules:
+
 - Each parameter must have a unique `name`.
 - Position is derived from list order — no explicit position field needed.
 - Use `$name` (lowercase, no braces) in the body — no runtime substitutes this;

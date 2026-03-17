@@ -265,21 +265,21 @@ IDLE → CANDIDATE_DEQUEUED → CLEARANCE_WAIT → MERGE_CLEAN / MERGE_CONFLICTE
      → COMPLETED (terminal)
 ```
 
-| Phase                  | Description                                                    | Agent action required |
-| ---------------------- | -------------------------------------------------------------- | --------------------- |
-| `IDLE`                 | No candidate in progress. Pop next from queue or complete.     | No                    |
-| `CANDIDATE_DEQUEUED`   | Candidate popped. Check clearance before merge.                | No                    |
-| `CLEARANCE_WAIT`       | Main branch blocked by active sessions or dirty paths.         | Yes — wait or commit  |
-| `MERGE_CLEAN`          | Squash merge succeeded. Staged changes await commit.           | Yes — compose commit  |
-| `MERGE_CONFLICTED`     | Squash merge produced conflicts.                               | Yes — resolve + commit|
-| `AWAITING_COMMIT`      | Re-entry after agent action; checking if HEAD advanced.        | Yes — commit if not   |
-| `COMMITTED`            | Agent committed. Run delivery bookkeeping.                     | No                    |
-| `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin.                              | No                    |
-| `PUSH_SUCCEEDED`       | Push landed. Proceed to cleanup.                               | No                    |
-| `PUSH_REJECTED`        | Push rejected (non-fast-forward). Agent must recover.          | Yes — rebase + push   |
-| `CLEANUP`              | Remove worktree, branch, todo dir. Restart daemon.             | No                    |
-| `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark integrated, reset to IDLE.    | No                    |
-| `COMPLETED`            | Queue empty. Terminal state.                                   | Yes — self-end        |
+| Phase                  | Description                                                 | Agent action required  |
+| ---------------------- | ----------------------------------------------------------- | ---------------------- |
+| `IDLE`                 | No candidate in progress. Pop next from queue or complete.  | No                     |
+| `CANDIDATE_DEQUEUED`   | Candidate popped. Check clearance before merge.             | No                     |
+| `CLEARANCE_WAIT`       | Main branch blocked by active sessions or dirty paths.      | Yes — wait or commit   |
+| `MERGE_CLEAN`          | Squash merge succeeded. Staged changes await commit.        | Yes — compose commit   |
+| `MERGE_CONFLICTED`     | Squash merge produced conflicts.                            | Yes — resolve + commit |
+| `AWAITING_COMMIT`      | Re-entry after agent action; checking if HEAD advanced.     | Yes — commit if not    |
+| `COMMITTED`            | Agent committed. Run delivery bookkeeping.                  | No                     |
+| `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin.                           | No                     |
+| `PUSH_SUCCEEDED`       | Push landed. Proceed to cleanup.                            | No                     |
+| `PUSH_REJECTED`        | Push rejected (non-fast-forward). Agent must recover.       | Yes — rebase + push    |
+| `CLEANUP`              | Remove worktree, branch, todo dir. Restart daemon.          | No                     |
+| `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark integrated, reset to IDLE. | No                     |
+| `COMPLETED`            | Queue empty. Terminal state.                                | Yes — self-end         |
 
 #### State Transition Diagram
 
@@ -349,15 +349,15 @@ process restarts and enables crash recovery. Structure:
 Every phase is recoverable. If the process dies at any point, re-calling `telec todo integrate`
 reads the checkpoint and resumes from the persisted phase:
 
-| Crash point                    | Checkpoint phase       | Recovery behavior                                                     |
-| ------------------------------ | ---------------------- | --------------------------------------------------------------------- |
-| After dequeue, before merge    | `CANDIDATE_DEQUEUED`   | Routes to clearance check, then merge. No work is lost.               |
-| During clearance wait          | `CLEARANCE_WAIT`       | Re-checks clearance. Proceeds when clear.                             |
-| After merge, before commit     | `MERGE_CLEAN/CONFLICTED`| Re-prompts agent for commit. Staged changes persist in git index.    |
-| After commit, before push      | `COMMITTED`            | Re-runs delivery bookkeeping (idempotent). Then pushes.               |
-| After push rejection           | `PUSH_REJECTED`        | Re-checks if heads match (agent may have recovered). Re-prompts if not.|
-| During cleanup                 | `CLEANUP`              | Re-runs cleanup (idempotent). Missing worktrees/branches are no-ops.  |
-| After candidate delivered      | `CANDIDATE_DELIVERED`  | Marks integrated, resets to IDLE, loops for next candidate.           |
+| Crash point                 | Checkpoint phase         | Recovery behavior                                                       |
+| --------------------------- | ------------------------ | ----------------------------------------------------------------------- |
+| After dequeue, before merge | `CANDIDATE_DEQUEUED`     | Routes to clearance check, then merge. No work is lost.                 |
+| During clearance wait       | `CLEARANCE_WAIT`         | Re-checks clearance. Proceeds when clear.                               |
+| After merge, before commit  | `MERGE_CLEAN/CONFLICTED` | Re-prompts agent for commit. Staged changes persist in git index.       |
+| After commit, before push   | `COMMITTED`              | Re-runs delivery bookkeeping (idempotent). Then pushes.                 |
+| After push rejection        | `PUSH_REJECTED`          | Re-checks if heads match (agent may have recovered). Re-prompts if not. |
+| During cleanup              | `CLEANUP`                | Re-runs cleanup (idempotent). Missing worktrees/branches are no-ops.    |
+| After candidate delivered   | `CANDIDATE_DELIVERED`    | Marks integrated, resets to IDLE, loops for next candidate.             |
 
 #### Already-Integrated Detection
 
@@ -377,18 +377,18 @@ Both guards emit `integration.candidate.already_merged` lifecycle events.
 
 The state machine emits fire-and-forget events at each transition via the integration bridge:
 
-| Event                                    | Emitted when                                        |
-| ---------------------------------------- | --------------------------------------------------- |
-| `integration.started`                    | First candidate dequeued in a session                |
-| `integration.candidate.dequeued`         | Candidate popped from queue                          |
-| `integration.candidate.already_merged`   | Candidate skipped (ancestry or empty merge)          |
-| `integration.merge.succeeded`            | Clean squash merge completed                         |
-| `integration.merge.conflicted`           | Squash merge produced conflicts                      |
-| `integration.candidate.committed`        | Agent commit detected (HEAD advanced)                |
-| `integration.push.succeeded`             | Push to origin succeeded                             |
-| `integration.push.rejected`              | Push to origin rejected                              |
-| `integration.candidate.delivered`        | Candidate fully integrated, cleaned up               |
-| `integration.candidate.blocked`          | Candidate blocked (via queue mark)                   |
+| Event                                  | Emitted when                                |
+| -------------------------------------- | ------------------------------------------- |
+| `integration.started`                  | First candidate dequeued in a session       |
+| `integration.candidate.dequeued`       | Candidate popped from queue                 |
+| `integration.candidate.already_merged` | Candidate skipped (ancestry or empty merge) |
+| `integration.merge.succeeded`          | Clean squash merge completed                |
+| `integration.merge.conflicted`         | Squash merge produced conflicts             |
+| `integration.candidate.committed`      | Agent commit detected (HEAD advanced)       |
+| `integration.push.succeeded`           | Push to origin succeeded                    |
+| `integration.push.rejected`            | Push to origin rejected                     |
+| `integration.candidate.delivered`      | Candidate fully integrated, cleaned up      |
+| `integration.candidate.blocked`        | Candidate blocked (via queue mark)          |
 
 #### Internal Loop
 

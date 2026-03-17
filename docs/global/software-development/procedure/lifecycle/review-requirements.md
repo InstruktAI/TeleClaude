@@ -91,11 +91,11 @@ Record findings in `state.yaml` under `requirements_review.findings`:
 
 ```yaml
 findings:
-  - id: "req-01"
-    severity: "substantive"   # trivial | substantive | architectural
-    summary: "R3 missing verification path for edge case X"
-    status: "open"            # open | resolved
-    resolved_at: ""
+  - id: 'req-01'
+    severity: 'substantive' # trivial | substantive | architectural
+    summary: 'R3 missing verification path for edge case X'
+    status: 'open' # open | resolved
+    resolved_at: ''
 ```
 
 The `findings` list in `state.yaml` is the authoritative record. The markdown file

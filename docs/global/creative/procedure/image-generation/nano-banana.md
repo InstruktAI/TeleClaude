@@ -5,6 +5,7 @@ domain: 'creative'
 scope: 'global'
 description: 'Generate images using the Nano Banana helper script. Text-to-image, image editing, and multi-turn iteration via Gemini.'
 ---
+
 # Nano Banana — Procedure
 
 ## Goal
@@ -62,15 +63,15 @@ Generate an image and then iterate on it with follow-up prompts:
 
 ### Options
 
-| Option | Default | Description |
-|---|---|---|
-| `--prompt` | (required for generate) | Text prompt for image generation |
-| `--model` | `gemini-2.0-flash-exp` | Gemini model with image generation support |
-| `--aspect-ratio` | `1:1` | Options: `1:1`, `3:4`, `4:3`, `9:16`, `16:9` |
-| `--input-image` | (none) | Path to input image for edit mode |
-| `--output-dir` | workspace dir | Directory to save generated images |
-| `--output-name` | auto-generated | Output filename (without extension) |
-| `--api-key-env` | `GOOGLE_API_KEY` | Environment variable name for API key |
+| Option           | Default                 | Description                                  |
+| ---------------- | ----------------------- | -------------------------------------------- |
+| `--prompt`       | (required for generate) | Text prompt for image generation             |
+| `--model`        | `gemini-2.0-flash-exp`  | Gemini model with image generation support   |
+| `--aspect-ratio` | `1:1`                   | Options: `1:1`, `3:4`, `4:3`, `9:16`, `16:9` |
+| `--input-image`  | (none)                  | Path to input image for edit mode            |
+| `--output-dir`   | workspace dir           | Directory to save generated images           |
+| `--output-name`  | auto-generated          | Output filename (without extension)          |
+| `--api-key-env`  | `GOOGLE_API_KEY`        | Environment variable name for API key        |
 
 ## Outputs
 

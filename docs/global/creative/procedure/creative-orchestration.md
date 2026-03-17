@@ -90,6 +90,7 @@ reference images and generates images in the same conversation using Nano
 Banana. The artist session stays open for iteration; it is not fire-and-forget.
 
 The artist receives:
+
 - `design-spec.md` as the constraint document.
 - `input.md` for context and content direction.
 - `input/` for any reference images the human provided.
@@ -223,6 +224,7 @@ the design spec or art may need refinement rather than the visuals.
 Terminal state. All creative artifacts are confirmed and approved.
 
 **Action**:
+
 - End all creative worker sessions (artist, frontender(s)).
 - Report to the human: design spec confirmed, art approved, visuals approved,
   ready for prepare phase.

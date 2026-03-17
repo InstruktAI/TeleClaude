@@ -217,9 +217,9 @@ Total: ~300-400 lines of changes across 8 files.
 
 ## Failure modes
 
-| Scenario                              | Behavior                                                                                         |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Coordinator omits reason              | `reason=None` propagates; TUI applies no highlight change. Safe default.                         |
-| Timer fires before `agent_stopped`    | `CLEAR_TEMP_HIGHLIGHT` clears temp highlight only. Persistent highlights remain unaffected.      |
-| Rapid events collapse at WebSocket    | Each event carries its own reason; TUI reducer applies them in arrival order. No inference needed. |
-| Old consumer receives `reason` field  | `reason=None` for generic updates; field is optional. No breaking change.                        |
+| Scenario                             | Behavior                                                                                           |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| Coordinator omits reason             | `reason=None` propagates; TUI applies no highlight change. Safe default.                           |
+| Timer fires before `agent_stopped`   | `CLEAR_TEMP_HIGHLIGHT` clears temp highlight only. Persistent highlights remain unaffected.        |
+| Rapid events collapse at WebSocket   | Each event carries its own reason; TUI reducer applies them in arrival order. No inference needed. |
+| Old consumer receives `reason` field | `reason=None` for generic updates; field is optional. No breaking change.                          |

@@ -42,6 +42,11 @@ while read -r local_ref _local_sha remote_ref _remote_sha; do
     [ -z "${remote_ref:-}" ] && continue
     [ "$remote_ref" != "refs/heads/main" ] && continue
 
+    # Allow push if explicitly authorized for automation/bookkeeping
+    if [ "${TELECLAUDE_ALLOW_MAIN_PUSH:-}" = "1" ]; then
+        continue
+    fi
+
     # Allow push from canonical repo root on branch main
     if [ "$REPO_ROOT" = "$CANONICAL_ROOT" ] \
         && [ "$BRANCH" = "main" ] \

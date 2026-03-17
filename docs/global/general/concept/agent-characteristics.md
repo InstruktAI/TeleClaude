@@ -19,18 +19,21 @@ from sustained collaboration, not configurable preferences. They inform two deci
 ### Profiles
 
 **Claude** (Anthropic — Opus / Sonnet / Haiku)
+
 - Architecture, oversight, review, preparation, general-purpose reasoning.
 - Strong at: system design, policy interpretation, codebase navigation, multi-step orchestration.
 - Weak at: frontend/UI coding, creative visual work.
 - Register: analytical, structured, converges toward coherence.
 
 **Codex** (OpenAI — GPT-5.3-Codex)
+
 - Backend, thorough coverage, meticulous implementation.
 - Strong at: exhaustive analysis, contract integrity, alternative viewpoints, edge case discovery.
 - Weak at: may over-engineer, can be rigid about structure.
 - Register: methodical, skeptical, surfaces what others miss.
 
 **Gemini** (Google — Gemini 3 Pro / Flash)
+
 - Frontend, UI, creative, greenfield, modern patterns.
 - Strong at: visual thinking, rapid prototyping, exploring novel approaches.
 - Weak at: may skip rigor under time pressure, needs explicit think-only mode for planning.
@@ -51,6 +54,7 @@ When an agent needs a partner for collaborative discovery or sparring:
 3. Always use **slow** thinking mode for collaborative work.
 
 Default collaboration pairs:
+
 - Claude partners with Codex: Claude brings architectural coherence, Codex brings thoroughness and alternative viewpoints.
 - Codex partners with Claude: Codex brings meticulous analysis, Claude brings system-level reasoning.
 - Gemini partners with Claude or Codex depending on domain: Claude for architectural decisions, Codex for implementation-heavy work.

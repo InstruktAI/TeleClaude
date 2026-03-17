@@ -38,7 +38,7 @@ better than a missing section.
   expectations.
 - **Core value proposition**: the single sentence that justifies the product's
   existence.
-- **Emotional register**: how the product should make someone *feel*. Not
+- **Emotional register**: how the product should make someone _feel_. Not
   "professional" — specific: "confident and slightly awed" or "playful but not
   childish" or "like discovering something underground."
 
@@ -70,7 +70,7 @@ better than a missing section.
   (1.25 major third) or explicit pixel/rem values.
 - **Weight usage**: which weights for which contexts. "Bold only for H1 and CTAs."
 - **Line height and letter spacing**: defaults and any exceptions.
-- **Content tone**: how the text *reads*. "Short, punchy sentences." "Technical
+- **Content tone**: how the text _reads_. "Short, punchy sentences." "Technical
   but accessible." "First person plural." This bridges visual and editorial.
 
 ### 5. Spacing and layout

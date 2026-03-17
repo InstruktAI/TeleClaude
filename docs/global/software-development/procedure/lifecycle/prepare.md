@@ -112,26 +112,26 @@ The state machine emits events at each phase transition for automation,
 notifications, and auditing. The human does not interact with these — they
 are consumed by automation (invalidation checks, notifications).
 
-| Phase transition | Event |
-|---|---|
-| Input refined | `prepare.input_refined` |
-| Discovery dispatched | `prepare.discovery_started` |
-| Input consumed (→ requirements_review) | `prepare.input_consumed` |
-| Requirements written | `prepare.requirements_drafted` |
-| Requirements approved | `prepare.requirements_approved` |
-| Plan written | `prepare.plan_drafted` |
-| Plan approved | `prepare.plan_approved` |
-| Artifact written and tracked | `prepare.artifact_produced` |
-| Artifact stale (cascade) | `prepare.artifact_invalidated` |
-| Finding recorded by reviewer | `prepare.finding_recorded` |
-| Finding resolved | `prepare.finding_resolved` |
-| Scoped re-review dispatched | `prepare.review_scoped` |
-| Phase skipped via inheritance | `prepare.phase_skipped` |
-| Child inherits parent phase | `prepare.split_inherited` |
-| Grounding invalidated | `prepare.grounding_invalidated` |
-| Re-grounding completed | `prepare.regrounded` |
-| Preparation complete | `prepare.completed` |
-| Preparation blocked | `prepare.blocked` |
+| Phase transition                       | Event                           |
+| -------------------------------------- | ------------------------------- |
+| Input refined                          | `prepare.input_refined`         |
+| Discovery dispatched                   | `prepare.discovery_started`     |
+| Input consumed (→ requirements_review) | `prepare.input_consumed`        |
+| Requirements written                   | `prepare.requirements_drafted`  |
+| Requirements approved                  | `prepare.requirements_approved` |
+| Plan written                           | `prepare.plan_drafted`          |
+| Plan approved                          | `prepare.plan_approved`         |
+| Artifact written and tracked           | `prepare.artifact_produced`     |
+| Artifact stale (cascade)               | `prepare.artifact_invalidated`  |
+| Finding recorded by reviewer           | `prepare.finding_recorded`      |
+| Finding resolved                       | `prepare.finding_resolved`      |
+| Scoped re-review dispatched            | `prepare.review_scoped`         |
+| Phase skipped via inheritance          | `prepare.phase_skipped`         |
+| Child inherits parent phase            | `prepare.split_inherited`       |
+| Grounding invalidated                  | `prepare.grounding_invalidated` |
+| Re-grounding completed                 | `prepare.regrounded`            |
+| Preparation complete                   | `prepare.completed`             |
+| Preparation blocked                    | `prepare.blocked`               |
 
 The `grounding_invalidated` event is also emitted by automation outside the
 state machine — when `telec todo prepare --invalidate-check` detects file path

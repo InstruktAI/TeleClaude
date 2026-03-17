@@ -67,6 +67,7 @@ approved requirements, decides whether the work is atomic, and either:
 - splits the todo into dependent child work items and updates the holder breakdown.
 
 The dispatch note includes `additional_context` when:
+
 - Requirements were modified (stale re-draft) — contains the requirements diff since
   the grounding baseline.
 - Plan review returned `needs_work` — contains the unresolved finding count, a pointer
@@ -87,6 +88,7 @@ After review, call `telec todo prepare [slug]` again.
 #### INPUT ASSESSMENT / STALENESS CASCADE
 
 On every invocation, the machine checks artifact digests before routing:
+
 - `input.md` digest changed → marks `requirements` and `implementation_plan` stale,
   reverts phase to discovery, emits `prepare.artifact_invalidated` per stale artifact.
 - `requirements.md` digest changed → marks `implementation_plan` stale, reverts phase
@@ -96,6 +98,7 @@ On every invocation, the machine checks artifact digests before routing:
 #### GROUNDING CHECK
 
 All artifacts exist and are approved. The machine checks freshness:
+
 - If `grounding.valid` is true and digests match: returns PREPARED.
 - If stale: returns RE_GROUNDING REQUIRED with the diff of what changed.
 

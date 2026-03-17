@@ -101,6 +101,7 @@ After review, call `telec todo prepare [slug]` again.
 #### GROUNDING CHECK
 
 All artifacts exist and are approved. The machine checks freshness:
+
 - If `grounding.valid` is true and digests match: returns PREPARED.
 - If stale: returns RE_GROUNDING REQUIRED with the diff of what changed.
 
@@ -152,20 +153,20 @@ The state machine emits events at each phase transition for automation,
 notifications, and auditing. The human does not interact with these — they
 are consumed by automation (invalidation checks, notifications).
 
-| Phase transition | Event |
-|---|---|
-| Input refined | `prepare.input_refined` |
-| Discovery dispatched | `prepare.discovery_started` |
-| Requirements written | `prepare.requirements_drafted` |
-| Requirements approved | `prepare.requirements_approved` |
-| Test specs written | `prepare.test_specs_drafted` |
-| Test specs approved | `prepare.test_specs_approved` |
-| Plan written | `prepare.plan_drafted` |
-| Plan approved | `prepare.plan_approved` |
-| Grounding invalidated | `prepare.grounding_invalidated` |
-| Re-grounding completed | `prepare.regrounded` |
-| Preparation complete | `prepare.completed` |
-| Preparation blocked | `prepare.blocked` |
+| Phase transition       | Event                           |
+| ---------------------- | ------------------------------- |
+| Input refined          | `prepare.input_refined`         |
+| Discovery dispatched   | `prepare.discovery_started`     |
+| Requirements written   | `prepare.requirements_drafted`  |
+| Requirements approved  | `prepare.requirements_approved` |
+| Test specs written     | `prepare.test_specs_drafted`    |
+| Test specs approved    | `prepare.test_specs_approved`   |
+| Plan written           | `prepare.plan_drafted`          |
+| Plan approved          | `prepare.plan_approved`         |
+| Grounding invalidated  | `prepare.grounding_invalidated` |
+| Re-grounding completed | `prepare.regrounded`            |
+| Preparation complete   | `prepare.completed`             |
+| Preparation blocked    | `prepare.blocked`               |
 
 The `grounding_invalidated` event is also emitted by automation outside the
 state machine — when `telec todo prepare --invalidate-check` detects file path

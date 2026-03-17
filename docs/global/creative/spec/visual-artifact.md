@@ -60,17 +60,17 @@ Every visual artifact file must include:
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{Section Name} — {Project Name} Visual Draft</title>
-  <style>
-    /* All CSS embedded here — no external stylesheets */
-  </style>
-</head>
-<body>
-  <!-- Section content -->
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{Section Name} — {Project Name} Visual Draft</title>
+    <style>
+      /* All CSS embedded here — no external stylesheets */
+    </style>
+  </head>
+  <body>
+    <!-- Section content -->
+  </body>
 </html>
 ```
 
@@ -96,8 +96,14 @@ All motion is expressed in CSS. The available animation techniques:
 }
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(40px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 ```
 
@@ -105,8 +111,13 @@ All motion is expressed in CSS. The available animation techniques:
 
 ```css
 @keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.05); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
 }
 ```
 
@@ -114,7 +125,9 @@ All motion is expressed in CSS. The available animation techniques:
 
 ```css
 .button {
-  transition: background-color 200ms ease-out, transform 150ms ease-out;
+  transition:
+    background-color 200ms ease-out,
+    transform 150ms ease-out;
 }
 .button:hover {
   background-color: var(--accent);
@@ -142,14 +155,15 @@ choreography, velocity-responsive behavior), use `data-motion-*` attributes as
 annotations for the builder:
 
 ```html
-<div class="hero-element"
-     data-motion-type="spring"
-     data-motion-stiffness="100"
-     data-motion-damping="15"
-     data-motion-trigger="viewport-enter"
-     data-motion-note="Bouncy entrance when element enters viewport.
-       CSS approximation shown; implement with Framer Motion useSpring.">
-</div>
+<div
+  class="hero-element"
+  data-motion-type="spring"
+  data-motion-stiffness="100"
+  data-motion-damping="15"
+  data-motion-trigger="viewport-enter"
+  data-motion-note="Bouncy entrance when element enters viewport.
+       CSS approximation shown; implement with Framer Motion useSpring."
+></div>
 ```
 
 Required annotation attributes when used:
@@ -197,7 +211,9 @@ artifact) or use the closest existing value.
 
   ```css
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
+    *,
+    *::before,
+    *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;

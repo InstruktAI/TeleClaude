@@ -75,6 +75,15 @@ def _handle_bugs_create(args: list[str]) -> None:
             description="",
         )
         print(f"Created bug skeleton: {bug_dir}")
+
+        # --- Commit and push scaffold to remote ---
+        from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+
+        pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
+        if pushed:
+            print(f"Scaffold for {slug} pushed to remote: {reason}")
+        elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
+            print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
     except ValueError as exc:
         print(f"Error: {exc}")
         raise SystemExit(1)
@@ -136,6 +145,15 @@ def _handle_bugs_report(args: list[str]) -> None:
         raise SystemExit(1) from exc
 
     slug = todo_dir.name
+
+    # --- Commit and push scaffold to remote ---
+    from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+
+    pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
+    if pushed:
+        print(f"Scaffold for {slug} pushed to remote: {reason}")
+    elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
+        print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
 
     # Dispatch orchestrator on mainline — the state machine handles branches/worktrees
     async def _dispatch_bug_fix() -> CreateSessionResult:

@@ -262,6 +262,15 @@ def _handle_todo_dump(args: list[str]) -> None:
     except Exception:
         _log.warning("Dumped todo: todos/%s/ — notification emission failed", slug)
 
+    # --- Commit and push scaffold to remote ---
+    from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+
+    pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
+    if pushed:
+        print(f"Scaffold for {slug} pushed to remote: {reason}")
+    elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
+        print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
+
 
 def _handle_todo_split(args: list[str]) -> None:
     """Handle telec todo split <slug> --into <child1> [<child2> ...]."""
@@ -307,6 +316,22 @@ def _handle_todo_split(args: list[str]) -> None:
         print(f"Split '{slug}' into {len(created)} children: {', '.join(children)}")
         for d in created:
             print(f"  Created: {d}")
+
+        # --- Commit and push scaffold to remote ---
+        from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+
+        pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
+        if pushed:
+            print(f"Parent '{slug}' update pushed to remote: {reason}")
+        elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
+            print(f"Warning: Parent '{slug}' scaffold not pushed to remote: {reason}")
+
+        for child in children:
+            pushed, reason = _ensure_todo_on_remote_main(str(project_root), child)
+            if pushed:
+                print(f"Child '{child}' pushed to remote: {reason}")
+            elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
+                print(f"Warning: Child '{child}' scaffold not pushed to remote: {reason}")
     except (FileNotFoundError, ValueError, FileExistsError) as e:
         print(f"Error: {e}")
         raise SystemExit(1) from e
@@ -354,6 +379,15 @@ def _handle_todo_create(args: list[str]) -> None:
     print(f"Created todo skeleton: {todo_dir}")
     if after:
         print(f"Updated dependencies for {todo_dir.name}: {', '.join(after)}")
+
+    # --- Commit and push scaffold to remote ---
+    from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+
+    pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
+    if pushed:
+        print(f"Scaffold for {slug} pushed to remote: {reason}")
+    elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
+        print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
 
 
 def _handle_todo_remove(args: list[str]) -> None:

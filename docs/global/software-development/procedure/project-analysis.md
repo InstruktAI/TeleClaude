@@ -178,15 +178,15 @@ Generated snippets must:
 
 The analysis determines which snippets to produce based on what exists:
 
-| Snippet ID | Taxonomy | When to generate |
-|---|---|---|
-| `project/design/architecture` | design | Always (every project has structure) |
-| `project/policy/conventions` | policy | When naming/style conventions are observable |
-| `project/spec/dependencies` | spec | When the project has external dependencies |
-| `project/spec/entry-points` | spec | When entry points or routes are identified |
-| `project/design/test-strategy` | design | When tests exist |
-| `project/spec/build-deploy` | spec | When build/deploy config exists |
-| `project/spec/configuration` | spec | When config files are present |
+| Snippet ID                     | Taxonomy | When to generate                             |
+| ------------------------------ | -------- | -------------------------------------------- |
+| `project/design/architecture`  | design   | Always (every project has structure)         |
+| `project/policy/conventions`   | policy   | When naming/style conventions are observable |
+| `project/spec/dependencies`    | spec     | When the project has external dependencies   |
+| `project/spec/entry-points`    | spec     | When entry points or routes are identified   |
+| `project/design/test-strategy` | design   | When tests exist                             |
+| `project/spec/build-deploy`    | spec     | When build/deploy config exists              |
+| `project/spec/configuration`   | spec     | When config files are present                |
 
 ### 15. Agent Bootstrap Content
 

@@ -24,7 +24,6 @@ Gates (all required):
    - If it requires multiple phases, it is split into dependent todos.
 
    **Splitting heuristics — read the code before deciding:**
-
    - **Ground first.** Open the actual source files listed in the input before
      deciding to split. Estimate lines of change, not files touched. A 3-line
      edit across 15 files is one session. Never split based on the input
@@ -40,6 +39,7 @@ Gates (all required):
    - **Coordination cost.** Splitting creates inter-todo dependencies, state
      management, review overhead, and sequencing complexity. If the coordination
      cost exceeds the session-size benefit, don't split.
+
 3. **Verification**
    - Executable test specifications (expected-failure-marked) exist for all behavioral requirements.
    - There is a clear way to verify completion (tests, logs, or observable behavior).

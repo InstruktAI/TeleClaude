@@ -82,9 +82,9 @@ Write to `todos/{slug}/state.yaml`:
 
 ```yaml
 dor:
-  last_assessed_at: "<now ISO8601>"
+  last_assessed_at: '<now ISO8601>'
   score: <1..10>
-  status: "<pass|needs_work|needs_decision>"
+  status: '<pass|needs_work|needs_decision>'
   schema_version: 1
   blockers: []
   actions_taken:

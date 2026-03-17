@@ -278,7 +278,6 @@ jobs:
     job: memory-review
     agent: claude
     thinking_mode: fast
-
 ```
 
 Script job example (direct Python execution, no agent):

@@ -47,6 +47,7 @@ Daemon-spawned agent sessions use a token-based credential instead of the
 terminal-email or dual-factor session-id path.
 
 **Flow:**
+
 1. Daemon calls `resolve_session_principal(session)` at bootstrap to derive a principal:
    - `human:<email>` when `session.human_email` is set.
    - `system:<session_id>` for daemon-spawned (automated) sessions.
@@ -64,6 +65,7 @@ terminal-email or dual-factor session-id path.
    invalidated so in-flight requests with the stale token are rejected immediately.
 
 **Key headers:**
+
 - `x-session-token`: daemon-issued credential (takes priority over `x-caller-session-id`).
 
 **`telec auth whoami` inside an agent session:**

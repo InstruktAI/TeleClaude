@@ -22,9 +22,9 @@ Three modes are universally supported:
 
 Available implementations:
 
-| Implementation | Backend | Procedure |
-|---|---|---|
-| Nano Banana | Gemini (Google) | `creative/procedure/image-generation/nano-banana` |
+| Implementation | Backend         | Procedure                                         |
+| -------------- | --------------- | ------------------------------------------------- |
+| Nano Banana    | Gemini (Google) | `creative/procedure/image-generation/nano-banana` |
 
 Use cases:
 

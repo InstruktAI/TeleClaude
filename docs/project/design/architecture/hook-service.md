@@ -35,7 +35,7 @@ boundary prevents confusion:
 
 | System                         | Table(s)                              | Purpose                                      | Producer                                        | Consumer                                          |
 | ------------------------------ | ------------------------------------- | -------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- |
-| **Hook outbox** (agent CLI)    | `hook_outbox`                         | Durable ingest of raw agent CLI hook events  | Agent hook receiver (`bin/hook-receiver`)       | Daemon outbox worker (see outbox.md)             |
+| **Hook outbox** (agent CLI)    | `hook_outbox`                         | Durable ingest of raw agent CLI hook events  | Agent hook receiver (`bin/hook-receiver`)       | Daemon outbox worker (see outbox.md)              |
 | **Webhook service** (this doc) | `webhook_contracts`, `webhook_outbox` | Contract-based pub/sub for normalized events | EventBusBridge, inbound endpoints, programmatic | HookDispatcher → handlers / WebhookDeliveryWorker |
 
 The hook outbox is the **ingestion layer** — it captures raw agent CLI events

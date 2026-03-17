@@ -11,19 +11,20 @@ Document tmux behaviors relevant to observing AI agent session output in TeleCla
 `capture-pane` (alias `capturep`) returns the **rendered state** of a pane's terminal grid — not the raw byte stream that produced it. tmux maintains an internal terminal emulator (VT100/xterm-compatible) that processes all application output. `capture-pane` reads from this emulator's cell grid, producing text that reflects cursor movement, line wraps, and overwritten characters.
 
 This means:
+
 - A `\r` (carriage return) followed by new text overwrites the line in-place. `capture-pane` returns only the final rendered line, not the intermediate states.
 - Progress bars, spinners, and other CR-based animations collapse to their last state.
 - Escape sequences that moved the cursor, cleared regions, or changed attributes are already applied. The output is the result, not the instructions.
 
 ### Flags Used by TeleClaude
 
-| Flag | Behavior |
-|------|----------|
-| `-p` | Print captured content to stdout instead of a tmux paste buffer. Required for programmatic use. |
-| `-e` | Include ANSI escape sequences for text attributes (color, bold, underline, etc.) and background attributes. Without `-e`, the output is plain text with no styling information. |
-| `-J` | Join wrapped lines and preserve trailing spaces. When a long line wraps across multiple terminal rows, `-J` rejoins them into a single logical line. Implies `-T` (ignore trailing positions that never had content). |
+| Flag   | Behavior                                                                                                                                                                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-p`   | Print captured content to stdout instead of a tmux paste buffer. Required for programmatic use.                                                                                                                                                         |
+| `-e`   | Include ANSI escape sequences for text attributes (color, bold, underline, etc.) and background attributes. Without `-e`, the output is plain text with no styling information.                                                                         |
+| `-J`   | Join wrapped lines and preserve trailing spaces. When a long line wraps across multiple terminal rows, `-J` rejoins them into a single logical line. Implies `-T` (ignore trailing positions that never had content).                                   |
 | `-S N` | Start capture at line N. Zero is the first line of the **visible** pane. Negative values index into scrollback history (e.g., `-S -500` starts 500 lines before the current bottom of visible content). The special value `-` means "start of history." |
-| `-E N` | End capture at line N. Same numbering as `-S`. The special value `-` means "end of visible pane." Default captures only visible content. |
+| `-E N` | End capture at line N. Same numbering as `-S`. The special value `-` means "end of visible pane." Default captures only visible content.                                                                                                                |
 
 ### Line Numbering
 
@@ -59,14 +60,14 @@ This means:
 
 This distinction is critical for understanding what `capture-pane` returns:
 
-| Aspect | capture-pane (rendered) | pipe-pane / control mode (raw) |
-|--------|------------------------|-------------------------------|
-| CR overwrites | Collapsed to final state | Every `\r` + overwrite visible |
-| Cursor movement | Applied, not visible | Escape sequences present |
-| Colors/attributes | Optionally included via `-e` | Raw escape sequences |
-| Scrollback | Accessible via `-S`/`-E` | Not available (prospective only) |
-| Wrapped lines | Optionally joined via `-J` | Raw line breaks |
-| Content | What a human would see on screen | What the application wrote to the PTY |
+| Aspect            | capture-pane (rendered)          | pipe-pane / control mode (raw)        |
+| ----------------- | -------------------------------- | ------------------------------------- |
+| CR overwrites     | Collapsed to final state         | Every `\r` + overwrite visible        |
+| Cursor movement   | Applied, not visible             | Escape sequences present              |
+| Colors/attributes | Optionally included via `-e`     | Raw escape sequences                  |
+| Scrollback        | Accessible via `-S`/`-E`         | Not available (prospective only)      |
+| Wrapped lines     | Optionally joined via `-J`       | Raw line breaks                       |
+| Content           | What a human would see on screen | What the application wrote to the PTY |
 
 ## pipe-pane
 
@@ -79,6 +80,7 @@ This distinction is critical for understanding what `capture-pane` returns:
 `pipe-pane` is strictly **prospective**: it captures only output produced **after** the pipe is established. It does **not** replay scrollback history or already-rendered content. The tmux wiki states it pipes "any new changes to a pane."
 
 This means:
+
 - If an agent has already printed 500 lines before `pipe-pane` is attached, those lines are not available through the pipe.
 - To capture historical content, `capture-pane` with `-S`/`-E` must be used instead.
 - There is no way to "backfill" a pipe-pane stream with historical data.
@@ -113,6 +115,7 @@ A pane may only be connected to one pipe command at a time. Starting a new `pipe
 ### Session Reconnect Behavior
 
 `pipe-pane` state is per-pane, managed by the tmux server process. It is **independent of client attachment**:
+
 - Detaching and reattaching a client does not affect an active pipe.
 - The pipe continues operating whether zero, one, or many clients are attached.
 - The pipe is tied to the pane's lifetime, not the client's.
@@ -122,11 +125,13 @@ A pane may only be connected to one pipe command at a time. Starting a new `pipe
 ### Persistence
 
 tmux sessions are managed by a long-running server process. Sessions survive:
+
 - Client detachment (`C-b d` or network disconnect)
 - SSH session termination
 - Terminal emulator closure
 
 Sessions are destroyed only by:
+
 - Explicit `kill-session` command
 - Last window in the session closing (unless `remain-on-exit` is set)
 - `destroy-unattached` option (if enabled)
@@ -135,6 +140,7 @@ Sessions are destroyed only by:
 ### Pane State Persistence
 
 Each pane maintains:
+
 - A scrollback history buffer (size controlled by `history-limit`, default 2000 lines)
 - Current terminal emulator state (cursor position, attributes, alternate screen)
 - Environment variables (set via `set-environment` or `-e` on `new-session`)
@@ -148,13 +154,13 @@ All of this persists across client detach/reattach cycles.
 
 **`list-panes -t <session> -F <format>`**: Returns pane metadata. Key format variables:
 
-| Variable | Description |
-|----------|-------------|
-| `#{pane_dead}` | `1` if the pane's process has exited, `0` otherwise |
-| `#{pane_id}` | Unique pane identifier (e.g., `%0`, `%1`) |
-| `#{pane_pid}` | PID of the pane's initial process (the shell) |
-| `#{pane_current_command}` | Name of the foreground process in the pane |
-| `#{pane_tty}` | Pseudo-terminal device path |
+| Variable                  | Description                                         |
+| ------------------------- | --------------------------------------------------- |
+| `#{pane_dead}`            | `1` if the pane's process has exited, `0` otherwise |
+| `#{pane_id}`              | Unique pane identifier (e.g., `%0`, `%1`)           |
+| `#{pane_pid}`             | PID of the pane's initial process (the shell)       |
+| `#{pane_current_command}` | Name of the foreground process in the pane          |
+| `#{pane_tty}`             | Pseudo-terminal device path                         |
 
 **`display-message -p -t <session> <format>`**: Prints a single formatted string to stdout. Used for targeted variable queries.
 

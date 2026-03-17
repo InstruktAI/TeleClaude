@@ -4,11 +4,61 @@ import importlib
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 todo_handler = importlib.import_module("teleclaude.cli.telec.handlers.todo")
+
+
+@pytest.fixture
+def mock_ensure_pushed():
+    with patch("teleclaude.core.next_machine.worktrees._ensure_todo_on_remote_main") as mock:
+        mock.return_value = (True, "pushed")
+        yield mock
+
+
+def test_handle_todo_create_pushes_to_remote(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_ensure_pushed: MagicMock
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        todo_handler, "create_todo_skeleton", lambda *args, **kwargs: tmp_path / "todos" / "sample-todo"
+    )
+
+    todo_handler._handle_todo_create(["sample-todo"])
+
+    mock_ensure_pushed.assert_called_once_with(str(tmp_path), "sample-todo")
+
+
+def test_handle_todo_dump_pushes_to_remote(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_ensure_pushed: MagicMock
+) -> None:
+    todo_dir = tmp_path / "todos" / "sample-dump"
+    todo_dir.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(todo_handler, "create_todo_skeleton", lambda *args, **kwargs: todo_dir)
+    monkeypatch.setattr(todo_handler, "tool_api_request", MagicMock())
+
+    todo_handler._handle_todo_dump(["sample-dump", "content"])
+
+    mock_ensure_pushed.assert_called_once_with(str(tmp_path), "sample-dump")
+
+
+def test_handle_todo_split_pushes_parent_and_children(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_ensure_pushed: MagicMock
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    import teleclaude.todo_scaffold as scaffold
+
+    monkeypatch.setattr(scaffold, "split_todo", lambda root, slug, children: [tmp_path / "todos" / c for c in children])
+
+    todo_handler._handle_todo_split(["parent", "--into", "child-a", "--into", "child-b"])
+
+    assert mock_ensure_pushed.call_count == 3
+    mock_ensure_pushed.assert_any_call(str(tmp_path), "parent")
+    mock_ensure_pushed.assert_any_call(str(tmp_path), "child-a")
+    mock_ensure_pushed.assert_any_call(str(tmp_path), "child-b")
 
 
 def test_handle_todo_routes_scaffold_create(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -12,28 +12,28 @@ type: 'design'
 
 TeleClaude's software development lifecycle is driven by three deterministic state machines, each governing a distinct phase of delivery. The orchestrator calls a machine, executes the returned instruction (typically dispatching a worker session), then calls again. This loop continues until a terminal state.
 
-| Phase | Name | State Machine | Entry Point | Purpose |
-|-------|------|---------------|-------------|---------|
-| **A** | [Prepare](prepare-state-machine.md) | `PreparePhase` (10 states) | `telec todo prepare [slug]` | Define scope, requirements, and implementation plan |
-| **B** | [Work](work-state-machine.md) | Build/Review/Fix routing | `telec todo work [slug]` | Build, review, fix, and finalize the implementation |
-| **C** | [Integrate](integration-state-machine.md) | `IntegrationPhase` (12 states) | `telec todo integrate [slug]` | Merge to main, push, deliver |
+| Phase | Name                                      | State Machine                  | Entry Point                   | Purpose                                             |
+| ----- | ----------------------------------------- | ------------------------------ | ----------------------------- | --------------------------------------------------- |
+| **A** | [Prepare](prepare-state-machine.md)       | `PreparePhase` (10 states)     | `telec todo prepare [slug]`   | Define scope, requirements, and implementation plan |
+| **B** | [Work](work-state-machine.md)             | Build/Review/Fix routing       | `telec todo work [slug]`      | Build, review, fix, and finalize the implementation |
+| **C** | [Integrate](integration-state-machine.md) | `IntegrationPhase` (12 states) | `telec todo integrate [slug]` | Merge to main, push, deliver                        |
 
 ### Referenced files
 
-| File | Purpose |
-|------|---------|
-| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py) | Prepare + Work state machine implementation |
-| [`teleclaude/core/integration/state_machine.py`](../../../../teleclaude/core/integration/state_machine.py) | Integration state machine implementation |
-| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py) | Integration FIFO queue |
-| [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py) | Singleton lease for integration serialization |
+| File                                                                                                       | Purpose                                       |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py)                 | Prepare + Work state machine implementation   |
+| [`teleclaude/core/integration/state_machine.py`](../../../../teleclaude/core/integration/state_machine.py) | Integration state machine implementation      |
+| [`teleclaude/core/integration/queue.py`](../../../../teleclaude/core/integration/queue.py)                 | Integration FIFO queue                        |
+| [`teleclaude/core/integration/lease.py`](../../../../teleclaude/core/integration/lease.py)                 | Singleton lease for integration serialization |
 
 ### Referenced doc snippets
 
-| Snippet ID | Content |
-|------------|---------|
-| `software-development/procedure/lifecycle-overview` | Full lifecycle phases and handoffs |
-| `general/procedure/orchestration` | Orchestration loop and dispatch rules |
-| `project/spec/integration-orchestrator` | Integration contract (events, lease, queue) |
+| Snippet ID                                          | Content                                     |
+| --------------------------------------------------- | ------------------------------------------- |
+| `software-development/procedure/lifecycle-overview` | Full lifecycle phases and handoffs          |
+| `general/procedure/orchestration`                   | Orchestration loop and dispatch rules       |
+| `project/spec/integration-orchestrator`             | Integration contract (events, lease, queue) |
 
 ## Inputs/Outputs
 
@@ -174,15 +174,15 @@ flowchart TB
 
 All workers are dispatched via `telec sessions run`. The machine specifies the command; the orchestrator specifies agent and thinking mode.
 
-| Phase | Worker Role | Command | Thinking Mode |
-|-------|-------------|---------|---------------|
-| Prepare | Architect | `/next-prepare-discovery`, `/next-prepare-draft` | `slow` |
-| Prepare | Reviewer | `/next-review-requirements`, `/next-review-plan` | `slow` |
-| Prepare | Assessor | `/next-prepare-gate` | `slow` |
-| Build | Builder | `/next-build` (or `/next-bugs-fix`) | `med` |
-| Review | Reviewer | `/next-review-build` | `slow` (mandatory) |
-| Fix | Fixer | `/next-fix-review` | `med` |
-| Finalize | Finalizer | `/next-finalize` | `med` |
+| Phase    | Worker Role | Command                                          | Thinking Mode      |
+| -------- | ----------- | ------------------------------------------------ | ------------------ |
+| Prepare  | Architect   | `/next-prepare-discovery`, `/next-prepare-draft` | `slow`             |
+| Prepare  | Reviewer    | `/next-review-requirements`, `/next-review-plan` | `slow`             |
+| Prepare  | Assessor    | `/next-prepare-gate`                             | `slow`             |
+| Build    | Builder     | `/next-build` (or `/next-bugs-fix`)              | `med`              |
+| Review   | Reviewer    | `/next-review-build`                             | `slow` (mandatory) |
+| Fix      | Fixer       | `/next-fix-review`                               | `med`              |
+| Finalize | Finalizer   | `/next-finalize`                                 | `med`              |
 
 ### Detailed documentation
 

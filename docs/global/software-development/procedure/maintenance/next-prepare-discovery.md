@@ -125,9 +125,9 @@ Update `todos/{slug}/state.yaml`:
 ```yaml
 grounding:
   valid: true
-  base_sha: "<current HEAD>"
-  input_digest: "<hash of input.md>"
-  last_grounded_at: "<now ISO8601>"
+  base_sha: '<current HEAD>'
+  input_digest: '<hash of input.md>'
+  last_grounded_at: '<now ISO8601>'
   invalidation_reason: null
 ```
 
