@@ -12,6 +12,8 @@ jobs:
     name: AI Release Analysis
     runs-on: [self-hosted, macOS, ARM64]
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    env:
+      TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
 
     steps:
       - uses: actions/checkout@v4
@@ -21,14 +23,12 @@ jobs:
       - name: Resolve credentials
         run: |
           # The runner's HOME may have wrong case on case-sensitive APFS.
-          # Neither $HOME nor dscl are reliable — resolve from disk.
-          if [ ! -d "$HOME/.teleclaude" ]; then
-            REAL_HOME="$(find /Users -maxdepth 1 -iname "$(whoami)" -type d 2>/dev/null | head -1)"
-            if [ -n "$REAL_HOME" ] && [ "$REAL_HOME" != "$HOME" ]; then
-              echo "Correcting HOME: $HOME -> $REAL_HOME"
-              echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
-              export HOME="$REAL_HOME"
-            fi
+          # Always resolve from disk — dscl and $HOME are both unreliable.
+          REAL_HOME="$(find /Users -maxdepth 1 -iname "$(whoami)" -type d 2>/dev/null | head -1)"
+          if [ -n "$REAL_HOME" ] && [ "$REAL_HOME" != "$HOME" ]; then
+            echo "Correcting HOME: $HOME -> $REAL_HOME"
+            echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
+            export HOME="$REAL_HOME"
           fi
           echo "Effective HOME=$HOME"
 
