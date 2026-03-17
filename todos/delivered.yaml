@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-tui-cross-project-children
+  date: '2026-03-17'
+  commit: 13836c9cec0c
 - slug: fix-gemini-command-injection
   date: '2026-03-17'
   commit: f68946b475ad
