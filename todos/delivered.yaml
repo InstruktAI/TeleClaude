@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: pattern-scanner-noqa-hygiene
+  date: '2026-03-17'
+  commit: 6c51a4d800ab
 - slug: fix-tui-resource-leaks
   date: '2026-03-17'
   commit: 50cebbea609c
