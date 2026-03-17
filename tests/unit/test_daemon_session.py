@@ -168,6 +168,95 @@ async def test_bootstrap_omits_system_role_when_absent(monkeypatch: pytest.Monke
 
 
 @pytest.mark.unit
+async def test_wait_for_agent_prompt_ready_uses_marker_when_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the agent has a known prompt marker and it appears in output, returns True immediately."""
+    daemon_inst = _TestDaemon()
+    session = SimpleNamespace(tmux_session_name="tc_test")
+
+    marker = daemon_session.AGENT_PROMPT_READY_MARKERS["gemini"]
+    pane_with_marker = f"some startup text\n{marker}\nmore text"
+
+    monkeypatch.setattr(
+        daemon_inst,
+        "_wait_for_output_contains",
+        AsyncMock(return_value=(True, pane_with_marker)),
+    )
+    stable_mock = AsyncMock(return_value=(True, pane_with_marker))
+    monkeypatch.setattr(daemon_inst, "_wait_for_output_stable", stable_mock)
+
+    found, _tail = await daemon_inst._wait_for_agent_prompt_ready(session, "gemini", 15.0, 1.0)
+
+    assert found is True
+    assert marker in _tail
+    stable_mock.assert_not_awaited()
+
+
+@pytest.mark.unit
+async def test_wait_for_agent_prompt_ready_falls_back_to_inactivity_when_marker_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the agent marker is not found within timeout, falls back to inactivity detection."""
+    daemon_inst = _TestDaemon()
+    session = SimpleNamespace(tmux_session_name="tc_test")
+
+    monkeypatch.setattr(
+        daemon_inst,
+        "_wait_for_output_contains",
+        AsyncMock(return_value=(False, "startup text without marker")),
+    )
+    stable_mock = AsyncMock(return_value=(True, "stabilized output"))
+    monkeypatch.setattr(daemon_inst, "_wait_for_output_stable", stable_mock)
+
+    found, _tail = await daemon_inst._wait_for_agent_prompt_ready(session, "gemini", 15.0, 1.0)
+
+    assert found is True
+    stable_mock.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_wait_for_agent_prompt_ready_uses_inactivity_for_unknown_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When agent has no known marker, uses inactivity detection directly."""
+    daemon_inst = _TestDaemon()
+    session = SimpleNamespace(tmux_session_name="tc_test")
+
+    contains_mock = AsyncMock(return_value=(True, "output"))
+    monkeypatch.setattr(daemon_inst, "_wait_for_output_contains", contains_mock)
+    stable_mock = AsyncMock(return_value=(False, "timeout output"))
+    monkeypatch.setattr(daemon_inst, "_wait_for_output_stable", stable_mock)
+
+    found, _tail = await daemon_inst._wait_for_agent_prompt_ready(session, "unknown_agent", 10.0, 1.0)
+
+    assert found is False
+    contains_mock.assert_not_awaited()
+    stable_mock.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_wait_for_agent_prompt_ready_passes_correct_marker_to_contains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each agent's known marker is passed verbatim to _wait_for_output_contains."""
+    daemon_inst = _TestDaemon()
+    session = SimpleNamespace(tmux_session_name="tc_test")
+
+    captured_needles: list[str] = []
+
+    async def fake_contains(s: object, needle: str, timeout: float) -> tuple[bool, str]:
+        captured_needles.append(needle)
+        return True, f"output with {needle}"
+
+    monkeypatch.setattr(daemon_inst, "_wait_for_output_contains", fake_contains)
+    monkeypatch.setattr(daemon_inst, "_wait_for_output_stable", AsyncMock())
+
+    for agent_name, expected_marker in daemon_session.AGENT_PROMPT_READY_MARKERS.items():
+        captured_needles.clear()
+        await daemon_inst._wait_for_agent_prompt_ready(session, agent_name, 15.0, 1.0)
+        assert captured_needles == [expected_marker], f"Wrong marker for {agent_name}"
+
+
+@pytest.mark.unit
 async def test_handle_session_close_requested_restores_active_status_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

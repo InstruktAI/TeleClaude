@@ -69,6 +69,18 @@ AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stab
 AGENT_START_POST_STABILIZE_DELAY_S = 0.5  # Safety buffer after stabilization
 GEMINI_START_EXTRA_DELAY_S = float(os.getenv("GEMINI_START_EXTRA_DELAY_S", "3"))
 
+# Agent-specific terminal output markers that indicate the TUI is at the input prompt.
+# Each marker is a substring of the plain-text (ANSI-stripped) capture-pane output that
+# only appears once the agent has finished loading and is ready to receive keystrokes.
+AGENT_PROMPT_READY_MARKERS: dict[str, str] = {
+    "gemini": "Type your message or @path/to/file",
+    "claude": "\u276f ",  # U+276F HEAVY RIGHT-POINTING ANGLE QUOTATION MARK ORNAMENT (Claude input prompt)
+    "codex": "? for shortcuts",
+}
+# Extended timeout for marker-based readiness: we know exactly what to look for,
+# so we can afford to wait longer than the inactivity fallback.
+AGENT_PROMPT_READY_TIMEOUT_S = 20.0
+
 
 @dataclass(frozen=True)
 class OutputChangeSummary:
@@ -355,10 +367,41 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             auto_command_result.get("status") if auto_command_result else "n/a",
         )
 
-    async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
-        """Start agent, wait for TUI to stabilize, then inject message."""
-        from teleclaude.core.agents import AgentName
+    async def _wait_for_agent_prompt_ready(
+        self,
+        session: Session,
+        agent_name: str,
+        timeout_s: float,
+        quiet_s: float,
+    ) -> tuple[bool, str]:
+        """Wait for the agent's TUI to show the input-prompt marker.
 
+        Uses agent-specific output markers for precise, event-driven readiness
+        detection instead of relying solely on inactivity timeouts.
+
+        Falls back to inactivity-based detection (`_wait_for_output_stable`) when
+        no marker is defined for the agent or the marker is not found in time.
+        """
+        marker = AGENT_PROMPT_READY_MARKERS.get(agent_name.lower())
+        if marker:
+            found, tail = await self._wait_for_output_contains(session, marker, timeout_s)
+            if found:
+                logger.debug(
+                    "agent_then_message: prompt marker found for agent=%s (timeout_s=%.1f)",
+                    agent_name,
+                    timeout_s,
+                )
+                return True, tail
+            logger.warning(
+                "agent_then_message: prompt marker not found for agent=%s within %.1fs, "
+                "falling back to inactivity detection",
+                agent_name,
+                timeout_s,
+            )
+        return await self._wait_for_output_stable(session, timeout_s, quiet_s)
+
+    async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
+        """Start agent, wait for TUI input prompt, then inject message."""
         start_time = time.time()
         logger.debug("agent_then_message: started for session=%s", session_id)
 
@@ -395,27 +438,25 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         if not session:
             return {"status": "error", "message": "Session not found after creation"}
 
-        # Step 1: Wait for output to stabilize (TUI banner and startup output complete)
-        # We integrate the "process running" check into stabilization logic.
-        # Gemini gets a longer quiet window to ensure heavy initialization is done.
-        logger.debug("agent_then_message: waiting for TUI to stabilize (session=%s)", session_id)
-
-        quiet_s = AGENT_START_STABILIZE_QUIET_S
-        if agent_name == AgentName.GEMINI.value:
-            quiet_s += max(0, GEMINI_START_EXTRA_DELAY_S)
+        # Step 1: Wait for the agent's TUI to reach its input prompt.
+        # Primary: look for the agent-specific prompt marker in the pane output — this is
+        # an event-driven check that fires the moment the TUI is ready for keystrokes.
+        # Fallback (marker not defined or not found): inactivity-based detection.
+        logger.debug("agent_then_message: waiting for agent prompt ready (session=%s)", session_id)
 
         t1 = time.time()
-        stabilized, _stable_tail = await self._wait_for_output_stable(
+        stabilized, _stable_tail = await self._wait_for_agent_prompt_ready(
             session,
-            AGENT_START_STABILIZE_TIMEOUT_S,
-            quiet_s,
+            agent_name,
+            AGENT_PROMPT_READY_TIMEOUT_S,
+            AGENT_START_STABILIZE_QUIET_S,
         )
-        logger.debug("agent_then_message: stabilization took %.3fs", time.time() - t1)
+        logger.debug("agent_then_message: prompt ready check took %.3fs", time.time() - t1)
 
         if not stabilized:
             logger.warning(
-                "agent_then_message: stabilization timed out after %.1fs, proceeding anyway (session=%s)",
-                AGENT_START_STABILIZE_TIMEOUT_S,
+                "agent_then_message: prompt ready timed out after %.1fs, proceeding anyway (session=%s)",
+                AGENT_PROMPT_READY_TIMEOUT_S,
                 session_id,
             )
 

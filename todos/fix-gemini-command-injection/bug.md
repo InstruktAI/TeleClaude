@@ -32,12 +32,44 @@ Date: 2026-03-17
 
 ## Investigation
 
-<!-- Fix worker fills this during debugging -->
+The command injection flow for `agent_then_message` follows this path:
+
+1. `start_agent` sends the agent CLI command to tmux (e.g. `gemini --yolo -m ...`)
+2. `_wait_for_output_stable` polls `capture-pane` every 0.2s, waiting for output to stop changing for N seconds (inactivity-based readiness)
+3. Message text + Enter is injected via `_send_keys_tmux`
+
+Three distinct failure modes were identified:
+
+**Mode 1: "Agent launches with no input at all"** — `_wait_for_output_stable` fires prematurely. Gemini's startup has two phases: banner rendering (fast, 1-2s) then MCP server/context loading (3-10s). A brief pause between phases triggers the quiet-window, but the TUI is not yet at its input prompt. The injected text lands in a partially initialized TUI and is swallowed.
+
+**Mode 2: "Command visible but Enter not processed"** — Same root cause: the TUI receives the text (visible in the input box) but is not yet in a state where it processes Enter. The `_confirm_command_acceptance` fallback then fires but its output-change detection sees the text in the input box as "changed" and returns True — even though Gemini never submitted the message.
+
+**Mode 3: "Works sometimes"** — When system load is low and Gemini's loading time is consistent, the 4-second quiet window (1.0s + 3.0s Gemini extra) happens to align with the true ready state.
+
+The underlying problem is that `_wait_for_output_stable` treats inactivity as a proxy for readiness. This is brittle because agent startup output is non-monotonic: brief pauses during loading phases trigger false-positive stabilization. The Gemini-specific `GEMINI_START_EXTRA_DELAY_S` (3s) was a timer-based workaround, not a fix.
+
+Each agent CLI renders a specific marker in the terminal only when it has finished loading and is ready to accept keystrokes:
+
+- **Gemini**: `Type your message or @path/to/file` (input box placeholder, verified by capture-pane probe)
+- **Claude**: `\u276f ` (U+276F input prompt character, verified by capture-pane probe)
+- **Codex**: `? for shortcuts` (status bar shortcut hint, verified by capture-pane probe)
 
 ## Root Cause
 
-<!-- Fix worker fills this after investigation -->
+`_wait_for_output_stable` uses inactivity (output unchanged for N seconds) as a proxy for agent readiness. This is not event-driven — it fires on any quiet period during startup, including loading pauses before the TUI input prompt appears. The Gemini-specific 3-second extra quiet window was a timer-based heuristic that reduced but did not eliminate the race.
 
 ## Fix Applied
 
-<!-- Fix worker fills this after committing the fix -->
+Added `AGENT_PROMPT_READY_MARKERS` dict and `_wait_for_agent_prompt_ready` method to `daemon_session.py`. Each entry maps an agent name to the terminal substring that appears only when the agent TUI is at its input prompt (verified by live capture-pane probing of each CLI).
+
+`_handle_agent_then_message` now calls `_wait_for_agent_prompt_ready` instead of `_wait_for_output_stable`. The new method:
+
+1. Calls `_wait_for_output_contains(session, marker, AGENT_PROMPT_READY_TIMEOUT_S)` for agents with a known marker — exits as soon as the marker appears, not on a timer
+2. Falls back to inactivity detection if the marker is absent or unknown
+
+The Gemini-specific `quiet_s += GEMINI_START_EXTRA_DELAY_S` timer branch is removed; Gemini now uses the same marker-based path as other agents.
+
+Files changed:
+
+- `teleclaude/daemon_session.py` — `AGENT_PROMPT_READY_MARKERS`, `AGENT_PROMPT_READY_TIMEOUT_S`, `_wait_for_agent_prompt_ready`, updated `_handle_agent_then_message`
+- `tests/unit/test_daemon_session.py` — 4 new behavioral tests for the readiness detection
