@@ -30,13 +30,13 @@ def test_pane_theming_level_helpers_reflect_current_mode_table() -> None:
 
 @pytest.mark.unit
 def test_theme_color_resolution_depends_on_dark_mode_cache() -> None:
-    assert theme.resolve_selection_bg_hex(None) == "#a0a0a0"
-
     original = theme._is_dark_mode
     try:
         theme._is_dark_mode = True
+        assert theme.resolve_selection_bg_hex(None) == "#a0a0a0"
         assert theme.get_agent_hex("codex") == "#afd7ff"
         theme._is_dark_mode = False
+        assert theme.resolve_selection_bg_hex(None) == "#606060"
         assert theme.get_agent_hex("codex") == "#005f87"
     finally:
         theme._is_dark_mode = original
