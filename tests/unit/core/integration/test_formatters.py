@@ -68,6 +68,7 @@ def test_format_pull_blocked_returns_string():
     assert "dirty files" in result
 
 
+
 def test_format_queue_empty_returns_string():
     result = _format_queue_empty(3, 1, 5000)
     assert isinstance(result, str)
