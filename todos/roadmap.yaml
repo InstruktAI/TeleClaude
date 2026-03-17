@@ -46,3 +46,4 @@
   after:
   - session-adaptive-runtime
 - slug: fix-from-main-scoping
+- slug: git-role-permissions
