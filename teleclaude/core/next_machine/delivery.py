@@ -183,8 +183,7 @@ def cleanup_delivered_slug(
 ) -> None:
     """Idempotent cleanup of all physical artifacts for a delivered slug.
 
-    Each step is a no-op if the artifact is already gone. Failures are
-    logged at ERROR level but do not prevent subsequent steps from running.
+    Each step is a no-op if the artifact is already gone.
 
     Args:
         cwd: Project root directory.
@@ -199,32 +198,19 @@ def cleanup_delivered_slug(
     if worktree_path.exists():
         rc, _, stderr = _run_git_cmd(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd, timeout=10)
         if rc != 0:
-            logger.error("worktree remove failed for %s: %s — attempting directory removal fallback", slug, stderr.strip())
-            try:
-                shutil.rmtree(str(worktree_path))
-            except OSError as exc:
-                logger.error("worktree directory removal fallback failed for %s: %s", slug, exc)
-            # Prune stale worktree metadata regardless
-            _run_git_cmd(["worktree", "prune"], cwd=cwd)
+            logger.warning("worktree remove failed for %s: %s", slug, stderr.strip())
 
     # 2. Delete local branch
-    rc, _, stderr = _run_git_cmd(["branch", "-D", branch], cwd=cwd)
-    if rc != 0 and "not found" not in stderr:
-        logger.warning("branch delete failed for %s: %s", branch, stderr.strip())
+    _run_git_cmd(["branch", "-D", branch], cwd=cwd)
 
     # 3. Delete remote branch (non-fatal, tight timeout)
     if remove_remote_branch:
-        rc, _, stderr = _run_git_cmd(["push", "origin", "--delete", branch], cwd=cwd, timeout=5)
-        if rc != 0 and "remote ref does not exist" not in stderr:
-            logger.warning("remote branch delete failed for %s: %s", branch, stderr.strip())
+        _run_git_cmd(["push", "origin", "--delete", branch], cwd=cwd, timeout=5)
 
     # 4. Remove todo directory
     todo_dir = Path(cwd) / "todos" / slug
     if todo_dir.exists():
-        try:
-            shutil.rmtree(str(todo_dir))
-        except OSError as exc:
-            logger.error("todo directory removal failed for %s: %s", slug, exc)
+        shutil.rmtree(str(todo_dir), ignore_errors=True)
 
     # 5. Clean dependency references
     clean_dependency_references(cwd, slug)

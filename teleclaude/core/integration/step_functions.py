@@ -365,51 +365,6 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
     )
 
 
-def _sweep_stale_artifacts(cwd: str) -> list[str]:
-    """Remove physical artifacts (worktrees, branches, todo dirs) for delivered slugs.
-
-    Checks each ``trees/{slug}`` and ``todos/{slug}`` directory against
-    ``delivered.yaml``. If the slug is delivered, calls ``cleanup_delivered_slug``
-    to remove all physical remnants. This is cheap: one YAML parse + directory listing.
-
-    Returns list of cleaned slug names for logging.
-    """
-    from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, load_delivered_slugs
-
-    delivered = load_delivered_slugs(cwd)
-    if not delivered:
-        return []
-
-    cleaned: list[str] = []
-
-    # Scan worktree directories
-    trees_dir = Path(cwd) / WORKTREE_DIR
-    if trees_dir.is_dir():
-        for entry in sorted(trees_dir.iterdir()):
-            if not entry.is_dir() or entry.name.startswith("_"):
-                continue
-            if entry.name in delivered:
-                logger.info("Sweeping stale worktree for delivered slug: %s", entry.name)
-                cleanup_delivered_slug(cwd, entry.name)
-                if entry.name not in cleaned:
-                    cleaned.append(entry.name)
-
-    # Scan todo directories
-    todos_dir = Path(cwd) / "todos"
-    if todos_dir.is_dir():
-        for entry in sorted(todos_dir.iterdir()):
-            if not entry.is_dir() or entry.name.startswith("_"):
-                continue
-            # Skip non-slug directories (delivered.yaml, roadmap.yaml live in todos/)
-            if entry.name in delivered:
-                logger.info("Sweeping stale todo dir for delivered slug: %s", entry.name)
-                cleanup_delivered_slug(cwd, entry.name)
-                if entry.name not in cleaned:
-                    cleaned.append(entry.name)
-
-    return cleaned
-
-
 def _step_idle(
     *,
     checkpoint: IntegrationCheckpoint,
@@ -420,12 +375,7 @@ def _step_idle(
     cwd: str,
     started: float,
 ) -> tuple[bool, str]:
-    """IDLE: sweep stale artifacts, scan for finalize-ready candidates, acquire lease, proceed to merge."""
-    # Pre-scan: clean up any delivered slugs whose artifacts were left behind
-    swept = _sweep_stale_artifacts(cwd)
-    if swept:
-        logger.info("Stale artifact sweep cleaned %d slugs: %s", len(swept), swept)
-
+    """IDLE: scan worktree state files for finalize-ready candidates, acquire lease, proceed to merge."""
     exclude = checkpoint.candidate_slug
 
     if slug is not None:
@@ -490,12 +440,10 @@ def _do_merge(
     checkpoint.pre_merge_head = pre_merge_head
 
     # Guard: skip candidates already merged to main (stale re-queue after restart)
-    # Still runs cleanup — the worktree and todo dir must be removed even if
-    # the code is already on main.
     ancestor_rc, _, _ = _run_git(["merge-base", "--is-ancestor", key.sha, "HEAD"], cwd=wt)
     if ancestor_rc == 0:
         logger.info(
-            "%s slug=%s sha=%s already ancestor of main — skipping merge, running cleanup",
+            "%s slug=%s sha=%s already ancestor of main — skipping as already integrated",
             _NEXT_INTEGRATE_PHASE_LOG,
             key.slug,
             key.sha[:8],
@@ -504,9 +452,9 @@ def _do_merge(
             "integration.candidate.already_merged",
             {"slug": key.slug, "branch": key.branch, "sha": key.sha},
         )
-        checkpoint.phase = IntegrationPhase.CLEANUP.value
+        checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
         _write_checkpoint(checkpoint_path, checkpoint)
-        return True, ""  # loops into CLEANUP → _do_cleanup
+        return True, ""
 
     rc, _, _stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
 
@@ -518,7 +466,7 @@ def _do_merge(
         conflicted = _get_conflicted_files(wt) if rc != 0 else []
         if not conflicted:
             logger.info(
-                "%s slug=%s already integrated (empty squash merge) — skipping merge, running cleanup",
+                "%s slug=%s already integrated (empty squash merge) — skipping",
                 _NEXT_INTEGRATE_PHASE_LOG,
                 key.slug,
             )
@@ -532,9 +480,9 @@ def _do_merge(
                 squash_msg = gd / "SQUASH_MSG"
                 if squash_msg.exists():
                     squash_msg.unlink()
-            checkpoint.phase = IntegrationPhase.CLEANUP.value
+            checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
             _write_checkpoint(checkpoint_path, checkpoint)
-            return True, ""  # loops into CLEANUP → _do_cleanup
+            return True, ""
 
     if rc == 0:
         # Clean merge — read stats from integration worktree, context from repo root
@@ -762,38 +710,23 @@ def _step_push_succeeded(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """PUSH_SUCCEEDED: sync repo root with pushed origin/main, then cleanup.
-
-    Cleanup always runs regardless of pull outcome — the delivery is on
-    origin, so worktree/branch/todo artifacts must be removed even if
-    repo root cannot fast-forward (dirty local files).
-    """
+    """PUSH_SUCCEEDED: sync repo root with pushed origin/main, then cleanup."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
 
     # Sync repo root with origin/main (now contains squash + bookkeeping + cleanup commits)
     rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
-    pull_blocked = rc != 0
-    if pull_blocked:
-        logger.warning(
-            "Repo root pull blocked for %s (dirty local files) — cleanup proceeds anyway: %s",
-            key.slug,
-            stderr.strip(),
-        )
+    if rc != 0:
+        # Advance to CLEANUP so re-entry after agent fixes dirty files
+        # picks up at cleanup normally.
+        checkpoint.phase = IntegrationPhase.CLEANUP.value
+        _write_checkpoint(checkpoint_path, checkpoint)
+        return False, _format_pull_blocked(stderr.strip(), key.slug)
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
-    ok, msg = _do_cleanup(checkpoint=checkpoint, checkpoint_path=checkpoint_path, key=key, cwd=cwd)
-
-    if pull_blocked:
-        # Append pull-blocked notice after cleanup so the agent knows to inform the user
-        pull_notice = _format_pull_blocked(stderr.strip(), key.slug)
-        if msg:
-            msg = msg + "\n\n" + pull_notice
-        else:
-            msg = pull_notice
-    return ok, msg
+    return _do_cleanup(checkpoint=checkpoint, checkpoint_path=checkpoint_path, key=key, cwd=cwd)
 
 
 def _step_cleanup(
