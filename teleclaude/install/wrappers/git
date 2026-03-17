@@ -25,15 +25,28 @@ _real_git() {
 }
 
 # Find the actual git subcommand by skipping global flags.
+# Also capture -C <dir> so branch checks run in the correct worktree.
 _subcmd=""
 _skip_next=0
+_capture_C=0
+_dir_args=()
 for _arg in "$@"; do
+    if [ "$_capture_C" -eq 1 ]; then
+        _dir_args+=("-C" "$_arg")
+        _capture_C=0
+        _skip_next=0
+        continue
+    fi
     if [ "$_skip_next" -eq 1 ]; then
         _skip_next=0
         continue
     fi
     case "$_arg" in
-        -C|-c|--git-dir|--work-tree|--namespace)
+        -C)
+            _capture_C=1
+            _skip_next=1
+            ;;
+        -c|--git-dir|--work-tree|--namespace)
             _skip_next=1
             ;;
         --git-dir=*|--work-tree=*|--namespace=*|-c*)
@@ -168,7 +181,7 @@ fi
 
 # Block commits on main (agents must use review pipeline)
 if [ "$_subcmd" = "commit" ]; then
-    _current_branch="$(_real_git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ] && [ "$_role" != "system" ]; then
         cat >&2 <<'MSG'
 ERROR: Commits on main are blocked for agent sessions.
@@ -187,7 +200,7 @@ fi
 
 # Block pushes from main (only system role may push)
 if [ "$_subcmd" = "push" ]; then
-    _current_branch="$(_real_git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ] && [ "$_role" != "system" ]; then
         cat >&2 <<'MSG'
 ERROR: Push from main is blocked for agent sessions.
