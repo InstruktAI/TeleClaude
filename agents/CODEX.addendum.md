@@ -15,6 +15,11 @@ This file defines Codex-specific operating rules for this repository.
 - If ambiguity is outcome-critical, ask one focused clarifying question.
 - Do not ask for routine permission when work is clearly requested and allowed.
 
+## Intent and Distinction Discipline
+
+- Optimize for the user's intended meaning, not the most literal parse of their wording. When likely intent and literal wording diverge, follow the intent and state the interpretation plainly.
+- Preserve the distinctions the user is drawing. Do not collapse qualified boundaries into simpler binary rules or answer a narrower question than the one the user is actually asking.
+
 ## Worker Orchestration Discipline
 
 - When orchestrating worker sessions, dispatch and then wait for completion notification/timeout before acting again.
