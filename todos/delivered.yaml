@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-tui-new-session-ux
+  date: '2026-03-17'
+  commit: 30ed52e4af82
 - slug: fix-integration-queue-ghost
   date: '2026-03-17'
   commit: b9142b910b00
