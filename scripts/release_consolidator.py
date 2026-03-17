@@ -6,8 +6,8 @@ classification conflicts via majority vote, and emits an authoritative
 release decision as JSON.
 
 Exit codes:
-  0 — decision written successfully
-  1 — fatal error (missing files, parse failures)
+  0 — valid decision written (release authorized or not)
+  1 — quorum failure (fewer than 2 valid reports)
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ class LaneReport(TypedDict):
 
 class ArbiterDecision(TypedDict):
     release_authorized: bool
+    quorum_met: bool
     target_version: str
     authoritative_rationale: str
     lane_summary: dict[str, str | None]
@@ -112,6 +113,7 @@ def resolve_consensus(
     if n_valid < 2:
         return _decision(
             authorized=False,
+            quorum_met=False,
             version="none",
             rationale=f"Only {n_valid}/3 valid reports — need at least 2 for quorum.",
             lane_summary=lane_summary,
@@ -133,6 +135,7 @@ def resolve_consensus(
                     minority_version = report["classification"]
                     return _decision(
                         authorized=True,
+                        quorum_met=True,
                         version=minority_version,
                         rationale=(
                             f"Majority says none but {lane} reports contract changes "
@@ -145,6 +148,7 @@ def resolve_consensus(
         authorized = most_common in ("patch", "minor")
         return _decision(
             authorized=authorized,
+            quorum_met=True,
             version=most_common,
             rationale=f"{most_count}/{n_valid} lanes agree on {most_common}.",
             lane_summary=lane_summary,
@@ -159,6 +163,7 @@ def resolve_consensus(
         authorized = chosen in ("patch", "minor")
         return _decision(
             authorized=authorized,
+            quorum_met=True,
             version=chosen,
             rationale=f"{n_valid}-way split — {best_lane} has most detailed contract_changes, choosing {chosen}.",
             lane_summary=lane_summary,
@@ -168,6 +173,7 @@ def resolve_consensus(
     # Fully ambiguous: conservative default
     return _decision(
         authorized=False,
+        quorum_met=True,
         version="none",
         rationale="Three-way disagreement with no clear detail winner — defaulting to no release.",
         lane_summary=lane_summary,
@@ -191,6 +197,7 @@ def _pick_most_detailed(reports: dict[str, LaneReport]) -> str | None:
 def _decision(
     *,
     authorized: bool,
+    quorum_met: bool,
     version: str,
     rationale: str,
     lane_summary: dict[str, str | None],
@@ -198,6 +205,7 @@ def _decision(
 ) -> ArbiterDecision:
     return ArbiterDecision(
         release_authorized=authorized,
+        quorum_met=quorum_met,
         target_version=version,
         authoritative_rationale=rationale,
         lane_summary=lane_summary,
@@ -229,6 +237,9 @@ def main(argv: list[str] | None = None) -> int:
     args.output.write_text(json.dumps(decision, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(decision, indent=2))
 
+    if not decision["quorum_met"]:
+        print("FATAL: quorum not met — aborting", file=sys.stderr)
+        return 1
     return 0
 
 

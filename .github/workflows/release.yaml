@@ -40,7 +40,7 @@ jobs:
             echo "::error::Claude Code credentials not found in keychain. Run: claude login"
             exit 1
           fi
-          ACCESS_TOKEN="$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])" 2>/dev/null || true)"
+          ACCESS_TOKEN="$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])" || true)"
           if [ -z "$ACCESS_TOKEN" ]; then
             echo "::error::Could not extract accessToken from keychain credentials"
             exit 1
@@ -72,6 +72,8 @@ jobs:
         run: make bootstrap-ci
 
       - name: Verify Agent Invocation Matrix
+        # Smoke test only — quorum enforcement happens at lane level.
+        # Individual agent failures here do not block the release.
         continue-on-error: true
         run: |
           ./.venv/bin/python -m pytest tests/integration/test_agent_invocation_matrix.py \
@@ -105,24 +107,30 @@ jobs:
           echo "Prompt size: $(wc -c < release-prompt.txt) bytes"
 
       - name: Claude Release Lane
+        # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
+          set -euo pipefail
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent claude --thinking-mode slow \
             --prompt-file release-prompt.txt \
             --schema-file docs/project/spec/release-report-schema.md > claude-report.json
 
       - name: Codex Release Lane
+        # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
+          set -euo pipefail
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
             --prompt-file release-prompt.txt \
             --schema-file docs/project/spec/release-report-schema.md > codex-report.json
 
       - name: Gemini Release Lane
+        # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
+          set -euo pipefail
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
             --prompt-file release-prompt.txt \
@@ -132,11 +140,11 @@ jobs:
         run: |
           count=0
           for f in claude-report.json codex-report.json gemini-report.json; do
-            if [ -s "$f" ]; then
+            if jq -e '.classification' "$f" >/dev/null 2>&1; then
               count=$((count + 1))
-              echo "✓ $f present"
+              echo "✓ $f valid (classification: $(jq -r '.classification' "$f"))"
             else
-              echo "✗ $f missing or empty"
+              echo "✗ $f missing, empty, or invalid JSON"
             fi
           done
           echo "Quorum: $count/3 reports"
@@ -153,7 +161,7 @@ jobs:
             claude-report.json
             codex-report.json
             gemini-report.json
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
   release-arbitration:
     name: Consensus Arbiter
@@ -166,6 +174,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Bootstrap Environment
+        run: make bootstrap-ci
       - name: Download Reports
         uses: actions/download-artifact@v4
         with:
@@ -176,18 +186,11 @@ jobs:
           echo "Reports collected for arbitration:"
           ls -la *.json
           echo "---"
-          set +e
           ./.venv/bin/python scripts/release_consolidator.py \
             --claude-report claude-report.json \
             --codex-report codex-report.json \
             --gemini-report gemini-report.json \
             -o arbiter-decision.json
-          EXIT_CODE=$?
-          set -e
-          if [ "$EXIT_CODE" -eq 1 ]; then
-            echo "ERROR: Arbiter fatal error"
-            exit 1
-          fi
           echo "release_authorized=$(jq -r '.release_authorized' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
           echo "target_version=$(jq -r '.target_version' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
       - name: Upload Decision
@@ -207,6 +210,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Bootstrap Environment
+        run: make bootstrap-ci
       - name: Download Arbiter Decision
         uses: actions/download-artifact@v4
         with:
@@ -214,7 +219,12 @@ jobs:
       - name: Compute Next Version
         id: version
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          set -euo pipefail
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous tags found — this is the first release"
+            LAST_TAG="v0.0.0"
+          fi
           echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
           CLEAN_VER="${LAST_TAG#v}"
           CLEAN_VER="${CLEAN_VER%%-*}"
@@ -233,6 +243,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           NEXT_TAG="${{ steps.version.outputs.next_tag }}"
           CLASSIFICATION="${{ needs.release-arbitration.outputs.target_version }}"
           jq -r --arg ver "$NEXT_TAG" --arg cls "$CLASSIFICATION" \
@@ -246,6 +257,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           NEXT_VER="${{ steps.version.outputs.next_tag }}"
           CLEAN_VER="${NEXT_VER#v}"
           sed -i '' "s/^version = \".*\"/version = \"${CLEAN_VER}\"/" pyproject.toml
