@@ -20,20 +20,29 @@ jobs:
 
       - name: Resolve HOME for credentials
         run: |
-          # On case-sensitive filesystems the runner's HOME may differ in case
-          # from the directory where credentials were created interactively.
-          # Auto-discover the correct home by finding where credentials live.
+          # On case-sensitive APFS the runner's HOME (/Users/morriz) may differ
+          # in case from the real home directory (/Users/Morriz). Use dscl as the
+          # authoritative source, then fall back to glob discovery.
           CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/config.json"
           if [ ! -f "$CLAUDE_CONFIG" ]; then
-            for candidate in /Users/*/Library/Application\ Support/Claude/config.json; do
-              if [ -f "$candidate" ]; then
-                REAL_HOME="${candidate%%/Library/*}"
-                echo "Credentials found at $REAL_HOME (runner HOME=$HOME)"
-                echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
-                export HOME="$REAL_HOME"
-                break
-              fi
-            done
+            # Method 1: dscl (authoritative on macOS)
+            REAL_HOME="$(dscl . -read /Users/"$(whoami)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+            if [ -n "$REAL_HOME" ] && [ -f "$REAL_HOME/Library/Application Support/Claude/config.json" ]; then
+              echo "Credentials found via dscl at $REAL_HOME (runner HOME=$HOME)"
+              echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
+              export HOME="$REAL_HOME"
+            else
+              # Method 2: glob fallback
+              for candidate in /Users/*/Library/Application\ Support/Claude/config.json; do
+                if [ -f "$candidate" ]; then
+                  REAL_HOME="${candidate%%/Library/*}"
+                  echo "Credentials found via glob at $REAL_HOME (runner HOME=$HOME)"
+                  echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
+                  export HOME="$REAL_HOME"
+                  break
+                fi
+              done
+            fi
           fi
           echo "Effective HOME=$HOME"
 
