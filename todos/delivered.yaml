@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: headless-output-pipeline
+  date: '2026-03-17'
+  commit: a56469c9e351
 - slug: fix-integration-cwd-resolution
   date: '2026-03-17'
   commit: e970cadac810
