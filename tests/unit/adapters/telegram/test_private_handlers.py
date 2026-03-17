@@ -141,6 +141,45 @@ async def test_handle_private_text_processes_message_for_existing_private_sessio
     assert command.source_message_id == "123"
 
 
+async def test_handle_private_text_bundles_message_in_auto_command_for_new_session():
+    """When no session exists, the user's text must be delivered via agent_then_message
+    auto_command (which waits for agent TUI readiness) instead of process_message
+    (which races against agent startup).
+    """
+    stub = _StubPrivateHandlers()
+    update = MagicMock()
+    update.effective_user = MagicMock(id=77, username="tester", first_name="Test")
+    update.effective_message = MagicMock(message_id=456, text="Help me with Python")
+    context = MagicMock()
+    identity = SimpleNamespace(person_name="Alice", person_role="member")
+    command_service = MagicMock()
+    command_service.create_session = AsyncMock(return_value={"session_id": "new-sess"})
+    command_service.process_message = AsyncMock()
+
+    with (
+        patch("teleclaude.core.identity.get_identity_resolver") as mock_resolver,
+        patch("teleclaude.adapters.telegram.private_handlers.db") as mock_db,
+        patch("teleclaude.core.command_registry.get_command_service", return_value=command_service),
+        patch("teleclaude.invite.scaffold_personal_workspace", return_value="/tmp/ws"),
+        patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
+    ):
+        mock_resolver.return_value.resolve.return_value = identity
+        mock_db.list_sessions = AsyncMock(return_value=[])
+
+        await stub._handle_private_text(update, context)
+
+    # Session was created with agent_then_message containing the user's text
+    command_service.create_session.assert_awaited_once()
+    create_cmd = command_service.create_session.await_args.args[0]
+    assert create_cmd.auto_command is not None
+    assert create_cmd.auto_command.startswith("agent_then_message claude slow ")
+    assert "Help me with Python" in create_cmd.auto_command
+
+    # process_message must NOT be called — message delivery is handled by
+    # agent_then_message which waits for agent TUI stabilization
+    command_service.process_message.assert_not_awaited()
+
+
 async def test_handle_simple_command_dispatches_keys_command_payload():
     stub = _StubPrivateHandlers()
     session = _make_session()

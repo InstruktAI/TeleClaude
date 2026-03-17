@@ -6,6 +6,7 @@ dispatching, and the dynamic command-handler factory.
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING
 
@@ -195,7 +196,10 @@ class PrivateHandlersMixin:
                 break
 
         if not session:
-            # Create new session
+            # Create new session with user's message bundled into auto_command.
+            # agent_then_message waits for the agent TUI to stabilize before injecting
+            # the message, preventing the race where the message is sent to tmux before
+            # the agent is ready to accept input.
             from teleclaude.core.agents import get_default_agent
             from teleclaude.core.command_registry import get_command_service
             from teleclaude.core.origins import InputOrigin
@@ -203,6 +207,10 @@ class PrivateHandlersMixin:
             from teleclaude.types.commands import CreateSessionCommand
 
             workspace_path = scaffold_personal_workspace(identity.person_name)
+            text = update.effective_message.text or ""
+            agent = get_default_agent()
+            quoted_text = shlex.quote(text)
+            auto_command = f"agent_then_message {agent} slow {quoted_text}"
 
             create_cmd = CreateSessionCommand(
                 project_path=str(workspace_path),
@@ -215,20 +223,15 @@ class PrivateHandlersMixin:
                     "chat_type": "private",
                 },
                 session_metadata=SessionMetadata(human_role=identity.person_role or "member"),
-                auto_command=f"agent {get_default_agent()}",
+                auto_command=auto_command,
             )
             result_dict = await get_command_service().create_session(create_cmd)
             session_id = str(result_dict.get("session_id", ""))
             if not session_id:
                 logger.error("Private chat session creation failed for %s", identity.person_name)
-                return
+            return
 
-            session = await db.get_session(session_id)
-            if not session:
-                logger.error("Session %s not found after creation for %s", session_id, identity.person_name)
-                return
-
-        # Process message
+        # Existing session — deliver message through inbound queue
         text = update.effective_message.text or ""
 
         from teleclaude.core.command_registry import get_command_service as gcs
