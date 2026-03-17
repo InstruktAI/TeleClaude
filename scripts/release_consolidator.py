@@ -107,12 +107,13 @@ def resolve_consensus(
         else:
             lane_summary[lane] = None
 
-    # Fail-safe: all three reports required for consensus
-    if len(valid_reports) < 3:
+    # Quorum: need at least 2 of 3 reports for consensus
+    n_valid = len(valid_reports)
+    if n_valid < 2:
         return _decision(
             authorized=False,
             version="none",
-            rationale=f"Only {len(valid_reports)}/3 valid reports — insufficient for consensus.",
+            rationale=f"Only {n_valid}/3 valid reports — need at least 2 for quorum.",
             lane_summary=lane_summary,
             evidence=evidence,
         )
@@ -145,12 +146,13 @@ def resolve_consensus(
         return _decision(
             authorized=authorized,
             version=most_common,
-            rationale=f"{most_count}/3 lanes agree on {most_common}.",
+            rationale=f"{most_count}/{n_valid} lanes agree on {most_common}.",
             lane_summary=lane_summary,
             evidence=evidence,
         )
 
-    # Three-way disagreement: compare contract_changes detail
+    # With 2 reports: disagreement means pick the more detailed one
+    # With 3 reports: three-way split — same logic
     best_lane = _pick_most_detailed(valid_reports)
     if best_lane:
         chosen = valid_reports[best_lane]["classification"]
@@ -158,7 +160,7 @@ def resolve_consensus(
         return _decision(
             authorized=authorized,
             version=chosen,
-            rationale=f"Three-way split — {best_lane} has most detailed contract_changes, choosing {chosen}.",
+            rationale=f"{n_valid}-way split — {best_lane} has most detailed contract_changes, choosing {chosen}.",
             lane_summary=lane_summary,
             evidence=evidence,
         )

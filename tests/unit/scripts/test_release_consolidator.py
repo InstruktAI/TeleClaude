@@ -90,15 +90,27 @@ class TestOverrideScenario:
 class TestEdgeCases:
     """Verify arbiter handles degenerate inputs."""
 
-    def test_missing_report_blocks_release(self) -> None:
+    def test_missing_report_meets_quorum_with_two(self) -> None:
+        """Two agreeing reports with one missing still meets quorum."""
         reports: dict[str, LaneReport | None] = {
             "claude": _load_scenario("unanimous")["claude"],
             "codex": _load_scenario("unanimous")["codex"],
             "gemini": None,
         }
         decision = resolve_consensus(reports)
+        assert decision["release_authorized"] is True
+        assert "2/" in decision["authoritative_rationale"]
+
+    def test_single_report_blocks_release(self) -> None:
+        """Only one report is below quorum — release blocked."""
+        reports: dict[str, LaneReport | None] = {
+            "claude": _load_scenario("unanimous")["claude"],
+            "codex": None,
+            "gemini": None,
+        }
+        decision = resolve_consensus(reports)
         assert decision["release_authorized"] is False
-        assert "insufficient" in decision["authoritative_rationale"].lower()
+        assert "quorum" in decision["authoritative_rationale"].lower()
 
     def test_all_none_classification(self) -> None:
         none_report: LaneReport = {

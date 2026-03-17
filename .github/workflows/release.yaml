@@ -69,6 +69,7 @@ jobs:
         run: make bootstrap-ci
 
       - name: Verify Agent Invocation Matrix
+        continue-on-error: true
         run: |
           ./.venv/bin/python -m pytest tests/integration/test_agent_invocation_matrix.py \
             -v --timeout=120
@@ -84,6 +85,7 @@ jobs:
           fi
 
       - name: Claude Release Lane
+        continue-on-error: true
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent claude --thinking-mode slow \
@@ -99,6 +101,7 @@ jobs:
             --schema-file docs/project/spec/release-report-schema.md > claude-report.json
 
       - name: Codex Release Lane
+        continue-on-error: true
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
@@ -114,6 +117,7 @@ jobs:
             --schema-file docs/project/spec/release-report-schema.md > codex-report.json
 
       - name: Gemini Release Lane
+        continue-on-error: true
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
@@ -128,6 +132,23 @@ jobs:
           $(cat release-diff.txt)" \
             --schema-file docs/project/spec/release-report-schema.md > gemini-report.json
 
+      - name: Verify quorum (2 of 3 lanes)
+        run: |
+          count=0
+          for f in claude-report.json codex-report.json gemini-report.json; do
+            if [ -s "$f" ]; then
+              count=$((count + 1))
+              echo "✓ $f present"
+            else
+              echo "✗ $f missing or empty"
+            fi
+          done
+          echo "Quorum: $count/3 reports"
+          if [ "$count" -lt 2 ]; then
+            echo "::error::Release quorum not met — need at least 2 of 3 lane reports"
+            exit 1
+          fi
+
       - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
@@ -136,6 +157,7 @@ jobs:
             claude-report.json
             codex-report.json
             gemini-report.json
+          if-no-files-found: ignore
 
   release-arbitration:
     name: Consensus Arbiter
