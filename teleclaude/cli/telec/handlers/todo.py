@@ -397,12 +397,11 @@ def _handle_todo_remove(args: list[str]) -> None:
 
 
 def _handle_todo_from_main(args: list[str]) -> None:
-    """Handle telec todo from-main --slug <name> [--description <desc>] [--paths <p1,p2,...>]."""
+    """Handle telec todo from-main --slug <name> [--description <desc>]."""
     from teleclaude.todo_scaffold import create_from_main_skeleton
 
     slug: str | None = None
     description: str | None = None
-    paths: list[str] | None = None
 
     i = 0
     while i < len(args):
@@ -412,9 +411,6 @@ def _handle_todo_from_main(args: list[str]) -> None:
             i += 2
         elif arg == "--description" and i + 1 < len(args):
             description = args[i + 1]
-            i += 2
-        elif arg == "--paths" and i + 1 < len(args):
-            paths = [p.strip() for p in args[i + 1].split(",") if p.strip()]
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -432,7 +428,7 @@ def _handle_todo_from_main(args: list[str]) -> None:
 
     project_root = str(Path.cwd())
     try:
-        output = create_from_main_skeleton(project_root, slug, description=description, paths=paths)
+        output = create_from_main_skeleton(project_root, slug, description=description)
     except (ValueError, RuntimeError) as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc

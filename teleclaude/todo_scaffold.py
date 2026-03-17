@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -518,9 +520,66 @@ def _clean_main_working_tree(
         pass
 
 
-def _filter_by_paths(file_list: list[str], paths: list[str]) -> list[str]:
-    """Filter file list to only include entries matching any of the given path prefixes."""
-    return [f for f in file_list if any(f == p or f.startswith(p + "/") for p in paths)]
+_scaffold_logger = logging.getLogger(__name__)
+
+
+def _collect_session_touched_files(project_path: str) -> set[str]:
+    """Extract files touched by the current agent session from its transcript.
+
+    Uses the same transcript parsing as the checkpoint system to determine
+    which files this session actually mutated.
+
+    Raises:
+        ValueError: If session ID is missing, transcript is unavailable,
+            or no touched files can be determined.
+    """
+    from sqlmodel import Session as SqlSession
+
+    from teleclaude.core import db_models
+    from teleclaude.core.agents import AgentName, get_default_agent
+    from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals
+    from teleclaude.hooks.receiver._session import _create_sync_engine
+    from teleclaude.utils.transcript import extract_tool_calls_current_turn
+
+    session_id = os.environ.get("TELECLAUDE_SESSION_ID")
+    if not session_id:
+        raise ValueError("from-main requires an active agent session (TELECLAUDE_SESSION_ID not set)")
+
+    with SqlSession(_create_sync_engine()) as db_session:  # type: ignore[arg-type]
+        row = db_session.get(db_models.Session, session_id)
+
+    if not row:
+        raise ValueError(f"Session {session_id} not found in database")
+
+    transcript_path = row.native_log_file
+    if not transcript_path:
+        raise ValueError(f"No transcript found for session {session_id}")
+
+    try:
+        agent_name = AgentName.from_str(get_default_agent())
+    except ValueError:
+        _scaffold_logger.warning(
+            "Could not resolve default agent; falling back to CLAUDE. Check config.yml agents section."
+        )
+        agent_name = AgentName.CLAUDE
+
+    timeline = extract_tool_calls_current_turn(transcript_path, agent_name, full_session=True)
+
+    if not timeline.has_data:
+        raise ValueError(
+            f"Transcript parsing returned no data. Verify transcript exists and is valid: {transcript_path}"
+        )
+
+    touched_files, _saw_mutation = _extract_turn_file_signals(timeline, project_path)
+
+    if not touched_files:
+        raise ValueError(
+            f"Could not determine session-touched files from transcript.\n"
+            f"Session: {session_id}, transcript: {transcript_path}"
+        )
+
+    _scaffold_logger.debug("Session %s touched %d files: %s", session_id, len(touched_files), sorted(touched_files))
+    return touched_files
 
 
 def create_from_main_skeleton(
@@ -528,14 +587,12 @@ def create_from_main_skeleton(
     slug: str,
     *,
     description: str | None = None,
-    paths: list[str] | None = None,
 ) -> str:
     """Transfer uncommitted changes from main into a todo worktree for review.
 
-    Args:
-        paths: Optional list of file paths to scope the transfer. When provided,
-            only files matching these paths (exact or prefix) are transferred.
-            Without this, ALL dirty files from git status are transferred.
+    File scoping is automatic: the session transcript is parsed to determine
+    which files this agent session actually touched. Only those files are
+    transferred. Requires TELECLAUDE_SESSION_ID in the environment.
 
     Steps:
     1. Validate preconditions (on main, has uncommitted changes)
@@ -586,15 +643,17 @@ def create_from_main_skeleton(
     # --- 5b. Capture uncommitted changes ---
     modified_files, untracked_files, deleted_files = _classify_porcelain_status(status_output)
 
-    # Scope to caller's files when --paths is provided
-    if paths:
-        modified_files = _filter_by_paths(modified_files, paths)
-        untracked_files = _filter_by_paths(untracked_files, paths)
-        deleted_files = _filter_by_paths(deleted_files, paths)
+    # Scope to files this session actually touched (transcript-based)
+    session_files = _collect_session_touched_files(cwd)
+    modified_files = [f for f in modified_files if f in session_files]
+    untracked_files = [f for f in untracked_files if f in session_files]
+    deleted_files = [f for f in deleted_files if f in session_files]
 
     all_changed = modified_files + untracked_files + deleted_files
     if not all_changed:
-        raise ValueError("No matching uncommitted changes for the given paths.")
+        raise ValueError(
+            f"No uncommitted changes match session-touched files.\nSession touched: {sorted(session_files)}"
+        )
 
     # --- 5c. Scaffold todo artifacts ---
     project_root = Path(cwd)

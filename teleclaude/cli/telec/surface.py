@@ -533,16 +533,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "from-main": CommandDef(
                 desc="Create a reviewed todo from uncommitted changes on main",
-                args="--slug <name> [--description <desc>] [--paths <p1,p2,...>]",
+                args="--slug <name> [--description <desc>]",
                 flags=[
                     _H,
                     Flag("--slug", desc="Meaningful slug name for the todo"),
                     Flag("--description", desc="Optional description of the changes"),
-                    Flag("--paths", desc="Optional comma-separated file or directory paths to transfer"),
                 ],
                 notes=[
                     "Transfers uncommitted changes from main into a worktree for review.",
-                    "Use --paths to limit the transfer to specific files or directories.",
+                    "Only files touched by the current session are transferred (transcript-based).",
+                    "Requires TELECLAUDE_SESSION_ID (set automatically in agent sessions).",
                     "Creates todo scaffold, sets state to build:complete, ready for review.",
                     "After running, follow the printed instructions to commit and dispatch.",
                 ],

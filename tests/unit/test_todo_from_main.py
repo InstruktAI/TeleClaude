@@ -1,4 +1,4 @@
-"""Tests for teleclaude.todo_scaffold.create_from_main_skeleton."""
+"""Tests for teleclaude.todo_scaffold — from-main skeleton and session file collection."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import pytest
 # Patch targets — these are lazy-imported inside create_from_main_skeleton
 _WT = "teleclaude.core.next_machine.worktrees"
 _SI = "teleclaude.core.next_machine.state_io"
+_COLLECT = "teleclaude.todo_scaffold._collect_session_touched_files"
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +95,7 @@ class TestCreateFromMainSkeleton:
 
         with (
             patch("git.Repo", return_value=repo),
+            patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -156,6 +158,7 @@ class TestCreateFromMainSkeleton:
 
         with (
             patch("git.Repo", return_value=repo),
+            patch(_COLLECT, return_value={"removed.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -178,6 +181,7 @@ class TestCreateFromMainSkeleton:
 
         with (
             patch("git.Repo", return_value=repo),
+            patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(False, "push_deferred")),
             pytest.raises(RuntimeError, match="push_deferred"),
         ):
@@ -195,6 +199,7 @@ class TestCreateFromMainSkeleton:
 
         with (
             patch("git.Repo", return_value=repo),
+            patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -209,24 +214,25 @@ class TestCreateFromMainSkeleton:
         req_content = (project / "todos" / "no-desc" / "requirements.md").read_text()
         assert "See diff for details." in req_content
 
-    def test_paths_scope_transfer_and_cleanup_to_requested_files(self, tmp_path: Path) -> None:
-        """When --paths is used, only matching files should move into the worktree."""
+    def test_session_scoping_filters_to_touched_files_only(self, tmp_path: Path) -> None:
+        """Only files touched by the session should be transferred."""
         from teleclaude.todo_scaffold import create_from_main_skeleton
 
         project = _setup_project(tmp_path)
         (project / "docs").mkdir()
         (project / "docs" / "guide.md").write_text("modified guide", encoding="utf-8")
-        (project / "docs" / "new.md").write_text("new doc", encoding="utf-8")
 
         worktree_path = project / "trees" / "scoped-slug"
         worktree_path.mkdir(parents=True)
         (worktree_path / "src").mkdir(parents=True)
         (worktree_path / "docs").mkdir(parents=True)
 
-        repo = _make_repo_ns(status=" M src/app.py\n M docs/guide.md\n?? src/new.py\n?? docs/new.md")
+        # Status has both src and docs dirty, but session only touched src
+        repo = _make_repo_ns(status=" M src/app.py\n M docs/guide.md\n?? src/new.py")
 
         with (
             patch("git.Repo", return_value=repo),
+            patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -236,18 +242,46 @@ class TestCreateFromMainSkeleton:
             patch(f"{_SI}.mark_ready"),
             patch(f"{_SI}.mark_phase"),
         ):
-            create_from_main_skeleton(str(project), "scoped-slug", paths=["src"])
+            create_from_main_skeleton(str(project), "scoped-slug")
 
+        # Session-touched files transferred
         assert (worktree_path / "src" / "app.py").exists()
         assert (worktree_path / "src" / "new.py").exists()
+        # Non-session files left on main
         assert not (worktree_path / "docs" / "guide.md").exists()
-        assert not (worktree_path / "docs" / "new.md").exists()
-        assert not (project / "src" / "new.py").exists()
         assert (project / "docs" / "guide.md").read_text(encoding="utf-8") == "modified guide"
-        assert (project / "docs" / "new.md").read_text(encoding="utf-8") == "new doc"
 
-    def test_paths_requires_at_least_one_matching_change(self, tmp_path: Path) -> None:
-        """--paths should fail fast when no dirty files match the requested scope."""
+    def test_no_session_id_raises_value_error(self, tmp_path: Path) -> None:
+        """from-main fails hard when not in an agent session."""
+        from teleclaude.todo_scaffold import create_from_main_skeleton
+
+        project = _setup_project(tmp_path)
+        repo = _make_repo_ns()
+
+        with (
+            patch("git.Repo", return_value=repo),
+            patch.dict("os.environ", {}, clear=False),
+            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": ""}, clear=False),
+            pytest.raises(ValueError, match="TELECLAUDE_SESSION_ID"),
+        ):
+            create_from_main_skeleton(str(project), "no-session")
+
+    def test_empty_session_files_raises_value_error(self, tmp_path: Path) -> None:
+        """from-main fails when transcript yields no files."""
+        from teleclaude.todo_scaffold import create_from_main_skeleton
+
+        project = _setup_project(tmp_path)
+        repo = _make_repo_ns()
+
+        with (
+            patch("git.Repo", return_value=repo),
+            patch(_COLLECT, side_effect=ValueError("Could not determine session-touched files")),
+            pytest.raises(ValueError, match="Could not determine"),
+        ):
+            create_from_main_skeleton(str(project), "empty-files")
+
+    def test_no_intersection_between_session_and_status_raises(self, tmp_path: Path) -> None:
+        """ValueError when session-touched files don't overlap with git status."""
         from teleclaude.todo_scaffold import create_from_main_skeleton
 
         project = _setup_project(tmp_path)
@@ -255,6 +289,150 @@ class TestCreateFromMainSkeleton:
 
         with (
             patch("git.Repo", return_value=repo),
-            pytest.raises(ValueError, match="No matching uncommitted changes"),
+            patch(_COLLECT, return_value={"completely/unrelated.py"}),
+            pytest.raises(ValueError, match="No uncommitted changes match session-touched files"),
         ):
-            create_from_main_skeleton(str(project), "missing-paths", paths=["docs"])
+            create_from_main_skeleton(str(project), "no-overlap")
+
+
+class TestCollectSessionTouchedFiles:
+    """Direct unit tests for _collect_session_touched_files.
+
+    Patches target source modules (where lazy imports resolve from),
+    not teleclaude.todo_scaffold.
+    """
+
+    # Source-module patch targets for lazy imports inside _collect_session_touched_files
+    _SQL_SESSION = "sqlmodel.Session"
+    _SYNC_ENGINE = "teleclaude.hooks.receiver._session._create_sync_engine"
+    _DB_MODELS = "teleclaude.core.db_models"
+    _GET_AGENT = "teleclaude.core.agents.get_default_agent"
+    _AGENT_NAME = "teleclaude.core.agents.AgentName"
+    _EXTRACT_TURNS = "teleclaude.utils.transcript.extract_tool_calls_current_turn"
+    _EXTRACT_SIGNALS = "teleclaude.hooks.checkpoint._git._extract_turn_file_signals"
+
+    def test_happy_path_returns_touched_files(self) -> None:
+        """Returns set of files from transcript parsing pipeline."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_row
+
+        mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
+        expected_files = {"src/app.py", "src/utils.py"}
+
+        with (
+            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-123"}),
+            patch(self._SYNC_ENGINE, return_value=MagicMock()),
+            patch(self._SQL_SESSION) as mock_session_cls,
+            patch(self._GET_AGENT, return_value="claude"),
+            patch(self._AGENT_NAME) as mock_agent_name,
+            patch(self._EXTRACT_TURNS, return_value=mock_timeline),
+            patch(self._EXTRACT_SIGNALS, return_value=(expected_files, True)),
+        ):
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+            mock_agent_name.from_str.return_value = mock_agent_name.CLAUDE
+
+            result = _collect_session_touched_files("/project")
+
+        assert result == expected_files
+
+    def test_missing_session_id_raises(self) -> None:
+        """Raises ValueError when TELECLAUDE_SESSION_ID is not set."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        with (
+            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": ""}, clear=False),
+            pytest.raises(ValueError, match="TELECLAUDE_SESSION_ID"),
+        ):
+            _collect_session_touched_files("/project")
+
+    def test_session_not_in_db_raises(self) -> None:
+        """Raises ValueError when session ID not found in database."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        mock_db = MagicMock()
+        mock_db.get.return_value = None
+
+        with (
+            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-missing"}),
+            patch(self._SYNC_ENGINE, return_value=MagicMock()),
+            patch(self._SQL_SESSION) as mock_session_cls,
+            pytest.raises(ValueError, match="Session sess-missing not found"),
+        ):
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+            _collect_session_touched_files("/project")
+
+    def test_missing_transcript_raises(self) -> None:
+        """Raises ValueError when session has no native_log_file."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        mock_row = SimpleNamespace(native_log_file=None)
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_row
+
+        with (
+            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-no-log"}),
+            patch(self._SYNC_ENGINE, return_value=MagicMock()),
+            patch(self._SQL_SESSION) as mock_session_cls,
+            pytest.raises(ValueError, match="No transcript found"),
+        ):
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+            _collect_session_touched_files("/project")
+
+    def test_empty_timeline_raises(self) -> None:
+        """Raises ValueError when transcript parsing returns no data."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_row
+
+        mock_timeline = SimpleNamespace(has_data=False, tool_calls=[])
+
+        with (
+            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-empty"}),
+            patch(self._SYNC_ENGINE, return_value=MagicMock()),
+            patch(self._SQL_SESSION) as mock_session_cls,
+            patch(self._GET_AGENT, return_value="claude"),
+            patch(self._AGENT_NAME) as mock_agent_name,
+            patch(self._EXTRACT_TURNS, return_value=mock_timeline),
+            pytest.raises(ValueError, match="Transcript parsing returned no data"),
+        ):
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+            mock_agent_name.from_str.return_value = mock_agent_name.CLAUDE
+
+            _collect_session_touched_files("/project")
+
+    def test_no_touched_files_raises(self) -> None:
+        """Raises ValueError when transcript parses but yields no file signals."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_row
+
+        mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
+
+        with (
+            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-no-files"}),
+            patch(self._SYNC_ENGINE, return_value=MagicMock()),
+            patch(self._SQL_SESSION) as mock_session_cls,
+            patch(self._GET_AGENT, return_value="claude"),
+            patch(self._AGENT_NAME) as mock_agent_name,
+            patch(self._EXTRACT_TURNS, return_value=mock_timeline),
+            patch(self._EXTRACT_SIGNALS, return_value=(set(), False)),
+            pytest.raises(ValueError, match="Could not determine session-touched files"),
+        ):
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+            mock_agent_name.from_str.return_value = mock_agent_name.CLAUDE
+
+            _collect_session_touched_files("/project")
