@@ -61,9 +61,9 @@ class _OneshotSpec(TypedDict, total=False):
 
 _AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
     "claude": {
-        "fast": "--model haiku",
-        "med": "--model sonnet",
-        "slow": "--model opus",
+        "fast": "--model claude-haiku-4-5-20251001",
+        "med": "--model claude-sonnet-4-6",
+        "slow": "--model claude-opus-4-6",
     },
     "gemini": {
         "fast": "-m gemini-2.5-flash-lite",

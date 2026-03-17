@@ -13,7 +13,7 @@ import yaml
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.models import JsonDict
 from teleclaude.core.next_machine._types import StateValue
-from teleclaude.slug import ensure_unique_slug, validate_slug
+from teleclaude.slug import validate_slug
 from teleclaude.types.todos import BreakdownState, DorState, TodoState
 
 _DEFAULT_STATE = TodoState(
@@ -84,8 +84,9 @@ def create_todo_skeleton(
     slug = slug.strip()
 
     todos_root = project_root / "todos"
-    slug = ensure_unique_slug(todos_root, slug)
     todo_dir = todos_root / slug
+    if todo_dir.exists():
+        raise ValueError(f"Todo '{slug}' already exists at {todo_dir}")
 
     req = _read_template("requirements.md").format(slug=slug)
     plan = _read_template("implementation-plan.md").format(slug=slug)
@@ -139,8 +140,9 @@ def create_bug_skeleton(
     slug = slug.strip()
 
     todos_root = project_root / "todos"
-    slug = ensure_unique_slug(todos_root, slug)
     todo_dir = todos_root / slug
+    if todo_dir.exists():
+        raise ValueError(f"Bug todo '{slug}' already exists at {todo_dir}")
 
     date = datetime.now(UTC).strftime("%Y-%m-%d")
 
@@ -596,8 +598,6 @@ def create_from_main_skeleton(
 
     # --- 5c. Scaffold todo artifacts ---
     project_root = Path(cwd)
-    todos_root = project_root / "todos"
-    slug = ensure_unique_slug(todos_root, slug)
     todo_dir = create_todo_skeleton(project_root, slug)
 
     # Overwrite all artifacts with from-main markers.
