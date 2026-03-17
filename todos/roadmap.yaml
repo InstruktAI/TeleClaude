@@ -45,3 +45,6 @@
   group: session-runtime-overhaul
   after:
   - session-adaptive-runtime
+- slug: fix-integrate-api-hang
+  after:
+  - fix-gemini-command-injection
