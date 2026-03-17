@@ -16,10 +16,10 @@ class TestEventRoutes:
     async def test_emit_event_endpoint_forwards_envelope_fields(self) -> None:
         """The emit route forwards the envelope contract unchanged to the producer."""
         body = EventEnvelope(
-            event="todo.created",
+            event="domain.software-development.planning.todo_created",
             source="tests",
             level=EventLevel.WORKFLOW,
-            domain="todos",
+            domain="software-development",
             description="created",
             payload={"slug": "chartest-api-routes"},
             visibility=EventVisibility.PUBLIC,
@@ -31,10 +31,10 @@ class TestEventRoutes:
 
         assert response.entry_id == "entry-123"
         emit_event.assert_awaited_once_with(
-            event="todo.created",
+            event="domain.software-development.planning.todo_created",
             source="tests",
             level=EventLevel.WORKFLOW,
-            domain="todos",
+            domain="software-development",
             description="created",
             payload={"slug": "chartest-api-routes"},
             visibility=EventVisibility.PUBLIC,

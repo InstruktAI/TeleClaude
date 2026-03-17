@@ -246,14 +246,14 @@ def _handle_todo_dump(args: list[str]) -> None:
     input_path = todo_dir / "input.md"
     input_path.write_text(f"# {todo_dir.name} — Input\n\n{content}\n", encoding="utf-8")
 
-    # Emit todo.dumped notification via daemon API
+    # Emit planning.todo_dumped notification via daemon API
     _log = get_logger(__name__)
     try:
         envelope = EventEnvelope(
-            event="todo.dumped",
+            event="domain.software-development.planning.todo_dumped",
             source="telec-cli",
             level=EventLevel.WORKFLOW,
-            domain="todo",
+            domain="software-development",
             description=f"Todo dumped: {slug}",
             payload={"slug": slug, "project_root": str(project_root)},
         )
