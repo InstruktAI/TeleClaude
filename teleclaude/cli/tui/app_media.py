@@ -179,14 +179,29 @@ class TelecAppMediaMixin:
             footer.chiptunes_playback = "loading"
 
     def _schedule_chiptunes_reconcile(self) -> None:
+        """Debounce chiptunes footer sync — cancel any in-flight reconcile and schedule a fresh one."""
+        if self._chiptunes_reconcile_task is not None:  # type: ignore[attr-defined]
+            self._chiptunes_reconcile_task.cancel()  # type: ignore[attr-defined]
+
         async def _reconcile() -> None:
             await asyncio.sleep(0.2)
             try:
                 await self._sync_chiptunes_footer_state()
-            except Exception:
-                logger.debug("ChipTunes reconcile sync failed", exc_info=True)
+            except OSError as exc:
+                # OSError covers transport failures (httpx.ConnectError is a subclass).
+                # Non-transport exceptions propagate to the asyncio error handler.
+                # Log at warning so reconcile failures are visible in production.
+                logger.warning("ChipTunes reconcile sync failed: %s", exc)
+            finally:
+                self._chiptunes_reconcile_task = None  # type: ignore[attr-defined]
 
-        asyncio.create_task(_reconcile())
+        self._chiptunes_reconcile_task = asyncio.create_task(_reconcile())  # type: ignore[attr-defined]
+
+    def _cancel_chiptunes_reconcile(self) -> None:
+        task = self._chiptunes_reconcile_task  # type: ignore[attr-defined]
+        if task is not None:
+            task.cancel()
+        self._chiptunes_reconcile_task = None  # type: ignore[attr-defined]
 
     async def _sync_chiptunes_footer_state(self) -> None:
         status = await self.api.get_chiptunes_status()  # type: ignore[attr-defined]

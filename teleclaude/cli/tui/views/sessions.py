@@ -522,6 +522,12 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
         if timer is not None:
             timer.stop()
 
+    def on_unmount(self) -> None:
+        """Bulk-cancel all highlight auto-clear timers to prevent orphaned callbacks."""
+        for timer in self._highlight_timers.values():
+            timer.stop()
+        self._highlight_timers.clear()
+
     def _schedule_highlight_clear(self, session_id: str) -> None:
         """Schedule auto-clear of highlights for preview session after timeout."""
         self._cancel_highlight_timer(session_id)

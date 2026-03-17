@@ -52,6 +52,8 @@ from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 if TYPE_CHECKING:
+    from textual.timer import Timer
+
     from teleclaude.cli.api_client import TelecAPIClient
     from teleclaude.cli.tui.animations.base import Animation
 
@@ -160,6 +162,8 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         self._computers: list[ComputerInfo] = []
         self._session_agents: dict[str, str] = {}
         self._chiptunes_state_version: int = -1
+        self._chiptunes_reconcile_task: asyncio.Task[None] | None = None
+        self._sky_width_timer: Timer | None = None
         # On SIGUSR2 reload, panes already exist — the bridge's on_data_refreshed
         # will call seed_for_reload() to map them.  Skip layout re-application
         # on the first data refresh to avoid killing and recreating panes.
@@ -485,15 +489,13 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     def on_preview_changed(self, message: PreviewChanged) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_preview_changed(message)
-        # Pane layout change → tmux split → celestials need repositioning
-        self.set_timer(0.5, self._invalidate_sky_width)
+        self._schedule_sky_width_invalidation()
 
     def on_sticky_changed(self, message: StickyChanged) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_sticky_changed(message)
         self._update_banner_compactness(len(message.session_ids))
-        # Pane layout change → tmux split → celestials need repositioning
-        self.set_timer(0.5, self._invalidate_sky_width)
+        self._schedule_sky_width_invalidation()
 
     def on_state_changed(self, _message: StateChanged) -> None:
         self._schedule_state_save()
@@ -623,8 +625,21 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             width = getattr(getattr(event, "size", None), "width", None)
             self._animation_engine.invalidate_term_width(width)
 
+    def _schedule_sky_width_invalidation(self) -> None:
+        """Debounce sky width refresh — cancel any pending timer and schedule a fresh one."""
+        if self._sky_width_timer is not None:
+            self._sky_width_timer.stop()
+        self._sky_width_timer = self.set_timer(0.5, self._invalidate_sky_width)
+
+    def _cancel_sky_width_timer(self) -> None:
+        """Cancel pending sky width invalidation timer."""
+        if self._sky_width_timer is not None:
+            self._sky_width_timer.stop()
+        self._sky_width_timer = None
+
     def _invalidate_sky_width(self) -> None:
         """Delayed sky width refresh after pane layout changes."""
+        self._sky_width_timer = None
         if self._animation_engine:
             self._animation_engine.invalidate_term_width()
 
@@ -640,6 +655,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         RELOAD_EXIT and re-execs the process.
         """
         self._cancel_state_save_timer()
+        self._stop_animation()
+        self._cancel_chiptunes_reconcile()
+        self._cancel_sky_width_timer()
         self._save_state_sync()
         self.exit(result=RELOAD_EXIT)
 
@@ -650,7 +668,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
 
     async def action_quit(self) -> None:
         self._stop_animation()
+        self._cancel_chiptunes_reconcile()
         self._cancel_state_save_timer()
+        self._cancel_sky_width_timer()
         self._save_state_sync()
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.cleanup()

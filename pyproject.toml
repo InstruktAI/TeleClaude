@@ -358,6 +358,7 @@ orphan-exclude = [
     "tests/unit/core/agent_coordinator/test_headless_pull.py", # Tests headless pull scheduling in _coordinator.py
     "tests/unit/adapters/discord/test_headless_title.py",     # Tests headless title prefix in channel_ops.py
     "tests/unit/adapters/telegram/test_send_message_topic_guard.py", # Tests topic_id guard in message_ops.py
+    "tests/unit/cli/tui/test_resource_cleanup.py",             # Tests resource cleanup across app.py, app_media.py, sessions.py
 ]
 
 [tool.coverage.run]
