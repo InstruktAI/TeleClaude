@@ -14,6 +14,7 @@ from typing import TypedDict
 
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
+from teleclaude.session_identity import get_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ async def emit_review_approved(
     ts = approved_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.review.approved",
-        source=f"orchestrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        source=f"orchestrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="software-development",
         description=f"Review approved for {slug} (round {review_round})",
@@ -60,7 +61,7 @@ async def emit_branch_pushed(
     ts = pushed_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.branch.pushed",
-        source=f"finalizer/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        source=f"finalizer/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="software-development",
         description=f"Branch pushed: {remote}/{branch}@{sha[:8]}",
@@ -70,7 +71,7 @@ async def emit_branch_pushed(
             "sha": sha,
             "remote": remote,
             "pushed_at": ts,
-            "pusher": pusher or f"orchestrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+            "pusher": pusher or f"orchestrator/{(get_session_id() or 'unknown')}",
         },
     )
 
@@ -88,7 +89,7 @@ async def emit_deployment_started(
     ts = ready_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.deployment.started",
-        source=f"orchestrator/{orchestrator_session_id or os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        source=f"orchestrator/{orchestrator_session_id or (get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="software-development",
         description=f"Deployment started for {slug} ({branch}@{sha[:8]})",
@@ -116,7 +117,7 @@ async def emit_deployment_completed(
     ts = integrated_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.deployment.completed",
-        source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="software-development",
         description=f"Deployment completed for {slug} (merge {merge_commit[:8]})",
@@ -145,7 +146,7 @@ async def emit_deployment_failed(
     ts = blocked_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.deployment.failed",
-        source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.BUSINESS,
         domain="software-development",
         description=f"Deployment failed for {slug} ({branch}@{sha[:8]})",
@@ -176,7 +177,7 @@ async def emit_integration_started(
     """Emit integration.started when the state machine begins processing a candidate."""
     return await emit_event(
         event="domain.software-development.integration.started",
-        source=f"integrator/{session_id or os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        source=f"integrator/{session_id or (get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="software-development",
         description=f"Integration started for {slug} (queue depth: {queue_depth})",
@@ -200,7 +201,7 @@ async def emit_integration_candidate_delivered(
     ts = integrated_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.integration.candidate.delivered",
-        source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
         domain="software-development",
         description=f"Candidate delivered: {slug} ({branch} \u2192 main, merge {merge_commit_sha[:8]})",
@@ -226,7 +227,7 @@ async def emit_integration_candidate_blocked(
     ts = blocked_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.integration.candidate.blocked",
-        source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.BUSINESS,
         domain="software-development",
         description=f"Integration blocked for {slug} ({branch}@{sha[:8]}): {reason or 'unknown reason'}",

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -539,11 +538,12 @@ def _collect_session_touched_files(project_path: str) -> set[str]:
     from teleclaude.core.agents import AgentName, get_default_agent
     from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals
     from teleclaude.hooks.receiver._session import _create_sync_engine
+    from teleclaude.session_identity import get_session_id
     from teleclaude.utils.transcript import extract_tool_calls_current_turn
 
-    session_id = os.environ.get("TELECLAUDE_SESSION_ID")
+    session_id = get_session_id()
     if not session_id:
-        raise ValueError("from-main requires an active agent session (TELECLAUDE_SESSION_ID not set)")
+        raise ValueError("from-main requires an active agent session (no session marker found)")
 
     with SqlSession(_create_sync_engine()) as db_session:  # type: ignore[arg-type]
         row = db_session.get(db_models.Session, session_id)
@@ -592,7 +592,7 @@ def create_from_main_skeleton(
 
     File scoping is automatic: the session transcript is parsed to determine
     which files this agent session actually touched. Only those files are
-    transferred. Requires TELECLAUDE_SESSION_ID in the environment.
+    transferred. Requires session marker file at {TMPDIR}/teleclaude_session_id.
 
     Steps:
     1. Validate preconditions (on main, has uncommitted changes)

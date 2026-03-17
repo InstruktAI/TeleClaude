@@ -98,6 +98,81 @@ def test_handle_bugs_report_generates_slug_and_dispatches(
     assert "sess-123" in output
 
 
+def _make_trusted_dir(name: str, path: str) -> SimpleNamespace:
+    return SimpleNamespace(name=name, desc="", path=path)
+
+
+def _mock_config_with_dirs(dirs: list[SimpleNamespace]) -> SimpleNamespace:
+    computer = SimpleNamespace(get_all_trusted_dirs=lambda: dirs)
+    return SimpleNamespace(computer=computer)
+
+
+def test_resolve_project_by_name_matches_case_insensitive(tmp_path: Path) -> None:
+    target = str(tmp_path / "my-project")
+    cfg = _mock_config_with_dirs([_make_trusted_dir("MyProject", target)])
+
+    with patch("teleclaude.config.config", cfg):
+        result = bugs._resolve_project_by_name("myproject")
+
+    assert result == Path(target)
+
+
+def test_resolve_project_by_name_unknown_lists_available(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = _mock_config_with_dirs(
+        [
+            _make_trusted_dir("alpha", "/a"),
+            _make_trusted_dir("beta", "/b"),
+        ]
+    )
+
+    with patch("teleclaude.config.config", cfg):
+        with pytest.raises(SystemExit):
+            bugs._resolve_project_by_name("nonexistent")
+
+    output = capsys.readouterr().out
+    assert "Unknown project 'nonexistent'" in output
+    assert "alpha" in output
+    assert "beta" in output
+
+
+def test_handle_bugs_report_with_project_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project_path = tmp_path / "target-project"
+    project_path.mkdir()
+    todo_dir = project_path / "todos" / "fix-some-bug"
+
+    monkeypatch.setattr(bugs, "normalize_slug", lambda _text: "some-bug")
+    monkeypatch.setattr(bugs, "create_bug_skeleton", lambda *args, **kwargs: todo_dir)
+    monkeypatch.setattr(bugs.asyncio, "run", _close_and_return(SimpleNamespace(session_id="sess-456")))
+
+    cfg = _mock_config_with_dirs([_make_trusted_dir("target", str(project_path))])
+    with patch("teleclaude.config.config", cfg):
+        bugs._handle_bugs_report(["Some bug", "--project", "target"])
+
+    output = capsys.readouterr().out
+    assert "fix-some-bug" in output
+    assert "sess-456" in output
+
+
+def test_handle_bugs_create_with_project_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project_path = tmp_path / "target-project"
+    project_path.mkdir()
+    created_dir = project_path / "todos" / "my-bug"
+
+    monkeypatch.setattr(bugs, "create_bug_skeleton", lambda **kwargs: created_dir)
+
+    cfg = _mock_config_with_dirs([_make_trusted_dir("target", str(project_path))])
+    with patch("teleclaude.config.config", cfg):
+        bugs._handle_bugs_create(["my-bug", "--project", "target"])
+
+    assert str(created_dir) in capsys.readouterr().out
+
+
 def test_handle_bugs_list_uses_worktree_state_when_present(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

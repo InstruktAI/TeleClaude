@@ -17,7 +17,24 @@ __all__ = [
     "_handle_bugs_create",
     "_handle_bugs_list",
     "_handle_bugs_report",
+    "_resolve_project_by_name",
 ]
+
+
+def _resolve_project_by_name(name: str) -> Path:
+    """Resolve a project name to its path using trusted_dirs config."""
+    from teleclaude.config import config  # pylint: disable=import-outside-toplevel
+
+    trusted = config.computer.get_all_trusted_dirs()
+    for td in trusted:
+        if td.name.lower() == name.lower():
+            return Path(td.path).expanduser()
+
+    available = sorted({td.name for td in trusted})
+    print(f"Unknown project '{name}'. Must be one of:")
+    for n in available:
+        print(f"  - {n}")
+    raise SystemExit(1)
 
 
 def _handle_bugs(args: list[str]) -> None:
@@ -46,12 +63,16 @@ def _handle_bugs_create(args: list[str]) -> None:
         raise SystemExit(1)
 
     slug: str | None = None
+    project_name: str | None = None
     project_root = Path.cwd()
 
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg.startswith("-"):
+        if arg == "--project" and i + 1 < len(args):
+            project_name = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print("Usage: telec bugs create <slug>")
             raise SystemExit(1)
@@ -62,6 +83,9 @@ def _handle_bugs_create(args: list[str]) -> None:
                 raise SystemExit(1)
             slug = arg
             i += 1
+
+    if project_name:
+        project_root = _resolve_project_by_name(project_name)
 
     if slug is None:
         print("Error: slug is required")
@@ -98,6 +122,7 @@ def _handle_bugs_report(args: list[str]) -> None:
     description: str | None = None
     slug: str | None = None
     body: str | None = None
+    project_name: str | None = None
     project_root = Path.cwd()
 
     i = 0
@@ -108,6 +133,9 @@ def _handle_bugs_report(args: list[str]) -> None:
             i += 2
         elif arg == "--body" and i + 1 < len(args):
             body = args[i + 1]
+            i += 2
+        elif arg == "--project" and i + 1 < len(args):
+            project_name = args[i + 1]
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -120,6 +148,9 @@ def _handle_bugs_report(args: list[str]) -> None:
                 raise SystemExit(1)
             description = arg
             i += 1
+
+    if project_name:
+        project_root = _resolve_project_by_name(project_name)
 
     if not description:
         print("Missing required description.")

@@ -281,7 +281,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--until", desc="ISO8601 UTC expiry for unavailable"),
                     Flag("--clear", desc="Reset to available immediately"),
                 ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ADMIN),
             ),
         },
     ),
@@ -542,7 +542,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Transfers uncommitted changes from main into a worktree for review.",
                     "Only files touched by the current session are transferred (transcript-based).",
-                    "Requires TELECLAUDE_SESSION_ID (set automatically in agent sessions).",
+                    "Requires active session (session marker written at bootstrap).",
                     "Creates todo scaffold, sets state to build:complete, ready for review.",
                     "After running, follow the printed instructions to commit and dispatch.",
                 ],
@@ -635,13 +635,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
                     Flag("--body", desc="Detailed description body for bug.md"),
+                    Flag("--project", desc="Project name (from trusted_dirs)"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "create": CommandDef(
                 desc="Scaffold bug files for a slug",
                 args="<slug>",
-                flags=[],
+                flags=[
+                    Flag("--project", desc="Project name (from trusted_dirs)"),
+                ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),
             ),
             "list": CommandDef(

@@ -281,9 +281,8 @@ class TestCreateFromMainSkeleton:
 
         with (
             patch("git.Repo", return_value=repo),
-            patch.dict("os.environ", {}, clear=False),
-            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": ""}, clear=False),
-            pytest.raises(ValueError, match="TELECLAUDE_SESSION_ID"),
+            patch("teleclaude.session_identity.get_session_id", return_value=None),
+            pytest.raises(ValueError, match="session marker"),
         ):
             create_from_main_skeleton(str(project), "no-session")
 
@@ -344,7 +343,7 @@ class TestCollectSessionTouchedFiles:
         expected_files = {"src/app.py", "src/utils.py"}
 
         with (
-            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-123"}),
+            patch("teleclaude.session_identity.get_session_id", return_value="sess-123"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
@@ -361,12 +360,12 @@ class TestCollectSessionTouchedFiles:
         assert result == expected_files
 
     def test_missing_session_id_raises(self) -> None:
-        """Raises ValueError when TELECLAUDE_SESSION_ID is not set."""
+        """Raises ValueError when session marker file is not found."""
         from teleclaude.todo_scaffold import _collect_session_touched_files
 
         with (
-            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": ""}, clear=False),
-            pytest.raises(ValueError, match="TELECLAUDE_SESSION_ID"),
+            patch("teleclaude.session_identity.get_session_id", return_value=None),
+            pytest.raises(ValueError, match="session marker"),
         ):
             _collect_session_touched_files("/project")
 
@@ -378,7 +377,7 @@ class TestCollectSessionTouchedFiles:
         mock_db.get.return_value = None
 
         with (
-            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-missing"}),
+            patch("teleclaude.session_identity.get_session_id", return_value="sess-missing"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             pytest.raises(ValueError, match="Session sess-missing not found"),
@@ -397,7 +396,7 @@ class TestCollectSessionTouchedFiles:
         mock_db.get.return_value = mock_row
 
         with (
-            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-no-log"}),
+            patch("teleclaude.session_identity.get_session_id", return_value="sess-no-log"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             pytest.raises(ValueError, match="No transcript found"),
@@ -418,7 +417,7 @@ class TestCollectSessionTouchedFiles:
         mock_timeline = SimpleNamespace(has_data=False, tool_calls=[])
 
         with (
-            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-empty"}),
+            patch("teleclaude.session_identity.get_session_id", return_value="sess-empty"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
@@ -443,7 +442,7 @@ class TestCollectSessionTouchedFiles:
         mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
 
         with (
-            patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "sess-no-files"}),
+            patch("teleclaude.session_identity.get_session_id", return_value="sess-no-files"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
