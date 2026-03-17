@@ -298,6 +298,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         env_vars["TELECLAUDE_PRINCIPAL"] = principal
         env_vars["TELECLAUDE_PRINCIPAL_ROLE"] = role
 
+        # Integrator sessions need commit/push access on main
+        if session.session_metadata and session.session_metadata.job == "integrator":
+            env_vars["TELECLAUDE_ALLOW_MAIN_COMMIT"] = "1"
+            env_vars["TELECLAUDE_ALLOW_MAIN_PUSH"] = "1"
+
         created = await tmux_bridge.ensure_tmux_session(
             name=session.tmux_session_name,
             working_dir=working_dir,
