@@ -20,11 +20,11 @@ jobs:
 
       - name: Resolve credentials
         run: |
-          # Resolve real HOME via dscl (runner HOME may have wrong case on
-          # case-sensitive APFS).
+          # Resolve real HOME via dscl — the runner may report HOME with wrong
+          # case on case-sensitive APFS. Always trust dscl over $HOME.
           REAL_HOME="$(dscl . -read /Users/"$(whoami)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-          if [ -n "$REAL_HOME" ] && [ "$REAL_HOME" != "$HOME" ]; then
-            echo "Correcting HOME: $HOME -> $REAL_HOME"
+          echo "dscl HOME=$REAL_HOME, runner HOME=$HOME"
+          if [ -n "$REAL_HOME" ]; then
             echo "HOME=$REAL_HOME" >> "$GITHUB_ENV"
             export HOME="$REAL_HOME"
           fi
