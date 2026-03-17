@@ -63,6 +63,13 @@ type: 'policy'
 - Log boundary events and failures with enough context to diagnose.
 - Prefer clarity over volume; log what changes decisions.
 
+### No Shell-Outs from Application Code
+
+- Use the language's native APIs and project helpers for all operations — filesystem, git, network, process management.
+- Do not invoke shell commands or child processes when a native or project-provided API exists.
+- The only escape hatch: the operation requires an external binary that has no language binding or project helper. In that case, the call **must** include a comment justifying why a native approach is not viable.
+- Reviewers **must reject** any shell/process invocation that lacks this justification.
+
 ### Naming and Comments
 
 - Name for semantics, not origin. Names must make sense to someone who never saw the feature request or ticket that motivated the change.

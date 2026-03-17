@@ -64,6 +64,8 @@ if (user.name) {
 - Use `Promise.allSettled()` when failures shouldn't block
 - Properly type async function returns: `Promise<T>`
 
+- Do not shell out (`child_process.exec`, `child_process.spawn`, `execSync`, `spawnSync`, Bun's `$` shell) when a Node/runtime-native solution exists. Use `fs`/`fs/promises` and `path` for filesystem operations. Use project helpers for git operations. Only invoke child processes when no runtime API or project helper exists for the operation. Any child process call requires a comment justifying why a native approach is not viable.
+
 - Follow project's tsconfig.json strictly
 - Match existing import patterns (absolute vs relative)
 - Conform to project's type organization

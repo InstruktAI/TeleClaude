@@ -32,6 +32,7 @@ type: 'policy'
 - Follow project formatter and linter rules exactly.
 - Keep all imports at module top level.
 - Conform to existing naming and patterns.
+- Do not shell out (`subprocess.run`, `subprocess.Popen`, `subprocess.call`, `os.system`, `os.popen`) when a Python-native solution exists. Use `pathlib` and `shutil` for filesystem operations. Use the project's git helpers (e.g. `_run_git`, `_run_git_cmd`) for git operations. Only invoke subprocesses when no Python API or project helper exists for the operation. Any subprocess call requires a comment justifying why a native approach is not viable.
 
 ## Rationale
 
