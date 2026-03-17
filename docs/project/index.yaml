@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude/trees/git-role-permissions
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/git-role-permissions/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
@@ -442,6 +442,14 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/telegram-command-registration.md
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/tmux-session-env-propagation
+  description: TMUX session environment is not a generic propagation channel for agent-session
+    context or automation behavior.
+  type: policy
+  scope: project
+  path: docs/project/policy/tmux-session-env-propagation.md
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/ux-message-cleanup
