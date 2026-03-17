@@ -148,7 +148,7 @@ class TelecAppWsMixin:
             tabs = self.query_one("#main-tabs", TabbedContent)  # type: ignore[attr-defined]
             if tabs.active == "sessions":
                 sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
-                sessions_view.request_select_session(session.session_id)
+                sessions_view.request_select_session(session.session_id, request_focus=True)
         # Trigger full data refresh so tree rebuilds
         self._refresh_data()  # type: ignore[attr-defined]
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from instrukt_ai_logging import get_logger
 from textual import work
 from textual.widgets import TabbedContent
@@ -123,9 +121,6 @@ class TelecAppActionsMixin:
                 count=1,
             )
             self.notify("Reviving headless session...")  # type: ignore[attr-defined]
-            # Refresh after a delay to pick up the new tmux pane
-            await asyncio.sleep(2)
-            self._refresh_data()  # type: ignore[attr-defined]
         except Exception as e:
             self.notify(f"Failed to revive session: {e}", severity="error")  # type: ignore[attr-defined]
 

@@ -54,9 +54,9 @@ class SessionsViewActionsMixin:
         if not row:
             return
 
-        # Headless sessions: revive instead of preview
+        # Headless sessions: revive instead of preview (Space = no focus)
         if self._is_headless(row):  # type: ignore[attr-defined]
-            self._revive_headless(row)  # type: ignore[attr-defined]
+            self._revive_headless(row, request_focus=False)  # type: ignore[attr-defined]
             return
 
         now = time.monotonic()
@@ -132,9 +132,9 @@ class SessionsViewActionsMixin:
                 self.action_new_session()
             return
 
-        # Headless sessions: revive instead of focus
+        # Headless sessions: revive instead of focus (Enter = focus)
         if self._is_headless(row):  # type: ignore[attr-defined]
-            self._revive_headless(row)  # type: ignore[attr-defined]
+            self._revive_headless(row, request_focus=True)  # type: ignore[attr-defined]
             return
 
         session_id = row.session_id

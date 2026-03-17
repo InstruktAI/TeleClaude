@@ -29,20 +29,25 @@ class _FakeSessionRow:
         self.session.tmux_session_name = tmux_session_name
 
 
-def _make_view(pending_id: str, nav_items: list[object]) -> MagicMock:
+def _make_view(pending_id: str | None, nav_items: list[object], *, request_focus: bool = False) -> MagicMock:
     """Return a minimal mock that satisfies _apply_pending_selection's interface."""
+    from teleclaude.cli.tui.views.sessions import _PendingSelect
+
     view = MagicMock()
-    view._pending_select_session_id = pending_id
+    if pending_id is not None:
+        view._pending_select = _PendingSelect(pending_id, request_focus)
+    else:
+        view._pending_select = None
     view._nav_items = nav_items
     return view
 
 
 @pytest.mark.unit
 def test_apply_pending_selection_waits_for_tmux_pane() -> None:
-    """Pending ID is kept when session is in the tree but has no tmux pane.
+    """Pending state is kept when session is in the tree but has no tmux pane.
 
     The method waits for tmux_session_name to be set before consuming the
-    pending ID, so the layout can actually render the pane.
+    pending state, so the layout can actually render the pane.
     """
     from teleclaude.cli.tui.views.sessions import SessionsView
 
@@ -52,8 +57,9 @@ def test_apply_pending_selection_waits_for_tmux_pane() -> None:
     with patch("teleclaude.cli.tui.views.sessions.SessionRow", _FakeSessionRow):
         SessionsView._apply_pending_selection(view)
 
-    # Pending ID kept — not consumed yet
-    assert view._pending_select_session_id == "test-123"
+    # Pending state kept — not consumed yet
+    assert view._pending_select is not None
+    assert view._pending_select.session_id == "test-123"
     view.post_message.assert_not_called()
 
 
@@ -69,7 +75,7 @@ def test_apply_pending_selection_selects_when_tmux_ready() -> None:
     with patch("teleclaude.cli.tui.views.sessions.SessionRow", _FakeSessionRow):
         SessionsView._apply_pending_selection(view)
 
-    assert view._pending_select_session_id is None
+    assert view._pending_select is None
     msg = view.post_message.call_args[0][0]
     assert isinstance(msg, PreviewChanged)
     assert msg.session_id == "sess-abc"
@@ -78,7 +84,7 @@ def test_apply_pending_selection_selects_when_tmux_ready() -> None:
 
 @pytest.mark.unit
 def test_apply_pending_selection_noop_when_session_not_in_tree() -> None:
-    """Pending ID is kept when the session is not yet in the nav tree."""
+    """Pending state is kept when the session is not yet in the nav tree."""
     from teleclaude.cli.tui.views.sessions import SessionsView
 
     other_row = _FakeSessionRow("other-session")
@@ -87,7 +93,8 @@ def test_apply_pending_selection_noop_when_session_not_in_tree() -> None:
     with patch("teleclaude.cli.tui.views.sessions.SessionRow", _FakeSessionRow):
         SessionsView._apply_pending_selection(view)
 
-    assert view._pending_select_session_id == "missing-session"
+    assert view._pending_select is not None
+    assert view._pending_select.session_id == "missing-session"
     view.post_message.assert_not_called()
 
 
@@ -96,10 +103,46 @@ def test_apply_pending_selection_noop_when_no_pending() -> None:
     """Method returns immediately when no pending selection is set."""
     from teleclaude.cli.tui.views.sessions import SessionsView
 
-    view = _make_view("", [])
-    view._pending_select_session_id = None
+    view = _make_view(None, [])
 
     with patch("teleclaude.cli.tui.views.sessions.SessionRow", _FakeSessionRow):
         SessionsView._apply_pending_selection(view)
 
+    view.post_message.assert_not_called()
+
+
+@pytest.mark.unit
+def test_apply_pending_selection_preserves_focus_intent() -> None:
+    """Pending select with request_focus=True posts PreviewChanged with focus."""
+    from teleclaude.cli.tui.messages import PreviewChanged
+    from teleclaude.cli.tui.views.sessions import SessionsView
+
+    row = _FakeSessionRow("sess-focus", tmux_session_name="tc_sess-focus")
+    view = _make_view("sess-focus", [row], request_focus=True)
+
+    with patch("teleclaude.cli.tui.views.sessions.SessionRow", _FakeSessionRow):
+        SessionsView._apply_pending_selection(view)
+
+    assert view._pending_select is None
+    msg = view.post_message.call_args[0][0]
+    assert isinstance(msg, PreviewChanged)
+    assert msg.session_id == "sess-focus"
+    assert msg.request_focus is True
+
+
+@pytest.mark.unit
+def test_apply_pending_selection_headless_keeps_focus_intent() -> None:
+    """Headless session (no tmux pane) keeps pending with focus intent preserved."""
+    from teleclaude.cli.tui.views.sessions import SessionsView
+
+    row = _FakeSessionRow("headless-sess", tmux_session_name="")
+    view = _make_view("headless-sess", [row], request_focus=True)
+
+    with patch("teleclaude.cli.tui.views.sessions.SessionRow", _FakeSessionRow):
+        SessionsView._apply_pending_selection(view)
+
+    # Pending kept — tmux pane not ready
+    assert view._pending_select is not None
+    assert view._pending_select.session_id == "headless-sess"
+    assert view._pending_select.request_focus is True
     view.post_message.assert_not_called()
