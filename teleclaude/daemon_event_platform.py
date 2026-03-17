@@ -15,7 +15,6 @@ from teleclaude.config import config, config_path
 from teleclaude.config.loader import load_project_config
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.integration.queue import default_integration_queue_path
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
     configure_deployment_handler,
@@ -206,7 +205,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _build_integration_trigger(self) -> IntegrationTriggerCartridge:
         """Create the integration trigger cartridge."""
-        from teleclaude.core.integration.queue import IntegrationQueue
         from teleclaude.core.integration.service import IntegrationEventService
         from teleclaude.core.integration_bridge import spawn_integrator_session
 
@@ -214,7 +212,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             reachability_checker=lambda _b, _s, _r: True,
             integrated_checker=lambda _s, _r: False,
         )
-        integration_queue = IntegrationQueue(state_path=default_integration_queue_path())
 
         def _ingest_callback(canonical_type: str, payload: object) -> list[tuple[str, str, str]]:
             from collections.abc import Mapping
@@ -222,11 +219,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             if not isinstance(payload, Mapping):
                 return []
             result = integration_service.ingest_raw(canonical_type, payload)
-            ready: list[tuple[str, str, str]] = []
-            for candidate in result.transitioned_to_ready:
-                integration_queue.enqueue(key=candidate.key, ready_at=candidate.ready_at)
-                ready.append((candidate.key.slug, candidate.key.branch, candidate.key.sha))
-            return ready
+            return [
+                (candidate.key.slug, candidate.key.branch, candidate.key.sha)
+                for candidate in result.transitioned_to_ready
+            ]
 
         return IntegrationTriggerCartridge(
             spawn_callback=spawn_integrator_session,

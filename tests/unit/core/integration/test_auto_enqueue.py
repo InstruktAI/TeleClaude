@@ -95,8 +95,8 @@ def test_scan_skips_pending_status(_mock_git: object, tmp_path: Path) -> None:
 
 
 @patch("teleclaude.core.integration.step_functions._run_git", side_effect=_mock_git_pass)
-def test_scan_skips_fresh_handed_off(_mock_git: object, tmp_path: Path) -> None:
-    """Scanner ignores handed_off candidates that are not yet stale."""
+def test_scan_accepts_fresh_handed_off(_mock_git: object, tmp_path: Path) -> None:
+    """Scanner accepts handed_off candidates unconditionally — lease prevents concurrency."""
     trees = tmp_path / "trees" / "fresh-slug"
     trees.mkdir(parents=True)
     _write_state_yaml(
@@ -112,12 +112,13 @@ def test_scan_skips_fresh_handed_off(_mock_git: object, tmp_path: Path) -> None:
     )
 
     result = _scan_finalize_ready_candidates(str(tmp_path))
-    assert result == []
+    assert len(result) == 1
+    assert result[0].key.slug == "fresh-slug"
 
 
 @patch("teleclaude.core.integration.step_functions._run_git", side_effect=_mock_git_pass)
-def test_scan_recovers_stale_handed_off(_mock_git: object, tmp_path: Path) -> None:
-    """Scanner recovers handed_off candidates older than lease TTL."""
+def test_scan_accepts_stale_handed_off(_mock_git: object, tmp_path: Path) -> None:
+    """Scanner accepts handed_off candidates regardless of handed_off_at age."""
     trees = tmp_path / "trees" / "stale-slug"
     trees.mkdir(parents=True)
     stale_time = (datetime.now(tz=UTC) - timedelta(seconds=300)).isoformat()
@@ -284,6 +285,29 @@ def test_verify_ready_slug(_mock_git: object, tmp_path: Path) -> None:
     assert result is not None
     assert isinstance(result, ScannedCandidate)
     assert result.key.slug == "my-slug"
+
+
+@patch("teleclaude.core.integration.step_functions._run_git", side_effect=_mock_git_pass)
+def test_verify_handed_off_slug(_mock_git: object, tmp_path: Path) -> None:
+    """Verifier accepts handed_off candidates unconditionally — mirrors scanner behavior."""
+    trees = tmp_path / "trees" / "ho-slug"
+    trees.mkdir(parents=True)
+    _write_state_yaml(
+        trees,
+        "ho-slug",
+        {
+            "status": "handed_off",
+            "branch": "ho-slug",
+            "sha": _SHA,
+            "ready_at": "2026-03-01T00:00:00+00:00",
+            "handed_off_at": datetime.now(tz=UTC).isoformat(),
+        },
+    )
+
+    result = _verify_slug_ready(str(tmp_path), "ho-slug")
+    assert result is not None
+    assert isinstance(result, ScannedCandidate)
+    assert result.key.slug == "ho-slug"
 
 
 @patch("teleclaude.core.integration.step_functions._run_git", side_effect=_mock_git_pass)

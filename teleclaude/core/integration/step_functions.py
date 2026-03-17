@@ -10,7 +10,6 @@ import asyncio
 import subprocess
 import threading
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -252,8 +251,11 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
 
     Iterates ``trees/`` subdirectories (skipping ``_integration``), reads each
     worktree's ``state.yaml`` via ``read_phase_state``, and returns candidates
-    whose ``finalize.status`` is ``"ready"`` — or ``"handed_off"`` with a stale
-    ``handed_off_at`` older than the lease TTL (crash recovery).
+    whose ``finalize.status`` is ``"ready"`` or ``"handed_off"``.
+
+    ``handed_off`` candidates are accepted unconditionally — the lease prevents
+    concurrent processing, so the old TTL guard was redundant and caused every
+    fresh candidate to be invisible to the integrator.
 
     Each candidate is validated: branch must exist on origin and SHA must not
     already be an ancestor of main.
@@ -267,7 +269,6 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
         return []
 
     candidates: list[ScannedCandidate] = []
-    now = datetime.now(tz=UTC)
 
     for entry in sorted(trees_dir.iterdir()):
         if not entry.is_dir() or entry.name.startswith("_"):
@@ -287,17 +288,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
 
         status = finalize.get("status")
 
-        if status == "handed_off":
-            handed_off_at = finalize.get("handed_off_at", "")
-            if not handed_off_at:
-                continue
-            try:
-                handoff_time = datetime.fromisoformat(handed_off_at)  # type: ignore[arg-type]
-                if (now - handoff_time).total_seconds() < _INTEGRATION_LEASE_TTL_SECONDS:
-                    continue  # Fresh handoff — not yet recoverable
-            except (ValueError, TypeError):
-                continue
-        elif status != "ready":
+        if status not in ("ready", "handed_off"):
             continue
 
         branch = finalize.get("branch", slug)
@@ -349,17 +340,7 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
 
     status = finalize.get("status")
 
-    if status == "handed_off":
-        handed_off_at = finalize.get("handed_off_at", "")
-        if not handed_off_at:
-            return None
-        try:
-            handoff_time = datetime.fromisoformat(handed_off_at)  # type: ignore[arg-type]
-            if (datetime.now(tz=UTC) - handoff_time).total_seconds() < _INTEGRATION_LEASE_TTL_SECONDS:
-                return None
-        except (ValueError, TypeError):
-            return None
-    elif status != "ready":
+    if status not in ("ready", "handed_off"):
         return None
 
     branch = finalize.get("branch", slug)

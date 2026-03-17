@@ -317,9 +317,12 @@ class TestGitCommitAndPush:
 
     def _make_capture(
         self, *, diff_output: str = ""
-    ) -> tuple[Callable[..., tuple[bool, str]], list[tuple[list[str], dict[str, dict[str, str] | None]]]]:
+    ) -> tuple[  # guard: loose-dict - captures arbitrary **kw from _run_command
+        Callable[..., tuple[bool, str]], list[tuple[list[str], dict[str, Any]]]
+    ]:
         """Return a mock _run_command that captures all calls."""
-        captured: list[tuple[list[str], dict[str, dict[str, str] | None]]] = []
+        # guard: loose-dict - captures arbitrary **kw from _run_command
+        captured: list[tuple[list[str], dict[str, Any]]] = []
 
         def capture(cmd: list[str], **kw: dict[str, str] | None) -> tuple[bool, str]:
             captured.append((cmd, kw))
