@@ -76,9 +76,9 @@ class SignalIngestCartridge:
             # Enrich new items concurrently
             async def enrich_and_emit(  # type: ignore[type-arg]
                 ikey: str,
-                item: dict[str, object],
+                item: dict[str, object],  # guard: loose-dict - RSS item
                 *,
-                source_id: str = source_id,  # guard: loose-dict - RSS item
+                source_id: str = source_id,
             ) -> None:
                 nonlocal count
                 async with sem:
