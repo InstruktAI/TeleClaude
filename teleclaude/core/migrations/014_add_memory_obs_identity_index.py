@@ -1,4 +1,6 @@
 """Add composite index on memory_observations(project, identity_key)."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

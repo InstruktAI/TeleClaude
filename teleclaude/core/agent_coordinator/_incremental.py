@@ -11,6 +11,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentOutputPayload, AgentStopPayload
 from teleclaude.core.feature_flags import is_threaded_output_enabled
+from teleclaude.core.models import SessionField
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
     extract_last_user_message_with_timestamp,
@@ -31,7 +32,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _IncrementalOutputMixin:  # pyright: ignore[reportUnusedClass]
+class _IncrementalOutputMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Mixin namespace
     """Suppression tracking and incremental threaded output rendering."""
 
     if TYPE_CHECKING:
@@ -147,7 +148,7 @@ class _IncrementalOutputMixin:  # pyright: ignore[reportUnusedClass]
         async with lock:
             return await self._maybe_send_incremental_output_unlocked(session_id, payload)
 
-    async def _maybe_send_incremental_output_unlocked(
+    async def _maybe_send_incremental_output_unlocked(  # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches,too-many-statements  # Incremental render orchestration
         self, session_id: str, payload: AgentStopPayload | AgentOutputPayload
     ) -> bool:
         """Core incremental output path. Caller must hold session incremental lock."""
@@ -329,8 +330,6 @@ class _IncrementalOutputMixin:  # pyright: ignore[reportUnusedClass]
             # but conditionally update the cursor.
             update_kwargs = {}
             if should_update_cursor and last_ts:
-                from teleclaude.core.models import SessionField
-
                 update_kwargs[SessionField.LAST_TOOL_DONE_AT.value] = last_ts.isoformat()
                 logger.debug("Updating cursor for session %s to %s", session_id, last_ts.isoformat())
 
@@ -339,7 +338,7 @@ class _IncrementalOutputMixin:  # pyright: ignore[reportUnusedClass]
                 await db.update_session(session_id, **update_kwargs)
 
             return True
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Adapter send boundary
             logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id})
 
         return False

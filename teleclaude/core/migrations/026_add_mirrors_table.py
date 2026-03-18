@@ -1,4 +1,6 @@
 """Add mirrors table and FTS index for conversation search."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

@@ -1,4 +1,7 @@
+# pylint: disable=invalid-name,duplicate-code  # Versioned migration file intentionally mirrors adjacent schema SQL.
+
 """Add turn_triggered_by_linked_output flag for echo suppression."""
+
 
 from __future__ import annotations
 
@@ -11,6 +14,6 @@ async def up(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
-async def down(db: aiosqlite.Connection) -> None:
+async def down(_db: aiosqlite.Connection) -> None:
     """Remove turn_triggered_by_linked_output column (SQLite limitation: recreate table)."""
     # SQLite < 3.35.0 does not support DROP COLUMN; no-op for safety.

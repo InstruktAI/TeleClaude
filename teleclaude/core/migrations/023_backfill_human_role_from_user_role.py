@@ -1,4 +1,6 @@
 """Backfill human_role from legacy user_role values when human_role is missing."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

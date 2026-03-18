@@ -1,10 +1,14 @@
 """Mixin: DbHooksMixin."""
 
+# pylint: disable=no-member  # SQLModel columns expose SQLAlchemy comparators dynamically.
+
 import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import and_, or_, update
+from sqlmodel import select
 
 from .. import db_models
 from ..dates import parse_iso_datetime
@@ -17,6 +21,8 @@ logger = get_logger(__name__)
 
 
 class DbHooksMixin:
+    """Agent availability and hook outbox persistence helpers."""
+
     async def get_agent_availability(self, agent: str) -> dict[str, bool | str | None] | None:
         """Get agent availability status.
 
@@ -153,8 +159,6 @@ class DbHooksMixin:
         Returns:
             Number of agents reset to available
         """
-        from sqlalchemy import and_, or_, update
-
         now = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.AgentAvailability)
@@ -213,8 +217,6 @@ class DbHooksMixin:
         exclude_session_ids: frozenset[str] | None = None,
     ) -> list[HookOutboxRow]:
         """Fetch a batch of due hook events."""
-        from sqlmodel import select
-
         stmt = (
             select(db_models.HookOutbox)
             .where(db_models.HookOutbox.delivered_at.is_(None))
@@ -241,8 +243,6 @@ class DbHooksMixin:
 
     async def claim_hook_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
         """Claim a hook outbox row for processing."""
-        from sqlalchemy import or_, update
-
         stmt = (
             update(db_models.HookOutbox)
             .where(
@@ -267,7 +267,6 @@ class DbHooksMixin:
         """
         if not row_ids:
             return set()
-        from sqlalchemy import or_, update
 
         stmt = (
             update(db_models.HookOutbox)
@@ -291,8 +290,6 @@ class DbHooksMixin:
             return set(row_ids)
 
         # Fall back to checking which rows are now locked by us
-        from sqlmodel import select
-
         stmt_check = select(db_models.HookOutbox.id).where(
             db_models.HookOutbox.id.in_(row_ids),
             db_models.HookOutbox.locked_at == now_iso,
@@ -303,8 +300,6 @@ class DbHooksMixin:
 
     async def mark_hook_outbox_delivered(self, row_id: int, error: str | None = None) -> None:
         """Mark a hook outbox row delivered (optionally capturing last error)."""
-        from sqlalchemy import update
-
         now = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.HookOutbox)
@@ -323,8 +318,6 @@ class DbHooksMixin:
         error: str,
     ) -> None:
         """Record a hook outbox failure and schedule a retry."""
-        from sqlalchemy import update
-
         stmt = (
             update(db_models.HookOutbox)
             .where(db_models.HookOutbox.id == row_id)

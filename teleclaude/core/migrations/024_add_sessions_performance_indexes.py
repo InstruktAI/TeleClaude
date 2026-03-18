@@ -1,4 +1,6 @@
 """Add performance indexes on sessions table for common query patterns."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

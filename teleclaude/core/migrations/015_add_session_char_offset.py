@@ -1,4 +1,6 @@
 """Add char_offset column to sessions for adapter-agnostic threaded output pagination."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

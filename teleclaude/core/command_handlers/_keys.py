@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
@@ -43,7 +44,7 @@ async def _execute_control_key(
     return await tmux_action(session, *tmux_args)
 
 
-async def _ensure_tmux_for_headless(
+async def _ensure_tmux_for_headless(  # pylint: disable=too-many-locals  # Adoption wires together existing session state.
     session: Session,
     client: "AdapterClient",
     start_polling: StartPollingFunc | None,
@@ -81,7 +82,7 @@ async def _ensure_tmux_for_headless(
 
     try:
         working_dir = resolve_working_dir(project_path, subdir)
-    except Exception as exc:
+    except ValueError as exc:
         await client.send_message(
             session,
             f"❌ Cannot adopt headless session: {exc}",
@@ -98,7 +99,7 @@ async def _ensure_tmux_for_headless(
             session_id=session.session_id,
             env_vars=env_vars,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         await client.send_message(
             session,
             f"❌ Failed to create tmux session: {exc}",
@@ -114,8 +115,6 @@ async def _ensure_tmux_for_headless(
         return None
 
     if resume_native and session.active_agent and session.native_session_id:
-        from teleclaude.core.agents import get_agent_command
-
         resume_cmd = get_agent_command(
             agent=session.active_agent,
             thinking_mode=session.thinking_mode,
@@ -138,7 +137,7 @@ async def _ensure_tmux_for_headless(
     return refreshed or session
 
 
-async def keys(
+async def keys(  # pylint: disable=too-many-return-statements,too-many-branches,no-value-for-parameter
     cmd: KeysCommand,
     client: "AdapterClient",
     start_polling: StartPollingFunc,

@@ -2,11 +2,23 @@
 
 ## Validation
 
-<!-- Bash code blocks that prove the feature works. -->
-<!-- Blocks are validated by `telec todo demo validate pylint-cleanup-6` (structural check) during build. -->
-<!-- Execution (`telec todo demo run pylint-cleanup-6`) happens on main after merge. -->
+```bash
+pylint \
+  teleclaude/core/db \
+  teleclaude/core/integration \
+  teleclaude/core/tmux_bridge \
+  teleclaude/core/command_handlers \
+  teleclaude/core/adapter_client \
+  teleclaude/core/models \
+  teleclaude/core/agent_coordinator \
+  teleclaude/core/operations \
+  teleclaude/core/migrations
+```
 
 ## Guided Presentation
 
-<!-- Walk through the delivery step by step. For each step: what to do, what to observe, why it matters. -->
-<!-- The AI presenter reads this top-to-bottom and executes. Write it as a continuous sequence. -->
+Run the scoped `pylint` command above and verify it exits cleanly with no violations.
+
+This delivery is limited to lint cleanup in the assigned core directories. The repo-wide `make test`
+and `make lint` gates still surface unrelated failures outside this slug's scope; those are recorded
+in `deferrals.md`.

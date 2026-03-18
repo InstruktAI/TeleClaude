@@ -1,4 +1,6 @@
 """Migration: Add session_metadata column."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 import aiosqlite
 

@@ -1,4 +1,6 @@
 """Add conversation link tables for direct and gathering conversations."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

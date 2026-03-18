@@ -22,6 +22,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.roadmap import assemble_roadmap
 from teleclaude.core.models import (
     ComputerInfo,
     ProjectInfo,
@@ -31,6 +32,7 @@ from teleclaude.core.models import (
     TodoInfo,
 )
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
+from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import (
@@ -52,7 +54,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Session creation requires many variables
+async def create_session(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements  # noqa: C901
     cmd: CreateSessionCommand,
     client: "AdapterClient",
 ) -> dict[str, str]:
@@ -65,6 +67,8 @@ async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Se
     Returns:
         Minimal session payload with session_id
     """
+    del client
+
     # Get origin from command
     origin = cmd.origin
     if not origin:
@@ -218,8 +222,6 @@ async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Se
         caller_tmux = parent_session.tmux_session_name if parent_session else None
         if caller_tmux:
             try:
-                from teleclaude.core.session_listeners import register_listener
-
                 await register_listener(
                     target_session_id=session_id,
                     caller_session_id=initiator_session_id,
@@ -231,7 +233,7 @@ async def create_session(  # pylint: disable=too-many-locals  # noqa: C901  # Se
                     initiator_session_id,
                     session_id,
                 )
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught  # Listener failures must not abort session creation.
                 logger.warning(
                     "Listener registration failed: caller=%s target=%s error=%s",
                     initiator_session_id,
@@ -367,8 +369,6 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
     Returns:
         List of todo objects.
     """
-    from teleclaude.core.roadmap import assemble_roadmap
-
     return assemble_roadmap(project_path)
 
 
@@ -428,7 +428,7 @@ async def get_computer_info() -> ComputerInfo:
     return info
 
 
-async def get_session_data(
+async def get_session_data(  # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches,too-many-statements
     cmd: GetSessionDataCommand,
 ) -> SessionDataPayload:
     """Get session data from native_log_file.
@@ -480,7 +480,7 @@ async def get_session_data(
         tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         try:
             pane_output = await tmux_bridge.capture_pane(tmux_session_name, capture_lines=tail)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Transcript fallback must degrade gracefully.
             logger.warning(
                 "Tmux fallback capture failed for session %s (%s): %s",
                 session_id,
@@ -587,7 +587,7 @@ async def get_session_data(
             len(markdown_content),
             session_id,
         )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught  # Transcript parsers may fail in varied ways.
         logger.error("Failed to parse session file %s: %s", native_log_file, e)
         return {"status": "error", "error": f"Failed to parse session file: {e}"}
 

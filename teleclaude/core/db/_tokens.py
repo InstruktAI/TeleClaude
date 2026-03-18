@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import update
+from sqlmodel import select
 
 from .. import db_models
 
@@ -15,6 +17,8 @@ logger = get_logger(__name__)
 
 
 class DbTokensMixin:
+    """Session token issuance and revocation helpers."""
+
     async def issue_session_token(self, session_id: str, principal: str, role: str) -> str:
         """Issue a new session token and store it in the ledger.
 
@@ -43,8 +47,6 @@ class DbTokensMixin:
 
         Returns the SessionToken record if valid (not expired, not revoked), else None.
         """
-        from sqlmodel import select
-
         stmt = select(db_models.SessionToken).where(db_models.SessionToken.token == token)
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
@@ -62,8 +64,6 @@ class DbTokensMixin:
 
     async def revoke_session_tokens(self, session_id: str) -> None:
         """Revoke all active tokens for a session (called on session close)."""
-        from sqlalchemy import update
-
         now_iso = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.SessionToken)

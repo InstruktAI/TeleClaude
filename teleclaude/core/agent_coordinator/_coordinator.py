@@ -50,7 +50,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
+class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coordinator tracks per-session runtime state
+    _IncrementalOutputMixin, _FanoutMixin
+):
     """Coordinator for agent events and inter-agent communication."""
 
     def __init__(
@@ -92,7 +94,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                 done.result()
             except asyncio.CancelledError:
                 return
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught  # Background task boundary
                 logger.error("Background task '%s' failed: %s", label, exc, exc_info=True)
 
                 # Emit error event for user-visible failures (title updates, TTS)
@@ -101,9 +103,12 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                     try:
                         event_bus.emit(
                             TeleClaudeEvents.ERROR,
-                            {"message": f"Failed to update session title: {exc}", "severity": "warning"},  # type: ignore[arg-type]
+                            {
+                                "message": f"Failed to update session title: {exc}",
+                                "severity": "warning",
+                            },  # type: ignore[arg-type]
                         )
-                    except Exception:
+                    except Exception:  # pylint: disable=broad-exception-caught  # Best-effort error reporting
                         pass
 
         task.add_done_callback(_on_done)
@@ -161,7 +166,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
             handle.cancel()
             logger.debug("headless pull: cancelled pending timer for %s", session_id)
 
-    def _emit_activity_event(
+    def _emit_activity_event(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Event contract fields
         self,
         session_id: str,
         event_type: str,
@@ -210,7 +215,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                     delivery_scope=canonical.delivery_scope if canonical else None,
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Event emission boundary
             logger.error(
                 "Failed to emit activity event: %s",
                 exc,
@@ -267,7 +272,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
                 status,
                 reason,
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Event emission boundary
             logger.error(
                 "Failed to emit status event: %s",
                 exc,
@@ -335,7 +340,9 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         # rather than firing at session start before output exists.
         await self._speak_session_start(context.session_id)
 
-    async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
+    async def handle_user_prompt_submit(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements  # Turn orchestration
+        self, context: AgentEventContext
+    ) -> None:
         """Handle user prompt submission.
 
         For ALL sessions: write last_message_sent to DB (captures direct terminal input).
@@ -402,7 +409,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
         existing_at = session.last_message_sent_at
         # deliver_inbound truncates last_message_sent to 200 chars; compare at that
         # boundary so the echo guard still fires for long messages.
-        _CMP_LEN = 200
+        compare_length = 200
         is_recent_routed_echo = (
             session.lifecycle_status != "headless"
             and not is_codex_synthetic
@@ -412,7 +419,7 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
             and (now - existing_at).total_seconds() <= 20
             and existing_input
             and incoming_input
-            and existing_input[:_CMP_LEN] == incoming_input[:_CMP_LEN]
+            and existing_input[:compare_length] == incoming_input[:compare_length]
         )
         if not is_recent_routed_echo and existing_origin and existing_origin != InputOrigin.TERMINAL.value:
             logger.debug(
@@ -641,10 +648,10 @@ class AgentCoordinator(_IncrementalOutputMixin, _FanoutMixin):
             return
         try:
             await self.tts_manager.speak(summary, session_id=session_id)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # TTS boundary
             logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id})
 
-    async def _finalize_agent_stop(
+    async def _finalize_agent_stop(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Stop fanout inputs
         self,
         session_id: str,
         session: "Session | None",

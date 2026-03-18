@@ -1,4 +1,6 @@
 """Rename activity tracking columns: after_model/agent_output → tool_use/tool_done."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

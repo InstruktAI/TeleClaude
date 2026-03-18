@@ -68,6 +68,7 @@ class _LeaseStatePayload(TypedDict):
 class IntegrationLeaseStore:
     """Atomic lease lifecycle manager backed by a durable JSON state file."""
 
+    # pylint: disable=too-many-arguments
     def __init__(
         self,
         *,
@@ -91,6 +92,7 @@ class IntegrationLeaseStore:
         """Return durable lease state file path."""
         return self._state_path
 
+    # pylint: disable=too-many-arguments
     def acquire(
         self,
         *,
@@ -141,6 +143,7 @@ class IntegrationLeaseStore:
                 replaced_stale=replaced_stale,
             )
 
+    # pylint: disable=too-many-arguments
     def renew(
         self,
         *,
@@ -211,10 +214,12 @@ class IntegrationLeaseStore:
             try:
                 self._lock_path.mkdir(parents=True, exist_ok=False)
                 break
-            except FileExistsError:
+            except FileExistsError as exc:
                 self._break_stale_lock_if_needed()
                 if time.monotonic() - start > self._lock_wait_seconds:
-                    raise IntegrationLeaseError(f"timed out waiting for lease mutation lock: {self._lock_path}")
+                    raise IntegrationLeaseError(
+                        f"timed out waiting for lease mutation lock: {self._lock_path}"
+                    ) from exc
                 time.sleep(self._lock_retry_seconds)
 
         try:
@@ -334,6 +339,7 @@ def _record_from_payload(key: str, payload: dict[object, object]) -> LeaseRecord
     )
 
 
+# pylint: disable=too-many-arguments
 def _build_lease_record(
     *,
     key: str,

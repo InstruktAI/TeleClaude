@@ -1,4 +1,6 @@
 """Add durable operations table for receipt-backed long-running workflows."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

@@ -1,4 +1,6 @@
 """Add bookkeeping and relay columns to sessions for help desk platform."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 
@@ -23,5 +25,5 @@ async def up(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
-async def down(db: aiosqlite.Connection) -> None:
+async def down(_db: aiosqlite.Connection) -> None:
     """Relay columns cannot be dropped in SQLite."""
