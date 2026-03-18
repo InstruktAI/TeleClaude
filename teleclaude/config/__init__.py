@@ -567,7 +567,7 @@ def _parse_trusted_dirs(  # pylint: disable=too-many-locals,too-many-nested-bloc
 
 
 def _parse_tts_config(
-    raw_tts: dict[str, object] | None, # guard: loose-dict - YAML config value
+    raw_tts: dict[str, object] | None,  # guard: loose-dict - YAML config value
 ) -> TTSConfig | None:  # guard: loose-dict  # pylint: disable=too-many-locals
     """Parse TTS config from raw dict.
 

@@ -365,7 +365,7 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
     """
     from teleclaude.core.next_machine.git_ops import (
         has_uncommitted_changes,
-    )  # lazy: avoids circular dep  # noqa: I001  # pylint: disable=import-outside-toplevel
+    )  # lazy: avoids circular dep  # pylint: disable=import-outside-toplevel
 
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not Path(worktree_cwd).exists():
