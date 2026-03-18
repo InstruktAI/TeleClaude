@@ -72,7 +72,9 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disa
         def _multi_agent(self) -> bool: ...
 
         async def _handle_launcher_click(  # pylint: disable=unused-argument
-            self, interaction: object, agent_name: str,
+            self,
+            interaction: object,
+            agent_name: str,
         ) -> None: ...
 
     # =========================================================================

@@ -303,7 +303,12 @@ class Animation(ABC):  # pylint: disable=too-many-instance-attributes
         return 1.0 - (dist / width)
 
     def radial_field(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-        self, x: int, y: int, cx: float, cy: float, radius: float,
+        self,
+        x: int,
+        y: int,
+        cx: float,
+        cy: float,
+        radius: float,
     ) -> float:
         """Calculate 2D intensity [0.0 to 1.0] for a circular light source."""
         dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)

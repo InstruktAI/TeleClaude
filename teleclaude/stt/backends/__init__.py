@@ -11,6 +11,7 @@ class STTBackend(Protocol):  # pylint: disable=too-few-public-methods
 
     async def transcribe(self, audio_file_path: str, language: str | None = None, /) -> str:
         """Transcribe an audio file to text."""
+        ...
 
 
 BACKENDS: dict[str, STTBackend] = {

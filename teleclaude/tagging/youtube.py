@@ -208,13 +208,13 @@ def build_batch_prompt(
     return (
         f"{retry_note}{rules}"
         "Tag each YouTube channel using ONLY the allowed tags.\n"
-            "Use BOTH the description AND your prior knowledge about each channel/creator.\n"
-            "If you recognize a person or channel from your training, confidently apply relevant tags.\n"
-            'Only use ["n/a"] if the channel is truly obscure AND the description gives no clues.\n\n'
-            f"Allowed tags: {tags}\n\n"
-            f"Channels (JSON): {json.dumps(items, ensure_ascii=True)}\n\n"
-            'Return JSON: {"items": [{"channel_id": "...", "tags": ["tag1"], "evidence": "brief reason"}]}'
-        )
+        "Use BOTH the description AND your prior knowledge about each channel/creator.\n"
+        "If you recognize a person or channel from your training, confidently apply relevant tags.\n"
+        'Only use ["n/a"] if the channel is truly obscure AND the description gives no clues.\n\n'
+        f"Allowed tags: {tags}\n\n"
+        f"Channels (JSON): {json.dumps(items, ensure_ascii=True)}\n\n"
+        'Return JSON: {"items": [{"channel_id": "...", "tags": ["tag1"], "evidence": "brief reason"}]}'
+    )
 
 
 def build_schema(tags: list[str]) -> JsonDict:

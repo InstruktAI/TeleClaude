@@ -68,7 +68,7 @@ class SignalSynthesizeCartridge:
             return event
 
         # Optionally fetch full content
-        enriched: list[dict[str, object]] = [] # guard: loose-dict - enriched signal items
+        enriched: list[dict[str, object]] = []  # guard: loose-dict - enriched signal items
         for item in members:
             d = dict(item)
             if self._config.fetch_full_content:
@@ -80,7 +80,7 @@ class SignalSynthesizeCartridge:
             enriched.append(d)
 
         # Cross-source dedup: remove near-identical summaries
-        deduped: list[dict[str, object]] = [] # guard: loose-dict - deduped signal items
+        deduped: list[dict[str, object]] = []  # guard: loose-dict - deduped signal items
         seen_summaries: list[str] = []
         for item in enriched:  # type: ignore[assignment]
             summary = str(item.get("summary", ""))

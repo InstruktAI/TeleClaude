@@ -207,7 +207,10 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
         parsed_id, id_error = validate_snippet_id_format(meta["id"], domains=domains)  # type: ignore[arg-type]
         if id_error:
             _warn(  # type: ignore[arg-type]
-                "snippet_invalid_id_format", path=str(path), reason=id_error, snippet_id=meta["id"],
+                "snippet_invalid_id_format",
+                path=str(path),
+                reason=id_error,
+                snippet_id=meta["id"],
             )
     if expected_id and parsed_id and parsed_id.value() != expected_id:
         _warn(

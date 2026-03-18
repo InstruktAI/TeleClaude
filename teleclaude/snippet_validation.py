@@ -71,7 +71,9 @@ def _allowed_scopes(domains: Iterable[str]) -> set[str]:
 
 
 def validate_snippet_id_format(  # pylint: disable=too-many-return-statements
-    value: str, *, domains: Iterable[str],
+    value: str,
+    *,
+    domains: Iterable[str],
 ) -> tuple[SnippetIdParts | None, str | None]:
     """Validate a snippet ID string and return parsed parts or an error code."""
     if not value.strip():
@@ -98,7 +100,10 @@ def validate_snippet_id_format(  # pylint: disable=too-many-return-statements
 
 
 def expected_snippet_id_for_path(  # pylint: disable=too-many-return-statements
-    path: Path, *, project_root: Path, domains: Iterable[str],
+    path: Path,
+    *,
+    project_root: Path,
+    domains: Iterable[str],
 ) -> tuple[str | None, str | None]:
     """Derive the expected snippet ID from a filesystem path."""
     try:
@@ -125,7 +130,9 @@ def expected_snippet_id_for_path(  # pylint: disable=too-many-return-statements
 
 
 def _expected_from_global(  # pylint: disable=too-many-return-statements
-    parts: tuple[str, ...], path: Path, domains: Iterable[str],
+    parts: tuple[str, ...],
+    path: Path,
+    domains: Iterable[str],
 ) -> tuple[str | None, str | None]:
     if len(parts) < 3:
         return None, "missing_global_scope"
@@ -159,7 +166,8 @@ def _expected_from_global(  # pylint: disable=too-many-return-statements
 
 
 def _expected_from_project(  # pylint: disable=too-many-return-statements
-    parts: tuple[str, ...], path: Path,
+    parts: tuple[str, ...],
+    path: Path,
 ) -> tuple[str | None, str | None]:
     if len(parts) < 3:
         return None, "missing_taxonomy"

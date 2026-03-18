@@ -428,11 +428,9 @@ def _parse_html_video(html: str) -> HtmlVideoInfo:
     data = json.loads(json_str)
     obj = munchify(data)
     try:
-        result["long_desc"] = (
-            obj.contents  # type: ignore[reportAttributeAccessIssue]
-            .twoColumnWatchNextResults.results.results.contents[1]
-            .videoSecondaryInfoRenderer.attributedDescription.content
-        )
+        result["long_desc"] = obj.contents.twoColumnWatchNextResults.results.results.contents[  # type: ignore[reportAttributeAccessIssue]
+            1
+        ].videoSecondaryInfoRenderer.attributedDescription.content
     except (AttributeError, KeyError, IndexError, TypeError):
         log.warning("YouTube HTML structure changed, could not extract long description")
     return result

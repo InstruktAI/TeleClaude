@@ -125,7 +125,11 @@ class StateDrivenTrigger:
         self._registry[(section_id, state)] = animation_cls
 
     def set_context(  # pylint: disable=unused-argument
-        self, target: str, section_id: str, state: str, progress: float = 0.0,
+        self,
+        target: str,
+        section_id: str,
+        state: str,
+        progress: float = 0.0,
     ) -> None:
         """Update the current context and trigger animation if changed."""
         if not self.engine.is_enabled:

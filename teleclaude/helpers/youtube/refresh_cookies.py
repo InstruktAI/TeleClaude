@@ -60,8 +60,8 @@ def setup_profile(profile_dir: Path) -> bool:  # pylint: disable=too-many-statem
     Returns:
         True if setup completed successfully
     """
-    from playwright.sync_api import (  # pylint: disable=import-error,import-outside-toplevel
-        sync_playwright,  # type: ignore[import-not-found]
+    from playwright.sync_api import (  # pyright: ignore[reportMissingImports]  # pylint: disable=import-error,import-outside-toplevel
+        sync_playwright,
     )
 
     profile_dir.mkdir(parents=True, exist_ok=True)
@@ -166,8 +166,8 @@ def refresh_cookies(
     Returns:
         True if successful
     """
-    from playwright.sync_api import (  # pylint: disable=import-error,import-outside-toplevel
-        sync_playwright,  # type: ignore[unused-ignore]
+    from playwright.sync_api import (  # pyright: ignore[reportMissingImports]  # pylint: disable=import-error,import-outside-toplevel
+        sync_playwright,
     )
 
     if not profile_dir.exists():

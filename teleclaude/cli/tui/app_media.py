@@ -312,7 +312,9 @@ class TelecAppMediaMixin:
             show_extra_motion=show_extra_motion,
         )
         self._animation_engine.play(  # type: ignore[attr-defined]
-            sky, priority=AnimationPriority.PERIODIC, target="header",
+            sky,
+            priority=AnimationPriority.PERIODIC,
+            target="header",
         )
         self._animation_engine.set_looping("header", True)  # type: ignore[attr-defined]
 

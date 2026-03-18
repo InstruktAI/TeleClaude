@@ -151,7 +151,9 @@ class MemorySearch:
                 "WHERE created_at_epoch <= :epoch AND id != :id"
             )
             params_before: dict[str, str | int] = {
-                "epoch": anchor_epoch, "id": anchor_id, "limit": depth_before,
+                "epoch": anchor_epoch,
+                "id": anchor_id,
+                "limit": depth_before,
             }
             if project:
                 before_sql += " AND project = :project"
@@ -177,7 +179,9 @@ class MemorySearch:
                 "WHERE created_at_epoch >= :epoch AND id != :id"
             )
             params_after: dict[str, str | int] = {
-                "epoch": anchor_epoch, "id": anchor_id, "limit": depth_after,
+                "epoch": anchor_epoch,
+                "id": anchor_id,
+                "limit": depth_after,
             }
             if project:
                 after_sql += " AND project = :project"

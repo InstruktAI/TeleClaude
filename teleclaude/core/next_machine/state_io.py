@@ -363,7 +363,9 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
     FINALIZE_READY. The record becomes the single source of truth consumed by
     the subsequent slug-specific `telec todo work {slug}` handoff step.
     """
-    from teleclaude.core.next_machine.git_ops import has_uncommitted_changes  # lazy: avoids circular dep  # noqa: I001  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.git_ops import (
+        has_uncommitted_changes,
+    )  # lazy: avoids circular dep  # noqa: I001  # pylint: disable=import-outside-toplevel
 
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not Path(worktree_cwd).exists():
