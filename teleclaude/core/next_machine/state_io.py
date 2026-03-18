@@ -18,7 +18,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
-    DEFAULT_STATE,
     FINDING_ID_PATTERN,
     REVIEW_APPROVE_MARKER,
     FinalizeState,
@@ -27,6 +26,7 @@ from teleclaude.core.next_machine._types import (
     PhaseStatus,
     PreparePhase,
     StateValue,
+    default_state,
 )
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
@@ -107,7 +107,7 @@ def _run_git_prepare(args: list[str], cwd: str) -> tuple[int, str, str]:
 # Internal constants
 # ---------------------------------------------------------------------------
 
-# Nested keys that require deep-merge to preserve sub-key defaults from v2 schema
+# Nested keys that require deep-merge to preserve sub-key defaults
 _DEEP_MERGE_KEYS = frozenset({"requirements_review", "plan_review", "grounding", "artifacts", "audit"})
 
 # Valid prepare sub-phases that accept verdicts via mark-phase
@@ -150,7 +150,7 @@ def _deep_merge_state(defaults: dict[str, StateValue], persisted: dict[str, Stat
     """Recursively merge persisted state onto defaults for nested dict keys.
 
     For keys in _DEEP_MERGE_KEYS: merge sub-dicts recursively so that sub-keys
-    introduced in v2 DEFAULT_STATE are added to older persisted state shapes.
+    introduced in default_state() are added to older persisted state shapes.
     For all other keys: persisted wins outright (shallow update behaviour).
     """
     result = copy.deepcopy(defaults)
@@ -196,21 +196,16 @@ def _get_finalize_state(state: dict[str, StateValue]) -> FinalizeState:
 
 
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
-    """Read state.yaml from worktree (falls back to state.json for backward compat).
+    """Read state.yaml for a work item.
 
     Returns default state if file doesn't exist.
     Migrates missing 'phase' field from existing build/dor state.
-    Performs deep-merge for nested dict keys so v2 sub-key defaults are always present.
+    Performs deep-merge for nested dict keys so sub-key defaults are always present.
     """
     state_path = get_state_path(cwd, slug)
-    # Backward compat: try state.json if state.yaml doesn't exist
-    if not state_path.exists():
-        legacy_path = state_path.with_name("state.json")
-        if legacy_path.exists():
-            state_path = legacy_path
 
     if not state_path.exists():
-        return copy.deepcopy(DEFAULT_STATE)
+        return default_state()
 
     content = read_text_sync(state_path)
     raw_state = yaml.safe_load(content)
@@ -221,8 +216,8 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     else:
         logger.warning("Ignoring non-mapping phase state for %s/%s", cwd, slug)
         state = {}
-    # Deep-merge: preserves v2 nested sub-key defaults that are absent in older persisted state
-    merged = _deep_merge_state(copy.deepcopy(DEFAULT_STATE), state)
+    # Deep-merge: preserves nested sub-key defaults that are absent in older persisted state
+    merged = _deep_merge_state(default_state(), state)
     merged["finalize"] = _normalize_finalize_state(state.get("finalize"))  # type: ignore[assignment]
 
     # Migration: derive phase from existing fields when missing from persisted state
@@ -342,7 +337,7 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
 
     if status == PreparePhase.PREPARED.value:
         grounding = state.get("grounding", {})
-        grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+        grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
         rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
         if rc == 0 and current_sha.strip():
             grounding_dict["base_sha"] = current_sha.strip()
@@ -670,7 +665,7 @@ def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
     # Grounding
     rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
     grounding: dict[str, StateValue] = {
-        **DEFAULT_STATE["grounding"],  # type: ignore[dict-item]
+        **default_state()["grounding"],  # type: ignore[dict-item]
         "valid": True,
         "last_grounded_at": now_iso,
         "invalidation_reason": "",

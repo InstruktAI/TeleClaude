@@ -33,9 +33,6 @@ from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS as DEFAULT_MAX_REVIEW_ROUNDS,
 )
 from teleclaude.core.next_machine._types import (
-    DEFAULT_STATE as DEFAULT_STATE,
-)
-from teleclaude.core.next_machine._types import (
     DOR_READY_THRESHOLD as DOR_READY_THRESHOLD,
 )
 from teleclaude.core.next_machine._types import (
@@ -100,6 +97,9 @@ from teleclaude.core.next_machine._types import (
 )
 from teleclaude.core.next_machine._types import (
     WorktreeScript as WorktreeScript,
+)
+from teleclaude.core.next_machine._types import (
+    default_state as default_state,
 )
 
 # ── build gates & artifact verification ───────────────────────────────────────
@@ -256,7 +256,7 @@ from teleclaude.core.next_machine.prepare_events import (
     _has_test_spec_artifacts as _has_test_spec_artifacts,
 )
 from teleclaude.core.next_machine.prepare_events import (
-    _is_artifact_produced_v2 as _is_artifact_produced_v2,
+    _is_artifact_produced as _is_artifact_produced,
 )
 from teleclaude.core.next_machine.prepare_events import (
     invalidate_stale_preparations as invalidate_stale_preparations,

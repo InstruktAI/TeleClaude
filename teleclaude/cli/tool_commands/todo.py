@@ -357,10 +357,13 @@ def handle_todo_mark_phase(args: list[str]) -> None:
       --phase <p>     Phase: build, review, prepare, requirements_review, plan_review,
                       requirements, test_specs, implementation_plan
       --status <s>    New status or verdict (see above; use 'complete' for artifact phases)
+      --force         Bypass worktree, uncommitted-changes, and stash guards
 
     Examples:
       telec todo mark-phase my-slug --phase build --status complete
       telec todo mark-phase my-slug --phase review --status approved
+      telec todo mark-phase my-slug --phase build --status pending --force
+      telec todo mark-phase my-slug --phase review --status approved --force
       telec todo mark-phase my-slug --phase plan_review --status approve
       telec todo mark-phase my-slug --phase prepare --status prepared
       telec todo mark-phase my-slug --phase requirements --status complete
@@ -381,6 +384,9 @@ def handle_todo_mark_phase(args: list[str]) -> None:
         elif args[i] == "--status" and i + 1 < len(args):
             body["status"] = args[i + 1]
             i += 2
+        elif args[i] == "--force":
+            body["force"] = True
+            i += 1
         elif not args[i].startswith("-"):
             body["slug"] = args[i]
             i += 1

@@ -11,10 +11,10 @@ from pathlib import Path
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
-    DEFAULT_STATE,
     DOR_READY_THRESHOLD,
     PreparePhase,
     StateValue,
+    default_state,
 )
 from teleclaude.core.next_machine.roadmap import load_roadmap_slugs
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
@@ -53,15 +53,8 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
             pass  # Never block prepare on event emission failure
 
 
-def _is_artifact_produced_v2(state: dict[str, StateValue], artifact_key: str) -> bool:
-    """Check whether a v2 lifecycle record confirms the artifact was properly produced.
-
-    For v1 state (no schema_version), always returns True so file-existence is
-    the sole signal (backward compatibility).
-    """
-    schema_version = state.get("schema_version")
-    if not isinstance(schema_version, int) or schema_version < 2:
-        return True  # v1: file-existence wins
+def _is_artifact_produced(state: dict[str, StateValue], artifact_key: str) -> bool:
+    """Check whether the lifecycle record confirms the artifact was properly produced."""
     artifacts = state.get("artifacts", {})
     if not isinstance(artifacts, dict):
         return False
@@ -91,9 +84,8 @@ def _has_test_spec_artifacts(cwd: str, slug: str) -> bool:
 def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:
     """Derive the initial prepare phase from artifact existence when no durable phase is set.
 
-    For v2 state, ghost artifact protection (R5) means a file on disk without a
+    Ghost artifact protection (R5) means a file on disk without a
     corresponding produced_at lifecycle record is treated as not produced.
-    For v1 state, file existence is the sole signal (backward compat).
     """
     from teleclaude.core.next_machine.build_gates import check_file_has_content
     from teleclaude.core.next_machine.slug_resolution import check_file_exists
@@ -102,7 +94,7 @@ def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> 
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
 
     # Ghost artifact protection (R5)
-    if has_requirements and not _is_artifact_produced_v2(state, "requirements"):
+    if has_requirements and not _is_artifact_produced(state, "requirements"):
         has_requirements = False
 
     if has_input and not has_requirements:
@@ -117,8 +109,8 @@ def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> 
 
     # After requirements approved: check test spec phase
     has_test_specs = _has_test_spec_artifacts(cwd, slug)
-    # Ghost artifact protection (R5): v2 requires stamp, not just filesystem presence
-    if has_test_specs and not _is_artifact_produced_v2(state, "test_specs"):
+    # Ghost artifact protection (R5): requires stamp, not just filesystem presence
+    if has_test_specs and not _is_artifact_produced(state, "test_specs"):
         has_test_specs = False
     if not has_test_specs:
         return PreparePhase.TEST_SPEC_BUILD
@@ -130,7 +122,7 @@ def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> 
 
     has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
     # Ghost artifact protection for plan
-    if has_plan and not _is_artifact_produced_v2(state, "implementation_plan"):
+    if has_plan and not _is_artifact_produced(state, "implementation_plan"):
         has_plan = False
 
     if not has_plan:
@@ -170,7 +162,7 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
         overlap = [p for p in referenced if p in changed_set]
         if overlap:
             grounding_dict: dict[str, bool | str | list[str] | int] = {  # type: ignore[unused-ignore]
-                **DEFAULT_STATE["grounding"],  # type: ignore
+                **default_state()["grounding"],  # type: ignore
                 **grounding,  # type: ignore[dict-item]
             }
             grounding_dict["valid"] = False

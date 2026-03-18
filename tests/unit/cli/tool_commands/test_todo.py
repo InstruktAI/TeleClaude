@@ -107,3 +107,18 @@ def test_handle_todo_set_deps_posts_repeated_after_values(monkeypatch: pytest.Mo
         "/todos/set-deps",
         json_body={"slug": "sample-slug", "after": ["dep-a", "dep-b"], "cwd": "/tmp/project"},
     )
+
+
+def test_handle_mark_phase_passes_force_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--force flag is forwarded in the request body."""
+    tool_api_call = MagicMock(return_value={"result": "OK"})
+    print_json = MagicMock()
+
+    monkeypatch.setattr(todo_commands, "tool_api_call", tool_api_call)
+    monkeypatch.setattr(todo_commands, "print_json", print_json)
+    monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
+
+    todo_commands.handle_todo_mark_phase(["my-slug", "--phase", "build", "--status", "complete", "--force"])
+
+    call_body = tool_api_call.call_args.kwargs.get("json_body") or tool_api_call.call_args[1].get("json_body")
+    assert call_body["force"] is True

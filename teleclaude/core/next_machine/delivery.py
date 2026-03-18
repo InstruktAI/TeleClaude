@@ -234,11 +234,6 @@ def sweep_completed_groups(cwd: str) -> list[str]:
         if not entry.is_dir():
             continue
         state_path = entry / "state.yaml"
-        # Backward compat: fall back to state.json
-        if not state_path.exists():
-            legacy_path = entry / "state.json"
-            if legacy_path.exists():
-                state_path = legacy_path
         if not state_path.exists():
             continue
 

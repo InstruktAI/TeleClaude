@@ -10,15 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate mark-phase-force` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 19/19 pass in targeted run
+- [x] Lint passes (`make lint`) — pyright/mypy/pylint clean on changed files; pre-existing whole-project discord/qos failures are out of scope
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate mark-phase-force` exits 0 — 4 executable blocks)
+- [x] Working tree clean (after final commit)
+- [x] Comments/docstrings updated where behavior changed (route docstring updated)
 
 ## Review Gates (Reviewer)
 

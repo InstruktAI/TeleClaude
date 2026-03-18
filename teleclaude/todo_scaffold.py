@@ -14,35 +14,11 @@ from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.models import JsonDict
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.slug import validate_slug
-from teleclaude.types.todos import BreakdownState, DorState, TodoState
+from teleclaude.types.todos import DorState, TodoState
 
-_DEFAULT_STATE = TodoState(
-    build="pending",
-    review="pending",
-    deferrals_processed=False,
-    breakdown=BreakdownState(assessed=False, todos=[]),
-    dor=DorState(status="needs_work", score=0),
-    review_round=0,
-    max_review_rounds=3,
-    review_baseline_commit="",
-    unresolved_findings=[],
-    resolved_findings=[],
-).model_dump()
+_DEFAULT_STATE = TodoState(dor=DorState(status="needs_work", score=0)).model_dump(exclude_none=True)
 
-
-_BUG_STATE = TodoState(
-    kind="bug",
-    build="pending",
-    review="pending",
-    deferrals_processed=False,
-    breakdown=BreakdownState(assessed=False, todos=[]),
-    dor=None,
-    review_round=0,
-    max_review_rounds=3,
-    review_baseline_commit="",
-    unresolved_findings=[],
-    resolved_findings=[],
-).model_dump()
+_BUG_STATE = TodoState(kind="bug").model_dump(exclude_none=True)
 
 
 def _templates_root() -> Path:

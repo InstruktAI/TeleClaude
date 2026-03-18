@@ -1,9 +1,17 @@
+schema_version: 1
 phase: pending
+kind: todo
 build: pending
 review: pending
 deferrals_processed: false
 finalize:
   status: pending
+  branch: ''
+  sha: ''
+  ready_at: ''
+  worker_session_id: ''
+  handed_off_at: ''
+  handoff_session_id: ''
 breakdown:
   assessed: true
   todos:
@@ -60,11 +68,64 @@ requirements_review:
   reviewed_at: '2026-03-09T11:42:52Z'
   findings_count: 0
   rounds: 1
+  baseline_commit: ''
+  findings: []
+test_spec_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
 plan_review:
   verdict: approve
   reviewed_at: '2026-03-09T12:39:36Z'
   findings_count: 0
   rounds: 1
+  baseline_commit: ''
+  findings: []
+artifacts:
+  input:
+    digest: ''
+    produced_at: ''
+    stale: false
+  requirements:
+    digest: ''
+    produced_at: ''
+    stale: false
+  test_specs:
+    digest: ''
+    produced_at: ''
+    stale: false
+  implementation_plan:
+    digest: ''
+    produced_at: ''
+    stale: false
+audit:
+  input_assessment:
+    started_at: ''
+    completed_at: ''
+  triangulation:
+    started_at: ''
+    completed_at: ''
+  requirements_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  plan_drafting:
+    started_at: ''
+    completed_at: ''
+  plan_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  gate:
+    started_at: ''
+    completed_at: ''
 dor:
   last_assessed_at: '2026-03-10T00:14:03Z'
   score: 7
@@ -78,4 +139,3 @@ dor:
     implementation_plan_updated: false
     demo_updated: false
     dor_report_created: true
-schema_version: 1

@@ -200,6 +200,7 @@ async def test_dispatch_review_approved_routes_to_finalize_when_no_deferrals_are
         patch("teleclaude.core.next_machine.work.compose_agent_guidance", return_value="guidance"),
         patch("teleclaude.core.next_machine.work.emit_review_approved", new=emit_review_approved),
         patch("teleclaude.core.next_machine.work.is_bug_todo", return_value=False),
+        patch("teleclaude.core.next_machine.work.get_session_id", return_value=None),
     ):
         result = await _dispatch_review_approved(
             db,

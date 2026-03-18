@@ -17,10 +17,10 @@ from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
-    DEFAULT_STATE,
     DOR_READY_THRESHOLD,
     PreparePhase,
     StateValue,
+    default_state,
 )
 from teleclaude.core.next_machine.build_gates import check_file_has_content
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
@@ -28,7 +28,7 @@ from teleclaude.core.next_machine.output_formatting import format_prepared, form
 from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event,
     _has_test_spec_artifacts,
-    _is_artifact_produced_v2,
+    _is_artifact_produced,
 )
 from teleclaude.core.next_machine.state_io import _run_git_prepare, write_phase_state
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
@@ -49,8 +49,8 @@ async def _prepare_step_input_assessment(
     stamp_audit(state, "input_assessment", "started_at", _now)
 
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
-    # Ghost artifact protection: v2 state requires produced_at stamp, not just file presence
-    if has_requirements and not _is_artifact_produced_v2(state, "requirements"):
+    # Ghost artifact protection: requires produced_at stamp, not just file presence
+    if has_requirements and not _is_artifact_produced(state, "requirements"):
         has_requirements = False
     if has_requirements:
         # Emit input_consumed event before transitioning (R13)
@@ -87,8 +87,8 @@ async def _prepare_step_triangulation(
 ) -> tuple[bool, str]:
     """TRIANGULATION: requirements.md still needs discovery or revision."""
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
-    # Ghost artifact protection: v2 state requires produced_at stamp, not just file presence
-    if has_requirements and not _is_artifact_produced_v2(state, "requirements"):
+    # Ghost artifact protection: requires produced_at stamp, not just file presence
+    if has_requirements and not _is_artifact_produced(state, "requirements"):
         has_requirements = False
     if has_requirements:
         # Transition to REQUIREMENTS_REVIEW
@@ -251,8 +251,8 @@ async def _prepare_step_test_spec_build(
     stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())
 
     has_test_specs = await asyncio.to_thread(_has_test_spec_artifacts, cwd, slug)
-    # Ghost artifact protection: v2 state requires produced_at stamp, not just file presence
-    if has_test_specs and not _is_artifact_produced_v2(state, "test_specs"):
+    # Ghost artifact protection: requires produced_at stamp, not just file presence
+    if has_test_specs and not _is_artifact_produced(state, "test_specs"):
         has_test_specs = False
     if has_test_specs:
         stamp_audit(state, "test_spec_build", "completed_at", datetime.now(UTC).isoformat())
@@ -366,8 +366,8 @@ async def _prepare_step_plan_drafting(
     stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
     has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
-    # Ghost artifact protection: v2 state requires produced_at stamp, not just file presence
-    if has_plan and not _is_artifact_produced_v2(state, "implementation_plan"):
+    # Ghost artifact protection: requires produced_at stamp, not just file presence
+    if has_plan and not _is_artifact_produced(state, "implementation_plan"):
         has_plan = False
     if has_plan:
         # R16: check that all referenced_paths exist before advancing to plan review
@@ -581,7 +581,7 @@ def _prepare_step_grounding_check(
 ) -> tuple[bool, str]:
     """GROUNDING_CHECK: mechanical freshness check (no agent dispatch)."""
     grounding = state.get("grounding", {})
-    grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
 
     base_sha = str(grounding_dict.get("base_sha", ""))
     stored_input_digest = str(grounding_dict.get("input_digest", ""))
@@ -693,7 +693,7 @@ async def _prepare_step_re_grounding(
 ) -> tuple[bool, str]:
     """RE_GROUNDING: dispatch plan update against changed files."""
     grounding = state.get("grounding", {})
-    grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
     changed_paths = grounding_dict.get("changed_paths", [])  # I1: actual changed paths, not all referenced
     if not isinstance(changed_paths, list):
         changed_paths = []

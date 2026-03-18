@@ -1,9 +1,17 @@
+schema_version: 1
 phase: pending
+kind: todo
 build: pending
 review: pending
 deferrals_processed: false
 finalize:
   status: pending
+  branch: ''
+  sha: ''
+  ready_at: ''
+  worker_session_id: ''
+  handed_off_at: ''
+  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
@@ -34,17 +42,69 @@ grounding:
   last_grounded_at: '2026-03-10T01:20:00Z'
   invalidated_at: '2026-03-10T15:04:05.541368+00:00'
   invalidation_reason: files_changed
-  changed_paths:
-  - teleclaude/constants.py
-  - teleclaude/core/polling_coordinator.py
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-10T00:34:19Z'
   findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+test_spec_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
 plan_review:
   verdict: ''
   reviewed_at: '2026-03-10T01:05:00Z'
   findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+artifacts:
+  input:
+    digest: ''
+    produced_at: ''
+    stale: false
+  requirements:
+    digest: ''
+    produced_at: ''
+    stale: false
+  test_specs:
+    digest: ''
+    produced_at: ''
+    stale: false
+  implementation_plan:
+    digest: ''
+    produced_at: ''
+    stale: false
+audit:
+  input_assessment:
+    started_at: ''
+    completed_at: ''
+  triangulation:
+    started_at: ''
+    completed_at: ''
+  requirements_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  plan_drafting:
+    started_at: ''
+    completed_at: ''
+  plan_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  gate:
+    started_at: ''
+    completed_at: ''
 dor:
   last_assessed_at: '2026-03-10T01:08:24Z'
   score: 9
@@ -54,4 +114,3 @@ dor:
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-schema_version: 1

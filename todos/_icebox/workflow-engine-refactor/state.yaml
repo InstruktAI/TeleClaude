@@ -1,9 +1,17 @@
+schema_version: 1
 phase: pending
+kind: todo
 build: pending
 review: pending
 deferrals_processed: false
 finalize:
   status: pending
+  branch: ''
+  sha: ''
+  ready_at: ''
+  worker_session_id: ''
+  handed_off_at: ''
+  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
@@ -17,8 +25,6 @@ grounding:
   valid: true
   base_sha: 80432307676bbb8c4fb6db1b9486082ead40533c
   input_digest: dd354e2baacb14038a21edd5443ea9a24ede52ad497a1a62739c41e93ba5ad43
-  last_grounded_at: '2026-03-12T19:30:00Z'
-  invalidation_reason: null
   referenced_paths:
   - teleclaude/core/next_machine/core.py
   - teleclaude/core/next_machine/engine.py
@@ -40,18 +46,74 @@ grounding:
   - tests/unit/core/next_machine/test_prepare_equivalence.py
   - tests/unit/core/next_machine/test_work_equivalence.py
   - tests/unit/core/next_machine/test_workflow_engine.py
+  last_grounded_at: '2026-03-12T19:30:00Z'
+  invalidated_at: ''
+  invalidation_reason: ''
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-12T17:30:23Z'
   findings_count: 5
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+test_spec_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
 plan_review:
   verdict: ''
   reviewed_at: '2026-03-12T18:36:18Z'
   findings_count: 4
   rounds: 4
-kind: todo
+  baseline_commit: ''
+  findings: []
+artifacts:
+  input:
+    digest: ''
+    produced_at: ''
+    stale: false
+  requirements:
+    digest: ''
+    produced_at: ''
+    stale: false
+  test_specs:
+    digest: ''
+    produced_at: ''
+    stale: false
+  implementation_plan:
+    digest: ''
+    produced_at: ''
+    stale: false
+audit:
+  input_assessment:
+    started_at: ''
+    completed_at: ''
+  triangulation:
+    started_at: ''
+    completed_at: ''
+  requirements_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  plan_drafting:
+    started_at: ''
+    completed_at: ''
+  plan_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  gate:
+    started_at: ''
+    completed_at: ''
 dor:
-  last_assessed_at: null
+  last_assessed_at: ''
   score: 0
   status: needs_work
   schema_version: 1
@@ -59,4 +121,3 @@ dor:
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-schema_version: 1

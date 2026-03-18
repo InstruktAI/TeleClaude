@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -160,3 +161,104 @@ class TestTodoRoutes:
         assert response["result"]  # non-empty result present
         assert entries[0].after == ["base-task"]
         save_roadmap.assert_called_once_with("/repo", entries)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_build_complete_force_skips_uncommitted_check(self, tmp_path: Path) -> None:
+        """Force flag bypasses uncommitted-changes guard for build:complete."""
+        worktree = tmp_path / "trees" / "test-slug"
+        worktree.mkdir(parents=True)
+        with (
+            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
+            patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=True),
+            patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "complete"}) as mock_mark,
+        ):
+            response = await todo_routes.todo_mark_phase(
+                slug="test-slug",
+                phase="build",
+                status="complete",
+                cwd=str(tmp_path),
+                identity=object(),
+                force=True,
+            )
+        assert "result" in response
+        mock_mark.assert_called_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_review_approved_no_longer_blocks_on_uncommitted(self, tmp_path: Path) -> None:
+        """Review:approved no longer checks for uncommitted changes."""
+        worktree = tmp_path / "trees" / "test-slug"
+        worktree.mkdir(parents=True)
+        with (
+            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
+            patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=True) as mock_uc,
+            patch("teleclaude.api.todo_routes.mark_phase", return_value={"review": "approved"}) as mock_mark,
+        ):
+            response = await todo_routes.todo_mark_phase(
+                slug="test-slug",
+                phase="review",
+                status="approved",
+                cwd=str(tmp_path),
+                identity=object(),
+            )
+        assert "result" in response
+        mock_mark.assert_called_once()
+        mock_uc.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_stash_no_longer_blocks_any_phase(self, tmp_path: Path) -> None:
+        """Stash entries no longer block any phase transition."""
+        worktree = tmp_path / "trees" / "test-slug"
+        worktree.mkdir(parents=True)
+        with (
+            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
+            patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "complete"}) as mock_mark,
+        ):
+            response = await todo_routes.todo_mark_phase(
+                slug="test-slug",
+                phase="build",
+                status="complete",
+                cwd=str(tmp_path),
+                identity=object(),
+            )
+        assert "result" in response
+        mock_mark.assert_called_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_force_falls_back_to_cwd_when_no_worktree(self, tmp_path: Path) -> None:
+        """Force flag uses cwd when worktree directory does not exist."""
+        with (
+            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
+            patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "pending"}) as mock_mark,
+        ):
+            response = await todo_routes.todo_mark_phase(
+                slug="test-slug",
+                phase="build",
+                status="pending",
+                cwd=str(tmp_path),
+                identity=object(),
+                force=True,
+            )
+        assert "result" in response
+        mock_mark.assert_called_once_with(str(tmp_path), "test-slug", "build", "pending")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_no_force_still_404_when_worktree_absent(self, tmp_path: Path) -> None:
+        """Without force, missing worktree still returns 404."""
+        with (
+            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.todo_mark_phase(
+                    slug="test-slug",
+                    phase="build",
+                    status="pending",
+                    cwd=str(tmp_path),
+                    identity=object(),
+                )
+        assert exc_info.value.status_code == 404

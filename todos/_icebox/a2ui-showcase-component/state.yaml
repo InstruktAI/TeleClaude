@@ -1,20 +1,112 @@
-slug: a2ui-showcase-component
+schema_version: 1
+phase: pending
+kind: todo
 build: pending
 review: pending
+deferrals_processed: false
+finalize:
+  status: pending
+  branch: ''
+  sha: ''
+  ready_at: ''
+  worker_session_id: ''
+  handed_off_at: ''
+  handoff_session_id: ''
+breakdown:
+  assessed: false
+  todos: []
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: ''
+grounding:
+  valid: false
+  base_sha: ''
+  input_digest: ''
+  referenced_paths: []
+  last_grounded_at: ''
+  invalidated_at: ''
+  invalidation_reason: ''
+requirements_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+test_spec_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
+plan_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+artifacts:
+  input:
+    digest: ''
+    produced_at: ''
+    stale: false
+  requirements:
+    digest: ''
+    produced_at: ''
+    stale: false
+  test_specs:
+    digest: ''
+    produced_at: ''
+    stale: false
+  implementation_plan:
+    digest: ''
+    produced_at: ''
+    stale: false
+audit:
+  input_assessment:
+    started_at: ''
+    completed_at: ''
+  triangulation:
+    started_at: ''
+    completed_at: ''
+  requirements_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  plan_drafting:
+    started_at: ''
+    completed_at: ''
+  plan_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  gate:
+    started_at: ''
+    completed_at: ''
 dor:
+  last_assessed_at: '2026-02-18T00:00:00Z'
   score: 9
   status: pass
   schema_version: 1
   blockers: []
   actions_taken:
-    - Rewrote input.md to drop web components/A2UI in favor of Next.js native showcase
-      page
-    - Derived requirements.md from new input with concrete data schema and success criteria
-    - Derived implementation-plan.md with 7 tasks grounded in existing codebase patterns
-    - "Wrote draft DOR report \u2014 all 8 gates assessed as pass/auto-pass"
-    - 'Gate: Verified all pattern claims against actual codebase files'
-    - 'Gate: Corrected cache access pattern from request.app.state to inline self.cache
-      closure'
-    - 'Gate: Updated implementation-plan.md Task 1 with correct approach'
-    - 'Gate: Final verdict PASS at 9/10'
-  last_assessed_at: '2026-02-18T00:00:00Z'
+  - Rewrote input.md to drop web components/A2UI in favor of Next.js native showcase
+    page
+  - Derived requirements.md from new input with concrete data schema and success criteria
+  - Derived implementation-plan.md with 7 tasks grounded in existing codebase patterns
+  - "Wrote draft DOR report \u2014 all 8 gates assessed as pass/auto-pass"
+  - 'Gate: Verified all pattern claims against actual codebase files'
+  - 'Gate: Corrected cache access pattern from request.app.state to inline self.cache
+    closure'
+  - 'Gate: Updated implementation-plan.md Task 1 with correct approach'
+  - 'Gate: Final verdict PASS at 9/10'
+slug: a2ui-showcase-component
