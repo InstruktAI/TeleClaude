@@ -11,6 +11,7 @@ from teleclaude.core.next_machine._types import PAREN_OPEN, REVIEW_DIFF_NOTE
 __all__ = [
     "POST_COMPLETION",
     "REVIEW_DIFF_NOTE",
+    "ToolCallRequest",
     "format_error",
     "format_finalize_handoff_complete",
     "format_prepared",
@@ -149,42 +150,65 @@ WHEN WORKER COMPLETES:
 }
 
 
-def format_tool_call(
-    command: str,
-    args: str,
-    project: str,
-    guidance: str,
-    subfolder: str,
-    note: str = "",
-    next_call: str = "",
-    completion_args: str | None = None,
-    pre_dispatch: str = "",
-    additional_context: str = "",
-) -> str:
-    """Format a literal tool call for the orchestrator to execute."""
-    raw_command = command.lstrip("/")
-    formatted_command = f"/{raw_command}"
+class ToolCallRequest(dict[str, object]):
+    """Structured request mapping for orchestrator tool-call formatting."""
 
-    # Get post-completion instructions for this command
+
+def _command_text(value: object) -> str:
+    """Return the slash-command literal for enum or string inputs."""
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
+
+
+def _format_post_completion(request: ToolCallRequest) -> str:
+    """Format the post-completion instructions block for a tool call."""
+    command = _command_text(request["command"])
     post_completion = POST_COMPLETION.get(command, "")
-    if post_completion:
-        next_call_display = next_call.strip()
-        if next_call_display and PAREN_OPEN not in next_call_display and " " not in next_call_display:
-            next_call_display = f"{next_call_display}()"
-        completion_value = completion_args if completion_args is not None else args
-        # Substitute {args} and {next_call} placeholders
-        post_completion = post_completion.format(args=completion_value, next_call=next_call_display)
+    if not post_completion:
+        return ""
 
-    pre_dispatch_block = ""
-    if pre_dispatch:
-        pre_dispatch_block = f"""STEP 0 - BEFORE DISPATCHING:
+    next_call_display = str(request.get("next_call", "")).strip()
+    if next_call_display and PAREN_OPEN not in next_call_display and " " not in next_call_display:
+        next_call_display = f"{next_call_display}()"
+    completion_args = request.get("completion_args")
+    completion_value = completion_args if completion_args is not None else request["args"]
+    return post_completion.format(args=completion_value, next_call=next_call_display)
+
+
+def _format_pre_dispatch_block(pre_dispatch: str) -> str:
+    """Format the optional pre-dispatch block."""
+    if not pre_dispatch:
+        return ""
+    return f"""STEP 0 - BEFORE DISPATCHING:
 {pre_dispatch}
 
 """
 
-    _escaped_ctx = additional_context.replace("\n", "\\n") if additional_context else ""
-    additional_context_flag = f' --additional-context "{_escaped_ctx}"' if additional_context else ""
-    additional_context_block = f"\nADDITIONAL CONTEXT FOR WORKER:\n{additional_context}\n" if additional_context else ""
+
+def _format_additional_context(request: ToolCallRequest) -> tuple[str, str]:
+    """Return the additional-context CLI flag and rendered block."""
+    additional_context = str(request.get("additional_context", ""))
+    if not additional_context:
+        return "", ""
+    escaped_context = additional_context.replace("\n", "\\n")
+    return (
+        f' --additional-context "{escaped_context}"',
+        f"\nADDITIONAL CONTEXT FOR WORKER:\n{additional_context}\n",
+    )
+
+
+def format_tool_call(request: ToolCallRequest) -> str:
+    """Format a literal tool call for the orchestrator to execute."""
+    raw_command = _command_text(request["command"]).lstrip("/")
+    formatted_command = f"/{raw_command}"
+    args = str(request["args"])
+    project = str(request["project"])
+    guidance = str(request["guidance"])
+    subfolder = str(request["subfolder"])
+    post_completion = _format_post_completion(request)
+    pre_dispatch_block = _format_pre_dispatch_block(str(request.get("pre_dispatch", "")))
+    additional_context_flag, additional_context_block = _format_additional_context(request)
 
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
@@ -197,7 +221,8 @@ Based on the above guidance and the work item details, select the best agent and
 
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
-telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"{additional_context_flag}
+telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" \
+  --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"{additional_context_flag}
 Legacy dispatch marker: command="{formatted_command}" subfolder="{subfolder}"
 Save the returned session_id.
 Command metadata: command="{formatted_command}" args="{args}" subfolder="{subfolder}".
@@ -249,6 +274,7 @@ You are an orchestrator, not a micromanager. Workers have full autonomy.
 - NEVER send no-op acknowledgements/keepalive chatter to workers
 - Trust the process gates (pre-commit hooks, mark_phase clerical checks)
 - If mark_phase rejects, the state machine routes to the fix — do NOT fix it yourself"""
+    note = str(request.get("note", ""))
     if note:
         result += f"\n\nNOTE: {note}"
     return result

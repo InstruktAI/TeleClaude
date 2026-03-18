@@ -167,6 +167,7 @@ def _run_git_cmd(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int
             text=True,
             cwd=cwd,
             timeout=timeout,
+            check=False,
         )
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
@@ -235,65 +236,67 @@ def sweep_completed_groups(cwd: str) -> list[str]:
     for entry in sorted(todos_dir.iterdir()):
         if not entry.is_dir():
             continue
-        state_path = entry / "state.yaml"
-        # Backward compat: fall back to state.json
-        if not state_path.exists():
-            legacy_path = entry / "state.json"
-            if legacy_path.exists():
-                state_path = legacy_path
-        if not state_path.exists():
+        children = _group_children(entry)
+        if children is None:
             continue
-
-        try:
-            state = yaml.safe_load(state_path.read_text(encoding="utf-8"))
-        except (yaml.YAMLError, OSError):
-            continue
-
-        breakdown = state.get("breakdown")
-        if not isinstance(breakdown, dict):
-            continue
-        children = breakdown.get("todos")
-        if not isinstance(children, list) or not children:
-            continue
-
-        # Check if ALL children have been delivered
         if not all(child in delivered_slugs for child in children):
             continue
 
         group_slug = entry.name
-
-        delivered = deliver_to_delivered(cwd, group_slug)
-
-        if delivered:
-            # deliver_to_delivered added entry without children — patch it in
-            entries = load_delivered(cwd)
-            for d_entry in entries:
-                if d_entry.slug == group_slug and d_entry.children is None:
-                    d_entry.children = list(children)
-                    break
-            save_delivered(cwd, entries)
-        else:
-            # Not in roadmap — add directly to delivered.yaml with children
-            try:
-                repo = Repo(cwd, search_parent_directories=True)
-                head_sha: str | None = repo.head.commit.hexsha[:12]
-            except (InvalidGitRepositoryError, NoSuchPathError, ValueError):
-                head_sha = None
-            entries = load_delivered(cwd)
-            entries.insert(
-                0,
-                DeliveredEntry(
-                    slug=group_slug,
-                    date=date.today().isoformat(),
-                    commit=head_sha,
-                    children=list(children),
-                ),
-            )
-            save_delivered(cwd, entries)
-
-        # Clean up physical artifacts (worktree/branch no-op for group parents)
+        _record_group_delivery(cwd, group_slug, children)
         cleanup_delivered_slug(cwd, group_slug, remove_remote_branch=False)
         swept.append(group_slug)
         logger.info("Group sweep: delivered %s (all %d children complete)", group_slug, len(children))
 
     return swept
+
+
+def _group_children(entry: Path) -> list[str] | None:
+    """Return child slugs for group parents with valid state files."""
+    state_path = entry / "state.yaml"
+    if not state_path.exists():
+        legacy_path = entry / "state.json"
+        if legacy_path.exists():
+            state_path = legacy_path
+    if not state_path.exists():
+        return None
+    try:
+        state = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError):
+        return None
+    breakdown = state.get("breakdown") if isinstance(state, dict) else None
+    if not isinstance(breakdown, dict):
+        return None
+    children = breakdown.get("todos")
+    return list(children) if isinstance(children, list) and children else None
+
+
+def _record_group_delivery(cwd: str, group_slug: str, children: list[str]) -> None:
+    """Record a swept group in delivered.yaml, preserving child slugs."""
+    delivered = deliver_to_delivered(cwd, group_slug)
+    entries = load_delivered(cwd)
+    if delivered:
+        for entry in entries:
+            if entry.slug == group_slug and entry.children is None:
+                entry.children = list(children)
+                break
+    else:
+        entries.insert(
+            0,
+            DeliveredEntry(
+                slug=group_slug,
+                date=date.today().isoformat(),
+                commit=_current_head_sha(cwd),
+                children=list(children),
+            ),
+        )
+    save_delivered(cwd, entries)
+
+
+def _current_head_sha(cwd: str) -> str | None:
+    """Return the current repository HEAD SHA prefix when available."""
+    try:
+        repo = Repo(cwd, search_parent_directories=True)
+        return repo.head.commit.hexsha[:12]
+    except (InvalidGitRepositoryError, NoSuchPathError, ValueError):
+        return None

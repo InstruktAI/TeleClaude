@@ -8,6 +8,7 @@ import yaml
 
 from teleclaude.core.next_machine._types import PhaseStatus, RoadmapEntry
 from teleclaude.core.next_machine.roadmap import (
+    RoadmapInsertion,
     add_to_roadmap,
     check_dependencies_satisfied,
     detect_circular_dependency,
@@ -54,7 +55,7 @@ def test_add_to_roadmap_inserts_before_target_and_rejects_duplicates(tmp_path: P
         ],
     )
 
-    inserted = add_to_roadmap(str(tmp_path), "second", before="third")
+    inserted = add_to_roadmap(str(tmp_path), "second", RoadmapInsertion(before="third"))
     duplicate = add_to_roadmap(str(tmp_path), "second")
 
     assert inserted is True

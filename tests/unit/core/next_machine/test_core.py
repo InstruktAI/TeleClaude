@@ -10,6 +10,7 @@ import yaml
 
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.core import PreparePhase
+from teleclaude.core.next_machine.output_formatting import ToolCallRequest
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -129,20 +130,20 @@ def test_v1_state_file_existence_respected(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _base_kwargs() -> dict:
-    return {
-        "command": "next-build",
-        "args": "my-slug",
-        "project": "/repo",
-        "guidance": "guidance text",
-        "subfolder": "",
-    }
+def _base_request() -> ToolCallRequest:
+    return ToolCallRequest(
+        command="next-build",
+        args="my-slug",
+        project="/repo",
+        guidance="guidance text",
+        subfolder="",
+    )
 
 
 def test_format_tool_call_with_additional_context_includes_block() -> None:
     from teleclaude.core.next_machine.core import format_tool_call
 
-    result = format_tool_call(**_base_kwargs(), additional_context="diff --git a/foo.py")
+    result = format_tool_call(ToolCallRequest(**dict(_base_request()), additional_context="diff --git a/foo.py"))
     assert "ADDITIONAL CONTEXT FOR WORKER:" in result
     assert "diff --git a/foo.py" in result
 
@@ -150,14 +151,14 @@ def test_format_tool_call_with_additional_context_includes_block() -> None:
 def test_format_tool_call_with_additional_context_includes_flag() -> None:
     from teleclaude.core.next_machine.core import format_tool_call
 
-    result = format_tool_call(**_base_kwargs(), additional_context="some context")
+    result = format_tool_call(ToolCallRequest(**dict(_base_request()), additional_context="some context"))
     assert '--additional-context "some context"' in result
 
 
 def test_format_tool_call_without_additional_context_omits_block() -> None:
     from teleclaude.core.next_machine.core import format_tool_call
 
-    result = format_tool_call(**_base_kwargs())
+    result = format_tool_call(_base_request())
     assert "ADDITIONAL CONTEXT FOR WORKER:" not in result
     assert "--additional-context" not in result
 
@@ -165,7 +166,7 @@ def test_format_tool_call_without_additional_context_omits_block() -> None:
 def test_format_tool_call_empty_additional_context_omits_block() -> None:
     from teleclaude.core.next_machine.core import format_tool_call
 
-    result = format_tool_call(**_base_kwargs(), additional_context="")
+    result = format_tool_call(ToolCallRequest(**dict(_base_request()), additional_context=""))
     assert "ADDITIONAL CONTEXT FOR WORKER:" not in result
     assert "--additional-context" not in result
 

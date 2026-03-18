@@ -165,14 +165,24 @@ def stamp_audit(state: dict[str, StateValue], phase_name: str, field: str, value
     phase_entry[field] = value
 
 
-def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str) -> str:
+def compute_artifact_diff(
+    cwd: str,
+    slug_or_artifact_path: str,
+    artifact_path_or_base_sha: str,
+    base_sha: str | None = None,
+) -> str:
     """Run git diff {base_sha}..HEAD -- {artifact_path} and return the diff output.
 
     Returns empty string if base_sha is empty or if the diff produces no output.
     """
-    if not base_sha:
+    artifact_path = slug_or_artifact_path if base_sha is None else artifact_path_or_base_sha
+    resolved_base_sha = artifact_path_or_base_sha if base_sha is None else base_sha
+    if not resolved_base_sha:
         return ""
-    rc, stdout, _ = _run_git_prepare(["diff", f"{base_sha}..HEAD", "--", artifact_path], cwd=cwd)
+    rc, stdout, _ = _run_git_prepare(
+        ["diff", f"{resolved_base_sha}..HEAD", "--", artifact_path],
+        cwd=cwd,
+    )
     if rc != 0:
         return ""
     return stdout
@@ -222,6 +232,7 @@ def _run_git_prepare(args: list[str], cwd: str) -> tuple[int, str, str]:
         cwd=cwd,
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         logger.warning("git %s failed (rc=%d): %s", " ".join(args), result.returncode, result.stderr.strip())

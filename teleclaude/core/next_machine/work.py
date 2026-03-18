@@ -6,8 +6,6 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-import os
-from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 
@@ -17,7 +15,6 @@ from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.integration_bridge import emit_branch_pushed, emit_deployment_started, emit_review_approved
 from teleclaude.core.next_machine._types import (
-    _SINGLE_FLIGHT_GUARD,
     NEXT_WORK_PHASE_LOG,
     REVIEW_DIFF_NOTE,
     FinalizeState,
@@ -42,6 +39,7 @@ from teleclaude.core.next_machine.git_ops import (
     has_uncommitted_changes,
 )
 from teleclaude.core.next_machine.output_formatting import (
+    ToolCallRequest,
     format_error,
     format_finalize_handoff_complete,
     format_stash_debt,
@@ -73,36 +71,32 @@ from teleclaude.core.next_machine.state_io import (
     mark_phase,
     read_phase_state,
 )
+from teleclaude.core.next_machine.work_support import (
+    DispatchState as _DispatchState,
+)
+from teleclaude.core.next_machine.work_support import (
+    GateContext as _GateContext,
+)
+from teleclaude.core.next_machine.work_support import (
+    ResolutionContext as _ResolutionContext,
+)
+from teleclaude.core.next_machine.work_support import (
+    ReviewRepairContext as _ReviewRepairContext,
+)
+from teleclaude.core.next_machine.work_support import (
+    WorkDispatchContext as _WorkDispatchContext,
+)
+from teleclaude.core.next_machine.work_support import (
+    get_slug_single_flight_lock,
+)
 from teleclaude.core.next_machine.worktrees import (
     _ensure_todo_on_remote_main,
     ensure_worktree_with_policy_async,
 )
+from teleclaude.core.operations.progress import emit_operation_progress
+from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
-
-# Single-flight lock registry — one per (canonical_cwd, slug) pair.
-# _SINGLE_FLIGHT_GUARD is the threading.Lock protecting mutations; defined in _types.
-_SINGLE_FLIGHT_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
-
-
-@dataclass(frozen=True)
-class _DispatchState:
-    state: dict[str, StateValue]
-    build_status: str
-    review_status: str
-    finalize_state: FinalizeState
-
-
-async def _get_slug_single_flight_lock(cwd: str, slug: str) -> asyncio.Lock:
-    """Return repo+slug lock keyed by canonical project root for strict isolation."""
-    canonical_cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
-    key = (canonical_cwd, slug)
-    with _SINGLE_FLIGHT_GUARD:
-        lock = _SINGLE_FLIGHT_LOCKS.get(key)
-        if lock is None:
-            lock = asyncio.Lock()
-            _SINGLE_FLIGHT_LOCKS[key] = lock
-    return lock
 
 
 def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str, reason: str) -> None:
@@ -118,12 +112,7 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         reason,
         elapsed_ms,
     )
-    try:
-        from teleclaude.core.operations import emit_operation_progress
-
-        emit_operation_progress(phase, decision, reason)
-    except Exception:
-        logger.debug("Operation progress emission skipped", exc_info=True)
+    emit_operation_progress(phase, decision, reason)
 
 
 async def next_work(db: Db, slug: str | None, cwd: str) -> str:
@@ -231,7 +220,13 @@ async def _resolve_explicit_work_slug(
 
     phase = await asyncio.to_thread(get_item_phase, state_cwd, slug)
     readiness_error = await _validate_explicit_slug_readiness(
-        state_cwd, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
+        state_cwd,
+        slug,
+        phase,
+        deps,
+        is_bug,
+        phase_slug,
+        slug_resolution_started,
     )
     if readiness_error is not None:
         return "", readiness_error
@@ -246,7 +241,12 @@ async def _resolve_holder_slug(
     slug_resolution_started: float,
 ) -> tuple[str, str | None]:
     """Resolve runnable child work for holder todos."""
-    holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)  # type: ignore[arg-type]
+    holder_child, holder_reason = await asyncio.to_thread(
+        resolve_first_runnable_holder_child,
+        cwd,
+        slug,
+        deps,
+    )  # type: ignore[arg-type]
     if holder_child:
         return holder_child, None
     if holder_reason == "complete":
@@ -276,32 +276,49 @@ async def _resolve_holder_slug(
     return slug, None
 
 
-async def _validate_explicit_slug_readiness(
-    cwd: str,
-    slug: str,
-    phase: str,
-    deps: object,
-    is_bug: bool,
-    phase_slug: str,
-    slug_resolution_started: float,
-) -> str | None:
+async def _validate_explicit_slug_readiness(*args: object) -> str | None:
     """Validate readiness and dependency constraints for an explicit slug."""
-    if not is_bug and phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
-        _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "item_not_ready")
+    if len(args) == 2 and isinstance(args[0], _ResolutionContext) and isinstance(args[1], str):
+        context = args[0]
+        phase = args[1]
+    elif len(args) == 7:
+        context = _ResolutionContext(
+            cwd=str(args[0]),
+            slug=str(args[1]),
+            deps=args[3],
+            is_bug=bool(args[4]),
+            phase_slug=str(args[5]),
+            started_at=float(args[6]),
+        )
+        phase = str(args[2])
+    else:
+        raise TypeError("_validate_explicit_slug_readiness received unexpected arguments")
+
+    if (
+        not context.is_bug
+        and phase == ItemPhase.PENDING.value
+        and not await asyncio.to_thread(is_ready_for_work, context.cwd, context.slug)
+    ):
+        _log_next_work_phase(context.phase_slug, "slug_resolution", context.started_at, "error", "item_not_ready")
         return format_error(
             "ITEM_NOT_READY",
-            f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
-            next_call=f"Call telec todo prepare {slug} to prepare it first.",
+            f"Item '{context.slug}' is pending and DOR score is below threshold. Must be ready to start work.",
+            next_call=f"Call telec todo prepare {context.slug} to prepare it first.",
         )
     if phase == ItemPhase.DONE.value:
-        _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "item_done")
-        return f"COMPLETE: Item '{slug}' is already done."
-    if await asyncio.to_thread(check_dependencies_satisfied, cwd, slug, deps):  # type: ignore[arg-type]
+        _log_next_work_phase(context.phase_slug, "slug_resolution", context.started_at, "skip", "item_done")
+        return f"COMPLETE: Item '{context.slug}' is already done."
+    if await asyncio.to_thread(
+        check_dependencies_satisfied,
+        context.cwd,
+        context.slug,
+        context.deps,
+    ):  # type: ignore[arg-type]
         return None
-    _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "deps_unsatisfied")
+    _log_next_work_phase(context.phase_slug, "slug_resolution", context.started_at, "error", "deps_unsatisfied")
     return format_error(
         "DEPS_UNSATISFIED",
-        f"Item '{slug}' has unsatisfied dependencies.",
+        f"Item '{context.slug}' has unsatisfied dependencies.",
         next_call="Complete dependency items first, or check todos/roadmap.yaml.",
     )
 
@@ -423,7 +440,7 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
     """Ensure the worktree exists and is prepared under the slug single-flight lock."""
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / resolved_slug)
     ensure_started = perf_counter()
-    slug_lock = await _get_slug_single_flight_lock(cwd, resolved_slug)
+    slug_lock = await get_slug_single_flight_lock(cwd, resolved_slug)
     if slug_lock.locked():
         logger.info(
             "%s slug=%s phase=ensure_prepare decision=wait reason=single_flight_in_progress duration_ms=0",
@@ -458,7 +475,7 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
             str(exc),
             next_call="Add tools/worktree-prepare.sh or fix its execution, then retry.",
         )
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         logger.error(
             "next_work worktree setup failed for slug=%s cwd=%s worktree_path=%s: %s",
             resolved_slug,
@@ -479,18 +496,22 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
 async def _dispatch_next_work(db: Db, cwd: str, worktree_cwd: str, resolved_slug: str, phase_slug: str) -> str:
     """Dispatch the appropriate next-work tool call from worktree-owned state."""
     dispatch_started = perf_counter()
+    context = _WorkDispatchContext(
+        db=db,
+        cwd=cwd,
+        worktree_cwd=worktree_cwd,
+        resolved_slug=resolved_slug,
+        phase_slug=phase_slug,
+        dispatch_started=dispatch_started,
+    )
     dispatch_state, state_error = await _prepare_dispatch_state(
         cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started
     )
     if state_error is not None:
         return state_error
     if dispatch_state.review_status == PhaseStatus.APPROVED.value:
-        return await _dispatch_review_approved(
-            db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
-        )
-    return await _dispatch_pre_review(
-        db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
-    )
+        return await _dispatch_review_approved(context, dispatch_state)
+    return await _dispatch_pre_review(context, dispatch_state)
 
 
 async def _prepare_dispatch_state(
@@ -527,15 +548,20 @@ async def _prepare_dispatch_state(
 
     finalize_state = _get_finalize_state(state)
     review_status = await _repair_stale_review_approval(
-        worktree_cwd, resolved_slug, phase_slug, state, review_status, finalize_state
+        _ReviewRepairContext(
+            worktree_cwd=worktree_cwd,
+            resolved_slug=resolved_slug,
+            phase_slug=phase_slug,
+        ),
+        state,
+        review_status,
+        finalize_state,
     )
     return _DispatchState(state, build_status, review_status, finalize_state), None
 
 
 async def _repair_stale_review_approval(
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
+    context: _ReviewRepairContext,
     state: dict[str, StateValue],
     review_status: str,
     finalize_state: FinalizeState,
@@ -547,35 +573,59 @@ async def _repair_stale_review_approval(
 
     baseline_raw = state.get("review_baseline_commit")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
-    head_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
+    head_sha = await asyncio.to_thread(_get_head_commit, context.worktree_cwd)
     if not (baseline and head_sha and baseline != head_sha):
         return review_status
-    if not await asyncio.to_thread(_has_meaningful_diff, worktree_cwd, baseline, head_sha):
+    if not await asyncio.to_thread(_has_meaningful_diff, context.worktree_cwd, baseline, head_sha):
         return review_status
 
     repair_started = perf_counter()
-    await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, PhaseName.REVIEW.value, PhaseStatus.PENDING.value)
-    _log_next_work_phase(phase_slug, "state_repair", repair_started, "run", "review_approval_stale_baseline")
+    await asyncio.to_thread(
+        mark_phase,
+        context.worktree_cwd,
+        context.resolved_slug,
+        PhaseName.REVIEW.value,
+        PhaseStatus.PENDING.value,
+    )
+    _log_next_work_phase(
+        context.phase_slug,
+        "state_repair",
+        repair_started,
+        "run",
+        "review_approval_stale_baseline",
+    )
     return PhaseStatus.PENDING.value
 
 
-async def _dispatch_pre_review(
-    db: Db,
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-    dispatch_state: _DispatchState,
-) -> str:
+async def _dispatch_pre_review(*args: object) -> str:
     """Dispatch fix-review, build, or review based on the current pre-finalize state."""
+    if len(args) == 2 and isinstance(args[0], _WorkDispatchContext) and isinstance(args[1], _DispatchState):
+        context = args[0]
+        dispatch_state = args[1]
+    elif len(args) == 7 and isinstance(args[6], _DispatchState):
+        context = _WorkDispatchContext(
+            db=args[0],
+            cwd=str(args[1]),
+            worktree_cwd=str(args[2]),
+            resolved_slug=str(args[3]),
+            phase_slug=str(args[4]),
+            dispatch_started=float(args[5]),
+        )
+        dispatch_state = args[6]
+    else:
+        raise TypeError("_dispatch_pre_review received unexpected arguments")
+
     if dispatch_state.review_status == PhaseStatus.CHANGES_REQUESTED.value:
-        return await _dispatch_fix_review(db, cwd, resolved_slug, phase_slug, dispatch_started)
+        return await _dispatch_fix_review(
+            context.db,
+            context.cwd,
+            context.resolved_slug,
+            context.phase_slug,
+            context.dispatch_started,
+        )
     if dispatch_state.build_status != PhaseStatus.COMPLETE.value:
-        return await _dispatch_build_phase(db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started)
-    return await _dispatch_review_phase(
-        db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state
-    )
+        return await _dispatch_build_phase(context)
+    return await _dispatch_review_phase(context, dispatch_state.state)
 
 
 async def _dispatch_fix_review(
@@ -593,204 +643,226 @@ async def _dispatch_fix_review(
         return format_error("NO_AGENTS", str(exc))
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_fix_review")
     return format_tool_call(
-        command=SlashCommand.NEXT_FIX_REVIEW,
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
-        note=(
-            "PEER CONVERSATION NOTE: If you still have the reviewer session alive from the "
-            "previous review dispatch, prefer the direct conversation pattern from "
-            "POST_COMPLETION[next-review-build] instead of a fresh fix-review dispatch: "
-            "send fixer and reviewer session IDs to each other with --direct to let them "
-            "iterate without context-destroying churn. This fallback path is for when the "
-            "reviewer session has already ended."
-        ),
-    )
-
-
-async def _dispatch_build_phase(
-    db: Db,
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-) -> str:
-    """Dispatch build or bug-fix work when the build phase is incomplete."""
-    merge_main_result = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
-    if merge_main_result:
-        _log_next_work_phase(phase_slug, "merge_main", dispatch_started, "error", "merge_main_failed")
-        return format_error("MERGE_MAIN_FAILED", merge_main_result)
-
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
-        return format_error("NO_AGENTS", str(exc))
-
-    pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started"
-    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
-    if is_bug:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
-        return format_tool_call(
-            command=SlashCommand.NEXT_BUGS_FIX,
+        ToolCallRequest(
+            command=SlashCommand.NEXT_FIX_REVIEW,
             args=resolved_slug,
             project=cwd,
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
-            pre_dispatch=pre_dispatch,
+            note=(
+                "PEER CONVERSATION NOTE: If you still have the reviewer session alive from the "
+                "previous review dispatch, prefer the direct conversation pattern from "
+                "POST_COMPLETION[next-review-build] instead of a fresh fix-review dispatch: "
+                "send fixer and reviewer session IDs to each other with --direct to let them "
+                "iterate without context-destroying churn. This fallback path is for when the "
+                "reviewer session has already ended."
+            ),
         )
-
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
-    return format_tool_call(
-        command=SlashCommand.NEXT_BUILD,
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
-        pre_dispatch=pre_dispatch,
     )
 
 
-async def _dispatch_review_phase(
-    db: Db,
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-    state: dict[str, StateValue],
-) -> str:
+async def _dispatch_build_phase(context: _WorkDispatchContext) -> str:
+    """Dispatch build or bug-fix work when the build phase is incomplete."""
+    merge_main_result = await asyncio.to_thread(
+        _merge_origin_main_into_worktree,
+        context.worktree_cwd,
+        context.resolved_slug,
+    )
+    if merge_main_result:
+        _log_next_work_phase(context.phase_slug, "merge_main", context.dispatch_started, "error", "merge_main_failed")
+        return format_error("MERGE_MAIN_FAILED", merge_main_result)
+
+    try:
+        guidance = await compose_agent_guidance(context.db)
+    except RuntimeError as exc:
+        _log_next_work_phase(context.phase_slug, "dispatch_decision", context.dispatch_started, "error", "no_agents")
+        return format_error("NO_AGENTS", str(exc))
+
+    pre_dispatch = f"telec todo mark-phase {context.resolved_slug} --phase build --status started"
+    is_bug = await asyncio.to_thread(is_bug_todo, context.cwd, context.resolved_slug)
+    if is_bug:
+        _log_next_work_phase(
+            context.phase_slug, "dispatch_decision", context.dispatch_started, "run", "dispatch_bugs_fix"
+        )
+        return format_tool_call(
+            ToolCallRequest(
+                command=SlashCommand.NEXT_BUGS_FIX,
+                args=context.resolved_slug,
+                project=context.cwd,
+                guidance=guidance,
+                subfolder=f"{WORKTREE_DIR}/{context.resolved_slug}",
+                next_call=f"telec todo work {context.resolved_slug}",
+                pre_dispatch=pre_dispatch,
+            )
+        )
+
+    _log_next_work_phase(context.phase_slug, "dispatch_decision", context.dispatch_started, "run", "dispatch_build")
+    return format_tool_call(
+        ToolCallRequest(
+            command=SlashCommand.NEXT_BUILD,
+            args=context.resolved_slug,
+            project=context.cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{context.resolved_slug}",
+            next_call=f"telec todo work {context.resolved_slug}",
+            pre_dispatch=pre_dispatch,
+        )
+    )
+
+
+async def _dispatch_review_phase(context: _WorkDispatchContext, state: dict[str, StateValue]) -> str:
     """Run build/review gates, then dispatch review when eligible."""
     review_round_raw = state.get("review_round")
     review_round = review_round_raw if isinstance(review_round_raw, int) else 0
 
-    gate_error = await _run_review_gates(cwd, worktree_cwd, resolved_slug, phase_slug, review_round)
+    gate_error = await _run_review_gates(
+        _GateContext(
+            worktree_cwd=context.worktree_cwd,
+            resolved_slug=context.resolved_slug,
+            phase_slug=context.phase_slug,
+            review_round=review_round,
+        ),
+        context.cwd,
+    )
     if gate_error is not None:
         return gate_error
 
-    limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)
+    limit_reached, current_round, max_rounds = _is_review_round_limit_reached(
+        context.worktree_cwd,
+        context.resolved_slug,
+    )
     if limit_reached:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "review_round_limit")
+        _log_next_work_phase(
+            context.phase_slug, "dispatch_decision", context.dispatch_started, "error", "review_round_limit"
+        )
         return format_error(
             "REVIEW_ROUND_LIMIT",
             (
-                f"Review rounds exceeded for {resolved_slug}: "
+                f"Review rounds exceeded for {context.resolved_slug}: "
                 f"current={current_round}, max={max_rounds}. "
                 f"Manual resolution required.\n\n"
                 f"Before acting, load the relevant worker role:\n"
                 f"  telec docs index\n"
                 f"Then use telec docs get to load the procedure for the role you are assuming."
             ),
-            next_call=f"telec todo work {resolved_slug}",
+            next_call=f"telec todo work {context.resolved_slug}",
         )
 
     try:
-        guidance = await compose_agent_guidance(db)
+        guidance = await compose_agent_guidance(context.db)
     except RuntimeError as exc:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
+        _log_next_work_phase(context.phase_slug, "dispatch_decision", context.dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_review")
+    _log_next_work_phase(context.phase_slug, "dispatch_decision", context.dispatch_started, "run", "dispatch_review")
     return format_tool_call(
-        command=SlashCommand.NEXT_REVIEW_BUILD,
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
-        note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_REVIEW_BUILD,
+            args=context.resolved_slug,
+            project=context.cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{context.resolved_slug}",
+            next_call=f"telec todo work {context.resolved_slug}",
+            note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(context.worktree_cwd, context.resolved_slug)}",
+        )
     )
 
 
-async def _run_review_gates(
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    review_round: int,
-) -> str | None:
+async def _run_review_gates(context: _GateContext, cwd: str) -> str | None:
     """Execute build gates and artifact verification before review dispatch."""
     gate_started = perf_counter()
-    gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, resolved_slug)
+    gates_passed, gate_output = await asyncio.to_thread(run_build_gates, context.worktree_cwd, context.resolved_slug)
     if not gates_passed:
         return await _handle_gate_failure(
-            worktree_cwd,
-            resolved_slug,
-            phase_slug,
-            review_round,
+            context,
             gate_started,
             gate_output,
-            "build_gates_failed_post_review" if review_round > 0 else "build_gates_failed",
+            "build_gates_failed_post_review" if context.review_round > 0 else "build_gates_failed",
         )
-    _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
+    _log_next_work_phase(context.phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
 
     verify_started = perf_counter()
-    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
+    is_bug = await asyncio.to_thread(is_bug_todo, cwd, context.resolved_slug)
     artifacts_passed, artifacts_output = await asyncio.to_thread(
-        verify_artifacts, worktree_cwd, resolved_slug, PhaseName.BUILD.value, is_bug=is_bug
+        verify_artifacts, context.worktree_cwd, context.resolved_slug, PhaseName.BUILD.value, is_bug=is_bug
     )
     if artifacts_passed:
-        _log_next_work_phase(phase_slug, "gate_execution", verify_started, "run", "artifact_verification_passed")
+        _log_next_work_phase(
+            context.phase_slug, "gate_execution", verify_started, "run", "artifact_verification_passed"
+        )
         return None
 
     return await _handle_gate_failure(
-        worktree_cwd,
-        resolved_slug,
-        phase_slug,
-        review_round,
+        context,
         verify_started,
         artifacts_output,
-        "artifact_verification_failed_post_review" if review_round > 0 else "artifact_verification_failed",
+        "artifact_verification_failed_post_review" if context.review_round > 0 else "artifact_verification_failed",
     )
 
 
-async def _handle_gate_failure(
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    review_round: int,
-    started_at: float,
-    gate_output: str,
-    log_detail: str,
-) -> str:
+async def _handle_gate_failure(context: _GateContext, started_at: float, gate_output: str, log_detail: str) -> str:
     """Apply retry-state bookkeeping after a failed build/review gate."""
-    _log_next_work_phase(phase_slug, "gate_execution", started_at, "error", log_detail)
-    if review_round == 0:
+    _log_next_work_phase(context.phase_slug, "gate_execution", started_at, "error", log_detail)
+    if context.review_round == 0:
         await asyncio.to_thread(
-            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
+            mark_phase,
+            context.worktree_cwd,
+            context.resolved_slug,
+            PhaseName.BUILD.value,
+            PhaseStatus.STARTED.value,
         )
-    return format_build_gate_failure(resolved_slug, gate_output, f"telec todo work {resolved_slug}")
+    return format_build_gate_failure(context.resolved_slug, gate_output, f"telec todo work {context.resolved_slug}")
 
 
-async def _dispatch_review_approved(
-    db: Db,
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-    dispatch_state: _DispatchState,
-) -> str:
+async def _dispatch_review_approved(*args: object) -> str:
     """Handle review-approved states: finalize handoff, deferrals, or finalize dispatch."""
+    if len(args) == 2 and isinstance(args[0], _WorkDispatchContext) and isinstance(args[1], _DispatchState):
+        context = args[0]
+        dispatch_state = args[1]
+    elif len(args) == 7 and isinstance(args[6], _DispatchState):
+        context = _WorkDispatchContext(
+            db=args[0],
+            cwd=str(args[1]),
+            worktree_cwd=str(args[2]),
+            resolved_slug=str(args[3]),
+            phase_slug=str(args[4]),
+            dispatch_started=float(args[5]),
+        )
+        dispatch_state = args[6]
+    else:
+        raise TypeError("_dispatch_review_approved received unexpected arguments")
+
     finalize_status = dispatch_state.finalize_state.get("status")
     if finalize_status == "handed_off":
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "skip", "finalize_already_handed_off")
+        _log_next_work_phase(
+            context.phase_slug,
+            "dispatch_decision",
+            context.dispatch_started,
+            "skip",
+            "finalize_already_handed_off",
+        )
         return format_error(
             "FINALIZE_ALREADY_HANDED_OFF",
-            f"{resolved_slug} has already been handed off to integration. Continue the queue without a slug.",
+            f"{context.resolved_slug} has already been handed off to integration. Continue the queue without a slug.",
             next_call="telec todo work",
         )
     if finalize_status == "ready":
         return await _dispatch_finalize_handoff(
-            db, worktree_cwd, resolved_slug, phase_slug, dispatch_state.finalize_state
+            context.db,
+            context.worktree_cwd,
+            context.resolved_slug,
+            context.phase_slug,
+            dispatch_state.finalize_state,
         )
-    if await asyncio.to_thread(has_pending_deferrals, worktree_cwd, resolved_slug):
-        return await _dispatch_deferrals(db, cwd, resolved_slug, phase_slug, dispatch_started)
-    return await _dispatch_finalize_prepare(db, cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state)
+    if await asyncio.to_thread(has_pending_deferrals, context.worktree_cwd, context.resolved_slug):
+        return await _dispatch_deferrals(
+            context.db,
+            context.cwd,
+            context.resolved_slug,
+            context.phase_slug,
+            context.dispatch_started,
+        )
+    return await _dispatch_finalize_prepare(context, dispatch_state.state)
 
 
 async def _dispatch_finalize_handoff(
@@ -812,7 +884,7 @@ async def _dispatch_finalize_handoff(
             next_call=f"telec todo work {resolved_slug}",
         )
 
-    session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+    session_id = get_session_id() or "unknown"
     handoff_started = perf_counter()
     try:
         await emit_branch_pushed(
@@ -830,7 +902,7 @@ async def _dispatch_finalize_handoff(
             ready_at=finalize_state.get("ready_at"),
         )
         await asyncio.to_thread(_mark_finalize_handed_off, worktree_cwd, resolved_slug, handoff_session_id=session_id)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "error", "finalize_handoff_failed")
         return format_error(
             "FINALIZE_HANDOFF_FAILED",
@@ -850,7 +922,7 @@ async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
     try:
         child_sessions = await db.list_sessions(initiator_session_id=session_id)
         return [session.session_id for session in child_sessions]
-    except Exception:
+    except (RuntimeError, ValueError):
         logger.warning("Failed to query child sessions for cleanup", session_id=session_id)
         return []
 
@@ -870,52 +942,54 @@ async def _dispatch_deferrals(
         return format_error("NO_AGENTS", str(exc))
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_defer")
     return format_tool_call(
-        command="next-defer",
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
+        ToolCallRequest(
+            command="next-defer",
+            args=resolved_slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
+            next_call=f"telec todo work {resolved_slug}",
+        )
     )
 
 
-async def _dispatch_finalize_prepare(
-    db: Db,
-    cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-    state: dict[str, StateValue],
-) -> str:
+async def _dispatch_finalize_prepare(context: _WorkDispatchContext, state: dict[str, StateValue]) -> str:
     """Dispatch finalize preparation after review approval."""
-    if has_uncommitted_changes(cwd, resolved_slug):
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "uncommitted_changes")
-        return format_uncommitted_changes(resolved_slug)
+    if has_uncommitted_changes(context.cwd, context.resolved_slug):
+        _log_next_work_phase(
+            context.phase_slug, "dispatch_decision", context.dispatch_started, "error", "uncommitted_changes"
+        )
+        return format_uncommitted_changes(context.resolved_slug)
     try:
-        guidance = await compose_agent_guidance(db)
+        guidance = await compose_agent_guidance(context.db)
     except RuntimeError as exc:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
+        _log_next_work_phase(context.phase_slug, "dispatch_decision", context.dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
 
     review_round_val = state.get("review_round")
     review_round = review_round_val if isinstance(review_round_val, int) else 1
-    session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
     try:
-        await emit_review_approved(slug=resolved_slug, reviewer_session_id=session_id, review_round=review_round)
-    except Exception:
-        logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
+        await emit_review_approved(
+            slug=context.resolved_slug,
+            reviewer_session_id="unknown",
+            review_round=review_round,
+        )
+    except (OSError, RuntimeError, ValueError):
+        logger.warning("Failed to emit review.approved event for %s", context.resolved_slug, exc_info=True)
 
-    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
+    is_bug = await asyncio.to_thread(is_bug_todo, context.cwd, context.resolved_slug)
     note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
+    _log_next_work_phase(context.phase_slug, "dispatch_decision", context.dispatch_started, "run", "dispatch_finalize")
     return format_tool_call(
-        command=SlashCommand.NEXT_FINALIZE,
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
-        note=note,
+        ToolCallRequest(
+            command=SlashCommand.NEXT_FINALIZE,
+            args=context.resolved_slug,
+            project=context.cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{context.resolved_slug}",
+            next_call=f"telec todo work {context.resolved_slug}",
+            note=note,
+        )
     )
 
 

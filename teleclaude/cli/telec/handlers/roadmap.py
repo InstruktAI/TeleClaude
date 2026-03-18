@@ -156,6 +156,7 @@ def _print_grouped_roadmap(todos: list[TodoInfo]) -> None:
 def _handle_roadmap_add(args: list[str]) -> None:
     """Handle telec roadmap add <slug> [--group <slug>] [--after d1,d2] [--description T] [--before S]."""
     from teleclaude.core.next_machine.core import add_to_roadmap
+    from teleclaude.core.next_machine.roadmap import RoadmapInsertion
 
     if not args:
         print(_usage("roadmap", "add"))
@@ -200,7 +201,15 @@ def _handle_roadmap_add(args: list[str]) -> None:
         print(_usage("roadmap", "add"))
         raise SystemExit(1)
 
-    if add_to_roadmap(str(project_root), slug, group=group, after=after, description=description, before=before):
+    insertion = RoadmapInsertion(group=group, after=after, description=description, before=before)
+    if add_to_roadmap(
+        str(project_root),
+        slug,
+        group=insertion.group,
+        after=insertion.after,
+        description=insertion.description,
+        before=insertion.before,
+    ):
         print(f"Added {slug} to roadmap.")
     else:
         print(f"Slug already exists in roadmap: {slug}")

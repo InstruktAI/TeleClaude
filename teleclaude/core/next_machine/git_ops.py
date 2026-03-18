@@ -15,6 +15,8 @@ from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
+import teleclaude.config as config_module
+import teleclaude.core.agents as agents_module
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL
@@ -158,6 +160,7 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
         ["git", "-C", worktree_cwd, "fetch", "origin", "main"],
         capture_output=True,
         text=True,
+        check=False,
     )
     if fetch_result.returncode != 0:
         # Fetch failure is non-fatal (no remote, offline, test env)
@@ -168,6 +171,7 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
         ["git", "-C", worktree_cwd, "merge", "origin/main", "--no-edit"],
         capture_output=True,
         text=True,
+        check=False,
     )
     if merge_result.returncode != 0:
         # Abort the failed merge so the worktree stays clean
@@ -175,6 +179,7 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
             ["git", "-C", worktree_cwd, "merge", "--abort"],
             capture_output=True,
             text=True,
+            check=False,
         )
         return (
             f"Merge origin/main into worktree {slug} failed with conflicts. "
@@ -241,9 +246,6 @@ async def compose_agent_guidance(db: Db) -> str:
     into every agent's context. This function only adds runtime availability
     information (enabled/disabled, degraded status).
     """
-    from teleclaude.config import config as app_config
-    from teleclaude.core.agents import AgentName
-
     lines = ["AGENT SELECTION GUIDANCE:"]
     lines.append("")
     lines.append("Agent characteristics are in your baseline context (Agent Characteristics concept).")
@@ -254,7 +256,8 @@ async def compose_agent_guidance(db: Db) -> str:
 
     listed_count = 0
 
-    for agent_name in AgentName:
+    app_config = config_module.config
+    for agent_name in agents_module.AgentName:
         name = agent_name.value
         cfg = app_config.agents.get(name)
         if not cfg or not cfg.enabled:

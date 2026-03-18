@@ -104,6 +104,7 @@ def create_todo_skeleton(
 
     if after is not None or group is not None:
         from teleclaude.core.next_machine.core import add_to_roadmap
+        from teleclaude.core.next_machine.roadmap import RoadmapInsertion
 
         # Deduplicate and clean deps
         deduped: list[str] = []
@@ -112,7 +113,11 @@ def create_todo_skeleton(
             if cleaned and cleaned not in deduped:
                 deduped.append(cleaned)
 
-        add_to_roadmap(str(project_root), slug, after=deduped or None, group=group)
+        add_to_roadmap(
+            str(project_root),
+            slug,
+            RoadmapInsertion(after=deduped or None, group=group),
+        )
 
     return todo_dir
 

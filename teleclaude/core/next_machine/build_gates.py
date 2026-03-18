@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli import demo_validation
 from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName, PhaseStatus, StateValue
 from teleclaude.core.next_machine.state_io import is_bug_todo
 
@@ -28,15 +29,48 @@ def _count_test_failures(output: str) -> int:
     return int(match.group(1)) if match else 0
 
 
-def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
-    """Run build gates (tests + demo validation) in the worktree.
+def _retry_failed_test_gate(
+    worktree_cwd: str,
+    test_result: subprocess.CompletedProcess[str],
+    failure_count: int,
+) -> tuple[bool, str]:
+    """Retry a low-failure-count pytest run under the same config as ``make test``."""
+    output = test_result.stdout[-2000:] if test_result.stdout else ""
+    stderr = test_result.stderr[-500:] if test_result.stderr else ""
+    venv_pytest = Path(worktree_cwd) / ".venv" / "bin" / "pytest"
+    pytest_cmd = str(venv_pytest) if venv_pytest.exists() else "pytest"
+    retry_env = {
+        **os.environ,
+        "TELECLAUDE_CONFIG_PATH": "tests/integration/config.yml",
+        "TELECLAUDE_ENV_PATH": "tests/integration/.env",
+    }
+    try:
+        retry_result = subprocess.run(
+            [pytest_cmd, "--lf", "-q"],
+            cwd=worktree_cwd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=retry_env,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return False, (
+            f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}\n--- RETRY ERROR: {exc} ---"
+        )
 
-    Returns (all_passed, output_details).
-    """
-    results: list[str] = []
-    all_passed = True
+    if retry_result.returncode == 0:
+        return True, f"GATE PASSED: make test (retry passed after {failure_count} flaky failure(s))"
 
-    # Gate 1: Test suite
+    retry_output = retry_result.stdout[-1000:] if retry_result.stdout else ""
+    return False, (
+        f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}"
+        f"\n--- RETRY ALSO FAILED ---\n{retry_output}"
+    )
+
+
+def _run_test_gate(worktree_cwd: str) -> tuple[bool, str]:
+    """Run the build test gate, including the low-failure retry path."""
     try:
         test_result = subprocess.run(
             ["make", "test"],
@@ -44,76 +78,46 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
             capture_output=True,
             text=True,
             timeout=300,
+            check=False,
         )
-        if test_result.returncode != 0:
-            output = test_result.stdout[-2000:] if test_result.stdout else ""
-            stderr = test_result.stderr[-500:] if test_result.stderr else ""
-            failure_count = _count_test_failures(test_result.stdout)
-            if 1 <= failure_count <= 2:
-                # Single retry for low-count flaky test failures
-                venv_pytest = Path(worktree_cwd) / ".venv" / "bin" / "pytest"
-                pytest_cmd = str(venv_pytest) if venv_pytest.exists() else "pytest"
-                # Explicit config paths are required for pytest --lf because the
-                # Makefile's `test` target sets them via its own environment; running
-                # pytest directly bypasses the Makefile, so we mirror those paths here
-                # to keep the retry under the same configuration as the original run.
-                retry_env = {
-                    **os.environ,
-                    "TELECLAUDE_CONFIG_PATH": "tests/integration/config.yml",
-                    "TELECLAUDE_ENV_PATH": "tests/integration/.env",
-                }
-                try:
-                    retry_result = subprocess.run(
-                        [pytest_cmd, "--lf", "-q"],
-                        cwd=worktree_cwd,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                        env=retry_env,
-                    )
-                    if retry_result.returncode == 0:
-                        results.append(f"GATE PASSED: make test (retry passed after {failure_count} flaky failure(s))")
-                    else:
-                        all_passed = False
-                        retry_output = retry_result.stdout[-1000:] if retry_result.stdout else ""
-                        results.append(
-                            f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}"
-                            f"\n--- RETRY ALSO FAILED ---\n{retry_output}"
-                        )
-                except (subprocess.TimeoutExpired, OSError) as exc:
-                    all_passed = False
-                    results.append(
-                        f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}"
-                        f"\n--- RETRY ERROR: {exc} ---"
-                    )
-            else:
-                all_passed = False
-                results.append(f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}")
-        else:
-            results.append("GATE PASSED: make test")
     except subprocess.TimeoutExpired:
-        all_passed = False
-        results.append("GATE FAILED: make test (timed out after 300s)")
+        return False, "GATE FAILED: make test (timed out after 300s)"
     except OSError as exc:
-        all_passed = False
-        results.append(f"GATE FAILED: make test (error: {exc})")
+        return False, f"GATE FAILED: make test (error: {exc})"
 
-    # Gate 2: Demo structure validation (inline — no subprocess)
+    if test_result.returncode == 0:
+        return True, "GATE PASSED: make test"
+
+    failure_count = _count_test_failures(test_result.stdout)
+    if 1 <= failure_count <= 2:
+        return _retry_failed_test_gate(worktree_cwd, test_result, failure_count)
+
+    output = test_result.stdout[-2000:] if test_result.stdout else ""
+    stderr = test_result.stderr[-500:] if test_result.stderr else ""
+    return False, f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}"
+
+
+def _run_demo_gate(worktree_cwd: str, slug: str) -> tuple[bool, str]:
+    """Run the demo-validation gate, or skip it for bug workflows."""
     if is_bug_todo(worktree_cwd, slug):
-        results.append("GATE SKIPPED: demo validate (bug workflow)")
-    else:
-        from teleclaude.cli.demo_validation import validate_demo
+        return True, "GATE SKIPPED: demo validate (bug workflow)"
 
-        passed, is_no_demo, message = validate_demo(slug, Path(worktree_cwd))
-        if not passed:
-            all_passed = False
-            results.append(f"GATE FAILED: demo validate\n{message}")
-        elif is_no_demo:
-            results.append(f"GATE WARNING: demo validate — no-demo marker used, reviewer must verify\n{message}")
-        else:
-            results.append(f"GATE PASSED: demo validate\n{message.strip()}")
+    passed, is_no_demo, message = demo_validation.validate_demo(slug, Path(worktree_cwd))
+    if not passed:
+        return False, f"GATE FAILED: demo validate\n{message}"
+    if is_no_demo:
+        return True, f"GATE WARNING: demo validate — no-demo marker used, reviewer must verify\n{message}"
+    return True, f"GATE PASSED: demo validate\n{message.strip()}"
 
-    return all_passed, "\n".join(results)
+
+def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
+    """Run build gates (tests + demo validation) in the worktree.
+
+    Returns (all_passed, output_details).
+    """
+    test_passed, test_message = _run_test_gate(worktree_cwd)
+    demo_passed, demo_message = _run_demo_gate(worktree_cwd, slug)
+    return test_passed and demo_passed, "\n".join([test_message, demo_message])
 
 
 def format_build_gate_failure(slug: str, gate_output: str, next_call: str) -> str:
@@ -185,7 +189,7 @@ def _is_scaffold_template(content: str) -> bool:
         return True
 
     # Known phrases that appear only in scaffold templates.
-    _SCAFFOLD_PHRASES = (
+    scaffold_phrases = (
         "Define the intended outcome",
         "Summarize the approach",
         "Complete this task",
@@ -214,7 +218,7 @@ def _is_scaffold_template(content: str) -> bool:
             continue
         # Skip lines that consist entirely of a scaffold phrase (with optional list marker)
         bare = re.sub(r"^-\s*", "", text)
-        if any(phrase in bare for phrase in _SCAFFOLD_PHRASES):
+        if any(phrase in bare for phrase in scaffold_phrases):
             continue
         remaining_lines.append(text)
 
@@ -300,7 +304,7 @@ def _verify_state_yaml(todo_base: Path, phase: str, results: list[str]) -> bool:
         if not isinstance(raw_state, dict):
             raise ValueError("state.yaml content is not a mapping")
         state: dict[str, StateValue] = raw_state
-    except Exception as exc:
+    except (OSError, yaml.YAMLError, ValueError) as exc:
         results.append(f"FAIL: state.yaml is not parseable: {exc}")
         return False
 
@@ -388,6 +392,7 @@ def _verify_build_commits(worktree_cwd: str, results: list[str]) -> bool:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         if merge_base_result.returncode == 0:
             base = merge_base_result.stdout.strip()
@@ -396,6 +401,7 @@ def _verify_build_commits(worktree_cwd: str, results: list[str]) -> bool:
                 capture_output=True,
                 text=True,
                 timeout=10,
+                check=False,
             )
         else:
             log_result = subprocess.run(
@@ -403,6 +409,7 @@ def _verify_build_commits(worktree_cwd: str, results: list[str]) -> bool:
                 capture_output=True,
                 text=True,
                 timeout=10,
+                check=False,
             )
         if log_result.stdout.strip():
             results.append("PASS: build commits exist on worktree branch")

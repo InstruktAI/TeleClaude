@@ -6,7 +6,6 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,14 +16,17 @@ from teleclaude.core.next_machine._types import (
     PreparePhase,
     StateValue,
 )
+from teleclaude.core.next_machine.build_gates import check_file_has_content
 from teleclaude.core.next_machine.roadmap import load_roadmap_slugs
+from teleclaude.core.next_machine.slug_resolution import check_file_exists
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+from teleclaude.events.envelope import EventLevel
+from teleclaude.events.producer import emit_event
+from teleclaude.session_identity import get_session_id
 
 
 def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
     """Fire-and-forget lifecycle event emission for prepare state machine."""
-    from teleclaude.events.envelope import EventLevel
-    from teleclaude.events.producer import emit_event
 
     async def _emit() -> None:
         try:
@@ -32,14 +34,14 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
             description = f"prepare.{event_type.split('.')[-1]}: {slug}"
             await emit_event(
                 event=event_type,
-                source=f"orchestrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+                source=f"orchestrator/{get_session_id() or 'unknown'}",
                 level=EventLevel.WORKFLOW,
                 domain="software-development",
                 description=description,
                 entity=slug,
                 payload=dict(payload),  # type: ignore[arg-type]
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             pass  # Never block prepare on event emission failure
 
     try:
@@ -49,7 +51,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
         # No running loop (thread or sync CLI context) — fire-and-forget via new event loop
         try:
             asyncio.run(_emit())
-        except Exception:
+        except RuntimeError:
             pass  # Never block prepare on event emission failure
 
 
@@ -88,6 +90,45 @@ def _has_test_spec_artifacts(cwd: str, slug: str) -> bool:
     return False
 
 
+def _review_needs_work(state: dict[str, StateValue], key: str) -> bool:
+    """Return whether a review verdict still blocks progression."""
+    review = state.get(key, {})
+    verdict = (isinstance(review, dict) and review.get("verdict")) or ""
+    return not verdict or verdict in ("needs_work", "needs_decision")
+
+
+def _spec_review_needs_work(state: dict[str, StateValue]) -> bool:
+    """Return whether test spec review is still awaiting approval."""
+    review = state.get("test_spec_review", {})
+    verdict = (isinstance(review, dict) and review.get("verdict")) or ""
+    return not verdict or verdict == "needs_work"
+
+
+def _has_lifecycle_artifact(
+    cwd: str,
+    slug: str,
+    state: dict[str, StateValue],
+    artifact_path: str,
+    artifact_key: str,
+) -> bool:
+    """Check artifact existence with v2 lifecycle gating."""
+    has_artifact = check_file_has_content(cwd, f"todos/{slug}/{artifact_path}")
+    return has_artifact and _is_artifact_produced_v2(state, artifact_key)
+
+
+def _has_prepared_test_specs(cwd: str, slug: str, state: dict[str, StateValue]) -> bool:
+    """Check whether test spec artifacts exist and have lifecycle stamps."""
+    has_test_specs = _has_test_spec_artifacts(cwd, slug)
+    return has_test_specs and _is_artifact_produced_v2(state, "test_specs")
+
+
+def _is_dor_ready(state: dict[str, StateValue]) -> bool:
+    """Return whether the DOR gate score meets the ready threshold."""
+    dor = state.get("dor", {})
+    dor_score = dor.get("score") if isinstance(dor, dict) else None
+    return isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD
+
+
 def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:
     """Derive the initial prepare phase from artifact existence when no durable phase is set.
 
@@ -95,58 +136,29 @@ def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> 
     corresponding produced_at lifecycle record is treated as not produced.
     For v1 state, file existence is the sole signal (backward compat).
     """
-    from teleclaude.core.next_machine.build_gates import check_file_has_content
-    from teleclaude.core.next_machine.slug_resolution import check_file_exists
-
     has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
-    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
-
-    # Ghost artifact protection (R5)
-    if has_requirements and not _is_artifact_produced_v2(state, "requirements"):
-        has_requirements = False
-
-    if has_input and not has_requirements:
-        return PreparePhase.INPUT_ASSESSMENT
-    if not has_requirements:
-        return PreparePhase.TRIANGULATION
-
-    req_review = state.get("requirements_review", {})
-    req_verdict = (isinstance(req_review, dict) and req_review.get("verdict")) or ""
-    if not req_verdict or req_verdict in ("needs_work", "needs_decision"):
-        return PreparePhase.REQUIREMENTS_REVIEW
-
-    # After requirements approved: check test spec phase
-    has_test_specs = _has_test_spec_artifacts(cwd, slug)
-    # Ghost artifact protection (R5): v2 requires stamp, not just filesystem presence
-    if has_test_specs and not _is_artifact_produced_v2(state, "test_specs"):
-        has_test_specs = False
-    if not has_test_specs:
-        return PreparePhase.TEST_SPEC_BUILD
-
-    spec_review = state.get("test_spec_review", {})
-    spec_verdict = (isinstance(spec_review, dict) and spec_review.get("verdict")) or ""
-    if not spec_verdict or spec_verdict in ("needs_work",):
-        return PreparePhase.TEST_SPEC_REVIEW
-
-    has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
-    # Ghost artifact protection for plan
-    if has_plan and not _is_artifact_produced_v2(state, "implementation_plan"):
-        has_plan = False
-
-    if not has_plan:
-        return PreparePhase.PLAN_DRAFTING
-
-    plan_review = state.get("plan_review", {})
-    plan_verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
-    if not plan_verdict or plan_verdict in ("needs_work", "needs_decision"):
-        return PreparePhase.PLAN_REVIEW
-
-    dor = state.get("dor", {})
-    dor_score = dor.get("score") if isinstance(dor, dict) else None
-    if not (isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD):
-        return PreparePhase.GATE
-
-    return PreparePhase.GROUNDING_CHECK
+    phase = PreparePhase.INPUT_ASSESSMENT if has_input else PreparePhase.TRIANGULATION
+    if _has_lifecycle_artifact(cwd, slug, state, "requirements.md", "requirements"):
+        phase = PreparePhase.TEST_SPEC_BUILD
+        if _review_needs_work(state, "requirements_review"):
+            phase = PreparePhase.REQUIREMENTS_REVIEW
+        elif _has_prepared_test_specs(cwd, slug, state):
+            phase = PreparePhase.PLAN_DRAFTING
+            if _spec_review_needs_work(state):
+                phase = PreparePhase.TEST_SPEC_REVIEW
+            elif _has_lifecycle_artifact(
+                cwd,
+                slug,
+                state,
+                "implementation-plan.md",
+                "implementation_plan",
+            ):
+                phase = PreparePhase.GATE
+                if _review_needs_work(state, "plan_review"):
+                    phase = PreparePhase.PLAN_REVIEW
+                elif _is_dor_ready(state):
+                    phase = PreparePhase.GROUNDING_CHECK
+    return phase
 
 
 def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:

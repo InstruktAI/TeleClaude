@@ -10,15 +10,22 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
 - [ ] Tests pass (`make test`)
 - [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate pylint-cleanup-1` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate pylint-cleanup-1` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+Build notes:
+
+- Scoped verification passed for this todo: `pylint teleclaude/core/next_machine` and 78 focused unit tests covering touched `next_machine`, `operations`, and roadmap compatibility paths.
+- `make test` still fails outside this todo because of unrelated existing repository failures in `todo_from_main`, git-wrapper permission tests, and other non-`next_machine` areas.
+- `make lint` still fails outside this todo because repository-wide guardrails flag unrelated existing session-env-var usage in `daemon_session.py`, `cli/session_auth.py`, `core/integration/state_machine.py`, and `scripts/helpers/nano_banana_helper.py`.
+- Demo work was skipped per orchestrator override for this lint-only cleanup.
 
 ## Review Gates (Reviewer)
 

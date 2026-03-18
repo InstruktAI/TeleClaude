@@ -111,6 +111,7 @@ def _run_git_prepare(args: list[str], cwd: str) -> tuple[int, str, str]:
         cwd=cwd,
         capture_output=True,
         text=True,
+        check=False,
     )
     return result.returncode, result.stdout, result.stderr
 
@@ -196,7 +197,14 @@ def _normalize_finalize_state(raw: object) -> FinalizeState:
     if isinstance(status, str) and status in {"pending", "ready", "handed_off"}:
         finalize["status"] = status
 
-    for key in ("branch", "sha", "ready_at", "worker_session_id", "handed_off_at", "handoff_session_id"):
+    for key in (
+        "branch",
+        "sha",
+        "ready_at",
+        "worker_session_id",
+        "handed_off_at",
+        "handoff_session_id",
+    ):
         value = raw.get(key)
         if isinstance(value, str) and value.strip():
             finalize[key] = value.strip()
@@ -354,7 +362,10 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
 
     if status == PreparePhase.PREPARED.value:
         grounding = state.get("grounding", {})
-        grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+        grounding_dict = {
+            **DEFAULT_STATE["grounding"],
+            **(grounding if isinstance(grounding, dict) else {}),
+        }  # type: ignore
         rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
         if rc == 0 and current_sha.strip():
             grounding_dict["base_sha"] = current_sha.strip()
@@ -378,12 +389,10 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
     FINALIZE_READY. The record becomes the single source of truth consumed by
     the subsequent slug-specific `telec todo work {slug}` handoff step.
     """
-    from teleclaude.core.next_machine.git_ops import has_uncommitted_changes  # lazy: avoids circular dep
-
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not Path(worktree_cwd).exists():
         raise ValueError(f"worktree not found at {worktree_cwd}")
-    if has_uncommitted_changes(cwd, slug):
+    if _has_uncommitted_changes_in_worktree(cwd, slug):
         raise ValueError(f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes")
 
     worktree_head = _get_head_commit(worktree_cwd)
@@ -726,10 +735,7 @@ def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, S
 
     artifact_file = _PREPARE_ARTIFACT_FILES.get(artifact_key)
     if artifact_file is not None:
-        from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
-
-        record_artifact_produced(cwd, slug, artifact_file)
-        return read_phase_state(cwd, slug)
+        return _mark_file_backed_prepare_artifact(cwd, slug, artifact_key, artifact_file)
 
     state = read_phase_state(cwd, slug)
     artifacts = state.get("artifacts", {})
@@ -753,6 +759,68 @@ def _has_content(path: Path) -> bool:
     text = path.read_text(encoding="utf-8").strip()
     lines = [ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
     return len(lines) > 0
+
+
+def _has_uncommitted_changes_in_worktree(cwd: str, slug: str) -> bool:
+    """Return whether the slug worktree has tracked or untracked changes."""
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    if not worktree_path.exists():
+        return False
+
+    result = subprocess.run(
+        ["git", "-C", str(worktree_path), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+
+    ignored = {
+        ".teleclaude",
+        ".teleclaude/",
+        f"todos/{slug}",
+        f"todos/{slug}/",
+    }
+    for line in result.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        normalized = path.replace("\\", "/")
+        if normalized.startswith(".teleclaude/"):
+            continue
+        if normalized in ignored or normalized.startswith(f"todos/{slug}/"):
+            continue
+        return True
+    return False
+
+
+def _mark_file_backed_prepare_artifact(
+    cwd: str,
+    slug: str,
+    artifact_key: str,
+    artifact_file: str,
+) -> dict[str, StateValue]:
+    """Record a file-backed prepare artifact in state.yaml."""
+    artifact_path = Path(cwd) / "todos" / slug / artifact_file
+    digest = hashlib.sha256(artifact_path.read_bytes()).hexdigest() if artifact_path.exists() else ""
+
+    state = read_phase_state(cwd, slug)
+    artifacts = state.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+    entry = artifacts.get(artifact_key, {})
+    if not isinstance(entry, dict):
+        entry = {}
+    entry["digest"] = digest
+    entry["produced_at"] = datetime.now(UTC).isoformat()
+    entry["stale"] = False
+    artifacts[artifact_key] = entry
+    state["artifacts"] = artifacts
+    write_phase_state(cwd, slug, state)
+    return state
 
 
 __all__ = [
