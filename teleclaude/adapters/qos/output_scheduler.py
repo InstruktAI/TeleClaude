@@ -175,7 +175,7 @@ class OutputQoSScheduler:
     def __setattr__(self, name: str, value: object) -> None:
         """Keep legacy private attribute writes routed to the nested state objects."""
         if name == "_rr_idx" and "_queues" in self.__dict__:
-            self._queues.rr_idx = int(value)
+            self._queues.rr_idx = int(value)  # type: ignore[call-overload]
             return
         stat_attr = self._STATS_ATTRS.get(name)
         if stat_attr is not None and "_stats" in self.__dict__:

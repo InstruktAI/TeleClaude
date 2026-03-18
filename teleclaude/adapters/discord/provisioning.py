@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
 config_persist_exceptions = (AttributeError, OSError, TypeError, ValueError, yaml.YAMLError)
-discord_operation_exceptions = (AttributeError, RuntimeError, TypeError, ValueError)
+discord_operation_exceptions: tuple[type[Exception], ...] = (AttributeError, RuntimeError, TypeError, ValueError)
 
 try:
     from discord import DiscordException

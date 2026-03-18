@@ -64,6 +64,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         _require_async_callable: Callable[..., Callable[..., Awaitable[object]]]  # pylint: disable=used-before-assignment
         _get_channel: Callable[[int], Awaitable[object | None]]  # pylint: disable=used-before-assignment
         _is_forum_channel: Callable[[object], bool]  # pylint: disable=used-before-assignment
+
         def _get_enabled_agents(self) -> list[str]: ...
 
         @property

@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 class SignalClusterCartridge:
     name = "signal-cluster"
 
+    def describe(self) -> str:
+        return self.name
+
     def __init__(self, config: ClusteringConfig, ai: SignalAIClient, signal_db: SignalDB) -> None:
         self._config = config
         self._ai = ai
@@ -87,14 +90,14 @@ class SignalClusterCartridge:
                 )
                 continue
 
-            cluster_id = await self._signal_db.insert_cluster(
-                cluster_key=cluster_key,
-                tags=unique_tags,
-                is_burst=is_burst,
-                is_novel=is_novel,
-                summary=summary,
-                member_ids=member_ids,
-            )
+            cluster_id = await self._signal_db.insert_cluster({
+                "cluster_key": cluster_key,
+                "tags": unique_tags,
+                "is_burst": is_burst,
+                "is_novel": is_novel,
+                "summary": summary,
+                "member_ids": member_ids,
+            })
             if cluster_id == 0:
                 # Cluster already exists (idempotency via cluster_key UNIQUE)
                 continue

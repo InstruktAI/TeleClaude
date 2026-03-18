@@ -148,7 +148,8 @@ def _row_to_dict(row: aiosqlite.Row) -> NotificationRow:
 
 def _signal_db_class() -> type[SignalDB]:
     """Load the signal DB wrapper lazily to avoid import cycles."""
-    return import_module("teleclaude.events.signal.db").SignalDB
+    cls: type[SignalDB] = import_module("teleclaude.events.signal.db").SignalDB
+    return cls
 
 
 class EventDB:

@@ -37,6 +37,9 @@ def _near_duplicate(summary_a: str, summary_b: str, threshold: float = 0.9) -> b
 class SignalSynthesizeCartridge:
     name = "signal-synthesize"
 
+    def describe(self) -> str:
+        return self.name
+
     def __init__(self, config: SynthesizeConfig, ai: SignalAIClient, signal_db: SignalDB) -> None:
         self._config = config
         self._ai = ai

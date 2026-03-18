@@ -37,7 +37,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
                 domain="software-development",
                 description=description,
                 entity=slug,
-                payload=dict(payload),  # type: ignore[arg-type]
+                payload=dict(payload),
             )
         except Exception:
             pass  # Never block prepare on event emission failure

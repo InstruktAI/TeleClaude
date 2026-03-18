@@ -36,7 +36,7 @@ def _require_runtime_settings() -> RuntimeSettings:
 
 def _require_chiptunes_manager(runtime_settings: RuntimeSettings) -> ChiptunesManager:
     """Return the configured chiptunes manager or raise service unavailable."""
-    manager = getattr(runtime_settings, "_chiptunes_manager", None)
+    manager: ChiptunesManager | None = getattr(runtime_settings, "_chiptunes_manager", None)
     if manager is None:
         raise HTTPException(503, "Chiptunes manager not available")
     return manager

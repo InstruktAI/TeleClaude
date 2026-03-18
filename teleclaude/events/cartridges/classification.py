@@ -11,6 +11,9 @@ class ClassificationCartridge:
 
     name = "classification"
 
+    def describe(self) -> str:
+        return self.name
+
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Annotate the event payload with its classification outcome."""
         schema = context.catalog.get(event.event)

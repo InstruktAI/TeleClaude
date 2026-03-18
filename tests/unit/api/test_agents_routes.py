@@ -31,7 +31,7 @@ class TestAgentsRoutes:
         ):
             db.get_agent_availability = AsyncMock(side_effect=[RuntimeError("db down")])
 
-            response = await agents_routes.get_agent_availability(identity=object())
+            response = await agents_routes.get_agent_availability(_identity=object())
 
         assert response["claude"].model_dump()["status"] == "unavailable"
         assert response["claude"].model_dump()["reason"]  # non-empty reason present
@@ -57,7 +57,7 @@ class TestAgentsRoutes:
             db.mark_agent_degraded = AsyncMock()
             db.get_agent_availability = AsyncMock(return_value=refreshed)
 
-            response = await agents_routes.set_agent_status("Codex", request, identity=object())
+            response = await agents_routes.set_agent_status("Codex", request, _identity=object())
 
         assert response["status"] == "degraded"
         assert response["reason"] == "latency"
@@ -71,6 +71,6 @@ class TestAgentsRoutes:
 
         with patch("teleclaude.api.agents_routes.normalize_agent_name", return_value="claude"):
             with pytest.raises(HTTPException) as exc_info:
-                await agents_routes.set_agent_status("claude", request, identity=object())
+                await agents_routes.set_agent_status("claude", request, _identity=object())
 
         assert exc_info.value.status_code == 400

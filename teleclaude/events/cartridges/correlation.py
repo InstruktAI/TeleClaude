@@ -38,6 +38,9 @@ class CorrelationCartridge:
 
     name = "correlation"
 
+    def describe(self) -> str:
+        return self.name
+
     def __init__(self) -> None:
         self._emitted_bursts: set[tuple[str, int]] = set()
 

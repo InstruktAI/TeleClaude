@@ -66,6 +66,9 @@ class IntegrationTriggerCartridge:
 
     name = "integration-trigger"
 
+    def describe(self) -> str:
+        return self.name
+
     def __init__(
         self,
         *,

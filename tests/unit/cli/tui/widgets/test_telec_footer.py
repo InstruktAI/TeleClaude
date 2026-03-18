@@ -65,7 +65,7 @@ def test_get_persisted_state_reflects_current_values() -> None:
 @pytest.mark.unit
 def test_load_persisted_state_restores_animation_mode() -> None:
     footer = TelecFooter()
-    footer.load_persisted_state({"animation_mode": "party"})
+    footer.load_persisted_state({"animation_mode": "party", "pane_theming_mode": footer.pane_theming_mode})
     assert footer.animation_mode == "party"
 
 
@@ -73,7 +73,7 @@ def test_load_persisted_state_restores_animation_mode() -> None:
 def test_load_persisted_state_ignores_invalid_animation_mode() -> None:
     footer = TelecFooter()
     footer.animation_mode = "off"
-    footer.load_persisted_state({"animation_mode": "bogus"})
+    footer.load_persisted_state({"animation_mode": "bogus", "pane_theming_mode": footer.pane_theming_mode})
     assert footer.animation_mode == "off"
 
 
@@ -81,7 +81,7 @@ def test_load_persisted_state_ignores_invalid_animation_mode() -> None:
 def test_load_persisted_state_ignores_invalid_pane_theming_mode() -> None:
     footer = TelecFooter()
     footer.pane_theming_mode = "off"
-    footer.load_persisted_state({"pane_theming_mode": "bogus-invalid"})
+    footer.load_persisted_state({"pane_theming_mode": "bogus-invalid", "animation_mode": footer.animation_mode})
     assert footer.pane_theming_mode == "off"
 
 

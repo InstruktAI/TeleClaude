@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
-discord_operation_exceptions = (AttributeError, RuntimeError, TypeError, ValueError)
+discord_operation_exceptions: tuple[type[Exception], ...] = (AttributeError, RuntimeError, TypeError, ValueError)
 
 try:
     from discord import DiscordException

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
+from teleclaude.cli.tui.widgets._status_controls import PersistedControlState
 from teleclaude.cli.tui.widgets.status_bar import StatusBar
 
 # --- StatusBar._build_pane_theming_cells ---
@@ -67,7 +70,7 @@ def test_build_pane_theming_cells_four_filled_when_agent_plus() -> None:
 @pytest.mark.unit
 def test_load_persisted_state_restores_animation_mode() -> None:
     bar = StatusBar()
-    bar.load_persisted_state({"animation_mode": "periodic"})
+    bar.load_persisted_state({"animation_mode": "periodic", "pane_theming_mode": bar.pane_theming_mode})
     assert bar.animation_mode == "periodic"
 
 
@@ -75,7 +78,7 @@ def test_load_persisted_state_restores_animation_mode() -> None:
 def test_load_persisted_state_ignores_invalid_animation_mode() -> None:
     bar = StatusBar()
     bar.animation_mode = "off"
-    bar.load_persisted_state({"animation_mode": "invalid-mode"})
+    bar.load_persisted_state({"animation_mode": "invalid-mode", "pane_theming_mode": bar.pane_theming_mode})
     assert bar.animation_mode == "off"
 
 
@@ -83,7 +86,7 @@ def test_load_persisted_state_ignores_invalid_animation_mode() -> None:
 def test_load_persisted_state_ignores_invalid_pane_theming_mode() -> None:
     bar = StatusBar()
     bar.pane_theming_mode = "off"
-    bar.load_persisted_state({"pane_theming_mode": "bogus-invalid"})
+    bar.load_persisted_state({"pane_theming_mode": "bogus-invalid", "animation_mode": bar.animation_mode})
     assert bar.pane_theming_mode == "off"
 
 
@@ -91,7 +94,7 @@ def test_load_persisted_state_ignores_invalid_pane_theming_mode() -> None:
 def test_load_persisted_state_ignores_missing_animation_mode() -> None:
     bar = StatusBar()
     bar.animation_mode = "party"
-    bar.load_persisted_state({})
+    bar.load_persisted_state(cast(PersistedControlState, {}))
     assert bar.animation_mode == "party"
 
 

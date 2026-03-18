@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.transport.redis_transport._refresh import _RefreshRequest
 from teleclaude.transport.redis_transport._transport import RedisTransport
 
 
@@ -119,22 +120,22 @@ class TestRecordPeerDigest:
 class TestScheduleRefresh:
     @pytest.mark.unit
     def test_returns_false_for_disallowed_reason(self, transport: RedisTransport) -> None:
-        result = transport._schedule_refresh(computer="remote", data_type="projects", reason="unauthorized")
+        result = transport._schedule_refresh(_RefreshRequest(computer="remote", data_type="projects", reason="unauthorized"))
         assert result is False
 
     @pytest.mark.unit
     def test_returns_false_for_local_computer(self, transport: RedisTransport) -> None:
-        result = transport._schedule_refresh(computer="local", data_type="projects", reason="startup")
+        result = transport._schedule_refresh(_RefreshRequest(computer="local", data_type="projects", reason="startup"))
         assert result is False
 
     @pytest.mark.unit
     def test_returns_false_for_self_computer(self, transport: RedisTransport) -> None:
-        result = transport._schedule_refresh(computer=transport.computer_name, data_type="projects", reason="startup")
+        result = transport._schedule_refresh(_RefreshRequest(computer=transport.computer_name, data_type="projects", reason="startup"))
         assert result is False
 
     @pytest.mark.unit
     def test_returns_false_for_unknown_data_type(self, transport: RedisTransport) -> None:
-        result = transport._schedule_refresh(computer="remote-host", data_type="unknown", reason="startup")
+        result = transport._schedule_refresh(_RefreshRequest(computer="remote-host", data_type="unknown", reason="startup"))
         assert result is False
 
     @pytest.mark.unit
@@ -143,7 +144,7 @@ class TestScheduleRefresh:
         transport.task_registry = None
         with patch("teleclaude.transport.redis_transport._refresh.asyncio.create_task") as mock_ct:
             mock_ct.return_value = MagicMock(done=MagicMock(return_value=True))
-            result = transport._schedule_refresh(computer="remote-host", data_type="projects", reason="startup")
+            result = transport._schedule_refresh(_RefreshRequest(computer="remote-host", data_type="projects", reason="startup"))
         assert result is True
 
 

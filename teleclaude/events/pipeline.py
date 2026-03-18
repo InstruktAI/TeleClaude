@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, Protocol
@@ -44,7 +44,7 @@ class PipelineContext:
     correlation_config: CorrelationConfig = field(default_factory=_default_correlation_config)
     producer: EventProducer | None = None
     ai_client: object = None
-    emit: Callable[..., object] | None = None
+    emit: Callable[..., Awaitable[object]] | None = None
 
 
 class Cartridge(Protocol):

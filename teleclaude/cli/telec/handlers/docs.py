@@ -15,11 +15,13 @@ __all__ = [
 
 
 def _build_context_output(**kwargs: object) -> str:
-    return importlib.import_module("teleclaude.context_selector").build_context_output(**kwargs)
+    result: str = importlib.import_module("teleclaude.context_selector").build_context_output(**kwargs)
+    return result
 
 
 def _resolve_cli_caller_role() -> str | None:
-    return importlib.import_module("teleclaude.cli.session_auth").resolve_cli_caller_role()
+    result: str | None = importlib.import_module("teleclaude.cli.session_auth").resolve_cli_caller_role()
+    return result
 
 
 def _handle_docs(args: list[str]) -> None:

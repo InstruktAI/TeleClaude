@@ -35,7 +35,7 @@ class TestComputersRoutes:
                 "teleclaude.api.computers_routes.config", SimpleNamespace(computer=SimpleNamespace(name="local-box"))
             ),
         ):
-            response = await computers_routes.list_computers(identity=object())
+            response = await computers_routes.list_computers(_identity=object())
 
         assert [computer.model_dump() for computer in response] == [
             {
@@ -67,6 +67,6 @@ class TestComputersRoutes:
             new=AsyncMock(side_effect=RuntimeError("offline")),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await computers_routes.list_computers(identity=object())
+                await computers_routes.list_computers(_identity=object())
 
         assert exc_info.value.status_code == 500

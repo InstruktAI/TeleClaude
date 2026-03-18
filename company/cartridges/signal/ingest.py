@@ -26,6 +26,9 @@ def _build_idempotency_key(source_id: str, item_url: str) -> str:
 class SignalIngestCartridge:
     name = "signal-ingest"
 
+    def describe(self) -> str:
+        return self.name
+
     def __init__(self, config: SignalSourceConfig, ai: SignalAIClient, signal_db: SignalDB) -> None:
         self._config = config
         self._ai = ai

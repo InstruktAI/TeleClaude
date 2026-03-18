@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from http import HTTPMethod
 from pathlib import Path
-from typing import NotRequired, Required, TypedDict, Unpack
+from typing import Any, NotRequired, Required, TypedDict, Unpack
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -353,7 +353,7 @@ class _TelecConnectionClient:
         if not self._http_state.client:
             raise APIError("Client not connected. Call connect() first.")
 
-        request_kwargs = {
+        request_kwargs: dict[str, Any] = {
             "params": request_options.params,
             "headers": self._http_state.identity_headers,
             "timeout": timeout,

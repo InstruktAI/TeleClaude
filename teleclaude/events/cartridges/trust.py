@@ -38,6 +38,9 @@ class TrustCartridge:
 
     name = "trust"
 
+    def describe(self) -> str:
+        return self.name
+
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Apply trust evaluation and return the resulting event disposition."""
         config = context.trust_config

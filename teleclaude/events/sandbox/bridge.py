@@ -33,6 +33,9 @@ class SandboxBridgeCartridge:
 
     name = "sandbox-bridge"
 
+    def describe(self) -> str:
+        return self.name
+
     def __init__(self, manager: SandboxContainerManager) -> None:
         """Initialize the bridge with a sandbox container manager."""
         self._manager = manager

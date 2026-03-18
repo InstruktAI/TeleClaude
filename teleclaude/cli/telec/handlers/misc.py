@@ -7,6 +7,7 @@ import importlib
 import os
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.models import CreateSessionResult
@@ -32,24 +33,27 @@ __all__ = [
 ]
 
 
-def _load_project_config():
+def _load_project_config() -> Any:
     return importlib.import_module("teleclaude.config.loader").load_project_config
 
 
 def _resolve_project_config_path(project_root: Path) -> Path:
-    return importlib.import_module("teleclaude.utils").resolve_project_config_path(project_root)
+    result: Path = importlib.import_module("teleclaude.utils").resolve_project_config_path(project_root)
+    return result
 
 
 def _teleclaude_version() -> str:
-    return importlib.import_module("teleclaude").__version__
+    result: str = importlib.import_module("teleclaude").__version__
+    return result
 
 
 def _run_sync(project_root: Path, *, validate_only: bool, warn_only: bool) -> bool:
-    return importlib.import_module("teleclaude.sync").sync(
+    result: bool = importlib.import_module("teleclaude.sync").sync(
         project_root,
         validate_only=validate_only,
         warn_only=warn_only,
     )
+    return result
 
 
 def _run_watch(project_root: Path) -> None:

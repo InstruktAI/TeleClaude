@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import cast
 
 from pydantic import BaseModel
 
@@ -112,7 +111,7 @@ def refine_by_embeddings(group: list[SignalItemPayload], threshold: float) -> li
     embedding_candidates = [item.get("embedding") for item in group]
     if any(embedding is None for embedding in embedding_candidates):
         return [group]
-    embeddings = [cast(list[float], embedding) for embedding in embedding_candidates]
+    embeddings = [embedding for embedding in embedding_candidates if embedding is not None]
     parent = list(range(len(group)))
     _union_embedding_matches(parent, embeddings, threshold)
     return _group_items_by_parent(group, parent)

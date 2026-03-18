@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+from typing import Any
 
 from teleclaude.cli.telec.help import _usage
 
@@ -15,11 +16,11 @@ __all__ = [
 ]
 
 
-def _build_default_catalog():
+def _build_default_catalog() -> Any:
     return importlib.import_module("teleclaude.events").build_default_catalog()
 
 
-def _load_signal_runtime():
+def _load_signal_runtime() -> tuple[Any, Any, Any]:
     aiosqlite = importlib.import_module("aiosqlite")
     config = importlib.import_module("teleclaude.config").config
     signal_db = importlib.import_module("teleclaude.events.signal.db").SignalDB
@@ -99,7 +100,7 @@ def _handle_signals_status() -> None:
         async with aiosqlite.connect(db_path) as conn:
             conn.row_factory = aiosqlite.Row
             sdb = signal_db(conn)
-            db_error = getattr(aiosqlite, "Error", RuntimeError)
+            db_error: type[Exception] = getattr(aiosqlite, "Error", RuntimeError)
             try:
                 counts = await sdb.get_signal_counts()
                 last_ingest = await sdb.get_last_ingest_time()

@@ -19,6 +19,9 @@ class EnrichmentCartridge:
 
     name = "enrichment"
 
+    def describe(self) -> str:
+        return self.name
+
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Attach entity enrichment data to the event payload when available."""
         if event.entity is None:

@@ -273,7 +273,8 @@ def _load_demo_snapshot(
 ) -> dict[str, object]:  # guard: loose-dict - JSON deserialization
     """Load a demo snapshot.json file."""
     try:
-        return json.loads(snapshot_path.read_text())
+        result: dict[str, object] = json.loads(snapshot_path.read_text())
+        return result
     except (json.JSONDecodeError, OSError) as exc:
         print(f"Error reading snapshot for '{slug}': {exc}")
         raise SystemExit(1) from exc

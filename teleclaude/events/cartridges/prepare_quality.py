@@ -388,6 +388,9 @@ def _find_project_root() -> Path:
 class PrepareQualityCartridge:
     name = "prepare-quality"
 
+    def describe(self) -> str:
+        return self.name
+
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         # Pass through non-planning events immediately
         if not event.event.startswith(_PLANNING_PREFIX):

@@ -29,6 +29,9 @@ class NotificationProjectorCartridge:
 
     name = "notification-projector"
 
+    def describe(self) -> str:
+        return self.name
+
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Create, update, or resolve notifications based on event lifecycle metadata."""
         # Fast-path: if _classification is present and treatment is signal-only, skip notification logic

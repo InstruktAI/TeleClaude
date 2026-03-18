@@ -6,6 +6,7 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -230,7 +231,7 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
         CreativePhase.CREATIVE_COMPLETE: lambda: _creative_complete(slug),
         CreativePhase.BLOCKED: lambda: _creative_blocked(slug),
     }
-    builder = builders.get(phase, lambda: f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml.")
+    builder: Callable[[], str] = builders.get(phase, lambda: f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml.")
     return builder()
 
 

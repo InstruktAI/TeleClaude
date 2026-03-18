@@ -6,6 +6,7 @@ import importlib
 import os
 import sys
 import time as _t
+from typing import Any
 
 __all__ = [
     "_run_tui",
@@ -15,7 +16,7 @@ __all__ = [
 _TUI_FAILURES = (LookupError, OSError, RuntimeError, TypeError, ValueError)
 
 
-def _load_tui_runtime():
+def _load_tui_runtime() -> tuple[Any, ...]:
     logger = importlib.import_module("instrukt_ai_logging").get_logger(__name__)
     api_client = importlib.import_module("teleclaude.cli.api_client").TelecAPIClient
     misc = importlib.import_module("teleclaude.cli.telec.handlers.misc")

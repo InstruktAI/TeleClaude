@@ -8,7 +8,7 @@ adapter-specific policy factories.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from teleclaude.config import DiscordQoSConfig, TelegramQoSConfig, WhatsAppQoSConfig
@@ -51,7 +51,7 @@ class QoSPolicy:
     __slots__ = ("_budget", "_cadence", "adapter_key", "mode")
 
     def __init__(self, adapter_key: str, *args: object, **kwargs: object) -> None:
-        values = {
+        values: dict[str, Any] = {
             "mode": "off",
             "group_mpm": 20,
             "output_budget_ratio": 0.8,

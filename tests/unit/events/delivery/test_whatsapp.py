@@ -22,7 +22,7 @@ async def test_on_notification_sends_when_created_and_above_min_level() -> None:
         event_type="deployment.failed",
         level=int(EventLevel.BUSINESS),
         was_created=True,
-        is_meaningful=True,
+        _is_meaningful=True,
     )
     send_fn.assert_awaited_once()
     call_kwargs = send_fn.call_args.kwargs
@@ -37,7 +37,7 @@ async def test_on_notification_skips_when_not_created() -> None:
         event_type="deployment.failed",
         level=int(EventLevel.BUSINESS),
         was_created=False,
-        is_meaningful=True,
+        _is_meaningful=True,
     )
     send_fn.assert_not_awaited()
 
@@ -50,7 +50,7 @@ async def test_on_notification_skips_when_level_below_min() -> None:
         event_type="system.daemon.restarted",
         level=int(EventLevel.INFRASTRUCTURE),
         was_created=True,
-        is_meaningful=False,
+        _is_meaningful=False,
     )
     send_fn.assert_not_awaited()
 
@@ -63,7 +63,7 @@ async def test_on_notification_swallows_send_exceptions() -> None:
         event_type="deployment.failed",
         level=int(EventLevel.BUSINESS),
         was_created=True,
-        is_meaningful=True,
+        _is_meaningful=True,
     )
 
 
@@ -75,7 +75,7 @@ async def test_default_min_level_is_workflow() -> None:
         event_type="event",
         level=int(EventLevel.OPERATIONAL),
         was_created=True,
-        is_meaningful=False,
+        _is_meaningful=False,
     )
     send_fn.assert_not_awaited()
 
@@ -89,6 +89,6 @@ async def test_sends_for_workflow_and_business_levels(level: int) -> None:
         event_type="test.event",
         level=level,
         was_created=True,
-        is_meaningful=True,
+        _is_meaningful=True,
     )
     send_fn.assert_awaited_once()

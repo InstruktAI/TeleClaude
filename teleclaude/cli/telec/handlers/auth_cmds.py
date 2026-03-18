@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import os
+from typing import Any
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.session_auth import (
@@ -26,7 +27,7 @@ __all__ = [
 ]
 
 
-def _load_global_config():
+def _load_global_config() -> Any:
     return importlib.import_module("teleclaude.config.loader").load_global_config()
 
 
@@ -71,7 +72,7 @@ def _role_for_email(email: str) -> str | None:
         return None
     for person in global_cfg.people:
         if person.email.strip().lower() == normalized:
-            return person.role
+            return str(person.role)
     return None
 
 

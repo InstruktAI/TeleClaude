@@ -74,12 +74,19 @@ def add_to_roadmap(
 
     Returns True if the entry was added, False if it already existed.
     """
-    insertion = options or RoadmapInsertion(
-        group=legacy_options.get("group") if isinstance(legacy_options.get("group"), str) else None,
-        after=list(legacy_options["after"]) if isinstance(legacy_options.get("after"), list) else None,
-        description=(legacy_options.get("description") if isinstance(legacy_options.get("description"), str) else None),
-        before=legacy_options.get("before") if isinstance(legacy_options.get("before"), str) else None,
-    )
+    if options is None:
+        _group = legacy_options.get("group")
+        _after = legacy_options.get("after")
+        _desc = legacy_options.get("description")
+        _before = legacy_options.get("before")
+        insertion = RoadmapInsertion(
+            group=_group if isinstance(_group, str) else None,
+            after=list(_after) if isinstance(_after, list) else None,
+            description=_desc if isinstance(_desc, str) else None,
+            before=_before if isinstance(_before, str) else None,
+        )
+    else:
+        insertion = options
     entries = load_roadmap(cwd)
     # Avoid duplicates
     if any(e.slug == slug for e in entries):

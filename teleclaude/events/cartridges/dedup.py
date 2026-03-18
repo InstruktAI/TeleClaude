@@ -15,6 +15,9 @@ class DeduplicationCartridge:
 
     name = "dedup"
 
+    def describe(self) -> str:
+        return self.name
+
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Stamp and enforce idempotency keys before projection work begins."""
         schema = context.catalog.get(event.event)

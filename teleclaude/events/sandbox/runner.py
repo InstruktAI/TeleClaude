@@ -123,7 +123,9 @@ class SandboxRunner:
                     timeout=_CARTRIDGE_TIMEOUT,
                 )
                 duration_ms = (time.monotonic() - start) * 1000
-                result_dict = result.to_stream_dict() if result is not None else None
+                result_dict: JsonDict | None = (
+                    cast(JsonDict, result.to_stream_dict()) if result is not None else None
+                )
                 response = SandboxResponse(
                     envelope=result_dict,
                     error=None,

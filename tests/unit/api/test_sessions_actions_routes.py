@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from teleclaude.api import sessions_actions_routes
 from teleclaude.api.auth import CallerIdentity
+from teleclaude.api.sessions_actions_routes import SessionMessagesQuery
 from teleclaude.api_models import (
     EscalateRequest,
     FileUploadRequest,
@@ -64,7 +65,7 @@ class TestSessionsActionsRoutes:
                 http_request,
                 "sess-keys",
                 request,
-                identity=identity,
+                _identity=identity,
             )
 
         assert response == {"status": "success"}
@@ -105,7 +106,7 @@ class TestSessionsActionsRoutes:
                 http_request,
                 "sess-voice",
                 request,
-                identity=identity,
+                _identity=identity,
             )
 
         assert response == {"status": "success"}
@@ -180,7 +181,7 @@ class TestSessionsActionsRoutes:
             db.get_session = AsyncMock(return_value=SimpleNamespace(active_agent=None, native_session_id="native-123"))
 
             with pytest.raises(HTTPException) as exc_info:
-                await sessions_actions_routes.agent_restart(http_request, "sess-restart", identity=identity)
+                await sessions_actions_routes.agent_restart(http_request, "sess-restart", _identity=identity)
 
         assert exc_info.value.status_code == 409
         check_session_access.assert_awaited_once_with(http_request, "sess-restart")
@@ -275,11 +276,13 @@ class TestSessionsActionsRoutes:
             response = await sessions_actions_routes.get_session_messages(
                 http_request,
                 "sess-messages",
-                since="2025-02-01T00:00:00Z",
-                include_tools=True,
-                include_thinking=True,
-                tail_chars=321,
-                identity=identity,
+                query=SessionMessagesQuery(
+                    since="2025-02-01T00:00:00Z",
+                    include_tools=True,
+                    include_thinking=True,
+                    tail_chars=321,
+                ),
+                _identity=identity,
             )
 
         assert response.session_id == "sess-messages"
@@ -325,11 +328,13 @@ class TestSessionsActionsRoutes:
             response = await sessions_actions_routes.get_session_messages(
                 http_request,
                 "sess-tail",
-                since="2025-02-01T00:00:00Z",
-                include_tools=False,
-                include_thinking=False,
-                tail_chars=0,
-                identity=identity,
+                query=SessionMessagesQuery(
+                    since="2025-02-01T00:00:00Z",
+                    include_tools=False,
+                    include_thinking=False,
+                    tail_chars=0,
+                ),
+                _identity=identity,
             )
 
         assert response.session_id == "sess-tail"

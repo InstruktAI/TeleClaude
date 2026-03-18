@@ -157,7 +157,7 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
 def _command_text(value: object) -> str:
     """Return the slash-command literal for enum or string inputs."""
     if hasattr(value, "value"):
-        return str(value.value)  # type: ignore[union-attr]  # guarded by hasattr
+        return str(value.value)  # guarded by hasattr
     return str(value)
 
 

@@ -194,4 +194,4 @@ def default_state() -> dict[str, StateValue]:
     """Return a fresh default state dict from the canonical TodoState model."""
     from teleclaude.types.todos import TodoState
 
-    return TodoState().model_dump(exclude_none=True)  # type: ignore[return-value]
+    return TodoState().model_dump(exclude_none=True)
