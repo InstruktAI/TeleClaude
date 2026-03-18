@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from importlib import import_module
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -13,7 +14,7 @@ logger = get_logger(__name__)
 
 def _resolve_help_desk_dir() -> Path:
     """Resolve help desk directory from config or default sibling location."""
-    from teleclaude.config import config
+    config = import_module("teleclaude.config").config
 
     configured = config.computer.help_desk_dir
     if configured:
@@ -49,8 +50,7 @@ def bootstrap_help_desk() -> None:
         subprocess.run(["git", "init"], cwd=help_desk_dir, check=True, capture_output=True)
 
         # Run telec init inside the new directory
-        from teleclaude.project_setup.init_flow import init_project
-
+        init_project = import_module("teleclaude.project_setup.init_flow").init_project
         init_project(help_desk_dir)
 
         # Initial commit

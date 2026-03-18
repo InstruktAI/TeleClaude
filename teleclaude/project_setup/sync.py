@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import teleclaude.sync as teleclaude_sync
+
 from teleclaude.paths import REPO_ROOT
 
 
@@ -14,9 +16,7 @@ def sync_project_artifacts(project_root: Path) -> None:
     Args:
         project_root: Path to the project root directory.
     """
-    from teleclaude.sync import sync
-
-    ok = sync(project_root, warn_only=True)
+    ok = teleclaude_sync.sync(project_root, warn_only=True)
     if not ok:
         print("telec init: sync completed with warnings.")
 
@@ -116,13 +116,13 @@ def _remove_stale_launchd_plists(launchd_dir: Path, project_root: Path) -> None:
             continue
         try:
             content = plist.read_text(encoding="utf-8")
-        except Exception:
+        except OSError:
             continue
         if str(project_root) not in content:
             continue
         try:
             plist.unlink()
-        except Exception:
+        except OSError:
             continue
 
 

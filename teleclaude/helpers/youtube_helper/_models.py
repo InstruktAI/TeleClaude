@@ -69,6 +69,8 @@ class VideoRenderer(TypedDict, total=False):
 
 
 class HistoryEntry(TypedDict):
+    """Parsed watch-history entry from the InnerTube browse payload."""
+
     id: str
     title: str
     channel: str
@@ -79,6 +81,8 @@ class HistoryEntry(TypedDict):
 
 
 class SubscriptionEntry(TypedDict):
+    """Parsed subscriptions-feed entry from the InnerTube browse payload."""
+
     id: str
     title: str
     channel: str
@@ -89,10 +93,14 @@ class SubscriptionEntry(TypedDict):
 
 
 class HtmlVideoInfo(TypedDict):
+    """Description fields extracted from a YouTube watch page HTML payload."""
+
     long_desc: str | None
 
 
 class RichGridItem(TypedDict, total=False):
+    """Subset of rich-grid item payloads used for subscriptions parsing."""
+
     richItemRenderer: JsonDict  # guard: youtube-api - Nested InnerTube structure
     continuationItemRenderer: JsonDict  # guard: youtube-api - Nested InnerTube structure
 
