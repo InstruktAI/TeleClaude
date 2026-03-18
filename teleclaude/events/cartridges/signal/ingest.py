@@ -84,7 +84,7 @@ class SignalIngestCartridge:
                     embed = await self._ai.embed(summary)
 
                 fetched_at = datetime.now(UTC).isoformat()
-                payload: dict[str, object] = {
+                payload: dict[str, object] = { # guard: loose-dict - dynamic event payload
                     "idempotency_key": ikey,
                     "source_id": source_id,
                     "item_url": item.get("url", ""),

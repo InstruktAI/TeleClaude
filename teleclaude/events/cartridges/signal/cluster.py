@@ -58,7 +58,7 @@ class SignalClusterCartridge:
         tag_groups = group_by_tags(items, min_overlap=self._config.tag_overlap_min)
 
         # Refine each group by embeddings
-        refined: list[list[dict[str, object]]] = []
+        refined: list[list[dict[str, object]]] = [] # guard: loose-dict - refined cluster groups
         for group in tag_groups:
             refined.extend(  # type: ignore[arg-type]
                 refine_by_embeddings(group, self._config.embedding_similarity_threshold)
