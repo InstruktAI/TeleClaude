@@ -15,9 +15,12 @@ logger = get_logger(__name__)
 
 
 class EnrichmentCartridge:
+    """Augment events with derived context for known TeleClaude entity URIs."""
+
     name = "enrichment"
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Attach entity enrichment data to the event payload when available."""
         if event.entity is None:
             return event
 
@@ -30,6 +33,7 @@ class EnrichmentCartridge:
         return event.model_copy(update={"payload": updated_payload})
 
     async def _enrich(self, entity_uri: str, db: EventDB) -> JsonDict | None:
+        """Route an entity URI to the relevant enrichment helper."""
         if not entity_uri.startswith("telec://"):
             return None
 
@@ -47,7 +51,8 @@ class EnrichmentCartridge:
 
         return None
 
-    async def _enrich_todo(self, entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
+    async def _enrich_todo(self, _entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
+        """Derive todo-oriented enrichment from recent planning and build events."""
         failure_count = await db.count_events_by_entity(
             entity_uri, "domain.software-development.build.completed", payload_filter={"success": False}
         )
@@ -63,7 +68,8 @@ class EnrichmentCartridge:
             "current_phase": phase_payload.get("phase") if phase_payload else None,
         }
 
-    async def _enrich_worker(self, entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
+    async def _enrich_worker(self, _entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
+        """Derive worker health enrichment from recent crash events."""
         since_24h = datetime.now(UTC) - timedelta(hours=24)
         crash_count = await db.count_events_by_entity(entity_uri, "system.worker.crashed", since=since_24h)
         last_crash_payload = await db.get_latest_event_payload(entity_uri, "system.worker.crashed")
@@ -75,3 +81,7 @@ class EnrichmentCartridge:
             "crash_count": crash_count,
             "last_crash_at": last_crash_payload.get("timestamp") if last_crash_payload else None,
         }
+
+    def identifier(self) -> str:
+        """Return the stable cartridge identifier."""
+        return self.name

@@ -14,13 +14,13 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from teleclaude.api.auth import (
-    CLEARANCE_TODOS_CREATE,
-    CLEARANCE_TODOS_INTEGRATE,
-    CLEARANCE_TODOS_MARK_PHASE,
-    CLEARANCE_TODOS_PREPARE,
-    CLEARANCE_TODOS_SET_DEPS,
-    CLEARANCE_TODOS_WORK,
     CallerIdentity,
+    clearance_todos_create,
+    clearance_todos_integrate,
+    clearance_todos_mark_phase,
+    clearance_todos_prepare,
+    clearance_todos_set_deps,
+    clearance_todos_work,
 )
 from teleclaude.api_models import OperationStatusDTO
 from teleclaude.config import config
@@ -60,7 +60,7 @@ def _default_cwd() -> str:
 async def todo_create(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(CLEARANCE_TODOS_CREATE),
+    _identity: CallerIdentity = Depends(clearance_todos_create),
 ) -> dict[str, str]:
     """Run the creative lifecycle state machine.
 
@@ -77,7 +77,7 @@ async def todo_create(  # pyright: ignore
 async def todo_prepare(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(CLEARANCE_TODOS_PREPARE),
+    _identity: CallerIdentity = Depends(clearance_todos_prepare),
 ) -> dict[str, str]:
     """Run the Phase A (prepare) state machine.
 
@@ -95,7 +95,7 @@ async def todo_work(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(CLEARANCE_TODOS_WORK),
+    identity: CallerIdentity = Depends(clearance_todos_work),
 ) -> SerializedOperation:
     """Run the Phase B (work) state machine.
 
@@ -120,7 +120,7 @@ async def todo_integrate(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(CLEARANCE_TODOS_INTEGRATE),
+    identity: CallerIdentity = Depends(clearance_todos_integrate),
 ) -> SerializedOperation:
     """Run the integration state machine.
 
@@ -145,7 +145,7 @@ async def todo_mark_phase(  # pyright: ignore
     phase: Annotated[str, Body()],
     status: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(CLEARANCE_TODOS_MARK_PHASE),
+    _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
 ) -> dict[str, str]:
     """Mark a work phase as complete/approved in state.yaml.
 
@@ -205,7 +205,8 @@ async def todo_mark_phase(  # pyright: ignore
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes — commit them before marking phase complete"
+                    f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes - "
+                    "commit them before marking phase complete"
                 ),
             )
         stash_entries = get_stash_entries(cwd)
@@ -228,7 +229,7 @@ async def todo_mark_finalize_ready(  # pyright: ignore
     slug: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
     worker_session_id: Annotated[str, Body()] = "",
-    identity: CallerIdentity = Depends(CLEARANCE_TODOS_MARK_PHASE),
+    _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
 ) -> dict[str, str]:
     """Record durable finalize readiness in worktree state.yaml.
 
@@ -257,7 +258,7 @@ async def todo_set_deps(  # pyright: ignore
     slug: Annotated[str, Body()],
     after: Annotated[list[str], Body()],
     cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(CLEARANCE_TODOS_SET_DEPS),
+    _identity: CallerIdentity = Depends(clearance_todos_set_deps),
 ) -> dict[str, str]:
     """Set dependencies for a work item in the roadmap.
 

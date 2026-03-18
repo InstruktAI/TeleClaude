@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_system(catalog: EventCatalog) -> None:
+    """Register core system event schemas."""
     catalog.register(
         EventSchema(
             event_type="system.daemon.restarted",
@@ -38,7 +39,10 @@ def register_system(catalog: EventCatalog) -> None:
     catalog.register(
         EventSchema(
             event_type="system.burst.detected",
-            description="A burst of events of the same type was detected within a short window. Payload: event_type, window_start, count",
+            description=(
+                "A burst of events of the same type was detected within a short window. "
+                "Payload: event_type, window_start, count"
+            ),
             default_level=EventLevel.OPERATIONAL,
             domain="system",
             default_visibility=EventVisibility.LOCAL,
@@ -50,7 +54,10 @@ def register_system(catalog: EventCatalog) -> None:
     catalog.register(
         EventSchema(
             event_type="system.failure_cascade.detected",
-            description="Multiple worker crashes detected within a short window. Payload: crash_count, window_start, workers",
+            description=(
+                "Multiple worker crashes detected within a short window. "
+                "Payload: crash_count, window_start, workers"
+            ),
             default_level=EventLevel.BUSINESS,
             domain="system",
             default_visibility=EventVisibility.CLUSTER,
@@ -62,7 +69,10 @@ def register_system(catalog: EventCatalog) -> None:
     catalog.register(
         EventSchema(
             event_type="system.entity.degraded",
-            description="Repeated failures detected for the same entity within a short window. Payload: entity, failure_count, window_start",
+            description=(
+                "Repeated failures detected for the same entity within a short window. "
+                "Payload: entity, failure_count, window_start"
+            ),
             default_level=EventLevel.WORKFLOW,
             domain="system",
             default_visibility=EventVisibility.LOCAL,

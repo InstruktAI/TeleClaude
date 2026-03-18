@@ -14,11 +14,14 @@ def _slugify_email(email: str) -> str:
 
 
 class DomainRegistry:
+    """Resolve domain configuration objects into filesystem paths and lookups."""
+
     def __init__(self) -> None:
         self._domains: dict[str, DomainConfig] = {}
         self._config: DomainsConfig = DomainsConfig()
 
     def load_from_config(self, config: DomainsConfig) -> None:
+        """Load domains from configuration and normalize names to dict keys."""
         self._config = config
         self._domains = dict(config.domains)
         # Ensure each domain has its name set from the dict key
@@ -27,12 +30,15 @@ class DomainRegistry:
                 self._domains[name] = domain_cfg.model_copy(update={"name": name})
 
     def get(self, name: str) -> DomainConfig | None:
+        """Return the configuration for a named domain, if present."""
         return self._domains.get(name)
 
     def list_enabled(self) -> list[DomainConfig]:
+        """Return the enabled domain configurations."""
         return [d for d in self._domains.values() if d.enabled]
 
     def cartridge_path_for(self, domain_name: str) -> Path:
+        """Return the cartridge directory for a domain."""
         domain = self._domains.get(domain_name)
         if domain and domain.cartridge_path:
             return Path(domain.cartridge_path).expanduser()

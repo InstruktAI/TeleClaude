@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 logger = get_logger(__name__)
 
@@ -20,7 +21,9 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import TaskRegistry
 
 
-class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
+class _ConnectionMixin(  # pyright: ignore[reportUnusedClass]
+    # pylint: disable=too-many-instance-attributes  # Host transport owns the connection state bag.
+):
     """Mixin: Redis connection lifecycle, reconnect loop, start/stop."""
 
     if TYPE_CHECKING:
@@ -44,12 +47,25 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
         output_stream_maxlen: int
 
         @property
-        def cache(self) -> DaemonCache | None: ...
+        def cache(self) -> DaemonCache | None:
+            """Return the shared daemon cache."""
+            raise NotImplementedError
 
-        async def _poll_redis_messages(self) -> None: ...
-        async def _heartbeat_loop(self) -> None: ...
-        async def _peer_refresh_loop(self) -> None: ...
-        async def refresh_remote_snapshot(self) -> None: ...
+        async def _poll_redis_messages(self) -> None:
+            """Poll the Redis message stream."""
+            raise NotImplementedError
+
+        async def _heartbeat_loop(self) -> None:
+            """Emit periodic Redis heartbeats."""
+            raise NotImplementedError
+
+        async def _peer_refresh_loop(self) -> None:
+            """Refresh peer metadata from heartbeats."""
+            raise NotImplementedError
+
+        async def refresh_remote_snapshot(self) -> None:
+            """Populate cache snapshots from remote peers."""
+            raise NotImplementedError
 
     def _reset_idle_poll_log_throttle(self) -> None:
         self._idle_poll_last_log_at = None
@@ -180,6 +196,10 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
         await self._await_redis_ready()
         return self.redis
 
+    async def get_redis(self) -> Redis:
+        """Return a connected Redis client for public callers."""
+        return await self._get_redis()
+
     def _schedule_reconnect(self, reason: str, error: Exception | None = None) -> None:
         """Ensure a single reconnect loop is running."""
         if not self._running:
@@ -201,21 +221,13 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
         delay = 1.0
         while self._running:
             try:
-                if self.redis:
-                    try:
-                        await asyncio.wait_for(self.redis.aclose(), timeout=2.0)
-                    except (TimeoutError, Exception):
-                        # Force-disconnect stale pool to avoid fd leaks
-                        try:
-                            await self.redis.connection_pool.disconnect(inuse_connections=True)
-                        except Exception:
-                            pass
+                await self._close_existing_redis()
                 self.redis = self._create_redis_client()
                 await self.redis.ping()  # pyright: ignore[reportGeneralTypeIssues]
                 self._redis_ready.set()
                 logger.info("Redis connection ready (reason=%s)", reason)
                 return
-            except Exception as exc:  # broad to avoid crash loops
+            except (RedisError, OSError, RuntimeError, TimeoutError, ValueError) as exc:
                 logger.error("Redis reconnection failed (retry in %ss): %s", int(delay), exc)
                 await asyncio.sleep(delay + random.random())
                 delay = min(delay * 2.0, 10.0)
@@ -230,6 +242,26 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
             await self._await_redis_ready()
         except RuntimeError:
             return
+
+    async def _close_existing_redis(self) -> None:
+        """Close the current Redis client, force-disconnecting on timeout."""
+        if not self.redis:
+            return
+
+        try:
+            await asyncio.wait_for(self.redis.aclose(), timeout=2.0)
+            return
+        except (RedisError, OSError, RuntimeError, TimeoutError, ValueError):
+            pass
+
+        await self._disconnect_stale_pool()
+
+    async def _disconnect_stale_pool(self) -> None:
+        """Disconnect all pooled Redis connections after a failed close."""
+        try:
+            await self.redis.connection_pool.disconnect(inuse_connections=True)
+        except (RedisError, OSError, RuntimeError, ValueError):
+            logger.debug("Ignoring stale Redis pool disconnect failure", exc_info=True)
 
     async def stop(self) -> None:
         """Stop adapter and cleanup resources."""

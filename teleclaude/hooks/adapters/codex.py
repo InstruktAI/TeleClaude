@@ -62,7 +62,10 @@ class CodexAdapter:
         return result
 
     def format_checkpoint_response(self, reason: str) -> str | None:
-        return None
+        """Codex hooks do not support checkpoint responses."""
+        del reason
 
     def format_memory_injection(self, context: str) -> str:
+        """Codex hooks do not support memory injection output."""
+        del context
         return ""

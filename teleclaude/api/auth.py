@@ -1,5 +1,4 @@
 """Daemon-side role enforcement for telec API endpoints.
-
 Provides FastAPI dependencies for dual-factor caller identity verification
 and role-based clearance checks. Replaces legacy wrapper-side
 tool filtering with tamper-resistant server-side enforcement.
@@ -19,9 +18,9 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Final, cast
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException
 
 from teleclaude.cli.telec import is_command_allowed
 from teleclaude.config.loader import load_global_config
@@ -41,9 +40,11 @@ if TYPE_CHECKING:
 
 
 _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
-_email_role_cache: dict[str, str] = {}
-_email_role_cache_mtime_ns: int | None = None
-_registered_people_count_cache: int = 0
+_EMAIL_ROLE_CACHE_STATE = {
+    "role_map": {},
+    "mtime_ns": None,
+    "registered_people_count": 0,
+}
 
 # In-memory session cache for verify_caller (avoids DB hit per authenticated request)
 _SESSION_CACHE_TTL = 30.0  # seconds
@@ -118,37 +119,35 @@ def _normalize_email(value: object) -> str | None:
 
 def _load_email_role_map() -> dict[str, str]:
     """Load email->role map from global config with mtime-based cache."""
-    global _email_role_cache, _email_role_cache_mtime_ns, _registered_people_count_cache
-
     try:
         mtime_ns = _GLOBAL_CONFIG_PATH.stat().st_mtime_ns
     except OSError:
-        _email_role_cache = {}
-        _email_role_cache_mtime_ns = None
-        _registered_people_count_cache = 0
-        return _email_role_cache
+        _EMAIL_ROLE_CACHE_STATE["role_map"] = {}
+        _EMAIL_ROLE_CACHE_STATE["mtime_ns"] = None
+        _EMAIL_ROLE_CACHE_STATE["registered_people_count"] = 0
+        return cast(dict[str, str], _EMAIL_ROLE_CACHE_STATE["role_map"])
 
-    if _email_role_cache_mtime_ns == mtime_ns:
-        return _email_role_cache
+    if _EMAIL_ROLE_CACHE_STATE["mtime_ns"] == mtime_ns:
+        return cast(dict[str, str], _EMAIL_ROLE_CACHE_STATE["role_map"])
 
     role_map: dict[str, str] = {}
     try:
         global_cfg = load_global_config(_GLOBAL_CONFIG_PATH)
-    except Exception:
-        return _email_role_cache
+    except ValueError:
+        return cast(dict[str, str], _EMAIL_ROLE_CACHE_STATE["role_map"])
 
-    _registered_people_count_cache = 0
+    _EMAIL_ROLE_CACHE_STATE["registered_people_count"] = 0
     for person in global_cfg.people:
-        _registered_people_count_cache += 1
+        _EMAIL_ROLE_CACHE_STATE["registered_people_count"] += 1
         email = _normalize_email(person.email)
         role = (person.role or "").strip().lower()
         if not email or role not in HUMAN_ROLES:
             continue
         role_map[email] = role
 
-    _email_role_cache = role_map
-    _email_role_cache_mtime_ns = mtime_ns
-    return _email_role_cache
+    _EMAIL_ROLE_CACHE_STATE["role_map"] = role_map
+    _EMAIL_ROLE_CACHE_STATE["mtime_ns"] = mtime_ns
+    return role_map
 
 
 def _resolve_terminal_role(email_header: str | None) -> str | None:
@@ -161,7 +160,7 @@ def _resolve_terminal_role(email_header: str | None) -> str | None:
 def _requires_terminal_login() -> bool:
     """Return True when global config has multiple registered users."""
     _load_email_role_map()
-    return _registered_people_count_cache > 1
+    return _EMAIL_ROLE_CACHE_STATE["registered_people_count"] > 1
 
 
 def _derive_session_system_role(session: Session) -> str | None:
@@ -194,8 +193,92 @@ class CallerIdentity:
     principal_role: str | None = None  # role carried with the token (token-auth only)
 
 
+async def _get_verified_session(session_id: str) -> Session:
+    """Load a verified session from cache or DB."""
+    session = _get_cached_session(session_id)
+    if session is None:
+        session = await db.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=401, detail="unknown session")
+        _put_cached_session(session_id, session)
+    return session
+
+
+async def _verify_token_identity(x_session_token: str) -> CallerIdentity:
+    """Resolve caller identity from a session token."""
+    token_record = _get_cached_token(x_session_token)
+    if token_record is None:
+        token_record = await db.validate_session_token(x_session_token)
+        if token_record is not None:
+            _put_cached_token(x_session_token, token_record)
+    if not token_record:
+        raise HTTPException(status_code=401, detail="invalid or expired session token")
+
+    session = await _get_verified_session(token_record.session_id)
+    return CallerIdentity(
+        session_id=token_record.session_id,
+        system_role=_derive_session_system_role(session),
+        human_role=session.human_role,
+        tmux_session_name=session.tmux_session_name,
+        principal=token_record.principal,
+        principal_role=token_record.role,
+    )
+
+
+def _build_terminal_identity(
+    *,
+    email_header: str | None,
+    tmux_session_name: str | None,
+) -> CallerIdentity:
+    """Resolve caller identity for non-session callers."""
+    terminal_role = _resolve_terminal_role(email_header)
+    if terminal_role:
+        return CallerIdentity(
+            session_id="",
+            system_role=None,
+            human_role=terminal_role,
+            tmux_session_name=tmux_session_name,
+        )
+    if _requires_terminal_login():
+        raise HTTPException(status_code=401, detail="login required in multi-user mode")
+    return CallerIdentity(
+        session_id="",
+        system_role=None,
+        human_role=HUMAN_ROLE_ADMIN,
+        tmux_session_name=tmux_session_name,
+    )
+
+
+def _resolve_human_role(session: Session, x_telec_email: str | None) -> str | None:
+    """Resolve human role with terminal-email fallback."""
+    if session.human_role:
+        return session.human_role
+    fallback_email = x_telec_email or getattr(session, "human_email", None)
+    if not fallback_email:
+        return None
+    return _resolve_terminal_role(fallback_email)
+
+
+async def _verify_session_identity(
+    *,
+    caller_session_id: str,
+    x_telec_email: str | None,
+    x_tmux_session: str | None,
+) -> CallerIdentity:
+    """Resolve caller identity for an existing TeleClaude session."""
+    session = await _get_verified_session(caller_session_id)
+    if x_tmux_session and session.tmux_session_name and x_tmux_session != session.tmux_session_name:
+        raise HTTPException(status_code=403, detail="session identity mismatch")
+
+    return CallerIdentity(
+        session_id=caller_session_id,
+        system_role=_derive_session_system_role(session),
+        human_role=_resolve_human_role(session, x_telec_email),
+        tmux_session_name=session.tmux_session_name,
+    )
+
+
 async def verify_caller(
-    request: Request,
     x_session_token: Annotated[str | None, Header()] = None,
     x_caller_session_id: Annotated[str | None, Header()] = None,
     x_telec_email: Annotated[str | None, Header()] = None,
@@ -220,81 +303,18 @@ async def verify_caller(
     # This takes priority over the legacy dual-factor path so daemon-spawned agents
     # can authenticate even when human_role is absent.
     if x_session_token:
-        token_record = _get_cached_token(x_session_token)
-        if token_record is None:
-            token_record = await db.validate_session_token(x_session_token)
-            if token_record is not None:
-                _put_cached_token(x_session_token, token_record)
-        if not token_record:
-            raise HTTPException(status_code=401, detail="invalid or expired session token")
-        session = _get_cached_session(token_record.session_id)
-        if session is None:
-            session = await db.get_session(token_record.session_id)
-            if not session:
-                raise HTTPException(status_code=401, detail="unknown session")
-            _put_cached_session(token_record.session_id, session)
-        system_role = _derive_session_system_role(session)
-        return CallerIdentity(
-            session_id=token_record.session_id,
-            system_role=system_role,
-            human_role=session.human_role,
-            tmux_session_name=session.tmux_session_name,
-            principal=token_record.principal,
-            principal_role=token_record.role,
-        )
+        return await _verify_token_identity(x_session_token)
 
     if not x_caller_session_id:
-        # Terminal/TUI/web caller without a daemon session.
-        # 1. Try email → role resolution (works for any caller context).
-        # 2. Single-owner mode (0-1 registered people) → implicit admin.
-        # 3. Multi-user mode → login required.
-        email_to_use = x_telec_email or x_web_user_email
-        terminal_role = _resolve_terminal_role(email_to_use)
-        if terminal_role:
-            return CallerIdentity(
-                session_id="",
-                system_role=None,
-                human_role=terminal_role,
-                tmux_session_name=x_tmux_session,
-            )
-        if _requires_terminal_login():
-            raise HTTPException(status_code=401, detail="login required in multi-user mode")
-        return CallerIdentity(
-            session_id="",
-            system_role=None,
-            human_role=HUMAN_ROLE_ADMIN,
+        return _build_terminal_identity(
+            email_header=x_telec_email or x_web_user_email,
             tmux_session_name=x_tmux_session,
         )
 
-    session = _get_cached_session(x_caller_session_id)
-    if session is None:
-        session = await db.get_session(x_caller_session_id)
-        if not session:
-            raise HTTPException(status_code=401, detail="unknown session")
-        _put_cached_session(x_caller_session_id, session)
-
-    # Cross-check: tmux session name from header must match DB record.
-    # Skip when either side is missing (non-tmux callers like TUI, tests).
-    if x_tmux_session and session.tmux_session_name:
-        if x_tmux_session != session.tmux_session_name:
-            raise HTTPException(status_code=403, detail="session identity mismatch")
-
-    system_role = _derive_session_system_role(session)
-
-    # Resolve human_role: prefer DB value, fall back to terminal email or
-    # session's own human_email when the session was created without a role
-    # (cascading-null prevention for API-dispatched child sessions).
-    human_role = session.human_role
-    if not human_role:
-        fallback_email = x_telec_email or getattr(session, "human_email", None)
-        if fallback_email:
-            human_role = _resolve_terminal_role(fallback_email)
-
-    return CallerIdentity(
-        session_id=x_caller_session_id,
-        system_role=system_role,
-        human_role=human_role,
-        tmux_session_name=session.tmux_session_name,
+    return await _verify_session_identity(
+        caller_session_id=x_caller_session_id,
+        x_telec_email=x_telec_email,
+        x_tmux_session=x_tmux_session,
     )
 
 
@@ -331,34 +351,73 @@ def require_clearance(tool_name: str):  # type: ignore[no-untyped-def]
     return _check
 
 
-# Pre-built clearance dependencies for each CLI endpoint
+_clearance_exports = {
+    "clearance_sessions_start": require_clearance("telec sessions start"),
+    "clearance_sessions_list": require_clearance("telec sessions list"),
+    "clearance_sessions_run": require_clearance("telec sessions run"),
+    "clearance_sessions_send": require_clearance("telec sessions send"),
+    "clearance_sessions_keys": require_clearance("telec sessions send"),
+    "clearance_sessions_voice": require_clearance("telec sessions send"),
+    "clearance_sessions_agent_restart": require_clearance("telec sessions run"),
+    "clearance_sessions_revive": require_clearance("telec sessions run"),
+    "clearance_sessions_tail": require_clearance("telec sessions tail"),
+    "clearance_sessions_unsubscribe": require_clearance("telec sessions unsubscribe"),
+    "clearance_sessions_result": require_clearance("telec sessions result"),
+    "clearance_sessions_file": require_clearance("telec sessions file"),
+    "clearance_sessions_widget": require_clearance("telec sessions widget"),
+    "clearance_sessions_escalate": require_clearance("telec sessions escalate"),
+    "clearance_sessions_end": require_clearance("telec sessions end"),
+    "clearance_todos_create": require_clearance("telec todo create"),
+    "clearance_todos_prepare": require_clearance("telec todo prepare"),
+    "clearance_todos_work": require_clearance("telec todo work"),
+    "clearance_todos_integrate": require_clearance("telec todo integrate"),
+    "clearance_todos_mark_phase": require_clearance("telec todo mark-phase"),
+    "clearance_todos_set_deps": require_clearance("telec todo set-deps"),
+    "clearance_operations_get": require_clearance("telec operations get"),
+    "clearance_agents_status": require_clearance("telec agents status"),
+    "clearance_agents_availability": require_clearance("telec agents availability"),
+    "clearance_computers_list": require_clearance("telec computers list"),
+    "clearance_projects_list": require_clearance("telec projects list"),
+    "clearance_channels_list": require_clearance("telec channels list"),
+    "clearance_channels_publish": require_clearance("telec channels publish"),
+    "clearance_events_emit": require_clearance("telec events emit"),
+}
 
-CLEARANCE_SESSIONS_START = require_clearance("telec sessions start")
-CLEARANCE_SESSIONS_LIST = require_clearance("telec sessions list")
-CLEARANCE_SESSIONS_RUN = require_clearance("telec sessions run")
-CLEARANCE_SESSIONS_SEND = require_clearance("telec sessions send")
-CLEARANCE_SESSIONS_KEYS = require_clearance("telec sessions send")
-CLEARANCE_SESSIONS_VOICE = require_clearance("telec sessions send")
-CLEARANCE_SESSIONS_AGENT_RESTART = require_clearance("telec sessions run")
-CLEARANCE_SESSIONS_REVIVE = require_clearance("telec sessions run")
-CLEARANCE_SESSIONS_TAIL = require_clearance("telec sessions tail")
-CLEARANCE_SESSIONS_UNSUBSCRIBE = require_clearance("telec sessions unsubscribe")
-CLEARANCE_SESSIONS_RESULT = require_clearance("telec sessions result")
-CLEARANCE_SESSIONS_FILE = require_clearance("telec sessions file")
-CLEARANCE_SESSIONS_WIDGET = require_clearance("telec sessions widget")
-CLEARANCE_SESSIONS_ESCALATE = require_clearance("telec sessions escalate")
-CLEARANCE_SESSIONS_END = require_clearance("telec sessions end")
-CLEARANCE_TODOS_CREATE = require_clearance("telec todo create")
-CLEARANCE_TODOS_PREPARE = require_clearance("telec todo prepare")
-CLEARANCE_TODOS_WORK = require_clearance("telec todo work")
-CLEARANCE_TODOS_INTEGRATE = require_clearance("telec todo integrate")
-CLEARANCE_TODOS_MARK_PHASE = require_clearance("telec todo mark-phase")
-CLEARANCE_TODOS_SET_DEPS = require_clearance("telec todo set-deps")
-CLEARANCE_OPERATIONS_GET = require_clearance("telec operations get")
-CLEARANCE_AGENTS_STATUS = require_clearance("telec agents status")
-CLEARANCE_AGENTS_AVAILABILITY = require_clearance("telec agents availability")
-CLEARANCE_COMPUTERS_LIST = require_clearance("telec computers list")
-CLEARANCE_PROJECTS_LIST = require_clearance("telec projects list")
-CLEARANCE_CHANNELS_LIST = require_clearance("telec channels list")
-CLEARANCE_CHANNELS_PUBLISH = require_clearance("telec channels publish")
-CLEARANCE_EVENTS_EMIT = require_clearance("telec events emit")
+clearance_sessions_start: Final = _clearance_exports["clearance_sessions_start"]
+clearance_sessions_list: Final = _clearance_exports["clearance_sessions_list"]
+clearance_sessions_run: Final = _clearance_exports["clearance_sessions_run"]
+clearance_sessions_send: Final = _clearance_exports["clearance_sessions_send"]
+clearance_sessions_keys: Final = _clearance_exports["clearance_sessions_keys"]
+clearance_sessions_voice: Final = _clearance_exports["clearance_sessions_voice"]
+clearance_sessions_agent_restart: Final = _clearance_exports["clearance_sessions_agent_restart"]
+clearance_sessions_revive: Final = _clearance_exports["clearance_sessions_revive"]
+clearance_sessions_tail: Final = _clearance_exports["clearance_sessions_tail"]
+clearance_sessions_unsubscribe: Final = _clearance_exports["clearance_sessions_unsubscribe"]
+clearance_sessions_result: Final = _clearance_exports["clearance_sessions_result"]
+clearance_sessions_file: Final = _clearance_exports["clearance_sessions_file"]
+clearance_sessions_widget: Final = _clearance_exports["clearance_sessions_widget"]
+clearance_sessions_escalate: Final = _clearance_exports["clearance_sessions_escalate"]
+clearance_sessions_end: Final = _clearance_exports["clearance_sessions_end"]
+clearance_todos_create: Final = _clearance_exports["clearance_todos_create"]
+clearance_todos_prepare: Final = _clearance_exports["clearance_todos_prepare"]
+clearance_todos_work: Final = _clearance_exports["clearance_todos_work"]
+clearance_todos_integrate: Final = _clearance_exports["clearance_todos_integrate"]
+clearance_todos_mark_phase: Final = _clearance_exports["clearance_todos_mark_phase"]
+clearance_todos_set_deps: Final = _clearance_exports["clearance_todos_set_deps"]
+clearance_operations_get: Final = _clearance_exports["clearance_operations_get"]
+clearance_agents_status: Final = _clearance_exports["clearance_agents_status"]
+clearance_agents_availability: Final = _clearance_exports["clearance_agents_availability"]
+clearance_computers_list: Final = _clearance_exports["clearance_computers_list"]
+clearance_projects_list: Final = _clearance_exports["clearance_projects_list"]
+clearance_channels_list: Final = _clearance_exports["clearance_channels_list"]
+clearance_channels_publish: Final = _clearance_exports["clearance_channels_publish"]
+clearance_events_emit: Final = _clearance_exports["clearance_events_emit"]
+
+__all__ = [
+    "CallerIdentity",
+    "invalidate_session_cache",
+    "invalidate_token_cache",
+    "require_clearance",
+    "verify_caller",
+    *_clearance_exports,
+]

@@ -24,19 +24,19 @@ class HookAdapter(Protocol):
 
         Raises ValueError or json.JSONDecodeError on invalid input.
         """
-        ...
+        raise NotImplementedError
 
     def normalize_payload(self, data: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
         """Normalize agent-specific field names to canonical internal names.
 
         After normalization, data uses: session_id, transcript_path, prompt, message.
         """
-        ...
+        raise NotImplementedError
 
     def format_checkpoint_response(self, reason: str) -> str | None:
         """Format checkpoint blocking response, or None if unsupported."""
-        ...
+        raise NotImplementedError
 
     def format_memory_injection(self, context: str) -> str:
         """Format memory context for SessionStart stdout injection."""
-        ...
+        raise NotImplementedError

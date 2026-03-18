@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class CartridgeManifest(BaseModel):
+    """Declarative metadata describing a cartridge and its load-time constraints."""
+
     model_config = ConfigDict(extra="allow")
 
     id: str

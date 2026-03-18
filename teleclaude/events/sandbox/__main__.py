@@ -10,6 +10,7 @@ from teleclaude.events.sandbox.runner import SandboxRunner
 
 
 def main() -> None:
+    """Run the sandbox Unix-socket server until shutdown."""
     socket_path = os.environ["SANDBOX_SOCKET_PATH"]
     cartridges_dir = os.environ["SANDBOX_CARTRIDGES_DIR"]
 

@@ -18,21 +18,31 @@ CONSUMER_GROUP = "event-processor"
 
 
 class EventProcessor:
+    """Consume events from the Redis stream and drive the system pipeline."""
+
     def __init__(
         self,
         redis_client: Any,
         pipeline: Pipeline,
-        stream: str = STREAM_NAME,
-        group: str = CONSUMER_GROUP,
-        consumer_name: str | None = None,
+        **options: str | None,
     ) -> None:
+        """Initialize the processor with Redis stream and consumer-group settings."""
+        unexpected_options = sorted(set(options) - {"stream", "group", "consumer_name"})
+        if unexpected_options:
+            unexpected = ", ".join(unexpected_options)
+            raise TypeError(f"Unsupported EventProcessor options: {unexpected}")
         self._redis = redis_client
         self._pipeline = pipeline
-        self._stream = stream
-        self._group = group
-        self._consumer = consumer_name or f"processor-{os.getpid()}"
+        self._stream = options.get("stream") or STREAM_NAME
+        self._group = options.get("group") or CONSUMER_GROUP
+        self._consumer = options.get("consumer_name") or f"processor-{os.getpid()}"
+
+    def consumer_name(self) -> str:
+        """Return the consumer name used for this processor instance."""
+        return self._consumer
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
+        """Run the stream consumption loop until shutdown is requested."""
         await self._ensure_consumer_group()
         await self._recover_pending()
 
@@ -59,6 +69,7 @@ class EventProcessor:
         logger.info("EventProcessor stopped")
 
     async def _ensure_consumer_group(self) -> None:
+        """Create the Redis consumer group if it does not already exist."""
         try:
             await self._redis.xgroup_create(self._stream, self._group, id="$", mkstream=True)
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -66,6 +77,7 @@ class EventProcessor:
                 raise
 
     async def _recover_pending(self) -> None:
+        """Recover and process any pending entries already assigned to this consumer."""
         try:
             entries = await self._redis.xreadgroup(
                 self._group,
@@ -80,6 +92,7 @@ class EventProcessor:
             logger.exception("EventProcessor pending recovery failed")
 
     async def _process_entries(self, entries: Any) -> None:
+        """Deserialize, execute, and acknowledge a batch of stream entries."""
         for _stream, messages in entries:
             for entry_id, data in messages:
                 try:

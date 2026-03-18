@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from typing import cast
 
 from pydantic import BaseModel
 
@@ -11,6 +12,8 @@ from teleclaude.events.signal.db import SignalItemPayload
 
 
 class ClusteringConfig(BaseModel):
+    """Configurable thresholds for tag and embedding based clustering."""
+
     window_seconds: int = 900
     min_cluster_size: int = 2
     burst_threshold: int = 5
@@ -20,50 +23,75 @@ class ClusteringConfig(BaseModel):
     singleton_promote_after_seconds: int = 3600
 
 
-def group_by_tags(items: list[SignalItemPayload], min_overlap: int = 1) -> list[list[SignalItemPayload]]:
-    """Group items by shared tag overlap using union-find."""
-    n = len(items)
-    if n == 0:
-        return []
+def _find_root(parent: list[int], index: int) -> int:
+    """Return the union-find root for one item index."""
+    while parent[index] != index:
+        parent[index] = parent[parent[index]]
+        index = parent[index]
+    return index
 
-    parent = list(range(n))
 
-    def find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
+def _union_roots(parent: list[int], left: int, right: int) -> None:
+    """Merge the sets containing two item indices."""
+    parent[_find_root(parent, left)] = _find_root(parent, right)
 
-    def union(x: int, y: int) -> None:
-        parent[find(x)] = find(y)
 
-    # Build tag → item indices mapping
+def _group_items_by_parent(
+    items: list[SignalItemPayload],
+    parent: list[int],
+) -> list[list[SignalItemPayload]]:
+    """Collect items into groups keyed by their union-find root."""
+    groups: dict[int, list[SignalItemPayload]] = {}
+    for idx, item in enumerate(items):
+        root = _find_root(parent, idx)
+        groups.setdefault(root, []).append(item)
+    return list(groups.values())
+
+
+def _build_tag_index(items: list[SignalItemPayload]) -> dict[str, list[int]]:
+    """Build a mapping of tag to item indices."""
     tag_to_indices: dict[str, list[int]] = {}
     for idx, item in enumerate(items):
         for tag in item.get("tags", []):
-            tag_str = str(tag)
-            tag_to_indices.setdefault(tag_str, []).append(idx)
+            tag_to_indices.setdefault(str(tag), []).append(idx)
+    return tag_to_indices
 
-    # Count shared tags between pairs and union if >= min_overlap
+
+def _build_pair_overlap(tag_to_indices: dict[str, list[int]]) -> dict[tuple[int, int], int]:
+    """Count shared tags for each item pair."""
     pair_overlap: dict[tuple[int, int], int] = {}
     for indices in tag_to_indices.values():
-        for i in range(len(indices)):
-            for j in range(i + 1, len(indices)):
-                a, b = indices[i], indices[j]
-                key = (min(a, b), max(a, b))
+        for i, left in enumerate(indices):
+            for right in indices[i + 1 :]:
+                key = (min(left, right), max(left, right))
                 pair_overlap[key] = pair_overlap.get(key, 0) + 1
+    return pair_overlap
 
-    for (a, b), count in pair_overlap.items():
+
+def _union_embedding_matches(
+    parent: list[int],
+    embeddings: list[list[float]],
+    threshold: float,
+) -> None:
+    """Union embedding-similar items in-place."""
+    for i, embedding in enumerate(embeddings):
+        for j, other_embedding in enumerate(embeddings[i + 1 :], start=i + 1):
+            if _cosine_similarity(embedding, other_embedding) >= threshold:
+                _union_roots(parent, i, j)
+
+
+def group_by_tags(items: list[SignalItemPayload], min_overlap: int = 1) -> list[list[SignalItemPayload]]:
+    """Group items by shared tag overlap using union-find."""
+    if not items:
+        return []
+
+    parent = list(range(len(items)))
+    pair_overlap = _build_pair_overlap(_build_tag_index(items))
+
+    for (left, right), count in pair_overlap.items():
         if count >= min_overlap:
-            union(a, b)
-
-    # Collect groups
-    groups: dict[int, list[SignalItemPayload]] = {}
-    for idx, item in enumerate(items):
-        root = find(idx)
-        groups.setdefault(root, []).append(item)
-
-    return list(groups.values())
+            _union_roots(parent, left, right)
+    return _group_items_by_parent(items, parent)
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -81,46 +109,22 @@ def refine_by_embeddings(group: list[SignalItemPayload], threshold: float) -> li
 
     Falls back to returning the original group as-is if embeddings are missing.
     """
-    embeddings: list[list[float] | None] = [item.get("embedding") for item in group]
-
-    # Degrade gracefully if any embedding is missing
-    if any(e is None for e in embeddings):
+    embedding_candidates = [item.get("embedding") for item in group]
+    if any(embedding is None for embedding in embedding_candidates):
         return [group]
-
-    n = len(group)
-    parent = list(range(n))
-
-    def find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(x: int, y: int) -> None:
-        parent[find(x)] = find(y)
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            ei = embeddings[i]
-            ej = embeddings[j]
-            if ei is not None and ej is not None:
-                sim = _cosine_similarity(ei, ej)
-                if sim >= threshold:
-                    union(i, j)
-
-    sub_groups: dict[int, list[SignalItemPayload]] = {}
-    for idx, item in enumerate(group):
-        root = find(idx)
-        sub_groups.setdefault(root, []).append(item)
-
-    return list(sub_groups.values())
+    embeddings = [cast(list[float], embedding) for embedding in embedding_candidates]
+    parent = list(range(len(group)))
+    _union_embedding_matches(parent, embeddings, threshold)
+    return _group_items_by_parent(group, parent)
 
 
 def detect_burst(group: list[SignalItemPayload], threshold: int) -> bool:
+    """Return whether a grouped cluster size meets the burst threshold."""
     return len(group) >= threshold
 
 
 def detect_novelty(group_tags: list[str], recent_tags: list[str]) -> bool:
+    """Return whether a tag set is novel relative to recent cluster tags."""
     return not bool(set(group_tags) & set(recent_tags))
 
 

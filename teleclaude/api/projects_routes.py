@@ -1,3 +1,5 @@
+"""Project listing endpoints."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -5,7 +7,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CLEARANCE_PROJECTS_LIST, CallerIdentity
+from teleclaude.api.auth import CallerIdentity, clearance_projects_list
 from teleclaude.api_models import ProjectDTO
 from teleclaude.config import config
 from teleclaude.core import command_handlers
@@ -16,21 +18,39 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_cache: DaemonCache | None = None
+_CACHE: dict[str, DaemonCache | None] = {"value": None}
 
 router = APIRouter()
 
 
 def configure(cache: DaemonCache | None) -> None:
     """Wire cache; called from APIServer."""
-    global _cache
-    _cache = cache
+    _CACHE["value"] = cache
+
+
+def _dto_from_project(project: ProjectInfo, computer_name: str) -> ProjectDTO:
+    """Convert a project record into the public DTO."""
+    return ProjectDTO(
+        computer=computer_name,
+        name=project.name,
+        path=str(project.path or ""),
+        description=project.description,
+    )
+
+
+def _build_todos_snapshot(projects: list[ProjectInfo]) -> dict[str, list[TodoInfo]]:
+    """Build a cacheable todo snapshot keyed by project path."""
+    todos_by_project: dict[str, list[TodoInfo]] = {}
+    for project in projects:
+        if project.path and project.todos:
+            todos_by_project[project.path] = project.todos
+    return todos_by_project
 
 
 @router.get("/projects")
 async def list_projects(
     computer: str | None = None,
-    identity: CallerIdentity = Depends(CLEARANCE_PROJECTS_LIST),
+    _identity: CallerIdentity = Depends(clearance_projects_list),
 ) -> list[ProjectDTO]:
     """List projects (local + cached remote projects).
 
@@ -39,67 +59,34 @@ async def list_projects(
     """
     try:
         computer_name = config.computer.name
-        result: list[ProjectDTO] = []
-
-        # Try cache first for local projects
+        cache = _CACHE["value"]
         cached_local: list[ProjectInfo] | None = None
-        if _cache:
-            cached_local_raw = _cache.get_projects(computer_name)
-            if cached_local_raw:
-                cached_local = [p for p in cached_local_raw if (p.computer or "") == computer_name]
 
-        if cached_local:
-            # Cache hit — serve from cache
-            for p in cached_local:
-                result.append(
-                    ProjectDTO(
-                        computer=computer_name,
-                        name=p.name,
-                        path=p.path or "",
-                        description=p.description,
-                    )
-                )
-        else:
-            # Cache miss — fall back to filesystem
+        if cache:
+            cached_local_raw = cache.get_projects(computer_name)
+            if cached_local_raw:
+                cached_local = [project for project in cached_local_raw if (project.computer or "") == computer_name]
+
+        if cached_local is None:
             logger.info("GET /projects: cache MISS, reading filesystem")
             raw_projects = await command_handlers.list_projects_with_todos()
-            if _cache:
-                _cache.apply_projects_snapshot(computer_name, raw_projects)
-                todos_by_project: dict[str, list[TodoInfo]] = {}
-                for p in raw_projects:
-                    if p.path and p.todos:
-                        todos_by_project[p.path] = p.todos
+            if cache:
+                cache.apply_projects_snapshot(computer_name, raw_projects)
+                todos_by_project = _build_todos_snapshot(raw_projects)
                 if todos_by_project:
-                    _cache.apply_todos_snapshot(computer_name, todos_by_project)
+                    cache.apply_todos_snapshot(computer_name, todos_by_project)
+            cached_local = raw_projects
 
-            for p in raw_projects:
-                result.append(
-                    ProjectDTO(
-                        computer=computer_name,
-                        name=p.name,
-                        path=p.path,
-                        description=p.description,
-                    )
-                )
+        result = [_dto_from_project(project, computer_name) for project in cached_local]
 
-        # Add cached REMOTE projects from cache (skip local to avoid duplicates)
-        if _cache:
-            cached_projects = _cache.get_projects(computer)
-            for proj in cached_projects:
-                comp_name = str(proj.computer or "")
+        if cache:
+            for project in cache.get_projects(computer):
+                comp_name = str(project.computer or "")
                 if comp_name == computer_name:
                     continue
-                proj_path = str(proj.path or "")
-                result.append(
-                    ProjectDTO(
-                        computer=comp_name,
-                        name=proj.name,
-                        path=proj_path,
-                        description=proj.description,
-                    )
-                )
+                result.append(_dto_from_project(project, comp_name))
 
         return result
-    except Exception as e:
-        logger.error("list_projects failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.error("list_projects failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list projects: {exc}") from exc

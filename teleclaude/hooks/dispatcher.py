@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -12,18 +13,7 @@ if TYPE_CHECKING:
     from teleclaude.hooks.handlers import HandlerRegistry
     from teleclaude.hooks.registry import ContractRegistry
 
-
-class EnqueueWebhook(Protocol):
-    """Callable protocol for enqueueing external webhook deliveries."""
-
-    async def __call__(
-        self,
-        *,
-        contract_id: str,
-        event_json: str,
-        target_url: str,
-        target_secret: str | None,
-    ) -> None: ...
+EnqueueWebhook = Callable[..., Awaitable[None]]
 
 
 logger = get_logger(__name__)
@@ -54,8 +44,9 @@ class HookDispatcher:
                 handler = self._handlers.get(target.handler)
                 if handler:
                     try:
-                        await handler(event)  # type: ignore[operator]  # handler is Callable, pyright can't see HandlerRegistry yet
-                    except Exception as exc:
+                        # handler is Callable, pyright can't see HandlerRegistry yet.
+                        await handler(event)  # type: ignore[operator]
+                    except Exception as exc:  # pylint: disable=broad-exception-caught
                         logger.error(
                             "Internal handler failed",
                             handler=target.handler,
@@ -73,7 +64,7 @@ class HookDispatcher:
                         target_url=target.url,
                         target_secret=target.secret,
                     )
-                except Exception as exc:
+                except Exception as exc:  # pylint: disable=broad-exception-caught
                     logger.error(
                         "Failed to enqueue webhook",
                         contract_id=contract.id,
@@ -82,4 +73,11 @@ class HookDispatcher:
                         exc_info=True,
                     )
             else:
-                logger.warning("Contract %s matched but has no handler or URL", contract.id)
+                logger.warning(
+                    "Contract %s matched but has no handler or URL",
+                    contract.id,
+                )
+
+    async def deliver(self, event: HookEvent) -> None:
+        """Compatibility alias for dispatching an event."""
+        await self.dispatch(event)

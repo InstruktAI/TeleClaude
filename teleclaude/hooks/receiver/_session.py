@@ -9,10 +9,20 @@ import uuid
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import create_engine
+from sqlalchemy import event as sa_event
+from sqlalchemy.exc import SQLAlchemyError
+from sqlmodel import Session as SqlSession, select
 
 from teleclaude.config import config
 from teleclaude.core import db_models
+from teleclaude.memory.context import generate_context_sync
 from teleclaude.paths import SESSION_MAP_PATH
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - platform-dependent.
+    fcntl = None
 
 logger = get_logger("teleclaude.hooks.receiver")
 
@@ -37,9 +47,6 @@ __all__ = [
 
 def _create_sync_engine() -> object:
     """Create a sync SQLAlchemy engine with SQLite PRAGMAs set at connect time."""
-    from sqlalchemy import create_engine
-    from sqlalchemy import event as sa_event
-
     engine = create_engine(f"sqlite:///{config.database.path}")
 
     @sa_event.listens_for(engine, "connect")
@@ -58,11 +65,9 @@ def _create_sync_engine() -> object:
 def _get_memory_context(project_name: str, identity_key: str | None = None) -> str:
     """Fetch pre-formatted memory context from local database."""
     try:
-        from teleclaude.memory.context import generate_context_sync
-
         db_path = str(config.database.path)
         return generate_context_sync(project_name, db_path, identity_key=identity_key)
-    except Exception:
+    except (OSError, RuntimeError, TypeError, ValueError):
         return ""
 
 
@@ -133,12 +138,10 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
     if not native_session_id:
         return True
 
-    from sqlmodel import Session as SqlSession
-
     try:
         with SqlSession(_create_sync_engine()) as session:
             row = session.get(db_models.Session, session_id)
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.debug(
             "TMUX contract DB lookup skipped (db unavailable)",
             session_id=session_id,
@@ -146,27 +149,26 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
             error=str(exc),
         )
         return True
-
+    compatible = True
     if not row:
         logger.debug(
             "TMUX contract session not found in DB",
             session_id=session_id,
             native_session_id=native_session_id,
         )
-        return False
-
-    if row.closed_at:
+        compatible = False
+    elif row.closed_at:
         logger.debug(
             "TMUX contract session rejected: closed row",
             session_id=session_id,
             native_session_id=native_session_id,
         )
-        return False
-
-    if row.native_session_id and row.native_session_id != native_session_id:
+        compatible = False
+    elif row.native_session_id and row.native_session_id != native_session_id:
         row_agent = (row.active_agent or "").strip().lower()
         incoming_agent = (agent or "").strip().lower()
-        if row_agent and incoming_agent and row_agent == incoming_agent:
+        compatible = bool(row_agent and incoming_agent and row_agent == incoming_agent)
+        if compatible:
             logger.debug(
                 "TMUX contract native id rollover accepted for same agent",
                 session_id=session_id,
@@ -174,18 +176,16 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
                 previous_native_session_id=(row.native_session_id or ""),
                 incoming_native_session_id=native_session_id,
             )
-            return True
-        logger.debug(
-            "TMUX contract session rejected: native session id mismatch",
-            session_id=session_id,
-            contract_native_session_id=(row.native_session_id or ""),
-            incoming_native_session_id=native_session_id,
-            contract_agent=row_agent,
-            incoming_agent=incoming_agent,
-        )
-        return False
-
-    return True
+        else:
+            logger.debug(
+                "TMUX contract session rejected: native session id mismatch",
+                session_id=session_id,
+                contract_native_session_id=(row.native_session_id or ""),
+                incoming_native_session_id=native_session_id,
+                contract_agent=row_agent,
+                incoming_agent=incoming_agent,
+            )
+    return compatible
 
 
 def _get_tmux_contract_session_id() -> str:
@@ -230,8 +230,6 @@ def _resolve_or_refresh_session_id(
     if not candidate_session_id or not raw_native_session_id:
         return candidate_session_id
 
-    from sqlmodel import Session as SqlSession
-
     try:
         with SqlSession(_create_sync_engine()) as session:
             row = session.get(db_models.Session, candidate_session_id)
@@ -264,7 +262,7 @@ def _resolve_or_refresh_session_id(
                     new_native_session_id=raw_native_session_id,
                 )
 
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.debug(
             "Session refresh lookup skipped (db unavailable)",
             agent=agent,
@@ -279,8 +277,6 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
     """Look up the latest non-closed session for a native session id."""
     if not native_session_id:
         return None
-    from sqlmodel import Session as SqlSession
-    from sqlmodel import select
 
     try:
         with SqlSession(_create_sync_engine()) as session:
@@ -292,7 +288,7 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
                 .limit(1)
             )
             row = session.exec(statement).first()
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.debug(
             "Native session lookup skipped (db unavailable)",
             native_session_id=native_session_id,
@@ -313,12 +309,8 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
     lock_path = path.with_suffix(".lock")
     try:
         with open(lock_path, "w", encoding="utf-8") as lock_file:
-            try:
-                import fcntl
-
+            if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            except Exception:
-                pass
             data = _load_session_map(path)
             data[_session_map_key(agent, native_session_id)] = session_id
             _write_session_map_atomic(path, data)

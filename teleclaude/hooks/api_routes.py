@@ -2,54 +2,60 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 import inspect
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 
 if TYPE_CHECKING:
     from teleclaude.hooks.registry import ContractRegistry  # type: ignore[import-not-found]  # Track B dependency
-    from teleclaude.hooks.webhook_models import Contract
 
 router = APIRouter(prefix="/hooks", tags=["hooks"])
-
-# Lazy reference — set by daemon during startup
-_contract_registry: ContractRegistry | None = None
+_REGISTRY_STATE: dict[str, ContractRegistry | None] = {"registry": None}
 
 
 def set_contract_registry(registry: ContractRegistry) -> None:
     """Called by daemon to inject the ContractRegistry instance."""
-    global _contract_registry
-    _contract_registry = registry
+    _REGISTRY_STATE["registry"] = registry
 
 
 def _get_registry() -> ContractRegistry:
-    if _contract_registry is None:
+    registry = _REGISTRY_STATE["registry"]
+    if registry is None:
         raise HTTPException(status_code=503, detail="Webhook service not initialized")
-    return _contract_registry
+    return registry
 
 
 class CreateContractRequest(BaseModel):
+    """Request body for creating a webhook contract."""
+
     model_config = ConfigDict(frozen=True)
 
     id: str
     target: dict[str, str | None]
     source_criterion: dict[str, Any] | None = None  # guard: loose-dict - Pydantic request DTO accepts arbitrary JSON
     type_criterion: dict[str, Any] | None = None  # guard: loose-dict - Pydantic request DTO accepts arbitrary JSON
-    properties: dict[str, dict[str, Any]] = {}  # guard: loose-dict - Pydantic request DTO accepts arbitrary JSON
+    properties: dict[str, dict[str, Any]] = Field(
+        default_factory=dict
+    )  # guard: loose-dict - Pydantic request DTO accepts arbitrary JSON
     ttl_seconds: int | None = None  # time-to-live; None = permanent
 
 
 class ContractResponse(BaseModel):
+    """Serialized webhook contract returned by the API."""
+
     model_config = ConfigDict(frozen=True)
 
     id: str
     source_criterion: dict[str, Any] | None = None  # guard: loose-dict - Pydantic response DTO
     type_criterion: dict[str, Any] | None = None  # guard: loose-dict - Pydantic response DTO
-    properties: dict[str, dict[str, Any]] = {}  # guard: loose-dict - Pydantic response DTO
-    target: dict[str, str | None] = {}  # guard: loose-dict - Pydantic response DTO
+    properties: dict[str, dict[str, Any]] = Field(default_factory=dict)  # guard: loose-dict - Pydantic response DTO
+    target: dict[str, str | None] = Field(default_factory=dict)  # guard: loose-dict - Pydantic response DTO
     active: bool = True
     created_at: str = ""
     expires_at: str | None = None
@@ -58,8 +64,6 @@ class ContractResponse(BaseModel):
 
 def _contract_to_response(contract: Contract) -> ContractResponse:
     """Convert a Contract to a response DTO."""
-    from dataclasses import asdict
-
     return ContractResponse(
         id=contract.id,
         source_criterion=asdict(contract.source_criterion) if contract.source_criterion else None,
@@ -75,12 +79,12 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
 
 @router.get("/contracts")
 async def list_contracts(
-    property: str | None = Query(default=None, description="Filter by property name"),
+    property_name: str | None = Query(default=None, alias="property", description="Filter by property name"),
     value: str | None = Query(default=None, description="Filter by property value"),
 ) -> list[ContractResponse]:
     """List all active contracts, optionally filtered by property."""
     registry = _get_registry()
-    contracts = await registry.list_contracts(property_name=property, property_value=value)
+    contracts = await registry.list_contracts(property_name=property_name, property_value=value)
     return [_contract_to_response(c) for c in contracts]
 
 
@@ -97,8 +101,6 @@ async def list_properties() -> dict[str, list[str]]:
 @router.post("/contracts", status_code=201)
 async def create_contract(req: CreateContractRequest) -> ContractResponse:
     """Create a new webhook contract."""
-    from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
-
     target = Target(
         handler=req.target.get("handler"),
         url=req.target.get("url"),

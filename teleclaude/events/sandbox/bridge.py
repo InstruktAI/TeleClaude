@@ -29,19 +29,28 @@ _CARTRIDGE_TIMEOUT = 10.0  # seconds per cartridge call
 
 
 class SandboxBridgeCartridge:
+    """Bridge approved events into sandboxed experimental cartridges."""
+
     name = "sandbox-bridge"
 
     def __init__(self, manager: SandboxContainerManager) -> None:
+        """Initialize the bridge with a sandbox container manager."""
         self._manager = manager
 
+    def identifier(self) -> str:
+        """Return the stable cartridge identifier."""
+        return self.name
+
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Invoke sandbox cartridges and attach their results to the event payload."""
         try:
             return await self._process(event, context)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Sandbox bridge unexpected error: %s", exc, exc_info=True)
             return event
 
     async def _process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope:
+        """Run all discovered sandbox cartridges against the current event."""
         if not self._manager.has_cartridges or self._manager.permanently_failed or self._manager.docker_unavailable:
             return event
 
@@ -67,6 +76,7 @@ class SandboxBridgeCartridge:
         event: EventEnvelope,
         catalog_snapshot: list[JsonDict],
     ) -> JsonDict:
+        """Invoke one sandbox cartridge and normalize the result into payload metadata."""
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_unix_connection(self._manager.socket_path),
@@ -89,7 +99,7 @@ class SandboxBridgeCartridge:
                 writer.close()
                 try:
                     await writer.wait_closed()
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     pass
         except TimeoutError:
             logger.warning("Sandbox cartridge %r timed out", cartridge_name)
@@ -100,6 +110,6 @@ class SandboxBridgeCartridge:
         except FrameTooLargeError as exc:
             logger.warning("Sandbox cartridge %r frame too large: %s", cartridge_name, exc)
             return {"cartridge": cartridge_name, "error": "frame_too_large"}
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Sandbox cartridge %r unexpected error: %s", cartridge_name, exc, exc_info=True)
             return {"cartridge": cartridge_name, "error": str(exc)}

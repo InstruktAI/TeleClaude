@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_schema(catalog: EventCatalog) -> None:
+    """Register schema-evolution event schemas."""
     catalog.register(
         EventSchema(
             event_type="schema.proposed",

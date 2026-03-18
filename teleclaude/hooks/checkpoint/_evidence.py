@@ -1,5 +1,7 @@
 """Evidence checking, error state detection, edit hygiene, and slug alignment."""
 
+# pylint: disable=too-many-nested-blocks,too-many-branches,too-many-return-statements
+
 import re
 import shlex
 from pathlib import Path

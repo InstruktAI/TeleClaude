@@ -19,6 +19,7 @@ CHECKPOINT_RECHECK_FLAG = "teleclaude_checkpoint_recheck"
 
 
 def session_tmp_base_dir() -> Path:
+    """Return the base directory used for session-scoped checkpoint flags."""
     base_override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
     if base_override:
         return Path(base_override).expanduser().resolve()
@@ -26,17 +27,20 @@ def session_tmp_base_dir() -> Path:
 
 
 def _safe_session_path_component(value: str) -> str:
+    """Convert a session identifier into a filesystem-safe path component."""
     if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
         return value
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
 
 
 def checkpoint_flag_path(session_id: str, flag_name: str) -> Path:
+    """Return the path for a specific session-scoped checkpoint flag."""
     session_dir = session_tmp_base_dir() / _safe_session_path_component(session_id)
     return session_dir / flag_name
 
 
 def set_checkpoint_flag(session_id: str, flag_name: str) -> None:
+    """Create a session-scoped checkpoint flag file if possible."""
     flag_path = checkpoint_flag_path(session_id, flag_name)
     try:
         flag_path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,10 +56,12 @@ def set_checkpoint_flag(session_id: str, flag_name: str) -> None:
 
 
 def has_checkpoint_flag(session_id: str, flag_name: str) -> bool:
+    """Return True when the session-scoped checkpoint flag exists."""
     return checkpoint_flag_path(session_id, flag_name).exists()
 
 
 def consume_checkpoint_flag(session_id: str, flag_name: str) -> bool:
+    """Remove a session-scoped checkpoint flag and report whether it existed."""
     flag_path = checkpoint_flag_path(session_id, flag_name)
     if not flag_path.exists():
         return False

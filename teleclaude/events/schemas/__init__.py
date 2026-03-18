@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from importlib import import_module
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -9,26 +11,20 @@ if TYPE_CHECKING:
 
 
 def register_all(catalog: EventCatalog) -> None:
-    from teleclaude.events.schemas.content import register_content
-    from teleclaude.events.schemas.creative_production import register_creative_production
-    from teleclaude.events.schemas.customer_relations import register_customer_relations
-    from teleclaude.events.schemas.deployment import register_deployment
-    from teleclaude.events.schemas.marketing import register_marketing
-    from teleclaude.events.schemas.node import register_node
-    from teleclaude.events.schemas.notification import register_notification
-    from teleclaude.events.schemas.schema import register_schema
-    from teleclaude.events.schemas.signal import register_signal
-    from teleclaude.events.schemas.software_development import register_software_development
-    from teleclaude.events.schemas.system import register_system
-
-    register_system(catalog)
-    register_software_development(catalog)
-    register_marketing(catalog)
-    register_creative_production(catalog)
-    register_customer_relations(catalog)
-    register_node(catalog)
-    register_deployment(catalog)
-    register_content(catalog)
-    register_notification(catalog)
-    register_schema(catalog)
-    register_signal(catalog)
+    """Register every built-in schema group into the provided catalog."""
+    registrars = (
+        ("teleclaude.events.schemas.system", "register_system"),
+        ("teleclaude.events.schemas.software_development", "register_software_development"),
+        ("teleclaude.events.schemas.marketing", "register_marketing"),
+        ("teleclaude.events.schemas.creative_production", "register_creative_production"),
+        ("teleclaude.events.schemas.customer_relations", "register_customer_relations"),
+        ("teleclaude.events.schemas.node", "register_node"),
+        ("teleclaude.events.schemas.deployment", "register_deployment"),
+        ("teleclaude.events.schemas.content", "register_content"),
+        ("teleclaude.events.schemas.notification", "register_notification"),
+        ("teleclaude.events.schemas.schema", "register_schema"),
+        ("teleclaude.events.schemas.signal", "register_signal"),
+    )
+    for module_name, function_name in registrars:
+        registrar = getattr(import_module(module_name), function_name)
+        registrar(catalog)

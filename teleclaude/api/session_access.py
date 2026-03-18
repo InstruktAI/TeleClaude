@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
+from teleclaude.api.auth import _get_cached_session
 from teleclaude.core.db import db
 
 
@@ -37,8 +38,6 @@ async def check_session_access(
     # Admin always allowed
     if role == "admin":
         return
-
-    from teleclaude.api.auth import _get_cached_session
 
     session = _get_cached_session(session_id)
     if session is None:

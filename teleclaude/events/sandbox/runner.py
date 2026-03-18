@@ -11,7 +11,9 @@ import asyncio
 import importlib.util
 import time
 import types
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import cast
 
 from instrukt_ai_logging import get_logger
 
@@ -40,7 +42,7 @@ def _build_catalog_from_snapshot(snapshot: list[JsonDict]) -> EventCatalog:
         try:
             schema = EventSchema(**item)  # type: ignore[arg-type]
             catalog.register(schema)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Skipping catalog snapshot entry: %s", e)
     return catalog
 
@@ -58,19 +60,48 @@ def _load_cartridge_module(cartridges_dir: str, cartridge_name: str) -> types.Mo
     return module
 
 
+def _load_process_callable(
+    cartridges_dir: str,
+    cartridge_name: str,
+) -> Callable[[EventEnvelope, PipelineContext], Awaitable[EventEnvelope | None]]:
+    """Load and return the `process` callable for one sandbox cartridge module."""
+    module = _load_cartridge_module(cartridges_dir, cartridge_name)
+    process = getattr(module, "process", None)
+    if not callable(process):
+        raise AttributeError(f"Cartridge {cartridge_name!r} has no callable 'process'")
+    return cast(Callable[[EventEnvelope, PipelineContext], Awaitable[EventEnvelope | None]], process)
+
+
+async def _run_process_callable(
+    process_callable: Callable[[EventEnvelope, PipelineContext], Awaitable[EventEnvelope | None]],
+    envelope: EventEnvelope,
+    context: PipelineContext,
+) -> EventEnvelope | None:
+    """Execute a loaded process callable with the provided pipeline context."""
+    return await process_callable(envelope, context)
+
+
 class SandboxRunner:
+    """Run a Unix-socket server that executes sandbox cartridges in-process."""
+
     def __init__(self, socket_path: str, cartridges_dir: str) -> None:
         self._socket_path = socket_path
         self._cartridges_dir = cartridges_dir
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
+        """Serve sandbox cartridge requests until the shutdown event is set."""
         server = await asyncio.start_unix_server(self._handle_client, path=self._socket_path)
         logger.info("SandboxRunner listening on %s", self._socket_path)
         async with server:
             await shutdown_event.wait()
         logger.info("SandboxRunner shutting down")
 
+    def socket_path(self) -> str:
+        """Return the Unix-socket path served by this runner."""
+        return self._socket_path
+
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        """Read one request frame, execute it, and write back one response frame."""
         try:
             raw = await read_frame(reader)
             request = request_from_dict(raw)
@@ -82,26 +113,27 @@ class SandboxRunner:
 
             start = time.monotonic()
             try:
-                module = _load_cartridge_module(self._cartridges_dir, request.cartridge_name)
-                process_fn = getattr(module, "process", None)
-                if not callable(process_fn):
-                    raise AttributeError(f"Cartridge {request.cartridge_name!r} has no callable 'process'")
-
+                process_callable = _load_process_callable(self._cartridges_dir, request.cartridge_name)
                 envelope = EventEnvelope.from_stream_dict(request.envelope)  # type: ignore[arg-type]
                 catalog = _build_catalog_from_snapshot(request.catalog_snapshot)
                 context = PipelineContext(catalog=catalog, db=None)
 
                 result: EventEnvelope | None = await asyncio.wait_for(
-                    process_fn(envelope, context), timeout=_CARTRIDGE_TIMEOUT
+                    _run_process_callable(process_callable, envelope, context),
+                    timeout=_CARTRIDGE_TIMEOUT,
                 )
                 duration_ms = (time.monotonic() - start) * 1000
                 result_dict = result.to_stream_dict() if result is not None else None
-                response = SandboxResponse(envelope=result_dict, error=None, duration_ms=duration_ms)  # type: ignore[arg-type]
+                response = SandboxResponse(
+                    envelope=result_dict,
+                    error=None,
+                    duration_ms=duration_ms,
+                )
             except TimeoutError:
                 duration_ms = (time.monotonic() - start) * 1000
                 logger.warning("Cartridge %r timed out after %.0fms", request.cartridge_name, duration_ms)
                 response = SandboxResponse(envelope=None, error="timeout", duration_ms=duration_ms)
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 duration_ms = (time.monotonic() - start) * 1000
                 logger.exception("Cartridge %r raised: %s", request.cartridge_name, exc)
                 response = SandboxResponse(envelope=None, error=str(exc), duration_ms=duration_ms)
@@ -109,11 +141,11 @@ class SandboxRunner:
             await write_frame(writer, response_to_dict(response))
         except FrameTooLargeError as exc:
             logger.warning("Frame too large, dropping: %s", exc)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Unexpected error handling sandbox client: %s", exc, exc_info=True)
         finally:
             try:
                 writer.close()
                 await writer.wait_closed()
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass

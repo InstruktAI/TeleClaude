@@ -6,28 +6,33 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
-
-if TYPE_CHECKING:
-    from teleclaude.config.schema import PersonEntry
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import configure_logging, get_logger
+from sqlalchemy.exc import SQLAlchemyError
+from sqlmodel import Session as SqlSession
 
 from teleclaude.config import config
+from teleclaude.config.schema import PersonEntry
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, is_internal_user_text
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
+from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
-from teleclaude.core.models import JsonDict
+from teleclaude.core.models import JsonDict, SessionAdapterMetadata
 from teleclaude.hooks.adapters import get_adapter
+from teleclaude.hooks.adapters._stdin import read_stdin_payload
+from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
     is_checkpoint_disabled,
     set_checkpoint_flag,
 )
+from teleclaude.hooks.receiver import _session as receiver_session
 from teleclaude.hooks.receiver._session import (
     _create_sync_engine,
     _find_session_id_by_native,
@@ -45,6 +50,10 @@ from teleclaude.hooks.receiver._session import (
     _session_map_key,
     _write_session_map_atomic,
 )
+from teleclaude.utils.transcript import extract_workdir_from_transcript
+
+if TYPE_CHECKING:
+    pass
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -53,6 +62,115 @@ logger = get_logger("teleclaude.hooks.receiver")
 # This prevents noisy intermediate hook traffic from reaching command handlers.
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
 _HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLED
+
+
+@dataclass(frozen=True)
+class _NativeMetadataChange:
+    previous_native_session_id: str | None
+    previous_native_log_file: str | None
+    native_session_id: str | None
+    native_log_file: str | None
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Convert a datetime to timezone-aware UTC."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _load_session_row(session_id: str) -> db_models.Session | None:
+    """Load a session row synchronously for hook processing."""
+    with SqlSession(_create_sync_engine()) as db_session:
+        return db_session.get(db_models.Session, session_id)
+
+
+def _resolve_checkpoint_project_path(row: db_models.Session) -> str:
+    """Resolve project_path, falling back to transcript-derived workdir."""
+    transcript_path = getattr(row, "native_log_file", None)
+    project_path = str(getattr(row, "project_path", "") or "")
+    if not project_path and transcript_path:
+        project_path = extract_workdir_from_transcript(transcript_path) or ""
+    return project_path
+
+
+def _resolve_agent_enum(agent: str) -> AgentName:
+    """Resolve a hook agent string to an AgentName with default fallback."""
+    try:
+        return AgentName.from_str(agent)
+    except ValueError:
+        return AgentName.from_str(get_default_agent())
+
+
+def _mark_checkpoint_seen(session_id: str, now: datetime) -> None:
+    """Persist the latest checkpoint timestamp for a session."""
+    with SqlSession(_create_sync_engine()) as db_session:
+        update_row = db_session.get(db_models.Session, session_id)
+        if update_row:
+            update_row.last_checkpoint_at = now
+            db_session.add(update_row)
+            db_session.commit()
+
+
+def _resolve_turn_start(row: db_models.Session) -> datetime | None:
+    """Return the start timestamp for the current turn."""
+    turn_candidates = [
+        timestamp
+        for timestamp in (_as_utc(row.last_message_sent_at), _as_utc(row.last_checkpoint_at))
+        if timestamp is not None
+    ]
+    return max(turn_candidates, default=None)
+
+
+def _load_checkpoint_row(session_id: str) -> db_models.Session | None:
+    """Load the session row for checkpoint evaluation."""
+    try:
+        return _load_session_row(session_id)
+    except SQLAlchemyError as exc:
+        logger.debug("Checkpoint eval skipped (db error)", error=str(exc))
+        return None
+
+
+def _resolve_identity_context(session_id: str) -> tuple[str | None, str | None]:
+    """Return identity-key and person header metadata for memory injection."""
+    row = _load_session_row(session_id)
+    if not row:
+        return None, None
+    identity_key: str | None = None
+    if row.adapter_metadata:
+        adapter_meta = SessionAdapterMetadata.from_json(row.adapter_metadata)
+        identity_key = derive_identity_key(adapter_meta)
+    human_email = getattr(row, "human_email", None)
+    if not human_email:
+        return identity_key, None
+    people = getattr(config, "people", [])
+    person = next((person for person in people if person.email == human_email), None)
+    if person is None:
+        return identity_key, None
+    return identity_key, _render_person_header(person)
+
+
+def _build_receiver_error_payload(
+    *,
+    message: str,
+    code: str,
+    agent: str,
+    event_type: str | None,
+    details: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Construct a normalized error payload for the hook outbox."""
+    payload = dict(details or {})
+    payload.update({"agent": agent, "event_type": event_type, "code": code})
+    return {
+        "message": message,
+        "source": "hook_receiver",
+        "code": code,
+        "details": payload,
+        "severity": "error",
+        "retryable": False,
+    }
 
 
 def _reset_checkpoint_flags(session_id: str) -> None:
@@ -82,61 +200,26 @@ def _maybe_checkpoint_output(
         logger.info("Checkpoint skipped (recheck limit reached)", session_id=session_id, agent=agent)
         return None
 
-    from sqlmodel import Session as SqlSession
-
-    try:
-        with SqlSession(_create_sync_engine()) as db_session:
-            row = db_session.get(db_models.Session, session_id)
-    except Exception as exc:
-        logger.debug("Checkpoint eval skipped (db error)", error=str(exc))
-        return None
-
+    row = _load_checkpoint_row(session_id)
     if not row:
         return None
 
-    def _as_utc(value: datetime | None) -> datetime | None:
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
-        return value.astimezone(UTC)
-
-    checkpoint_at = _as_utc(row.last_checkpoint_at)
-    message_at = _as_utc(row.last_message_sent_at)
     now = datetime.now(UTC)
-
-    # Turn start = most recent input event (real user message or previous checkpoint)
-    turn_candidates = [dt for dt in (message_at, checkpoint_at) if dt is not None]
-    turn_start = max(turn_candidates, default=None)
+    turn_start = _resolve_turn_start(row)
     if not turn_start:
         logger.debug("Checkpoint skipped (no turn start) for session %s", session_id)
         return None
 
     elapsed = (now - turn_start).total_seconds()
-
-    # Capture session fields before the DB update re-fetches row
     transcript_path = getattr(row, "native_log_file", None)
     working_slug = getattr(row, "working_slug", None)
+    project_path = _resolve_checkpoint_project_path(row)
 
     logger.debug("Checkpoint eval for session %s (%.1fs elapsed)", session_id, elapsed)
 
-    # Build context-aware checkpoint message from git diff + transcript
-    from teleclaude.hooks.checkpoint import get_checkpoint_content
-
-    # Prefer persisted session project_path (source of truth). Fall back to
-    # transcript-derived workdir only when project_path is missing.
-    project_path = str(getattr(row, "project_path", "") or "")
-    if not project_path and transcript_path:
-        from teleclaude.utils.transcript import extract_workdir_from_transcript
-
-        project_path = extract_workdir_from_transcript(transcript_path) or ""
-    try:
-        agent_enum = AgentName.from_str(agent)
-    except ValueError:
-        agent_enum = AgentName.from_str(get_default_agent())
     checkpoint_reason = get_checkpoint_content(
         transcript_path=transcript_path,
-        agent_name=agent_enum,
+        agent_name=_resolve_agent_enum(agent),
         project_path=project_path,
         working_slug=working_slug,
         elapsed_since_turn_start_s=elapsed,
@@ -154,15 +237,9 @@ def _maybe_checkpoint_output(
     if stop_hook_active:
         set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
 
-    # Checkpoint warranted — update DB and return agent-specific blocking JSON
     try:
-        with SqlSession(_create_sync_engine()) as db_session:
-            update_row = db_session.get(db_models.Session, session_id)
-            if update_row:
-                update_row.last_checkpoint_at = now
-                db_session.add(update_row)
-                db_session.commit()
-    except Exception as exc:
+        _mark_checkpoint_seen(session_id, now)
+    except SQLAlchemyError as exc:
         logger.warning("Checkpoint DB update failed: %s", exc)
     logger.info(
         "Checkpoint payload prepared",
@@ -213,29 +290,12 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
     if not project_name:
         return
 
-    # Resolve identity_key from session adapter metadata for identity-scoped memories
     identity_key: str | None = None
     person_header: str | None = None
     if session_id:
         try:
-            from sqlmodel import Session as SqlSession
-
-            from teleclaude.core.identity import derive_identity_key
-            from teleclaude.core.models import SessionAdapterMetadata
-
-            with SqlSession(_create_sync_engine()) as db_session:
-                row = db_session.get(db_models.Session, session_id)
-                if row:
-                    if row.adapter_metadata:
-                        adapter_meta = SessionAdapterMetadata.from_json(row.adapter_metadata)
-                        identity_key = derive_identity_key(adapter_meta)
-                    human_email = getattr(row, "human_email", None)
-                    if human_email:
-                        people = getattr(config, "people", [])
-                        person = next((p for p in people if p.email == human_email), None)
-                        if person:
-                            person_header = _render_person_header(person)
-        except Exception:
+            identity_key, person_header = _resolve_identity_context(session_id)
+        except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
             logger.debug("Identity/person resolution failed for session %s", (session_id or ""))
 
     context = _get_memory_context(project_name, identity_key=identity_key)
@@ -270,16 +330,7 @@ def _parse_args() -> argparse.Namespace:
 
 # guard: loose-dict-func - Raw stdin JSON payload at process boundary.
 def _read_stdin() -> tuple[str, dict[str, object]]:
-    raw_input = ""
-    data: dict[str, object] = {}
-    if not sys.stdin.isatty():
-        raw_input = sys.stdin.read()
-        if raw_input.strip():
-            parsed = json.loads(raw_input)
-            if not isinstance(parsed, dict):
-                raise ValueError("Hook stdin payload must be a JSON object")
-            data = cast(dict[str, object], parsed)
-    return raw_input, data
+    return read_stdin_payload()
 
 
 def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:
@@ -309,7 +360,6 @@ def _enqueue_hook_event(
     """Persist hook event to local outbox for durable delivery."""
     now = datetime.now(UTC).isoformat()
     payload_json = json.dumps(data)
-    from sqlmodel import Session as SqlSession
 
     with SqlSession(_create_sync_engine()) as session:
         row = db_models.HookOutbox(
@@ -322,6 +372,57 @@ def _enqueue_hook_event(
         )
         session.add(row)
         session.commit()
+
+
+def _append_transcript_history(row: db_models.Session, previous_native_log_file: str) -> None:
+    """Append the replaced transcript path to transcript_files."""
+    try:
+        loaded_chain = json.loads(row.transcript_files or "[]")
+    except (json.JSONDecodeError, TypeError):
+        loaded_chain = []
+    chain = loaded_chain if isinstance(loaded_chain, list) else []
+    if previous_native_log_file not in chain:
+        chain.append(previous_native_log_file)
+    row.transcript_files = json.dumps(chain)
+
+
+def _path_exists(path_value: str | None) -> bool:
+    """Return whether a path exists without surfacing filesystem resolution errors."""
+    if not path_value:
+        return False
+    try:
+        return Path(path_value).expanduser().exists()
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _log_native_metadata_change(
+    *,
+    session_id: str,
+    agent: str,
+    event_type: str,
+    change: _NativeMetadataChange,
+) -> None:
+    """Log native metadata changes after the session row has been updated."""
+    session_changed = bool(change.native_session_id and change.previous_native_session_id != change.native_session_id)
+    native_log_changed = bool(change.native_log_file and change.previous_native_log_file != change.native_log_file)
+    if not session_changed and not native_log_changed:
+        return
+
+    logger.info(
+        "Native session metadata changed",
+        session_id=session_id,
+        agent=agent,
+        event_type=event_type,
+        native_session_id_before=(change.previous_native_session_id or ""),
+        native_session_id_after=(change.native_session_id or ""),
+        native_session_changed=session_changed,
+        native_log_file_before=change.previous_native_log_file or "",
+        native_log_file_after=change.native_log_file or "",
+        native_log_changed=native_log_changed,
+        old_path_exists=_path_exists(change.previous_native_log_file),
+        new_path_exists=_path_exists(change.native_log_file),
+    )
 
 
 def _update_session_native_fields(
@@ -339,7 +440,6 @@ def _update_session_native_fields(
     """
     if not native_log_file and not native_session_id:
         return
-    from sqlmodel import Session as SqlSession
 
     with SqlSession(_create_sync_engine()) as session:
         row = session.get(db_models.Session, session_id)
@@ -349,18 +449,10 @@ def _update_session_native_fields(
         previous_native_log_file = row.native_log_file
 
         # Chain accumulation: preserve old transcript path before replacing
-        transcript_changed = bool(
+        if (
             native_log_file and previous_native_log_file and previous_native_log_file != native_log_file
-        )
-        if transcript_changed:
-            chain: list[str] = []
-            try:
-                chain = json.loads(row.transcript_files or "[]")
-            except (json.JSONDecodeError, TypeError):
-                chain = []
-            if previous_native_log_file not in chain:
-                chain.append(previous_native_log_file)
-            row.transcript_files = json.dumps(chain)
+        ):
+            _append_transcript_history(row, previous_native_log_file)
 
         if native_log_file:
             row.native_log_file = native_log_file
@@ -369,52 +461,28 @@ def _update_session_native_fields(
         session.add(row)
         session.commit()
 
-        session_changed = bool(native_session_id and previous_native_session_id != native_session_id)
-        transcript_changed_log = bool(native_log_file and previous_native_log_file != native_log_file)
-        if not session_changed and not transcript_changed_log:
-            return
-
-        old_path = Path(previous_native_log_file).expanduser() if previous_native_log_file else None
-        new_path = Path(native_log_file).expanduser() if native_log_file else None
-        old_exists = bool(old_path and old_path.exists())
-        new_exists = bool(new_path and new_path.exists())
-
-        logger.info(
-            "Native session metadata changed",
-            session_id=session_id,
-            agent=agent,
-            event_type=event_type,
-            native_session_id_before=(previous_native_session_id or ""),
-            native_session_id_after=(native_session_id or ""),
-            native_session_changed=session_changed,
-            native_log_file_before=previous_native_log_file or "",
-            native_log_file_after=native_log_file or "",
-            native_log_changed=transcript_changed_log,
-            old_path_exists=old_exists,
-            new_path_exists=new_exists,
-        )
+    change = _NativeMetadataChange(
+        previous_native_session_id=previous_native_session_id,
+        previous_native_log_file=previous_native_log_file,
+        native_session_id=native_session_id,
+        native_log_file=native_log_file,
+    )
+    _log_native_metadata_change(
+        session_id=session_id,
+        agent=agent,
+        event_type=event_type,
+        change=change,
+    )
 
 
-# guard: loose-dict-func - Main path processes raw hook payload boundaries.
 def _emit_receiver_error_best_effort(
-    *,
-    agent: str,
-    event_type: str | None,
     message: str,
     code: str,
+    args: argparse.Namespace,
     details: dict[str, object] | None = None,  # guard: loose-dict - Error details are context-specific.
     raw_data: dict[str, object] | None = None,  # guard: loose-dict - Raw hook payload for best-effort context.
 ) -> None:
     """Best-effort error emission for receiver contract violations."""
-    payload = dict(details or {})
-    payload.update(
-        {
-            "agent": agent,
-            "event_type": event_type,
-            "code": code,
-        }
-    )
-
     try:
         raw_native_session_id = None
         if raw_data is not None:
@@ -422,14 +490,14 @@ def _emit_receiver_error_best_effort(
             raw_id = raw_data.get("session_id") or raw_data.get("thread-id")
             if isinstance(raw_id, str):
                 raw_native_session_id = raw_id
-        session_id = _get_cached_session_id(agent, raw_native_session_id)
+        session_id = _get_cached_session_id(args.agent, raw_native_session_id)
         if not session_id:
             session_id = _find_session_id_by_native(raw_native_session_id)
         if not session_id:
             logger.error(
                 "Receiver error with unknown session",
-                agent=agent,
-                event_type=event_type,
+                agent=args.agent,
+                event_type=getattr(args, "event_type", None),
                 code=code,
                 message=message,
             )
@@ -437,16 +505,15 @@ def _emit_receiver_error_best_effort(
         _enqueue_hook_event(
             session_id,
             "error",
-            {
-                "message": message,
-                "source": "hook_receiver",
-                "code": code,
-                "details": payload,
-                "severity": "error",
-                "retryable": False,
-            },
+            _build_receiver_error_payload(
+                message=message,
+                code=code,
+                agent=args.agent,
+                event_type=getattr(args, "event_type", None),
+                details=details,
+            ),
         )
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.error("Receiver error reporting failed", error=str(exc), code=code)
 
 
@@ -455,18 +522,16 @@ def _parse_receiver_input(args: argparse.Namespace, adapter: object) -> tuple[st
         return adapter.parse_input(args)  # type: ignore[union-attr]
     except json.JSONDecodeError:
         _emit_receiver_error_best_effort(
-            agent=args.agent,
-            event_type=getattr(args, "event_type", None),
             message="Invalid hook payload JSON",
             code="HOOK_INVALID_JSON",
+            args=args,
         )
         sys.exit(1)
     except ValueError as exc:
         _emit_receiver_error_best_effort(
-            agent=args.agent,
-            event_type=getattr(args, "event_type", None),
             message=str(exc),
             code="HOOK_PAYLOAD_NOT_OBJECT",
+            args=args,
         )
         sys.exit(1)
 
@@ -495,14 +560,13 @@ def _extract_native_hook_fields(data: JsonDict) -> tuple[str | None, str | None]
 
 
 def _resolve_receiver_session_id(
-    *,
     agent: str,
     event_type: str,
     raw_event_type: str,
     raw_native_session_id: str | None,
-    headless_route: bool,
     adapter: object,
 ) -> str | None:
+    headless_route = _is_headless_route()
     try:
         teleclaude_session_id, cached_session_id, existing_id = _resolve_hook_session_id(
             agent=agent,
@@ -572,13 +636,11 @@ def _persist_native_metadata(
 
 
 def _handle_user_prompt_submit(
-    *,
     event_type: str,
     data: JsonDict,
     agent: str,
     session_id: str,
     raw_native_session_id: str | None,
-    raw_event_type: str,
 ) -> bool:
     if event_type != AgentHookEvents.USER_PROMPT_SUBMIT:
         return False
@@ -591,7 +653,7 @@ def _handle_user_prompt_submit(
             session_id=session_id,
             native_session_id=(raw_native_session_id or ""),
             hook_event_name=str(data.get("hook_event_name") or ""),
-            raw_event_type=str(raw_event_type or ""),
+            raw_event_type=event_type,
         )
         return True
     if is_internal_user_text(prompt_text):
@@ -635,7 +697,7 @@ def _maybe_emit_checkpoint_response(
     checkpoint_reason: str | None = None
     try:
         checkpoint_reason = _maybe_checkpoint_output(session_id, agent, raw_data)
-    except Exception as exc:
+    except (AttributeError, TypeError, ValueError, SQLAlchemyError) as exc:
         logger.warning(
             "Checkpoint eval crashed (ignored)",
             event_type=event_type,
@@ -653,6 +715,7 @@ def _maybe_emit_checkpoint_response(
 
 # guard: loose-dict-func - Main path processes raw hook payload boundaries.
 def main() -> None:
+    """Parse a hook event and enqueue it for daemon processing."""
     args = _parse_args()
 
     logger.trace(
@@ -680,18 +743,15 @@ def main() -> None:
         )
         sys.exit(0)
 
-    headless_route = _is_headless_route()
-
     data = adapter.normalize_payload(dict(raw_data))  # type: ignore[union-attr]
     raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
 
     teleclaude_session_id = _resolve_receiver_session_id(
-        agent=args.agent,
-        event_type=event_type,
-        raw_event_type=raw_event_type,
-        raw_native_session_id=raw_native_session_id,
-        headless_route=headless_route,
-        adapter=adapter,
+        args.agent,
+        event_type,
+        raw_event_type,
+        raw_native_session_id,
+        adapter,
     )
     if not teleclaude_session_id:
         sys.exit(0)
@@ -727,7 +787,7 @@ def main() -> None:
                 raw_native_session_id=raw_native_session_id,
                 raw_native_log_file=raw_native_log_file,
             )
-        except Exception as exc:  # Best-effort update; never fail hook.
+        except SQLAlchemyError as exc:
             logger.warning(
                 "Hook metadata update failed (ignored)",
                 event_type=event_type,
@@ -741,12 +801,11 @@ def main() -> None:
         data["cwd"] = cwd
 
     if _handle_user_prompt_submit(
-        event_type=event_type,
-        data=data,
-        agent=args.agent,
-        session_id=teleclaude_session_id,
-        raw_native_session_id=raw_native_session_id,
-        raw_event_type=raw_event_type,
+        event_type,
+        data,
+        args.agent,
+        teleclaude_session_id,
+        raw_native_session_id,
     ):
         return
 
@@ -770,25 +829,4 @@ def main() -> None:
     _enqueue_hook_event(teleclaude_session_id, event_type, data)
 
 
-__all__ = [
-    # Re-exported from _session
-    "_create_sync_engine",
-    "_find_session_id_by_native",
-    "_get_cached_session_id",
-    "_get_memory_context",
-    "_get_session_map_path",
-    "_get_tmux_contract_session_id",
-    "_get_tmux_contract_tmpdir",
-    "_is_headless_route",
-    "_is_tmux_contract_session_compatible",
-    "_load_session_map",
-    "_persist_session_map",
-    "_read_stdin",
-    "_render_person_header",
-    "_resolve_hook_session_id",
-    "_resolve_or_refresh_session_id",
-    "_session_map_key",
-    "_write_session_map_atomic",
-    # Public API
-    "main",
-]
+__all__ = [*receiver_session.__all__, "_read_stdin", "_render_person_header", "main"]

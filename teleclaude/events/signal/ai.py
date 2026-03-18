@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class SynthesisArtifact(BaseModel):
+    """Structured synthesis produced from a cluster of related signal items."""
+
     summary: str
     key_points: list[str]
     sources: list[str]
@@ -23,13 +25,19 @@ class SynthesisArtifact(BaseModel):
 
 @runtime_checkable
 class SignalAIClient(Protocol):
-    async def summarise(self, title: str, body: str) -> str: ...
+    """Interface required by signal cartridges that call AI services."""
 
-    async def extract_tags(self, title: str, summary: str) -> list[str]: ...
+    async def summarise(self, title: str, body: str) -> str:
+        """Summarise one fetched item into a short sentence."""
 
-    async def embed(self, text: str) -> list[float] | None: ...
+    async def extract_tags(self, title: str, summary: str) -> list[str]:
+        """Extract normalized tags from a title and summary."""
 
-    async def synthesise_cluster(self, items: list[SignalItemPayload]) -> SynthesisArtifact: ...
+    async def embed(self, text: str) -> list[float] | None:
+        """Return an embedding for text, or `None` when unavailable."""
+
+    async def synthesise_cluster(self, items: list[SignalItemPayload]) -> SynthesisArtifact:
+        """Produce a structured synthesis for a related cluster of items."""
 
 
 class DefaultSignalAIClient:
@@ -39,9 +47,11 @@ class DefaultSignalAIClient:
         self._client = ai_client
 
     def _anthropic_client(self) -> object:
+        """Return the raw Anthropic-compatible client object."""
         return self._client
 
     async def summarise(self, title: str, body: str) -> str:
+        """Generate a short summary of one fetched article."""
         client = self._anthropic_client()
         prompt = f"Summarise this article in one sentence (max 20 words).\n\nTitle: {title}\n\nContent: {body[:2000]}"
         try:
@@ -51,11 +61,12 @@ class DefaultSignalAIClient:
                 messages=[{"role": "user", "content": prompt}],
             )
             return resp.content[0].text.strip()  # type: ignore[no-any-return]
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("summarise failed: %s", e)
             raise
 
     async def extract_tags(self, title: str, summary: str) -> list[str]:
+        """Generate normalized tags for one fetched article."""
         client = self._anthropic_client()
         prompt = (
             "Extract 3-7 lowercase hyphenated tags for this article.\n"
@@ -71,15 +82,17 @@ class DefaultSignalAIClient:
             raw = resp.content[0].text.strip()
             tags = [t.strip().lower().replace(" ", "-") for t in raw.split(",") if t.strip()]
             return tags[:7]
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("extract_tags failed: %s", e)
             return []
 
-    async def embed(self, text: str) -> list[float] | None:
+    async def embed(self, _text: str) -> list[float] | None:
+        """Return embeddings for text, or `None` when unavailable."""
         # Anthropic does not have an embedding API; return None to degrade gracefully.
         return None
 
     async def synthesise_cluster(self, items: list[SignalItemPayload]) -> SynthesisArtifact:
+        """Produce a structured synthesis artifact for a cluster of signal items."""
         client = self._anthropic_client()
         item_descriptions = "\n".join(
             f"- {i.get('raw_title', 'Untitled')} ({i.get('item_url', '')}): {i.get('summary', '')}" for i in items[:10]
@@ -111,6 +124,6 @@ class DefaultSignalAIClient:
                 confidence=float(data.get("confidence", 0.5)),
                 recommended_action=data.get("recommended_action"),
             )
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("synthesise_cluster failed: %s", e)
             raise

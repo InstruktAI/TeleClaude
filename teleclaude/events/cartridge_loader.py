@@ -30,6 +30,8 @@ logger = get_logger(__name__)
 
 @dataclass
 class LoadedCartridge:
+    """A loaded cartridge module paired with its manifest and process callable."""
+
     manifest: CartridgeManifest
     module_path: Path
     process: Callable[[EventEnvelope, PipelineContext], Awaitable[EventEnvelope | None]]

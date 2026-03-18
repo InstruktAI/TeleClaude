@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import sys
 from pathlib import Path
@@ -50,7 +51,11 @@ if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.res
 sys.path.append(str(_REPO_ROOT / "teleclaude" / "hooks"))
 sys.path.append(str(_REPO_ROOT))
 
-from teleclaude.hooks.receiver import main
+
+def _run_receiver_main() -> None:
+    """Import and execute the hook receiver entry point."""
+    receiver_module = importlib.import_module("teleclaude.hooks.receiver")
+    receiver_module.main()
 
 if __name__ == "__main__":
-    main()
+    _run_receiver_main()

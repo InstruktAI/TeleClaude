@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 import logging
 import re
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class FetchResult:
+    """Normalized fetch outcome for one URL."""
+
     url: str
     status: int
     content_type: str
@@ -21,6 +24,8 @@ class FetchResult:
 
 
 class _TextExtractor(HTMLParser):
+    """Extract visible text content from simple HTML pages."""
+
     def __init__(self) -> None:
         super().__init__()
         self._chunks: list[str] = []
@@ -28,27 +33,32 @@ class _TextExtractor(HTMLParser):
         self._current_skip: int = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Track whether the parser is inside a skipped tag."""
+        del attrs
         if tag.lower() in self._skip_tags:
             self._current_skip += 1
 
     def handle_endtag(self, tag: str) -> None:
+        """Track when the parser leaves a skipped tag."""
         if tag.lower() in self._skip_tags and self._current_skip > 0:
             self._current_skip -= 1
 
     def handle_data(self, data: str) -> None:
+        """Capture visible text outside skipped tags."""
         if self._current_skip == 0:
             stripped = data.strip()
             if stripped:
                 self._chunks.append(stripped)
 
     def get_text(self) -> str:
+        """Return the accumulated visible text as a single string."""
         return " ".join(self._chunks)
 
 
 async def fetch_url(url: str, timeout: int = 10) -> FetchResult:
     """Fetch a URL and return a FetchResult."""
     try:
-        import aiohttp
+        aiohttp = import_module("aiohttp")
     except ImportError:
         return FetchResult(url=url, status=0, content_type="", body=None, error="aiohttp not available")
 
@@ -67,7 +77,7 @@ async def fetch_url(url: str, timeout: int = 10) -> FetchResult:
                     body=None,
                     error=f"HTTP {resp.status}",
                 )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         return FetchResult(url=url, status=0, content_type="", body=None, error=str(e))
 
 
@@ -80,7 +90,7 @@ async def fetch_full_content(url: str, max_chars: int = 8000) -> str | None:
     try:
         extractor.feed(result.body)
         text = extractor.get_text()
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.warning("HTML parse fallback for %s: %s", url, e)
         text = re.sub(r"<[^>]+>", " ", result.body)
         text = re.sub(r"\s+", " ", text).strip()

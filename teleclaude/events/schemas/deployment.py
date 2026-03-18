@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_deployment(catalog: EventCatalog) -> None:
+    """Register deployment lifecycle event schemas."""
     catalog.register(
         EventSchema(
             event_type="deployment.started",

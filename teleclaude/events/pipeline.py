@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib import import_module
 from typing import TYPE_CHECKING, Any, Protocol
 
 from instrukt_ai_logging import get_logger
@@ -23,38 +24,43 @@ logger = get_logger(__name__)
 
 
 def _default_trust_config() -> Any:
-    from teleclaude.events.cartridges.trust import TrustConfig
-
-    return TrustConfig()
+    """Build the default trust configuration lazily to avoid import cycles."""
+    return import_module("teleclaude.events.cartridges.trust").TrustConfig()
 
 
 def _default_correlation_config() -> Any:
-    from teleclaude.events.cartridges.correlation import CorrelationConfig
-
-    return CorrelationConfig()
+    """Build the default correlation configuration lazily to avoid import cycles."""
+    return import_module("teleclaude.events.cartridges.correlation").CorrelationConfig()
 
 
 @dataclass
 class PipelineContext:
+    """Shared services and configuration available to every cartridge invocation."""
+
     catalog: EventCatalog
     db: EventDB
     push_callbacks: list[Callable[..., object]] = field(default_factory=list)
     trust_config: TrustConfig = field(default_factory=_default_trust_config)
     correlation_config: CorrelationConfig = field(default_factory=_default_correlation_config)
     producer: EventProducer | None = None
-    # Optional: AI client for signal pipeline cartridges
-    ai_client: object | None = None
-    # Optional: emit callback for cartridges that need to fire additional events
-    emit: Callable[[EventEnvelope], Awaitable[object]] | None = None
 
 
 class Cartridge(Protocol):
+    """Protocol implemented by all pipeline cartridges."""
+
     name: str
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None: ...
+    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Transform an event or return `None` to stop processing."""
+
+    def describe(self) -> str:
+        """Return a human-readable cartridge name for debug output."""
+        return self.name
 
 
 class Pipeline:
+    """Execute the approved system pipeline and optionally fan out to domain pipelines."""
+
     def __init__(
         self,
         cartridges: list[Cartridge],
@@ -71,6 +77,7 @@ class Pipeline:
         self._cartridges.append(cartridge)
 
     async def execute(self, event: EventEnvelope) -> EventEnvelope | None:
+        """Run an event through the system pipeline and trigger domain fan-out."""
         current: EventEnvelope | None = event
         for cartridge in self._cartridges:
             if current is None:
@@ -89,11 +96,12 @@ class Pipeline:
         return current
 
     async def _run_domain_pipelines(self, event: EventEnvelope) -> None:
+        """Run domain pipelines in the background once the system pipeline completes."""
         try:
             results = await self._domain_runner.run_all(event, self._context)
             logger.debug("Domain pipeline results: %s", {k: v is not None for k, v in results.items()})
         except asyncio.CancelledError:
             logger.debug("Domain pipeline fan-out cancelled during shutdown")
             raise
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Domain pipeline fan-out error: %s", e, exc_info=True)

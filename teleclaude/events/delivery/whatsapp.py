@@ -21,9 +21,14 @@ class WhatsAppDeliveryAdapter:
         send_fn: Callable[..., Coroutine[Any, Any, str]],
         min_level: int = int(EventLevel.WORKFLOW),
     ) -> None:
+        """Initialize the adapter for one WhatsApp recipient."""
         self._phone_number = phone_number
         self._send_fn = send_fn
         self._min_level = min_level
+
+    def recipient(self) -> str:
+        """Return the WhatsApp phone number targeted by this adapter."""
+        return self._phone_number
 
     async def on_notification(
         self,
@@ -31,8 +36,9 @@ class WhatsAppDeliveryAdapter:
         event_type: str,
         level: int,
         was_created: bool,
-        is_meaningful: bool,
-    ) -> None:
+        _is_meaningful: bool,
+    ) -> None:  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        """Deliver a notification callback to WhatsApp when it meets the level threshold."""
         if not was_created:
             return
         if level < self._min_level:

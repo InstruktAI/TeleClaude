@@ -3,28 +3,32 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import json
 import shlex
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from instrukt_ai_logging import get_logger
 
+from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.discord_adapter import DiscordAdapter
 from teleclaude.api.auth import (
-    CLEARANCE_SESSIONS_AGENT_RESTART,
-    CLEARANCE_SESSIONS_ESCALATE,
-    CLEARANCE_SESSIONS_FILE,
-    CLEARANCE_SESSIONS_KEYS,
-    CLEARANCE_SESSIONS_RESULT,
-    CLEARANCE_SESSIONS_REVIVE,
-    CLEARANCE_SESSIONS_RUN,
-    CLEARANCE_SESSIONS_TAIL,
-    CLEARANCE_SESSIONS_UNSUBSCRIBE,
-    CLEARANCE_SESSIONS_VOICE,
-    CLEARANCE_SESSIONS_WIDGET,
     CallerIdentity,
+    clearance_sessions_agent_restart,
+    clearance_sessions_escalate,
+    clearance_sessions_file,
+    clearance_sessions_keys,
+    clearance_sessions_result,
+    clearance_sessions_revive,
+    clearance_sessions_run,
+    clearance_sessions_tail,
+    clearance_sessions_unsubscribe,
+    clearance_sessions_voice,
+    clearance_sessions_widget,
 )
 from teleclaude.api_models import (
     CreateSessionResponseDTO,
@@ -38,16 +42,28 @@ from teleclaude.api_models import (
     SessionMessagesDTO,
     VoiceInputRequest,
 )
+from teleclaude.api.session_access import check_session_access
 from teleclaude.config import config
-from teleclaude.constants import SlashCommand
-from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SlashCommand
+from teleclaude.core.agents import (
+    assert_agent_enabled,
+    get_default_agent,
+    get_known_agents,
+    resolve_parser_agent,
+)
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, SessionMetadata
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_listeners import unregister_listener
+from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
+from teleclaude.output_projection.conversation_projector import project_conversation_chain
+from teleclaude.output_projection.models import VisibilityPolicy
+from teleclaude.output_projection.serializers import to_structured_message
 from teleclaude.types.commands import GetSessionDataCommand
+from teleclaude.utils.markdown import telegramify_markdown
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -61,16 +77,15 @@ WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.NEXT_FINALIZE,
 }
 
-_client: AdapterClient | None = None
+_STATE = SimpleNamespace(client=None)
 
 router = APIRouter()
 
 
 def configure(client: AdapterClient | None = None) -> None:
     """Wire client; called from APIServer at construction."""
-    global _client
     if client is not None:
-        _client = client
+        _STATE.client = client
 
 
 def _build_metadata(**kwargs: object) -> MessageMetadata:
@@ -78,17 +93,244 @@ def _build_metadata(**kwargs: object) -> MessageMetadata:
     return MessageMetadata(origin=InputOrigin.API.value, **kwargs)
 
 
+@dataclass(frozen=True)
+class SessionMessagesQuery:
+    """Normalized query parameters for message retrieval."""
+
+    since: str | None = None
+    include_tools: bool = False
+    include_thinking: bool = False
+    tail_chars: int = 10000
+
+
+def _parse_session_messages_query(
+    since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
+    include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
+    include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
+    tail_chars: int = Query(10000, description="Fallback char budget for tmux/session tail output"),
+) -> SessionMessagesQuery:
+    """Collect session-messages query parameters into one object."""
+    return SessionMessagesQuery(
+        since=since,
+        include_tools=include_tools,
+        include_thinking=include_thinking,
+        tail_chars=tail_chars,
+    )
+
+
+async def _resolve_revive_session_id(
+    http_request: Request,
+    session_id: str,
+    agent: str | None,
+    identity: CallerIdentity,
+) -> str:
+    """Resolve a TeleClaude session id for revive requests."""
+    if not agent:
+        return session_id
+
+    resolved = await db.get_session_by_field("native_session_id", session_id, include_initializing=True)
+    if resolved:
+        if resolved.active_agent and resolved.active_agent != agent:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Native session belongs to agent '{resolved.active_agent}', not '{agent}'",
+            )
+        return resolved.session_id
+
+    new_session_id = str(uuid.uuid4())
+    project_path: str | None = None
+    subdir: str | None = None
+    title = "Revived"
+    raw_project = http_request.query_params.get("project")
+    if raw_project:
+        trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
+        project_path, subdir = split_project_path_and_subdir(raw_project, trusted_dirs)
+        if project_path:
+            title = get_short_project_name(project_path, subdir)
+
+    await db.create_headless_session(
+        session_id=new_session_id,
+        computer_name=config.computer.name,
+        last_input_origin=InputOrigin.TERMINAL.value,
+        title=title,
+        active_agent=agent,
+        native_session_id=session_id,
+        native_log_file=None,
+        project_path=project_path,
+        subdir=subdir,
+        human_role=identity.human_role or HUMAN_ROLE_CUSTOMER,
+    )
+    return new_session_id
+
+
+def _build_message_chain(transcript_files: str | None, native_log_file: str | None) -> list[str]:
+    """Build transcript chain from stored session fields."""
+    chain: list[str] = []
+    if transcript_files:
+        try:
+            stored = json.loads(transcript_files)
+            if isinstance(stored, list):
+                chain = [str(path) for path in stored if path]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if native_log_file and native_log_file not in chain:
+        chain.append(native_log_file)
+    return chain
+
+
+def _project_session_messages(
+    chain: list[str],
+    *,
+    active_agent: str | None,
+    include_tools: bool,
+    include_thinking: bool,
+    since: str | None,
+) -> list[MessageDTO]:
+    """Project transcript files into structured messages."""
+    if not chain:
+        return []
+
+    projected_blocks = project_conversation_chain(
+        chain,
+        resolve_parser_agent(active_agent),
+        VisibilityPolicy(
+            include_tools=include_tools,
+            include_tool_results=include_tools,
+            include_thinking=include_thinking,
+        ),
+        since=since,
+    )
+    return [
+        MessageDTO(
+            role=message.role,
+            type=message.type,
+            text=message.text,
+            timestamp=message.timestamp,
+            entry_index=message.entry_index,
+            file_index=message.file_index,
+        )
+        for message in (to_structured_message(projected_block) for projected_block in projected_blocks)
+    ]
+
+
+@dataclass(frozen=True)
+class RunSessionPlan:
+    """Normalized data needed to create a run-session request."""
+
+    effective_agent: str
+    full_command: str
+    auto_command: str
+    channel_metadata: dict[str, str] | None
+    session_meta: SessionMetadata
+
+
+def _resolve_run_session_agent(request: RunSessionRequest) -> str:
+    """Resolve the agent used for a run-session request."""
+    if "agent" in request.model_fields_set:
+        try:
+            return assert_agent_enabled(request.agent)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        return get_default_agent()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _prepare_run_session(
+    request: RunSessionRequest,
+    identity: CallerIdentity,
+) -> RunSessionPlan:
+    """Normalize run-session inputs into a create-session plan."""
+    effective_agent = _resolve_run_session_agent(request)
+    normalized_cmd = request.command.lstrip("/")
+    normalized_args = request.args.strip()
+    full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
+    if request.additional_context:
+        full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
+    auto_command = f"agent_then_message {effective_agent} {request.thinking_mode} {shlex.quote(full_command)}"
+
+    channel_metadata: dict[str, str] | None = None
+    if identity.session_id and not identity.session_id.startswith("web:"):
+        channel_metadata = {"initiator_session_id": identity.session_id}
+    if normalized_cmd in WORKER_LIFECYCLE_COMMANDS:
+        if not normalized_args:
+            raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
+        channel_metadata = channel_metadata or {}
+        channel_metadata["working_slug"] = normalized_args.split()[0]
+
+    try:
+        slash_cmd = SlashCommand(normalized_cmd)
+    except ValueError:
+        slash_cmd = None
+    role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
+    session_meta = SessionMetadata(
+        system_role=role_info[0] if role_info else None,
+        job=role_info[1].value if role_info else None,
+        human_role=identity.human_role,
+        principal=identity.principal,
+    )
+    return RunSessionPlan(
+        effective_agent=effective_agent,
+        full_command=full_command,
+        auto_command=auto_command,
+        channel_metadata=channel_metadata,
+        session_meta=session_meta,
+    )
+
+
+def _build_widget_summary(data: dict[str, object]) -> str:
+    """Build the text summary sent for a rich widget payload."""
+    title = str(data.get("title", ""))
+    sections = data.get("sections", [])
+    footer = str(data.get("footer", ""))
+    if not isinstance(sections, list):
+        raise HTTPException(status_code=400, detail="sections must be an array")
+
+    summary_parts: list[str] = [f"**{title}**\n"] if title else []
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        label = section.get("label")
+        if label:
+            summary_parts.append(f"_{label}_")
+
+        section_type = str(section.get("type", ""))
+        if section_type == "text":
+            content = str(section.get("content", ""))
+            if content:
+                summary_parts.append(content)
+            continue
+        if section_type == "table":
+            headers = section.get("headers", [])
+            rows = section.get("rows", [])
+            if isinstance(headers, list) and isinstance(rows, list):
+                summary_parts.append(f"Table: {len(headers)} columns, {len(rows)} rows")
+            continue
+        if section_type == "code":
+            lang = str(section.get("language", ""))
+            content = str(section.get("content", ""))
+            lang_label = f" ({lang})" if lang else ""
+            preview = content[:100] + "..." if len(content) > 100 else content
+            summary_parts.append(f"Code{lang_label}:\n```\n{preview}\n```")
+            continue
+        if section_type == "divider":
+            summary_parts.append("---")
+
+    if footer:
+        summary_parts.append(f"\n{footer}")
+    return "\n".join(summary_parts)
+
+
 @router.post("/sessions/{session_id}/keys")
 async def send_keys_endpoint(
     http_request: Request,
     session_id: str,
     request: KeysRequest,
-    computer: str | None = Query(None),
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_KEYS),
+    _computer: str | None = Query(None),
+    _identity: CallerIdentity = Depends(clearance_sessions_keys),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send key command to session."""
-    from teleclaude.api.session_access import check_session_access
-
     await check_session_access(http_request, session_id)
     try:
         metadata = _build_metadata()
@@ -112,12 +354,10 @@ async def send_voice_endpoint(
     http_request: Request,
     session_id: str,
     request: VoiceInputRequest,
-    computer: str | None = Query(None),
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_VOICE),
+    _computer: str | None = Query(None),
+    _identity: CallerIdentity = Depends(clearance_sessions_voice),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send voice input to session."""
-    from teleclaude.api.session_access import check_session_access
-
     await check_session_access(http_request, session_id)
     try:
         metadata = _build_metadata()
@@ -142,7 +382,7 @@ async def send_voice_endpoint(
 @router.post("/sessions/self/file")
 async def send_file_endpoint(
     request: FileUploadRequest,
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_FILE),
+    identity: CallerIdentity = Depends(clearance_sessions_file),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send file input to session."""
     session_id = identity.session_id
@@ -170,11 +410,9 @@ async def send_file_endpoint(
 async def agent_restart(
     http_request: Request,
     session_id: str,
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_AGENT_RESTART),
+    _identity: CallerIdentity = Depends(clearance_sessions_agent_restart),
 ) -> dict[str, str]:
     """Restart agent in session (preserves conversation via --resume)."""
-    from teleclaude.api.session_access import check_session_access
-
     await check_session_access(http_request, session_id)
     try:
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
@@ -209,55 +447,10 @@ async def revive_session(
     http_request: Request,
     session_id: str,
     agent: str | None = Query(None, description="When provided, session_id is a native agent session ID"),
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_REVIVE),
+    identity: CallerIdentity = Depends(clearance_sessions_revive),
 ) -> CreateSessionResponseDTO:
     """Revive a session by TeleClaude or native session ID."""
-    from teleclaude.api.session_access import check_session_access
-
-    # When agent is provided, resolve native session ID to TeleClaude session ID.
-    if agent:
-        resolved = await db.get_session_by_field("native_session_id", session_id, include_initializing=True)
-        if resolved:
-            if resolved.active_agent and resolved.active_agent != agent:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Native session belongs to agent '{resolved.active_agent}', not '{agent}'",
-                )
-            session_id = resolved.session_id
-        else:
-            # No existing session — create a headless one for the native ID
-            from teleclaude.core.session_utils import (
-                get_short_project_name,
-                split_project_path_and_subdir,
-            )
-
-            new_session_id = str(uuid.uuid4())
-            project_path: str | None = None
-            subdir: str | None = None
-            title = "Revived"
-            raw_project = http_request.query_params.get("project")
-            if raw_project:
-                trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
-                project_path, subdir = split_project_path_and_subdir(raw_project, trusted_dirs)
-                if project_path:
-                    title = get_short_project_name(project_path, subdir)
-
-            from teleclaude.constants import HUMAN_ROLE_CUSTOMER  # pylint: disable=import-outside-toplevel
-
-            await db.create_headless_session(
-                session_id=new_session_id,
-                computer_name=config.computer.name,
-                last_input_origin=InputOrigin.TERMINAL.value,
-                title=title,
-                active_agent=agent,
-                native_session_id=session_id,
-                native_log_file=None,
-                project_path=project_path,
-                subdir=subdir,
-                human_role=identity.human_role or HUMAN_ROLE_CUSTOMER,
-            )
-            session_id = new_session_id
-
+    session_id = await _resolve_revive_session_id(http_request, session_id, agent, identity)
     await check_session_access(http_request, session_id)
     try:
         session = await db.get_session(session_id)
@@ -298,68 +491,24 @@ async def revive_session(
 async def get_session_messages(
     request: Request,
     session_id: str,
-    since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
-    include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
-    include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
-    tail_chars: int = Query(10000, description="Fallback char budget for tmux/session tail output"),
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_TAIL),
+    query: SessionMessagesQuery = Depends(_parse_session_messages_query),
+    _identity: CallerIdentity = Depends(clearance_sessions_tail),
 ) -> SessionMessagesDTO:
     """Get structured messages from a session's transcript files."""
-    from teleclaude.api.session_access import check_session_access
-
     await check_session_access(request, session_id)
-    from teleclaude.core.agents import resolve_parser_agent
-    from teleclaude.output_projection.conversation_projector import project_conversation_chain
-    from teleclaude.output_projection.models import VisibilityPolicy
-    from teleclaude.output_projection.serializers import to_structured_message
 
     try:
         session = await db.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
 
-        # Build file chain: transcript_files (historical) + native_log_file (current)
-        chain: list[str] = []
-        if session.transcript_files:
-            try:
-                stored = json.loads(session.transcript_files)
-                if isinstance(stored, list):
-                    chain = [str(p) for p in stored if p]
-            except (json.JSONDecodeError, TypeError):
-                pass
-        if session.native_log_file and session.native_log_file not in chain:
-            chain.append(session.native_log_file)
-
-        messages: list[MessageDTO] = []
-        if chain:
-            # Determine agent for parser selection
-            agent_name = resolve_parser_agent(session.active_agent)
-
-            # Build visibility policy from query params; same semantics as
-            # the previous extract_messages_from_chain() boolean flags.
-            policy = VisibilityPolicy(
-                include_tools=include_tools,
-                include_tool_results=include_tools,  # tools flag controls both
-                include_thinking=include_thinking,
-            )
-            projected_blocks = project_conversation_chain(
-                chain,
-                agent_name,
-                policy,
-                since=since,
-            )
-
-            messages = [
-                MessageDTO(
-                    role=sm.role,
-                    type=sm.type,
-                    text=sm.text,
-                    timestamp=sm.timestamp,
-                    entry_index=sm.entry_index,
-                    file_index=sm.file_index,
-                )
-                for sm in (to_structured_message(pb) for pb in projected_blocks)
-            ]
+        messages = _project_session_messages(
+            _build_message_chain(session.transcript_files, session.native_log_file),
+            active_agent=session.active_agent,
+            include_tools=query.include_tools,
+            include_thinking=query.include_thinking,
+            since=query.since,
+        )
 
         # Fallback path: when transcript files are not yet available or parsing
         # yields no structured entries, use unified session-data retrieval.
@@ -367,8 +516,8 @@ async def get_session_messages(
             fallback_payload = await get_command_service().get_session_data(
                 GetSessionDataCommand(
                     session_id=session_id,
-                    since_timestamp=since,
-                    tail_chars=tail_chars if tail_chars > 0 else 10000,
+                    since_timestamp=query.since,
+                    tail_chars=query.tail_chars if query.tail_chars > 0 else 10000,
                 )
             )
             fallback_text_raw = fallback_payload.get("messages")
@@ -405,7 +554,7 @@ async def get_session_messages(
 @router.post("/sessions/run")
 async def run_session(
     request: RunSessionRequest,
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_RUN),
+    identity: CallerIdentity = Depends(clearance_sessions_run),
 ) -> CreateSessionResponseDTO:
     """Run a slash command on a new agent session.
 
@@ -423,59 +572,16 @@ async def run_session(
     if not request.project:
         raise HTTPException(status_code=400, detail="project required")
 
-    if "agent" in request.model_fields_set:
-        try:
-            effective_agent = assert_agent_enabled(request.agent)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    else:
-        try:
-            effective_agent = get_default_agent()
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    normalized_cmd = request.command.lstrip("/")
-    normalized_args = request.args.strip()
-    full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
-    if request.additional_context:
-        full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
-    quoted_command = shlex.quote(full_command)
-    auto_command = f"agent_then_message {effective_agent} {request.thinking_mode} {quoted_command}"
-
-    working_slug: str | None = None
-    if normalized_cmd in WORKER_LIFECYCLE_COMMANDS:
-        if not normalized_args:
-            raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
-        working_slug = normalized_args.split()[0]
-
-    channel_metadata: dict[str, str] | None = None
-    if identity.session_id and not identity.session_id.startswith("web:"):
-        channel_metadata = channel_metadata or {}
-        channel_metadata["initiator_session_id"] = identity.session_id
-    if working_slug:
-        channel_metadata = channel_metadata or {}
-        channel_metadata["working_slug"] = working_slug
-
-    try:
-        slash_cmd = SlashCommand(normalized_cmd)
-    except ValueError:
-        slash_cmd = None
-    role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
-    session_meta = SessionMetadata(
-        system_role=role_info[0] if role_info else None,
-        job=role_info[1].value if role_info else None,
-        human_role=identity.human_role,
-        principal=identity.principal,
-    )
+    plan = _prepare_run_session(request, identity)
 
     metadata = _build_metadata(
-        title=full_command,
+        title=plan.full_command,
         project_path=request.project,
         subdir=request.subfolder or None,
-        channel_metadata=channel_metadata,
-        session_metadata=session_meta,
+        channel_metadata=plan.channel_metadata,
+        session_metadata=plan.session_meta,
     )
-    metadata.auto_command = auto_command
+    metadata.auto_command = plan.auto_command
 
     cmd = CommandMapper.map_api_input(
         "new_session",
@@ -492,7 +598,7 @@ async def run_session(
             status="success",
             session_id=str(session_id),
             tmux_session_name=str(tmux_session_name),
-            agent=effective_agent,
+            agent=plan.effective_agent,
         )
     except HTTPException:
         raise
@@ -504,7 +610,7 @@ async def run_session(
 @router.post("/sessions/{session_id}/unsubscribe")
 async def unsubscribe_session(
     session_id: str,
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_UNSUBSCRIBE),
+    identity: CallerIdentity = Depends(clearance_sessions_unsubscribe),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Stop receiving notifications from a session without ending it.
 
@@ -512,8 +618,6 @@ async def unsubscribe_session(
     continues running but the caller no longer receives events from it.
     Requires dual-factor caller identity.
     """
-    from teleclaude.core.session_listeners import unregister_listener
-
     success = await unregister_listener(target_session_id=session_id, caller_session_id=identity.session_id)
     if success:
         return {"status": "success", "message": f"Stopped notifications from session {session_id}"}
@@ -523,7 +627,7 @@ async def unsubscribe_session(
 @router.post("/sessions/self/result")
 async def send_result_endpoint(
     request: SendResultRequest,
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_RESULT),
+    identity: CallerIdentity = Depends(clearance_sessions_result),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send a formatted result to the session's user as a separate message.
 
@@ -531,9 +635,7 @@ async def send_result_endpoint(
     as a persistent (non-ephemeral) message. Supports markdown and HTML formats.
     Requires dual-factor caller identity.
     """
-    from teleclaude.utils.markdown import telegramify_markdown
-
-    if _client is None:
+    if _STATE.client is None:
         raise HTTPException(status_code=503, detail="Adapter client not available")
 
     session = await db.get_session(identity.session_id)
@@ -552,12 +654,17 @@ async def send_result_endpoint(
 
     meta = MessageMetadata(parse_mode=parse_mode)
     try:
-        message_id = await _client.send_message(session=session, text=formatted_content, metadata=meta, ephemeral=False)
+        message_id = await _STATE.client.send_message(
+            session=session,
+            text=formatted_content,
+            metadata=meta,
+            ephemeral=False,
+        )
         return {"status": "success", "message_id": message_id}
-    except Exception as e:
+    except (AdapterError, RuntimeError, ValueError, TypeError) as e:
         logger.warning("send_result formatted send failed, retrying as plain text: %s", e)
         try:
-            message_id = await _client.send_message(
+            message_id = await _STATE.client.send_message(
                 session=session,
                 text=request.content[:4096],
                 metadata=MessageMetadata(),
@@ -568,14 +675,14 @@ async def send_result_endpoint(
                 "message_id": message_id,
                 "warning": "Sent as plain text due to formatting error",
             }
-        except Exception as fallback_error:
+        except (AdapterError, RuntimeError, ValueError, TypeError) as fallback_error:
             raise HTTPException(status_code=500, detail=f"Failed to send result: {fallback_error}") from fallback_error
 
 
 @router.post("/sessions/self/widget")
 async def render_widget_endpoint(
     request: RenderWidgetRequest,
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_WIDGET),
+    identity: CallerIdentity = Depends(clearance_sessions_widget),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Render a rich widget expression and send text summary to the session's user.
 
@@ -583,58 +690,17 @@ async def render_widget_endpoint(
     session's adapter, and stores named widgets for retrieval. Requires
     dual-factor caller identity.
     """
-    from teleclaude.utils.markdown import telegramify_markdown
-
-    if _client is None:
+    if _STATE.client is None:
         raise HTTPException(status_code=503, detail="Adapter client not available")
 
     session = await db.get_session(identity.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    data = request.data
-    title = str(data.get("title", ""))
-    sections = data.get("sections", [])
-    footer = str(data.get("footer", ""))
-
-    if not isinstance(sections, list):
-        raise HTTPException(status_code=400, detail="sections must be an array")
-
-    # Build text summary from sections
-    summary_parts: list[str] = []
-    if title:
-        summary_parts.append(f"**{title}**\n")
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        section_type = str(section.get("type", ""))
-        label = section.get("label")
-        if label:
-            summary_parts.append(f"_{label}_")
-        if section_type == "text":
-            content = str(section.get("content", ""))
-            if content:
-                summary_parts.append(content)
-        elif section_type == "table":
-            headers = section.get("headers", [])
-            rows = section.get("rows", [])
-            if isinstance(headers, list) and isinstance(rows, list):
-                summary_parts.append(f"Table: {len(headers)} columns, {len(rows)} rows")
-        elif section_type == "code":
-            lang = str(section.get("language", ""))
-            content = str(section.get("content", ""))
-            lang_label = f" ({lang})" if lang else ""
-            preview = content[:100] + "..." if len(content) > 100 else content
-            summary_parts.append(f"Code{lang_label}:\n```\n{preview}\n```")
-        elif section_type == "divider":
-            summary_parts.append("---")
-    if footer:
-        summary_parts.append(f"\n{footer}")
-
-    text_summary = "\n".join(summary_parts)
+    text_summary = _build_widget_summary(request.data)
     meta = MessageMetadata(parse_mode="MarkdownV2")
     try:
-        await _client.send_message(
+        await _STATE.client.send_message(
             session=session,
             text=telegramify_markdown(text_summary),
             metadata=meta,
@@ -650,7 +716,7 @@ async def render_widget_endpoint(
 @router.post("/sessions/self/escalate")
 async def escalate_session(
     request: EscalateRequest,
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_ESCALATE),
+    identity: CallerIdentity = Depends(clearance_sessions_escalate),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Escalate a customer session to an admin via Discord.
 
@@ -658,10 +724,8 @@ async def escalate_session(
     and activates relay mode on the session. Only available for customer
     sessions. Requires dual-factor caller identity.
     """
-    if _client is None:
+    if _STATE.client is None:
         raise HTTPException(status_code=503, detail="Adapter client not available")
-
-    from teleclaude.adapters.discord_adapter import DiscordAdapter
 
     session_id = identity.session_id
     session = await db.get_session(session_id)
@@ -671,7 +735,7 @@ async def escalate_session(
         raise HTTPException(status_code=403, detail="Escalation is only available in customer sessions")
 
     discord_adapter: DiscordAdapter | None = None
-    for adapter in _client.adapters.values():
+    for adapter in _STATE.client.adapters.values():
         if isinstance(adapter, DiscordAdapter):
             discord_adapter = adapter
             break

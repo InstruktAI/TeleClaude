@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict, Field
 
+from teleclaude.api.session_access import check_session_access
 from teleclaude.api.transcript_converter import (
     convert_projected_block,
     convert_session_status,
@@ -26,6 +27,7 @@ from teleclaude.api.transcript_converter import (
     stream_done,
 )
 from teleclaude.core.agents import AgentName, resolve_parser_agent
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.db_models import Session
 from teleclaude.core.models import JsonDict
@@ -36,6 +38,7 @@ from teleclaude.utils.transcript import (
     _iter_codex_entries,
     _iter_gemini_entries,
 )
+from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
 
@@ -169,9 +172,6 @@ async def _deliver_user_message(
     if not user_message:
         return
 
-    from teleclaude.core.command_registry import get_command_service
-    from teleclaude.types.commands import ProcessMessageCommand
-
     cmd = ProcessMessageCommand(
         session_id=session_id,
         text=user_message,
@@ -179,7 +179,7 @@ async def _deliver_user_message(
     )
     try:
         await get_command_service().process_message(cmd)
-    except Exception:
+    except RuntimeError:
         logger.warning(
             "Web lane message delivery failed",
             lane="web",
@@ -273,6 +273,47 @@ async def _resolve_stream_closure(session_id: str) -> tuple[bool, str | None]:
     return True, None
 
 
+async def _tail_live_transcript(
+    session_id: str,
+    live_file: str,
+) -> AsyncIterator[str]:
+    """Tail the live transcript file and yield incremental SSE events."""
+    file_size = os.path.getsize(live_file)
+    idle_elapsed = 0.0
+    current_live_file = live_file
+
+    while idle_elapsed < LIVE_IDLE_TIMEOUT_S:
+        await asyncio.sleep(LIVE_POLL_INTERVAL_S)
+
+        should_close, rotated_live_file = await _resolve_stream_closure(session_id)
+        if should_close:
+            yield convert_session_status("closed", session_id)
+            return
+
+        if not Path(current_live_file).exists():
+            return
+
+        current_size = os.path.getsize(current_live_file)
+        if current_size <= file_size:
+            idle_elapsed += LIVE_POLL_INTERVAL_S
+        else:
+            idle_elapsed = 0.0
+            next_size, live_events = await _load_live_transcript_events(
+                current_live_file,
+                file_size=file_size,
+                session_id=session_id,
+            )
+            if next_size == file_size:
+                return
+            file_size = next_size
+            for sse_event in live_events:
+                yield sse_event
+
+        if rotated_live_file and rotated_live_file != current_live_file and Path(rotated_live_file).exists():
+            current_live_file = rotated_live_file
+            file_size = 0
+
+
 # ---------------------------------------------------------------------------
 # SSE generator
 # ---------------------------------------------------------------------------
@@ -306,41 +347,8 @@ async def _stream_sse(
             yield sse_event
         return
 
-    # Track file position for incremental reads
-    live_file = chain[-1]
-    file_size = os.path.getsize(live_file)
-    idle_elapsed = 0.0
-
-    while idle_elapsed < LIVE_IDLE_TIMEOUT_S:
-        await asyncio.sleep(LIVE_POLL_INTERVAL_S)
-
-        should_close, rotated_live_file = await _resolve_stream_closure(session_id)
-        if should_close:
-            yield convert_session_status("closed", session_id)
-            break
-
-        if not Path(live_file).exists():
-            break
-
-        current_size = os.path.getsize(live_file)
-        if current_size <= file_size:
-            idle_elapsed += LIVE_POLL_INTERVAL_S
-        else:
-            idle_elapsed = 0.0
-            next_size, live_events = await _load_live_transcript_events(
-                live_file,
-                file_size=file_size,
-                session_id=session_id,
-            )
-            if next_size == file_size:
-                break
-            file_size = next_size
-            for sse_event in live_events:
-                yield sse_event
-
-        if rotated_live_file and rotated_live_file != live_file and Path(rotated_live_file).exists():
-            live_file = rotated_live_file
-            file_size = 0
+    async for sse_event in _tail_live_transcript(session_id, chain[-1]):
+        yield sse_event
 
     async for sse_event in _emit_stream_finish(message_id):
         yield sse_event
@@ -354,8 +362,6 @@ async def _stream_sse(
 @router.post("/stream")
 async def chat_stream(http_request: Request, request: ChatStreamRequest) -> StreamingResponse:
     """SSE streaming endpoint for the web interface."""
-    from teleclaude.api.session_access import check_session_access
-
     await check_session_access(http_request, request.session_id)
 
     # Validate session exists before creating streaming response

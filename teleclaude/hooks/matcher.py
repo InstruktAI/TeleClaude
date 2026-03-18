@@ -12,27 +12,31 @@ def match_criterion(value: str | int | float | bool | list[str] | None, criterio
 
     Returns True if the value satisfies the criterion.
     """
-    if not criterion.required:
-        return True
+    result = True
+    if criterion.required:
+        if criterion.match is None and criterion.pattern is None:
+            # Required presence only — value must exist (not None)
+            result = value is not None
+        elif value is None:
+            result = False
+        elif criterion.pattern is not None:
+            # Wildcard pattern with dot-segment matching
+            result = fnmatch.fnmatch(str(value), criterion.pattern)
+        elif criterion.match is not None:
+            result = _matches_exact_value(value, criterion.match)
+        else:
+            result = False
+    return result
 
-    if criterion.match is None and criterion.pattern is None:
-        # Required presence only — value must exist (not None)
-        return value is not None
 
-    if criterion.pattern is not None:
-        if value is None:
-            return False
-        # Wildcard pattern with dot-segment matching
-        return fnmatch.fnmatch(str(value), criterion.pattern)
-
-    if criterion.match is not None:
-        if value is None:
-            return False
-        if isinstance(criterion.match, list):
-            return value in criterion.match or str(value) in criterion.match
-        return value == criterion.match or str(value) == str(criterion.match)
-
-    return False
+def _matches_exact_value(
+    value: str | int | float | bool | list[str],
+    expected: str | list[str],
+) -> bool:
+    """Return True when a value matches an exact criterion."""
+    if isinstance(expected, list):
+        return value in expected or str(value) in expected
+    return value == expected or str(value) == str(expected)
 
 
 def match_event(event: HookEvent, contract: Contract) -> bool:

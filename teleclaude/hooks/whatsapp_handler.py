@@ -24,7 +24,24 @@ from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, H
 logger = get_logger(__name__)
 
 
+def _get_whatsapp_metadata(session: object) -> object | None:
+    """Return the WhatsApp UI metadata object for a session, if available."""
+    get_metadata = getattr(session, "get_metadata", None)
+    if not callable(get_metadata):
+        return None
+    metadata = get_metadata()
+    get_ui = getattr(metadata, "get_ui", None)
+    if not callable(get_ui):
+        return None
+    ui_metadata = get_ui()
+    get_whatsapp = getattr(ui_metadata, "get_whatsapp", None)
+    if not callable(get_whatsapp):
+        return None
+    return get_whatsapp()
+
+
 def _normalize_phone_number(phone_number: str | None) -> str:
+    """Normalize a phone number to digits only."""
     if not phone_number:
         return ""
     return "".join(ch for ch in str(phone_number) if ch.isdigit())
@@ -61,9 +78,8 @@ async def _update_whatsapp_session_metadata(
     message_id: str,
     timestamp: str,
 ) -> None:
-    try:
-        metadata = session.get_metadata().get_ui().get_whatsapp()  # type: ignore[attr-defined]
-    except Exception:
+    metadata = _get_whatsapp_metadata(session)
+    if metadata is None:
         return
 
     metadata.phone_number = phone_number
@@ -71,9 +87,37 @@ async def _update_whatsapp_session_metadata(
     metadata.last_customer_message_at = timestamp
 
     try:
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)  # type: ignore[attr-defined]
-    except Exception:
+        await db.update_session(  # type: ignore[attr-defined]
+            session.session_id,
+            adapter_metadata=session.adapter_metadata,
+        )
+    except (AttributeError, TypeError, ValueError):
         logger.debug("Failed to persist WhatsApp metadata for session", exc_info=True)
+
+
+async def _fetch_whatsapp_media_bytes(media_id: str) -> bytes:
+    """Fetch media bytes for a WhatsApp media identifier."""
+    headers = {"Authorization": f"Bearer {config.whatsapp.access_token}"}
+    media_info_url = f"https://graph.facebook.com/{config.whatsapp.api_version}/{media_id}"
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        media_info_response = await client.get(media_info_url, headers=headers)
+        media_info_response.raise_for_status()
+        media_info = media_info_response.json()
+        if not isinstance(media_info, dict) or not media_info.get("url"):
+            raise RuntimeError("WhatsApp media lookup missing URL")
+        media_url = str(media_info["url"])
+        media_response = await client.get(media_url, headers=headers)
+        media_response.raise_for_status()
+    return media_response.content
+
+
+def _resolve_media_subdir(event_type: str, mime_type: str | None) -> str:
+    """Choose the destination subdirectory for downloaded media."""
+    if event_type in {"message.voice", "message.audio"}:
+        return "voice"
+    if event_type == "message.image" or (mime_type and mime_type.startswith("image/")):
+        return "photos"
+    return "files"
 
 
 async def download_whatsapp_media(
@@ -86,28 +130,11 @@ async def download_whatsapp_media(
 ) -> Path:
     """Download inbound WhatsApp media into the session workspace and return local path."""
     if not config.whatsapp.access_token:
-        raise RuntimeError("WHATSAPP_ACCESS_TOKEN is required to download media")
+        raise RuntimeError(
+            "WHATSAPP_ACCESS_TOKEN is required to download media",
+        )
 
-    headers = {"Authorization": f"Bearer {config.whatsapp.access_token}"}
-    media_info_url = f"https://graph.facebook.com/{config.whatsapp.api_version}/{media_id}"
-
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        media_info_response = await client.get(media_info_url, headers=headers)
-        media_info_response.raise_for_status()
-        media_info = media_info_response.json()
-        if not isinstance(media_info, dict) or not media_info.get("url"):
-            raise RuntimeError("WhatsApp media lookup missing URL")
-
-        media_url = str(media_info["url"])
-        media_response = await client.get(media_url, headers=headers)
-        media_response.raise_for_status()
-
-    if event_type in {"message.voice", "message.audio"}:
-        media_subdir = "voice"
-    elif event_type == "message.image" or (mime_type and mime_type.startswith("image/")):
-        media_subdir = "photos"
-    else:
-        media_subdir = "files"
+    media_subdir = _resolve_media_subdir(event_type, mime_type)
     media_dir = get_session_output_dir(session_id) / media_subdir
     media_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +142,7 @@ async def download_whatsapp_media(
     timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     filename = f"{phone_number}_{timestamp}_{media_id[:12]}{extension}"
     output_path = media_dir / filename
-    output_path.write_bytes(media_response.content)
+    output_path.write_bytes(await _fetch_whatsapp_media_bytes(media_id))
     return output_path
 
 
@@ -143,55 +170,55 @@ async def _dispatch_whatsapp_command(
         origin=InputOrigin.WHATSAPP.value,
         channel_metadata={"message_id": message_id} if message_id else None,
     )
-    await adapter._dispatch_command(session, message_id, metadata, command_name, payload, handler)  # type: ignore[arg-type]
-
-
-async def handle_whatsapp_event(event: HookEvent) -> None:
-    """Handle normalized WhatsApp message events."""
-    phone_number = _normalize_phone_number(str(event.properties.get("phone_number") or ""))
-    if not phone_number:
-        logger.warning("WhatsApp event missing phone_number")
-        return
-
-    session = await _resolve_or_create_session(phone_number)
-    if session is None:
-        return
-
-    session_id = str(getattr(session, "session_id", ""))
-    if not session_id:
-        return
-
-    message_id = str(event.properties.get("message_id") or "")
-    await _update_whatsapp_session_metadata(
+    dispatch_command = getattr(adapter, "_dispatch_command")
+    await dispatch_command(
         session,
-        phone_number=phone_number,
-        message_id=message_id,
-        timestamp=event.timestamp,
+        message_id,
+        metadata,
+        command_name,
+        payload,
+        handler,
+    )  # type: ignore[arg-type]
+
+
+async def _handle_text_event(
+    session: object,
+    session_id: str,
+    phone_number: str,
+    message_id: str,
+    event: HookEvent,
+) -> None:
+    """Dispatch a normalized WhatsApp text event."""
+    text = str(event.properties.get("text") or "")
+    if not text:
+        return
+    cmd = ProcessMessageCommand(
+        session_id=session_id,
+        text=text,
+        origin=InputOrigin.WHATSAPP.value,
+        actor_id=phone_number,
+        actor_name=f"whatsapp:{phone_number}",
+    )
+    await _dispatch_whatsapp_command(
+        session=session,
+        message_id=message_id or None,
+        command_name="process_message",
+        payload=cmd.to_payload(),
+        handler=lambda: get_command_service().process_message(cmd),
     )
 
-    if event.type == "message.text":
-        text = str(event.properties.get("text") or "")
-        if text:
-            cmd = ProcessMessageCommand(
-                session_id=session_id,
-                text=text,
-                origin=InputOrigin.WHATSAPP.value,
-                actor_id=phone_number,
-                actor_name=f"whatsapp:{phone_number}",
-            )
-            await _dispatch_whatsapp_command(
-                session=session,
-                message_id=message_id or None,
-                command_name="process_message",
-                payload=cmd.to_payload(),
-                handler=lambda: get_command_service().process_message(cmd),
-            )
-        return
 
+async def _handle_media_event(
+    session: object,
+    session_id: str,
+    phone_number: str,
+    message_id: str,
+    event: HookEvent,
+) -> None:
+    """Dispatch a normalized WhatsApp media event."""
     media_id = str(event.properties.get("media_id") or "")
     if not media_id:
         return
-
     mime_type = str(event.properties.get("mime_type") or "") or None
     local_path = await download_whatsapp_media(
         media_id,
@@ -200,7 +227,6 @@ async def handle_whatsapp_event(event: HookEvent) -> None:
         session_id=session_id,
         event_type=event.type,
     )
-
     if event.type in {"message.voice", "message.audio"}:
         cmd = HandleVoiceCommand(
             session_id=session_id,
@@ -218,7 +244,6 @@ async def handle_whatsapp_event(event: HookEvent) -> None:
             handler=lambda: get_command_service().handle_voice(cmd),
         )
         return
-
     cmd = HandleFileCommand(
         session_id=session_id,
         file_path=str(local_path),
@@ -232,3 +257,28 @@ async def handle_whatsapp_event(event: HookEvent) -> None:
         payload=cmd.to_payload(),
         handler=lambda: get_command_service().handle_file(cmd),
     )
+
+
+async def handle_whatsapp_event(event: HookEvent) -> None:
+    """Handle normalized WhatsApp message events."""
+    phone_number = _normalize_phone_number(str(event.properties.get("phone_number") or ""))
+    if not phone_number:
+        logger.warning("WhatsApp event missing phone_number")
+        return
+    session = await _resolve_or_create_session(phone_number)
+    if session is None:
+        return
+    session_id = str(getattr(session, "session_id", ""))
+    if not session_id:
+        return
+    message_id = str(event.properties.get("message_id") or "")
+    await _update_whatsapp_session_metadata(
+        session,
+        phone_number=phone_number,
+        message_id=message_id,
+        timestamp=event.timestamp,
+    )
+    if event.type == "message.text":
+        await _handle_text_event(session, session_id, phone_number, message_id, event)
+        return
+    await _handle_media_event(session, session_id, phone_number, message_id, event)

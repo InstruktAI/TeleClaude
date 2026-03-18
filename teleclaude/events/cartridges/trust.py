@@ -18,11 +18,15 @@ _VALID_LEVEL_VALUES: frozenset[int] = frozenset(int(lv) for lv in EventLevel)
 
 @dataclass
 class TrustConfig:
+    """Trust evaluation thresholds and source allow-list configuration."""
+
     strictness: Literal["permissive", "standard", "strict"] = "standard"
     known_sources: frozenset[str] = field(default_factory=frozenset)
 
 
 class TrustOutcome(str, Enum):
+    """Possible outcomes of trust evaluation."""
+
     ACCEPT = "ACCEPT"
     FLAG = "FLAG"
     QUARANTINE = "QUARANTINE"
@@ -30,9 +34,12 @@ class TrustOutcome(str, Enum):
 
 
 class TrustCartridge:
+    """Evaluate trustworthiness and quarantine or annotate events as needed."""
+
     name = "trust"
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Apply trust evaluation and return the resulting event disposition."""
         config = context.trust_config
         outcome, flags = self._evaluate(event, config)
 
@@ -54,23 +61,30 @@ class TrustCartridge:
         return None
 
     def _evaluate(self, event: EventEnvelope, config: TrustConfig) -> tuple[TrustOutcome, list[str]]:
+        """Evaluate an event against the configured trust policy."""
+        outcome = TrustOutcome.ACCEPT
+        flags: list[str] = []
+
         if config.strictness == "permissive":
-            return TrustOutcome.ACCEPT, []
+            return outcome, flags
 
         source_known = event.source in config.known_sources
 
         if config.strictness == "standard":
             if not source_known:
-                return TrustOutcome.FLAG, ["unknown_source"]
-            if int(event.level) not in _VALID_LEVEL_VALUES:
-                return TrustOutcome.QUARANTINE, ["malformed_level"]
-            return TrustOutcome.ACCEPT, []
+                outcome, flags = TrustOutcome.FLAG, ["unknown_source"]
+            elif int(event.level) not in _VALID_LEVEL_VALUES:
+                outcome, flags = TrustOutcome.QUARANTINE, ["malformed_level"]
+            return outcome, flags
 
-        # strict
         if not source_known:
-            return TrustOutcome.QUARANTINE, ["unknown_source"]
-        if not event.domain and event.event and not event.event.startswith("system."):
-            return TrustOutcome.FLAG, ["missing_domain"]
-        if int(event.level) not in _VALID_LEVEL_VALUES:
-            return TrustOutcome.REJECT, ["unknown_level"]
-        return TrustOutcome.ACCEPT, []
+            outcome, flags = TrustOutcome.QUARANTINE, ["unknown_source"]
+        elif not event.domain and event.event and not event.event.startswith("system."):
+            outcome, flags = TrustOutcome.FLAG, ["missing_domain"]
+        elif int(event.level) not in _VALID_LEVEL_VALUES:
+            outcome, flags = TrustOutcome.REJECT, ["unknown_level"]
+        return outcome, flags
+
+    def identifier(self) -> str:
+        """Return the stable cartridge identifier."""
+        return self.name
