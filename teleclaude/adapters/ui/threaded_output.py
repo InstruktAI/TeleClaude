@@ -7,7 +7,6 @@ continuation markers, and MarkdownV2 overflow splitting.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
@@ -26,6 +25,7 @@ from teleclaude.utils.markdown import (
 )
 
 if TYPE_CHECKING:
+    import asyncio  # pylint: disable=import-outside-toplevel
     from typing import Protocol
 
     from teleclaude.core.adapter_client import AdapterClient

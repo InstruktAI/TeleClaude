@@ -7,7 +7,6 @@ error feedback, and output formatting helpers.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from collections.abc import Awaitable, Callable, MutableMapping
 from dataclasses import dataclass
@@ -29,6 +28,7 @@ from teleclaude.utils import (
 )
 
 if TYPE_CHECKING:
+    import asyncio  # pylint: disable=import-outside-toplevel
     from typing import Protocol
 
     from teleclaude.core.adapter_client import AdapterClient
