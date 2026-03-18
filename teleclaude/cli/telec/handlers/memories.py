@@ -107,7 +107,7 @@ async def _memory_timeline(
 
 
 def _print_memory_table(
-    results: list[dict[str, object]], heading: str, *, anchor_id: int | None = None
+    results: list[dict[str, object]], heading: str, *, anchor_id: int | None = None # guard: loose-dict - dynamic payload
 ) -> None:  # guard: loose-dict - JSON API response
     """Render memory search or timeline rows in a shared table format."""
     print(heading)
