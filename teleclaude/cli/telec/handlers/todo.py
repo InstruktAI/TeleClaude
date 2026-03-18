@@ -246,6 +246,17 @@ def _handle_todo_dump(args: list[str]) -> None:
     input_path = todo_dir / "input.md"
     input_path.write_text(f"# {todo_dir.name} — Input\n\n{content}\n", encoding="utf-8")
 
+    # Auto-commit bookkeeping on main
+    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
+
+    _ok, _reason = commit_bookkeeping_to_main(
+        str(project_root),
+        [f"todos/{slug}", "todos/roadmap.yaml"],
+        f"chore(todos): dump {slug}",
+    )
+    if not _ok and _reason in ("commit_failed", "not_a_repo"):
+        print(f"Warning: bookkeeping commit skipped ({_reason})")
+
     # Emit planning.todo_dumped notification via daemon API
     _log = get_logger(__name__)
     try:
@@ -336,6 +347,20 @@ def _handle_todo_split(args: list[str]) -> None:
         print(f"Error: {e}")
         raise SystemExit(1) from e
 
+    # Auto-commit bookkeeping on main
+    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
+
+    commit_paths = [f"todos/{slug}", "todos/roadmap.yaml"]
+    for child in children:
+        commit_paths.append(f"todos/{child}")
+    _ok, _reason = commit_bookkeeping_to_main(
+        str(project_root),
+        commit_paths,
+        f"chore(todos): split {slug}",
+    )
+    if not _ok and _reason in ("commit_failed", "not_a_repo"):
+        print(f"Warning: bookkeeping commit skipped ({_reason})")
+
 
 def _handle_todo_create(args: list[str]) -> None:
     """Handle telec todo create."""
@@ -380,14 +405,16 @@ def _handle_todo_create(args: list[str]) -> None:
     if after:
         print(f"Updated dependencies for {todo_dir.name}: {', '.join(after)}")
 
-    # --- Commit and push scaffold to remote ---
-    from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+    # Auto-commit bookkeeping on main
+    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
 
-    pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
-    if pushed:
-        print(f"Scaffold for {slug} pushed to remote: {reason}")
-    elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
-        print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
+    _ok, _reason = commit_bookkeeping_to_main(
+        str(project_root),
+        [f"todos/{todo_dir.name}", "todos/roadmap.yaml"],
+        f"chore(todos): scaffold {todo_dir.name}",
+    )
+    if not _ok and _reason in ("commit_failed", "not_a_repo"):
+        print(f"Warning: bookkeeping commit skipped ({_reason})")
 
 
 def _handle_todo_remove(args: list[str]) -> None:
@@ -429,6 +456,17 @@ def _handle_todo_remove(args: list[str]) -> None:
 
     print(f"Removed todo: {slug}")
 
+    # Auto-commit bookkeeping on main (stages deletion + roadmap change)
+    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
+
+    _ok, _reason = commit_bookkeeping_to_main(
+        str(project_root),
+        [f"todos/{slug}", "todos/roadmap.yaml"],
+        f"chore(todos): remove {slug}",
+    )
+    if not _ok and _reason in ("commit_failed", "not_a_repo"):
+        print(f"Warning: bookkeeping commit skipped ({_reason})")
+
 
 def _handle_todo_from_main(args: list[str]) -> None:
     """Handle telec todo from-main --slug <name> [--description <desc>]."""
@@ -436,7 +474,6 @@ def _handle_todo_from_main(args: list[str]) -> None:
 
     slug: str | None = None
     description: str | None = None
-    paths: list[str] | None = None
 
     i = 0
     while i < len(args):
@@ -446,9 +483,6 @@ def _handle_todo_from_main(args: list[str]) -> None:
             i += 2
         elif arg == "--description" and i + 1 < len(args):
             description = args[i + 1]
-            i += 2
-        elif arg == "--paths" and i + 1 < len(args):
-            paths = [p.strip() for p in args[i + 1].split(",") if p.strip()]
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -466,7 +500,7 @@ def _handle_todo_from_main(args: list[str]) -> None:
 
     project_root = str(Path.cwd())
     try:
-        output = create_from_main_skeleton(project_root, slug, description=description, paths=paths)
+        output = create_from_main_skeleton(project_root, slug, description=description)
     except (ValueError, RuntimeError) as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc

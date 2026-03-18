@@ -48,7 +48,7 @@ class QoSPolicy:
         rounding_ms: Cadence rounding granularity in milliseconds.
     """
 
-    __slots__ = ("adapter_key", "mode", "_budget", "_cadence")
+    __slots__ = ("_budget", "_cadence", "adapter_key", "mode")
 
     def __init__(self, adapter_key: str, *args: object, **kwargs: object) -> None:
         values = {

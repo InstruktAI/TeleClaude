@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, cast
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
 from teleclaude import config as teleclaude_config
+from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
 
 logger = get_logger(__name__)
 

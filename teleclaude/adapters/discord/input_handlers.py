@@ -14,9 +14,9 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
-from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude import config as teleclaude_config
+from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
@@ -368,9 +368,7 @@ class InputHandlersMixin:
         response = getattr(interaction, "response", None)
         response_defer = getattr(response, "defer", None)
         if callable(response_defer):
-            await self._async_callable(response_defer, label="Discord interaction response.defer")(
-                ephemeral=True
-            )
+            await self._async_callable(response_defer, label="Discord interaction response.defer")(ephemeral=True)
 
         forum_id = await self._resolve_interaction_forum_id(interaction)
         project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None

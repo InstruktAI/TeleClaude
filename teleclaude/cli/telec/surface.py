@@ -539,8 +539,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Transfers uncommitted changes from main into a worktree for review.",
-                    "Only files touched by the current session are transferred (transcript-based).",
-                    "Requires active session (session marker written at bootstrap).",
+                    "File scoping is automatic: only files touched by the current session are transferred.",
                     "Creates todo scaffold, sets state to build:complete, ready for review.",
                     "After running, follow the printed instructions to commit and dispatch.",
                 ],

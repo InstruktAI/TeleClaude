@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
@@ -236,9 +236,7 @@ class MessageOperationsMixin:
                 create_fn,
                 label="Discord channel create_webhook",
             )
-            webhook = await create_webhook(
-                name="TeleClaude Reflections"
-            )
+            webhook = await create_webhook(name="TeleClaude Reflections")
             self._reflection_webhook_cache[channel_id] = webhook
             return webhook
         except recoverable_errors as exc:

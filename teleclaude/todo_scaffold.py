@@ -528,16 +528,16 @@ def _collect_session_touched_files(project_path: str) -> set[str]:
     """
     from sqlmodel import Session as SqlSession
 
+    from teleclaude.cli.tool_client import _read_caller_session_id
     from teleclaude.core import db_models
     from teleclaude.core.agents import AgentName, get_default_agent
     from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals
     from teleclaude.hooks.receiver._session import _create_sync_engine
-    from teleclaude.session_identity import get_session_id
     from teleclaude.utils.transcript import extract_tool_calls_current_turn
 
-    session_id = get_session_id()
+    session_id = _read_caller_session_id()
     if not session_id:
-        raise ValueError("from-main requires an active agent session (no session marker found)")
+        raise ValueError("from-main requires an active agent session ($TMPDIR/teleclaude_session_id not found)")
 
     with SqlSession(_create_sync_engine()) as db_session:  # type: ignore[arg-type]
         row = db_session.get(db_models.Session, session_id)
@@ -552,18 +552,9 @@ def _collect_session_touched_files(project_path: str) -> set[str]:
     try:
         agent_name = AgentName.from_str(get_default_agent())
     except ValueError:
-        _scaffold_logger.warning(
-            "Could not resolve default agent; falling back to CLAUDE. Check config.yml agents section."
-        )
         agent_name = AgentName.CLAUDE
 
     timeline = extract_tool_calls_current_turn(transcript_path, agent_name, full_session=True)
-
-    if not timeline.has_data:
-        raise ValueError(
-            f"Transcript parsing returned no data. Verify transcript exists and is valid: {transcript_path}"
-        )
-
     touched_files, _saw_mutation = _extract_turn_file_signals(timeline, project_path)
 
     if not touched_files:
@@ -581,14 +572,12 @@ def create_from_main_skeleton(
     slug: str,
     *,
     description: str | None = None,
-    paths: list[str] | None = None,
 ) -> str:
     """Transfer uncommitted changes from main into a todo worktree for review.
 
     File scoping is automatic: the session transcript is parsed to determine
     which files this agent session actually touched. Only those files are
-    transferred. When ``paths`` is provided, it overrides transcript scoping
-    (human-supervised explicit file list).
+    transferred. Requires an active agent session ($TMPDIR/teleclaude_session_id).
 
     Steps:
     1. Validate preconditions (on main, has uncommitted changes)
@@ -637,15 +626,11 @@ def create_from_main_skeleton(
     # --- 5b. Capture uncommitted changes ---
     modified_files, untracked_files, deleted_files, added_files = _classify_porcelain_status(status_output)
 
-    # Scope to files: explicit paths override or session transcript
-    if paths:
-        session_files = set(paths)
-    else:
-        session_files = _collect_session_touched_files(cwd)
+    # Scope to files this session actually touched (transcript-based)
+    session_files = _collect_session_touched_files(cwd)
     modified_files = [f for f in modified_files if f in session_files]
     untracked_files = [f for f in untracked_files if f in session_files]
     deleted_files = [f for f in deleted_files if f in session_files]
-    added_files = [f for f in added_files if f in session_files]
 
     all_changed = modified_files + untracked_files + deleted_files + added_files
     if not all_changed:

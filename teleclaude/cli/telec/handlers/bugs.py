@@ -112,6 +112,17 @@ def _handle_bugs_create(args: list[str]) -> None:
         print(f"Error: {exc}")
         raise SystemExit(1)
 
+    # Auto-commit bookkeeping on main
+    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
+
+    _ok, _reason = commit_bookkeeping_to_main(
+        str(project_root),
+        [f"todos/{slug}", "todos/roadmap.yaml"],
+        f"chore(todos): scaffold bug {slug}",
+    )
+    if not _ok and _reason in ("commit_failed", "not_a_repo"):
+        print(f"Warning: bookkeeping commit skipped ({_reason})")
+
 
 def _handle_bugs_report(args: list[str]) -> None:
     """Handle telec bugs report <description> [--slug <slug>]."""
@@ -177,16 +188,18 @@ def _handle_bugs_report(args: list[str]) -> None:
 
     slug = todo_dir.name
 
-    # --- Commit and push scaffold to remote ---
-    from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+    # Auto-commit bookkeeping on main
+    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
 
-    pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
-    if pushed:
-        print(f"Scaffold for {slug} pushed to remote: {reason}")
-    elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
-        print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
+    _ok, _reason = commit_bookkeeping_to_main(
+        str(project_root),
+        [f"todos/{slug}", "todos/roadmap.yaml"],
+        f"chore(todos): scaffold bug {slug}",
+    )
+    if not _ok and _reason in ("commit_failed", "not_a_repo"):
+        print(f"Warning: bookkeeping commit skipped ({_reason})")
 
-    # Dispatch work state machine via sessions/run
+    # Dispatch orchestrator on mainline — the state machine handles branches/worktrees
     async def _dispatch_bug_fix() -> CreateSessionResult:
         api = TelecAPIClient()
         await api.connect()

@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
-from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude import config as teleclaude_config
+from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata
 from teleclaude.core.session_utils import get_short_project_name

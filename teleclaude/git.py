@@ -17,10 +17,10 @@ import os
 from pathlib import Path
 
 import git as _gitpython
-from git import Repo as Repo  # noqa: PLC0414 — re-export
-from git.exc import GitCommandError as GitCommandError  # noqa: PLC0414
-from git.exc import InvalidGitRepositoryError as InvalidGitRepositoryError  # noqa: PLC0414
-from git.exc import NoSuchPathError as NoSuchPathError  # noqa: PLC0414
+from git import Repo as Repo
+from git.exc import GitCommandError as GitCommandError
+from git.exc import InvalidGitRepositoryError as InvalidGitRepositoryError
+from git.exc import NoSuchPathError as NoSuchPathError
 
 __all__ = [
     "GitCommandError",
