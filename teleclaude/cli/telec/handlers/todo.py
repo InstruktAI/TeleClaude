@@ -255,7 +255,7 @@ def _emit_todo_dump_event(project_root: Path, slug: str, logger_name: str) -> No
 
 
 def _ensure_todo_remote_sync(project_root: Path, slug: str) -> tuple[bool, str]:
-    ensure_todo = _load_worktrees_module()._ensure_todo_on_remote_main
+    ensure_todo = _load_worktrees_module()._ensure_todo_on_remote_main  # pylint: disable=protected-access
     return ensure_todo(str(project_root), slug)
 
 

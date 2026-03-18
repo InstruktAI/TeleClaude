@@ -13,7 +13,8 @@ __all__ = [
 
 
 def _run_tui_config_mode(*, guided: bool) -> None:
-    importlib.import_module("teleclaude.cli.telec._run_tui")._run_tui_config_mode(guided=guided)
+    run_tui_config_mode = importlib.import_module("teleclaude.cli.telec._run_tui")._run_tui_config_mode  # pylint: disable=protected-access
+    run_tui_config_mode(guided=guided)
 
 
 def _handle_config_command(args: list[str]) -> None:

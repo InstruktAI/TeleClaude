@@ -20,12 +20,15 @@ def _load_tui_runtime():
     api_client = importlib.import_module("teleclaude.cli.api_client").TelecAPIClient
     misc = importlib.import_module("teleclaude.cli.telec.handlers.misc")
     app_module = importlib.import_module("teleclaude.cli.tui.app")
+    ensure_tmux_mouse_on = misc._ensure_tmux_mouse_on  # pylint: disable=protected-access
+    ensure_tmux_status_hidden_for_tui = misc._ensure_tmux_status_hidden_for_tui  # pylint: disable=protected-access
+    maybe_kill_tui_session = misc._maybe_kill_tui_session  # pylint: disable=protected-access
     return (
         logger,
         api_client,
-        misc._ensure_tmux_mouse_on,
-        misc._ensure_tmux_status_hidden_for_tui,
-        misc._maybe_kill_tui_session,
+        ensure_tmux_mouse_on,
+        ensure_tmux_status_hidden_for_tui,
+        maybe_kill_tui_session,
         app_module.RELOAD_EXIT,
         app_module.TelecApp,
     )

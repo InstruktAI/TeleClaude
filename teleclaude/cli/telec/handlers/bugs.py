@@ -29,7 +29,7 @@ __all__ = [
 def _ensure_todo_on_remote_main_func(project_root: Path, slug: str) -> tuple[bool, str]:
     """Resolve the remote-sync helper lazily so tests can monkeypatch it."""
     worktrees = importlib.import_module("teleclaude.core.next_machine.worktrees")
-    ensure_todo = worktrees._ensure_todo_on_remote_main
+    ensure_todo = worktrees._ensure_todo_on_remote_main  # pylint: disable=protected-access
     return ensure_todo(str(project_root), slug)
 
 
