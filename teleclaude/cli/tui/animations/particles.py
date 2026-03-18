@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import colorsys
 import math
 import random
 
@@ -54,32 +55,25 @@ class FireBreath(Animation):
         # Bottom = white hot, mid = orange, top = dark red
         self.spec = Spectrum(["#400000", "#FF0000", "#FF4500", "#FFFF00", "#FFFFFF"])
 
+    def _fire_pixel_color(self, frame: int, modulation: float, height: int, x: int, y: int) -> str:
+        y_factor = y / max(height - 1, 1)  # 0=top, 1=bottom
+        fire_factor = 1.0 - y_factor  # 1=bottom (hottest), 0=top (coolest)
+        col_var = math.sin(x * 1.3 + frame * 0.45) * 0.28 + math.sin(x * 2.1 + frame * 0.3) * 0.15
+        fire_factor = max(0.0, fire_factor + col_var)
+        flicker = self.rng.random() * 0.35 * modulation
+        intensity = min(1.0, fire_factor + flicker)
+        color = self.enforce_vibrancy(self.spec.get_color(fire_factor))
+        return self.scale_color(color, 0.3 + intensity * 0.7)
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        result = {}
         modulation = self.get_modulation(frame)
+        result: dict[tuple[int, int], str | int] = {}
 
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                y_factor = y / max(height - 1, 1)  # 0=top, 1=bottom
-                fire_factor = 1.0 - y_factor  # 1=bottom (hottest), 0=top (coolest)
-                # Per-column organic variation: irregular licking flames
-                col_var = math.sin(x * 1.3 + frame * 0.45) * 0.28 + math.sin(x * 2.1 + frame * 0.3) * 0.15
-                fire_factor = max(0.0, fire_factor + col_var)
-                # Per-pixel flicker noise
-                flicker = self.rng.random() * 0.35 * modulation
-                # Heat intensity: peaks at bottom
-                intensity = min(1.0, fire_factor + flicker)
-
-                color = self.spec.get_color(fire_factor)
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                # 0.3 base so even cool top pixels have faint glow
-                v = 0.3 + intensity * 0.7
-                result[(x, y)] = rgb_to_hex(int(r * v), int(g * v), int(b * v))
+                result[(x, y)] = self._fire_pixel_color(frame, modulation, height, x, y)
 
         return result
 
@@ -151,8 +145,6 @@ class SearchlightSweep(Animation):
                     # Bright searchlight flare (high intensity)
                     intensity = 1.0 - (dist / radius)
                     flare = int(180 + intensity * 75)
-                    from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
                     result[(x, y)] = rgb_to_hex(flare, flare, flare)
             else:
                 # Outside the beam
@@ -174,10 +166,13 @@ class CinematicPrismSweep(Animation):
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
-        import colorsys
-
         r, g, b = colorsys.hsv_to_rgb(h, s, v)
         return int(r * 255), int(g * 255), int(b * 255)
+
+    @staticmethod
+    def _beam_strength(distance: float, active_distance: float) -> float:
+        delta = abs(distance - active_distance)
+        return 1.0 - (delta / 4.0) if delta < 4.0 else 0.0
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
@@ -190,10 +185,9 @@ class CinematicPrismSweep(Animation):
 
         current_hue = (self.hue_start + (self.hue_end - self.hue_start) * progress) / 360.0
         r, g, b = self._hsv_to_rgb(current_hue, 0.8, 1.0)
-        from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
         color = rgb_to_hex(r, g, b)
         safe_color = self.get_electric_neon(self.get_contrast_safe_color(color))
+        safe_rgb = hex_to_rgb(safe_color)
 
         max_dist = width * math.cos(angle_rad) + height * math.sin(angle_rad)
         active_dist = progress * max_dist * modulation * 1.5
@@ -205,23 +199,28 @@ class CinematicPrismSweep(Animation):
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 d = (x - 1) * math.cos(angle_rad) + y * math.sin(angle_rad)
-                surge = 1.0 - (abs(d - active_dist) / 4.0) if abs(d - active_dist) < 4 else 0.0
+                surge = self._beam_strength(d, active_dist)
                 if surge <= 0:
                     result[(x, y)] = -1
                     continue
-                intensity = 0.6 + (surge * 0.4)
-                r, g, b = hex_to_rgb(safe_color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
+                result[(x, y)] = rgb_to_hex(
+                    int(safe_rgb[0] * (0.6 + surge * 0.4)),
+                    int(safe_rgb[1] * (0.6 + surge * 0.4)),
+                    int(safe_rgb[2] * (0.6 + surge * 0.4)),
+                )
 
         # 2. Billboard Reflection (only where beam hits)
         for x, y in self._all_pixels:
             if (x, y) in result:
                 continue  # Skip neon (already handled)
             d = (x - 1) * math.cos(angle_rad) + y * math.sin(angle_rad)
-            surge = 1.0 - (abs(d - active_dist) / 4.0) if abs(d - active_dist) < 4 else 0.0
+            surge = self._beam_strength(d, active_dist)
             if surge > 0.1:
-                r, g, b = hex_to_rgb(safe_color)
-                result[(x, y)] = rgb_to_hex(int(r * surge * 0.4), int(g * surge * 0.4), int(b * surge * 0.4))
+                result[(x, y)] = rgb_to_hex(
+                    int(safe_rgb[0] * surge * 0.4),
+                    int(safe_rgb[1] * surge * 0.4),
+                    int(safe_rgb[2] * surge * 0.4),
+                )
             else:
                 result[(x, y)] = -1
 

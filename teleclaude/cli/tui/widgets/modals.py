@@ -7,10 +7,13 @@ Visual design:
 - Labeled field groups with thin borders
 """
 
+# pylint: disable=missing-function-docstring
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import TypeVar
 
 from rich.style import Style
 from rich.text import Text
@@ -27,6 +30,9 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import CreateSessionRequest
 from teleclaude.cli.tui.theme import resolve_style
 from teleclaude.core.agents import get_enabled_agents
+from teleclaude.slug import SLUG_PATTERN
+
+WIDGET_TYPE = TypeVar("WIDGET_TYPE", bound=Widget)  # pylint: disable=invalid-name
 
 
 @dataclass
@@ -286,7 +292,7 @@ class SessionIdTypeSelector(TelecMixin, Widget, can_focus=True):
         # Notify parent modal about type change
         parent = self.screen
         if isinstance(parent, StartSessionModal):
-            parent._on_session_id_type_changed()
+            parent.on_session_id_type_changed()
 
     @property
     def is_teleclaude(self) -> bool:
@@ -348,6 +354,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         ("down", "focus_next_group", "Down"),
     ]
 
+    # pylint: disable=too-many-arguments,too-many-positional-arguments
     def __init__(
         self,
         computer: str,
@@ -425,47 +432,38 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
                 yield Button("[Esc] Cancel", id="cancel-btn")
 
     def on_mount(self) -> None:
-        self.query_one("#agent-selector", AgentSelector).focus()
+        agent_selector = self._query_optional("#agent-selector", AgentSelector)
+        if agent_selector is not None:
+            agent_selector.focus()
+
+    def _query_optional(self, selector: str, widget_type: type[WIDGET_TYPE]) -> WIDGET_TYPE | None:
+        """Return a widget when it exists, or ``None`` for optional form sections."""
+        try:
+            return self.query_one(selector, widget_type)
+        except Exception:  # pylint: disable=broad-exception-caught
+            return None
 
     def _get_focusable_groups(self) -> list[Widget]:
         """Ordered list of focusable widgets for up/down navigation."""
         groups: list[Widget] = []
+
+        optional_widgets: list[Widget | None] = []
         if self._path_mode:
-            try:
-                groups.append(self.query_one("#path-input", Input))
-            except Exception:
-                pass
+            optional_widgets.append(self._query_optional("#path-input", Input))
         if self._agents:
-            try:
-                agent_sel = self.query_one("#agent-selector", AgentSelector)
-                if not agent_sel.grayed_out:
-                    groups.append(agent_sel)
-            except Exception:
-                pass
-        try:
-            groups.append(self.query_one("#mode-selector", ModeSelector))
-        except Exception:
-            pass
-        try:
-            groups.append(self.query_one("#message-input", Input))
-        except Exception:
-            pass
-        try:
-            groups.append(self.query_one("#title-input", Input))
-        except Exception:
-            pass
-        try:
-            groups.append(self.query_one("#session-id-type", SessionIdTypeSelector))
-        except Exception:
-            pass
-        try:
-            groups.append(self.query_one("#session-id-input", Input))
-        except Exception:
-            pass
-        try:
-            groups.append(self.query_one("#create-btn", Button))
-        except Exception:
-            pass
+            agent_sel = self._query_optional("#agent-selector", AgentSelector)
+            optional_widgets.append(agent_sel if agent_sel is not None and not agent_sel.grayed_out else None)
+        optional_widgets.extend(
+            [
+                self._query_optional("#mode-selector", ModeSelector),
+                self._query_optional("#message-input", Input),
+                self._query_optional("#title-input", Input),
+                self._query_optional("#session-id-type", SessionIdTypeSelector),
+                self._query_optional("#session-id-input", Input),
+                self._query_optional("#create-btn", Button),
+            ]
+        )
+        groups.extend(widget for widget in optional_widgets if widget is not None)
         return groups
 
     def action_focus_prev_group(self) -> None:
@@ -500,25 +498,22 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         else:
             groups[current_idx + 1].focus()
 
-    def _on_session_id_type_changed(self) -> None:
+    def on_session_id_type_changed(self) -> None:
         """Called by SessionIdTypeSelector when toggle changes."""
         self._sync_agent_grayed()
 
     def _sync_agent_grayed(self) -> None:
         """Gray out agent selector when teleclaude session ID type is selected."""
-        try:
-            type_sel = self.query_one("#session-id-type", SessionIdTypeSelector)
-            agent_sel = self.query_one("#agent-selector", AgentSelector)
-        except Exception:
+        type_sel = self._query_optional("#session-id-type", SessionIdTypeSelector)
+        agent_sel = self._query_optional("#agent-selector", AgentSelector)
+        if type_sel is None or agent_sel is None:
             return
         is_teleclaude = type_sel.is_teleclaude
         agent_sel.grayed_out = is_teleclaude
         # Update border title to indicate grayed state
-        try:
-            agent_group = self.query_one("#agent-group", Vertical)
+        agent_group = self._query_optional("#agent-group", Vertical)
+        if agent_group is not None:
             agent_group.border_title = "Agent (n/a for teleclaude ID)" if is_teleclaude else "Agent"
-        except Exception:
-            pass
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
@@ -530,7 +525,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
             return
         self._do_create()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_input_submitted(self, _event: Input.Submitted) -> None:
         """Enter while in an Input field submits the form."""
         self._do_create()
 
@@ -541,27 +536,33 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         if event.button.id == "create-btn":
             self._do_create()
 
+    def _resolve_project_path(self) -> str | None:
+        """Validate and resolve the optional project-path input field."""
+        if not self._path_mode:
+            return self._project_path
+
+        path_input = self.query_one("#path-input", Input)
+        path_error = self.query_one("#path-error", Label)
+        raw_path = path_input.value.strip()
+        if not raw_path:
+            path_error.update("Path is required")
+            return None
+        resolved = os.path.expanduser(raw_path)
+        if not os.path.isdir(resolved):
+            path_error.update("Path does not exist or is not a directory")
+            return None
+        path_error.update("")
+        return resolved
+
     def _do_create(self) -> None:
         """Gather form values and dismiss with CreateSessionRequest."""
         if not self._agents:
             self.dismiss(None)
             return
 
-        project_path = self._project_path
-
-        if self._path_mode:
-            path_input = self.query_one("#path-input", Input)
-            path_error = self.query_one("#path-error", Label)
-            raw_path = path_input.value.strip()
-            if not raw_path:
-                path_error.update("Path is required")
-                return
-            resolved = os.path.expanduser(raw_path)
-            if not os.path.isdir(resolved):
-                path_error.update("Path does not exist or is not a directory")
-                return
-            path_error.update("")
-            project_path = resolved
+        project_path = self._resolve_project_path()
+        if project_path is None:
+            return
 
         agent_sel = self.query_one("#agent-selector", AgentSelector)
         mode_sel = self.query_one("#mode-selector", ModeSelector)
@@ -640,7 +641,7 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_input_submitted(self, _event: Input.Submitted) -> None:
         self._do_create()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -719,7 +720,7 @@ class CreateSlugModal(ModalScreen[str | None]):
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_input_submitted(self, _event: Input.Submitted) -> None:
         self._do_create()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -730,8 +731,6 @@ class CreateSlugModal(ModalScreen[str | None]):
             self._do_create()
 
     def _do_create(self) -> None:
-        from teleclaude.slug import SLUG_PATTERN
-
         slug_input = self.query_one("#slug-input", Input)
         error_label = self.query_one("#slug-error", Label)
         slug = slug_input.value.strip()

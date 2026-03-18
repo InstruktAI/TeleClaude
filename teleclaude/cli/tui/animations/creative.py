@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import colorsys
 import math
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import Any
 
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.base import Animation, Spectrum
@@ -17,10 +18,6 @@ from teleclaude.cli.tui.pixel_mapping import (
     LOGO_WIDTH,
     PixelMap,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # ---------------------------------------------------------------------------
 # Shared utility
@@ -35,6 +32,7 @@ _HUE_BANDS = [
     (210, 235, 1),  # White-leaning Blue
 ]
 _HUE_WEIGHTS = [b[2] for b in _HUE_BANDS]
+PositionFn = Callable[[int, int], tuple[float, float]]
 
 
 def _pick_hue(rng: Any) -> float:
@@ -141,22 +139,25 @@ class Plasma(Animation):
             "hue_base": _pick_hue(self.rng) / 360.0,
         }
 
+    def _plasma_color(self, x: int, y: int, t: float) -> str:
+        params = self._params
+        wave_a = math.sin(x * params["f1"] + t)
+        wave_b = math.sin(y * params["f2"] + t * 1.3)
+        wave_c = math.sin((x + y) * params["f3"] + t * 0.7)
+        plasma = (wave_a + wave_b + wave_c + 3.0) / 6.0
+        hue = (params["hue_base"] + plasma * 0.35) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+        return rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         self._lazy_init()
-        p = self._params
-        t = frame * p["s1"]
+        t = frame * self._params["s1"]
         result: dict[tuple[int, int], str | int] = {}
 
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
         for i in range(len(letters)):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                v1 = math.sin(x * p["f1"] + t)
-                v2 = math.sin(y * p["f2"] + t * 1.3)
-                v3 = math.sin((x + y) * p["f3"] + t * 0.7)
-                plasma = (v1 + v2 + v3 + 3.0) / 6.0  # 0..1
-                hue = (p["hue_base"] + plasma * 0.35) % 1.0
-                r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
-                result[(x, y)] = rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
+                result[(x, y)] = self._plasma_color(x, y, t)
 
         return result
 
@@ -383,67 +384,56 @@ class ColorSweep(Animation):
             "speed": self.rng.uniform(0.3, 3.0),
         }
 
+    @staticmethod
+    def _sweep_state(width: int, height: int, frame: int, speed: float, direction: str) -> tuple[float, PositionFn]:
+        if direction == "lr":
+            return (frame * speed) % (width + 10) - 5, lambda x, _y: (x, x / width)
+        if direction == "rl":
+            active = (width - 1) - ((frame * speed) % (width + 10) - 5)
+            return active, lambda x, _y: (x, (width - x) / width)
+        if direction == "tb":
+            active = (frame * speed * 0.5) % (height + 4) - 2
+            return active, lambda _x, y: (y, y / max(1, height - 1))
+        if direction == "bt":
+            active = (height - 1) - ((frame * speed * 0.5) % (height + 4) - 2)
+            return active, lambda _x, y: (y, (height - 1 - y) / max(1, height - 1))
+        if direction == "diag_dr":
+            max_value = width + height
+            active = (frame * speed) % (max_value + 10) - 5
+            return active, lambda x, y: (x + y, (x + y) / max_value)
+        if direction == "diag_dl":
+            max_value = width + height
+            active = (width - 1) - ((frame * speed) % (max_value + 10) - 5)
+            return active, lambda x, y: (x - y, (width - 1 - x + y) / max(1, width + height - 2))
+
+        cx, cy = width / 2, height / 2
+        max_radius = math.hypot(cx, cy)
+        active = (frame * speed * 0.35) % (max_radius + 5)
+
+        def radial_pos(x: int, y: int) -> tuple[float, float]:
+            distance = math.hypot(x - cx, y - cy)
+            return distance, distance / max_radius
+
+        return active, radial_pos
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         self._lazy_init()
-        p = self._params
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        mod = self.get_modulation(frame)
-        speed = p["speed"] * mod
-        spec = p["spec"]
-        direction = p["direction"]
-
-        if direction == "lr":
-            active = (frame * speed) % (width + 10) - 5
-
-            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
-                return x, x / width
-        elif direction == "rl":
-            active = (width - 1) - ((frame * speed) % (width + 10) - 5)
-
-            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
-                return x, (width - x) / width
-        elif direction == "tb":
-            active = (frame * speed * 0.5) % (height + 4) - 2
-
-            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
-                return y, y / max(1, height - 1)
-        elif direction == "bt":
-            active = (height - 1) - ((frame * speed * 0.5) % (height + 4) - 2)
-
-            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
-                return y, (height - 1 - y) / max(1, height - 1)
-        elif direction == "diag_dr":
-            max_v = width + height
-            active = (frame * speed) % (max_v + 10) - 5
-
-            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
-                return x + y, (x + y) / max_v
-        elif direction == "diag_dl":
-            max_v = width + height
-            active = (width - 1) - ((frame * speed) % (max_v + 10) - 5)
-
-            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
-                return x - y, (width - 1 - x + y) / max(1, width + height - 2)
-        else:  # radial
-            cx, cy = width / 2, height / 2
-            max_r = math.sqrt(cx**2 + cy**2)
-            active = (frame * speed * 0.35) % (max_r + 5)
-
-            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
-                return math.sqrt((x - cx) ** 2 + (y - cy) ** 2), math.sqrt((x - cx) ** 2 + (y - cy) ** 2) / max_r
+        speed = self._params["speed"] * self.get_modulation(frame)
+        spec = self._params["spec"]
+        active, position = self._sweep_state(width, height, frame, speed, self._params["direction"])
 
         result: dict[tuple[int, int], str | int] = {}
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
         for i in range(len(letters)):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                pos_val, color_frac = pos(x, y)
+                pos_val, color_frac = position(x, y)
                 surge = self.linear_surge(pos_val, active, 4.0)
                 if surge <= 0:
                     continue  # transparent outside beam — base color shows through
                 color = self.enforce_vibrancy(spec.get_color(color_frac))
-                r0, g0, b0 = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r0 * surge), int(g0 * surge), int(b0 * surge))
+                result[(x, y)] = self.scale_color(color, surge)
 
         return result
 
@@ -471,30 +461,32 @@ class LaserScan(Animation):
         hue = self.rng.uniform(band[0], band[1])
         self._glow = _hue_to_hex(hue)
 
+    @staticmethod
+    def _laser_color(dist: float, glow_rgb: tuple[int, int, int]) -> str:
+        if dist < 0.5:
+            return "#ffffff"
+        if dist < 1.5:
+            blend = 1.0 - (dist - 0.5)
+            return rgb_to_hex(
+                int(255 * blend + glow_rgb[0] * (1 - blend)),
+                int(255 * blend + glow_rgb[1] * (1 - blend)),
+                int(255 * blend + glow_rgb[2] * (1 - blend)),
+            )
+        if dist < 4.5:
+            fade = 1.0 - (dist - 1.5) / 3.0
+            return rgb_to_hex(int(glow_rgb[0] * fade), int(glow_rgb[1] * fade), int(glow_rgb[2] * fade))
+        return rgb_to_hex(int(glow_rgb[0] * 0.12), int(glow_rgb[1] * 0.12), int(glow_rgb[2] * 0.12))
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         self._lazy_init()
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         active_x = (frame * 2.8) % (width + 8) - 4
-        r0, g0, b0 = hex_to_rgb(self._glow)
+        glow_rgb = hex_to_rgb(self._glow)
 
         result: dict[tuple[int, int], str | int] = {}
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
         for i in range(len(letters)):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                dist = abs(x - active_x)
-                if dist < 0.5:
-                    result[(x, y)] = "#ffffff"
-                elif dist < 1.5:
-                    blend = 1.0 - (dist - 0.5)
-                    result[(x, y)] = rgb_to_hex(
-                        int(255 * blend + r0 * (1 - blend)),
-                        int(255 * blend + g0 * (1 - blend)),
-                        int(255 * blend + b0 * (1 - blend)),
-                    )
-                elif dist < 4.5:
-                    fade = 1.0 - (dist - 1.5) / 3.0
-                    result[(x, y)] = rgb_to_hex(int(r0 * fade), int(g0 * fade), int(b0 * fade))
-                else:
-                    result[(x, y)] = rgb_to_hex(int(r0 * 0.12), int(g0 * 0.12), int(b0 * 0.12))
+                result[(x, y)] = self._laser_color(abs(x - active_x), glow_rgb)
 
         return result

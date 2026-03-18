@@ -1,5 +1,9 @@
 """Box-drawing tab bar matching old curses TUI style."""
 
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+# pylint: disable=too-many-return-statements,too-many-branches,too-many-locals
+# pylint: disable=import-outside-toplevel,broad-exception-caught
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -115,9 +119,6 @@ class BoxTabBar(TelecMixin, Widget):
         super().__init__(**kwargs)
         self.animation_engine: AnimationEngine | None = None
         self._click_regions: list[tuple[int, int, str]] = []
-
-    def on_mount(self) -> None:
-        pass
 
     def render(self) -> Group:
         try:
@@ -349,4 +350,5 @@ class BoxTabBar(TelecMixin, Widget):
                 break
 
     def watch_active_tab(self, _value: str) -> None:
+        """Refresh when the active tab selection changes."""
         self.refresh()

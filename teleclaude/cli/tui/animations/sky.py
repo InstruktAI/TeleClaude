@@ -8,8 +8,15 @@ import time
 from typing import TypedDict
 
 from teleclaude.cli.tui.animations.base import Z0, Z10, Z20, Animation, RenderBuffer, render_sprite
-from teleclaude.cli.tui.animations.sprites import MOON_SPRITE, SUN_SPRITE
+from teleclaude.cli.tui.animations.sprites import (
+    MOON_SPRITE,
+    SUN_SPRITE,
+    get_optional_motion_groups,
+    get_sky_entities,
+    get_weather_clouds,
+)
 from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite, SpriteGroup
+from teleclaude.cli.tui.theme import blend_colors, is_dark_mode
 
 
 class SkyEntity(TypedDict):
@@ -27,7 +34,7 @@ class SkyEntity(TypedDict):
     optional_motion: bool
 
 
-class GlobalSky(Animation):
+class GlobalSky(Animation):  # pylint: disable=too-many-instance-attributes
     """TC20: Global background canvas with Day/Night physical states.
     Paints the entire header area (Z-0) including margins.
     Dynamic weather system with parallax clouds at weighted Z-levels.
@@ -59,6 +66,7 @@ class GlobalSky(Animation):
         # Cached terminal width — refreshed every ~100 frames instead of every frame
         self._cached_term_width: int = self._fetch_term_width()
         self._term_width_frame: int = 0
+        self._buffer = RenderBuffer()
 
         # Stars — weighted toward tiny dots; big sparkles are rare
         _star_types = ["\u00b7", ".", "+", "\u2726", "*"]  # ·  .  +  ✦  *
@@ -85,7 +93,7 @@ class GlobalSky(Animation):
     def _fetch_term_width() -> int:
         try:
             return shutil.get_terminal_size().columns
-        except Exception:
+        except OSError:
             return 200
 
     def _pick_z_level(self, weights: list[tuple[int, int]]) -> int:
@@ -101,8 +109,6 @@ class GlobalSky(Animation):
         in Animation.__init__ and isn't updated until play() runs — after
         _spawn_initial_entities has already executed.
         """
-        from teleclaude.cli.tui.theme import is_dark_mode
-
         theme = group_theme if group_theme is not None else getattr(sprite, "theme", None)
         if theme is None:
             return True
@@ -127,12 +133,6 @@ class GlobalSky(Animation):
 
     def _spawn_initial_entities(self) -> list[SkyEntity]:
         """Spawn sky entities: standalone sprites + non-cloud groups + weather clouds."""
-        from teleclaude.cli.tui.animations.sprites import (
-            get_optional_motion_groups,
-            get_sky_entities,
-            get_weather_clouds,
-        )
-
         entities: list[SkyEntity] = []
         # Standalone sprites (15% chance each)
         for sprite in get_sky_entities():
@@ -148,10 +148,7 @@ class GlobalSky(Animation):
 
     def _pick_y(self, y_weights: list[tuple[int, int, int]]) -> int:
         """Pick a Y position from weighted (y_lo, y_hi, weight) triples."""
-        _, _, *_ = y_weights[0]  # validate structure
-        ranges_and_weights = [(lo, hi, w) for lo, hi, w in y_weights]
-        wts = [w for _, _, w in ranges_and_weights]
-        chosen = self.rng.choices(ranges_and_weights, weights=wts, k=1)[0]
+        chosen = self.rng.choices(list(y_weights), weights=[weight for _, _, weight in y_weights], k=1)[0]
         return self.rng.randint(chosen[0], chosen[1])
 
     def _pick_weighted_float(self, weights: list[tuple[float, int]]) -> float:
@@ -241,8 +238,6 @@ class GlobalSky(Animation):
 
     def set_extra_motion(self, enabled: bool) -> None:
         """Enable or disable optional moving sprites without rebuilding ambient sky."""
-        from teleclaude.cli.tui.animations.sprites import get_optional_motion_groups
-
         if self.show_extra_motion == enabled:
             return
 
@@ -261,8 +256,6 @@ class GlobalSky(Animation):
             sprite: A specific sprite instance, SpriteGroup, or None for random.
         """
         if isinstance(sprite, SpriteGroup):
-            from teleclaude.cli.tui.animations.sprites import get_optional_motion_groups
-
             # Pick a random entry from the group, respect group direction
             entries = sprite.entries
             if entries:
@@ -284,8 +277,6 @@ class GlobalSky(Animation):
         if sprite is not None:
             self._sky_entities.append(self._spawn_sky_entity(sprite))
         else:
-            from teleclaude.cli.tui.animations.sprites import get_sky_entities
-
             entities = get_sky_entities()
             if entities:
                 self._sky_entities.append(self._spawn_sky_entity(self.rng.choice(entities)))
@@ -296,16 +287,82 @@ class GlobalSky(Animation):
 
     def _build_sky_cache(self) -> list[tuple[int, int, int, str]]:
         """Pre-compute static sky gradient pixels for the current theme."""
-        from teleclaude.cli.tui.theme import blend_colors
-
         base = self._SKY_BASE_DARK if self.dark_mode else self._SKY_BASE_LIGHT
         target = self._SKY_TARGET_DARK if self.dark_mode else self._SKY_TARGET_LIGHT
         max_y = max(1, self.height - 1)
         row_colors = [blend_colors(base, target, y / max_y) for y in range(self.height)]
-        pixels: list[tuple[int, int, int, str]] = []
-        for x, y in self._all_pixels:
-            pixels.append((Z0, x, y, row_colors[y]))
-        return pixels
+        return [(Z0, x, y, row_colors[y]) for x, y in self._all_pixels]
+
+    def _refresh_terminal_width(self, frame: int) -> int:
+        if frame - self._term_width_frame >= 100:
+            self._cached_term_width = self._fetch_term_width()
+            self._term_width_frame = frame
+        return self._cached_term_width
+
+    def _rebuild_sky_cache_if_needed(self) -> None:
+        if self._cached_dark_mode == self.dark_mode:
+            return
+        self._cached_sky_pixels = self._build_sky_cache()
+        self._cached_dark_mode = self.dark_mode
+        self._buffer.clear()
+        for z_level, x_pos, y_pos, color in self._cached_sky_pixels:
+            self._buffer.add_pixel(z_level, x_pos, y_pos, color)
+
+    def _clear_dynamic_layers(self) -> None:
+        for z_level in list(self._buffer.layers):
+            if z_level != Z0:
+                self._buffer.clear_layer(z_level)
+
+    def _render_stars(self, frame: int) -> None:
+        for star in self.stars:
+            twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0  # type: ignore[operator]
+            if twinkle > 0.88:
+                self._buffer.add_pixel(Z10, star["pos"][0], star["pos"][1], star["char"])
+
+    def _refresh_weather_if_needed(self) -> None:
+        now = time.time()
+        if now < self._next_weather_change:
+            return
+        self._weather = self.rng.choices(self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1)[0]
+        self._sky_entities = self._spawn_initial_entities()
+        self._next_weather_change = now + self.rng.uniform(30 * 60, 120 * 60)
+
+    def _render_scene_layers(self, frame: int, term_width: int) -> None:
+        if self.dark_mode:
+            self._render_stars(frame)
+        else:
+            self._refresh_weather_if_needed()
+        self._render_quarter_celestial(self._buffer, term_width)
+
+    def _update_entity_speed(self, frame: int, entity: SkyEntity) -> None:
+        if entity.get("fixed_speed"):
+            return
+        next_change = int(entity.get("next_speed_change", 0))
+        if frame >= next_change:
+            sprite_ref = entity["sprite"]
+            new_target = self._pick_weighted_float(sprite_ref.speed_weights)  # type: ignore[union-attr]
+            if not self._sprite_owns_direction(sprite_ref):  # type: ignore[arg-type]
+                direction = 1 if float(entity["speed"]) >= 0 else -1
+                new_target = abs(new_target) * direction
+            entity["target_speed"] = new_target
+            entity["next_speed_change"] = frame + self.rng.randint(80, 300)
+        current = float(entity["speed"])
+        target = float(entity.get("target_speed", current))
+        entity["speed"] = current + (target - current) * 0.05
+
+    def _render_entity(self, frame: int, entity: SkyEntity) -> None:
+        self._update_entity_speed(frame, entity)
+        entity["x"] = float(entity["x"]) + float(entity["speed"])
+        sprite = entity["sprite"]
+        renderable = sprite.tick(frame)  # type: ignore[union-attr]
+        sprite_w = int(entity["sprite_w"])
+        wrap = self.width + sprite_w + 20
+        x_pos = int(entity["x"]) % wrap - sprite_w - 10
+        y_pos = int(entity["y"])
+        y_offsets = getattr(sprite, "y_offsets", None)
+        if y_offsets:
+            y_pos += y_offsets[frame % len(y_offsets)]
+        render_sprite(self._buffer, int(entity["z"]), x_pos, y_pos, renderable, self.width, self.height)
 
     def _render_quarter_celestial(self, buffer: RenderBuffer, term_width: int) -> None:
         """Render celestial body (sun/moon) at top-right corner using SUN_SPRITE or MOON_SPRITE."""
@@ -325,80 +382,10 @@ class GlobalSky(Animation):
         render_sprite(buffer, Z20, top_left_x, cy, sprite, self.width, self.height)
 
     def update(self, frame: int) -> RenderBuffer:
-        # Reuse persistent buffer — avoid allocating 4000+ dict entries per frame
-        if not hasattr(self, "_buffer"):
-            self._buffer = RenderBuffer()
-        buffer = self._buffer
-
-        # Refresh terminal width every ~100 frames (~15s at 250ms tick)
-        if frame - self._term_width_frame >= 100:
-            self._cached_term_width = self._fetch_term_width()
-            self._term_width_frame = frame
-        term_width = self._cached_term_width
-
-        # Rebuild sky gradient cache on theme change (expensive — 4000 pixels)
-        if self._cached_dark_mode != self.dark_mode:
-            self._cached_sky_pixels = self._build_sky_cache()
-            self._cached_dark_mode = self.dark_mode
-            # Full rebuild: repaint sky into persistent buffer
-            buffer.clear()
-            for z, x, y, color in self._cached_sky_pixels:
-                buffer.add_pixel(z, x, y, color)
-
-        # Clear all dynamic layers each frame (everything except Z0)
-        for z in list(buffer.layers):
-            if z != Z0:
-                buffer.clear_layer(z)
-
-        if self.dark_mode:
-            # 2. Stars at Z10 (behind clouds)
-            for star in self.stars:
-                twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0  # type: ignore[operator]
-                if twinkle > 0.88:
-                    buffer.add_pixel(Z10, star["pos"][0], star["pos"][1], star["char"])
-
-            # 3. Moon — quarter celestial at top-right
-            self._render_quarter_celestial(buffer, term_width)
-        else:
-            # 2. Weather change check — re-spawn all entities with new cloud group
-            now = time.time()
-            if now >= self._next_weather_change:
-                self._weather = self.rng.choices(self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1)[0]
-                self._sky_entities = self._spawn_initial_entities()
-                self._next_weather_change = now + self.rng.uniform(30 * 60, 120 * 60)
-
-            # 3. Sun — quarter celestial at top-right
-            self._render_quarter_celestial(buffer, term_width)
-
-        # 5. Sky entities (both modes — drift horizontally at assigned Z-levels)
+        term_width = self._refresh_terminal_width(frame)
+        self._rebuild_sky_cache_if_needed()
+        self._clear_dynamic_layers()
+        self._render_scene_layers(frame, term_width)
         for entity in self._sky_entities:
-            if not entity.get("fixed_speed"):
-                # Speed easing: periodically pick new target, interpolate toward it
-                next_change = int(entity.get("next_speed_change", 0))
-                if frame >= next_change:
-                    sprite_ref = entity["sprite"]
-                    new_target = self._pick_weighted_float(sprite_ref.speed_weights)  # type: ignore[union-attr]
-                    if not self._sprite_owns_direction(sprite_ref):  # type: ignore[arg-type]
-                        direction = 1 if float(entity["speed"]) >= 0 else -1
-                        new_target = abs(new_target) * direction
-                    entity["target_speed"] = new_target
-                    entity["next_speed_change"] = frame + self.rng.randint(80, 300)
-                current = float(entity["speed"])
-                target = float(entity.get("target_speed", current))
-                entity["speed"] = current + (target - current) * 0.05
-
-            # Accumulate position from speed (avoids jumps when speed changes)
-            entity["x"] = float(entity["x"]) + float(entity["speed"])
-            sprite = entity["sprite"]
-            renderable = sprite.tick(frame)  # type: ignore[union-attr]
-            sprite_w = int(entity["sprite_w"])
-            wrap = self.width + sprite_w + 20
-            ex = int(entity["x"]) % wrap - sprite_w - 10
-            ey = int(entity["y"])
-            # Per-frame Y offset (bobbing) for AnimatedSprite with y_offsets
-            y_offsets = getattr(sprite, "y_offsets", None)
-            if y_offsets:
-                ey += y_offsets[frame % len(y_offsets)]
-            render_sprite(buffer, int(entity["z"]), ex, ey, renderable, self.width, self.height)
-
-        return buffer
+            self._render_entity(frame, entity)
+        return self._buffer

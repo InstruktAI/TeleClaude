@@ -3,21 +3,34 @@
 from __future__ import annotations
 
 import time
-
-from textual.widgets import Footer
+from typing import TYPE_CHECKING, Any
 
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     KillSessionRequest,
     PreviewChanged,
+    RestartSessionRequest,
     RestartSessionsRequest,
     StickyChanged,
 )
+from teleclaude.cli.tui.views._footer_actions import (
+    refresh_footer_bindings,
+    sync_default_footer_action,
+)
+from teleclaude.cli.tui.views._project_actions import save_new_project
 from teleclaude.cli.tui.views.interaction import TreeInteractionAction
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
-from teleclaude.cli.tui.widgets.modals import ConfirmModal, StartSessionModal
+from teleclaude.cli.tui.widgets.modals import (
+    ConfirmModal,
+    NewProjectModal,
+    NewProjectResult,
+    StartSessionModal,
+)
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
+
+if TYPE_CHECKING:
+    from textual.widget import Widget  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
 # Double-press detection threshold (seconds)
 DOUBLE_PRESS_THRESHOLD = 0.65
@@ -27,13 +40,23 @@ MAX_STICKY = 5
 class SessionsViewActionsMixin:
     """Keyboard actions, check_action, watch_cursor_index, on_focus for SessionsView."""
 
+    cursor_index = 0
+
+    if TYPE_CHECKING:
+        app: Any
+        _nav_items: list[Widget]
+        _projects: list[Any]
+        _sessions: list[Any]
+
     def action_cursor_up(self) -> None:
+        """Move the cursor to the previous sessions tree item."""
         if self._nav_items and self.cursor_index > 0:  # type: ignore[attr-defined]
             self.cursor_index -= 1  # type: ignore[attr-defined]
             self._update_cursor_highlight()  # type: ignore[attr-defined]
             self._scroll_to_cursor()
 
     def action_cursor_down(self) -> None:
+        """Move the cursor to the next sessions tree item."""
         if self._nav_items and self.cursor_index < len(self._nav_items) - 1:  # type: ignore[attr-defined]
             self.cursor_index += 1  # type: ignore[attr-defined]
             self._update_cursor_highlight()  # type: ignore[attr-defined]
@@ -271,9 +294,9 @@ class SessionsViewActionsMixin:
         row = self._current_session_row()  # type: ignore[attr-defined]
         if not row:
             return
-        from teleclaude.cli.tui.messages import RestartSessionRequest
-
-        self.post_message(RestartSessionRequest(row.session_id, row.session.computer or "local"))  # type: ignore[attr-defined]
+        self.post_message(  # type: ignore[attr-defined]
+            RestartSessionRequest(row.session_id, row.session.computer or "local")
+        )
 
     def action_restart_project(self) -> None:
         """R on project header: restart all sessions for that project."""
@@ -282,9 +305,14 @@ class SessionsViewActionsMixin:
             return
 
         project_path = item.project.path
-        session_ids = sorted({s.session_id for s in self._sessions if s.project_path == project_path})  # type: ignore[attr-defined]
+        session_ids = sorted(  # type: ignore[attr-defined]
+            {s.session_id for s in self._sessions if s.project_path == project_path}
+        )
         if not session_ids:
-            self.app.notify(f"No sessions to restart in {item.project.name}", severity="warning")  # type: ignore[attr-defined]
+            self.app.notify(
+                f"No sessions to restart in {item.project.name}",
+                severity="warning",
+            )  # type: ignore[attr-defined]
             return
 
         modal = ConfirmModal(
@@ -295,7 +323,9 @@ class SessionsViewActionsMixin:
         def on_confirm(confirmed: bool | None) -> None:
             if confirmed:
                 computer = item.project.computer or "local"
-                self.post_message(RestartSessionsRequest(computer=computer, session_ids=session_ids))  # type: ignore[attr-defined]
+                self.post_message(  # type: ignore[attr-defined]
+                    RestartSessionsRequest(computer=computer, session_ids=session_ids)
+                )
 
         self.app.push_screen(modal, on_confirm)  # type: ignore[attr-defined]
 
@@ -306,9 +336,14 @@ class SessionsViewActionsMixin:
             return
 
         computer = item.data.computer.name
-        session_ids = sorted({s.session_id for s in self._sessions if (s.computer or "local") == computer})  # type: ignore[attr-defined]
+        session_ids = sorted(  # type: ignore[attr-defined]
+            {s.session_id for s in self._sessions if (s.computer or "local") == computer}
+        )
         if not session_ids:
-            self.app.notify(f"No sessions to restart on {computer}", severity="warning")  # type: ignore[attr-defined]
+            self.app.notify(
+                f"No sessions to restart on {computer}",
+                severity="warning",
+            )  # type: ignore[attr-defined]
             return
 
         modal = ConfirmModal(
@@ -318,14 +353,14 @@ class SessionsViewActionsMixin:
 
         def on_confirm(confirmed: bool | None) -> None:
             if confirmed:
-                self.post_message(RestartSessionsRequest(computer=computer, session_ids=session_ids))  # type: ignore[attr-defined]
+                self.post_message(  # type: ignore[attr-defined]
+                    RestartSessionsRequest(computer=computer, session_ids=session_ids)
+                )
 
         self.app.push_screen(modal, on_confirm)  # type: ignore[attr-defined]
 
     def action_new_project(self) -> None:
         """n on computer header: open New Project modal."""
-        from teleclaude.cli.tui.widgets.modals import NewProjectModal, NewProjectResult
-
         item = self._current_item()  # type: ignore[attr-defined]
         if not isinstance(item, ComputerHeader):
             return
@@ -335,30 +370,20 @@ class SessionsViewActionsMixin:
         def on_result(result: NewProjectResult | None) -> None:
             if not result:
                 return
-            import subprocess
+            save_new_project(self.app, result)  # type: ignore[attr-defined]
 
-            yaml_patch = f"computer:\n  trusted_dirs:\n    - name: {result.name}\n      path: {result.path}\n"
-            if result.description:
-                yaml_patch += f"      description: {result.description}\n"
-            try:
-                subprocess.run(
-                    ["telec", "config", "patch", "--yaml", yaml_patch],
-                    check=True,
-                    capture_output=True,
-                )
-            except subprocess.CalledProcessError as exc:
-                self.app.notify(f"Failed to save project: {exc.stderr.decode()[:80]}", severity="error")  # type: ignore[attr-defined]
-                return
-            self.app.notify(f"Project '{result.name}' added")  # type: ignore[attr-defined]
-
-        existing_names = {p.name for p in self._projects if (p.computer or "local") == computer.name}  # type: ignore[attr-defined]
-        existing_paths = {p.path for p in self._projects if (p.computer or "local") == computer.name}  # type: ignore[attr-defined]
+        existing_names = {  # type: ignore[attr-defined]
+            p.name for p in self._projects if (p.computer or "local") == computer.name
+        }
+        existing_paths = {  # type: ignore[attr-defined]
+            p.path for p in self._projects if (p.computer or "local") == computer.name
+        }
         self.app.push_screen(  # type: ignore[attr-defined]
             NewProjectModal(existing_names=existing_names, existing_paths=existing_paths),
             on_result,
         )
 
-    def action_toggle_sticky_sessions(self) -> None:
+    def action_toggle_sticky_sessions(self) -> None:  # pylint: disable=too-many-branches
         """a: batch-toggle sticky sessions scoped to project, computer, or globally."""
         item = self._current_item()  # type: ignore[attr-defined]
 
@@ -370,7 +395,9 @@ class SessionsViewActionsMixin:
             }
         elif isinstance(item, ComputerHeader):
             computer = item.data.computer.name
-            scope_ids = {s.session_id for s in self._sessions if (s.computer or "local") == computer}  # type: ignore[attr-defined]
+            scope_ids = {  # type: ignore[attr-defined]
+                s.session_id for s in self._sessions if (s.computer or "local") == computer
+            }
         else:
             # Global: clear all stickies and preview
             if not self._sticky_session_ids and self.preview_session_id is None:  # type: ignore[attr-defined]
@@ -395,13 +422,21 @@ class SessionsViewActionsMixin:
                 self._sticky_session_ids.remove(sid)  # type: ignore[attr-defined]
         else:
             # Toggle ON: make first available eligible sessions in scope sticky
-            scope_sessions = [s for s in self._sessions if s.session_id in scope_ids and s.tmux_session_name]  # type: ignore[attr-defined]
+            scope_sessions = [  # type: ignore[attr-defined]
+                s for s in self._sessions if s.session_id in scope_ids and s.tmux_session_name
+            ]
             if not scope_sessions:
-                self.app.notify("No attachable sessions found", severity="warning")  # type: ignore[attr-defined]
+                self.app.notify(
+                    "No attachable sessions found",
+                    severity="warning",
+                )  # type: ignore[attr-defined]
                 return
             slots = MAX_STICKY - len(self._sticky_session_ids)  # type: ignore[attr-defined]
             if slots <= 0:
-                self.app.notify(f"Maximum {MAX_STICKY} sticky sessions reached", severity="warning")  # type: ignore[attr-defined]
+                self.app.notify(
+                    f"Maximum {MAX_STICKY} sticky sessions reached",
+                    severity="warning",
+                )  # type: ignore[attr-defined]
                 return
             to_add = scope_sessions[:slots]
             if len(scope_sessions) > slots:
@@ -423,22 +458,21 @@ class SessionsViewActionsMixin:
         """Enable/hide actions based on current tree node type."""
         del parameters
         item = self._current_item()  # type: ignore[attr-defined]
-
-        if action == "new_session":
-            return isinstance(item, ProjectHeader)
-        if action == "new_project":
-            return isinstance(item, ComputerHeader)
-        if action == "focus_pane":
-            return isinstance(item, (ProjectHeader, ComputerHeader, SessionRow))
-        if action in {"kill_session", "restart_session", "toggle_preview"}:
-            return isinstance(item, SessionRow)
-        if action == "restart_project":
-            return isinstance(item, ProjectHeader)
-        if action == "toggle_sticky_sessions":
+        action_targets: dict[str, tuple[type[Widget], ...] | None] = {
+            "new_session": (ProjectHeader,),
+            "new_project": (ComputerHeader,),
+            "focus_pane": (ProjectHeader, ComputerHeader, SessionRow),
+            "kill_session": (SessionRow,),
+            "restart_session": (SessionRow,),
+            "toggle_preview": (SessionRow,),
+            "restart_project": (ProjectHeader,),
+            "toggle_sticky_sessions": None,
+            "restart_all": (ComputerHeader,),
+        }
+        allowed_types = action_targets.get(action)
+        if allowed_types is None:
             return True
-        if action == "restart_all":
-            return isinstance(item, ComputerHeader)
-        return True
+        return isinstance(item, allowed_types)
 
     def _default_footer_action(self) -> str | None:
         """Return the primary action for the selected node."""
@@ -453,26 +487,19 @@ class SessionsViewActionsMixin:
 
     def _sync_default_footer_action(self) -> None:
         """Mark the active default action in Footer."""
-        if not self.is_attached:  # type: ignore[attr-defined]
-            return
-        try:
-            footer = self.app.query_one(Footer)  # type: ignore[attr-defined]
-        except Exception:
-            return
-        default_action = self._default_footer_action()
-        for key_widget in footer.query("FooterKey"):
-            key_widget.set_class(getattr(key_widget, "action", None) == default_action, "default-action")
+        sync_default_footer_action(self, self._default_footer_action())
 
     def watch_cursor_index(self, _index: int) -> None:
         """Refresh key bindings and track highlighted session identity."""
         if self._nav_items and 0 <= _index < len(self._nav_items):  # type: ignore[attr-defined]
             item = self._nav_items[_index]  # type: ignore[attr-defined]
-            self._highlighted_session_id = item.session_id if isinstance(item, SessionRow) else None  # type: ignore[attr-defined]
+            self._highlighted_session_id = (  # type: ignore[attr-defined]
+                item.session_id if isinstance(item, SessionRow) else None
+            )
         if self.is_attached:  # type: ignore[attr-defined]
             self.app.refresh_bindings()  # type: ignore[attr-defined]
             self.call_after_refresh(self._sync_default_footer_action)  # type: ignore[attr-defined]
 
     def on_focus(self) -> None:
         """Sync default footer styling when the view receives focus."""
-        self.app.refresh_bindings()  # type: ignore[attr-defined]
-        self.call_after_refresh(self._sync_default_footer_action)  # type: ignore[attr-defined]
+        refresh_footer_bindings(self, self._sync_default_footer_action)

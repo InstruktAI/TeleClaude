@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import colorsys
+import math
 import random
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite
 
 if TYPE_CHECKING:
@@ -45,28 +48,20 @@ Z80 = 80
 Z90 = 90
 
 
-class Spectrum:
+class Spectrum:  # pylint: disable=too-few-public-methods
     """G1: Multi-stop HSV gradient engine for mud-free transitions."""
 
     def __init__(self, hex_colors: list[str]):
-        import colorsys
-
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb
-
         self._hsv_stops = []
         for hc in hex_colors:
             try:
                 r, g, b = hex_to_rgb(hc)
                 self._hsv_stops.append(colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0))
-            except Exception:
+            except (ValueError, TypeError, AttributeError):
                 self._hsv_stops.append((0, 0, 0))
 
-    def get_color(self, position: float) -> str:
+    def get_color(self, position: float) -> str:  # pylint: disable=too-many-locals
         """Interpolate across the spectrum [0.0 to 1.0]."""
-        import colorsys
-
-        from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
         pos = max(0.0, min(1.0, position))
         if not self._hsv_stops:
             return "#000000"
@@ -108,6 +103,7 @@ class RenderBuffer:
         self.layers: dict[int, dict[tuple[int, int], str | int]] = {}
 
     def add_pixel(self, z: int, x: int, y: int, value: str | int) -> None:
+        """Write or overwrite a pixel value on a Z layer."""
         if z not in self.layers:
             self.layers[z] = {}
         self.layers[z][(x, y)] = value
@@ -130,7 +126,7 @@ def _norm_color(c: str | None) -> str | None:
     return c
 
 
-def render_sprite(
+def render_sprite(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     buffer: RenderBuffer,
     z: int,
     x: int,
@@ -154,7 +150,7 @@ def render_sprite(
     _render_plain_sprite(buffer, z, x, y, sprite, width, height)
 
 
-def _render_composite_sprite(
+def _render_composite_sprite(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     buffer: RenderBuffer,
     z: int,
     x: int,
@@ -202,7 +198,7 @@ def _resolve_layer_pixel(
     return (ch, prev, color, prev is None)
 
 
-def _write_composite_grid(
+def _write_composite_grid(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     buffer: RenderBuffer,
     z: int,
     x: int,
@@ -224,7 +220,7 @@ def _write_composite_grid(
             buffer.add_pixel(z, px, py, fg + ch)
 
 
-def _render_plain_sprite(
+def _render_plain_sprite(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     buffer: RenderBuffer,
     z: int,
     x: int,
@@ -247,7 +243,7 @@ def _render_plain_sprite(
                 buffer.add_pixel(z, px, py, ch)
 
 
-class Animation(ABC):
+class Animation(ABC):  # pylint: disable=too-many-instance-attributes
     """Abstract base class for all banner/logo animations."""
 
     # Class attribute: Override to False for big-only animations
@@ -259,7 +255,7 @@ class Animation(ABC):
     # If True, this color applies to the billboard background (reflection) as well
     is_external_light: bool = False
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         palette: ColorPalette,
         is_big: bool,
@@ -308,25 +304,32 @@ class Animation(ABC):
 
     def radial_field(self, x: int, y: int, cx: float, cy: float, radius: float) -> float:
         """Calculate 2D intensity [0.0 to 1.0] for a circular light source."""
-        import math
-
         dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
         if dist >= radius:
             return 0.0
         return 1.0 - (dist / radius)
 
+    @staticmethod
+    def scale_color(hex_color: str, factor: float) -> str:
+        """Scale each RGB channel of a hex color by a factor."""
+        r, g, b = hex_to_rgb(hex_color)
+        return rgb_to_hex(int(r * factor), int(g * factor), int(b * factor))
+
+    def get_dim_color(self, hex_color: str, factor: float = 0.6) -> str:
+        """Return a dimmed variant of a hex color, falling back to the input on parse errors."""
+        try:
+            return self.scale_color(hex_color, factor)
+        except (ValueError, TypeError, AttributeError):
+            return hex_color
+
     def enforce_vibrancy(self, hex_color: str, sat: float = 0.95, val: float = 1.0) -> str:
         """Force high-vibrancy HSV state while preserving hue."""
-        import colorsys
-
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-
         try:
             r, g, b = hex_to_rgb(hex_color)
             h, _, _ = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
             r, g, b = colorsys.hsv_to_rgb(h, sat, val)
             return rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
             return hex_color
 
     def is_complete(self, frame: int) -> bool:
@@ -339,19 +342,14 @@ class Animation(ABC):
         # Higher floor (0.6) to ensure movement is always visible
         if progress < 0.2:
             return 0.6 + (progress / 0.2) * 0.4  # 0.6 -> 1.0
-        elif progress < 0.6:
+        if progress < 0.6:
             return 1.0
-        elif progress < 0.8:
+        if progress < 0.8:
             return 1.0 - ((progress - 0.6) / 0.2) * 0.2  # 1.0 -> 0.8
-        else:
-            return 0.8 - ((progress - 0.8) / 0.2) * 0.2  # 0.8 -> 0.6
+        return 0.8 - ((progress - 0.8) / 0.2) * 0.2  # 0.8 -> 0.6
 
     def get_electric_neon(self, hex_color: str) -> str:
         """Force a color into the high-vibrancy Electric Neon spectrum."""
-        import colorsys
-
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-
         try:
             r, g, b = hex_to_rgb(hex_color)
             # Convert to HSV to enforce saturation and brightness
@@ -372,8 +370,6 @@ class Animation(ABC):
         # Shadow casters are allowed to use dark colors for atmospheric effects
         if self.is_shadow_caster:
             return hex_color
-
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 
         try:
             # Handle standard hex strings

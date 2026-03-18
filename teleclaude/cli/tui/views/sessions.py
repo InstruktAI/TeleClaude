@@ -45,6 +45,7 @@ from teleclaude.cli.tui.widgets.session_row import SessionRow
 if TYPE_CHECKING:
     from teleclaude.cli.models import AgentAvailabilityInfo
     from teleclaude.cli.tui.tree import TreeNode
+    from textual.timer import Timer  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
 
 class _PendingSelect(NamedTuple):
@@ -54,7 +55,12 @@ class _PendingSelect(NamedTuple):
     request_focus: bool
 
 
-class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget, can_focus=True):
+class SessionsView(  # pylint: disable=too-many-instance-attributes
+    SessionsViewActionsMixin,
+    SessionsViewHighlightsMixin,
+    Widget,
+    can_focus=True,
+):
     """Sessions tab view with hierarchical tree and keyboard navigation.
 
     Handles: arrow nav, Space (preview/sticky), Enter (focus pane),
@@ -115,8 +121,6 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
         # Flat list of navigable widgets for keyboard nav
         self._nav_items: list[Widget] = []
         # Timers for auto-clearing highlights on preview sessions
-        from textual.timer import Timer
-
         self._highlight_timers: dict[str, Timer] = {}
         # Track sessions already mounted this process — new sessions
         # auto-expand only on first mount, not on tree rebuilds
@@ -282,7 +286,7 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
 
         # Not in tree yet — keep pending
 
-    def _rebuild_tree(self) -> None:
+    def _rebuild_tree(self) -> None:  # pylint: disable=too-many-locals,too-many-branches
         """Rebuild the tree display from current data."""
         _rt0 = time.monotonic()
         self._logger.trace("[PERF] SessionsView._rebuild_tree START t=%.3f", _rt0)
@@ -363,7 +367,7 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
         # Apply pending auto-select after tree rebuild
         self._apply_pending_selection()
 
-    def _mount_node(self, container: VerticalScroll, node: TreeNode) -> None:
+    def _mount_node(self, container: VerticalScroll, node: TreeNode) -> None:  # pylint: disable=too-many-branches
         """Recursively mount tree nodes as widgets."""
         if is_computer_node(node):
             widget = ComputerHeader(data=node.data)
@@ -384,12 +388,11 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
             # avoid a double line with the GroupSeparator.
             if session_count > 0:
                 last_session_row = self._find_last_session_row_in_group(node)
-                if last_session_row:
-                    last_session_row.skip_bottom_connector = True
-                    connector_col = last_session_row._connector_col
-                else:
-                    connector_col = 2
-                container.mount(GroupSeparator(connector_col=connector_col))
+                container.mount(
+                    GroupSeparator(
+                        connector_col=self._project_group_separator_col(last_session_row),
+                    )
+                )
 
         elif is_session_node(node):
             session_data: SessionDisplayInfo = node.data
@@ -489,6 +492,13 @@ class SessionsView(SessionsViewActionsMixin, SessionsViewHighlightsMixin, Widget
             if widget is target:
                 return i
         return -1
+
+    def _project_group_separator_col(self, row: SessionRow | None) -> int:
+        """Return the connector column for a project's trailing separator."""
+        if row is None:
+            return 2
+        row.skip_bottom_connector = True
+        return row._connector_col  # pylint: disable=protected-access
 
     def _is_headless(self, row: SessionRow) -> bool:
         """Check if a session row is headless (no tmux pane)."""

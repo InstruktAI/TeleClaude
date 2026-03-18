@@ -32,6 +32,7 @@ class TodoFileRow(TelecMixin, Widget):
     }
     """
 
+    # pylint: disable=too-many-arguments
     def __init__(
         self,
         *,
@@ -50,6 +51,7 @@ class TodoFileRow(TelecMixin, Widget):
         self._tree_lines = tree_lines or []
 
     def render(self) -> Text:
+        """Render the file name with tree connectors matching its parent todo."""
         line = Text()
         is_selected = self.has_class("selected")
         # Tree prefix: same ancestor lines as parent todo, then file connector
@@ -63,5 +65,6 @@ class TodoFileRow(TelecMixin, Widget):
         return line
 
     def on_click(self, event: Click) -> None:
+        """Emit a pressed message when the row is clicked."""
         event.stop()
         self.post_message(self.Pressed(self))
