@@ -41,6 +41,20 @@ class _WriterStub:
         self.stopped = True
 
 
+def _make_session(
+    session_id: str,
+    *,
+    title: str = "title",
+    status: str = "idle",
+    computer: str = "c1",
+) -> SessionDTO:
+    return SessionDTO(session_id=session_id, title=title, status=status, computer=computer)
+
+
+def _session_snapshot(sessions: list[SessionDTO]) -> tuple[tuple[str, str, str, str], ...]:
+    return tuple((session.session_id, session.title, session.status, session.computer) for session in sessions)
+
+
 @pytest.mark.unit
 def test_set_preview_schedules_layout_with_snapshot_state() -> None:
     pane_manager = SimpleNamespace(
@@ -79,6 +93,84 @@ def test_set_preview_schedules_layout_with_snapshot_state() -> None:
             "focus": True,
         },
     ]
+
+
+@pytest.mark.unit
+def test_update_single_session_replaces_existing_session_and_updates_catalog() -> None:
+    catalog_calls: list[tuple[tuple[str, str, str, str], ...]] = []
+    existing = _make_session("session-1", title="old")
+    untouched = _make_session("session-2", title="keep")
+    replacement = _make_session("session-1", title="new", status="running")
+    bridge = object.__new__(PaneManagerBridge)
+    bridge._sessions = [existing, untouched]
+    bridge.pane_manager = SimpleNamespace(
+        update_session_catalog=lambda sessions: catalog_calls.append(_session_snapshot(sessions))
+    )
+
+    bridge.update_single_session(replacement)
+
+    assert bridge._sessions == [replacement, untouched]
+    assert catalog_calls == [
+        (
+            ("session-1", "new", "running", "c1"),
+            ("session-2", "keep", "idle", "c1"),
+        )
+    ]
+
+
+@pytest.mark.unit
+def test_update_single_session_appends_new_session_and_updates_catalog() -> None:
+    catalog_calls: list[tuple[tuple[str, str, str, str], ...]] = []
+    existing = _make_session("session-1", title="keep")
+    new_session = _make_session("session-2", title="new", status="running")
+    bridge = object.__new__(PaneManagerBridge)
+    bridge._sessions = [existing]
+    bridge.pane_manager = SimpleNamespace(
+        update_session_catalog=lambda sessions: catalog_calls.append(_session_snapshot(sessions))
+    )
+
+    bridge.update_single_session(new_session)
+
+    assert bridge._sessions == [existing, new_session]
+    assert catalog_calls == [
+        (
+            ("session-1", "keep", "idle", "c1"),
+            ("session-2", "new", "running", "c1"),
+        )
+    ]
+
+
+@pytest.mark.unit
+def test_remove_session_filters_existing_session_and_updates_catalog() -> None:
+    catalog_calls: list[tuple[tuple[str, str, str, str], ...]] = []
+    keep = _make_session("session-1", title="keep")
+    remove = _make_session("session-2", title="drop")
+    bridge = object.__new__(PaneManagerBridge)
+    bridge._sessions = [keep, remove]
+    bridge.pane_manager = SimpleNamespace(
+        update_session_catalog=lambda sessions: catalog_calls.append(_session_snapshot(sessions))
+    )
+
+    bridge.remove_session("session-2")
+
+    assert bridge._sessions == [keep]
+    assert catalog_calls == [(("session-1", "keep", "idle", "c1"),)]
+
+
+@pytest.mark.unit
+def test_remove_session_is_idempotent_for_missing_session_id() -> None:
+    catalog_calls: list[tuple[tuple[str, str, str, str], ...]] = []
+    existing = _make_session("session-1", title="keep")
+    bridge = object.__new__(PaneManagerBridge)
+    bridge._sessions = [existing]
+    bridge.pane_manager = SimpleNamespace(
+        update_session_catalog=lambda sessions: catalog_calls.append(_session_snapshot(sessions))
+    )
+
+    bridge.remove_session("missing")
+
+    assert bridge._sessions == [existing]
+    assert catalog_calls == [(("session-1", "keep", "idle", "c1"),)]
 
 
 @pytest.mark.unit

@@ -161,6 +161,30 @@ class PaneManagerBridge(TelecMixin, Widget):
 
         self._writer.schedule(_do_layout)
 
+    def update_single_session(self, session: SessionInfo) -> None:
+        """Update or add a single session in the bridge's session list and catalog.
+
+        Called from on_session_started/on_session_updated so the bridge has
+        current session data before any PreviewChanged layout runs.
+        """
+        updated = False
+        next_sessions: list[SessionInfo] = []
+        for existing in self._sessions:
+            if existing.session_id == session.session_id:
+                next_sessions.append(session)
+                updated = True
+            else:
+                next_sessions.append(existing)
+        if not updated:
+            next_sessions.append(session)
+        self._sessions = next_sessions
+        self.pane_manager.update_session_catalog(self._sessions)
+
+    def remove_session(self, session_id: str) -> None:
+        """Remove a session from the bridge's session list and catalog."""
+        self._sessions = [s for s in self._sessions if s.session_id != session_id]
+        self.pane_manager.update_session_catalog(self._sessions)
+
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Update cached data from API refresh."""
         self._computers = {c.name: c for c in message.computers}

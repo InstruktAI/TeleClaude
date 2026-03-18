@@ -25,6 +25,7 @@ from teleclaude.cli.tui.messages import (
     SessionStarted,
     SessionUpdated,
 )
+from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 
@@ -142,20 +143,31 @@ class TelecAppWsMixin:
         session = message.session
         if session.active_agent:
             self._session_agents[session.session_id] = session.active_agent  # type: ignore[attr-defined]
+
+        # Update pane bridge catalog so layout runs have current data
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
+        pane_bridge.update_single_session(session)
+
+        # Apply optimistically — session carries full state from WebSocket
+        sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
+        sessions_view.update_session(session)
+
         # Auto-select new user-initiated sessions only while Sessions tab is active.
-        # Otherwise this steals focus from Preparation/other tabs.
         if not session.initiator_session_id:
             tabs = self.query_one("#main-tabs", TabbedContent)  # type: ignore[attr-defined]
             if tabs.active == "sessions":
-                sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
                 sessions_view.request_select_session(session.session_id, request_focus=True)
-        # Trigger full data refresh so tree rebuilds
-        self._refresh_data()  # type: ignore[attr-defined]
+                sessions_view._apply_pending_selection()
 
     def on_session_updated(self, message: SessionUpdated) -> None:
         session = message.session
         if session.active_agent:
             self._session_agents[session.session_id] = session.active_agent  # type: ignore[attr-defined]
+
+        # Update pane bridge catalog so layout runs have current data
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
+        pane_bridge.update_single_session(session)
+
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
         sessions_view.update_session(session)
         # Session may now have a tmux pane — try pending auto-select
@@ -163,9 +175,13 @@ class TelecAppWsMixin:
 
     def on_session_closed(self, message: SessionClosed) -> None:
         self._session_agents.pop(message.session_id, None)  # type: ignore[attr-defined]
+
+        # Update pane bridge catalog
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
+        pane_bridge.remove_session(message.session_id)
+
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
         sessions_view.confirm_session_closed(message.session_id)
-        self._refresh_data()  # type: ignore[attr-defined]
 
     def on_agent_activity(self, message: AgentActivity) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
