@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
+    ENV_SYSTEM_ROLE,
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
@@ -310,11 +311,19 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         # Principal/role available via DB lookup from session marker file.
         # Do NOT inject as env vars — file-based contract is the single source of truth.
 
+        # Prevent pre-commit from auto-stashing unstaged files for non-system roles.
+        # Stash is repo-wide and corrupts multi-worktree flows. Worktrees are
+        # task-scoped — builders should stage everything before committing.
+        # System role retains full git capability including pre-commit stash.
+        _effective_role = env_vars.get(ENV_SYSTEM_ROLE, ROLE_WORKER)
+        if _effective_role != ROLE_SYSTEM:
+            env_vars["PRE_COMMIT_NO_STASH"] = "1"
+
         # Expose system_role to the git wrapper for permission decisions
         if session.session_metadata and session.session_metadata.system_role:
             role = session.session_metadata.system_role.strip().lower()
             if role in _VALID_SYSTEM_ROLES:
-                env_vars["TELECLAUDE_SYSTEM_ROLE"] = role
+                env_vars[ENV_SYSTEM_ROLE] = role
             else:
                 logger.warning(
                     "Session %s has unrecognized system_role=%r, defaulting to worker",

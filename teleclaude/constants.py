@@ -40,6 +40,7 @@ LOCAL_COMPUTER = "local"
 ENV_ENABLE = "1"
 
 # System roles
+ENV_SYSTEM_ROLE = "TELECLAUDE_SYSTEM_ROLE"
 ROLE_SYSTEM = "system"
 ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"
