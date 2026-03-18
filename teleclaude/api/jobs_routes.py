@@ -19,6 +19,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("")
 async def list_jobs() -> list[JobDTO]:
     """List scheduled jobs."""
+
     def _get_jobs_sync() -> list[JobDTO]:
         try:
             python_jobs = discover_jobs()
@@ -82,6 +83,7 @@ async def run_job(
     background_tasks: fastapi.BackgroundTasks,
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Run a scheduled job immediately (fire-and-forget)."""
+
     def _run_sync() -> None:
         try:
             logger.info("Background job triggered: %s", name)

@@ -55,8 +55,7 @@ def register_system(catalog: EventCatalog) -> None:
         EventSchema(
             event_type="system.failure_cascade.detected",
             description=(
-                "Multiple worker crashes detected within a short window. "
-                "Payload: crash_count, window_start, workers"
+                "Multiple worker crashes detected within a short window. Payload: crash_count, window_start, workers"
             ),
             default_level=EventLevel.BUSINESS,
             domain="system",

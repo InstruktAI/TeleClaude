@@ -37,6 +37,7 @@ class DocPreviewState:
 @dataclass
 class SessionViewState:
     """State for Sessions view."""
+
     # pylint: disable=too-many-instance-attributes
 
     selected_index: int = 0

@@ -269,13 +269,18 @@ def _handle_promote_action(
     if not parsed.target_domain:
         print("Error: --domain is required when promoting between lifecycle scopes", file=sys.stderr)
         sys.exit(1)
-    manager.promote(
-        cartridge_id=parsed.cartridge_id,
+    from teleclaude.events.lifecycle import PromotionSpec
+
+    spec = PromotionSpec(
         from_scope=cartridge_scope(parsed.from_scope),
         to_scope=cartridge_scope(parsed.to_scope),
         target_domain=parsed.target_domain,
-        caller_is_admin=is_admin,
         source_member_id=getattr(parsed, "source_member_id", None),
+    )
+    manager.promote(
+        cartridge_id=parsed.cartridge_id,
+        spec=spec,
+        caller_is_admin=is_admin,
     )
     _emit_cartridge_result(
         use_json,

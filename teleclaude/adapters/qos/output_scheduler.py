@@ -121,6 +121,42 @@ class OutputQoSScheduler:
         # Background dispatch task.
         self._task: asyncio.Task[None] | None = None
 
+    # ------------------------------------------------------------------
+    # Typed accessors for nested state (avoids __getattr__ returning object)
+    # ------------------------------------------------------------------
+
+    @property
+    def _normal_slots(self) -> dict[str, QoSPayload]:
+        return self._queues.normal_slots
+
+    @property
+    def _priority_queues(self) -> dict[str, deque[QoSPayload]]:
+        return self._queues.priority_queues
+
+    @property
+    def _active_emitters(self) -> dict[str, float]:
+        return self._queues.active_emitters
+
+    @property
+    def _rr_sessions(self) -> list[str]:
+        return self._queues.rr_sessions
+
+    @property
+    def _ema_session_count(self) -> float:
+        return self._stats.ema_session_count
+
+    @property
+    def _coalesced(self) -> int:
+        return self._stats.coalesced
+
+    @property
+    def _dispatched(self) -> int:
+        return self._stats.dispatched
+
+    @property
+    def _dispatch_errors(self) -> int:
+        return self._stats.dispatch_errors
+
     def __getattr__(self, name: str) -> object:
         """Expose queue and stats fields under the legacy private attribute names."""
         if name == "_rr_sessions":

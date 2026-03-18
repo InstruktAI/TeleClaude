@@ -19,6 +19,7 @@ from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.theme import get_neutral_color
 from teleclaude.cli.tui.widgets._status_controls import (
+    PersistedControlState,
     build_agent_pill,
     build_pane_theming_cells,
     cycle_animation_mode,
@@ -421,8 +422,8 @@ class TelecFooter(Widget):
         if self.is_mounted:
             self.post_message(StateChanged())
 
-    def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict - widget state payload
+    def get_persisted_state(self) -> PersistedControlState:
         return get_persisted_state(self.animation_mode, self.pane_theming_mode)
 
-    def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict - widget state payload
+    def load_persisted_state(self, data: PersistedControlState) -> None:
         load_persisted_state(self, data)

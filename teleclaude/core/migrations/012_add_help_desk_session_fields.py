@@ -6,7 +6,6 @@ Also adds human_email and human_role if missing from older databases.
 """
 # pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
-
 from __future__ import annotations
 
 import aiosqlite

@@ -222,9 +222,7 @@ class PaneLayoutMixin:
         if not self.state.active_session_id:  # type: ignore[attr-defined]
             return
         active_session_id = self.state.active_session_id  # type: ignore[attr-defined]
-        if any(
-            spec.session_id == active_session_id for spec in self._sticky_specs
-        ):  # type: ignore[attr-defined]
+        if any(spec.session_id == active_session_id for spec in self._sticky_specs):  # type: ignore[attr-defined]
             self.state.active_session_id = None  # type: ignore[attr-defined]
 
     def _refresh_session_pane_backgrounds(self) -> None:

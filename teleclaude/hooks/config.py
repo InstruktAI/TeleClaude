@@ -24,7 +24,9 @@ def parse_criterion(data: dict[str, Any]) -> PropertyCriterion:  # guard: loose-
     )
 
 
-def _parse_contract_criteria(contract_data: dict[str, Any]) -> tuple[  # guard: loose-dict - YAML config
+def _parse_contract_criteria(
+    contract_data: dict[str, Any],
+) -> tuple[  # guard: loose-dict - YAML config
     PropertyCriterion | None,
     PropertyCriterion | None,
     dict[str, PropertyCriterion],
@@ -76,11 +78,7 @@ def _resolve_inbound_registration(
         path = f"/hooks/inbound/{source_name}"
         logger.info("Inbound path derived from source name: %s -> %s", source_name, path)
     normalizer_key = source_config.get("normalizer") or source_name
-    verify_config = {
-        key: source_config[key]
-        for key in ("verify_token", "secret")
-        if key in source_config
-    }
+    verify_config = {key: source_config[key] for key in ("verify_token", "secret") if key in source_config}
     return path, normalizer_key, verify_config or None
 
 

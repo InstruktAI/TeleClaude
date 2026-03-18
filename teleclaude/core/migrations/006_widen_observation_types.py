@@ -6,7 +6,6 @@ Keeps: decision, discovery. App-layer enum is the source of truth.
 """
 # pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
-
 from __future__ import annotations
 
 import aiosqlite

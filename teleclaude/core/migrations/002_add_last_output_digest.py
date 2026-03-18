@@ -1,7 +1,6 @@
 """Add last_output_digest column to sessions table."""
 # pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
-
 from __future__ import annotations
 
 import aiosqlite

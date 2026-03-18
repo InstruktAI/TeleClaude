@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rich.style import Style
 from rich.text import Text
 from textual.events import Click
 from textual.reactive import reactive
@@ -11,6 +12,7 @@ from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.widgets._status_controls import (
+    PersistedControlState,
     build_agent_pill,
     build_pane_theming_cells,
     cycle_animation_mode,
@@ -64,7 +66,7 @@ class StatusBar(TelecMixin, Widget):
         """Build a single agent availability pill."""
         return build_agent_pill(agent, self._agent_availability.get(agent))
 
-    def _build_pane_theming_cells(self) -> list[tuple[str, object]]:
+    def _build_pane_theming_cells(self) -> list[tuple[str, Style]]:
         """Build pane theming indicator cells with agent-colored squares.
 
         Matches old curses TUI footer._format_pane_mode_cells:
@@ -161,10 +163,10 @@ class StatusBar(TelecMixin, Widget):
         if self.is_mounted:
             self.post_message(StateChanged())
 
-    def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict - widget state payload
+    def get_persisted_state(self) -> PersistedControlState:
         """Return the persisted state payload for footer toggles."""
         return get_persisted_state(self.animation_mode, self.pane_theming_mode)
 
-    def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict - widget state payload
+    def load_persisted_state(self, data: PersistedControlState) -> None:
         """Restore persisted footer toggle state."""
         load_persisted_state(self, data)

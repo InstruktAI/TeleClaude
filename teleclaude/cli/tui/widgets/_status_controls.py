@@ -92,11 +92,11 @@ def get_persisted_state(animation_mode: str, pane_theming_mode: str) -> Persiste
 def load_persisted_state(widget: _SettingsWidget, data: PersistedControlState) -> None:
     """Restore persisted footer control state onto a widget instance."""
     animation_mode = data.get("animation_mode")
-    if isinstance(animation_mode, str) and animation_mode in _ANIMATION_MODES:
+    if animation_mode and animation_mode in _ANIMATION_MODES:
         widget.animation_mode = animation_mode
 
     pane_theming_mode = data.get("pane_theming_mode")
-    if isinstance(pane_theming_mode, str) and pane_theming_mode:
+    if pane_theming_mode:
         try:
             widget.pane_theming_mode = normalize_pane_theming_mode(pane_theming_mode)
         except ValueError:

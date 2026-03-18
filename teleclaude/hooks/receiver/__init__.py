@@ -447,9 +447,7 @@ def _update_session_native_fields(
         previous_native_log_file = row.native_log_file
 
         # Chain accumulation: preserve old transcript path before replacing
-        if (
-            native_log_file and previous_native_log_file and previous_native_log_file != native_log_file
-        ):
+        if native_log_file and previous_native_log_file and previous_native_log_file != native_log_file:
             _append_transcript_history(row, previous_native_log_file)
 
         if native_log_file:

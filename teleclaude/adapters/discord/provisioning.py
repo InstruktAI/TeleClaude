@@ -6,7 +6,7 @@ Handles guild resolution, channel/category/forum creation, and config persistenc
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -70,10 +70,7 @@ class ProvisioningMixin:
             fetch_guild_fn = getattr(self._client, "fetch_guild", None)
             if callable(fetch_guild_fn):
                 try:
-                    fetch_guild = cast(
-                        Callable[[int], Awaitable[object]],
-                        self._require_async_callable(fetch_guild_fn, label="fetch_guild"),
-                    )
+                    fetch_guild = self._require_async_callable(fetch_guild_fn, label="fetch_guild")
                     guild = await fetch_guild(self._guild_id)
                 except discord_operation_exceptions as exc:
                     logger.debug("Failed to fetch guild %s: %s", self._guild_id, exc)
@@ -105,10 +102,7 @@ class ProvisioningMixin:
             return None
 
         try:
-            create_category = cast(
-                Callable[..., Awaitable[object]],
-                self._require_async_callable(create_fn, label="guild.create_category"),
-            )
+            create_category = self._require_async_callable(create_fn, label="guild.create_category")
             category = await create_category(name=name)
             logger.info("Created Discord category: %s (id=%s)", name, getattr(category, "id", "?"))
             return category
@@ -141,10 +135,7 @@ class ProvisioningMixin:
             return None
 
         try:
-            create_forum = cast(
-                Callable[..., Awaitable[object]],
-                self._require_async_callable(create_fn, label="guild.create_forum"),
-            )
+            create_forum = self._require_async_callable(create_fn, label="guild.create_forum")
             if category is not None:
                 forum = await create_forum(name=name, topic=topic, category=category)
             else:
@@ -174,10 +165,7 @@ class ProvisioningMixin:
             return None
 
         try:
-            create_text_channel = cast(
-                Callable[..., Awaitable[object]],
-                self._require_async_callable(create_fn, label="guild.create_text_channel"),
-            )
+            create_text_channel = self._require_async_callable(create_fn, label="guild.create_text_channel")
             if category is not None:
                 channel = await create_text_channel(name=name, category=category)
             else:

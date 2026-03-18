@@ -60,17 +60,11 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         _operator_chat_channel_id: int | None
         _announcements_channel_id: int | None
         _general_channel_id: int | None
-
-        def _parse_optional_int(self, value: object) -> int | None: ...
-
-        @staticmethod
-        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
-
-        async def _get_channel(self, channel_id: int) -> object | None: ...
-
-        def _is_forum_channel(self, channel: object) -> bool: ...
-
-        def _get_enabled_agents(self) -> list[str]: ...
+        _parse_optional_int: Callable[[object], int | None]  # pylint: disable=used-before-assignment
+        _require_async_callable: Callable[..., Callable[..., Awaitable[object]]]  # pylint: disable=used-before-assignment
+        _get_channel: Callable[[int], Awaitable[object | None]]  # pylint: disable=used-before-assignment
+        _is_forum_channel: Callable[[object], bool]  # pylint: disable=used-before-assignment
+        _get_enabled_agents: Callable[[], list[str]]
 
         @property
         def _multi_agent(self) -> bool: ...

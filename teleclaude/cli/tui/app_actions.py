@@ -89,7 +89,7 @@ class TelecAppActionsMixin:
                 sticky_ids.clear()
             for widget in self._session_widgets(sessions_view):
                 if hasattr(widget, "is_sticky"):
-                    widget.is_sticky = False
+                    widget.is_sticky = False  # type: ignore[attr-defined]
             self.post_message(StickyChanged([]))  # type: ignore[attr-defined]
         if had_doc:
             self._clear_bridge_preview(pane_bridge)

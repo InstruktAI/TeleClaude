@@ -1,7 +1,6 @@
 """Add transcript_files column to sessions for multi-file transcript chain storage."""
 # pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
-
 from __future__ import annotations
 
 import aiosqlite

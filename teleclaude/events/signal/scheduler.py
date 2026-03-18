@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 def _resolve_pull(cartridge: object) -> Callable[[PipelineContext], Awaitable[int]]:
     """Return the cartridge pull method after validating it exists."""
     pull = getattr(cartridge, "pull", None)

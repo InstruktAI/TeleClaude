@@ -2,7 +2,6 @@
 
 """Add turn_triggered_by_linked_output flag for echo suppression."""
 
-
 from __future__ import annotations
 
 import aiosqlite

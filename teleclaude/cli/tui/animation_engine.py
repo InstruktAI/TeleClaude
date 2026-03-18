@@ -326,7 +326,7 @@ class AnimationEngine:
             if not isinstance(fetched_width, int):
                 return
             width = fetched_width
-        animation._cached_term_width = width
+        animation._cached_term_width = width  # type: ignore[attr-defined]
 
     def invalidate_term_width(self, width: int | None = None) -> None:
         """Force all running animations to re-fetch terminal width.

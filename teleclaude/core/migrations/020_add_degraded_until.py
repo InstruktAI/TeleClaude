@@ -1,7 +1,6 @@
 """Add degraded_until column to agent_availability table."""
 # pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
-
 from __future__ import annotations
 
 import aiosqlite

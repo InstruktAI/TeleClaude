@@ -60,7 +60,9 @@ def _parse_numeric_id(raw_id: str) -> int:
         raise SystemExit(1) from exc
 
 
-async def _memory_search(query: str, limit: int, obs_type: str | None, project: str | None) -> list[dict[str, object]]:  # guard: loose-dict - JSON API response
+async def _memory_search(
+    query: str, limit: int, obs_type: str | None, project: str | None
+) -> list[dict[str, object]]:  # guard: loose-dict - JSON API response
     """Run a memory search request."""
     api = TelecAPIClient()
     await api.connect()
@@ -70,7 +72,9 @@ async def _memory_search(query: str, limit: int, obs_type: str | None, project: 
         await api.close()
 
 
-async def _memory_save(text: str, title: str | None, obs_type: str | None, project: str | None) -> dict[str, object]:  # guard: loose-dict - JSON API response
+async def _memory_save(
+    text: str, title: str | None, obs_type: str | None, project: str | None
+) -> dict[str, object]:  # guard: loose-dict - JSON API response
     """Save a memory observation."""
     api = TelecAPIClient()
     await api.connect()
@@ -90,7 +94,9 @@ async def _memory_delete(obs_id: int) -> dict[str, object]:  # guard: loose-dict
         await api.close()
 
 
-async def _memory_timeline(anchor_id: int, before: int, after: int, project: str | None) -> list[dict[str, object]]:  # guard: loose-dict - JSON API response
+async def _memory_timeline(
+    anchor_id: int, before: int, after: int, project: str | None
+) -> list[dict[str, object]]:  # guard: loose-dict - JSON API response
     """Load a timeline around an observation."""
     api = TelecAPIClient()
     await api.connect()
@@ -100,7 +106,9 @@ async def _memory_timeline(anchor_id: int, before: int, after: int, project: str
         await api.close()
 
 
-def _print_memory_table(results: list[dict[str, object]], heading: str, *, anchor_id: int | None = None) -> None:  # guard: loose-dict - JSON API response
+def _print_memory_table(
+    results: list[dict[str, object]], heading: str, *, anchor_id: int | None = None
+) -> None:  # guard: loose-dict - JSON API response
     """Render memory search or timeline rows in a shared table format."""
     print(heading)
     print(f"{'ID':>6} | {'Type':<12} | {'Project':<16} | {'Title':<40} | Snippet")

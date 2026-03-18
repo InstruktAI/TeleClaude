@@ -166,6 +166,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
                 logger.error("WebSocket error: %s", e, exc_info=True)
         finally:
             await self._drop_ws_client(websocket, reason="connection-end")
+
     # pylint: enable=too-many-branches,too-many-statements,too-many-nested-blocks
 
     def _update_cache_interest(self) -> list[tuple[str, str]]:

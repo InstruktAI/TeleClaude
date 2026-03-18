@@ -5,7 +5,6 @@ SQLite persistence ensures notifications survive restarts.
 """
 # pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
-
 import aiosqlite
 
 

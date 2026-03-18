@@ -57,7 +57,9 @@ class DataRefreshed(Message):
         self._chiptunes = self._build_chiptunes_state(chiptunes_state)
 
     @staticmethod
-    def _build_chiptunes_state(chiptunes_state: dict[str, object]) -> _ChiptunesState:  # guard: loose-dict - dynamic payload
+    def _build_chiptunes_state(
+        chiptunes_state: dict[str, object],
+    ) -> _ChiptunesState:  # guard: loose-dict - dynamic payload
         """Normalize optional chiptunes fields into an immutable payload."""
         expected = {
             "chiptunes_loaded": "loaded",

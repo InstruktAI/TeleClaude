@@ -1,7 +1,6 @@
 """Add bookkeeping and relay columns to sessions for help desk platform."""
 # pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
-
 from __future__ import annotations
 
 import aiosqlite

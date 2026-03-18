@@ -57,5 +57,6 @@ def _run_receiver_main() -> None:
     receiver_module = importlib.import_module("teleclaude.hooks.receiver")
     receiver_module.main()
 
+
 if __name__ == "__main__":
     _run_receiver_main()

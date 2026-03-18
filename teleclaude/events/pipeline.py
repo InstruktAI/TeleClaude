@@ -43,6 +43,8 @@ class PipelineContext:
     trust_config: TrustConfig = field(default_factory=_default_trust_config)
     correlation_config: CorrelationConfig = field(default_factory=_default_correlation_config)
     producer: EventProducer | None = None
+    ai_client: object = None
+    emit: Callable[..., object] | None = None
 
 
 class Cartridge(Protocol):

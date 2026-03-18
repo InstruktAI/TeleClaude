@@ -41,6 +41,7 @@ from teleclaude.core.next_machine.git_ops import (
     has_uncommitted_changes,
 )
 from teleclaude.core.next_machine.output_formatting import (
+    ToolCallRequest,
     format_error,
     format_finalize_handoff_complete,
     format_stash_debt,
@@ -592,7 +593,7 @@ async def _dispatch_fix_review(
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_fix_review")
-    return format_tool_call(
+    return format_tool_call(ToolCallRequest(
         command=SlashCommand.NEXT_FIX_REVIEW,
         args=resolved_slug,
         project=cwd,
@@ -607,7 +608,7 @@ async def _dispatch_fix_review(
             "iterate without context-destroying churn. This fallback path is for when the "
             "reviewer session has already ended."
         ),
-    )
+    ))
 
 
 async def _dispatch_build_phase(
@@ -634,7 +635,7 @@ async def _dispatch_build_phase(
     is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
     if is_bug:
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
-        return format_tool_call(
+        return format_tool_call(ToolCallRequest(
             command=SlashCommand.NEXT_BUGS_FIX,
             args=resolved_slug,
             project=cwd,
@@ -642,10 +643,10 @@ async def _dispatch_build_phase(
             subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
             pre_dispatch=pre_dispatch,
-        )
+        ))
 
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
-    return format_tool_call(
+    return format_tool_call(ToolCallRequest(
         command=SlashCommand.NEXT_BUILD,
         args=resolved_slug,
         project=cwd,
@@ -653,7 +654,7 @@ async def _dispatch_build_phase(
         subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
         next_call=f"telec todo work {resolved_slug}",
         pre_dispatch=pre_dispatch,
-    )
+    ))
 
 
 async def _dispatch_review_phase(
@@ -695,7 +696,7 @@ async def _dispatch_review_phase(
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_review")
-    return format_tool_call(
+    return format_tool_call(ToolCallRequest(
         command=SlashCommand.NEXT_REVIEW_BUILD,
         args=resolved_slug,
         project=cwd,
@@ -703,7 +704,7 @@ async def _dispatch_review_phase(
         subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
         next_call=f"telec todo work {resolved_slug}",
         note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
-    )
+    ))
 
 
 async def _run_review_gates(
@@ -869,14 +870,14 @@ async def _dispatch_deferrals(
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_defer")
-    return format_tool_call(
+    return format_tool_call(ToolCallRequest(
         command="next-defer",
         args=resolved_slug,
         project=cwd,
         guidance=guidance,
         subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
         next_call=f"telec todo work {resolved_slug}",
-    )
+    ))
 
 
 async def _dispatch_finalize_prepare(
@@ -908,7 +909,7 @@ async def _dispatch_finalize_prepare(
     is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
     note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
-    return format_tool_call(
+    return format_tool_call(ToolCallRequest(
         command=SlashCommand.NEXT_FINALIZE,
         args=resolved_slug,
         project=cwd,
@@ -916,7 +917,7 @@ async def _dispatch_finalize_prepare(
         subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
         next_call=f"telec todo work {resolved_slug}",
         note=note,
-    )
+    ))
 
 
 __all__ = ["next_work"]

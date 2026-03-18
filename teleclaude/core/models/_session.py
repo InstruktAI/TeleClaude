@@ -227,7 +227,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
 
     @classmethod
     def from_dict(  # pylint: disable=too-many-locals  # Session deserialization normalizes many optional fields
-        cls, data: dict[str, object]  # guard: loose-dict - JSON deserialization
+        cls,
+        data: dict[str, object],  # guard: loose-dict - JSON deserialization
     ) -> "Session":
         """Create session from dictionary (from database/JSON)."""
 
