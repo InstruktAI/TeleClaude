@@ -47,7 +47,6 @@
   - session-adaptive-runtime
 - slug: mark-phase-force
 - slug: telec-message-primitive
-- slug: fix-tui-preview-race
 - slug: pylint-cleanup-1
 - slug: pylint-cleanup-2
 - slug: pylint-cleanup-3
