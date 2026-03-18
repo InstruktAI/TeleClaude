@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from teleclaude.cli.models import SessionInfo
 
 _SENTINEL = object()
+PANE_WRITER_ERRORS = (AttributeError, LookupError, OSError, RuntimeError, TypeError, ValueError)
 
 
 class PaneWriter:
@@ -91,7 +92,7 @@ class PaneWriter:
             return
         try:
             fn()
-        except Exception:
+        except PANE_WRITER_ERRORS:
             logger.exception("PaneWriter error")
 
 
@@ -193,12 +194,31 @@ class PaneManagerBridge(TelecMixin, Widget):
 
         # On reload, map discovered panes to session state now that the
         # session catalog is available.  This replaces seed_layout_for_reload.
-        if self.pane_manager._reload_session_panes or self.pane_manager._reload_command_panes:
+        has_reload_panes = getattr(self.pane_manager, "has_reload_panes", None)
+        should_seed_reload = (
+            has_reload_panes()
+            if callable(has_reload_panes)
+            else bool(
+                getattr(self.pane_manager, "_reload_session_panes", {})
+                or getattr(self.pane_manager, "_reload_command_panes", [])
+            )
+        )
+        if should_seed_reload:
             self.pane_manager.seed_for_reload(
                 active_session_id=self._preview_session_id,
                 sticky_session_ids=list(self._sticky_session_ids),
                 get_computer_info=self._get_computer_info,
             )
+
+    def sync_layout_state(
+        self,
+        *,
+        preview_session_id: str | None,
+        sticky_session_ids: list[str],
+    ) -> None:
+        """Sync preview and sticky ids without scheduling a layout update."""
+        self._preview_session_id = preview_session_id
+        self._sticky_session_ids = list(sticky_session_ids)
 
     def _set_preview(
         self,
@@ -233,20 +253,36 @@ class PaneManagerBridge(TelecMixin, Widget):
     def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
         """Handle doc preview request — view mode without focus."""
         self._set_preview(
-            doc=DocPreviewState(doc_id=message.doc_id, command=message.command, title=message.title),
+            doc=DocPreviewState(
+                doc_id=message.doc_id,
+                command=message.command,
+                title=message.title,
+            ),
             focus=False,
         )
 
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
         """Handle doc edit request — edit mode with focus."""
         self._set_preview(
-            doc=DocPreviewState(doc_id=message.doc_id, command=message.command, title=message.title),
+            doc=DocPreviewState(
+                doc_id=message.doc_id,
+                command=message.command,
+                title=message.title,
+            ),
             focus=True,
         )
 
     def reapply_colors(self) -> None:
         """Re-apply agent colors after theme change (non-blocking)."""
         self._writer.schedule(self.pane_manager.reapply_agent_colors)
+
+    def has_doc_preview(self) -> bool:
+        """Return whether a document preview is currently active."""
+        return self._active_doc_preview is not None
+
+    def clear_preview(self, *, focus: bool = False) -> None:
+        """Clear the current preview using the shared preview setter."""
+        self._set_preview(focus=focus)
 
     def cleanup(self) -> None:
         """Clean up all panes on exit."""

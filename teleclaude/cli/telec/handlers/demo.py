@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -19,6 +21,8 @@ __all__ = [
     "_find_demo_md",
     "_handle_todo_demo",
 ]
+
+_DEMO_SUBCOMMANDS = {"list", "validate", "run", "create"}
 
 
 def _extract_demo_blocks(content: str) -> list[tuple[int, str, bool, str]]:
@@ -96,8 +100,6 @@ def _check_no_demo_marker(content: str) -> str | None:
 
 def _demo_list(project_root: Path) -> None:
     """List available demos from demos/ directory."""
-    import json
-
     demos_dir = project_root / "demos"
     if not demos_dir.exists():
         print("No demos available")
@@ -191,66 +193,71 @@ def _demo_validate(slug: str, project_root: Path) -> None:
     raise SystemExit(0)
 
 
-def _demo_run(slug: str, project_root: Path) -> None:
-    """Execute bash blocks from demo.md."""
-    demo_md_path = _find_demo_md(slug, project_root)
+def _build_demo_env(project_root: Path) -> dict[str, str]:
+    """Build an environment that prefers the project virtualenv when present."""
+    env = os.environ.copy()
+    venv_bin = project_root / ".venv" / "bin"
+    if venv_bin.is_dir():
+        env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
+        env["VIRTUAL_ENV"] = str(project_root / ".venv")
+    return env
 
-    if demo_md_path is not None:
-        print(f"Running demo: {slug}\n")
-        print(f"Source: {demo_md_path.relative_to(project_root)}\n")
 
-        content = demo_md_path.read_text(encoding="utf-8")
+def _run_demo_blocks(
+    executable: list[tuple[int, str, str]], skipped: list[tuple[int, str, str]], project_root: Path
+) -> None:
+    """Execute extracted demo.md bash blocks."""
+    if skipped:
+        for line_number, _block, reason in skipped:
+            print(f"  SKIP  block at line {line_number}: {reason}")
+        print()
 
-        # Check for no-demo escape hatch
-        no_demo_reason = _check_no_demo_marker(content)
-        if no_demo_reason is not None:
-            print(f"WARNING: no-demo marker found: {no_demo_reason}")
-            raise SystemExit(0)
+    if not executable:
+        print("Error: all code blocks skipped, no executable blocks")
+        raise SystemExit(1)
 
-        blocks = _extract_demo_blocks(content)
-
-        if not blocks:
-            print("Error: no executable blocks found in demo.md")
+    env = _build_demo_env(project_root)
+    passed = 0
+    for line_number, block, _reason in executable:
+        preview = block.strip().split("\n")[0][:60]
+        print(f"  RUN   block at line {line_number}: {preview}")
+        result = subprocess.run(block, shell=True, cwd=project_root, env=env, check=False)
+        if result.returncode != 0:
+            print(f"  FAIL  block at line {line_number} exited with {result.returncode}")
             raise SystemExit(1)
+        print(f"  PASS  block at line {line_number}")
+        passed += 1
 
-        executable = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if not skipped]
-        skipped = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if skipped]
+    print(f"\nDemo passed: {passed}/{len(executable)} blocks")
+    if skipped:
+        print(f"Skipped: {len(skipped)} blocks")
+    raise SystemExit(0)
 
-        if skipped:
-            for ln, _blk, reason in skipped:
-                print(f"  SKIP  block at line {ln}: {reason}")
-            print()
 
-        if not executable:
-            print("Error: all code blocks skipped, no executable blocks")
-            raise SystemExit(1)
+def _run_demo_markdown(slug: str, project_root: Path, demo_md_path: Path) -> None:
+    """Execute bash blocks sourced from demo.md."""
+    print(f"Running demo: {slug}\n")
+    print(f"Source: {demo_md_path.relative_to(project_root)}\n")
 
-        # Prepend project venv to PATH so demo blocks use the correct Python
-        env = os.environ.copy()
-        venv_bin = project_root / ".venv" / "bin"
-        if venv_bin.is_dir():
-            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
-            env["VIRTUAL_ENV"] = str(project_root / ".venv")
+    content = demo_md_path.read_text(encoding="utf-8")
 
-        passed = 0
-        for ln, block, _reason in executable:
-            preview = block.strip().split("\n")[0][:60]
-            print(f"  RUN   block at line {ln}: {preview}")
-            result = subprocess.run(block, shell=True, cwd=project_root, env=env)
-            if result.returncode != 0:
-                print(f"  FAIL  block at line {ln} exited with {result.returncode}")
-                raise SystemExit(1)
-            print(f"  PASS  block at line {ln}")
-            passed += 1
-
-        print(f"\nDemo passed: {passed}/{len(executable)} blocks")
-        if skipped:
-            print(f"Skipped: {len(skipped)} blocks")
+    no_demo_reason = _check_no_demo_marker(content)
+    if no_demo_reason is not None:
+        print(f"WARNING: no-demo marker found: {no_demo_reason}")
         raise SystemExit(0)
 
-    # Fallback: snapshot.json demo field (backward compatibility)
-    import json
+    blocks = _extract_demo_blocks(content)
+    if not blocks:
+        print("Error: no executable blocks found in demo.md")
+        raise SystemExit(1)
 
+    executable = [(line_number, block, reason) for line_number, block, skipped, reason in blocks if not skipped]
+    skipped = [(line_number, block, reason) for line_number, block, skipped, reason in blocks if skipped]
+    _run_demo_blocks(executable, skipped, project_root)
+
+
+def _project_major_version(project_root: Path) -> tuple[str, int]:
+    """Read the current project version and return its major component."""
     pyproject_path = project_root / "pyproject.toml"
     current_version = "0.0.0"
     if pyproject_path.exists():
@@ -258,25 +265,31 @@ def _demo_run(slug: str, project_root: Path) -> None:
         match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
         if match:
             current_version = match.group(1)
-    current_major = int(current_version.split(".")[0])
+    return current_version, int(current_version.split(".")[0])
 
-    demos_dir = project_root / "demos"
-    demo_path = demos_dir / slug
+
+def _load_demo_snapshot(snapshot_path: Path, slug: str) -> dict[str, object]:
+    """Load a demo snapshot.json file."""
+    try:
+        return json.loads(snapshot_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"Error reading snapshot for '{slug}': {exc}")
+        raise SystemExit(1) from exc
+
+
+def _run_snapshot_demo(slug: str, project_root: Path) -> None:
+    """Execute the legacy snapshot.json demo field when no demo.md exists."""
+    current_version, current_major = _project_major_version(project_root)
+    demo_path = project_root / "demos" / slug
     snapshot_path = demo_path / "snapshot.json"
 
     if not demo_path.exists() or not snapshot_path.exists():
         print(f"Error: Demo '{slug}' not found")
         raise SystemExit(1)
 
-    try:
-        snapshot = json.loads(snapshot_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        print(f"Error reading snapshot for '{slug}': {exc}")
-        raise SystemExit(1) from exc
-
-    demo_version = snapshot.get("version", "0.0.0")
-    demo_major = int(demo_version.split(".")[0])
-
+    snapshot = _load_demo_snapshot(snapshot_path, slug)
+    demo_version = str(snapshot.get("version", "0.0.0"))
+    demo_major = int(demo_version.split(".", maxsplit=1)[0])
     if demo_major != current_major:
         print(
             f"Demo from v{demo_version} is incompatible with current v{current_version} "
@@ -285,19 +298,25 @@ def _demo_run(slug: str, project_root: Path) -> None:
         raise SystemExit(0)
 
     demo_command = snapshot.get("demo")
-    if not demo_command:
+    if not isinstance(demo_command, str) or not demo_command:
         print(f"Warning: Demo '{slug}' has no demo.md or 'demo' field. Skipping execution.")
         raise SystemExit(0)
 
     print(f"Running demo: {slug} (v{demo_version})\n")
-    result = subprocess.run(demo_command, shell=True, cwd=demo_path)
+    result = subprocess.run(demo_command, shell=True, cwd=demo_path, check=False)
     raise SystemExit(result.returncode)
+
+
+def _demo_run(slug: str, project_root: Path) -> None:
+    """Execute bash blocks from demo.md."""
+    demo_md_path = _find_demo_md(slug, project_root)
+    if demo_md_path is not None:
+        _run_demo_markdown(slug, project_root, demo_md_path)
+    _run_snapshot_demo(slug, project_root)
 
 
 def _demo_create(slug: str, project_root: Path) -> None:
     """Promote demo.md to demos/{slug}/ with minimal snapshot.json."""
-    import json
-
     source = _find_demo_md(slug, project_root)
     if source is None:
         print(f"Error: No demo.md found for '{slug}'")
@@ -329,8 +348,6 @@ def _demo_create(slug: str, project_root: Path) -> None:
     demos_dir.mkdir(parents=True, exist_ok=True)
     dest = demos_dir / "demo.md"
     if source.resolve() != dest.resolve():
-        import shutil
-
         shutil.copy2(source, dest)
 
     # Generate minimal snapshot.json
@@ -342,23 +359,14 @@ def _demo_create(slug: str, project_root: Path) -> None:
     raise SystemExit(0)
 
 
-def _handle_todo_demo(args: list[str]) -> None:
-    """Handle telec todo demo subcommands: list, validate, run, create."""
-    _DEMO_SUBCOMMANDS = {"list", "validate", "run", "create"}
-    # Backward compatibility:
-    # - `telec todo demo` lists demos
-    # - `telec todo demo <slug>` runs demo for slug
-    project_root = Path.cwd()
+def _parse_todo_demo_args(args: list[str]) -> tuple[str, str | None]:
+    """Parse `telec todo demo` subcommands and backward-compatible slug-only input."""
     if not args:
-        subcommand = "list"
-        remaining_args: list[str] = []
-    else:
-        subcommand = args[0]
-        remaining_args = args[1:]
-    slug: str | None = None
+        return "list", None
 
-    # Backward compatibility: `telec todo demo <slug>` behaves like
-    # `telec todo demo run <slug>`.
+    subcommand = args[0]
+    slug: str | None = None
+    remaining_args = args[1:]
     if subcommand not in _DEMO_SUBCOMMANDS:
         if subcommand.startswith("-"):
             print(f"Unknown option: {subcommand}")
@@ -367,20 +375,27 @@ def _handle_todo_demo(args: list[str]) -> None:
         slug = subcommand
         subcommand = "run"
 
-    i = 0
-    while i < len(remaining_args):
-        arg = remaining_args[i]
+    for arg in remaining_args:
         if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "demo"))
             raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "demo"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
+        if slug is not None:
+            print("Only one slug is allowed.")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+        slug = arg
+
+    return subcommand, slug
+
+
+def _handle_todo_demo(args: list[str]) -> None:
+    """Handle telec todo demo subcommands: list, validate, run, create."""
+    # Backward compatibility:
+    # - `telec todo demo` lists demos
+    # - `telec todo demo <slug>` runs demo for slug
+    project_root = Path.cwd()
+    subcommand, slug = _parse_todo_demo_args(args)
 
     if subcommand == "list":
         if slug is not None:
@@ -390,15 +405,14 @@ def _handle_todo_demo(args: list[str]) -> None:
         _demo_list(project_root)
         return
 
-    # validate/run/create require slug
     if slug is None:
         print(f"Missing required slug for 'demo {subcommand}'.")
         print(_usage("todo", "demo"))
         raise SystemExit(1)
 
-    if subcommand == "validate":
-        _demo_validate(slug, project_root)
-    elif subcommand == "run":
-        _demo_run(slug, project_root)
-    elif subcommand == "create":
-        _demo_create(slug, project_root)
+    demo_handlers = {
+        "validate": _demo_validate,
+        "run": _demo_run,
+        "create": _demo_create,
+    }
+    demo_handlers[subcommand](slug, project_root)

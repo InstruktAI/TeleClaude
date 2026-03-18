@@ -51,6 +51,8 @@ class TelecCommand(str, Enum):
 
 @dataclass(frozen=True)
 class CommandAuth:
+    """Role allow-list for a CLI command."""
+
     system: frozenset[str]  # allowed system roles
     human: frozenset[str]  # allowed human roles (admin must be explicit)
 
@@ -67,6 +69,8 @@ class CommandAuth:
 
 @dataclass
 class Flag:
+    """Single CLI flag definition used for help and completion."""
+
     long: str
     short: str | None = None
     desc: str = ""
@@ -77,16 +81,24 @@ class Flag:
         return (self.short, self.long, self.desc)
 
 
-@dataclass
-class CommandDef:
-    desc: str
-    args: str = ""  # e.g., "<slug>", "[mode] [prompt]"
-    flags: list[Flag] = field(default_factory=list)
-    subcommands: dict[str, CommandDef] = field(default_factory=dict)
+@dataclass(kw_only=True)
+class _CommandPresentation:
+    """Help-only metadata for a command."""
+
     notes: list[str] = field(default_factory=list)  # extra lines for subcommand help
     examples: list[str] = field(default_factory=list)  # explicit examples when auto-generation is misleading
     hidden: bool = False  # hide from help output and completion
     standalone: bool = False  # bare invocation has behavior (not just help text)
+
+
+@dataclass
+class CommandDef(_CommandPresentation):
+    """Declarative command schema for help, completion, and dispatch."""
+
+    desc: str
+    args: str = ""  # e.g., "<slug>", "[mode] [prompt]"
+    flags: list[Flag] = field(default_factory=list)
+    subcommands: dict[str, CommandDef] = field(default_factory=dict)
     auth: CommandAuth | None = None
 
     @property

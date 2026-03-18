@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import importlib
+
 from teleclaude.cli.telec.help import _usage
 
 __all__ = [
@@ -10,6 +13,17 @@ __all__ = [
     "_handle_signals",
     "_handle_signals_status",
 ]
+
+
+def _build_default_catalog():
+    return importlib.import_module("teleclaude.events").build_default_catalog()
+
+
+def _load_signal_runtime():
+    aiosqlite = importlib.import_module("aiosqlite")
+    config = importlib.import_module("teleclaude.config").config
+    signal_db = importlib.import_module("teleclaude.events.signal.db").SignalDB
+    return aiosqlite, config, signal_db
 
 
 def _handle_events(args: list[str]) -> None:
@@ -29,8 +43,6 @@ def _handle_events(args: list[str]) -> None:
 
 def _handle_events_list(args: list[str]) -> None:
     """List all registered event schemas."""
-    from teleclaude.events import build_default_catalog
-
     domain_filter: str | None = None
     i = 0
     while i < len(args):
@@ -40,7 +52,7 @@ def _handle_events_list(args: list[str]) -> None:
         else:
             i += 1
 
-    catalog = build_default_catalog()
+    catalog = _build_default_catalog()
     schemas = catalog.list_all()
     if domain_filter:
         schemas = [s for s in schemas if s.domain == domain_filter]
@@ -80,22 +92,18 @@ def _handle_signals(args: list[str]) -> None:
 
 def _handle_signals_status() -> None:
     """Show signal pipeline item/cluster/synthesis counts and last ingest time."""
-    import asyncio  # pylint: disable=import-outside-toplevel
 
     async def _query() -> None:
-        import aiosqlite  # pylint: disable=import-outside-toplevel
-
-        from teleclaude.config import config  # pylint: disable=import-outside-toplevel
-        from teleclaude.events.signal.db import SignalDB  # pylint: disable=import-outside-toplevel
-
+        aiosqlite, config, signal_db = _load_signal_runtime()
         db_path = config.database.path
         async with aiosqlite.connect(db_path) as conn:
             conn.row_factory = aiosqlite.Row
-            sdb = SignalDB(conn)
+            sdb = signal_db(conn)
+            db_error = getattr(aiosqlite, "Error", RuntimeError)
             try:
                 counts = await sdb.get_signal_counts()
                 last_ingest = await sdb.get_last_ingest_time()
-            except Exception:  # pylint: disable=broad-exception-caught
+            except (db_error, OSError, RuntimeError, ValueError):
                 print("Signal tables not initialized. Start the daemon to enable signal ingestion.")
                 return
 

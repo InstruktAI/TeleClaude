@@ -6,6 +6,8 @@ import asyncio
 import os
 import signal
 import time as _t
+import traceback
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -14,11 +16,15 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import TabbedContent, TabPane
+from textual.widgets._tabbed_content import ContentTabs
 
+from teleclaude.cli.api_client import APIError
 from teleclaude.cli.models import (
     ComputerInfo,
     ProjectInfo,
 )
+from teleclaude.cli.tui import theme
+from teleclaude.cli.tui.animation_engine import AnimationEngine
 from teleclaude.cli.tui.app_actions import TelecAppActionsMixin
 from teleclaude.cli.tui.app_media import TelecAppMediaMixin
 from teleclaude.cli.tui.app_ws import TelecAppWsMixin
@@ -42,8 +48,9 @@ from teleclaude.cli.tui.theme import (
     get_pane_theming_mode_level,
     get_terminal_background,
     get_tui_inactive_background,
+    is_dark_mode,
 )
-from teleclaude.cli.tui.views.config import ConfigView
+from teleclaude.cli.tui.views.config import ConfigContent, ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
@@ -58,19 +65,88 @@ if TYPE_CHECKING:
     from teleclaude.cli.tui.animations.base import Animation
 
 logger = get_logger(__name__)
+APP_QUERY_ERRORS = (AttributeError, LookupError, RuntimeError, TypeError, ValueError)
+APP_RUNTIME_ERRORS = (APIError, AttributeError, ImportError, LookupError, OSError, RuntimeError, TypeError, ValueError)
+APP_DATA_ERRORS = (APIError, AttributeError, OSError, RuntimeError, TypeError, ValueError)
+_APP_STATE_FIELDS = {
+    "_persisted": ("_init_state", "persisted"),
+    "_start_view": ("_init_state", "start_view"),
+    "_config_guided": ("_init_state", "config_guided"),
+    "_is_reload": ("_init_state", "is_reload"),
+    "_initial_layout_applied": ("_init_state", "initial_layout_applied"),
+    "_state_save_timer": ("_runtime_state", "state_save_timer"),
+    "_computers": ("_runtime_state", "computers"),
+    "_session_agents": ("_runtime_state", "session_agents"),
+    "_sky_width_timer": ("_runtime_state", "sky_width_timer"),
+    "_reload_loop": ("_runtime_state", "reload_loop"),
+    "_animation_engine": ("_media_state", "animation_engine"),
+    "_periodic_trigger": ("_media_state", "periodic_trigger"),
+    "_activity_trigger": ("_media_state", "activity_trigger"),
+    "_animation_timer": ("_media_state", "animation_timer"),
+    "_animation_requested_mode": ("_media_state", "animation_requested_mode"),
+    "_chiptunes_state_version": ("_media_state", "chiptunes_state_version"),
+    "_chiptunes_reconcile_task": ("_media_state", "chiptunes_reconcile_task"),
+}
 
 
 # Legacy stub — old configuration.py imports this via TYPE_CHECKING.
 # Remove in Phase 4 cleanup.
-class FocusContext:
-    pass
+FocusContext = object
 
 
 RELOAD_EXIT = "__RELOAD__"
 
 
+@dataclass
+class _AppInitState:
+    start_view: int
+    config_guided: bool
+    persisted: dict[str, dict[str, object]]
+    is_reload: bool
+    initial_layout_applied: bool
+
+
+@dataclass
+class _AppRuntimeState:
+    state_save_timer: object | None = None
+    computers: list[ComputerInfo] = field(default_factory=list)
+    session_agents: dict[str, str] = field(default_factory=dict)
+    sky_width_timer: Timer | None = None
+    reload_loop: asyncio.AbstractEventLoop | None = None
+
+
+@dataclass
+class _AppMediaState:
+    animation_engine: AnimationEngine = field(default_factory=AnimationEngine)
+    periodic_trigger: object | None = None
+    activity_trigger: object | None = None
+    animation_timer: object | None = None
+    animation_requested_mode: str = "off"
+    chiptunes_state_version: int = -1
+    chiptunes_reconcile_task: asyncio.Task[None] | None = None
+
+
 class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[str | None]):
     """Main TeleClaude TUI application."""
+
+    api: TelecAPIClient
+    _persisted: dict[str, dict[str, object]]
+    _start_view: int
+    _config_guided: bool
+    _is_reload: bool
+    _initial_layout_applied: bool
+    _state_save_timer: Timer | None
+    _computers: list[ComputerInfo]
+    _session_agents: dict[str, str]
+    _sky_width_timer: Timer | None
+    _reload_loop: asyncio.AbstractEventLoop | None
+    _animation_engine: AnimationEngine
+    _periodic_trigger: object | None
+    _activity_trigger: object | None
+    _animation_timer: object | None
+    _animation_requested_mode: str
+    _chiptunes_state_version: int
+    _chiptunes_reconcile_task: asyncio.Task[None] | None
 
     CSS_PATH = "telec.tcss"
 
@@ -131,11 +207,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         self.register_theme(_TELECLAUDE_LIGHT_THEME)
         self.register_theme(_TELECLAUDE_DARK_AGENT_THEME)
         self.register_theme(_TELECLAUDE_LIGHT_AGENT_THEME)
-        from teleclaude.cli.tui import theme
-        from teleclaude.cli.tui.theme import is_dark_mode
 
-        self._persisted = load_state()
-        persisted_status = self._persisted.get("status_bar", {})
+        persisted = load_state()
+        persisted_status = persisted.get("status_bar", {})
         persisted_mode = persisted_status.get("pane_theming_mode")
         if isinstance(persisted_mode, str) and persisted_mode:
             try:
@@ -156,28 +230,41 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
 
         self.api = api
-        self._start_view = start_view
-        self._config_guided = config_guided
-        self._state_save_timer: object | None = None
-        self._computers: list[ComputerInfo] = []
-        self._session_agents: dict[str, str] = {}
-        self._chiptunes_state_version: int = -1
-        self._chiptunes_reconcile_task: asyncio.Task[None] | None = None
-        self._sky_width_timer: Timer | None = None
-        # On SIGUSR2 reload, panes already exist — the bridge's on_data_refreshed
-        # will call seed_for_reload() to map them.  Skip layout re-application
-        # on the first data refresh to avoid killing and recreating panes.
-        self._is_reload = bool(os.environ.pop("TELEC_RELOAD", ""))
-        self._initial_layout_applied = self._is_reload
-        # Animation engine and triggers
-        from teleclaude.cli.tui.animation_engine import AnimationEngine
+        is_reload = bool(os.environ.pop("TELEC_RELOAD", ""))
+        self._init_state = _AppInitState(
+            start_view=start_view,
+            config_guided=config_guided,
+            persisted=persisted,
+            is_reload=is_reload,
+            initial_layout_applied=is_reload,
+        )
+        self._runtime_state = _AppRuntimeState()
+        self._media_state = _AppMediaState()
+        self._sky_width_timer = None
+        self._media_state.animation_engine.on_animation_start = self._show_animation_toast
 
-        self._animation_engine = AnimationEngine()
-        self._animation_engine.on_animation_start = self._show_animation_toast
-        self._periodic_trigger: object | None = None
-        self._activity_trigger: object | None = None
-        self._animation_timer: object | None = None
-        self._animation_requested_mode: str = "off"
+    def __getattr__(self, name: str) -> object:
+        """Keep legacy mixin attribute access working via grouped state."""
+        state_info = _APP_STATE_FIELDS.get(name)
+        if state_info is None:
+            raise AttributeError(name)
+        state_name, field_name = state_info
+        state = object.__getattribute__(self, state_name)
+        return getattr(state, field_name)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Keep legacy mixin attribute writes working via grouped state."""
+        state_info = _APP_STATE_FIELDS.get(name)
+        if state_info is not None:
+            state_name, field_name = state_info
+            try:
+                state = object.__getattribute__(self, state_name)
+            except AttributeError:
+                state = None
+            if state is not None:
+                setattr(state, field_name, value)
+                return
+        super().__setattr__(name, value)
 
     def get_css_variables(self) -> dict[str, str]:
         """Override CSS variables to inject the correct background for focus state.
@@ -208,14 +295,10 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         switching. This recomputes get_css_variables() and propagates
         $background to all widgets.
         """
-        from teleclaude.cli.tui import theme
-        from teleclaude.cli.tui.widgets.session_row import SessionRow
-        from teleclaude.cli.tui.widgets.todo_row import TodoRow
-
         theme.set_tui_focused(focus)
-        self._refresh_focus_sensitive_widgets(SessionRow, TodoRow)
+        self._refresh_focus_sensitive_widgets()
 
-    def _refresh_focus_sensitive_widgets(self, SessionRow: type[object], TodoRow: type[object]) -> None:
+    def _refresh_focus_sensitive_widgets(self) -> None:
         """Refresh widgets whose colors depend on the current haze state."""
         self.refresh_css(animate=False)
 
@@ -254,71 +337,24 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         """Initialize on mount: load state, connect API, start refresh."""
         _m0 = _t.monotonic()
         logger.trace("[PERF] on_mount START t=%.3f", _m0)
-        # Restore persisted state to views
-        sessions_view = self.query_one("#sessions-view", SessionsView)
-        prep_view = self.query_one("#preparation-view", PreparationView)
-        status_bar = self.query_one("#telec-footer", TelecFooter)
-
-        sessions_state = self._persisted.get("sessions", {})
-        sessions_view.load_persisted_state(sessions_state)
-
-        preparation_state = self._persisted.get("preparation", {})
-        prep_view.load_persisted_state(preparation_state)
-
-        status_bar_state = self._persisted.get("status_bar", {})
-        status_bar.load_persisted_state(status_bar_state)
-
-        # Apply persisted pane theming to the in-memory theme override
-        from teleclaude.cli.tui import theme
-
-        theme.set_pane_theming_mode(status_bar.pane_theming_mode)
-        self._apply_app_theme_for_mode(status_bar.pane_theming_mode)
-
-        # Remove Textual's internal tab bar (ContentTabs) — we use BoxTabBar instead.
-        # CSS `display: none` on Tabs doesn't fully suppress the docked ContentTabs
-        # in TabbedContent's DEFAULT_CSS (`dock: top`), leaving a 1-row gap.
-        from textual.widgets._tabbed_content import ContentTabs
-
-        for ct in self.query(ContentTabs):
-            ct.display = False
-
-        # Wire animation engine to banner and tabs
-        banner = self.query_one(Banner)
-        banner.animation_engine = self._animation_engine
-        try:
-            tabs = self.query_one(BoxTabBar)
-            tabs.animation_engine = self._animation_engine
-        except Exception:
-            pass  # Tab bar might not be mounted in some modes
-
-        self._animation_requested_mode = status_bar.animation_mode
+        status_bar = self._restore_persisted_state()
+        self._hide_textual_tab_bar()
+        self._wire_animation_widgets()
+        self._media_state.animation_requested_mode = status_bar.animation_mode
         self._apply_animation_runtime()
 
-        # Switch to starting tab
-        tab_ids = {1: "sessions", 2: "preparation", 3: "jobs", 4: "config"}
-        persisted_app_state = self._persisted.get("app", {})
-        persisted_tab = persisted_app_state.get("active_tab")
-        if self._start_view != 1:
-            start_tab = tab_ids.get(self._start_view, "sessions")
-        elif isinstance(persisted_tab, str) and persisted_tab in tab_ids.values():
-            start_tab = persisted_tab
-        else:
-            start_tab = "sessions"
+        start_tab = self._resolve_start_tab()
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = start_tab
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
         box_tabs.active_tab = start_tab
-
-        # Focus the active view so key bindings work
         self._focus_active_view(start_tab)
 
-        # Connect API and start refresh
         try:
             await self.api.connect()
-        except Exception:
+        except APP_RUNTIME_ERRORS:
             logger.exception("Failed to connect API")
 
-        # Start WebSocket for push updates
         self.api.start_websocket(
             callback=self._on_ws_event,
             subscriptions=["sessions", "preparation", "todos"],
@@ -339,16 +375,51 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         # signal.signal() ensures the signal is always caught (preventing
         # default termination). Inside the handler, call_soon_threadsafe()
         # safely schedules the reload on the asyncio event loop.
-        self._reload_loop = asyncio.get_running_loop()
+        self._runtime_state.reload_loop = asyncio.get_running_loop()
         signal.signal(signal.SIGUSR1, self._handle_sigusr1)
         signal.signal(signal.SIGUSR2, self._handle_sigusr2)
+
+    def _restore_persisted_state(self) -> TelecFooter:
+        """Restore persisted state into mounted views and footer widgets."""
+        sessions_view = self.query_one("#sessions-view", SessionsView)
+        prep_view = self.query_one("#preparation-view", PreparationView)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
+        sessions_view.load_persisted_state(self._persisted.get("sessions", {}))
+        prep_view.load_persisted_state(self._persisted.get("preparation", {}))
+        status_bar.load_persisted_state(self._persisted.get("status_bar", {}))
+        theme.set_pane_theming_mode(status_bar.pane_theming_mode)
+        self._apply_app_theme_for_mode(status_bar.pane_theming_mode)
+        return status_bar
+
+    def _hide_textual_tab_bar(self) -> None:
+        """Hide Textual's built-in tab strip in favor of the custom bar."""
+        for content_tabs in self.query(ContentTabs):
+            content_tabs.display = False
+
+    def _wire_animation_widgets(self) -> None:
+        """Attach the shared animation engine to banner and tab widgets."""
+        self.query_one(Banner).animation_engine = self._animation_engine
+        try:
+            self.query_one(BoxTabBar).animation_engine = self._animation_engine
+        except APP_QUERY_ERRORS:
+            logger.debug("BoxTabBar unavailable while wiring animations", exc_info=True)
+
+    def _resolve_start_tab(self) -> str:
+        """Resolve the initial tab from CLI overrides or persisted state."""
+        tab_ids = {1: "sessions", 2: "preparation", 3: "jobs", 4: "config"}
+        persisted_tab = self._persisted.get("app", {}).get("active_tab")
+        if self._start_view != 1:
+            return tab_ids.get(self._start_view, "sessions")
+        if isinstance(persisted_tab, str) and persisted_tab in tab_ids.values():
+            return persisted_tab
+        return "sessions"
 
     @work(exclusive=True, group="computers")
     async def _reload_computers(self) -> None:
         """Re-fetch computer list on computer_updated event."""
         try:
-            self._computers = await self.api.list_computers()
-        except Exception:
+            self._runtime_state.computers = await self.api.list_computers()
+        except APP_DATA_ERRORS:
             logger.exception("Computer refresh failed")
 
     @work(exclusive=True, group="refresh")
@@ -362,68 +433,67 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         _r0 = _t.monotonic()
         logger.trace("[PERF] _refresh_data START t=%.3f", _r0)
         try:
-            computers, projects_with_todos, sessions, availability, jobs, settings = await asyncio.gather(
-                self.api.list_computers(),
-                self.api.list_projects_with_todos(),
-                self.api.list_sessions(),
-                self.api.get_agent_availability(),
-                self.api.list_jobs(),
-                self.api.get_settings(),
-            )
-            logger.trace("[PERF] _refresh_data gather done dt=%.3f", _t.monotonic() - _r0)
-            self._computers = computers
-
-            # Derive plain projects list from projects_with_todos
-            projects = [
-                ProjectInfo(
-                    computer=p.computer,
-                    name=p.name,
-                    path=p.path,
-                    description=p.description,
-                )
-                for p in projects_with_todos
-            ]
-
-            try:
-                tts_enabled = settings.tts.enabled if settings else False
-            except Exception:
-                tts_enabled = False
-
-            try:
-                chiptunes_status = await self.api.get_chiptunes_status()
-            except Exception:
-                logger.debug("ChipTunes status refresh failed", exc_info=True)
-                chiptunes_status = None
-
-            self.post_message(
-                DataRefreshed(
-                    computers=computers,
-                    projects=projects,
-                    projects_with_todos=projects_with_todos,
-                    sessions=sessions,
-                    availability=availability,
-                    jobs=jobs,
-                    tts_enabled=tts_enabled,
-                    chiptunes_loaded=bool(getattr(chiptunes_status, "loaded", False)) if chiptunes_status else False,
-                    chiptunes_playback=str(getattr(chiptunes_status, "playback", "cold"))
-                    if chiptunes_status
-                    else "cold",
-                    chiptunes_state_version=int(getattr(chiptunes_status, "state_version", 0))
-                    if chiptunes_status
-                    else 0,
-                    chiptunes_playing=chiptunes_status.playing if chiptunes_status else False,
-                    chiptunes_track=chiptunes_status.track if chiptunes_status else "",
-                    chiptunes_sid_path=chiptunes_status.sid_path if chiptunes_status else "",
-                    chiptunes_pending_command_id=str(getattr(chiptunes_status, "pending_command_id", ""))
-                    if chiptunes_status
-                    else "",
-                    chiptunes_pending_action=str(getattr(chiptunes_status, "pending_action", ""))
-                    if chiptunes_status
-                    else "",
-                )
-            )
-        except Exception:
+            payload = await self._build_data_refresh_message(_r0)
+            self.post_message(payload)
+        except APP_DATA_ERRORS:
             logger.exception("Data refresh failed")
+
+    async def _build_data_refresh_message(self, start_time: float) -> DataRefreshed:
+        """Build the aggregate `DataRefreshed` message from API calls."""
+        computers, projects_with_todos, sessions, availability, jobs, settings = await asyncio.gather(
+            self.api.list_computers(),
+            self.api.list_projects_with_todos(),
+            self.api.list_sessions(),
+            self.api.get_agent_availability(),
+            self.api.list_jobs(),
+            self.api.get_settings(),
+        )
+        logger.trace("[PERF] _refresh_data gather done dt=%.3f", _t.monotonic() - start_time)
+        self._runtime_state.computers = computers
+        chiptunes_status = await self._load_chiptunes_status()
+        return DataRefreshed(
+            computers=computers,
+            projects=[
+                ProjectInfo(
+                    computer=project.computer,
+                    name=project.name,
+                    path=project.path,
+                    description=project.description,
+                )
+                for project in projects_with_todos
+            ],
+            projects_with_todos=projects_with_todos,
+            sessions=sessions,
+            availability=availability,
+            jobs=jobs,
+            tts_enabled=self._extract_tts_enabled(settings),
+            chiptunes_loaded=bool(getattr(chiptunes_status, "loaded", False)) if chiptunes_status else False,
+            chiptunes_playback=str(getattr(chiptunes_status, "playback", "cold")) if chiptunes_status else "cold",
+            chiptunes_state_version=int(getattr(chiptunes_status, "state_version", 0)) if chiptunes_status else 0,
+            chiptunes_playing=bool(getattr(chiptunes_status, "playing", False)) if chiptunes_status else False,
+            chiptunes_track=str(getattr(chiptunes_status, "track", "")) if chiptunes_status else "",
+            chiptunes_sid_path=str(getattr(chiptunes_status, "sid_path", "")) if chiptunes_status else "",
+            chiptunes_pending_command_id=(
+                str(getattr(chiptunes_status, "pending_command_id", "")) if chiptunes_status else ""
+            ),
+            chiptunes_pending_action=str(getattr(chiptunes_status, "pending_action", "")) if chiptunes_status else "",
+        )
+
+    @staticmethod
+    def _extract_tts_enabled(settings: object) -> bool:
+        """Best-effort extraction of TTS enabled state from settings payloads."""
+        try:
+            return bool(getattr(getattr(settings, "tts", None), "enabled", False))
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+    async def _load_chiptunes_status(self) -> object | None:
+        """Best-effort fetch of the current chiptunes runtime state."""
+        try:
+            return await self.api.get_chiptunes_status()
+        except APP_DATA_ERRORS:
+            logger.debug("ChipTunes status refresh failed", exc_info=True)
+            return None
 
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Handle refreshed data — update all views."""
@@ -464,8 +534,10 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         # writing directly here would bypass _apply() and diverge pane_manager state.
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         if not self._initial_layout_applied:
-            pane_bridge._preview_session_id = sessions_view.preview_session_id
-            pane_bridge._sticky_session_ids = sessions_view._sticky_session_ids.copy()
+            pane_bridge.sync_layout_state(
+                preview_session_id=sessions_view.preview_session_id,
+                sticky_session_ids=list(getattr(sessions_view, "_sticky_session_ids", [])),
+            )
         pane_bridge.on_data_refreshed(message)
 
         # On first data load, apply layout with persisted preview/sticky state.
@@ -474,12 +546,13 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         # On reload, _initial_layout_applied is already True — panes survive
         # via seed_for_reload() called from bridge.on_data_refreshed().
         if not self._initial_layout_applied:
-            self._initial_layout_applied = True
-            if sessions_view.preview_session_id or sessions_view._sticky_session_ids:
+            self._init_state.initial_layout_applied = True
+            sticky_session_ids = list(getattr(sessions_view, "_sticky_session_ids", []))
+            if sessions_view.preview_session_id or sticky_session_ids:
                 pane_bridge.on_preview_changed(PreviewChanged(sessions_view.preview_session_id))
-                if sessions_view._sticky_session_ids:
-                    pane_bridge.on_sticky_changed(StickyChanged(sessions_view._sticky_session_ids.copy()))
-            self._update_banner_compactness(len(sessions_view._sticky_session_ids))
+                if sticky_session_ids:
+                    pane_bridge.on_sticky_changed(StickyChanged(sticky_session_ids))
+            self._update_banner_compactness(len(sticky_session_ids))
 
     # --- Pane manager message forwarding ---
     # Textual messages bubble UP through ancestors, not sideways to siblings.
@@ -487,73 +560,75 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     # messages posted by SessionsView. We forward them here.
 
     def on_preview_changed(self, message: PreviewChanged) -> None:
+        """Forward preview changes to the pane bridge."""
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_preview_changed(message)
         self._schedule_sky_width_invalidation()
 
     def on_sticky_changed(self, message: StickyChanged) -> None:
+        """Forward sticky-session changes to the pane bridge."""
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_sticky_changed(message)
         self._update_banner_compactness(len(message.session_ids))
         self._schedule_sky_width_invalidation()
 
     def on_state_changed(self, _message: StateChanged) -> None:
+        """Schedule persistence when child state changes."""
         self._schedule_state_save()
 
     def on_focus_pane_request(self, message: FocusPaneRequest) -> None:
+        """Forward explicit pane focus requests to the bridge."""
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_focus_pane_request(message)
 
     def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
+        """Forward document preview requests to the bridge."""
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_doc_preview_request(message)
 
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
+        """Forward document edit requests to the bridge."""
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_doc_edit_request(message)
 
     def _handle_exception(self, error: Exception) -> None:
         """Log unhandled exceptions BEFORE Rich's traceback renderer can crash on them."""
-        import traceback as _tb
-
         logger.error(
             "Unhandled Textual exception",
             error=repr(error),
-            traceback="".join(_tb.format_exception(type(error), error, error.__traceback__)),
+            traceback="".join(traceback.format_exception(type(error), error, error.__traceback__)),
         )
         try:
             super()._handle_exception(error)
-        except Exception:
+        except APP_QUERY_ERRORS:
             logger.exception("Textual _handle_exception crashed (Rich traceback failure) — forcing exit")
             self.exit(1)
 
     def _activate_config_guided_mode(self) -> None:
         """Start guided mode in ConfigView after initial mount and data load."""
-        from teleclaude.cli.tui.views.config import ConfigView
-
         try:
             config_view = self.query_one("#config-view", ConfigView)
             config_view.action_toggle_guided_mode()
             config_view.focus()
-        except Exception:
+        except APP_QUERY_ERRORS:
             logger.exception("Failed to activate config guided mode")
 
     # --- State persistence ---
 
     def _schedule_state_save(self) -> None:
-        timer = self._state_save_timer
+        timer = self._runtime_state.state_save_timer
         if timer is not None and hasattr(timer, "stop"):
             timer.stop()  # type: ignore[union-attr]
-        self._state_save_timer = self.set_timer(0.5, self._flush_state_save)
+        self._runtime_state.state_save_timer = self.set_timer(0.5, self._flush_state_save)
 
     def _cancel_state_save_timer(self) -> None:
-        timer = self._state_save_timer
+        timer = self._runtime_state.state_save_timer
         if timer is not None and hasattr(timer, "stop"):
             timer.stop()  # type: ignore[union-attr]
-        self._state_save_timer = None
+        self._runtime_state.state_save_timer = None
 
     def _flush_state_save(self) -> None:
-        self._state_save_timer = None
+        self._runtime_state.state_save_timer = None
         self._save_state_sync()
 
     def _collect_persisted_state(self) -> dict[str, object]:  # guard: loose-dict - namespaced widget payloads
@@ -578,14 +653,11 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         Sent by ~/Sync/dotfiles appearance.py when OS dark/light mode changes.
         Lightweight: re-detects mode, switches Textual theme, refreshes widgets.
         """
-        self._reload_loop.call_soon_threadsafe(self._appearance_refresh)
+        if self._runtime_state.reload_loop is not None:
+            self._runtime_state.reload_loop.call_soon_threadsafe(self._appearance_refresh)
 
     def _appearance_refresh(self) -> None:
         """Hot-swap dark/light theme without restarting the process."""
-        from teleclaude.cli.tui import theme
-        from teleclaude.cli.tui.widgets.session_row import SessionRow
-        from teleclaude.cli.tui.widgets.todo_row import TodoRow
-
         theme.refresh_mode()
 
         level = get_pane_theming_mode_level()
@@ -598,14 +670,13 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
 
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.reapply_colors()
-        for widget in self.query(SessionRow):
+        for widget in self.query("SessionRow"):
             widget.refresh()
-        for widget in self.query(TodoRow):
+        for widget in self.query("TodoRow"):
             widget.refresh()
 
         # Refresh animation engine theme (push dark_mode to running animations)
-        if self._animation_engine:
-            self._animation_engine.refresh_theme()
+        self._animation_engine.refresh_theme()
 
         # Refresh Rich-based header widgets (not CSS-driven)
         for widget in self.query(Banner):
@@ -614,38 +685,37 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             widget.refresh()
 
         # Refresh config content — its Rich styles depend on dark/light mode
-        from teleclaude.cli.tui.views.config import ConfigContent
-
         for widget in self.query(ConfigContent):
             widget.refresh()
 
     def on_resize(self, event: object) -> None:
         """Force sky animation to reposition celestials on terminal resize."""
-        if self._animation_engine:
-            width = getattr(getattr(event, "size", None), "width", None)
-            self._animation_engine.invalidate_term_width(width)
+        width = getattr(getattr(event, "size", None), "width", None)
+        self._animation_engine.invalidate_term_width(width)
 
     def _schedule_sky_width_invalidation(self) -> None:
         """Debounce sky width refresh — cancel any pending timer and schedule a fresh one."""
-        if self._sky_width_timer is not None:
-            self._sky_width_timer.stop()
+        timer = self._sky_width_timer
+        if timer is not None:
+            timer.stop()
         self._sky_width_timer = self.set_timer(0.5, self._invalidate_sky_width)
 
     def _cancel_sky_width_timer(self) -> None:
         """Cancel pending sky width invalidation timer."""
-        if self._sky_width_timer is not None:
-            self._sky_width_timer.stop()
+        timer = self._sky_width_timer
+        if timer is not None:
+            timer.stop()
         self._sky_width_timer = None
 
     def _invalidate_sky_width(self) -> None:
         """Delayed sky width refresh after pane layout changes."""
         self._sky_width_timer = None
-        if self._animation_engine:
-            self._animation_engine.invalidate_term_width()
+        self._animation_engine.invalidate_term_width()
 
     def _handle_sigusr2(self, _signum: int, _frame: object) -> None:
         """Catch SIGUSR2 (code change) and schedule full process restart."""
-        self._reload_loop.call_soon_threadsafe(self._sigusr2_reload)
+        if self._runtime_state.reload_loop is not None:
+            self._runtime_state.reload_loop.call_soon_threadsafe(self._sigusr2_reload)
 
     def _sigusr2_reload(self) -> None:
         """Save state and exit for full process restart.
@@ -663,7 +733,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
 
     # --- Lifecycle ---
 
-    def _show_animation_toast(self, target: str, animation: Animation) -> None:
+    def _show_animation_toast(self, _target: str, _animation: Animation) -> None:
         """No-op — animation toasts disabled."""
 
     async def action_quit(self) -> None:

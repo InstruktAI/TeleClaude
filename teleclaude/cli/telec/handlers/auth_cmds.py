@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 
-from teleclaude.cli.api_client import TelecAPIClient
+from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.session_auth import (
     clear_current_session_email,
     get_current_session_context,
@@ -23,6 +24,10 @@ __all__ = [
     "_requires_tui_login",
     "_role_for_email",
 ]
+
+
+def _load_global_config():
+    return importlib.import_module("teleclaude.config.loader").load_global_config()
 
 
 def _handle_auth(args: list[str]) -> None:
@@ -61,12 +66,8 @@ def _role_for_email(email: str) -> str | None:
     if not normalized:
         return None
     try:
-        # Import lazily so CLI commands that do not require config can start
-        # even when runtime config is invalid or unavailable.
-        from teleclaude.config.loader import load_global_config
-
-        global_cfg = load_global_config()
-    except Exception:
+        global_cfg = _load_global_config()
+    except (AttributeError, OSError, TypeError, ValueError):
         return None
     for person in global_cfg.people:
         if person.email.strip().lower() == normalized:
@@ -77,10 +78,8 @@ def _role_for_email(email: str) -> str | None:
 def _requires_tui_login() -> bool:
     """Return True when terminal login is required before launching TUI."""
     try:
-        from teleclaude.config.loader import load_global_config
-
-        global_cfg = load_global_config()
-    except Exception:
+        global_cfg = _load_global_config()
+    except (AttributeError, OSError, TypeError, ValueError):
         return False
     return len(global_cfg.people) > 1
 
@@ -136,7 +135,7 @@ def _handle_whoami(args: list[str]) -> None:
 
         try:
             asyncio.run(_resolve_principal())
-        except Exception as exc:
+        except APIError as exc:
             print(f"Error resolving principal: {exc}")
             raise SystemExit(1) from exc
         return

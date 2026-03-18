@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 TMUX_ENV_KEY = "TMUX"
@@ -18,9 +19,12 @@ class _ConfigProxy:
     """
 
     def __getattr__(self, name: str) -> Any:
-        from teleclaude.config import config as runtime_config
-
+        runtime_config = importlib.import_module("teleclaude.config").config
         return getattr(runtime_config, name)
+
+    def get(self, name: str, default: Any = None) -> Any:
+        """Return a config attribute when available, otherwise ``default``."""
+        return getattr(self, name, default)
 
 
 config = _ConfigProxy()

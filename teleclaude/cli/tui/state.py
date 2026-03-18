@@ -37,6 +37,7 @@ class DocPreviewState:
 @dataclass
 class SessionViewState:
     """State for Sessions view."""
+    # pylint: disable=too-many-instance-attributes
 
     selected_index: int = 0
     selected_session_id: str | None = None
@@ -129,6 +130,8 @@ class Intent:
 
 
 class IntentPayload(TypedDict, total=False):
+    """Payload fields carried by reducer intents."""
+
     session_id: str
     session_ids: list[str]
     todo_id: str

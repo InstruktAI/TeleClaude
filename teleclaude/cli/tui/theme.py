@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from dataclasses import dataclass, field
 
 from rich.style import Style
 from textual.theme import Theme
@@ -35,9 +36,17 @@ __all_reexports__ = [blend, deepen_for_light_mode, letter_color_floor]
 _APPLE_DARK_LABEL = "Dark"
 
 
-class ThemeMode:
-    DARK = "dark"
-    LIGHT = "light"
+THEME_MODE_DARK = "dark"
+THEME_MODE_LIGHT = "light"
+
+
+@dataclass
+class _ThemeRuntime:
+    is_dark_mode: bool
+    terminal_bg_cache: str | None = None
+    tui_focused: bool = True
+    pane_theming_mode_override: str | None = None
+    agent_rich_colors: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 def _get_tmux_socket_path() -> str | None:
@@ -55,18 +64,18 @@ def _get_tmux_appearance_mode() -> str | None:
         cmd.extend(["-S", socket_path])
     cmd.extend(["show", "-gv", "@appearance_mode"])
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1, check=False)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
     mode = (result.stdout or "").strip().lower()
-    if mode in {ThemeMode.DARK, ThemeMode.LIGHT}:
+    if mode in {THEME_MODE_DARK, THEME_MODE_LIGHT}:
         return mode
     return None
 
 
 def _get_env_appearance_mode() -> str | None:
     mode = (os.environ.get("APPEARANCE_MODE") or "").strip().lower()
-    if mode in {ThemeMode.DARK, ThemeMode.LIGHT}:
+    if mode in {THEME_MODE_DARK, THEME_MODE_LIGHT}:
         return mode
     return None
 
@@ -80,25 +89,27 @@ def _get_system_appearance_mode() -> str | None:
             capture_output=True,
             text=True,
             timeout=1,
+            check=False,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
     stdout = (result.stdout or "").strip()
     stderr = (result.stderr or "").strip().lower()
     if _APPLE_DARK_LABEL in stdout:
-        return ThemeMode.DARK
+        return THEME_MODE_DARK
     if result.returncode != 0:
         if "does not exist" in stderr or "could not be found" in stderr:
-            return ThemeMode.LIGHT
+            return THEME_MODE_LIGHT
         return None
-    return ThemeMode.LIGHT
+    return THEME_MODE_LIGHT
 
 
 def get_system_dark_mode() -> bool | None:
+    """Return the current macOS dark mode state when detectable."""
     mode = _get_system_appearance_mode()
     if mode is None:
         return None
-    return mode == ThemeMode.DARK
+    return mode == THEME_MODE_DARK
 
 
 def _detect_dark_mode() -> bool:
@@ -108,17 +119,18 @@ def _detect_dark_mode() -> bool:
     """
     env_mode = _get_env_appearance_mode()
     if env_mode:
-        return env_mode == ThemeMode.DARK
+        return env_mode == THEME_MODE_DARK
     system_mode = _get_system_appearance_mode()
     if system_mode:
-        return system_mode == ThemeMode.DARK
+        return system_mode == THEME_MODE_DARK
     tmux_mode = _get_tmux_appearance_mode()
     if tmux_mode:
-        return tmux_mode == ThemeMode.DARK
+        return tmux_mode == THEME_MODE_DARK
     return True
 
 
-_is_dark_mode: bool = _detect_dark_mode()
+_THEME_RUNTIME = _ThemeRuntime(is_dark_mode=_detect_dark_mode())
+_is_dark_mode = _THEME_RUNTIME.is_dark_mode
 
 
 def is_dark_mode() -> bool:
@@ -133,9 +145,10 @@ def get_current_mode() -> bool:
 
 def refresh_mode() -> None:
     """Re-probe system appearance and rebuild all mode-dependent color tables."""
-    global _is_dark_mode, _terminal_bg_cache
-    _is_dark_mode = _detect_dark_mode()
-    _terminal_bg_cache = None
+    current_mode = _detect_dark_mode()
+    globals()["_is_dark_mode"] = current_mode
+    _THEME_RUNTIME.is_dark_mode = current_mode
+    _THEME_RUNTIME.terminal_bg_cache = None
     _build_rich_colors()
 
 
@@ -197,7 +210,7 @@ def _safe_agent(agent: str) -> str:
 
 
 def _mode_key() -> str:
-    return "dark" if _is_dark_mode else "light"
+    return THEME_MODE_DARK if _is_dark_mode else THEME_MODE_LIGHT
 
 
 def get_agent_hex(agent: str, tier: str = "normal") -> str:
@@ -241,14 +254,17 @@ def get_structural_color(key: str) -> str:
 
 
 def get_connector_color() -> str:
+    """Return the connector color for the active mode."""
     return get_structural_color("connector")
 
 
 def get_banner_hex() -> str:
+    """Return the banner accent color for the active mode."""
     return get_structural_color("banner")
 
 
 def get_status_fg() -> str:
+    """Return the subdued status foreground color for the active mode."""
     return get_structural_color("status_fg")
 
 
@@ -272,15 +288,19 @@ _TERMINAL_HINT_WEIGHT = 0.35
 _DARK_HINT_MAX_LUMINANCE = 0.45
 _LIGHT_HINT_MIN_LUMINANCE = 0.55
 
-_terminal_bg_cache: str | None = None
-
 
 def _read_terminal_bg_from_appearance() -> str | None:
     appearance_bin = os.path.expanduser("~/.local/bin/appearance")
     if not os.path.exists(appearance_bin):
         return None
     try:
-        result = subprocess.run([appearance_bin, "get-terminal-bg"], capture_output=True, text=True, timeout=1)
+        result = subprocess.run(
+            [appearance_bin, "get-terminal-bg"],
+            capture_output=True,
+            text=True,
+            timeout=1,
+            check=False,
+        )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
     if result.returncode != 0:
@@ -295,24 +315,24 @@ blend_colors = blend
 
 def get_terminal_background() -> str:
     """Get terminal's background color (hex), with mode-safe baseline and hint blending."""
-    global _terminal_bg_cache
-    if _terminal_bg_cache:
-        return _terminal_bg_cache
+    if _THEME_RUNTIME.terminal_bg_cache:
+        return _THEME_RUNTIME.terminal_bg_cache
     mode_default_bg = "#000000" if _is_dark_mode else _LIGHT_MODE_PAPER_BG
     hint = _read_terminal_bg_from_appearance()
     if hint:
         lum = relative_luminance(hint)
         if _is_dark_mode and lum <= _DARK_HINT_MAX_LUMINANCE:
-            _terminal_bg_cache = blend(mode_default_bg, hint, _TERMINAL_HINT_WEIGHT)
-            return _terminal_bg_cache
-        elif not _is_dark_mode and lum >= _LIGHT_HINT_MIN_LUMINANCE:
-            _terminal_bg_cache = blend(mode_default_bg, hint, _TERMINAL_HINT_WEIGHT)
-            return _terminal_bg_cache
-    _terminal_bg_cache = mode_default_bg
-    return _terminal_bg_cache
+            _THEME_RUNTIME.terminal_bg_cache = blend(mode_default_bg, hint, _TERMINAL_HINT_WEIGHT)
+            return _THEME_RUNTIME.terminal_bg_cache
+        if not _is_dark_mode and lum >= _LIGHT_HINT_MIN_LUMINANCE:
+            _THEME_RUNTIME.terminal_bg_cache = blend(mode_default_bg, hint, _TERMINAL_HINT_WEIGHT)
+            return _THEME_RUNTIME.terminal_bg_cache
+    _THEME_RUNTIME.terminal_bg_cache = mode_default_bg
+    return _THEME_RUNTIME.terminal_bg_cache
 
 
 def get_tui_inactive_background() -> str:
+    """Return the background tint for an unfocused TUI pane."""
     base_bg = get_terminal_background()
     blend_target = "#ffffff" if _is_dark_mode else "#000000"
     pct = _TUI_INACTIVE_HAZE_PERCENTAGE_DARK if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT
@@ -328,18 +348,15 @@ def apply_tui_haze(hex_color: str) -> str:
 
 # --- Centralized TUI focus state for haze ---
 
-_tui_focused: bool = True
-
 
 def set_tui_focused(focused: bool) -> None:
     """Update TUI focus state. Called by app._watch_app_focus()."""
-    global _tui_focused
-    _tui_focused = focused
+    _THEME_RUNTIME.tui_focused = focused
 
 
 def resolve_haze(hex_color: str) -> str:
     """Return hex_color as-is when focused, hazed when unfocused."""
-    if _tui_focused:
+    if _THEME_RUNTIME.tui_focused:
         return hex_color
     return apply_tui_haze(hex_color)
 
@@ -347,7 +364,7 @@ def resolve_haze(hex_color: str) -> str:
 def get_billboard_background() -> str:
     """Get billboard background color, adapting to TUI focus state."""
     if _is_dark_mode:
-        return "#242424" if _tui_focused else "#2b2b2b"
+        return "#242424" if _THEME_RUNTIME.tui_focused else "#2b2b2b"
     return "#ffffff"
 
 
@@ -357,6 +374,7 @@ def _get_agent_pane_hex(agent: str) -> str:
 
 
 def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None = None) -> str:
+    """Return the inactive pane background blended toward the agent color."""
     base_bg = get_terminal_background()
     agent_color = _get_agent_pane_hex(agent)
     pct = (
@@ -368,6 +386,7 @@ def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None
 
 
 def get_agent_pane_selected_background(agent: str) -> str:
+    """Return the tree-selected pane background for an agent."""
     return get_agent_pane_inactive_background(
         agent,
         haze_percentage=(
@@ -379,10 +398,12 @@ def get_agent_pane_selected_background(agent: str) -> str:
 
 
 def get_agent_pane_active_background(agent: str) -> str:
+    """Return the active pane background for an agent."""
     return get_agent_pane_inactive_background(agent, haze_percentage=_AGENT_PANE_ACTIVE_HAZE_PERCENTAGE)
 
 
 def get_agent_status_background(agent: str) -> str:
+    """Return the status-strip background blended toward the agent color."""
     base_bg = get_terminal_background()
     return blend(base_bg, _get_agent_pane_hex(agent), _AGENT_STATUS_HAZE_PERCENTAGE)
 
@@ -547,6 +568,7 @@ _PANE_THEMING_MODE_OVERRIDE: str | None = None
 
 
 def normalize_pane_theming_mode(mode: str) -> str:
+    """Return the canonical pane theming mode string."""
     canonical = (mode or "").strip().lower()
     canonical = _PANE_THEMING_MODE_CANONICAL.get(canonical, canonical)
     if canonical not in _VALID_PANE_THEMING_MODES:
@@ -555,35 +577,40 @@ def normalize_pane_theming_mode(mode: str) -> str:
 
 
 def get_pane_theming_mode() -> str:
-    if _PANE_THEMING_MODE_OVERRIDE:
-        return _PANE_THEMING_MODE_OVERRIDE
+    """Return the effective pane theming mode, including overrides."""
+    if _THEME_RUNTIME.pane_theming_mode_override:
+        return _THEME_RUNTIME.pane_theming_mode_override
     return PANE_THEMING_MODE_AGENT_PLUS
 
 
 def get_pane_theming_mode_level(mode: str | None = None) -> int:
+    """Return the numeric level for a pane theming mode."""
     canonical = normalize_pane_theming_mode(mode if mode is not None else get_pane_theming_mode())
     return _PANE_THEMING_MODE_TO_LEVEL[canonical]
 
 
 def should_apply_session_theming(level: int | None = None) -> bool:
+    """Return whether rows and widgets should use agent-specific colors."""
     pane_level = get_pane_theming_mode_level() if level is None else level
     return pane_level in (1, 3, 4)
 
 
 def should_apply_paint_pane_theming(level: int | None = None) -> bool:
+    """Return whether tmux pane backgrounds should be explicitly painted."""
     pane_level = get_pane_theming_mode_level() if level is None else level
     return pane_level == 3
 
 
 def set_pane_theming_mode(mode: str | None) -> None:
-    global _PANE_THEMING_MODE_OVERRIDE
+    """Set or clear the runtime pane theming mode override."""
     if not mode:
-        _PANE_THEMING_MODE_OVERRIDE = None  # type: ignore[reportConstantRedefinition]
+        _THEME_RUNTIME.pane_theming_mode_override = None
         return
-    _PANE_THEMING_MODE_OVERRIDE = normalize_pane_theming_mode(mode)  # type: ignore[reportConstantRedefinition]
+    _THEME_RUNTIME.pane_theming_mode_override = normalize_pane_theming_mode(mode)
 
 
 def get_pane_theming_mode_from_level(level: int) -> str:
+    """Return the canonical pane theming mode for a numeric level."""
     if level < 0 or level >= len(_PANE_LEVEL_TO_CANONICAL_MODE):
         raise ValueError(f"pane_theming_mode level must be 0..{len(_PANE_LEVEL_TO_CANONICAL_MODE) - 1}")
     return _PANE_LEVEL_TO_CANONICAL_MODE[level]
@@ -609,13 +636,10 @@ def get_selection_fg_hex() -> str:
 
 # --- Rich Style Definitions for Textual Widgets ---
 
-_agent_rich_colors: dict[str, dict[str, str]] = {}
-
 
 def _build_rich_colors() -> None:
     """Rebuild Rich color tables for current dark/light mode from AGENT_PALETTE."""
-    global _agent_rich_colors
-    _agent_rich_colors = AGENT_PALETTE[_mode_key()]
+    _THEME_RUNTIME.agent_rich_colors = AGENT_PALETTE[_mode_key()]
 
 
 _build_rich_colors()
@@ -624,7 +648,7 @@ _build_rich_colors()
 def get_agent_style(agent: str, tier: str = "normal") -> Style:
     """Get a Rich Style for an agent at a given tier."""
     safe = _safe_agent(agent)
-    color = _agent_rich_colors[safe].get(tier, "default")
+    color = _THEME_RUNTIME.agent_rich_colors[safe].get(tier, "default")
     bold = tier == "highlight"
     return Style(color=color, bold=bold)
 
@@ -632,7 +656,7 @@ def get_agent_style(agent: str, tier: str = "normal") -> Style:
 def get_agent_color(agent: str, tier: str = "normal") -> str:
     """Get the hex color string for an agent at a given tier."""
     safe = _safe_agent(agent)
-    return _agent_rich_colors[safe].get(tier, "default")
+    return _THEME_RUNTIME.agent_rich_colors[safe].get(tier, "default")
 
 
 def get_agent_css_class(agent: str) -> str:

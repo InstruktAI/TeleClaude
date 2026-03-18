@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import time as _t
+
 from instrukt_ai_logging import get_logger
 from textual import work
 from textual.widgets import TabbedContent
 
+from teleclaude.cli.api_client import APIError
+from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     KillSessionRequest,
@@ -24,37 +28,76 @@ from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 logger = get_logger(__name__)
+APP_ACTION_ERRORS = (APIError, AttributeError, OSError, RuntimeError, TypeError, ValueError)
+APP_QUERY_ERRORS = (AttributeError, LookupError, RuntimeError, TypeError, ValueError)
 
 
 class TelecAppActionsMixin:
     """User-initiated action handlers, tab switching, and pane theming."""
+
+    @staticmethod
+    def _bridge_has_doc_preview(pane_bridge: object) -> bool:
+        has_doc_preview = getattr(pane_bridge, "has_doc_preview", None)
+        if callable(has_doc_preview):
+            return bool(has_doc_preview())
+        return getattr(pane_bridge, "_active_doc_preview", None) is not None
+
+    @staticmethod
+    def _clear_bridge_preview(pane_bridge: object) -> None:
+        clear_preview = getattr(pane_bridge, "clear_preview", None)
+        if callable(clear_preview):
+            clear_preview(focus=False)
+            return
+        set_preview = getattr(pane_bridge, "_set_preview", None)
+        if callable(set_preview):
+            set_preview(focus=False)
+
+    @staticmethod
+    def _session_widgets(sessions_view: object) -> list[object]:
+        query = getattr(sessions_view, "query", None)
+        if callable(query):
+            return list(query("SessionRow"))
+        return list(getattr(sessions_view, "_nav_items", []))
+
+    @staticmethod
+    def _notify_sessions_state_changed(sessions_view: object) -> None:
+        post_message = getattr(sessions_view, "post_message", None)
+        refresh_bindings = getattr(sessions_view, "refresh_bindings", None)
+        if callable(post_message) and callable(refresh_bindings):
+            post_message(StateChanged())
+            refresh_bindings()
+            return
+        notify_state_changed = getattr(sessions_view, "_notify_state_changed", None)
+        if callable(notify_state_changed):
+            notify_state_changed()
 
     def action_clear_layout(self) -> None:
         """Global ESC: tear down all preview, sticky, and doc panes."""
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
         had_preview = sessions_view.preview_session_id is not None
-        had_sticky = bool(sessions_view._sticky_session_ids)
-        had_doc = pane_bridge._active_doc_preview is not None
+        had_sticky = bool(getattr(sessions_view, "_sticky_session_ids", []))
+        had_doc = self._bridge_has_doc_preview(pane_bridge)
         if not had_preview and not had_sticky and not had_doc:
             return
         if had_preview:
             sessions_view.preview_session_id = None
             self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
         if had_sticky:
-            from teleclaude.cli.tui.views.sessions import SessionRow
-
-            sessions_view._sticky_session_ids.clear()
-            for widget in sessions_view._nav_items:
-                if isinstance(widget, SessionRow):
-                    widget.is_sticky = False
+            sticky_ids = getattr(sessions_view, "_sticky_session_ids", None)
+            if isinstance(sticky_ids, list):
+                sticky_ids.clear()
+            for widget in self._session_widgets(sessions_view):
+                if hasattr(widget, "is_sticky"):
+                    setattr(widget, "is_sticky", False)
             self.post_message(StickyChanged([]))  # type: ignore[attr-defined]
         if had_doc:
-            pane_bridge._set_preview(focus=False)
-        sessions_view._notify_state_changed()
+            self._clear_bridge_preview(pane_bridge)
+        self._notify_sessions_state_changed(sessions_view)
 
     @work(exclusive=True, group="session-action")
     async def on_create_session_request(self, message: CreateSessionRequest) -> None:
+        """Handle new-session, resume-session, and revive-session requests."""
         # Revive by TeleClaude session ID
         if message.revive_session_id:
             try:
@@ -63,8 +106,8 @@ class TelecAppActionsMixin:
                     self.notify(f"Revived session {message.revive_session_id}...")  # type: ignore[attr-defined]
                 else:
                     self.notify(result.error or "Revive failed", severity="error")  # type: ignore[attr-defined]
-            except Exception as e:
-                self.notify(f"Failed to revive session: {e}", severity="error")  # type: ignore[attr-defined]
+            except APP_ACTION_ERRORS as error:
+                self.notify(f"Failed to revive session: {error}", severity="error")  # type: ignore[attr-defined]
             return
 
         if not message.agent:
@@ -83,8 +126,8 @@ class TelecAppActionsMixin:
                     auto_command=auto_command,
                 )
                 self.notify("Resuming session...")  # type: ignore[attr-defined]
-            except Exception as e:
-                self.notify(f"Failed to resume session: {e}", severity="error")  # type: ignore[attr-defined]
+            except APP_ACTION_ERRORS as error:
+                self.notify(f"Failed to resume session: {error}", severity="error")  # type: ignore[attr-defined]
             return
 
         # Normal new session
@@ -97,18 +140,19 @@ class TelecAppActionsMixin:
                 title=message.title,
                 message=message.message,
             )
-        except Exception as e:
-            self.notify(f"Failed to create session: {e}", severity="error")  # type: ignore[attr-defined]
+        except APP_ACTION_ERRORS as error:
+            self.notify(f"Failed to create session: {error}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="session-action")
     async def on_kill_session_request(self, message: KillSessionRequest) -> None:
+        """Handle requests to stop a running session."""
         try:
             ended = await self.api.end_session(message.session_id, message.computer)  # type: ignore[attr-defined]
             if ended:
                 sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
                 sessions_view.optimistically_hide_session(message.session_id)
-        except Exception as e:
-            self.notify(f"Failed to kill session: {e}", severity="error")  # type: ignore[attr-defined]
+        except APP_ACTION_ERRORS as error:
+            self.notify(f"Failed to kill session: {error}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="session-action")
     async def on_revive_session_request(self, message: ReviveSessionRequest) -> None:
@@ -121,24 +165,26 @@ class TelecAppActionsMixin:
                 count=1,
             )
             self.notify("Reviving headless session...")  # type: ignore[attr-defined]
-        except Exception as e:
-            self.notify(f"Failed to revive session: {e}", severity="error")  # type: ignore[attr-defined]
+        except APP_ACTION_ERRORS as error:
+            self.notify(f"Failed to revive session: {error}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="session-action")
     async def on_restart_session_request(self, message: RestartSessionRequest) -> None:
+        """Handle restart requests for a single session."""
         try:
             await self.api.agent_restart(message.session_id)  # type: ignore[attr-defined]
             self.notify("Restarting agent...")  # type: ignore[attr-defined]
-        except Exception as e:
-            self.notify(f"Failed to restart session: {e}", severity="error")  # type: ignore[attr-defined]
+        except APP_ACTION_ERRORS as error:
+            self.notify(f"Failed to restart session: {error}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="session-action")
     async def on_restart_sessions_request(self, message: RestartSessionsRequest) -> None:
+        """Handle restart requests for multiple sessions."""
         failures = 0
         for session_id in message.session_ids:
             try:
                 await self.api.agent_restart(session_id)  # type: ignore[attr-defined]
-            except Exception:
+            except APP_ACTION_ERRORS:
                 failures += 1
                 logger.exception("Failed to restart session %s", session_id)
 
@@ -148,64 +194,68 @@ class TelecAppActionsMixin:
                 severity="warning",
             )
         else:
-            self.notify(f"Restarted {len(message.session_ids)} sessions on {message.computer}")  # type: ignore[attr-defined]
+            self.notify(  # type: ignore[attr-defined]
+                f"Restarted {len(message.session_ids)} sessions on {message.computer}"
+            )
 
     async def on_settings_changed(self, message: SettingsChanged) -> None:
+        """Apply footer-initiated setting changes."""
         key = message.key
-        if key == "pane_theming_mode":
-            self.action_cycle_pane_theming()  # type: ignore[attr-defined]
-        elif key == "tts_enabled":
-            self._toggle_tts()  # type: ignore[attr-defined]
-        elif key == "chiptunes_play_pause":
-            self._chiptunes_play_pause()  # type: ignore[attr-defined]
-        elif key == "chiptunes_next":
-            self._chiptunes_next()  # type: ignore[attr-defined]
-        elif key == "chiptunes_prev":
-            self._chiptunes_prev()  # type: ignore[attr-defined]
-        elif key == "chiptunes_favorite":
-            self._chiptunes_favorite()  # type: ignore[attr-defined]
-        elif key == "animation_mode":
+        simple_actions = {
+            "pane_theming_mode": self.action_cycle_pane_theming,  # type: ignore[attr-defined]
+            "tts_enabled": self._toggle_tts,  # type: ignore[attr-defined]
+            "chiptunes_play_pause": self._chiptunes_play_pause,  # type: ignore[attr-defined]
+            "chiptunes_next": self._chiptunes_next,  # type: ignore[attr-defined]
+            "chiptunes_prev": self._chiptunes_prev,  # type: ignore[attr-defined]
+            "chiptunes_favorite": self._chiptunes_favorite,  # type: ignore[attr-defined]
+        }
+        action = simple_actions.get(key)
+        if action is not None:
+            action()
+            return
+        if key == "animation_mode":
             self._cycle_animation(str(message.value))  # type: ignore[attr-defined]
-        elif key == "agent_status":
-            # Handle agent pill clicks: cycle available → degraded → unavailable → available
-            if isinstance(message.value, dict):
-                agent = str(message.value.get("agent", ""))
-                status_bar = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
-                current_info = status_bar._agent_availability.get(agent)
+            return
+        if key == "agent_status" and isinstance(message.value, dict):
+            await self._handle_agent_status_change(str(message.value.get("agent", "")))
+            return
+        if key.startswith("run_job:"):
+            await self._run_footer_job(key.split(":", 1)[1])
 
-                # Determine next status
-                if current_info:
-                    current_status = current_info.status or "available"
-                    if current_status == "available":
-                        next_status = "degraded"
-                    elif current_status == "degraded":
-                        next_status = "unavailable"
-                    else:
-                        next_status = "available"
-                else:
-                    next_status = "degraded"
+    async def _handle_agent_status_change(self, agent: str) -> None:
+        """Cycle an agent availability pill through its manual states."""
+        status_bar = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
+        availability = dict(getattr(status_bar, "_agent_availability", {}))
+        current_info = availability.get(agent)
+        if current_info:
+            current_status = current_info.status or "available"
+            next_status = {
+                "available": "degraded",
+                "degraded": "unavailable",
+            }.get(current_status, "available")
+        else:
+            next_status = "degraded"
+        try:
+            updated_info = await self.api.set_agent_status(  # type: ignore[attr-defined]
+                agent, next_status, reason="manual", duration_minutes=60
+            )
+            availability[agent] = updated_info
+            status_bar.update_availability(availability)
+        except APP_ACTION_ERRORS as error:
+            self.notify(f"Failed to set agent status: {error}", severity="error")  # type: ignore[attr-defined]
 
-                try:
-                    updated_info = await self.api.set_agent_status(  # type: ignore[attr-defined]
-                        agent, next_status, reason="manual", duration_minutes=60
-                    )
-                    status_bar._agent_availability[agent] = updated_info
-                    status_bar.refresh()
-                except Exception as e:
-                    self.notify(f"Failed to set agent status: {e}", severity="error")  # type: ignore[attr-defined]
-        elif key.startswith("run_job:"):
-            job_name = key.split(":", 1)[1]
-            try:
-                await self.api.run_job(job_name)  # type: ignore[attr-defined]
-                self.notify(f"Job '{job_name}' started")  # type: ignore[attr-defined]
-            except Exception as e:
-                self.notify(f"Failed to run job: {e}", severity="error")  # type: ignore[attr-defined]
+    async def _run_footer_job(self, job_name: str) -> None:
+        """Run a footer-triggered background job and surface the result."""
+        try:
+            await self.api.run_job(job_name)  # type: ignore[attr-defined]
+            self.notify(f"Job '{job_name}' started")  # type: ignore[attr-defined]
+        except APP_ACTION_ERRORS as error:
+            self.notify(f"Failed to run job: {error}", severity="error")  # type: ignore[attr-defined]
 
     # --- Tab switching ---
 
     def action_switch_tab(self, tab_id: str) -> None:
-        import time as _t
-
+        """Activate a top-level tab and synchronize the custom tab bar."""
         _sw0 = _t.monotonic()
         logger.trace("[PERF] action_switch_tab(%s) START t=%.3f", tab_id, _sw0)
         tabs = self.query_one("#main-tabs", TabbedContent)  # type: ignore[attr-defined]
@@ -221,8 +271,7 @@ class TelecAppActionsMixin:
         )
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        import time as _t
-
+        """Keep the custom tab bar and focused view in sync with tab activation."""
         tab_id = event.pane.id or "sessions"
         logger.trace("[PERF] tab_activated(%s) t=%.3f", tab_id, _t.monotonic())
         # Ignore stale activations (e.g. initial default-tab activation arriving
@@ -232,7 +281,7 @@ class TelecAppActionsMixin:
             return
         try:
             box_tabs = self.query_one("#box-tab-bar", BoxTabBar)  # type: ignore[attr-defined]
-        except Exception:
+        except APP_QUERY_ERRORS:
             # Late activation can arrive while the app is tearing down.
             return
         box_tabs.active_tab = tab_id
@@ -256,12 +305,10 @@ class TelecAppActionsMixin:
             try:
                 view = self.query_one(selector)  # type: ignore[attr-defined]
                 view.focus()
-            except Exception:
-                pass
+            except APP_QUERY_ERRORS:
+                logger.debug("Unable to focus selector %s", selector, exc_info=True)
 
     def _apply_app_theme_for_mode(self, pane_theming_mode: str) -> None:
-        from teleclaude.cli.tui import theme
-
         try:
             level = get_pane_theming_mode_level(pane_theming_mode)
         except ValueError:
@@ -276,10 +323,7 @@ class TelecAppActionsMixin:
     # --- Pane theming ---
 
     def action_cycle_pane_theming(self) -> None:
-        from teleclaude.cli.tui import theme
-        from teleclaude.cli.tui.widgets.session_row import SessionRow
-        from teleclaude.cli.tui.widgets.todo_row import TodoRow
-
+        """Advance the pane theming mode and refresh theme-sensitive widgets."""
         current_level = theme.get_pane_theming_mode_level()
         next_level = (current_level + 1) % 5
         mode = theme.get_pane_theming_mode_from_level(next_level)
@@ -293,7 +337,7 @@ class TelecAppActionsMixin:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
         pane_bridge.reapply_colors()
         # Refresh theme-dependent widgets (agent vs peaceful colors)
-        for widget in self.query(SessionRow):  # type: ignore[attr-defined]
+        for widget in self.query("SessionRow"):  # type: ignore[attr-defined]
             widget.refresh()
-        for widget in self.query(TodoRow):  # type: ignore[attr-defined]
+        for widget in self.query("TodoRow"):  # type: ignore[attr-defined]
             widget.refresh()

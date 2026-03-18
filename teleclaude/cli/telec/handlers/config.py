@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import sys
 
 from teleclaude.cli.telec.help import _usage
@@ -9,6 +10,23 @@ from teleclaude.cli.telec.help import _usage
 __all__ = [
     "_handle_config",
 ]
+
+
+def _run_tui_config_mode(*, guided: bool) -> None:
+    run_tui_config_mode = importlib.import_module("teleclaude.cli.telec._run_tui")._run_tui_config_mode  # pylint: disable=protected-access
+    run_tui_config_mode(guided=guided)
+
+
+def _handle_config_command(args: list[str]) -> None:
+    importlib.import_module("teleclaude.cli.config_cmd").handle_config_command(args)
+
+
+def _handle_cartridge_cli(args: list[str]) -> None:
+    importlib.import_module("teleclaude.cli.cartridge_cli").handle_cartridge_cli(args)
+
+
+def _handle_legacy_config_cli(args: list[str]) -> None:
+    importlib.import_module("teleclaude.cli.config_cli").handle_config_cli(args)
 
 
 def _handle_config(args: list[str]) -> None:
@@ -31,21 +49,13 @@ def _handle_config(args: list[str]) -> None:
         if not sys.stdin.isatty():
             print("Error: Interactive config requires a terminal.")
             raise SystemExit(1)
-        from teleclaude.cli.telec._run_tui import _run_tui_config_mode
-
         _run_tui_config_mode(guided=True)
     elif subcommand in ("get", "patch"):
-        from teleclaude.cli.config_cmd import handle_config_command
-
-        handle_config_command(args)
+        _handle_config_command(args)
     elif subcommand == "cartridges":
-        from teleclaude.cli.cartridge_cli import handle_cartridge_cli
-
-        handle_cartridge_cli(args[1:])
+        _handle_cartridge_cli(args[1:])
     elif subcommand in ("people", "env", "notify", "validate", "invite"):
-        from teleclaude.cli.config_cli import handle_config_cli
-
-        handle_config_cli(args)
+        _handle_legacy_config_cli(args)
     else:
         print(f"Unknown config subcommand: {subcommand}")
         print(_usage("config"))
