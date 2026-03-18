@@ -48,3 +48,5 @@
 - slug: fix-integrate-api-hang
   after:
   - fix-gemini-command-injection
+- slug: mark-phase-force
+- slug: fix-integrate-state-machine-cleanup
