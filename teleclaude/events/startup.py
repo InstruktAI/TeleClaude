@@ -15,21 +15,8 @@ from teleclaude.events.personal_pipeline import load_personal_pipeline
 logger = get_logger(__name__)
 
 
-def build_domain_pipeline_runner(config: DomainsConfig) -> DomainPipelineRunner:
-    """Build a DomainPipelineRunner from config.
-
-    On startup error (e.g., CartridgeCycleError): logs the error and skips the
-    affected domain — domain failures do not crash the runner.
-    """
-    runner = DomainPipelineRunner()
-
-    if not config.enabled:
-        logger.info("Domain pipeline disabled in config")
-        return runner
-
-    registry = DomainRegistry()
-    registry.load_from_config(config)
-
+def _register_domain_pipelines(registry: DomainRegistry, runner: DomainPipelineRunner) -> None:
+    """Discover and register all enabled domain pipelines."""
     for domain_cfg in registry.list_enabled():
         domain_name = domain_cfg.name
         cartridge_path = registry.cartridge_path_for(domain_name)
@@ -50,35 +37,57 @@ def build_domain_pipeline_runner(config: DomainsConfig) -> DomainPipelineRunner:
                 len(cartridges),
                 len(levels),
             )
-        except CartridgeError as e:
+        except CartridgeError as exc:
             logger.error(
                 "Failed to load domain pipeline '%s': %s — domain pipeline disabled",
                 domain_name,
-                e,
+                exc,
                 exc_info=True,
             )
 
-    # Build personal pipelines for all configured members
+
+def _register_personal_pipelines(registry: DomainRegistry, runner: DomainPipelineRunner) -> None:
+    """Discover and register personal pipelines for configured members."""
     try:
         global_config = load_global_config()
-        people = global_config.people
-        for person in people:
-            member_id = person.email
-            if not member_id:
-                continue
-            personal_path = registry.personal_path_for(member_id)
-            try:
-                personal_pipeline = load_personal_pipeline(member_id, personal_path)
-                if personal_pipeline.cartridges:
-                    runner.register_personal_pipeline(member_id, personal_pipeline)
-                    logger.info(
-                        "Loaded personal pipeline for '%s': %d cartridges",
-                        member_id,
-                        len(personal_pipeline.cartridges),
-                    )
-            except Exception as e:
-                logger.error("Failed to load personal pipeline for '%s': %s", member_id, e, exc_info=True)
-    except Exception as e:
-        logger.warning("Could not load global config for personal pipelines: %s", e, exc_info=True)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.warning("Could not load global config for personal pipelines: %s", exc, exc_info=True)
+        return
+
+    for person in global_config.people:
+        member_id = person.email
+        if not member_id:
+            continue
+        personal_path = registry.personal_path_for(member_id)
+        try:
+            personal_pipeline = load_personal_pipeline(member_id, personal_path)
+            if personal_pipeline.has_cartridges():
+                runner.register_personal_pipeline(member_id, personal_pipeline)
+                logger.info(
+                    "Loaded personal pipeline for '%s': %d cartridges",
+                    member_id,
+                    len(personal_pipeline.cartridges),
+                )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("Failed to load personal pipeline for '%s': %s", member_id, exc, exc_info=True)
+
+
+def build_domain_pipeline_runner(config: DomainsConfig) -> DomainPipelineRunner:
+    """Build a DomainPipelineRunner from config.
+
+    On startup error (e.g., CartridgeCycleError): logs the error and skips the
+    affected domain — domain failures do not crash the runner.
+    """
+    runner = DomainPipelineRunner()
+
+    if not config.enabled:
+        logger.info("Domain pipeline disabled in config")
+        return runner
+
+    registry = DomainRegistry()
+    registry.load_from_config(config)
+
+    _register_domain_pipelines(registry, runner)
+    _register_personal_pipelines(registry, runner)
 
     return runner

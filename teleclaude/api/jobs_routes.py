@@ -8,6 +8,8 @@ from fastapi.concurrency import run_in_threadpool
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import JobDTO
+from teleclaude.cron.runner import _load_job_schedules, discover_jobs, run_due_jobs
+from teleclaude.cron.state import CronState
 
 logger = get_logger(__name__)
 
@@ -17,9 +19,6 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("")
 async def list_jobs() -> list[JobDTO]:
     """List scheduled jobs."""
-    from teleclaude.cron.runner import _load_job_schedules, discover_jobs
-    from teleclaude.cron.state import CronState
-
     def _get_jobs_sync() -> list[JobDTO]:
         try:
             python_jobs = discover_jobs()
@@ -66,15 +65,15 @@ async def list_jobs() -> list[JobDTO]:
 
             results.sort(key=lambda x: x.name)
             return results
-        except Exception as e:
-            logger.error("list_jobs inner failed: %s", e, exc_info=True)
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.error("list_jobs inner failed: %s", exc, exc_info=True)
             raise
 
     try:
         return await run_in_threadpool(_get_jobs_sync)
-    except Exception as e:
-        logger.error("list_jobs failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list jobs: {e}") from e
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.error("list_jobs failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list jobs: {exc}") from exc
 
 
 @router.post("/{name}/run")
@@ -83,14 +82,12 @@ async def run_job(
     background_tasks: fastapi.BackgroundTasks,
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Run a scheduled job immediately (fire-and-forget)."""
-    from teleclaude.cron.runner import run_due_jobs
-
     def _run_sync() -> None:
         try:
             logger.info("Background job triggered: %s", name)
             run_due_jobs(force=True, job_filter=name)
-        except Exception as e:
-            logger.error("Background job failed (job=%s): %s", name, e, exc_info=True)
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.error("Background job failed (job=%s): %s", name, exc, exc_info=True)
 
     background_tasks.add_task(run_in_threadpool, _run_sync)
     return {"status": "accepted", "job": name}

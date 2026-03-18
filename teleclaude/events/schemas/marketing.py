@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 
 def register_marketing(catalog: EventCatalog) -> None:
+    """Register marketing-domain event schemas."""
     # --- Content events ---
 
     catalog.register(

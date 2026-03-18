@@ -24,6 +24,66 @@ def parse_criterion(data: dict[str, Any]) -> PropertyCriterion:  # guard: loose-
     )
 
 
+def _parse_contract_criteria(contract_data: dict[str, Any]) -> tuple[
+    PropertyCriterion | None,
+    PropertyCriterion | None,
+    dict[str, PropertyCriterion],
+]:
+    """Split raw contract criteria into source, type, and property buckets."""
+    source_criterion = None
+    type_criterion = None
+    properties: dict[str, PropertyCriterion] = {}
+    for key, value in contract_data.items():
+        if not isinstance(value, dict):
+            continue
+        criterion = parse_criterion(value)
+        if key == "source":
+            source_criterion = criterion
+        elif key == "type":
+            type_criterion = criterion
+        else:
+            properties[key] = criterion
+    return source_criterion, type_criterion, properties
+
+
+def _build_config_contract(sub: dict[str, Any]) -> Contract:
+    """Build a Contract model from a config subscription entry."""
+    contract_data = sub.get("contract", {})
+    target_data = sub.get("target", {})
+    source_criterion, type_criterion, properties = _parse_contract_criteria(contract_data)
+    target = Target(
+        handler=target_data.get("handler"),
+        url=target_data.get("url"),
+        secret=target_data.get("secret"),
+    )
+    return Contract(
+        id=sub["id"],
+        target=target,
+        source_criterion=source_criterion,
+        type_criterion=type_criterion,
+        properties=properties,
+        source="config",
+    )
+
+
+def _resolve_inbound_registration(
+    source_name: str,
+    source_config: dict[str, Any],
+) -> tuple[str, str, dict[str, Any] | None]:
+    """Resolve an inbound endpoint definition from config."""
+    path = source_config.get("path")
+    if not path:
+        path = f"/hooks/inbound/{source_name}"
+        logger.info("Inbound path derived from source name: %s -> %s", source_name, path)
+    normalizer_key = source_config.get("normalizer") or source_name
+    verify_config = {
+        key: source_config[key]
+        for key in ("verify_token", "secret")
+        if key in source_config
+    }
+    return path, normalizer_key, verify_config or None
+
+
 async def load_hooks_config(
     hooks_config: dict[str, Any],  # guard: loose-dict - Config YAML is unstructured
     contract_registry: ContractRegistry,
@@ -41,43 +101,10 @@ async def load_hooks_config(
     failed_subscriptions = 0
     for sub in subscriptions:
         try:
-            contract_data = sub.get("contract", {})
-            target_data = sub.get("target", {})
-
-            # Extract source and type criteria from contract
-            source_criterion = None
-            type_criterion = None
-            properties: dict[str, PropertyCriterion] = {}
-
-            for key, value in contract_data.items():
-                if not isinstance(value, dict):
-                    continue
-                criterion = parse_criterion(value)
-                if key == "source":
-                    source_criterion = criterion
-                elif key == "type":
-                    type_criterion = criterion
-                else:
-                    properties[key] = criterion
-
-            target = Target(
-                handler=target_data.get("handler"),
-                url=target_data.get("url"),
-                secret=target_data.get("secret"),
-            )
-
-            contract = Contract(
-                id=sub["id"],
-                target=target,
-                source_criterion=source_criterion,
-                type_criterion=type_criterion,
-                properties=properties,
-                source="config",
-            )
+            contract = _build_config_contract(sub)
             await contract_registry.register(contract)
             logger.info("Loaded config contract: %s", contract.id)
-
-        except Exception as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             failed_subscriptions += 1
             logger.error("Failed to load subscription %s: %s", sub.get("id", "?"), exc, exc_info=True)
 
@@ -94,18 +121,8 @@ async def load_hooks_config(
         inbound = hooks_config.get("inbound", {})
         for source_name, source_config in inbound.items():
             try:
-                path = source_config.get("path")
-                if not path:
-                    path = f"/hooks/inbound/{source_name}"
-                    logger.info("Inbound path derived from source name: %s -> %s", source_name, path)
-                normalizer_key = source_config.get("normalizer") or source_name
-                verify_config = {}
-                if "verify_token" in source_config:
-                    verify_config["verify_token"] = source_config["verify_token"]
-                if "secret" in source_config:
-                    verify_config["secret"] = source_config["secret"]
-
-                inbound_registry.register(path, normalizer_key, verify_config or None)
+                path, normalizer_key, verify_config = _resolve_inbound_registration(source_name, source_config)
+                inbound_registry.register(path, normalizer_key, verify_config)
                 logger.info("Loaded inbound endpoint: %s → %s", source_name, path)
-            except Exception as exc:
+            except (AttributeError, TypeError, ValueError) as exc:
                 logger.error("Failed to load inbound %s: %s", source_name, exc, exc_info=True)

@@ -19,10 +19,12 @@ class HookEvent:
     payload: Mapping[str, object] = field(default_factory=dict)
 
     def to_json(self) -> str:
+        """Serialize the event to JSON for persistence or transport."""
         return json.dumps(asdict(self))
 
     @classmethod
     def from_json(cls, data: str) -> HookEvent:
+        """Deserialize a HookEvent from its JSON representation."""
         d = json.loads(data)
         return cls(**d)
 
@@ -30,13 +32,26 @@ class HookEvent:
     def now(
         cls,
         source: str,
-        type: str,
+        event_type: str | None = None,
         properties: dict[str, str | int | float | bool | list[str] | None] | None = None,
         payload: Mapping[str, object] | None = None,
+        **legacy_kwargs: object,
     ) -> HookEvent:
+        """Create a new event stamped with the current UTC time.
+
+        Accepts legacy callers that still pass `type=` by keyword.
+        """
+        if event_type is None:
+            legacy_type = legacy_kwargs.pop("type", None)
+            if not isinstance(legacy_type, str):
+                raise TypeError("HookEvent.now() requires an event type")
+            event_type = legacy_type
+        if legacy_kwargs:
+            unexpected = ", ".join(sorted(legacy_kwargs))
+            raise TypeError(f"Unexpected HookEvent.now() keyword(s): {unexpected}")
         return cls(
             source=source,
-            type=type,
+            type=event_type,
             timestamp=datetime.now(UTC).isoformat(),
             properties=properties or {},
             payload=payload or {},
@@ -61,22 +76,96 @@ class Target:
     secret: str | None = None  # HMAC signing key for external targets
 
 
-@dataclass
-class Contract:
-    """A subscriber's published declaration of need."""
+@dataclass(frozen=True)
+class ContractMetadata:
+    """Lifecycle metadata for a webhook contract."""
 
-    id: str
-    target: Target
-    source_criterion: PropertyCriterion | None = None
-    type_criterion: PropertyCriterion | None = None
-    properties: dict[str, PropertyCriterion] = field(default_factory=dict)
     active: bool = True
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     expires_at: str | None = None  # ISO 8601 UTC; None = never expires
     source: str = "api"  # "config", "api", "programmatic"
 
+
+@dataclass(init=False)
+class Contract:
+    """A subscriber's published declaration of need."""
+
+    id: str
+    target: Target
+    source_criterion: PropertyCriterion | None
+    type_criterion: PropertyCriterion | None
+    properties: dict[str, PropertyCriterion]
+    _metadata: ContractMetadata = field(init=False, repr=False)
+
+    def __init__(
+        self,
+        *,
+        target: Target,
+        contract_id: str | None = None,
+        properties: dict[str, PropertyCriterion] | None = None,
+        **kwargs: object,
+    ) -> None:
+        resolved_id = kwargs.pop("id", contract_id)
+        if not isinstance(resolved_id, str):
+            raise TypeError("Contract requires id")
+
+        source_criterion = kwargs.pop("source_criterion", None)
+        type_criterion = kwargs.pop("type_criterion", None)
+        active = kwargs.pop("active", True)
+        created_at = kwargs.pop("created_at", None)
+        expires_at = kwargs.pop("expires_at", None)
+        source = kwargs.pop("source", "api")
+        if kwargs:
+            unexpected = ", ".join(sorted(kwargs))
+            raise TypeError(f"Unexpected Contract keyword(s): {unexpected}")
+
+        self.id = resolved_id
+        self.target = target
+        if source_criterion is not None and not isinstance(source_criterion, PropertyCriterion):
+            raise TypeError("source_criterion must be a PropertyCriterion or None")
+        if type_criterion is not None and not isinstance(type_criterion, PropertyCriterion):
+            raise TypeError("type_criterion must be a PropertyCriterion or None")
+        if not isinstance(active, bool):
+            raise TypeError("active must be a bool")
+        if created_at is not None and not isinstance(created_at, str):
+            raise TypeError("created_at must be a str or None")
+        if expires_at is not None and not isinstance(expires_at, str):
+            raise TypeError("expires_at must be a str or None")
+        if not isinstance(source, str):
+            raise TypeError("source must be a str")
+        self.source_criterion = source_criterion
+        self.type_criterion = type_criterion
+        self.properties = {} if properties is None else dict(properties)
+        self._metadata = ContractMetadata(
+            active=active,
+            created_at=datetime.now(UTC).isoformat() if created_at is None else created_at,
+            expires_at=expires_at,
+            source=source,
+        )
+
+    @property
+    def active(self) -> bool:
+        """Return whether the contract is active."""
+        return self._metadata.active
+
+    @property
+    def created_at(self) -> str:
+        """Return when the contract was created."""
+        return self._metadata.created_at
+
+    @property
+    def expires_at(self) -> str | None:
+        """Return the contract expiry time, if any."""
+        return self._metadata.expires_at
+
+    @property
+    def source(self) -> str:
+        """Return where the contract was created from."""
+        return self._metadata.source
+
     @property
     def is_expired(self) -> bool:
+        """Return True when the contract expiry time has passed."""
         if self.expires_at is None:
             return False
         return datetime.now(UTC) >= datetime.fromisoformat(self.expires_at)

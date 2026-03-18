@@ -6,8 +6,9 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from instrukt_ai_logging import get_logger
+from redis.exceptions import RedisError
 
-from teleclaude.channels.consumer import consume, ensure_consumer_group
+from teleclaude.channels.consumer import ConsumerGroupSpec, consume, ensure_consumer_group
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -19,9 +20,13 @@ logger = get_logger(__name__)
 # Consumer group / consumer name for the subscription worker
 _WORKER_GROUP = "teleclaude-worker"
 _WORKER_CONSUMER = "main"
+_WORKER_CONSUMER_GROUP = ConsumerGroupSpec(group=_WORKER_GROUP, consumer=_WORKER_CONSUMER)
 
 # Polling interval when no messages are received
 _POLL_INTERVAL_S = 5.0
+
+_CONSUMER_EXCEPTIONS = (RedisError, OSError, RuntimeError, ValueError, TypeError)
+_DISPATCH_EXCEPTIONS = (OSError, RuntimeError, ValueError, TypeError)
 
 
 async def _dispatch_to_target(
@@ -38,7 +43,7 @@ async def _dispatch_to_target(
 
     if target_type == "notification":
         notification_channel = target.get("channel", "telegram")
-        message = payload.get("summary") or payload.get("message") or str(payload)
+        message = str(payload.get("summary") or payload.get("message") or payload)
         logger.info(
             "Channel dispatch -> notification (delivery via event platform)",
             notification_channel=notification_channel,
@@ -97,7 +102,7 @@ async def run_subscription_worker(
     for sub in subscriptions:
         try:
             await ensure_consumer_group(redis, sub.channel, _WORKER_GROUP)
-        except Exception:
+        except _CONSUMER_EXCEPTIONS:
             logger.warning("Failed to create consumer group for %s", sub.channel)
 
     logger.info("Channel subscription worker started", subscription_count=len(subscriptions))
@@ -111,12 +116,11 @@ async def run_subscription_worker(
                 messages = await consume(
                     redis,
                     sub.channel,
-                    _WORKER_GROUP,
-                    _WORKER_CONSUMER,
+                    _WORKER_CONSUMER_GROUP,
                     count=10,
                     block_ms=0,
                 )
-            except Exception:
+            except _CONSUMER_EXCEPTIONS:
                 logger.warning("Channel consume error on %s", sub.channel, exc_info=True)
                 continue
 
@@ -125,7 +129,7 @@ async def run_subscription_worker(
                     continue
                 try:
                     await _dispatch_to_target(sub.target, msg["payload"])
-                except Exception:
+                except _DISPATCH_EXCEPTIONS:
                     logger.warning("Dispatch failed for message %s on %s", msg["id"], sub.channel, exc_info=True)
 
         try:

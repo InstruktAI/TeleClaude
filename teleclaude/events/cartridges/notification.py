@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 from instrukt_ai_logging import get_logger
 
@@ -12,10 +13,24 @@ from teleclaude.events.pipeline import PipelineContext
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True)
+class PushNotificationChange:
+    """Projected notification change forwarded to push callbacks."""
+
+    notification_id: int
+    event_type: str
+    level: int
+    was_created: bool
+    is_meaningful: bool
+
+
 class NotificationProjectorCartridge:
+    """Project event lifecycle changes into the notification table."""
+
     name = "notification-projector"
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Create, update, or resolve notifications based on event lifecycle metadata."""
         # Fast-path: if _classification is present and treatment is signal-only, skip notification logic
         classification = event.payload.get("_classification")
         if isinstance(classification, dict) and classification.get("treatment") == "signal-only":
@@ -44,11 +59,11 @@ class NotificationProjectorCartridge:
                     reset_human_status=is_meaningful,
                 )
             else:
-                notification_id, was_created = await context.db.upsert_by_idempotency_key(event, schema)
+                notification_id, was_created = await context.db.upsert_by_idempotency_key(event)
                 is_meaningful = True
 
         elif lc.creates:
-            notification_id, was_created = await context.db.upsert_by_idempotency_key(event, schema)
+            notification_id, was_created = await context.db.upsert_by_idempotency_key(event)
 
         elif lc.updates and lc.group_key:
             group_val = str(event.payload.get(lc.group_key, ""))
@@ -66,7 +81,7 @@ class NotificationProjectorCartridge:
                 )
             else:
                 # No existing notification for this group — create one
-                notification_id, was_created = await context.db.upsert_by_idempotency_key(event, schema)
+                notification_id, was_created = await context.db.upsert_by_idempotency_key(event)
                 is_meaningful = True
 
         elif lc.resolves and lc.group_key:
@@ -78,24 +93,39 @@ class NotificationProjectorCartridge:
 
         if notification_id is not None:
             await _invoke_push_callbacks(
-                context, notification_id, event.event, int(event.level), was_created, is_meaningful
+                context,
+                PushNotificationChange(
+                    notification_id=notification_id,
+                    event_type=event.event,
+                    level=int(event.level),
+                    was_created=was_created,
+                    is_meaningful=is_meaningful,
+                ),
             )
 
         return event
 
+    def identifier(self) -> str:
+        """Return the stable cartridge identifier."""
+        return self.name
 
-async def _invoke_push_callbacks(
-    context: PipelineContext,
-    notification_id: int,
-    event_type: str,
-    level: int,
-    was_created: bool,
-    is_meaningful: bool,
-) -> None:
+
+async def _invoke_push_callbacks(context: PipelineContext, change: PushNotificationChange) -> None:
+    """Invoke configured push callbacks for a projected notification change."""
     for cb in context.push_callbacks:
         try:
-            result = cb(notification_id, event_type, level, was_created, is_meaningful)
+            result = cb(
+                change.notification_id,
+                change.event_type,
+                change.level,
+                change.was_created,
+                change.is_meaningful,
+            )
             if asyncio.iscoroutine(result):
                 await result
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception("push callback failed", event_type=event_type, notification_id=notification_id)
+            logger.exception(
+                "push callback failed",
+                event_type=change.event_type,
+                notification_id=change.notification_id,
+            )

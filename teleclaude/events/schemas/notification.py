@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_notification(catalog: EventCatalog) -> None:
+    """Register notification meta-event schemas."""
     catalog.register(
         EventSchema(
             event_type="notification.escalation",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import db
@@ -9,6 +11,39 @@ from teleclaude.hooks.matcher import match_event
 from teleclaude.hooks.webhook_models import Contract, HookEvent
 
 logger = get_logger(__name__)
+
+
+def _criterion_matches_property_value(match_val: str | list[str] | None, property_value: str | None) -> bool:
+    """Return True when a criterion match value satisfies the property filter."""
+    if property_value is None:
+        return True
+    if isinstance(match_val, list):
+        return property_value in match_val
+    return match_val == property_value
+
+
+def _contract_matches_property_filter(
+    contract: Contract,
+    property_name: str,
+    property_value: str | None,
+) -> bool:
+    """Return True when a contract matches the requested property filter."""
+    if property_name in contract.properties:
+        return _criterion_matches_property_value(contract.properties[property_name].match, property_value)
+    if property_name == "source" and contract.source_criterion:
+        return _criterion_matches_property_value(contract.source_criterion.match, property_value)
+    if property_name == "type" and contract.type_criterion:
+        return _criterion_matches_property_value(contract.type_criterion.match, property_value)
+    return False
+
+
+def _add_match_values(vocab: dict[str, set[str]], property_name: str, match_val: str | list[str] | None) -> None:
+    """Merge a criterion's match values into the shared property vocabulary."""
+    bucket = vocab.setdefault(property_name, set())
+    if isinstance(match_val, str):
+        bucket.add(match_val)
+    elif match_val:
+        bucket.update(match_val)
 
 
 class ContractRegistry:
@@ -25,7 +60,7 @@ class ContractRegistry:
             try:
                 contract = Contract.from_json(row.contract_json)
                 new_cache[contract.id] = contract
-            except Exception as exc:
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                 logger.error("Failed to load contract %s: %s", row.id, exc, exc_info=True)
         self._cache = new_cache
         logger.info("Loaded %d active contracts from DB", len(self._cache))
@@ -63,25 +98,11 @@ class ContractRegistry:
         """List active contracts, optionally filtered by property interest."""
         contracts = [c for c in self._cache.values() if c.active and not c.is_expired]
         if property_name:
-            filtered = []
-            for c in contracts:
-                if property_name in c.properties:
-                    if property_value is None:
-                        filtered.append(c)
-                    else:
-                        match_val = c.properties[property_name].match
-                        if match_val == property_value or (isinstance(match_val, list) and property_value in match_val):
-                            filtered.append(c)
-                # Also check source_criterion and type_criterion
-                if property_name == "source" and c.source_criterion:
-                    if property_value is None or c.source_criterion.match == property_value:
-                        if c not in filtered:
-                            filtered.append(c)
-                if property_name == "type" and c.type_criterion:
-                    if property_value is None or c.type_criterion.match == property_value:
-                        if c not in filtered:
-                            filtered.append(c)
-            return filtered
+            return [
+                contract
+                for contract in contracts
+                if _contract_matches_property_filter(contract, property_name, property_value)
+            ]
         return contracts
 
     def list_properties(self) -> dict[str, set[str]]:
@@ -90,28 +111,10 @@ class ContractRegistry:
         for contract in self._cache.values():
             if not contract.active:
                 continue
-            # Add source criterion
-            if contract.source_criterion and contract.source_criterion.match:
-                match_val = contract.source_criterion.match
-                if isinstance(match_val, str):
-                    vocab.setdefault("source", set()).add(match_val)
-                else:
-                    vocab.setdefault("source", set()).update(match_val)
-            # Add type criterion
-            if contract.type_criterion and contract.type_criterion.match:
-                match_val = contract.type_criterion.match
-                if isinstance(match_val, str):
-                    vocab.setdefault("type", set()).add(match_val)
-                else:
-                    vocab.setdefault("type", set()).update(match_val)
-            # Add property criteria
+            if contract.source_criterion:
+                _add_match_values(vocab, "source", contract.source_criterion.match)
+            if contract.type_criterion:
+                _add_match_values(vocab, "type", contract.type_criterion.match)
             for prop_name, criterion in contract.properties.items():
-                if criterion.match:
-                    match_val = criterion.match
-                    if isinstance(match_val, str):
-                        vocab.setdefault(prop_name, set()).add(match_val)
-                    else:
-                        vocab.setdefault(prop_name, set()).update(match_val)
-                else:
-                    vocab.setdefault(prop_name, set())
+                _add_match_values(vocab, prop_name, criterion.match)
         return vocab

@@ -75,7 +75,8 @@ class IntegrationTriggerCartridge:
         self._spawn_callback = spawn_callback
         self._ingest_callback = ingest_callback
 
-    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+    async def process(self, event: EventEnvelope, _context: PipelineContext) -> EventEnvelope | None:
+        """Translate platform events into canonical integration projection events."""
         if event.event not in INTEGRATION_EVENT_TYPES:
             return event
 
@@ -94,20 +95,39 @@ class IntegrationTriggerCartridge:
         )
 
         canonical_type = _PLATFORM_TO_CANONICAL.get(event.event)
-        if canonical_type and self._ingest_callback is not None:
-            try:
-                ready_candidates = self._ingest_callback(canonical_type, canonical_payload)
-                if ready_candidates:
-                    first = ready_candidates[0]
-                    first_slug, first_branch, first_sha = first
-                    if self._spawn_callback is not None:
-                        try:
-                            result = self._spawn_callback(first_slug, first_branch, first_sha)
-                            if asyncio.iscoroutine(result):
-                                await result
-                        except Exception:
-                            logger.exception("Integration trigger spawn callback failed for %s", first_slug)
-            except Exception:
-                logger.exception("Integration trigger ingest callback failed for %s event", event.event)
+        if canonical_type is None or self._ingest_callback is None:
+            return event
+
+        ready_candidates = self._ingest_ready_candidates(canonical_type, canonical_payload, event.event)
+        await self._spawn_first_ready_candidate(ready_candidates)
 
         return event
+
+    def identifier(self) -> str:
+        """Return the stable cartridge identifier."""
+        return self.name
+
+    def _ingest_ready_candidates(
+        self,
+        canonical_type: str,
+        canonical_payload: Mapping[str, JsonValue],
+        event_type: str,
+    ) -> Sequence[tuple[str, str, str]]:
+        """Run the ingest callback and return any READY candidates."""
+        try:
+            return self._ingest_callback(canonical_type, canonical_payload)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Integration trigger ingest callback failed for %s event", event_type)
+            return ()
+
+    async def _spawn_first_ready_candidate(self, ready_candidates: Sequence[tuple[str, str, str]]) -> None:
+        """Spawn the integrator for the first READY candidate, if configured."""
+        if not ready_candidates or self._spawn_callback is None:
+            return
+        first_slug, first_branch, first_sha = ready_candidates[0]
+        try:
+            result = self._spawn_callback(first_slug, first_branch, first_sha)
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Integration trigger spawn callback failed for %s", first_slug)

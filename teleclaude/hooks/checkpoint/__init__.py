@@ -5,6 +5,8 @@ Uses git diff for file-based signals and TurnTimeline for transcript-based signa
 All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
+# pylint: disable=too-many-branches,too-many-locals,broad-exception-caught
+
 import logging
 
 from teleclaude.constants import (

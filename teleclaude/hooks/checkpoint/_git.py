@@ -1,5 +1,7 @@
 """Git diff analysis, file categorization, and shell parsing utilities."""
 
+# pylint: disable=broad-exception-caught,subprocess-run-check,too-many-return-statements,too-many-branches,too-many-nested-blocks
+
 import logging
 import re
 import shlex

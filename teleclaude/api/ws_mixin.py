@@ -26,6 +26,14 @@ from teleclaude.api_models import (
     SessionUpdatedEventDTO,
     TodoDTO,
 )
+from teleclaude.api.ws_constants import (
+    API_WS_CONTROL_EVENTS,
+    API_WS_CONTROL_SEND_TIMEOUT_S,
+    API_WS_DEFAULT_SEND_TIMEOUT_S,
+    API_WS_REPLACEABLE_EVENTS,
+    API_WS_REPLACEABLE_SEND_TIMEOUT_S,
+    _WsClientState,
+)
 from teleclaude.config import config
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.transport.redis_transport import RedisTransport
@@ -36,19 +44,10 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import TaskRegistry
     from teleclaude.events.db import EventDB
 
-from teleclaude.api.ws_constants import (
-    API_WS_CONTROL_EVENTS,
-    API_WS_CONTROL_SEND_TIMEOUT_S,
-    API_WS_DEFAULT_SEND_TIMEOUT_S,
-    API_WS_REPLACEABLE_EVENTS,
-    API_WS_REPLACEABLE_SEND_TIMEOUT_S,
-    _WsClientState,
-)
-
 logger = get_logger(__name__)
 
 
-class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
+class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods
     """WebSocket support methods extracted from APIServer."""
 
     if TYPE_CHECKING:
@@ -63,12 +62,20 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         _refresh_pending_payload: JsonDict | None
 
         @property
-        def cache(self) -> DaemonCache | None: ...
+        def cache(self) -> DaemonCache | None:
+            """Expose the daemon cache for websocket helpers."""
+            raise NotImplementedError
 
         @property
-        def _event_db(self) -> EventDB | None: ...
+        def _event_db(self) -> EventDB | None:
+            """Expose the event database for websocket helpers."""
+            raise NotImplementedError
 
-    async def _handle_websocket(self, websocket: WebSocket) -> None:
+    # pylint: disable=too-many-branches,too-many-statements,too-many-nested-blocks
+    async def _handle_websocket(
+        self,
+        websocket: WebSocket,
+    ) -> None:
         """Handle WebSocket connection for push updates.
 
         Args:
@@ -152,13 +159,14 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             if self._is_expected_ws_disconnect(e):
                 logger.info("WebSocket connection closed: %s", e)
             else:
                 logger.error("WebSocket error: %s", e, exc_info=True)
         finally:
             await self._drop_ws_client(websocket, reason="connection-end")
+    # pylint: enable=too-many-branches,too-many-statements,too-many-nested-blocks
 
     def _update_cache_interest(self) -> list[tuple[str, str]]:
         """Update cache interest based on active WebSocket subscriptions."""
@@ -229,7 +237,13 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         elif data_type == "sessions":
             adapter.request_refresh(computer, "sessions", reason="interest")
 
-    async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
+    # pylint: disable-next=too-many-locals,too-many-branches
+    async def _send_initial_state(
+        self,
+        websocket: WebSocket,
+        data_type: str,
+        computer: str,
+    ) -> None:
         """Send initial state for a subscription.
 
         Args:
@@ -323,7 +337,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Failed to send initial state for %s on %s: %s", data_type, computer, e, exc_info=True)
 
     def _on_cache_change(self, event: str, data: object) -> None:
@@ -436,8 +450,12 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
     def _build_generic_payload(self, event: str, data: object) -> JsonDict:
         """Fallback websocket payload for non-DTO events."""
-        if hasattr(data, "to_dict"):
-            return {"event": event, "data": cast(JsonValue, data.to_dict())}  # pyright: ignore[reportAttributeAccessIssue]
+        to_dict = getattr(data, "to_dict", None)
+        if callable(to_dict):
+            return {
+                "event": event,
+                "data": cast(JsonValue, to_dict()),
+            }
         return {"event": event, "data": cast(JsonValue, data)}
 
     def _get_optional_str_attr(self, obj: object, attr_name: str) -> str | None:
@@ -476,7 +494,9 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         """Close a WebSocket connection safely with timeout."""
         try:
             await asyncio.wait_for(websocket.close(), timeout=1.0)
-        except (TimeoutError, Exception):
+        except TimeoutError:
+            pass
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
     def _ensure_ws_client_state(self, websocket: WebSocket) -> _WsClientState:
@@ -535,7 +555,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             )
             await self._drop_ws_client(websocket, reason=f"send-timeout:{event}")
             return False
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             if self._is_expected_ws_disconnect(exc):
                 logger.info(
                     "WebSocket connection lost during send: %s",
@@ -597,7 +617,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                 await sender_task
             except asyncio.CancelledError:
                 pass
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.debug("WebSocket sender task ended with error during cleanup", exc_info=True)
 
         await self._close_ws(websocket)
@@ -611,10 +631,10 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         self,
         notification_id: int,
         event_type: str,
-        level: int,
+        _level: int,
         was_created: bool,
-        is_meaningful: bool,
-    ) -> None:
+        _is_meaningful: bool,
+    ) -> None:  # pylint: disable=too-many-arguments,too-many-positional-arguments
         """Push a notification event to subscribed WebSocket clients."""
         if self._event_db is None:
             return

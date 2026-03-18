@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 
 def register_customer_relations(catalog: EventCatalog) -> None:
+    """Register customer-relations domain event schemas."""
     # --- Help desk events ---
 
     catalog.register(

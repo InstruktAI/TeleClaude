@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import shlex
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -10,11 +12,11 @@ from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import (
-    CLEARANCE_SESSIONS_END,
-    CLEARANCE_SESSIONS_LIST,
-    CLEARANCE_SESSIONS_SEND,
-    CLEARANCE_SESSIONS_START,
     CallerIdentity,
+    clearance_sessions_end,
+    clearance_sessions_list,
+    clearance_sessions_send,
+    clearance_sessions_start,
 )
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -23,6 +25,7 @@ from teleclaude.api_models import (
     SendMessageResponseDTO,
     SessionDTO,
 )
+from teleclaude.api.session_access import check_session_access
 from teleclaude.config import config
 from teleclaude.constants import format_system_message
 from teleclaude.core import command_handlers
@@ -46,6 +49,13 @@ from teleclaude.core.models import (
     SessionSnapshot,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_listeners import (
+    close_link_for_member,
+    create_or_reuse_direct_link,
+    get_peer_members,
+    resolve_link_for_sender_target,
+    unregister_listener,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -54,8 +64,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_client: AdapterClient | None = None
-_cache: DaemonCache | None = None
+_STATE = SimpleNamespace(cache=None)
 
 router = APIRouter()
 
@@ -65,10 +74,8 @@ def configure(
     cache: DaemonCache | None = None,
 ) -> None:
     """Wire client and cache; called from APIServer."""
-    global _client, _cache
-    if client is not None:
-        _client = client
-    _cache = cache
+    _ = client
+    _STATE.cache = cache
 
 
 def _build_metadata(**kwargs: object) -> MessageMetadata:
@@ -323,8 +330,6 @@ async def _link_direct_sessions(
     caller_session: Session | None,
 ) -> None:
     """Create the direct link between caller and target sessions after creation."""
-    from teleclaude.core.session_listeners import create_or_reuse_direct_link, unregister_listener
-
     await unregister_listener(
         target_session_id=target_session_id,
         caller_session_id=caller_session_id,
@@ -351,14 +356,98 @@ async def _link_direct_sessions(
     )
 
 
-@router.get("/sessions")
-async def list_sessions(
-    request: Request,
+@dataclass(frozen=True)
+class ListSessionsQuery:
+    """Normalized query parameters for session listing."""
+
+    computer: str | None = None
+    include_closed: bool = False
+    all_sessions: bool = False
+    job: str | None = None
+
+
+def _parse_list_sessions_query(
     computer: str | None = None,
     include_closed: bool = Query(False, alias="closed"),
     all_sessions: bool = Query(False, alias="all"),
     job: str | None = Query(None, alias="job"),
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_LIST),
+) -> ListSessionsQuery:
+    """Collect list-sessions query parameters into one object."""
+    return ListSessionsQuery(
+        computer=computer,
+        include_closed=include_closed,
+        all_sessions=all_sessions,
+        job=job,
+    )
+
+
+async def _prepare_create_session(
+    request: CreateSessionRequest,
+    identity: CallerIdentity,
+) -> tuple[MessageMetadata, str, SessionLaunchIntent | None, Session | None]:
+    """Prepare session creation metadata and launch intent."""
+    channel_metadata = _build_channel_metadata(request, identity)
+    request_session_meta = _build_request_session_metadata(
+        request.metadata,
+        human_email=request.human_email,
+        human_role=request.human_role or identity.human_role,
+    )
+    metadata = _build_metadata(
+        title=request.title or "Untitled",
+        project_path=request.project_path,
+        subdir=request.subdir,
+        channel_metadata=channel_metadata,
+        session_metadata=request_session_meta,
+    )
+
+    title = request.title or "Untitled"
+    if request.message and request.message.startswith("/") and not request.title:
+        title = request.message
+
+    effective_thinking_mode = request.thinking_mode or "slow"
+    validated_request_agent = _resolve_enabled_agent(request.agent) if request.agent else None
+    _validate_auto_command_agent(request.auto_command, validated_request_agent)
+    launch_intent, direct_caller_session = await _build_launch_intent(
+        request,
+        identity,
+        validated_request_agent,
+        effective_thinking_mode,
+    )
+    metadata.title = title
+    metadata.launch_intent = launch_intent
+    metadata.auto_command = _derive_auto_command(request.auto_command, launch_intent)
+    return metadata, title, launch_intent, direct_caller_session
+
+
+async def _resolve_created_session_transport(data: dict[str, object]) -> tuple[str, str]:
+    """Resolve mandatory session creation response fields."""
+    session_id = data.get("session_id")
+    tmux_session_name = data.get("tmux_session_name")
+    if session_id and not tmux_session_name:
+        try:
+            session = await db.get_session(str(session_id))
+        except RuntimeError:
+            session = None
+        if session:
+            tmux_session_name = session.tmux_session_name
+    if not session_id or not tmux_session_name:
+        logger.error(
+            "create_session missing required fields (session_id=%s, tmux_session_name=%s)",
+            session_id,
+            tmux_session_name,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create session: missing session_id or tmux_session_name",
+        )
+    return str(session_id), str(tmux_session_name)
+
+
+@router.get("/sessions")
+async def list_sessions(
+    request: Request,
+    query: ListSessionsQuery = Depends(_parse_list_sessions_query),
+    _identity: CallerIdentity = Depends(clearance_sessions_list),
 ) -> list[SessionDTO]:
     """List sessions from local storage and remote cache.
 
@@ -374,17 +463,17 @@ async def list_sessions(
         List of session summaries (merged local + cached remote)
     """
     try:
-        local_sessions = await command_handlers.list_sessions(include_closed=include_closed)
+        local_sessions = await command_handlers.list_sessions(include_closed=query.include_closed)
 
         # No cache: serve local sessions only (respect computer filter)
-        if not _cache:
-            if computer and computer not in ("local", config.computer.name):
+        if not _STATE.cache:
+            if query.computer and query.computer not in ("local", config.computer.name):
                 return []
             merged = local_sessions
-        elif computer:
+        elif query.computer:
             # With cache, merge local + cached sessions
-            cached_filtered = _cache.get_sessions(computer)
-            if computer in ("local", config.computer.name):
+            cached_filtered = _STATE.cache.get_sessions(query.computer)
+            if query.computer in ("local", config.computer.name):
                 by_id = {s.session_id: s for s in local_sessions}
                 for s in cached_filtered:
                     by_id.setdefault(s.session_id, s)
@@ -392,7 +481,7 @@ async def list_sessions(
             else:
                 merged = cached_filtered
         else:
-            cached_sessions = _cache.get_sessions()
+            cached_sessions = _STATE.cache.get_sessions()
             by_id = {s.session_id: s for s in local_sessions}
             for s in cached_sessions:
                 by_id.setdefault(s.session_id, s)
@@ -400,15 +489,15 @@ async def list_sessions(
 
         # Telec tool default: show sessions spawned by current caller only.
         caller_session_id = request.headers.get("x-caller-session-id")
-        if caller_session_id and not all_sessions:
+        if caller_session_id and not query.all_sessions:
             merged = [s for s in merged if s.initiator_session_id == caller_session_id]
 
         # Role-based visibility filtering (only when identity headers present)
         merged = _filter_sessions_by_role(request, merged)
 
         # Job filter: narrows existing visibility results
-        if job:
-            merged = [s for s in merged if s.session_metadata is not None and s.session_metadata.job == job]
+        if query.job:
+            merged = [s for s in merged if s.session_metadata is not None and s.session_metadata.job == query.job]
 
         return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
     except Exception as e:
@@ -419,7 +508,7 @@ async def list_sessions(
 @router.post("/sessions")
 async def create_session(
     request: CreateSessionRequest,
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_START),
+    identity: CallerIdentity = Depends(clearance_sessions_start),
 ) -> CreateSessionResponseDTO:
     """Create new local session.
 
@@ -435,37 +524,7 @@ async def create_session(
     """
     # Normalize request into internal command.
 
-    channel_metadata = _build_channel_metadata(request, identity)
-    effective_human_role = request.human_role or identity.human_role
-    request_session_meta = _build_request_session_metadata(
-        request.metadata,
-        human_email=request.human_email,
-        human_role=effective_human_role,
-    )
-    metadata = _build_metadata(
-        title=request.title or "Untitled",
-        project_path=request.project_path,
-        subdir=request.subdir,
-        channel_metadata=channel_metadata,
-        session_metadata=request_session_meta,
-    )
-
-    # Extract title from message if not provided (legacy behavior)
-    title = request.title
-    if not title and request.message and request.message.startswith("/"):
-        title = request.message
-    title = title or "Untitled"
-
-    effective_thinking_mode = request.thinking_mode or "slow"
-    validated_request_agent = _resolve_enabled_agent(request.agent) if request.agent else None
-    _validate_auto_command_agent(request.auto_command, validated_request_agent)
-    launch_intent, direct_caller_session = await _build_launch_intent(
-        request,
-        identity,
-        validated_request_agent,
-        effective_thinking_mode,
-    )
-    auto_command = _derive_auto_command(request.auto_command, launch_intent)
+    metadata, title, launch_intent, direct_caller_session = await _prepare_create_session(request, identity)
 
     auto_command_source = "request" if request.auto_command else ("derived" if launch_intent else "none")
     logger.info(
@@ -477,14 +536,10 @@ async def create_session(
         request.thinking_mode,
         request.launch_kind,
         request.native_session_id,
-        auto_command,
+        metadata.auto_command,
         auto_command_source,
     )
 
-    # Update metadata with derived fields
-    metadata.title = title
-    metadata.launch_intent = launch_intent
-    metadata.auto_command = auto_command
     cmd = CommandMapper.map_api_input(
         "new_session",
         {"skip_listener_registration": request.skip_listener_registration},
@@ -493,41 +548,20 @@ async def create_session(
 
     try:
         data = await get_command_service().create_session(cmd)
-
-        session_id = data.get("session_id")
-        tmux_session_name = data.get("tmux_session_name")
-
-        if session_id and not tmux_session_name:
-            try:
-                session = await db.get_session(str(session_id))
-            except RuntimeError:
-                session = None
-            if session:
-                tmux_session_name = session.tmux_session_name
-
-        if not session_id or not tmux_session_name:
-            logger.error(
-                "create_session missing required fields (session_id=%s, tmux_session_name=%s)",
-                session_id,
-                tmux_session_name,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to create session: missing session_id or tmux_session_name",
-            )
+        session_id, tmux_session_name = await _resolve_created_session_transport(data)
 
         if request.direct and identity.session_id:
             await _link_direct_sessions(
                 caller_session_id=identity.session_id,
-                target_session_id=str(session_id),
+                target_session_id=session_id,
                 target_title=title,
                 caller_session=direct_caller_session,
             )
 
         return CreateSessionResponseDTO(
             status="success",
-            session_id=str(session_id),
-            tmux_session_name=str(tmux_session_name),
+            session_id=session_id,
+            tmux_session_name=tmux_session_name,
             agent=launch_intent.agent if launch_intent else None,
         )
     except HTTPException as exc:
@@ -541,11 +575,10 @@ async def create_session(
 async def end_session(
     request: Request,
     session_id: str,
-    computer: str = Query(...),
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_END),
+    _computer: str = Query(...),
+    _identity: CallerIdentity = Depends(clearance_sessions_end),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """End session - local sessions only (remote management uses RPC transport)."""
-    from teleclaude.api.session_access import check_session_access
 
     user_agent = request.headers.get("user-agent", "no-ua")
     identity_email = request.headers.get("x-web-email", "none")
@@ -650,8 +683,6 @@ async def _handle_close_link_request(
     identity: CallerIdentity,
 ) -> SendMessageResponseDTO:
     """Handle close-link requests, optionally delivering a final message first."""
-    from teleclaude.core.session_listeners import close_link_for_member, resolve_link_for_sender_target
-
     if not identity.session_id:
         raise HTTPException(status_code=400, detail="close_link requires caller session identity")
 
@@ -677,72 +708,82 @@ async def _handle_close_link_request(
     )
 
 
-async def _handle_direct_message_request(
-    *,
-    session_id: str,
-    request: SendMessageRequest,
-    identity: CallerIdentity,
+@dataclass(frozen=True)
+class DirectMessageContext:
+    """Resolved caller/target metadata for direct conversations."""
+
+    caller_label: str
+    target_label: str
+    caller_computer: str
+    target_computer: str
+
+
+async def _build_direct_message_context(
+    caller_session_id: str,
+    target_session_id: str,
     target_session: Session | None,
-    metadata: MessageMetadata,
-) -> SendMessageResponseDTO:
-    """Create or reuse a direct link and deliver the message to active peers."""
-    from teleclaude.core.session_listeners import (
-        create_or_reuse_direct_link,
-        get_peer_members,
-        resolve_link_for_sender_target,
-        unregister_listener,
+) -> DirectMessageContext:
+    """Load caller/target display context for direct messaging."""
+    caller_session = await db.get_session(caller_session_id)
+    resolved_target_session = target_session or await db.get_session(target_session_id)
+    return DirectMessageContext(
+        caller_label=caller_session.title if caller_session and caller_session.title else caller_session_id,
+        target_label=(
+            resolved_target_session.title
+            if resolved_target_session and resolved_target_session.title
+            else target_session_id
+        ),
+        caller_computer=caller_session.computer_name if caller_session else config.computer.name,
+        target_computer=resolved_target_session.computer_name if resolved_target_session else config.computer.name,
     )
 
-    if not identity.session_id:
-        raise HTTPException(status_code=400, detail="direct mode requires caller session identity")
 
-    caller_session = await db.get_session(identity.session_id)
-    resolved_target_session = target_session or await db.get_session(session_id)
-    caller_label = caller_session.title if caller_session and caller_session.title else identity.session_id
-    target_label = (
-        resolved_target_session.title if resolved_target_session and resolved_target_session.title else session_id
-    )
-    caller_computer = caller_session.computer_name if caller_session else config.computer.name
-    target_computer = resolved_target_session.computer_name if resolved_target_session else config.computer.name
-
+async def _create_direct_link(
+    caller_session_id: str,
+    target_session_id: str,
+    context: DirectMessageContext,
+) -> tuple[str, int] | SendMessageResponseDTO:
+    """Create or resolve the active direct link for this caller/target pair."""
     link_ctx = await resolve_link_for_sender_target(
-        sender_session_id=identity.session_id,
-        target_session_id=session_id,
+        sender_session_id=caller_session_id,
+        target_session_id=target_session_id,
     )
     if link_ctx:
         return _active_direct_link_response(link_ctx[0].link_id, already_active=True)
 
     await unregister_listener(
-        target_session_id=session_id,
-        caller_session_id=identity.session_id,
+        target_session_id=target_session_id,
+        caller_session_id=caller_session_id,
     )
-
     link, _ = await create_or_reuse_direct_link(
-        caller_session_id=identity.session_id,
-        target_session_id=session_id,
-        caller_name=caller_label,
-        target_name=target_label,
-        caller_computer=caller_computer,
-        target_computer=target_computer,
+        caller_session_id=caller_session_id,
+        target_session_id=target_session_id,
+        caller_name=context.caller_label,
+        target_name=context.target_label,
+        caller_computer=context.caller_computer,
+        target_computer=context.target_computer,
     )
     resolved_link_ctx = await resolve_link_for_sender_target(
-        sender_session_id=identity.session_id,
-        target_session_id=session_id,
+        sender_session_id=caller_session_id,
+        target_session_id=target_session_id,
     )
     if not resolved_link_ctx:
         raise HTTPException(status_code=500, detail="failed to resolve direct link")
+    return link.link_id, len(resolved_link_ctx[1])
 
-    _, members = resolved_link_ctx
-    message_text = _format_direct_conversation_intro(
-        caller_session_id=identity.session_id,
-        caller_label=caller_label,
-        caller_computer=caller_computer,
-        message_text=request.message or "",
-    )
-    peers = await get_peer_members(link_id=link.link_id, sender_session_id=identity.session_id)
+
+async def _deliver_direct_message(
+    *,
+    link_id: str,
+    caller_session_id: str,
+    session_id: str,
+    message_text: str,
+    metadata: MessageMetadata,
+) -> int:
+    """Deliver a direct-conversation message to active peers."""
+    peers = await get_peer_members(link_id=link_id, sender_session_id=caller_session_id)
     delivery_targets = [peer.session_id for peer in peers] or [session_id]
     delivered_to = 0
-
     for target_id in delivery_targets:
         target_for_delivery = await db.get_session(target_id)
         if not target_for_delivery:
@@ -753,22 +794,60 @@ async def _handle_direct_message_request(
             continue
         await _process_api_message(target_id, message_text, metadata)
         delivered_to += 1
+    return delivered_to
+
+
+async def _handle_direct_message_request(
+    *,
+    session_id: str,
+    request: SendMessageRequest,
+    identity: CallerIdentity,
+    target_session: Session | None,
+    metadata: MessageMetadata,
+) -> SendMessageResponseDTO:
+    """Create or reuse a direct link and deliver the message to active peers."""
+    if not identity.session_id:
+        raise HTTPException(status_code=400, detail="direct mode requires caller session identity")
+
+    context = await _build_direct_message_context(identity.session_id, session_id, target_session)
+    link_result = await _create_direct_link(
+        caller_session_id=identity.session_id,
+        target_session_id=session_id,
+        context=context,
+    )
+    if isinstance(link_result, SendMessageResponseDTO):
+        return link_result
+
+    link_id, member_count = link_result
+    message_text = _format_direct_conversation_intro(
+        caller_session_id=identity.session_id,
+        caller_label=context.caller_label,
+        caller_computer=context.caller_computer,
+        message_text=request.message or "",
+    )
+    delivered_to = await _deliver_direct_message(
+        link_id=link_id,
+        caller_session_id=identity.session_id,
+        session_id=session_id,
+        message_text=message_text,
+        metadata=metadata,
+    )
 
     if delivered_to == 0:
         return SendMessageResponseDTO(
             status="error",
             mode="direct",
-            link_id=link.link_id,
+            link_id=link_id,
             message="No active target sessions available for delivery",
         )
 
     return SendMessageResponseDTO(
         status="success",
         mode="direct",
-        link_id=link.link_id,
+        link_id=link_id,
         link_state="created",
         delivered_to=delivered_to,
-        members=len(members),
+        members=member_count,
     )
 
 
@@ -777,8 +856,6 @@ async def _reject_existing_direct_link(
     identity: CallerIdentity,
 ) -> SendMessageResponseDTO | None:
     """Return the standard error response if a work send conflicts with a direct link."""
-    from teleclaude.core.session_listeners import resolve_link_for_sender_target
-
     if not identity.session_id:
         return None
 
@@ -796,12 +873,10 @@ async def send_message_endpoint(
     http_request: Request,
     session_id: str,
     request: SendMessageRequest,
-    computer: str | None = Query(None),
-    identity: CallerIdentity = Depends(CLEARANCE_SESSIONS_SEND),
+    _computer: str | None = Query(None),
+    identity: CallerIdentity = Depends(clearance_sessions_send),
 ) -> SendMessageResponseDTO:
     """Send message to session."""
-    from teleclaude.api.session_access import check_session_access
-
     await check_session_access(http_request, session_id)
     try:
         target_session = await _load_target_session_for_message(session_id, request.message)

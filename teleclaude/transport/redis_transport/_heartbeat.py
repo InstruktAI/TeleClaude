@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
+from redis.exceptions import RedisError
 
 logger = get_logger(__name__)
 
@@ -17,7 +18,9 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
 
-class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
+class _HeartbeatMixin(  # pyright: ignore[reportUnusedClass]
+    # pylint: disable=too-few-public-methods  # Internal mixin only exposes private heartbeat hooks.
+):
     """Mixin: periodic heartbeat emission and cache-change no-op handler."""
 
     if TYPE_CHECKING:
@@ -27,10 +30,18 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         _running: bool
 
         @property
-        def cache(self) -> DaemonCache | None: ...
+        def cache(self) -> DaemonCache | None:
+            """Return the shared daemon cache."""
+            raise NotImplementedError
 
-        async def _get_redis(self) -> Redis: ...
-        async def _handle_redis_error(self, context: str, exc: Exception) -> None: ...
+        async def _get_redis(self) -> Redis:
+            """Return an active Redis client."""
+            raise NotImplementedError
+
+        async def _handle_redis_error(self, _context: str, _exc: Exception) -> None:
+            """Schedule reconnect behavior after a Redis failure."""
+            _ = (_context, _exc)
+            raise NotImplementedError
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""
@@ -42,7 +53,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
                 await asyncio.sleep(self.heartbeat_interval)
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except (RedisError, OSError, RuntimeError, TypeError, ValueError) as e:
                 await self._handle_redis_error("Heartbeat failed", e)
 
     async def _send_heartbeat(self) -> None:
@@ -90,4 +101,4 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         Note: Push-based synchronization is DISABLED to enforce Request/Response architecture.
         This handler is now a no-op for network traffic.
         """
-        pass
+        _ = (event, data)

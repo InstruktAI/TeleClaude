@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
 from instrukt_ai_logging import get_logger
@@ -10,26 +11,42 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import ChiptunesCommandReceiptDTO, ChiptunesStatusDTO
 from teleclaude.config.runtime_settings import RuntimeSettings
 
+if TYPE_CHECKING:
+    from teleclaude.chiptunes.manager import ChiptunesManager
+
 logger = get_logger(__name__)
 
-_runtime_settings: RuntimeSettings | None = None
+_RUNTIME_SETTINGS: dict[str, RuntimeSettings | None] = {"value": None}
 
 router = APIRouter(prefix="/api/chiptunes", tags=["chiptunes"])
 
 
 def configure(runtime_settings: RuntimeSettings | None) -> None:
     """Wire runtime_settings; called from APIServer at construction."""
-    global _runtime_settings
-    _runtime_settings = runtime_settings
+    _RUNTIME_SETTINGS["value"] = runtime_settings
+
+
+def _require_runtime_settings() -> RuntimeSettings:
+    """Return the configured runtime settings or raise service unavailable."""
+    runtime_settings = _RUNTIME_SETTINGS["value"]
+    if runtime_settings is None:
+        raise HTTPException(503, "Runtime settings not available")
+    return runtime_settings
+
+
+def _require_chiptunes_manager(runtime_settings: RuntimeSettings) -> ChiptunesManager:
+    """Return the configured chiptunes manager or raise service unavailable."""
+    manager = getattr(runtime_settings, "_chiptunes_manager", None)
+    if manager is None:
+        raise HTTPException(503, "Chiptunes manager not available")
+    return manager
 
 
 def _build_chiptunes_status() -> ChiptunesStatusDTO:
-    if not _runtime_settings:
-        raise HTTPException(503, "Runtime settings not available")
-    manager = _runtime_settings._chiptunes_manager
-    if manager is None:
-        raise HTTPException(503, "Chiptunes manager not available")
-    runtime_state = _runtime_settings.get_state().chiptunes
+    """Build the current chiptunes status DTO from runtime settings."""
+    runtime_settings = _require_runtime_settings()
+    manager = _require_chiptunes_manager(runtime_settings)
+    runtime_state = runtime_settings.get_state().chiptunes
     track_label = Path(runtime_state.track_path).stem.replace("_", " ") if runtime_state.track_path else ""
     sid_path = runtime_state.track_path
     playing = runtime_state.playback == "playing"
@@ -42,7 +59,7 @@ def _build_chiptunes_status() -> ChiptunesStatusDTO:
         paused = manager.is_paused
     return ChiptunesStatusDTO(
         playback=runtime_state.playback,
-        state_version=_runtime_settings.chiptunes_state_version,
+        state_version=runtime_settings.chiptunes_state_version,
         loaded=manager.enabled,
         playing=playing,
         paused=paused,
@@ -57,12 +74,9 @@ def _build_chiptunes_status() -> ChiptunesStatusDTO:
 @router.post("/next", status_code=202)
 async def chiptunes_next() -> ChiptunesCommandReceiptDTO:
     """Queue "next track" command and return receipt."""
-    if not _runtime_settings:
-        raise HTTPException(503, "Runtime settings not available")
-    manager = _runtime_settings._chiptunes_manager
-    if manager is None:
-        raise HTTPException(503, "Chiptunes manager not available")
-    command_id = _runtime_settings.issue_chiptunes_command("next")
+    runtime_settings = _require_runtime_settings()
+    _require_chiptunes_manager(runtime_settings)
+    command_id = runtime_settings.issue_chiptunes_command("next")
     return ChiptunesCommandReceiptDTO(command_id=command_id, action="next")
 
 
@@ -75,32 +89,25 @@ async def chiptunes_status() -> ChiptunesStatusDTO:
 @router.post("/prev", status_code=202)
 async def chiptunes_prev() -> ChiptunesCommandReceiptDTO:
     """Queue "previous track" command and return receipt."""
-    if not _runtime_settings:
-        raise HTTPException(503, "Runtime settings not available")
-    manager = _runtime_settings._chiptunes_manager
-    if manager is None:
-        raise HTTPException(503, "Chiptunes manager not available")
-    command_id = _runtime_settings.issue_chiptunes_command("prev")
+    runtime_settings = _require_runtime_settings()
+    _require_chiptunes_manager(runtime_settings)
+    command_id = runtime_settings.issue_chiptunes_command("prev")
     return ChiptunesCommandReceiptDTO(command_id=command_id, action="prev")
 
 
 @router.post("/pause", status_code=202)
 async def chiptunes_pause() -> ChiptunesCommandReceiptDTO:
     """Queue pause command and return receipt."""
-    if not _runtime_settings:
-        raise HTTPException(503, "Runtime settings not available")
-    if _runtime_settings._chiptunes_manager is None:
-        raise HTTPException(503, "Chiptunes manager not available")
-    command_id = _runtime_settings.issue_chiptunes_command("pause")
+    runtime_settings = _require_runtime_settings()
+    _require_chiptunes_manager(runtime_settings)
+    command_id = runtime_settings.issue_chiptunes_command("pause")
     return ChiptunesCommandReceiptDTO(command_id=command_id, action="pause")
 
 
 @router.post("/resume", status_code=202)
 async def chiptunes_resume() -> ChiptunesCommandReceiptDTO:
     """Queue resume command and return receipt."""
-    if not _runtime_settings:
-        raise HTTPException(503, "Runtime settings not available")
-    if _runtime_settings._chiptunes_manager is None:
-        raise HTTPException(503, "Chiptunes manager not available")
-    command_id = _runtime_settings.issue_chiptunes_command("resume")
+    runtime_settings = _require_runtime_settings()
+    _require_chiptunes_manager(runtime_settings)
+    command_id = runtime_settings.issue_chiptunes_command("resume")
     return ChiptunesCommandReceiptDTO(command_id=command_id, action="resume")

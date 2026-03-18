@@ -18,11 +18,14 @@ _FAILURE_TYPE_KEYWORDS = ("crash", "fail", "error")
 
 
 def _is_failure_type(event_type: str) -> bool:
+    """Return whether an event type indicates a failure condition."""
     return any(kw in event_type.lower() for kw in _FAILURE_TYPE_KEYWORDS)
 
 
 @dataclass
 class CorrelationConfig:
+    """Thresholds and timing controls for correlation heuristics."""
+
     window_seconds: int = 300
     burst_threshold: int = 10
     crash_cascade_threshold: int = 3
@@ -31,12 +34,15 @@ class CorrelationConfig:
 
 
 class CorrelationCartridge:
+    """Detect correlated operational patterns and emit synthetic system events."""
+
     name = "correlation"
 
     def __init__(self) -> None:
         self._emitted_bursts: set[tuple[str, int]] = set()
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Update correlation windows and emit synthetic alerts when thresholds are crossed."""
         # Skip synthetic events from correlation to prevent re-entry loops
         if event.source == "correlation":
             return event
@@ -98,6 +104,7 @@ class CorrelationCartridge:
         return event
 
     async def _emit_synthetic(self, event_type: str, payload: JsonDict, context: PipelineContext) -> None:
+        """Emit a synthetic correlation event through the configured producer."""
         if context.producer is None:
             logger.warning(
                 "correlation: no producer configured, cannot emit synthetic event",
@@ -118,3 +125,7 @@ class CorrelationCartridge:
             payload=payload,
         )
         await context.producer.emit(envelope)
+
+    def identifier(self) -> str:
+        """Return the stable cartridge identifier."""
+        return self.name

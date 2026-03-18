@@ -20,12 +20,16 @@ SCHEMA_VERSION: int = 1
 
 
 class EventVisibility(str, Enum):
+    """Visibility scope for an event."""
+
     LOCAL = "local"
     CLUSTER = "cluster"
     PUBLIC = "public"
 
 
 class EventLevel(IntEnum):
+    """Priority level for event routing and notification decisions."""
+
     INFRASTRUCTURE = 0
     OPERATIONAL = 1
     WORKFLOW = 2
@@ -33,12 +37,16 @@ class EventLevel(IntEnum):
 
 
 class ActionDescriptor(BaseModel):
+    """Human- or agent-facing action affordance attached to an event."""
+
     description: str
     produces: str
     outcome_shape: dict[str, str] | None = None
 
 
 class EventEnvelope(BaseModel):
+    """Canonical event payload stored on the stream and in downstream projections."""
+
     model_config = ConfigDict(extra="allow")
 
     # Identity
@@ -67,11 +75,12 @@ class EventEnvelope(BaseModel):
         Extra fields (beyond declared model fields) are JSON-encoded into a
         single ``_extra`` key to preserve the flat dict[str, str] constraint.
         """
+        dumped = self.model_dump(mode="json")
         d: dict[str, str] = {
             "event": self.event,
             "version": str(self.version),
             "source": self.source,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": cast(str, dumped["timestamp"]),
             "idempotency_key": self.idempotency_key or "",
             "level": str(int(self.level)),
             "domain": self.domain,

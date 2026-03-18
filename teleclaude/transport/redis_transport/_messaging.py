@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
+from redis.exceptions import RedisError
+from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
@@ -36,13 +39,29 @@ from teleclaude.types.commands import (
 
 logger = get_logger(__name__)
 
+_DB_EXCEPTIONS = (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError)
+_MESSAGE_EXCEPTIONS = (
+    RedisError,
+    SQLAlchemyError,
+    OSError,
+    RuntimeError,
+    LookupError,
+    ValueError,
+    TypeError,
+    UnicodeError,
+    json.JSONDecodeError,
+)
+_DECODE_EXCEPTIONS = (binascii.Error, UnicodeError, ValueError)
+
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
     from teleclaude.core.adapter_client import AdapterClient
 
 
-class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
+class _MessagingMixin(  # pyright: ignore[reportUnusedClass]
+    # pylint: disable=too-few-public-methods  # Internal mixin only exposes private polling hooks.
+):
     """Mixin: Redis stream polling, message parsing, command dispatch."""
 
     if TYPE_CHECKING:
@@ -51,11 +70,28 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
         message_stream_maxlen: int
         _running: bool
 
-        def _reset_idle_poll_log_throttle(self) -> None: ...
-        def _maybe_log_idle_poll(self, *, message_stream: str) -> None: ...
-        async def _get_redis(self) -> Redis: ...
-        async def send_response(self, message_id: str, data: str) -> str: ...
-        async def _handle_redis_error(self, context: str, exc: Exception) -> None: ...
+        def _reset_idle_poll_log_throttle(self) -> None:
+            """Reset idle-poll logging state."""
+            raise NotImplementedError
+
+        def _maybe_log_idle_poll(self, *, message_stream: str) -> None:
+            """Log or suppress an idle-poll event."""
+            _ = message_stream
+            raise NotImplementedError
+
+        async def _get_redis(self) -> Redis:
+            """Return an active Redis client."""
+            raise NotImplementedError
+
+        async def send_response(self, message_id: str, data: str) -> str:
+            """Send a Redis request/response payload."""
+            _ = (message_id, data)
+            raise NotImplementedError
+
+        async def _handle_redis_error(self, context: str, exc: Exception) -> None:
+            """Handle a Redis failure and schedule reconnect behavior."""
+            _ = (context, exc)
+            raise NotImplementedError
 
     async def _get_last_processed_message_id(self) -> str | None:
         """Get last processed Redis message ID from database.
@@ -66,7 +102,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
         try:
             key = f"redis_last_message_id:{self.computer_name}"
             return await db.get_system_setting(key)
-        except Exception as e:
+        except _DB_EXCEPTIONS as e:
             logger.warning("Failed to get last processed message ID: %s", e)
             return None
 
@@ -79,7 +115,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
         try:
             key = f"redis_last_message_id:{self.computer_name}"
             await db.set_system_setting(key, message_id)
-        except Exception as e:
+        except _DB_EXCEPTIONS as e:
             logger.error("Failed to persist last processed message ID: %s", e)
 
     async def _poll_redis_messages(self) -> None:
@@ -156,7 +192,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except _MESSAGE_EXCEPTIONS as e:
                 await self._handle_redis_error("Message polling error", e)
 
     async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:
@@ -238,14 +274,14 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             await self.send_response(message_id, response_json)
             logger.info(">>> send_response completed for message_id: %s", message_id)
 
-        except Exception as e:
+        except _MESSAGE_EXCEPTIONS as e:
             logger.error("Failed to handle incoming message: %s", e, exc_info=True)
             # Send error response if possible
             try:
                 error_response = json.dumps({"status": "error", "error": str(e)})
                 await self.send_response(message_id, error_response)
-            except Exception:
-                pass
+            except (RedisError, OSError, RuntimeError, ValueError, TypeError):
+                logger.debug("Failed to send Redis error response for %s", message_id, exc_info=True)
 
     async def _handle_agent_notification_command(self, cmd_name: str, args: list[str]) -> JsonDict:
         """Handle stop_notification/input_notification commands as agent_event payloads."""
@@ -266,12 +302,12 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             if title_b64:
                 try:
                     resolved_title = base64.b64decode(title_b64).decode()
-                except Exception as e:
+                except _DECODE_EXCEPTIONS as e:
                     logger.warning("Failed to decode stop_notification title: %s", e)
             if output_b64:
                 try:
                     linked_output = base64.b64decode(output_b64).decode()
-                except Exception as e:
+                except _DECODE_EXCEPTIONS as e:
                     logger.warning("Failed to decode stop_notification linked output: %s", e)
 
             event_data: JsonDict = {
@@ -297,37 +333,38 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
     async def _execute_command(self, command: object) -> JsonDict:
         """Execute a command via command service and return an envelope."""
         try:
-            cmds = get_command_service()
-            if isinstance(command, CreateSessionCommand):
-                data = await cmds.create_session(command)
-                return {"status": "success", "data": cast(JsonValue, data)}
-            if isinstance(command, ProcessMessageCommand):
-                await cmds.process_message(command)
-                return {"status": "success", "data": None}
-            if isinstance(command, KeysCommand):
-                await cmds.keys(command)
-                return {"status": "success", "data": None}
-            if isinstance(command, StartAgentCommand):
-                await cmds.start_agent(command)
-                return {"status": "success", "data": None}
-            if isinstance(command, ResumeAgentCommand):
-                await cmds.resume_agent(command)
-                return {"status": "success", "data": None}
-            if isinstance(command, RestartAgentCommand):
-                data = await cmds.restart_agent(command)
-                return {"status": "success", "data": list(data)}
-            if isinstance(command, RunAgentCommand):
-                await cmds.run_agent_command(command)
-                return {"status": "success", "data": None}
-            if isinstance(command, GetSessionDataCommand):
-                data = await cmds.get_session_data(command)
-                return {"status": "success", "data": cast(JsonValue, data)}
-            if isinstance(command, CloseSessionCommand):
-                await cmds.close_session(command)
-                return {"status": "success", "data": None}
-            raise ValueError(f"Unsupported command type: {type(command).__name__}")
-        except Exception as exc:
+            data = await self._dispatch_command(command)
+        except _MESSAGE_EXCEPTIONS as exc:
             return {"status": "error", "error": str(exc)}
+        return {"status": "success", "data": data}
+
+    async def _dispatch_command(self, command: object) -> JsonValue | None:
+        """Dispatch one mapped command to the command service."""
+        cmds = get_command_service()
+        result: JsonValue | None = None
+
+        if isinstance(command, CreateSessionCommand):
+            result = cast(JsonValue, await cmds.create_session(command))
+        elif isinstance(command, ProcessMessageCommand):
+            await cmds.process_message(command)
+        elif isinstance(command, KeysCommand):
+            await cmds.keys(command)
+        elif isinstance(command, StartAgentCommand):
+            await cmds.start_agent(command)
+        elif isinstance(command, ResumeAgentCommand):
+            await cmds.resume_agent(command)
+        elif isinstance(command, RestartAgentCommand):
+            result = list(await cmds.restart_agent(command))
+        elif isinstance(command, RunAgentCommand):
+            await cmds.run_agent_command(command)
+        elif isinstance(command, GetSessionDataCommand):
+            result = cast(JsonValue, await cmds.get_session_data(command))
+        elif isinstance(command, CloseSessionCommand):
+            await cmds.close_session(command)
+        else:
+            raise ValueError(f"Unsupported command type: {type(command).__name__}")
+
+        return result
 
     def _parse_redis_message(self, data: dict[bytes, bytes]) -> RedisInboundMessage:
         """Decode raw Redis stream entry into typed RedisInboundMessage."""

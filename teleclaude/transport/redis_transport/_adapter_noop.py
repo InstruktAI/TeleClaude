@@ -26,6 +26,7 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         multi_message: bool = False,
     ) -> str:
         """Redis transport does not stream session output; noop for compatibility."""
+        _ = (text, metadata, multi_message)
         logger.debug(
             "send_message ignored for RedisTransport (session output streaming disabled): %s",
             session.session_id,
@@ -36,6 +37,7 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
     ) -> bool:
         """No-op for Redis transport."""
+        _ = (message_id, text, metadata)
         logger.debug(
             "edit_message ignored for RedisTransport (session output streaming disabled): %s",
             session.session_id,
@@ -44,6 +46,7 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
         """No-op for Redis transport."""
+        _ = message_id
         logger.debug(
             "delete_message ignored for RedisTransport (session output streaming disabled): %s",
             session.session_id,
@@ -52,6 +55,7 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
 
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
         """No-op for Redis transport (errors surface via request/response)."""
+        _ = error_message
         logger.debug(
             "send_error_feedback ignored for RedisTransport (session output streaming disabled): %s",
             session_id,
@@ -76,6 +80,7 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         Returns:
             Empty string (not supported)
         """
+        _ = (session, file_path, caption, metadata)
         logger.warning("send_file not supported by RedisTransport")
         return ""
 
@@ -91,11 +96,13 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         Returns:
             Empty string
         """
+        _ = (text, metadata)
         logger.warning("send_general_message not supported by RedisTransport")
         return ""
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         """Record transport metadata for AI-to-AI sessions (no Redis output streams)."""
+        _ = title
 
         redis_meta = session.get_metadata().get_transport().get_redis()
 
@@ -120,6 +127,7 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         Returns:
             True
         """
+        _ = (session, title)
         return True
 
     async def close_channel(self, session: Session) -> bool:
@@ -131,6 +139,7 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         Returns:
             True (always succeeds)
         """
+        _ = session
         return True
 
     async def reopen_channel(self, session: Session) -> bool:
@@ -142,8 +151,10 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         Returns:
             True (always succeeds)
         """
+        _ = session
         return True
 
     async def delete_channel(self, session: Session) -> bool:
         """No-op: Redis transport does not create per-session output streams."""
+        _ = session
         return True

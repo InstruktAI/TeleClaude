@@ -13,6 +13,8 @@ from pydantic import BaseModel, model_validator
 
 
 class SourceType(str, Enum):
+    """Supported source declaration types for signal ingestion."""
+
     RSS = "rss"
     OPML = "opml"
     CSV = "csv"
@@ -21,6 +23,8 @@ class SourceType(str, Enum):
 
 
 class SourceConfig(BaseModel):
+    """One signal source definition or file reference."""
+
     type: SourceType
     label: str = ""
     url: str | None = None
@@ -28,6 +32,7 @@ class SourceConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_fields(self) -> SourceConfig:
+        """Validate that URL- and path-based source types provide the required field."""
         if self.type in (SourceType.RSS, SourceType.YOUTUBE, SourceType.TWITTER):
             if not self.url:
                 raise ValueError(f"SourceConfig type={self.type} requires 'url'")
@@ -38,6 +43,8 @@ class SourceConfig(BaseModel):
 
 
 class SignalSourceConfig(BaseModel):
+    """Root configuration for the signal source loader and pull loop."""
+
     sources: list[SourceConfig] = []
     pull_interval_seconds: int = 900
     max_items_per_pull: int = 50
@@ -45,6 +52,7 @@ class SignalSourceConfig(BaseModel):
 
 
 def _parse_opml(xml_text: str, path_label: str) -> list[SourceConfig]:
+    """Expand an OPML document into individual RSS source entries."""
     try:
         root = ElementTree.fromstring(xml_text)
     except ElementTree.ParseError as e:
@@ -59,6 +67,7 @@ def _parse_opml(xml_text: str, path_label: str) -> list[SourceConfig]:
 
 
 def _parse_csv(csv_text: str) -> list[SourceConfig]:
+    """Expand a CSV source list into typed source entries."""
     results: list[SourceConfig] = []
     reader = csv.reader(io.StringIO(csv_text))
     for row in reader:
