@@ -3,6 +3,7 @@
 Handles user input: text messages, voice messages, file attachments,
 topic lifecycle events, and error handling.
 """
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -13,12 +14,13 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 from telegram import Document, Message, PhotoSize, Update
 from telegram.ext import ContextTypes
 
+from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
@@ -29,8 +31,27 @@ from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
+
+    class _InputHandlersHost(Protocol):  # pylint: disable=too-few-public-methods
+        client: AdapterClient
+        user_whitelist: set[int]
+        _processed_voice_messages: set[str]
+        _topic_ready_events: dict[int, asyncio.Event]
+        _topic_ready_cache: set[int]
+        _metadata: Callable[..., MessageMetadata]
+        _get_session_from_topic: Callable[[Update], Awaitable[Session | None]]
+        _topic_owned_by_this_bot: Callable[[Update, int], bool]
+        _delete_orphan_topic: Callable[[int], Awaitable[None]]
+        _dispatch_command: Callable[
+            [Session, str | None, MessageMetadata, str, Mapping[str, object], Callable[[], Awaitable[object]]],
+            Awaitable[object],
+        ]
+        _send_general_message_with_retry: Callable[[int | None, str, str | None, object | None], Awaitable[Message]]
+
 
 logger = get_logger(__name__)
 
@@ -118,52 +139,13 @@ class InputHandlersMixin:
     _topic_ready_events: dict[int, asyncio.Event]
     _topic_ready_cache: set[int]
 
-    if TYPE_CHECKING:
-
-        def _metadata(self, **kwargs: object) -> MessageMetadata:
-            """Create adapter metadata."""
-            ...
-
-        async def _get_session_from_topic(self, update: Update) -> Session | None:
-            """Get session from update's topic."""
-            ...
-
-        async def _dispatch_command(
-            self,
-            session: Session,
-            message_id: str | None,
-            metadata: MessageMetadata,
-            command_name: str,
-            payload: Mapping[str, object],
-            handler: Callable[[], Awaitable[object]],
-        ) -> None:
-            """Dispatch command via UiAdapter hooks (type-check stub)."""
-            ...
-
-        def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:
-            """Check if topic is owned by this bot."""
-            ...
-
-        async def _delete_orphan_topic(self, topic_id: int) -> None:
-            """Delete orphan topic."""
-            ...
-
-        async def _send_general_message_with_retry(
-            self,
-            message_thread_id: int | None,
-            text: str,
-            parse_mode: str | None,
-            reply_markup: object | None,
-        ) -> Message:
-            """Send Telegram message with retry (type-check stub)."""
-            ...
-
     # =========================================================================
     # Input Handler Implementation
     # =========================================================================
 
     async def _handle_help(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command - dynamically generates from UiCommands."""
+        host = cast("_InputHandlersHost", self)
         user = update.effective_user
         if not user or user.id not in self.user_whitelist:
             return
@@ -186,7 +168,7 @@ Usage:
 
         message = update.effective_message
         if message:
-            await self._send_general_message_with_retry(
+            await host._send_general_message_with_retry(
                 message.message_thread_id,
                 help_text,
                 None,
@@ -199,7 +181,8 @@ Usage:
         Messages with message_thread_id are in specific topics.
         Messages without message_thread_id are in General topic.
         """
-        session = await self._get_session_from_topic(update)
+        host = cast("_InputHandlersHost", self)
+        session = await host._get_session_from_topic(update)
         if not session:
             effective_message = update.effective_message
             if effective_message and effective_message.message_thread_id:
@@ -229,8 +212,8 @@ Usage:
                 and update.effective_message.message_thread_id
             ):
                 thread_id = update.effective_message.message_thread_id
-                if self._topic_owned_by_this_bot(update, thread_id):
-                    await self._delete_orphan_topic(thread_id)
+                if host._topic_owned_by_this_bot(update, thread_id):
+                    await host._delete_orphan_topic(thread_id)
                 else:
                     logger.info("Skipping orphan topic delete for topic %s (not owned by this bot)", thread_id)
             return
@@ -248,9 +231,7 @@ Usage:
             text = "/" + text[2:]
             logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
 
-        from teleclaude.core.command_mapper import CommandMapper
-
-        metadata = self._metadata()
+        metadata = host._metadata()
         metadata.channel_metadata = metadata.channel_metadata or {}
         metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
         metadata.channel_metadata["user_id"] = str(update.effective_user.id)
@@ -268,7 +249,7 @@ Usage:
             metadata=metadata,
             session_id=session.session_id,
         )
-        await self._dispatch_command(
+        await host._dispatch_command(
             session,
             str(update.effective_message.message_id),
             metadata,
@@ -277,7 +258,7 @@ Usage:
             lambda: get_command_service().process_message(cmd),  # type: ignore[arg-type]
         )
 
-    async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:  # pylint: disable=too-many-locals
         """Handle voice messages in topics - both new and edited messages."""
         # Handle both regular messages and edited messages
         message = update.effective_message
@@ -312,7 +293,8 @@ Usage:
             oldest_str = min(self._processed_voice_messages)
             self._processed_voice_messages.remove(oldest_str)
 
-        session = await self._get_session_from_topic(update)
+        host = cast("_InputHandlersHost", self)
+        session = await host._get_session_from_topic(update)
         if not session:
             message_thread_id = message.message_thread_id
             if (
@@ -355,7 +337,7 @@ Usage:
                     ),
                     message_id=str(message.message_id),
                     message_thread_id=message.message_thread_id,
-                    origin=self._metadata().origin,
+                    origin=cast("_InputHandlersHost", self)._metadata().origin,
                     actor_id=f"telegram:{update.effective_user.id}",
                     actor_name=(
                         update.effective_user.username
@@ -365,8 +347,8 @@ Usage:
                     ),
                 )
             )
-        except Exception as e:
-            error_msg = str(e) if str(e).strip() else "Unknown error"
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            error_msg = str(error) if str(error).strip() else "Unknown error"
             logger.error("Failed to download voice message: %s", error_msg)
             await self.client.send_message(
                 session,
@@ -382,7 +364,8 @@ Usage:
         if not message or not update.effective_user:
             return
 
-        session = await self._get_session_from_topic(update)
+        host = cast("_InputHandlersHost", self)
+        session = await host._get_session_from_topic(update)
         if not session:
             message_thread_id = update.effective_message.message_thread_id if update.effective_message else None
             if (
@@ -439,7 +422,7 @@ Usage:
                     file_size=(file_obj.file_size if hasattr(file_obj, "file_size") else 0),
                 )
             )
-        except Exception as e:
+        except (OSError, RuntimeError, TypeError, ValueError) as e:
             # Log detailed error for debugging
             logger.error("Failed to download %s: %s", file_type, str(e))
 
@@ -447,7 +430,7 @@ Usage:
             message_id = await self.client.send_message(
                 session,
                 f"❌ Failed to upload {file_type}",
-                metadata=self._metadata(),
+                metadata=host._metadata(),
             )
             if message_id:
                 await db.add_pending_deletion(session.session_id, message_id)
@@ -479,8 +462,9 @@ Usage:
 
         if not sessions:
             logger.warning("No session found for topic %s", topic_id)
-            if self._topic_owned_by_this_bot(update, topic_id):
-                await self._delete_orphan_topic(topic_id)
+            host = cast("_InputHandlersHost", self)
+            if host._topic_owned_by_this_bot(update, topic_id):
+                await host._delete_orphan_topic(topic_id)
             else:
                 logger.info("Skipping orphan topic delete for topic %s (not owned by this bot)", topic_id)
             return
@@ -585,8 +569,8 @@ Usage:
             # This ensures we can see ALL events including topic deletions
             logger.debug("Full update data: %s", update_dict)
 
-        except Exception as e:
-            logger.error("Error logging update: %s", e)
+        except (TypeError, ValueError, AttributeError) as error:
+            logger.error("Error logging update: %s", error)
 
     async def _handle_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle errors that occur in handlers."""
@@ -598,3 +582,11 @@ Usage:
                 "Full traceback:\n%s",
                 "".join(traceback.format_exception(type(context.error), context.error, context.error.__traceback__)),
             )
+
+    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Public wrapper for standard text-message handling."""
+        await self._handle_text_message(update, context)
+
+    async def handle_file_attachment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Public wrapper for inbound file routing."""
+        await self._handle_file_attachment(update, context)

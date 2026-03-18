@@ -3,24 +3,65 @@
 Handles /start invite binding, private text routing, simple command
 dispatching, and the dynamic command-handler factory.
 """
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
 import shlex
-from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Coroutine, Mapping
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 from telegram import Update
 from telegram.ext import ContextTypes
 
+import teleclaude.core.agents as agents_module
+import teleclaude.core.identity as identity_module
+import teleclaude.invite as invite_module
+from teleclaude.adapters.telegram.message_ops import MessageOperationsMixin
+from teleclaude.cli.config_handlers import find_person_by_invite_token, save_person_config
+from teleclaude.config.schema import TelegramCreds
+from teleclaude.core import command_registry
 from teleclaude.core.command_mapper import CommandMapper
-from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata, Session, SessionMetadata
-from teleclaude.types.commands import CloseSessionCommand, KeysCommand
+from teleclaude.core.models import Session, SessionMetadata
+from teleclaude.core.origins import InputOrigin
+from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, KeysCommand, ProcessMessageCommand
+
+if TYPE_CHECKING:
+    from typing import Protocol
+
+    from teleclaude.core.command_service import CommandService
+    from teleclaude.core.models import MessageMetadata
+
+    class _PrivateHandlersHost(Protocol):  # pylint: disable=too-few-public-methods
+        SIMPLE_COMMAND_EVENTS: list[str]
+        _metadata: Callable[..., MessageMetadata]
+        _get_session_from_topic: Callable[[Update], Coroutine[object, object, Session | None]]
+        _dispatch_command: Callable[
+            [
+                Session,
+                str | None,
+                MessageMetadata,
+                str,
+                Mapping[str, object],
+                Callable[[], Coroutine[object, object, object]],
+            ],
+            Coroutine[object, object, object],
+        ]
+
 
 logger = get_logger(__name__)
+
+
+def get_command_service() -> CommandService:
+    """Delegate to the global command-service registry at call time.
+
+    Keeping this local wrapper preserves both test seams:
+    - patching `teleclaude.core.command_registry.get_command_service`
+    - patching `teleclaude.adapters.telegram.private_handlers.get_command_service`
+    """
+    return command_registry.get_command_service()
 
 
 class PrivateHandlersMixin:
@@ -33,22 +74,7 @@ class PrivateHandlersMixin:
     - _dispatch_command(session, message_id, metadata, event, payload, fn) -> None
     """
 
-    if TYPE_CHECKING:
-        SIMPLE_COMMAND_EVENTS: list[str]
-
-        def _metadata(self, **kwargs: object) -> MessageMetadata: ...
-
-        async def _get_session_from_topic(self, update: Update) -> Session | None: ...
-
-        async def _dispatch_command(
-            self,
-            session: Session,
-            message_id: str,
-            metadata: MessageMetadata,
-            event: str,
-            payload: object,
-            fn: Callable[[], Coroutine[object, object, object]],
-        ) -> None: ...
+    SIMPLE_COMMAND_EVENTS: list[str]
 
     def _register_simple_command_handlers(self) -> None:
         """Create handler methods for simple commands dynamically.
@@ -74,6 +100,10 @@ class PrivateHandlersMixin:
 
             setattr(self, handler_name, make_handler(event))
 
+    def register_simple_command_handlers(self) -> None:
+        """Public wrapper for dynamic simple-command registration."""
+        self._register_simple_command_handlers()
+
     async def _handle_cancel_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel command without colliding with callback cancel handler."""
         await self._handle_simple_command(update, context, "cancel")
@@ -92,9 +122,6 @@ class PrivateHandlersMixin:
                 "Send me your invite token to get started, or contact your admin for an invite link."
             )
             return
-
-        # Look up person by invite token
-        from teleclaude.cli.config_handlers import find_person_by_invite_token, save_person_config
 
         result = find_person_by_invite_token(payload)
         if not result:
@@ -118,23 +145,14 @@ class PrivateHandlersMixin:
                 return
         else:
             # Bind credentials
-            from teleclaude.config.schema import TelegramCreds
-
             person_config.creds.telegram = TelegramCreds(user_id=int(user_id), user_name=user_name)
             save_person_config(person_name, person_config)
             logger.info("Bound Telegram user %s to person %s", user_id, person_name)
 
         # Scaffold personal workspace and create session
-        from teleclaude.invite import scaffold_personal_workspace
-
-        workspace_path = scaffold_personal_workspace(person_name)
+        workspace_path = invite_module.scaffold_personal_workspace(person_name)
 
         # Create session in personal workspace
-        from teleclaude.core.agents import get_default_agent
-        from teleclaude.core.command_registry import get_command_service
-        from teleclaude.core.origins import InputOrigin
-        from teleclaude.types.commands import CreateSessionCommand
-
         create_cmd = CreateSessionCommand(
             project_path=str(workspace_path),
             title=f"Telegram: {person_name}",
@@ -146,7 +164,7 @@ class PrivateHandlersMixin:
                 "chat_type": "private",
             },
             session_metadata=SessionMetadata(human_role="member"),
-            auto_command=f"agent {get_default_agent()}",
+            auto_command=f"agent {agents_module.get_default_agent()}",
         )
         result_dict = await get_command_service().create_session(create_cmd)
         session_id = str(result_dict.get("session_id", ""))
@@ -165,17 +183,17 @@ class PrivateHandlersMixin:
             f"Hi {person_name}, I'm your personal assistant. What would you like to work on?"
         )
 
-    async def _handle_private_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def _handle_private_text(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle text messages in private chats from bound users."""
         assert update.effective_user is not None
         assert update.effective_message is not None
 
         user_id = str(update.effective_user.id)
 
-        # Resolve identity
-        from teleclaude.core.identity import get_identity_resolver
-
-        identity = get_identity_resolver().resolve("telegram", {"user_id": user_id, "telegram_user_id": user_id})
+        identity = identity_module.get_identity_resolver().resolve(
+            "telegram",
+            {"user_id": user_id, "telegram_user_id": user_id},
+        )
 
         if not identity or not identity.person_name:
             # Unknown user
@@ -184,48 +202,19 @@ class PrivateHandlersMixin:
             )
             return
 
-        # Find or create session in personal workspace
-        # Check if there's an active session for this user (private chat)
-        sessions = await db.list_sessions(last_input_origin="telegram", include_closed=False)
-        session = None
-        for s in sessions:
-            telegram_meta = s.get_metadata().get_ui().get_telegram()
-            # In private chats, user_id is the unique identifier
-            if telegram_meta.user_id == int(user_id):
-                session = s
-                break
+        session = await self._find_private_session(user_id)
 
         if not session:
             # Create new session with user's message bundled into auto_command.
             # agent_then_message waits for the agent TUI to stabilize before injecting
             # the message, preventing the race where the message is sent to tmux before
             # the agent is ready to accept input.
-            from teleclaude.core.agents import get_default_agent
-            from teleclaude.core.command_registry import get_command_service
-            from teleclaude.core.origins import InputOrigin
-            from teleclaude.invite import scaffold_personal_workspace
-            from teleclaude.types.commands import CreateSessionCommand
-
-            workspace_path = scaffold_personal_workspace(identity.person_name)
-            text = update.effective_message.text or ""
-            agent = get_default_agent()
-            quoted_text = shlex.quote(text)
-            auto_command = f"agent_then_message {agent} slow {quoted_text}"
-
-            create_cmd = CreateSessionCommand(
-                project_path=str(workspace_path),
-                title=f"Telegram: {identity.person_name}",
-                origin=InputOrigin.TELEGRAM.value,
-                channel_metadata={
-                    "user_id": int(user_id),
-                    "telegram_user_id": int(user_id),
-                    "platform": "telegram",
-                    "chat_type": "private",
-                },
-                session_metadata=SessionMetadata(human_role=identity.person_role or "member"),
-                auto_command=auto_command,
+            result_dict = await self._create_private_session_for_identity(
+                user_id,
+                identity.person_name,
+                update.effective_message.text or "",
+                identity.person_role or "member",
             )
-            result_dict = await get_command_service().create_session(create_cmd)
             session_id = str(result_dict.get("session_id", ""))
             if not session_id:
                 logger.error("Private chat session creation failed for %s", identity.person_name)
@@ -233,9 +222,6 @@ class PrivateHandlersMixin:
 
         # Existing session — deliver message through inbound queue
         text = update.effective_message.text or ""
-
-        from teleclaude.core.command_registry import get_command_service as gcs
-        from teleclaude.types.commands import ProcessMessageCommand
 
         msg_id = str(update.effective_message.message_id)
         cmd = ProcessMessageCommand(
@@ -249,12 +235,10 @@ class PrivateHandlersMixin:
         )
 
         # Dispatch — process_message enqueues for durable delivery
-        await gcs().process_message(cmd)
+        await get_command_service().process_message(cmd)
 
     async def delete_message(self, session: Session | str, message_id: str) -> bool:
         """Delete a message by session or session_id."""
-        from teleclaude.adapters.telegram.message_ops import MessageOperationsMixin
-
         if isinstance(session, str):
             session_obj = await db.get_session(session)
             if not session_obj:
@@ -268,7 +252,7 @@ class PrivateHandlersMixin:
 
         Handles commands that map to explicit command objects and dispatch via CommandService.
         """
-        session = await self._get_session_from_topic(update)
+        session = await cast("_PrivateHandlersHost", self)._get_session_from_topic(update)
         if not session:
             return
 
@@ -276,7 +260,8 @@ class PrivateHandlersMixin:
         assert update.effective_message is not None
 
         args = context.args or []
-        metadata = self._metadata()
+        host = cast("_PrivateHandlersHost", self)
+        metadata = host._metadata()
         # MessageMetadata from _metadata() doesn't have project_path yet,
         # but _handle_simple_command is for session-specific commands.
         metadata.channel_metadata = metadata.channel_metadata or {}
@@ -292,7 +277,7 @@ class PrivateHandlersMixin:
         )
         cmd.request_id = str(update.effective_message.message_id)
         if isinstance(cmd, KeysCommand):
-            await self._dispatch_command(
+            await host._dispatch_command(
                 session,
                 str(update.effective_message.message_id),
                 metadata,
@@ -303,7 +288,7 @@ class PrivateHandlersMixin:
             return
 
         if isinstance(cmd, CloseSessionCommand):
-            await self._dispatch_command(
+            await host._dispatch_command(
                 session,
                 str(update.effective_message.message_id),
                 metadata,
@@ -314,3 +299,38 @@ class PrivateHandlersMixin:
             return
 
         raise ValueError(f"Unsupported simple command type: {type(cmd).__name__}")
+
+    async def _find_private_session(self, user_id: str) -> Session | None:
+        """Return the active private-chat session for a Telegram user, if one exists."""
+        sessions = await db.list_sessions(last_input_origin="telegram", include_closed=False)
+        for session in sessions:
+            telegram_meta = session.get_metadata().get_ui().get_telegram()
+            if telegram_meta.user_id == int(user_id):
+                return session
+        return None
+
+    async def _create_private_session_for_identity(
+        self,
+        user_id: str,
+        person_name: str,
+        text: str,
+        human_role: str,
+    ) -> dict[str, str]:
+        """Create a private-chat session with the initial message bundled into auto_command."""
+        workspace_path = invite_module.scaffold_personal_workspace(person_name)
+        quoted_text = shlex.quote(text)
+        auto_command = f"agent_then_message {agents_module.get_default_agent()} slow {quoted_text}"
+        create_cmd = CreateSessionCommand(
+            project_path=str(workspace_path),
+            title=f"Telegram: {person_name}",
+            origin=InputOrigin.TELEGRAM.value,
+            channel_metadata={
+                "user_id": int(user_id),
+                "telegram_user_id": int(user_id),
+                "platform": "telegram",
+                "chat_type": "private",
+            },
+            session_metadata=SessionMetadata(human_role=human_role),
+            auto_command=auto_command,
+        )
+        return await get_command_service().create_session(create_cmd)

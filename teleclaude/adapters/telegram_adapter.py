@@ -134,7 +134,7 @@ class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # t
         self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
 
         # Register simple command handlers dynamically
-        self._register_simple_command_handlers()
+        self.register_simple_command_handlers()
 
     # --- Per-adapter output message tracking ---
     # Telegram uses adapter_metadata instead of the shared DB column
