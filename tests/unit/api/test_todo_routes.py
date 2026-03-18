@@ -48,7 +48,7 @@ class TestTodoRoutes:
         identity = SimpleNamespace(session_id="sess-1")
 
         with pytest.raises(HTTPException) as exc_info:
-            await todo_routes.todo_work(slug="chartest-api-routes", cwd=None, client_request_id=None, identity=identity)
+            await todo_routes.todo_work(slug="chartest-api-routes", cwd=None, client_request_id=None, _identity=identity)
 
         assert exc_info.value.status_code == 400
 
@@ -59,7 +59,7 @@ class TestTodoRoutes:
         identity = SimpleNamespace(session_id="sess-1")
 
         with pytest.raises(HTTPException) as exc_info:
-            await todo_routes.todo_integrate(slug="chartest-api-routes", cwd=None, identity=identity)
+            await todo_routes.todo_integrate(slug="chartest-api-routes", cwd=None, _identity=identity)
 
         assert exc_info.value.status_code == 400
 
@@ -90,7 +90,7 @@ class TestTodoRoutes:
                 slug="chartest-api-routes",
                 cwd="/repo",
                 client_request_id="req-1",
-                identity=identity,
+                _identity=identity,
             )
 
         assert integrate_route.status_code == 202

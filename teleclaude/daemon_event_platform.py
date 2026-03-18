@@ -299,7 +299,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
 
     def _start_sandbox_watch_task(self, coro: object, task_name: str) -> None:
         """Start and monitor a sandbox background task."""
-        task = asyncio.create_task(coro, name=task_name)  # type: ignore[arg-type]
+        task: asyncio.Task[None] = asyncio.create_task(coro, name=task_name)  # type: ignore[arg-type]
         task.add_done_callback(self._log_background_task_exception(task_name))
 
     def _register_sandbox_bridge(self, pipeline: Pipeline, event_producer: EventProducer) -> None:
