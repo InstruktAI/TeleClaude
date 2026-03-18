@@ -26,21 +26,21 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         def _ui_adapters(self) -> list[tuple[str, UiAdapter]]: ...
 
-        async def _broadcast_to_ui_adapters(
+        async def _broadcast_to_ui_adapters(  # pylint: disable=unused-argument
             self,
-            _session: "Session",
-            _operation: str,
-            _task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
-            _include_adapters: set[str] | None = None,
+            session: "Session",
+            operation: str,
+            task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+            include_adapters: set[str] | None = None,
         ) -> list[tuple[str, object]]: ...
 
-        async def _route_to_ui(
+        async def _route_to_ui(  # pylint: disable=unused-argument
             self,
-            _session: "Session",
-            _method: str,
-            *_args: object,
-            _include_adapters: set[str] | None = None,
-            **_kwargs: object,
+            session: "Session",
+            method: str,
+            *args: object,
+            include_adapters: set[str] | None = None,
+            **kwargs: object,
         ) -> object: ...
 
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:

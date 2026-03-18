@@ -29,13 +29,13 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
         def _ui_adapters(self) -> list[tuple[str, UiAdapter]]: ...
 
-        async def _fanout_excluding(
+        async def _fanout_excluding(  # pylint: disable=unused-argument
             self,
-            _session: "Session",
-            _operation: str,
-            _task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+            session: "Session",
+            operation: str,
+            task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
             *,
-            exclude: str | None = None,  # pylint: disable=unused-argument
+            exclude: str | None = None,
         ) -> None: ...
 
     async def _run_ui_lane(
