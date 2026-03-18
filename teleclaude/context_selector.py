@@ -1,3 +1,5 @@
+"""Context selector for agent injection and tool schema resolution."""
+
 from __future__ import annotations
 
 import os
@@ -23,7 +25,7 @@ SCOPE_ORDER = {"global": 0, "domain": 0, "project": 1}
 
 
 @dataclass(frozen=True)
-class SnippetMeta:
+class SnippetMeta:  # pylint: disable=missing-class-docstring,too-many-instance-attributes
     snippet_id: str
     description: str
     snippet_type: str
@@ -56,7 +58,7 @@ _TEST_ENABLED_ENV = "TELECLAUDE_GET_CONTEXT_TESTING"
 _index_cache: dict[str, tuple[float, list[SnippetMeta]]] = {}
 
 
-def _write_test_output(
+def _write_test_output(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals
     *,
     phase: str,
     areas: list[str],
@@ -83,7 +85,7 @@ def _write_test_output(
             header = handle.readline().strip().split(",")
             for line in handle:
                 rows.append(line.strip().split(","))
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return
     if not header:
         return
@@ -118,7 +120,7 @@ def _write_test_output(
             handle.write(",".join(header) + "\n")
             for row in rows:
                 handle.write(",".join(row) + "\n")
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return
 
 
@@ -233,7 +235,7 @@ def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -
     return f"{head}{_INLINE_REF_RE.sub(_expand, body)}"
 
 
-def _load_index(
+def _load_index(  # pylint: disable=too-many-branches,too-many-locals
     index_path: Path,
     *,
     source_project: str = "",
@@ -258,7 +260,7 @@ def _load_index(
     else:
         try:
             payload = yaml.safe_load(resolved_index.read_text(encoding="utf-8"))
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.exception("snippet_index_load_failed", path=str(resolved_index), error=str(exc))
             return []
 
@@ -351,7 +353,7 @@ def _load_baseline_ids(
 
     try:
         content = baseline_path.read_text(encoding="utf-8")
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return set()
 
     baseline_ids: set[str] = set()
@@ -376,7 +378,7 @@ def _load_third_party_index(index_path: Path) -> list[ThirdPartyMeta]:
 
     try:
         payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.exception("third_party_index_load_failed", path=str(index_path), error=str(exc))
         return []
 
@@ -419,7 +421,7 @@ def _load_third_party_index(index_path: Path) -> list[ThirdPartyMeta]:
     return entries
 
 
-def _resolve_requires(
+def _resolve_requires(  # pylint: disable=too-many-locals
     selected_ids: Iterable[str],
     snippets: list[SnippetMeta],
     *,
@@ -446,7 +448,7 @@ def _resolve_requires(
         # Read @ refs from the snippet file's Required reads section
         try:
             content = current.path.read_text(encoding="utf-8")
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("resolve_requires_read_failed", path=str(current.path), error=str(exc))
             continue
         ref_paths = extract_required_reads(content)
@@ -491,7 +493,7 @@ def _build_project_catalog_output() -> str:
     return "\n".join(parts)
 
 
-def _load_selected_snippets(
+def _load_selected_snippets(  # pylint: disable=too-many-arguments
     *,
     project_root: Path,
     projects: list[str] | None,
@@ -571,7 +573,7 @@ def _load_cross_project_snippets(
     return all_loaded_ids
 
 
-def _include_snippet_factory(
+def _include_snippet_factory(  # pylint: disable=too-many-arguments
     *,
     effective_human_role: str | None,
     requested_ids: set[str],
@@ -581,7 +583,7 @@ def _include_snippet_factory(
     domain_config: dict[str, Path],
     project_domain_roots: dict[str, Path],
 ) -> Callable[[SnippetMeta], bool]:
-    def _include(snippet: SnippetMeta) -> bool:
+    def _include(snippet: SnippetMeta) -> bool:  # pylint: disable=too-many-return-statements
         if not effective_human_role:
             return False
         if effective_human_role != "admin" and snippet.visibility != "public":
@@ -628,7 +630,7 @@ def _apply_baseline_filter(
     return [snippet for snippet in snippets if snippet.snippet_id in baseline_ids]
 
 
-def _build_phase1_output(
+def _build_phase1_output(  # pylint: disable=too-many-arguments
     snippets_for_selection: list[SnippetMeta],
     third_party_entries: list[ThirdPartyMeta],
     *,
@@ -699,12 +701,12 @@ def _read_selected_snippet_body(
         content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)
         _, body = _split_frontmatter(content)
         return strip_required_reads_section(body)
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.exception("context_selector_read_failed", path=str(snippet.path), error=str(exc))
         return None
 
 
-def build_context_output(
+def build_context_output(  # pylint: disable=missing-function-docstring,too-many-arguments,too-many-branches,too-many-locals,too-many-statements
     *,
     areas: list[str],
     project_root: Path,
@@ -892,7 +894,7 @@ def build_context_output(
             try:
                 raw = entry.path.read_text(encoding="utf-8")
                 _, body = _split_frontmatter(raw)
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.exception("context_selector_read_failed", path=str(entry.path), error=str(exc))
                 continue
             parts.append(

@@ -23,8 +23,8 @@ from teleclaude.session_identity import get_session_id
 
 def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
     """Fire-and-forget lifecycle event emission for prepare state machine."""
-    from teleclaude.events.envelope import EventLevel
-    from teleclaude.events.producer import emit_event
+    from teleclaude.events.envelope import EventLevel  # pylint: disable=import-outside-toplevel
+    from teleclaude.events.producer import emit_event  # pylint: disable=import-outside-toplevel
 
     async def _emit() -> None:
         try:
@@ -39,7 +39,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
                 entity=slug,
                 payload=dict(payload),
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass  # Never block prepare on event emission failure
 
     try:
@@ -49,7 +49,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
         # No running loop (thread or sync CLI context) — fire-and-forget via new event loop
         try:
             asyncio.run(_emit())
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass  # Never block prepare on event emission failure
 
 
@@ -81,14 +81,14 @@ def _has_test_spec_artifacts(cwd: str, slug: str) -> bool:
     return False
 
 
-def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:
+def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:  # pylint: disable=too-many-locals,too-many-return-statements
     """Derive the initial prepare phase from artifact existence when no durable phase is set.
 
     Ghost artifact protection (R5) means a file on disk without a
     corresponding produced_at lifecycle record is treated as not produced.
     """
-    from teleclaude.core.next_machine.build_gates import check_file_has_content
-    from teleclaude.core.next_machine.slug_resolution import check_file_exists
+    from teleclaude.core.next_machine.build_gates import check_file_has_content  # noqa: I001  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.slug_resolution import check_file_exists  # pylint: disable=import-outside-toplevel
 
     has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")

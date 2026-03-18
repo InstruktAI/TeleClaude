@@ -36,6 +36,7 @@ class JobState:
     last_notified: datetime | None = None
 
     def to_dict(self) -> JobStateDict:
+        """Serialize job state to a dictionary."""
         return {
             "last_run": self.last_run.isoformat() if self.last_run else None,
             "last_status": self.last_status,
@@ -45,6 +46,7 @@ class JobState:
 
     @classmethod
     def from_dict(cls, data: JobStateDict) -> JobState:
+        """Deserialize job state from a dictionary."""
         last_run = None
         last_run_str = data.get("last_run")
         if last_run_str:

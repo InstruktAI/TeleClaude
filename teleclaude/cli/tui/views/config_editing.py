@@ -125,7 +125,8 @@ class ConfigContentEditingMixin:  # pylint: disable=too-many-instance-attributes
         """Enter edit mode for a specific field on the expanded person."""
         self._editing_person_field = field  # type: ignore[attr-defined]
         self._edit_buffer = str(getattr(person, field, "") or "")  # type: ignore[attr-defined]
-        self._status_message = f"Editing {getattr(person, 'name', '')}.{field}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
+        person_name = getattr(person, "name", "")
+        self._status_message = f"Editing {person_name}.{field}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
         self._status_is_error = False  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
 

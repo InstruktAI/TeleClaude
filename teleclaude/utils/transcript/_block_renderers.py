@@ -77,7 +77,7 @@ def _should_skip_entry(
     return False
 
 
-def _process_entry(
+def _process_entry(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     entry: dict[str, object],  # guard: loose-dict - External entry
     lines: list[str],
     last_section: str | None,
@@ -136,7 +136,7 @@ def _process_string_content(content: str, time_prefix: str, lines: list[str], la
     return "user"
 
 
-def _process_list_content(
+def _process_list_content(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     content: list[object],
     role: str,
     time_prefix: str,
@@ -277,7 +277,7 @@ def _process_tool_use_block(
     """
     tool_name = str(block.get("name", "unknown"))
     # Truncate at first newline, open paren, or open brace to ensure single-line name only
-    tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
+    tool_name_safe = tool_name.split("\n", maxsplit=1)[0].split("(")[0].split("{")[0].strip()
 
     # 1. Start with the base decoration
     # **`tool_name`**

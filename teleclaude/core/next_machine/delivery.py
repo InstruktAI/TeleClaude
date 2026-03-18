@@ -214,7 +214,7 @@ def cleanup_delivered_slug(
     clean_dependency_references(cwd, slug)
 
 
-def sweep_completed_groups(cwd: str) -> list[str]:
+def sweep_completed_groups(cwd: str) -> list[str]:  # pylint: disable=too-many-branches
     """Auto-deliver group parents whose children are all delivered.
 
     A group parent is any todo with a non-empty breakdown.todos list.

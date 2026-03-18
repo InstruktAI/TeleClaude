@@ -32,9 +32,12 @@ logger = get_logger(__name__)
 NORMAL_TAGGING_RULES = (
     "You are a YouTube channel classifier.\n"
     "You may ONLY return tags from the allowed list.\n"
-    "IMPORTANT: Use your knowledge! If you recognize the channel or creator, USE that knowledge confidently.\n"
-    "Many channels are run by famous people, journalists, educators, or well-known creators - you likely know them.\n"
-    "Trust your training data for well-known channels. Only return n/a for truly obscure channels you don't recognize.\n"
+    "IMPORTANT: Use your knowledge! If you recognize the channel or creator, "
+    "USE that knowledge confidently.\n"
+    "Many channels are run by famous people, journalists, educators, "
+    "or well-known creators - you likely know them.\n"
+    "Trust your training data for well-known channels. "
+    "Only return n/a for truly obscure channels you don't recognize.\n"
     'If you return ["n/a"], it must be the ONLY tag.\n'
 )
 
@@ -63,6 +66,7 @@ class ChannelRow:
     description: str = ""  # Enriched from about page
 
     def to_dict(self) -> dict[str, str]:
+        """Serialize to dict for CSV output."""
         return {
             "channel_id": self.channel_id,
             "channel_name": self.channel_name,
@@ -72,6 +76,7 @@ class ChannelRow:
 
     @classmethod
     def from_dict(cls, row: dict[str, str]) -> ChannelRow:
+        """Deserialize from CSV row dict."""
         return cls(
             channel_id=row.get("channel_id", ""),
             channel_name=row.get("channel_name", ""),
@@ -91,7 +96,7 @@ class SyncResult:
 
 
 @dataclass
-class TaggingConfig:
+class TaggingConfig:  # pylint: disable=too-many-instance-attributes
     """Configuration for tagging operations."""
 
     mode: str = "normal+web"  # normal, web, normal+web
@@ -200,10 +205,9 @@ def build_batch_prompt(
             f"Channels (JSON): {json.dumps(items, ensure_ascii=True)}\n\n"
             'Return JSON: {"items": [{"channel_id": "...", "tags": ["tag1"], "evidence": "what you found"}]}'
         )
-    else:
-        return (
-            f"{retry_note}{rules}"
-            "Tag each YouTube channel using ONLY the allowed tags.\n"
+    return (
+        f"{retry_note}{rules}"
+        "Tag each YouTube channel using ONLY the allowed tags.\n"
             "Use BOTH the description AND your prior knowledge about each channel/creator.\n"
             "If you recognize a person or channel from your training, confidently apply relevant tags.\n"
             'Only use ["n/a"] if the channel is truly obscure AND the description gives no clues.\n\n'
@@ -307,7 +311,7 @@ def call_agent(
         )
         result = payload.get("result", {})
         return result if isinstance(result, dict) else None
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("agent call failed", agent=agent, error=str(e))
         return None
 
@@ -315,7 +319,7 @@ def call_agent(
 # --- Batch Processing ---
 
 
-def process_batch(
+def process_batch(  # pylint: disable=too-many-arguments,too-many-locals
     rows: list[ChannelRow],
     config: TaggingConfig,
     tags: list[str],
@@ -323,7 +327,7 @@ def process_batch(
     agent_iter: Iterator[str],
     *,
     use_web: bool = False,
-    merge_mode: bool = False,
+    merge_mode: bool = False,  # pylint: disable=unused-argument
 ) -> dict[str, str]:
     """Process a batch of rows and return {channel_id: tags_str}."""
     schema = build_schema(tags)
@@ -391,7 +395,7 @@ def process_batch(
 # --- Main Sync Function ---
 
 
-def sync_youtube_subscriptions(
+def sync_youtube_subscriptions(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
     subscriber: Subscriber,
     *,
     mode: str = "normal+web",

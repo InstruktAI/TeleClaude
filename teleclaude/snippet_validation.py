@@ -1,3 +1,5 @@
+"""Validate snippet IDs, paths, and inline references against the taxonomy."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -15,23 +17,27 @@ _DEFAULT_DOMAINS = {"software-development"}
 
 @dataclass(frozen=True)
 class SnippetIdParts:
+    """Parsed components of a snippet ID."""
+
     scope: str
     taxonomy: str
     rest: str
 
     def value(self) -> str:
+        """Return the full snippet ID string."""
         if self.rest:
             return f"{self.scope}/{self.taxonomy}/{self.rest}"
         return f"{self.scope}/{self.taxonomy}"
 
 
-def load_domains(project_root: Path) -> set[str]:
+def load_domains(project_root: Path) -> set[str]:  # pylint: disable=too-many-return-statements
+    """Load domain names from project config, falling back to defaults."""
     config_path = resolve_project_config_path(project_root)
     if not config_path.exists():
         return set(_DEFAULT_DOMAINS)
     try:
         payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (yaml.YAMLError, OSError):
         return set(_DEFAULT_DOMAINS)
     if not isinstance(payload, dict):
         return set(_DEFAULT_DOMAINS)
@@ -56,7 +62,7 @@ def _split_parts(value: str) -> tuple[list[str], bool]:
     if not raw:
         return [], True
     parts = raw.split("/")
-    has_empty = any(part == "" for part in parts)
+    has_empty = any(not part for part in parts)
     return parts, has_empty
 
 
@@ -64,7 +70,10 @@ def _allowed_scopes(domains: Iterable[str]) -> set[str]:
     return {"general", "project", *domains}
 
 
-def validate_snippet_id_format(value: str, *, domains: Iterable[str]) -> tuple[SnippetIdParts | None, str | None]:
+def validate_snippet_id_format(  # pylint: disable=too-many-return-statements
+    value: str, *, domains: Iterable[str],
+) -> tuple[SnippetIdParts | None, str | None]:
+    """Validate a snippet ID string and return parsed parts or an error code."""
     if not value.strip():
         return None, "missing"
     raw = value.strip()
@@ -88,12 +97,13 @@ def validate_snippet_id_format(value: str, *, domains: Iterable[str]) -> tuple[S
     return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest), None
 
 
-def expected_snippet_id_for_path(
-    path: Path, *, project_root: Path, domains: Iterable[str]
+def expected_snippet_id_for_path(  # pylint: disable=too-many-return-statements
+    path: Path, *, project_root: Path, domains: Iterable[str],
 ) -> tuple[str | None, str | None]:
+    """Derive the expected snippet ID from a filesystem path."""
     try:
         rel = path.resolve().relative_to(project_root.resolve())
-    except Exception:
+    except (ValueError, OSError):
         return None, "not_under_project_root"
 
     parts = rel.parts
@@ -114,7 +124,9 @@ def expected_snippet_id_for_path(
     return None, "invalid_docs_root"
 
 
-def _expected_from_global(parts: tuple[str, ...], path: Path, domains: Iterable[str]) -> tuple[str | None, str | None]:
+def _expected_from_global(  # pylint: disable=too-many-return-statements
+    parts: tuple[str, ...], path: Path, domains: Iterable[str],
+) -> tuple[str | None, str | None]:
     if len(parts) < 3:
         return None, "missing_global_scope"
     scope_segment = parts[2]
@@ -146,7 +158,9 @@ def _expected_from_global(parts: tuple[str, ...], path: Path, domains: Iterable[
     return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest).value(), None
 
 
-def _expected_from_project(parts: tuple[str, ...], path: Path) -> tuple[str | None, str | None]:
+def _expected_from_project(  # pylint: disable=too-many-return-statements
+    parts: tuple[str, ...], path: Path,
+) -> tuple[str | None, str | None]:
     if len(parts) < 3:
         return None, "missing_taxonomy"
     if path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name == "project":
@@ -172,7 +186,8 @@ def _tail(parts: tuple[str, ...], start_idx: int, path: Path) -> str:
     return "/".join([p for p in tail_parts if p])
 
 
-def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | None:
+def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | None:  # pylint: disable=too-many-return-statements
+    """Validate an inline @ref and return an error code or None if valid."""
     if not ref:
         return "missing_ref"
     if not ref.startswith("@"):
@@ -185,7 +200,7 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
     return "invalid_prefix"
 
 
-def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
+def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:  # pylint: disable=too-many-return-statements,unused-argument
     if rel.startswith("docs/"):
         return "nested_docs_root"
     if rel == "baseline.md":
@@ -216,7 +231,7 @@ def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
     return None
 
 
-def _validate_global_ref(rel: str, domains: Iterable[str]) -> str | None:
+def _validate_global_ref(rel: str, domains: Iterable[str]) -> str | None:  # pylint: disable=too-many-return-statements
     if rel.startswith("docs/"):
         return "nested_docs_root"
     if rel == "baseline.md":

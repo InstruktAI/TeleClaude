@@ -48,7 +48,7 @@ def _normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
-def read_current_session_email() -> str | None:
+def read_current_session_email() -> str | None:  # pylint: disable=too-many-return-statements
     """Read login email.
 
     Resolution order:
@@ -136,9 +136,9 @@ def resolve_cli_caller_role() -> str | None:
     email = read_current_session_email()
     if email:
         resolver = get_identity_resolver()
-        person = resolver._by_email.get(email.lower())
+        person = resolver._by_email.get(email.lower())  # pylint: disable=protected-access
         if person:
-            return resolver._normalize_role(person.role)
+            return resolver._normalize_role(person.role)  # pylint: disable=protected-access
 
     # Path 2: daemon API — works for any TeleClaude-managed session
     tmpdir = os.environ.get("TMPDIR", "")
@@ -161,5 +161,5 @@ def resolve_cli_caller_role() -> str | None:
             return data.get("role")
 
         return asyncio.run(_fetch())
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None

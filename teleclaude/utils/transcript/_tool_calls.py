@@ -331,7 +331,7 @@ def _process_entry_message_blocks(
             _complete_pending_tool_result(block, state)
 
 
-def extract_tool_calls_current_turn(
+def extract_tool_calls_current_turn(  # pylint: disable=too-many-arguments
     transcript_path: str,
     agent_name: AgentName,
     *,
@@ -370,7 +370,7 @@ def extract_tool_calls_current_turn(
 
         return TurnTimeline(tool_calls=state.records, has_data=True)
 
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.debug("Tool-call extraction failed (fail-open)", exc_info=True)
         return TurnTimeline(tool_calls=[], has_data=False)
 
@@ -409,7 +409,7 @@ def _is_compaction_entry(entry: dict[str, object], entry_index: int) -> bool:  #
     Claude system entries with a parentUuid (after the initial session start
     entry at index 0) are compaction events.
     """
-    if entry_index == 0:
+    if not entry_index:
         return False
     message = entry.get("message")
     if not isinstance(message, dict):
@@ -505,7 +505,7 @@ def _append_string_content_message(
     )
 
 
-def _append_block_content_messages(
+def _append_block_content_messages(  # pylint: disable=too-many-arguments
     messages: list[StructuredMessage],
     role: str,
     content: list[object],

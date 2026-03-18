@@ -72,7 +72,7 @@ def _normalize_frontmatter_single_quotes(content: str) -> str:
     raw_frontmatter = "\n".join(header_lines[1:-1])
     try:
         payload = yaml.safe_load(raw_frontmatter)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return content
     if not isinstance(payload, dict):
         return content
@@ -97,6 +97,8 @@ def _normalize_frontmatter_single_quotes(content: str) -> str:
 
 
 class SnippetEntry(TypedDict):
+    """Single snippet entry in the documentation index."""
+
     id: str
     description: str
     type: str
@@ -107,6 +109,8 @@ class SnippetEntry(TypedDict):
 
 
 class IndexPayload(TypedDict):
+    """Payload for the documentation index build result."""
+
     project_root: str
     snippets_root: str
     snippets: list[SnippetEntry]
@@ -122,6 +126,8 @@ class ThirdPartyEntry(TypedDict):
 
 
 class ThirdPartyIndexPayload(TypedDict):
+    """Payload for the third-party documentation index."""
+
     snippets_root: str
     snippets: list[ThirdPartyEntry]
 
@@ -166,11 +172,11 @@ def _infer_type_from_path(file_path: Path) -> str | None:
 def normalize_titles(snippets_root: Path) -> None:
     """Normalize H1 titles in all snippets to include the type suffix."""
     for path in sorted(snippets_root.rglob("*.md")):
-        if path.name == "index.yaml" or path.name == "index.md":
+        if path.name in ("index.yaml", "index.md"):
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("title_read_failed", path=str(path), error=str(exc))
             continue
         normalized_text = _normalize_frontmatter_single_quotes(text)
@@ -181,7 +187,7 @@ def normalize_titles(snippets_root: Path) -> None:
                 meta = post.metadata or {}
                 declared_type = meta.get("type") if isinstance(meta.get("type"), str) else None
                 body = post.content
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 body = normalized_text
         else:
             body = normalized_text
@@ -196,7 +202,7 @@ def normalize_titles(snippets_root: Path) -> None:
         if final_content != text:
             try:
                 path.write_text(final_content, encoding="utf-8")
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("title_write_failed", path=str(path), error=str(exc))
 
 
@@ -230,7 +236,7 @@ def _extract_description_from_md(file_path: Path) -> str:
     """Extract description from markdown file (first H1 title or filename)."""
     try:
         text = file_path.read_text(encoding="utf-8")
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return file_path.stem
 
     # Try frontmatter first
@@ -240,7 +246,7 @@ def _extract_description_from_md(file_path: Path) -> str:
             desc = post.metadata.get("description") if post.metadata else None
             if isinstance(desc, str) and desc.strip():
                 return desc.strip()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
     # Fall back to first H1 title
@@ -334,7 +340,7 @@ def remove_non_baseline_indexes(snippets_root: Path) -> list[str]:
             path.unlink()
             removed.append(str(path))
             logger.warning("index_removed", path=str(path))
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("index_remove_failed", path=str(path), error=str(exc))
     return removed
 
@@ -415,7 +421,7 @@ def get_project_name(project_root: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def check_global_collisions(
+def check_global_collisions(  # pylint: disable=too-many-branches,too-many-locals  # Multi-case routing is intentionally flat. Flat data assembly is intentionally verbose.
     snippets: list[SnippetEntry],
     project_root: Path,
     snippets_root: Path,
@@ -437,7 +443,7 @@ def check_global_collisions(
 
     try:
         global_data = yaml.safe_load(global_index_path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return
 
     if not isinstance(global_data, dict) or "snippets" not in global_data:
@@ -481,7 +487,9 @@ def check_global_collisions(
 # ---------------------------------------------------------------------------
 
 
-def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload:
+def build_index_payload(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+    project_root: Path, snippets_root: Path
+) -> IndexPayload:
     """Build the index.yaml payload for a snippet root. Modifies files as side effects
     (normalizes titles, removes stale indexes)."""
     remove_non_baseline_indexes(snippets_root)
@@ -516,7 +524,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             snippet_type = rel.split("/", 1)[0] if "/" in rel else "principle"
             try:
                 text = file_path.read_text(encoding="utf-8")
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 text = ""
             title_line = next(
                 (line.strip() for line in text.splitlines() if line.strip().startswith("# ")),

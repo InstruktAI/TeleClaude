@@ -165,7 +165,7 @@ def stamp_audit(state: dict[str, StateValue], phase_name: str, field: str, value
     phase_entry[field] = value
 
 
-def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str) -> str:
+def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str) -> str:  # pylint: disable=unused-argument
     """Run git diff {base_sha}..HEAD -- {artifact_path} and return the diff output.
 
     Returns empty string if base_sha is empty or if the diff produces no output.

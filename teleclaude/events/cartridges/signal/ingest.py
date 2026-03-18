@@ -24,9 +24,12 @@ def _build_idempotency_key(source_id: str, item_url: str) -> str:
 
 
 class SignalIngestCartridge:
+    """Cartridge that pulls and ingests signals from configured sources."""
+
     name = "signal-ingest"
 
     def describe(self) -> str:
+        """Return cartridge name."""
         return self.name
 
     def __init__(self, config: SignalSourceConfig, ai: SignalAIClient, signal_db: SignalDB) -> None:
@@ -35,13 +38,14 @@ class SignalIngestCartridge:
         self._signal_db = signal_db
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Pull new signals from sources when the scheduler trigger fires."""
         # Only acts on the scheduler trigger; all other events pass through unchanged.
         if event.event != "signal.pull.triggered":
             return event
         await self.pull(context)
         return None
 
-    async def pull(self, context: PipelineContext) -> int:
+    async def pull(self, context: PipelineContext) -> int:  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
         """Explicit pull — returns count of new items ingested."""
         sources = await load_sources(self._config)
         sem = asyncio.Semaphore(self._config.ai_concurrency)
@@ -70,7 +74,9 @@ class SignalIngestCartridge:
                     new_items.append((ikey, item))
 
             # Enrich new items concurrently
-            async def enrich_and_emit(ikey: str, item: dict, *, source_id: str = source_id) -> None:  # type: ignore[type-arg]
+            async def enrich_and_emit(  # type: ignore[type-arg]
+                ikey: str, item: dict, *, source_id: str = source_id
+            ) -> None:
                 nonlocal count
                 async with sem:
                     summary = await self._ai.summarise(item.get("title", ""), item.get("description", ""))

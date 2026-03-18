@@ -33,7 +33,8 @@ STRICT_TAGGING_RULES = (
     "You may ONLY return tags from the allowed list.\n"
     "IMPORTANT: Use your knowledge! If you recognize the channel or creator, USE that knowledge confidently.\n"
     "Many channels are run by famous people, journalists, educators, or well-known creators - you likely know them.\n"
-    "Trust your training data for well-known channels. Only return n/a for truly obscure channels you don't recognize.\n"
+    "Trust your training data for well-known channels. "
+    "Only return n/a for truly obscure channels you don't recognize.\n"
     'If you return ["n/a"], it must be the ONLY tag.\n'
 )
 
@@ -157,7 +158,7 @@ def _round_robin(agents: list[str]) -> Iterable[str]:
         idx += 1
 
 
-def _call_agent_cli(
+def _call_agent_cli(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
     agent: str,
     thinking_mode: str,
     prompt: str,
@@ -185,7 +186,7 @@ def _call_agent_cli(
         result = payload.get("result", {})
         if isinstance(result, dict):
             return result
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.error("tag error: %s (agent=%s)", str(exc), agent)
         return None
     return None
@@ -255,7 +256,8 @@ def _build_web_prompt(rows: list[dict[str, str]], tags: list[str], *, retry: boo
         "Tag each channel using ONLY the allowed tags based on search evidence.\n\n"
         f"Allowed tags: {tags}\n\n"
         f"Channels (JSON): {json.dumps(items, ensure_ascii=True)}\n\n"
-        'Return JSON: {"items": [{"channel_id": "...", "tags": ["tag1"], "evidence": "what you found", "evidence_url": "https://..."}]}'
+        'Return JSON: {"items": [{"channel_id": "...", "tags": ["tag1"], '
+        '"evidence": "what you found", "evidence_url": "https://..."}]}'
     )
 
 
@@ -291,7 +293,7 @@ def _configure_stdio() -> None:
             sys.stdout.reconfigure(line_buffering=True)  # type: ignore[unused-ignore]
         if hasattr(sys.stderr, "reconfigure"):
             sys.stderr.reconfigure(line_buffering=True)  # type: ignore[unused-ignore]
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         pass
 
 
@@ -449,7 +451,7 @@ def _chunk_rows(rows: list[dict[str, str]], batch_size: int) -> list[list[dict[s
     return [rows[i : i + batch_size] for i in range(0, len(rows), batch_size)]
 
 
-def _retry_single_row(
+def _retry_single_row(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
     row: dict[str, str],
     *,
     rr: Iterable[str],
@@ -499,7 +501,7 @@ def _print_verbose_tags(args: argparse.Namespace, row: dict[str, str], valid: li
         )
 
 
-def _single_group_result(
+def _single_group_result(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
     group: list[dict[str, str]],
     *,
     agent: str,
@@ -566,7 +568,7 @@ def _single_group_result(
     return {row["channel_id"]: ",".join(valid)}
 
 
-def _batch_group_result(
+def _batch_group_result(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
     group: list[dict[str, str]],
     *,
     agent: str,
@@ -612,7 +614,9 @@ def _batch_group_result(
     for row in group:
         cid = row.get("channel_id", "")
         item = by_id.get(cid, {})
-        valid = _validate_tags(_safe_get_list(item, "tags"), allowed_tags, item.get("evidence")) or _retry_single_row(  # type: ignore[arg-type]
+        valid = _validate_tags(  # type: ignore[arg-type]
+            _safe_get_list(item, "tags"), allowed_tags, item.get("evidence")
+        ) or _retry_single_row(
             row,
             rr=rr,
             use_web=use_web,
@@ -628,7 +632,7 @@ def _batch_group_result(
     return results
 
 
-def _process_group(
+def _process_group(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
     group: list[dict[str, str]],
     agent: str,
     *,
@@ -694,7 +698,7 @@ def _apply_batch_updates(
     _write_csv(csv_path, all_rows)
 
 
-def _run_chunks(
+def _run_chunks(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
     *,
     chunks: list[list[dict[str, str]]],
     use_web: bool,
@@ -752,7 +756,7 @@ def _run_chunks(
             time.sleep(args.batch_pause_seconds)
 
 
-def _run_mode_stages(
+def _run_mode_stages(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
     *,
     args: argparse.Namespace,
     batch_size: int,
@@ -808,7 +812,7 @@ def _run_mode_stages(
     )
 
 
-def _run_refresh_stage(
+def _run_refresh_stage(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
     *,
     args: argparse.Namespace,
     batch_size: int,
@@ -913,6 +917,7 @@ def _load_row_state(
 
 
 def main() -> int:
+    """CLI entrypoint for YouTube subscription sync."""
     configure_logging("teleclaude")
     logger = get_logger(__name__)
     _configure_stdio()

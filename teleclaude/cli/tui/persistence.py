@@ -13,11 +13,9 @@ class Persistable(Protocol):
 
     def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict - widget payloads vary by component
         """Return a JSON-serializable state snapshot for this widget."""
-        ...
 
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict - widget payloads vary
         """Restore widget state from a persisted snapshot."""
-        ...
 
 
 def get_persistence_key(widget: Widget) -> str:

@@ -39,19 +39,22 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class DiscordClientLike(Protocol):
+class DiscordClientLike(Protocol):  # pylint: disable=too-few-public-methods
     """Minimal discord.py client surface used by the adapter."""
 
     user: object | None
 
-    def event(self, coro: Callable[..., Awaitable[None]]) -> object: ...
+    def event(self, coro: Callable[..., Awaitable[None]]) -> object:
+        """Register an event handler."""
 
-    async def start(self, token: str) -> None: ...
+    async def start(self, token: str) -> None:
+        """Start the client with the given token."""
 
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        """Close the client connection."""
 
 
-class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,reportIncompatibleVariableOverride]  # type: ignore[misc]
+class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-attributes,line-too-long  # pyright: ignore[reportIncompatibleMethodOverride,reportIncompatibleVariableOverride]  # type: ignore[misc]
     ChannelOperationsMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
@@ -217,7 +220,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
                 session.session_id,
             )
 
-    async def send_output_update(  # type: ignore[override, unused-ignore]  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def send_output_update(  # type: ignore[override, unused-ignore]  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
         session: Session,
         output: str,
@@ -238,7 +241,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
             return None
 
         # Non-threaded: existing QoS path.
-        if self._qos_scheduler._policy.mode == "off":
+        if self._qos_scheduler._policy.mode == "off":  # pylint: disable=protected-access
             return await UiAdapter.send_output_update(
                 self, session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
             )
@@ -290,7 +293,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
             new_id = await self.send_message(session, status_text)
             discord_meta.status_message_id = new_id
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-        except Exception as exc:
+        except (AdapterError, RuntimeError, OSError) as exc:
             logger.debug(
                 "Discord status message update failed for session %s: %s",
                 context.session_id,

@@ -39,6 +39,7 @@ class CorrelationCartridge:
     name = "correlation"
 
     def describe(self) -> str:
+        """Return cartridge name."""
         return self.name
 
     def __init__(self) -> None:

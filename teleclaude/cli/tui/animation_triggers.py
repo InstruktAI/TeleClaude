@@ -49,7 +49,7 @@ class PeriodicTrigger:
             if not self.engine.is_enabled:
                 continue
 
-            from teleclaude.cli.tui.theme import is_dark_mode
+            from teleclaude.cli.tui.theme import is_dark_mode  # pylint: disable=import-outside-toplevel
 
             dark = is_dark_mode()
             palette = palette_registry.get("spectrum")
@@ -74,12 +74,13 @@ class PeriodicTrigger:
                 )
 
     def stop(self) -> None:
+        """Cancel the periodic timer task."""
         if self.task:
             self.task.cancel()
             self.task = None
 
 
-class ActivityTrigger:
+class ActivityTrigger:  # pylint: disable=too-few-public-methods
     """Trigger for agent-activity-based animations."""
 
     def __init__(self, engine: AnimationEngine, animations_subset: list[str] | None = None):
@@ -91,7 +92,7 @@ class ActivityTrigger:
         if not self.engine.is_enabled:
             return
 
-        from teleclaude.cli.tui.theme import is_dark_mode
+        from teleclaude.cli.tui.theme import is_dark_mode  # pylint: disable=import-outside-toplevel
 
         animations = filter_animations(AGENT_ANIMATIONS, self.animations_subset, is_dark_mode())
         if not animations:
@@ -120,9 +121,12 @@ class StateDrivenTrigger:
         self._current_context: tuple[str, str, str] | None = None
 
     def register(self, section_id: str, state: str, animation_cls: type[Animation]) -> None:
+        """Map a (section_id, state) pair to an animation class."""
         self._registry[(section_id, state)] = animation_cls
 
-    def set_context(self, target: str, section_id: str, state: str, progress: float = 0.0) -> None:
+    def set_context(  # pylint: disable=unused-argument
+        self, target: str, section_id: str, state: str, progress: float = 0.0,
+    ) -> None:
         """Update the current context and trigger animation if changed."""
         if not self.engine.is_enabled:
             return

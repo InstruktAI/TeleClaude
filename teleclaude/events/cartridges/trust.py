@@ -39,6 +39,7 @@ class TrustCartridge:
     name = "trust"
 
     def describe(self) -> str:
+        """Return cartridge name."""
         return self.name
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:

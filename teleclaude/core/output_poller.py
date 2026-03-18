@@ -57,17 +57,17 @@ class DirectoryChanged(OutputEvent):
     old_path: str
 
 
-class OutputPoller:
+class OutputPoller:  # pylint: disable=too-few-public-methods
     """Pure poller - yields output events, no message sending.
 
     All dependencies (config, tmux_bridge) are imported at module level.
     """
 
-    async def _handle_missing_session(
+    async def _handle_missing_session(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
-        tmux_session_name: str,
+        tmux_session_name: str,  # pylint: disable=unused-argument
         previous_output: str,
         last_sent_output: str | None,
         started_at: float,
@@ -88,7 +88,7 @@ class OutputPoller:
             started_at=started_at,
         )
 
-    async def _log_watchdog_transition(
+    async def _log_watchdog_transition(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -122,7 +122,7 @@ class OutputPoller:
             poll_interval,
         )
 
-    def _maybe_yield_output(
+    def _maybe_yield_output(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -175,7 +175,7 @@ class OutputPoller:
             pending_idle_flush = False
         return None, output_sent_at_least_once, pending_output, pending_idle_flush, last_yield_time, False
 
-    async def _maybe_yield_dead_pane(
+    async def _maybe_yield_dead_pane(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -218,7 +218,7 @@ class OutputPoller:
                 [line[:50] for line in curr_last_lines],
             )
 
-    async def _maybe_yield_directory_change(
+    async def _maybe_yield_directory_change(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -249,7 +249,7 @@ class OutputPoller:
             )
         return directory_check_ticks, current_directory, None
 
-    async def _check_session_presence(
+    async def _check_session_presence(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -289,11 +289,11 @@ class OutputPoller:
         ]
         return False, True, events
 
-    async def poll(  # pylint: disable=too-many-locals  # Poll loop naturally has many state variables
+    async def poll(  # pylint: disable=too-many-locals,too-many-statements  # Poll loop naturally has many state variables
         self,
         session_id: str,
         tmux_session_name: str,
-        output_file: Path,
+        output_file: Path,  # pylint: disable=unused-argument
     ) -> AsyncIterator[OutputEvent]:
         """Poll tmux output and yield events.
 

@@ -16,6 +16,8 @@ router = APIRouter(prefix="/api/memory", tags=["memory"])
 
 
 class SaveObservationRequest(BaseModel):
+    """Request body for saving a memory observation."""
+
     model_config = ConfigDict(frozen=True)
 
     text: str
@@ -28,6 +30,8 @@ class SaveObservationRequest(BaseModel):
 
 
 class SaveObservationResponse(BaseModel):
+    """Response body after saving a memory observation."""
+
     model_config = ConfigDict(frozen=True)
 
     id: int
@@ -36,6 +40,8 @@ class SaveObservationResponse(BaseModel):
 
 
 class BatchRequest(BaseModel):
+    """Request body for batch memory operations."""
+
     model_config = ConfigDict(frozen=True)
 
     ids: list[int]
@@ -64,7 +70,7 @@ async def search_memory(
     query: str,
     limit: int = Query(default=20, ge=1, le=100),
     project: str | None = None,
-    type: ObservationType | None = Query(
+    type: ObservationType | None = Query(  # pylint: disable=redefined-builtin
         default=None, description="Filter by observation type for progressive disclosure"
     ),
     identity_key: str | None = None,
@@ -102,7 +108,7 @@ async def delete_observation(observation_id: int) -> dict:  # type: ignore[type-
     store = MemoryStore()
     deleted = await store.delete_observation(observation_id)
     if not deleted:
-        from fastapi import HTTPException
+        from fastapi import HTTPException  # pylint: disable=import-outside-toplevel
 
         raise HTTPException(status_code=404, detail="Observation not found")
     return {"deleted": observation_id}

@@ -7,6 +7,8 @@ Sends identity headers on every call:
   X-Telec-Email:       from TTY-scoped telec login state
   X-Tmux-Session:      from tmux server (unforgeable by agent)
 """
+# pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+# pylint: disable=raise-missing-from,broad-exception-caught
 
 from __future__ import annotations
 
@@ -57,6 +59,7 @@ def _read_tmux_session_name() -> str | None:
             capture_output=True,
             text=True,
             timeout=2,
+            check=False,
         )
         if result.returncode == 0:
             return result.stdout.strip() or None

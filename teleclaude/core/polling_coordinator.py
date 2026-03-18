@@ -132,13 +132,13 @@ def _mark_codex_turn_started(session_id: str) -> None:
 
 seed_codex_prompt_from_message = codex_prompt_submit.seed_codex_prompt_from_message
 CodexInputState = codex_prompt_submit.CodexInputState
-_codex_input_state = codex_prompt_submit._codex_input_state
-_find_prompt_input = codex_prompt_submit._find_prompt_input
-_has_agent_marker = codex_prompt_submit._has_agent_marker
-_has_live_prompt_marker = codex_prompt_submit._has_live_prompt_marker
-_is_live_agent_marker_line = codex_prompt_submit._is_live_agent_marker_line
-_is_suggestion_styled = codex_prompt_submit._is_suggestion_styled
-_strip_suggestion_segments = codex_prompt_submit._strip_suggestion_segments
+_codex_input_state = codex_prompt_submit._codex_input_state  # pylint: disable=protected-access
+_find_prompt_input = codex_prompt_submit._find_prompt_input  # pylint: disable=protected-access
+_has_agent_marker = codex_prompt_submit._has_agent_marker  # pylint: disable=protected-access
+_has_live_prompt_marker = codex_prompt_submit._has_live_prompt_marker  # pylint: disable=protected-access
+_is_live_agent_marker_line = codex_prompt_submit._is_live_agent_marker_line  # pylint: disable=protected-access
+_is_suggestion_styled = codex_prompt_submit._is_suggestion_styled  # pylint: disable=protected-access
+_strip_suggestion_segments = codex_prompt_submit._strip_suggestion_segments  # pylint: disable=protected-access
 
 
 async def _emit_synthetic_codex_event(
@@ -175,7 +175,7 @@ async def _emit_synthetic_codex_event(
     )
 
 
-async def _maybe_emit_codex_turn_events(
+async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches
     session_id: str,
     active_agent: str | None,
     current_output: str,
@@ -192,9 +192,9 @@ async def _maybe_emit_codex_turn_events(
         state = CodexTurnState()
         _codex_turn_state[session_id] = state
 
-    prompt_visible = codex_prompt_submit._has_live_prompt_marker(current_output)
-    responding = codex_prompt_submit._is_live_agent_responding(current_output)
-    tool_match = codex_prompt_submit._find_recent_tool_action(current_output)
+    prompt_visible = codex_prompt_submit._has_live_prompt_marker(current_output)  # pylint: disable=protected-access
+    responding = codex_prompt_submit._is_live_agent_responding(current_output)  # pylint: disable=protected-access
+    tool_match = codex_prompt_submit._find_recent_tool_action(current_output)  # pylint: disable=protected-access
     raw_tool_action = tool_match[0] if tool_match else None
     raw_tool_signature = tool_match[1] if tool_match else ""
     raw_tool_preview = tool_match[2] if tool_match else ""
@@ -298,7 +298,7 @@ def _handle_background_poller_result(task: asyncio.Task[None], session_id: str) 
         task.result()
     except asyncio.CancelledError:
         return
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.error("Background poller task crashed for session %s", session_id, exc_info=True)
 
 
@@ -355,7 +355,7 @@ async def schedule_polling(
     return True
 
 
-async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-positional-arguments,too-many-statements
     session_id: str,
     tmux_session_name: str,
     output_poller: OutputPoller,
@@ -434,12 +434,12 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                             output_changed=True,  # OutputChanged event means output changed
                             emit_agent_event=emit_handler,
                         )
-                    except Exception as e:
+                    except Exception as e:  # pylint: disable=broad-exception-caught
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
 
                 # Route through shared terminal_live projection before adapter push.
                 # The projection is a thin wrapper; adapter contract is unchanged.
-                from teleclaude.output_projection.terminal_live_projector import project_terminal_live
+                from teleclaude.output_projection.terminal_live_projector import project_terminal_live  # noqa: I001  # pylint: disable=import-outside-toplevel
 
                 terminal_projection = project_terminal_live(clean_output)
 
@@ -456,7 +456,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                 if coordinator:
                     try:
                         await coordinator.trigger_incremental_output(event.session_id)
-                    except Exception:
+                    except Exception:  # pylint: disable=broad-exception-caught
                         logger.warning(
                             "Poller-triggered incremental output failed for %s",
                             event.session_id,
@@ -540,7 +540,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                 session_id,
                 f"Polling error: {exc}",
             )
-        except Exception as feedback_exc:
+        except Exception as feedback_exc:  # pylint: disable=broad-exception-caught
             logger.error(
                 "Failed to send error feedback for session %s: %s",
                 session_id,

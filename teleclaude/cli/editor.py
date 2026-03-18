@@ -115,6 +115,7 @@ class EditorApp(App[None]):
             )
 
     def on_mount(self) -> None:
+        """Focus the editor area on mount."""
         editors = self.query("#editor-area")
         if editors:
             editors.first(TextArea).focus()
@@ -127,12 +128,14 @@ class EditorApp(App[None]):
         self._save_if_changed(editor.text)
 
     def action_save(self) -> None:
+        """Save the current file content."""
         if self.view_mode:
             return
         editor = self.query_one("#editor-area", TextArea)
         self._save_content(editor.text)
 
     def action_save_and_quit(self) -> None:
+        """Save current content and exit the editor."""
         if not self.view_mode:
             editor = self.query_one("#editor-area", TextArea)
             self._save_content(editor.text)
@@ -149,6 +152,7 @@ class EditorApp(App[None]):
 
 
 def main() -> None:
+    """CLI entry point for the standalone editor."""
     parser = argparse.ArgumentParser(description="Standalone Textual file editor")
     parser.add_argument("filepath", type=Path, help="Path to file")
     parser.add_argument("-v", "--view", action="store_true", help="View mode (read-only)")

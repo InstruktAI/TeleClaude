@@ -338,8 +338,8 @@ class WhatsAppAdapter(UiAdapter):
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
         _ = (session, timeout)
+        yield ""  # pragma: no cover - make this an async generator
         raise NotImplementedError("WhatsApp adapter does not support poll_output_stream")
-        yield ""  # pragma: no cover
 
     def _convert_markdown_for_platform(self, text: str) -> str:
         converted = text
@@ -377,7 +377,7 @@ class WhatsAppAdapter(UiAdapter):
         }
         try:
             await self._post_json(self._messages_url, payload)
-        except Exception:
+        except (httpx.HTTPError, RuntimeError):
             logger.debug("WhatsApp read receipt failed for session %s", session.session_id, exc_info=True)
 
     def get_max_message_length(self) -> int:

@@ -29,7 +29,7 @@ def _count_test_failures(output: str) -> int:
     return int(match.group(1)) if match else 0
 
 
-def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
+def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint: disable=too-many-branches,too-many-locals
     """Run build gates (tests + demo validation) in the worktree.
 
     Returns (all_passed, output_details).
@@ -39,7 +39,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
 
     # Gate 1: Test suite
     try:
-        test_result = subprocess.run(
+        test_result = subprocess.run(  # pylint: disable=subprocess-run-check
             ["make", "test"],
             cwd=worktree_cwd,
             capture_output=True,
@@ -64,7 +64,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
                     "TELECLAUDE_ENV_PATH": "tests/integration/.env",
                 }
                 try:
-                    retry_result = subprocess.run(
+                    retry_result = subprocess.run(  # pylint: disable=subprocess-run-check
                         [pytest_cmd, "--lf", "-q"],
                         cwd=worktree_cwd,
                         capture_output=True,
@@ -103,7 +103,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
     if is_bug_todo(worktree_cwd, slug):
         results.append("GATE SKIPPED: demo validate (bug workflow)")
     else:
-        from teleclaude.cli.demo_validation import validate_demo
+        from teleclaude.cli.demo_validation import validate_demo  # pylint: disable=import-outside-toplevel
 
         passed, is_no_demo, message = validate_demo(slug, Path(worktree_cwd))
         if not passed:
@@ -186,7 +186,7 @@ def _is_scaffold_template(content: str) -> bool:
         return True
 
     # Known phrases that appear only in scaffold templates.
-    _SCAFFOLD_PHRASES = (
+    _SCAFFOLD_PHRASES = (  # pylint: disable=invalid-name
         "Define the intended outcome",
         "Summarize the approach",
         "Complete this task",
@@ -301,7 +301,7 @@ def _verify_state_yaml(todo_base: Path, phase: str, results: list[str]) -> bool:
         if not isinstance(raw_state, dict):
             raise ValueError("state.yaml content is not a mapping")
         state: dict[str, StateValue] = raw_state
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         results.append(f"FAIL: state.yaml is not parseable: {exc}")
         return False
 
@@ -395,7 +395,7 @@ def _verify_build_commits(worktree_cwd: str, results: list[str]) -> bool:
             return True
         results.append("FAIL: no build commits found on worktree branch beyond main")
         return False
-    except (GitCommandError, OSError, Exception) as exc:
+    except (GitCommandError, OSError, Exception) as exc:  # pylint: disable=broad-exception-caught
         results.append(f"FAIL: could not verify commits: {exc}")
         return False
 

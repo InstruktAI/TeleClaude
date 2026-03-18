@@ -23,14 +23,14 @@ DEPLOYMENT_FANOUT_CHANNEL = "deployment:version_available"
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Module-level state injected by daemon at startup.
-_get_redis: Callable[[], Awaitable[Redis]] | None = None
+_get_redis: Callable[[], Awaitable[Redis]] | None = None  # pylint: disable=invalid-name
 
 
 def configure_deployment_handler(
     get_redis: Callable[[], Awaitable[Redis]] | None = None,
 ) -> None:
     """Inject Redis accessor at daemon startup."""
-    global _get_redis
+    global _get_redis  # pylint: disable=global-statement
     _get_redis = get_redis
 
 
@@ -49,7 +49,7 @@ def _is_within_pinned_minor(version: str, pinned_minor: str) -> bool:
     if not version or not pinned_minor:
         return False
     try:
-        from teleclaude.deployment import parse_version
+        from teleclaude.deployment import parse_version  # pylint: disable=import-outside-toplevel
 
         parts = pinned_minor.split(".")
         if len(parts) != 2 or not all(p.isdigit() for p in parts):
@@ -66,7 +66,9 @@ def _log_execute_update_task_exception(task: asyncio.Task) -> None:  # type: ign
         logger.error("Deploy: execute_update task failed: %s", exc, exc_info=exc)
 
 
-async def handle_deployment_event(event: HookEvent) -> None:
+async def handle_deployment_event(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+    event: HookEvent,
+) -> None:
     """Handle GitHub push/release events and deployment fan-out events.
 
     Decision matrix:
@@ -79,12 +81,12 @@ async def handle_deployment_event(event: HookEvent) -> None:
         github source  → publish version_available to Redis + execute locally
         deployment source → execute locally only (prevents re-broadcast loops)
     """
-    from teleclaude.config.loader import load_project_config
+    from teleclaude.config.loader import load_project_config  # pylint: disable=import-outside-toplevel
 
     project_cfg_path = resolve_project_config_path(_PROJECT_ROOT)
     try:
         project_config = load_project_config(project_cfg_path)
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.error("Deployment handler: failed to load project config: %s", exc)
         return
 
@@ -94,7 +96,7 @@ async def handle_deployment_event(event: HookEvent) -> None:
     should_update = False
     version_info: dict = {}  # type: ignore[type-arg]
 
-    from teleclaude import __version__
+    from teleclaude import __version__  # pylint: disable=import-outside-toplevel
 
     if event.source == "github":
         if channel == "alpha":
@@ -150,7 +152,7 @@ async def handle_deployment_event(event: HookEvent) -> None:
         await _publish_fanout(version_info)
 
     # Execute update locally.
-    from teleclaude.deployment.executor import execute_update
+    from teleclaude.deployment.executor import execute_update  # pylint: disable=import-outside-toplevel
 
     logger.info("Deployment handler: triggering update (channel=%s)", channel)
     task = asyncio.create_task(execute_update(channel, version_info, get_redis=_get_redis))
@@ -168,7 +170,7 @@ async def _publish_fanout(version_info: dict) -> None:  # type: ignore[type-arg]
         logger.debug("Deployment handler: Redis unavailable, skipping fan-out")
         return
     try:
-        from teleclaude.config import config as _config
+        from teleclaude.config import config as _config  # pylint: disable=import-outside-toplevel
 
         redis = await _get_redis()
         fanout_event = HookEvent.now(
@@ -183,7 +185,7 @@ async def _publish_fanout(version_info: dict) -> None:  # type: ignore[type-arg]
         )
         await redis.xadd(DEPLOYMENT_FANOUT_CHANNEL, {"event": fanout_event.to_json()}, maxlen=1000)
         logger.info("Deployment handler: published version_available to %s", DEPLOYMENT_FANOUT_CHANNEL)
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("Deployment handler: fan-out publish failed: %s", exc)
 
 

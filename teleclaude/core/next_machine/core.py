@@ -7,6 +7,8 @@ for backward compatibility so that existing imports from
 Do NOT add new code here — implement in the appropriate sub-module.
 """
 
+# pylint: disable=useless-import-alias,unused-import
+
 from __future__ import annotations
 
 from teleclaude.core.next_machine._types import (

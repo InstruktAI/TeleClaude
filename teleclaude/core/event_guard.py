@@ -26,7 +26,7 @@ def create_event_guard(
     async def _guarded(event_name: EventType, context: EventContext) -> object:
         try:
             return await handler(event_name, context)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Event handler failed: %s (%s)", name, event_name, exc_info=True)
             if event_name != TeleClaudeEvents.ERROR:
                 session_id = getattr(context, "session_id", None)

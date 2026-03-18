@@ -21,6 +21,8 @@ __all__ = [
 
 @dataclass(frozen=True)
 class TranscriptCandidate:
+    """Discovered transcript file with metadata."""
+
     path: Path
     agent: AgentName
     mtime: float = 0.0

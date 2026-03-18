@@ -1,5 +1,8 @@
+"""Configuration schema models for TeleClaude."""
+
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -8,11 +11,15 @@ from teleclaude.events.domain_config import DomainsConfig
 
 
 class AgentDispatchConfig(BaseModel):
+    """Per-agent dispatch configuration."""
+
     model_config = ConfigDict(extra="allow")
     enabled: bool = True
 
 
 class JobWhenConfig(BaseModel):
+    """Job scheduling time configuration."""
+
     model_config = ConfigDict(extra="allow")
     every: str | None = None  # e.g. "10m", "2h", "1d"
     at: str | list[str] | None = None  # "HH:MM" or list of times
@@ -24,8 +31,6 @@ class JobWhenConfig(BaseModel):
         """Validate duration format and enforce minimum of 1 minute."""
         if v is None:
             return v
-        import re
-
         match = re.match(r"^(\d+)([mhd])$", v)
         if not match:
             raise ValueError(
@@ -42,16 +47,15 @@ class JobWhenConfig(BaseModel):
         """Validate HH:MM time format for 'at' values."""
         if v is None:
             return v
-        import re
 
         def validate_time(time_str: str) -> None:
             match = re.match(r"^(\d{2}):(\d{2})$", time_str)
             if not match:
                 raise ValueError(f"Invalid time format: {time_str}. Expected format: HH:MM (e.g., '09:00', '14:30')")
             hour, minute = int(match.group(1)), int(match.group(2))
-            if not (0 <= hour <= 23):
+            if not 0 <= hour <= 23:
                 raise ValueError(f"Invalid hour in {time_str}: must be 00-23")
-            if not (0 <= minute <= 59):
+            if not 0 <= minute <= 59:
                 raise ValueError(f"Invalid minute in {time_str}: must be 00-59")
 
         if isinstance(v, str):
@@ -63,6 +67,7 @@ class JobWhenConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_mode(self) -> JobWhenConfig:
+        """Ensure exactly one scheduling mode is specified."""
         # Exactly one scheduling mode is allowed.
         if bool(self.every) == bool(self.at):
             raise ValueError("Specify exactly one of 'every' or 'at'")
@@ -73,6 +78,8 @@ class JobWhenConfig(BaseModel):
 
 
 class JobScheduleConfig(BaseModel):
+    """Job scheduling and execution configuration."""
+
     model_config = ConfigDict(extra="allow")
     category: Literal["subscription", "system"] = "subscription"
     # Preferred scheduling contract.
@@ -94,16 +101,22 @@ class JobScheduleConfig(BaseModel):
 
 
 class BusinessConfig(BaseModel):
+    """Business domain configuration."""
+
     model_config = ConfigDict(extra="allow")
     domains: dict[str, str] = {}
 
 
 class GitConfig(BaseModel):
+    """Git repository configuration."""
+
     model_config = ConfigDict(extra="allow")
     checkout_root: str | None = None
 
 
 class IntegratorCutoverConfig(BaseModel):
+    """Integrator cutover feature flags."""
+
     model_config = ConfigDict(extra="allow")
     enabled: bool = False
     parity_evidence_accepted: bool = False
@@ -111,6 +124,7 @@ class IntegratorCutoverConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_cutover_enablement(self) -> IntegratorCutoverConfig:
+        """Require parity evidence before enabling cutover."""
         if self.enabled and not self.parity_evidence_accepted:
             raise ValueError(
                 "integrator.cutover.enabled requires parity_evidence_accepted=true; "
@@ -120,6 +134,8 @@ class IntegratorCutoverConfig(BaseModel):
 
 
 class IntegratorConfig(BaseModel):
+    """Integrator subsystem configuration."""
+
     model_config = ConfigDict(extra="allow")
     cutover: IntegratorCutoverConfig = IntegratorCutoverConfig()
 
@@ -128,6 +144,8 @@ ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
 
 
 class PersonEntry(BaseModel):
+    """Person identity and role configuration."""
+
     model_config = ConfigDict(extra="allow")
     name: str
     email: str
@@ -138,6 +156,8 @@ class PersonEntry(BaseModel):
 
 
 class TelegramCreds(BaseModel):
+    """Telegram platform credentials."""
+
     model_config = ConfigDict(extra="allow")
     user_name: str
     user_id: int
@@ -145,16 +165,22 @@ class TelegramCreds(BaseModel):
 
 
 class DiscordCreds(BaseModel):
+    """Discord platform credentials."""
+
     model_config = ConfigDict(extra="allow")
     user_id: str  # Discord user IDs are snowflakes (strings)
 
 
 class WhatsAppCreds(BaseModel):
+    """WhatsApp platform credentials."""
+
     model_config = ConfigDict(extra="allow")
     phone_number: str
 
 
 class CredsConfig(BaseModel):
+    """Multi-platform credential container."""
+
     model_config = ConfigDict(extra="allow")
     telegram: TelegramCreds | None = None
     discord: DiscordCreds | None = None
@@ -162,24 +188,32 @@ class CredsConfig(BaseModel):
 
 
 class SubscriptionNotification(BaseModel):
+    """Notification channel preference for a subscription."""
+
     model_config = ConfigDict(extra="allow")
     preferred_channel: Literal["telegram", "discord", "whatsapp", "email"] = "telegram"
     email: str | None = None
 
 
 class Subscription(BaseModel):
+    """Base subscription model."""
+
     model_config = ConfigDict(extra="allow")
     enabled: bool = True
     notification: SubscriptionNotification = SubscriptionNotification()
 
 
 class JobSubscription(Subscription):
+    """Job-triggered subscription."""
+
     type: Literal["job"] = "job"
     job: str
     when: JobWhenConfig | None = None
 
 
 class YoutubeSubscription(Subscription):
+    """YouTube channel subscription."""
+
     type: Literal["youtube"] = "youtube"
     source: str
     tags: list[str] = []
@@ -192,6 +226,8 @@ SubscriptionEntry = Annotated[
 
 
 class InboundSourceConfig(BaseModel):
+    """Inbound webhook source configuration."""
+
     model_config = ConfigDict(extra="allow")
     path: str | None = None
     verify_token: str | None = None
@@ -200,6 +236,8 @@ class InboundSourceConfig(BaseModel):
 
 
 class SubscriptionContractConfig(BaseModel):
+    """Subscription matching contract."""
+
     model_config = ConfigDict(extra="allow")
     source: dict[str, Any] | None = None
     type: dict[str, Any] | None = None
@@ -207,6 +245,8 @@ class SubscriptionContractConfig(BaseModel):
 
 
 class SubscriptionTargetConfig(BaseModel):
+    """Subscription delivery target."""
+
     model_config = ConfigDict(extra="allow")
     handler: str | None = None
     url: str | None = None
@@ -214,6 +254,8 @@ class SubscriptionTargetConfig(BaseModel):
 
 
 class SubscriptionConfig(BaseModel):
+    """Hook subscription configuration."""
+
     model_config = ConfigDict(extra="allow")
     id: str
     contract: dict[str, Any] = {}  # guard: loose-dict - Config YAML contract is unstructured
@@ -230,24 +272,31 @@ class ChannelSubscription(BaseModel):
 
 
 class HooksConfig(BaseModel):
+    """Hooks and subscriptions configuration."""
+
     model_config = ConfigDict(extra="allow")
     inbound: dict[str, InboundSourceConfig] = {}
     subscriptions: list[SubscriptionConfig] = []
 
 
 class DeploymentConfig(BaseModel):
+    """Release channel and version pinning."""
+
     model_config = ConfigDict(extra="allow")
     channel: Literal["alpha", "beta", "stable"] = "alpha"
     pinned_minor: str = ""
 
     @model_validator(mode="after")
     def validate_stable_requires_pinned_minor(self) -> DeploymentConfig:
+        """Require pinned_minor for stable channel."""
         if self.channel == "stable" and not self.pinned_minor:
             raise ValueError("pinned_minor is required and must be non-empty when channel=stable")
         return self
 
 
 class ProjectConfig(BaseModel):
+    """Project-level configuration."""
+
     model_config = ConfigDict(extra="allow")
     project_name: str | None = None
     description: str | None = None
@@ -262,6 +311,7 @@ class ProjectConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def reject_disallowed_keys(cls, data: Any) -> Any:
+        """Block keys that belong at other config levels."""
         if not isinstance(data, dict):
             return data
         disallowed = {"people", "ops", "creds", "notifications", "timezone"}
@@ -272,6 +322,8 @@ class ProjectConfig(BaseModel):
 
 
 class GlobalConfig(ProjectConfig):
+    """Global-level configuration extending project config."""
+
     people: list[PersonEntry] = []
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
@@ -280,6 +332,7 @@ class GlobalConfig(ProjectConfig):
     @field_validator("interests", mode="before")
     @classmethod
     def parse_interests(cls, v: Any) -> Any:
+        """Normalize legacy dict-based interests to list."""
         if isinstance(v, dict) and "tags" in v:
             return v["tags"]
         return v
@@ -287,7 +340,7 @@ class GlobalConfig(ProjectConfig):
     @model_validator(mode="before")
     @classmethod
     def reject_disallowed_keys(cls, data: Any) -> Any:
-        # Override project-level restrictions to allow global-only keys.
+        """Block keys that belong at per-person config level."""
         if not isinstance(data, dict):
             return data
         disallowed = {"creds", "notifications", "timezone"}
@@ -298,6 +351,8 @@ class GlobalConfig(ProjectConfig):
 
 
 class PersonConfig(BaseModel):
+    """Per-person configuration."""
+
     model_config = ConfigDict(extra="allow")
     creds: CredsConfig = CredsConfig()
     subscriptions: list[SubscriptionEntry] = []
@@ -307,6 +362,7 @@ class PersonConfig(BaseModel):
     @field_validator("interests", mode="before")
     @classmethod
     def parse_interests(cls, v: Any) -> Any:
+        """Normalize legacy dict-based interests to list."""
         if isinstance(v, dict) and "tags" in v:
             return v["tags"]
         return v
@@ -314,6 +370,7 @@ class PersonConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def reject_disallowed_keys(cls, data: Any) -> Any:
+        """Block keys that belong at other config levels."""
         if not isinstance(data, dict):
             return data
         disallowed = {"people", "ops", "business", "timezone"}

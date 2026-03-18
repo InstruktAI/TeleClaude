@@ -1,3 +1,5 @@
+"""Path constants for TeleClaude filesystem layout."""
+
 from __future__ import annotations
 
 from pathlib import Path

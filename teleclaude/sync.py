@@ -64,7 +64,7 @@ def sync(
             return False
 
     if validate_only:
-        return len(errors) == 0
+        return not errors
 
     # Phase 2: Build indexes
     written = build_all_indexes(project_root)
@@ -133,12 +133,12 @@ def _repair_broken_docs_links(project_root: Path) -> None:
         if not needs_repair:
             continue
 
-        from teleclaude.git import GitCommandError, Repo
+        from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
 
         try:
             repo = Repo(str(project_root))
             blob_content = repo.git.show(f"HEAD:{rel_path}")
-        except (GitCommandError, Exception):
+        except (GitCommandError, OSError):
             continue
 
         file_path.unlink(missing_ok=True)
@@ -184,7 +184,7 @@ def _register_project_manifest(project_root: Path) -> None:
         return
     try:
         project_config = load_project_config(config_path)
-    except Exception:
+    except (OSError, ValueError):
         return
     project_name = (project_config.project_name or project_root.name).strip()
     if not project_name:

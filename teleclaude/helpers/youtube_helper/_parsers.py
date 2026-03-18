@@ -132,7 +132,9 @@ def _parse_subscription_entries(data: JsonDict) -> list[SubscriptionEntry]:
     return entries
 
 
-def _parse_subscription_channels(data: JsonDict) -> list[SubscriptionChannel]:
+def _parse_subscription_channels(  # pylint: disable=too-many-locals
+    data: JsonDict,
+) -> list[SubscriptionChannel]:
     """Extract subscription channel list from InnerTube browse response JSON."""
     channels: list[SubscriptionChannel] = []
     sections = _safe_get_list(
@@ -195,14 +197,14 @@ def _extract_yt_initial_data(html: str) -> JsonDict | None:
         start = html.index("ytInitialData") + len("ytInitialData") + 3
         end = html.index("};", start) + 1
         json_str = html[start:end]
-        import json
+        import json  # pylint: disable=import-outside-toplevel
 
         return json.loads(json_str)  # type: ignore[no-any-return]
-    except (ValueError, Exception):
+    except (ValueError, Exception):  # pylint: disable=broad-exception-caught
         return None
 
 
-def _find_about_description(obj: Any) -> str | None:
+def _find_about_description(obj: Any) -> str | None:  # pylint: disable=too-many-branches  # Multi-case routing is intentionally flat.
     if isinstance(obj, dict):
         if "descriptionPreviewViewModel" in obj:
             vm = obj["descriptionPreviewViewModel"]
@@ -259,7 +261,7 @@ async def _fetch_channel_about_description(
         if not data:
             return None
         return _find_about_description(data)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return None
 
 
@@ -363,7 +365,7 @@ def _extract_continuation_token(data: JsonDict) -> str | None:
 
 def _parse_html_list(html: str, max_results: int) -> list[Video]:
     """Parse YouTube search results HTML."""
-    import json
+    import json  # pylint: disable=import-outside-toplevel
 
     results: list[Video] = []
     if "ytInitialData" not in html:
@@ -415,9 +417,9 @@ def _parse_html_list(html: str, max_results: int) -> list[Video]:
 
 def _parse_html_video(html: str) -> HtmlVideoInfo:
     """Parse video page HTML to extract description."""
-    import json
+    import json  # pylint: disable=import-outside-toplevel
 
-    from munch import munchify  # pylint: disable=import-error
+    from munch import munchify  # pylint: disable=import-error,import-outside-toplevel
 
     result: HtmlVideoInfo = {"long_desc": None}
     start = html.index("ytInitialData") + len("ytInitialData") + 3
@@ -426,9 +428,11 @@ def _parse_html_video(html: str) -> HtmlVideoInfo:
     data = json.loads(json_str)
     obj = munchify(data)
     try:
-        result["long_desc"] = obj.contents.twoColumnWatchNextResults.results.results.contents[  # type: ignore[unused-ignore]
-            1
-        ].videoSecondaryInfoRenderer.attributedDescription.content
+        result["long_desc"] = (
+            obj.contents  # type: ignore[reportAttributeAccessIssue]
+            .twoColumnWatchNextResults.results.results.contents[1]
+            .videoSecondaryInfoRenderer.attributedDescription.content
+        )
     except (AttributeError, KeyError, IndexError, TypeError):
         log.warning("YouTube HTML structure changed, could not extract long description")
     return result

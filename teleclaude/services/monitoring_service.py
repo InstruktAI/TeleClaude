@@ -46,10 +46,10 @@ def _get_rss_kb() -> int | None:
     return rss
 
 
-class MonitoringService:
+class MonitoringService:  # pylint: disable=too-many-instance-attributes
     """Emit resource snapshots and launchd state."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         lifecycle: DaemonLifecycle,
@@ -72,6 +72,7 @@ class MonitoringService:
         self._task_hwm: int = 0
 
     def log_resource_snapshot(self, reason: str) -> None:
+        """Collect and log a resource snapshot."""
         snapshot = self._collect_resource_snapshot(reason)
         logger.info("Resource snapshot", **snapshot)
         self._check_pressure(snapshot)
@@ -136,11 +137,10 @@ class MonitoringService:
         api_ws_clients: int | None = None
         api_server = self._lifecycle.api_server
         if isinstance(api_server, APIServer):
-            api_ws_clients = len(api_server._ws_clients)
+            api_ws_clients = len(api_server._ws_clients)  # pylint: disable=protected-access
 
         tracked = self._task_registry.task_count()
-        if tracked > self._task_hwm:
-            self._task_hwm = tracked
+        self._task_hwm = max(self._task_hwm, tracked)
 
         uptime_s = int(time.time() - self._start_time)
         snapshot: dict[str, int | float | str | None] = {

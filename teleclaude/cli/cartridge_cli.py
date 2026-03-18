@@ -7,6 +7,7 @@ Handles:
   telec config cartridges promote --from sandbox --to domain --domain <name> --id <name>
   telec config cartridges list [--scope sandbox] [--domain <name>] [--member <id>]
 """
+# pylint: disable=import-outside-toplevel,broad-exception-caught
 
 from __future__ import annotations
 
@@ -338,6 +339,7 @@ def _handle_list_action(
 
 
 def handle_cartridge_cli(args: list[str]) -> None:
+    """Dispatch cartridge subcommands from parsed CLI args."""
     parser = _build_cartridge_parser()
     parsed = parser.parse_args(args)
 

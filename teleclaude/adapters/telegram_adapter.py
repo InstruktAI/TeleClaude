@@ -1,4 +1,6 @@
 """Telegram adapter for TeleClaude."""
+# pylint: disable=wrong-import-position,ungrouped-imports,import-outside-toplevel,broad-exception-caught
+# pylint: disable=too-many-locals,redefined-outer-name,protected-access
 
 from __future__ import annotations
 
@@ -47,7 +49,7 @@ from .ui_adapter import UiAdapter
 logger = get_logger(__name__)
 
 
-class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
+class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
     PrivateHandlersMixin,
     LifecycleMixin,
     InputHandlersMixin,
@@ -324,7 +326,7 @@ class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # t
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
-    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:
+    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:  # pylint: disable=unused-argument
         """Check if a forum topic was created by this bot.
 
         Uses the reply_to_message on the topic close event, which references
@@ -510,7 +512,7 @@ class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # t
         self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
         return None  # Delivery is deferred; message_id stored asynchronously.
 
-    async def send_threaded_output(  # type: ignore[override]
+    async def send_threaded_output(  # type: ignore[override]  # pylint: disable=arguments-differ
         self,
         session: Session,
         text: str,

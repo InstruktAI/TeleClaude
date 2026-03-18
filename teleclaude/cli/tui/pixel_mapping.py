@@ -50,11 +50,13 @@ class RenderTarget:
     _col_pixels: dict[int, list[tuple[int, int]]] | None = None
 
     def get_all_pixels(self) -> list[tuple[int, int]]:
+        """Return all (x, y) pixels for this target."""
         if self._all_pixels is None:
             self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
         return self._all_pixels
 
     def get_row_pixels(self, row_idx: int) -> list[tuple[int, int]]:
+        """Return all (x, y) pixels in a given row."""
         if self._row_pixels is None:
             self._row_pixels = {}
         if row_idx not in self._row_pixels:
@@ -62,6 +64,7 @@ class RenderTarget:
         return self._row_pixels[row_idx]
 
     def get_col_pixels(self, col_idx: int) -> list[tuple[int, int]]:
+        """Return all (x, y) pixels in a given column."""
         if self._col_pixels is None:
             self._col_pixels = {}
         if col_idx not in self._col_pixels:
@@ -85,6 +88,7 @@ class TargetRegistry:
         self._targets[name] = RenderTarget(name, width, height, letters or [])
 
     def get(self, name: str) -> RenderTarget | None:
+        """Look up a render target by name."""
         return self._targets.get(name)
 
 
@@ -111,13 +115,13 @@ class PixelMap:
         return (x, y) in target.get_all_pixels()
 
     @staticmethod
-    def get_is_letter(target_arg: bool | str, x: int, y: int) -> bool:
+    def get_is_letter(target_arg: bool | str, x: int, y: int) -> bool:  # pylint: disable=unused-argument
         """Check if a specific coordinate corresponds to a letter character."""
         target_name = PixelMap._resolve_target(target_arg)
         target = target_registry.get(target_name)
         if not target or not target.letters:
             return False
-        return any(x >= start and x <= end for start, end in target.letters)
+        return any(start <= x <= end for start, end in target.letters)
 
     @staticmethod
     def get_letter_pixels(

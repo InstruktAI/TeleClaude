@@ -345,7 +345,7 @@ def find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None:
             person_config = get_person_config(person_name)
             if person_config.invite_token == token:
                 return (person_name, person_config)
-        except Exception as e:
+        except (OSError, ValueError, KeyError) as e:
             logger.warning("Failed to load config for person '%s': %s", person_name, e)
             continue
     return None
@@ -527,11 +527,14 @@ def discover_config_areas() -> list[ConfigArea]:
             except (ValueError, ValidationError):
                 continue
 
-        field_info = CredsConfig.model_fields[adapter_name]
+        field_info = CredsConfig.model_fields[adapter_name]  # pylint: disable=unsubscriptable-object
         model_class = field_info.annotation
         # Unwrap Optional
         if hasattr(model_class, "__args__"):
-            model_class = next((a for a in model_class.__args__ if a is not type(None)), model_class)
+            model_class = next(
+                (a for a in model_class.__args__ if a is not type(None)),  # pylint: disable=unidiomatic-typecheck
+                model_class,
+            )
 
         areas.append(
             ConfigArea(

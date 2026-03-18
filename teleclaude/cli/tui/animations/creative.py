@@ -1,4 +1,5 @@
 """Creative TUI animations — new and consolidated animation classes."""
+# pylint: disable=too-many-locals,too-many-return-statements
 
 from __future__ import annotations
 

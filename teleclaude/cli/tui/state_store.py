@@ -1,4 +1,5 @@
 """Persistence helpers for Textual TUI state."""
+# pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
 
@@ -178,4 +179,4 @@ def save_state(state: dict[str, object]) -> None:  # guard: loose-dict - namespa
 
 # --- Legacy compatibility stub (old controller.py still imports this) ---
 def save_sticky_state(_state: object) -> None:
-    pass
+    """Legacy compatibility stub for old controller.py imports."""

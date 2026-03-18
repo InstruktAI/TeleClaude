@@ -128,7 +128,7 @@ def _is_when_due(
         return False
     for at_time_str in [when.at] if isinstance(when.at, str) else when.at:
         scheduled_today = _scheduled_occurrence(local_now, at_time_str)
-        if scheduled_today and local_now >= scheduled_today and last_run.astimezone() < scheduled_today:
+        if scheduled_today and last_run.astimezone() < scheduled_today <= local_now:
             return True
     return False
 
@@ -223,8 +223,8 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
     Instead of spawning a subprocess directly, this sends a request to the daemon
     to create a session with job metadata. The daemon handles execution.
     """
-    from teleclaude.cli.api_client import TelecAPIClient
-    from teleclaude.config import config as global_config
+    from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
+    from teleclaude.config import config as global_config  # pylint: disable=import-outside-toplevel
 
     message = _build_agent_job_message(job_name, config)
     if not message:
@@ -253,7 +253,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
                 metadata={"job_name": job_name, "job_type": config.type or "agent"},
             )
             return True
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("agent job API trigger failed", name=job_name, error=str(e))
             return False
         finally:
@@ -261,7 +261,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
 
     try:
         return asyncio.run(_trigger())
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("agent job trigger crashed", name=job_name, error=str(e))
         return False
 
@@ -278,8 +278,8 @@ def _should_run_subscription_job(
     Iterates person configs for enabled JobSubscription entries matching
     *job_name* and checks if any subscriber's ``when`` schedule is due.
     """
-    from teleclaude.config.loader import load_person_config
-    from teleclaude.config.schema import JobSubscription
+    from teleclaude.config.loader import load_person_config  # pylint: disable=import-outside-toplevel
+    from teleclaude.config.schema import JobSubscription  # pylint: disable=import-outside-toplevel
 
     if root is None:
         root = Path.home() / ".teleclaude"
@@ -298,7 +298,7 @@ def _should_run_subscription_job(
             continue
         try:
             person_cfg = load_person_config(cfg_path)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             continue
 
         for sub in person_cfg.subscriptions:
@@ -321,7 +321,7 @@ def _should_run_subscription_job(
 
 def _scan_and_notify(
     state: CronState,
-    schedules: dict[str, JobScheduleConfig],
+    schedules: dict[str, JobScheduleConfig],  # pylint: disable=unused-argument
     root: Path | None = None,
 ) -> None:
     """Scan for undelivered reports and mark them notified. Delivery is via event platform."""
@@ -339,8 +339,7 @@ def _scan_and_notify(
 
         for report_path in reports:
             mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=UTC)
-            if mtime > latest_mtime:
-                latest_mtime = mtime
+            latest_mtime = max(latest_mtime, mtime)
 
         if latest_mtime > datetime.min.replace(tzinfo=UTC):
             logger.info("marking job reports notified (delivery via event platform)", job=job_name)
@@ -374,13 +373,13 @@ def discover_jobs(jobs_dir: Path | None = None) -> list[Job]:
             if hasattr(module, "JOB"):
                 jobs.append(module.JOB)
                 logger.debug("discovered job", name=module.JOB.name)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("failed to load job", module=module_name, error=str(e))
 
     return jobs
 
 
-def run_due_jobs(
+def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
     *,
     force: bool = False,
     job_filter: str | None = None,
@@ -489,7 +488,7 @@ def run_due_jobs(
                     )
                 results[job_name] = result.success
 
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 state.mark_failed(job_name, str(e))
                 logger.exception("job error", name=job_name, error=str(e))
                 results[job_name] = False
@@ -498,7 +497,7 @@ def run_due_jobs(
     if not dry_run:
         try:
             _scan_and_notify(state, schedules, root=root)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("notification scan failed", error=str(exc))
 
     return results

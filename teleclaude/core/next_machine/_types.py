@@ -192,6 +192,6 @@ class DeliveredDict(TypedDict, total=False):
 
 def default_state() -> dict[str, StateValue]:
     """Return a fresh default state dict from the canonical TodoState model."""
-    from teleclaude.types.todos import TodoState
+    from teleclaude.types.todos import TodoState  # pylint: disable=import-outside-toplevel
 
     return TodoState().model_dump(exclude_none=True)

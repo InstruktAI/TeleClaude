@@ -43,7 +43,7 @@ async def _prepare_step_input_assessment(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """INPUT_ASSESSMENT: choose requirements strategy and produce requirements."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
 
     _now = datetime.now(UTC).isoformat()
     stamp_audit(state, "input_assessment", "started_at", _now)
@@ -54,7 +54,7 @@ async def _prepare_step_input_assessment(
         has_requirements = False
     if has_requirements:
         # Emit input_consumed event before transitioning (R13)
-        from teleclaude.core.next_machine.prepare_helpers import record_input_consumed
+        from teleclaude.core.next_machine.prepare_helpers import record_input_consumed  # noqa: I001  # pylint: disable=import-outside-toplevel
 
         await asyncio.to_thread(record_input_consumed, cwd, slug)
         stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())
@@ -117,14 +117,14 @@ async def _prepare_step_triangulation(
     )
 
 
-async def _prepare_step_requirements_review(
+async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,too-many-statements
     db: Db,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """REQUIREMENTS_REVIEW: awaiting review verdict."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
 
     stamp_audit(state, "requirements_review", "started_at", datetime.now(UTC).isoformat())
 
@@ -188,7 +188,7 @@ async def _prepare_step_requirements_review(
         state["prepare_phase"] = PreparePhase.TRIANGULATION.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         # Compute diff context for re-dispatch (I-2)
-        from teleclaude.core.next_machine.prepare_helpers import (
+        from teleclaude.core.next_machine.prepare_helpers import (  # pylint: disable=import-outside-toplevel
             compute_artifact_diff,
             compute_todo_folder_diff,
         )
@@ -254,7 +254,7 @@ async def _prepare_step_test_spec_build(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TEST_SPEC_BUILD: xfail test specs needed in worktree."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
 
     stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())
 
@@ -297,7 +297,7 @@ async def _prepare_step_test_spec_review(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TEST_SPEC_REVIEW: awaiting test spec review verdict."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
 
     stamp_audit(state, "test_spec_review", "started_at", datetime.now(UTC).isoformat())
 
@@ -362,7 +362,7 @@ async def _prepare_step_test_spec_review(
             project=cwd,
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and write verdict to state.yaml test_spec_review.verdict.",
+            note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and write verdict to state.yaml test_spec_review.verdict.",  # pylint: disable=line-too-long
             next_call=f"telec todo prepare {slug}",
         )
     )
@@ -375,7 +375,7 @@ async def _prepare_step_plan_drafting(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_DRAFTING: implementation-plan.md needed."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
 
     stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
@@ -435,14 +435,14 @@ async def _prepare_step_plan_drafting(
     )
 
 
-async def _prepare_step_plan_review(
+async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many-statements
     db: Db,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_REVIEW: awaiting plan review verdict."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit
+    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
 
     stamp_audit(state, "plan_review", "started_at", datetime.now(UTC).isoformat())
 
@@ -506,7 +506,7 @@ async def _prepare_step_plan_review(
         state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         # Compute diff context for re-dispatch (I-2)
-        from teleclaude.core.next_machine.prepare_helpers import (
+        from teleclaude.core.next_machine.prepare_helpers import (  # pylint: disable=import-outside-toplevel
             compute_artifact_diff,
             compute_todo_folder_diff,
         )
@@ -598,14 +598,14 @@ async def _prepare_step_gate(
     )
 
 
-def _prepare_step_grounding_check(
+def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-statements
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """GROUNDING_CHECK: mechanical freshness check (no agent dispatch)."""
     grounding = state.get("grounding", {})
-    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
 
     base_sha = str(grounding_dict.get("base_sha", ""))
     stored_input_digest = str(grounding_dict.get("input_digest", ""))
@@ -717,7 +717,7 @@ async def _prepare_step_re_grounding(
 ) -> tuple[bool, str]:
     """RE_GROUNDING: dispatch plan update against changed files."""
     grounding = state.get("grounding", {})
-    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
     changed_paths = grounding_dict.get("changed_paths", [])  # I1: actual changed paths, not all referenced
     if not isinstance(changed_paths, list):
         changed_paths = []
@@ -733,7 +733,7 @@ async def _prepare_step_re_grounding(
     state["plan_review"] = plan_review
     await asyncio.to_thread(write_phase_state, cwd, slug, state)
 
-    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."  # type: ignore[arg-type]
+    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."  # type: ignore[arg-type]  # pylint: disable=line-too-long
     guidance = await compose_agent_guidance(db)
     result = format_tool_call(
         ToolCallRequest(
@@ -775,7 +775,7 @@ def _prepare_step_blocked(slug: str, state: dict[str, StateValue]) -> tuple[bool
 # =============================================================================
 
 
-async def _prepare_dispatch(
+async def _prepare_dispatch(  # pylint: disable=too-many-return-statements
     *,
     db: Db,
     slug: str,

@@ -25,9 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 class SignalClusterCartridge:
+    """Cartridge that clusters ingested signals by semantic similarity."""
+
     name = "signal-cluster"
 
     def describe(self) -> str:
+        """Return cartridge name."""
         return self.name
 
     def __init__(self, config: ClusteringConfig, ai: SignalAIClient, signal_db: SignalDB) -> None:
@@ -36,13 +39,14 @@ class SignalClusterCartridge:
         self._signal_db = signal_db
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Trigger a clustering pass when a new signal is ingested."""
         if event.event != "signal.ingest.received":
             return event
         # Run a clustering pass after each ingested item (the pass is idempotent).
         await self.cluster_pass(context)
         return event
 
-    async def cluster_pass(self, context: PipelineContext) -> int:
+    async def cluster_pass(self, context: PipelineContext) -> int:  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
         """Explicit cluster pass — returns count of clusters formed."""
         window_start = datetime.now(UTC) - timedelta(seconds=self._config.window_seconds)
         items = await self._signal_db.get_unclustered_items(since=window_start)
@@ -56,7 +60,9 @@ class SignalClusterCartridge:
         # Refine each group by embeddings
         refined: list[list[dict[str, object]]] = []
         for group in tag_groups:
-            refined.extend(refine_by_embeddings(group, self._config.embedding_similarity_threshold))  # type: ignore[arg-type]
+            refined.extend(  # type: ignore[arg-type]
+                refine_by_embeddings(group, self._config.embedding_similarity_threshold)
+            )
 
         recent_tags = await self._signal_db.get_recent_cluster_tags(hours=self._config.novelty_overlap_hours)
         clusters_formed = 0
@@ -82,7 +88,7 @@ class SignalClusterCartridge:
             summary_prompt = "; ".join(t for t in titles if t)
             try:
                 summary = await self._ai.summarise(summary_prompt, "")
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.warning(
                     "Cluster summary generation failed for group of %d items: %s; skipping cluster this pass",
                     len(group),

@@ -24,10 +24,10 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = get_logger(__name__)
 
 
-class DaemonLifecycle:
+class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
     """Own startup/shutdown ordering and API server restart policy."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         client: AdapterClient,
@@ -105,7 +105,7 @@ class DaemonLifecycle:
         self._init_voice_handler()
         logger.info("Voice handler initialized")
 
-        from teleclaude.core.inbound_queue import get_inbound_queue_manager
+        from teleclaude.core.inbound_queue import get_inbound_queue_manager  # pylint: disable=import-outside-toplevel
 
         await get_inbound_queue_manager().startup()
         logger.info("Inbound queue manager started")
@@ -134,7 +134,7 @@ class DaemonLifecycle:
     async def _warm_local_projects_cache(self) -> None:
         """Seed cache with current local projects AND todos for instant UI."""
         try:
-            from teleclaude.core import command_handlers
+            from teleclaude.core import command_handlers  # pylint: disable=import-outside-toplevel
 
             projects = await command_handlers.list_projects_with_todos()
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -151,7 +151,7 @@ class DaemonLifecycle:
             logger.info("Seeded cache with %d local projects", len(projects))
 
         # Warm todo cache alongside projects
-        from teleclaude.core.models import TodoInfo
+        from teleclaude.core.models import TodoInfo  # pylint: disable=import-outside-toplevel
 
         todos_by_project: dict[str, list[TodoInfo]] = {}
         for p in projects:
@@ -164,7 +164,7 @@ class DaemonLifecycle:
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""
         try:
-            from teleclaude.core.inbound_queue import get_inbound_queue_manager
+            from teleclaude.core.inbound_queue import get_inbound_queue_manager  # noqa: I001  # pylint: disable=import-outside-toplevel
 
             await get_inbound_queue_manager().shutdown()
             logger.info("Inbound queue manager shut down")

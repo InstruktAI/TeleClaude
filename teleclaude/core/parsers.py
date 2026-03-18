@@ -25,7 +25,6 @@ class LogParser(ABC):
     @abstractmethod
     def can_parse(self, file_path: Path) -> bool:
         """Check if this parser can handle the given file."""
-        pass
 
     @abstractmethod
     def parse_line(self, line: str) -> Generator[LogEvent, None, None]:
@@ -37,7 +36,6 @@ class LogParser(ABC):
         Yields:
             LogEvent: Detected events (0 or more per line).
         """
-        pass
 
     @abstractmethod
     def extract_session_id(self, file_path: Path) -> str | None:
@@ -49,7 +47,6 @@ class LogParser(ABC):
         Returns:
             Native session ID string if found, None otherwise.
         """
-        pass
 
     @abstractmethod
     def extract_last_turn(self, file_path: Path) -> str:
@@ -64,4 +61,3 @@ class LogParser(ABC):
         Returns:
             Text content of the last turn.
         """
-        pass

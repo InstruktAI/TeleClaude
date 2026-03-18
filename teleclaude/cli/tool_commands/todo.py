@@ -3,6 +3,7 @@
 All commands call the daemon REST API via tool_api_call() and print JSON to stdout.
 Errors go to stderr with exit code 1 (handled by tool_api_call).
 """
+# pylint: disable=import-outside-toplevel,raise-missing-from
 
 from __future__ import annotations
 

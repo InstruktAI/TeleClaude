@@ -1,4 +1,5 @@
 """Handlers for telec roadmap commands."""
+# pylint: disable=import-outside-toplevel,too-many-branches,no-else-raise
 
 from __future__ import annotations
 
@@ -484,7 +485,7 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
         raise SystemExit(1)
 
 
-def _handle_roadmap_migrate_icebox(args: list[str]) -> None:
+def _handle_roadmap_migrate_icebox(args: list[str]) -> None:  # pylint: disable=unused-argument
     """Handle telec roadmap migrate-icebox."""
     from teleclaude.core.next_machine.core import migrate_icebox_to_subfolder
 

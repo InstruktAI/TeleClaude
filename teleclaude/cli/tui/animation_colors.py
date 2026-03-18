@@ -12,7 +12,7 @@ from teleclaude.cli.tui.color_utils import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.theme import get_agent_color
 
 
-class MultiGradient:
+class MultiGradient:  # pylint: disable=too-few-public-methods
     """Multi-stop gradient returning interpolated hex colors for a 0.0-1.0 factor."""
 
     def __init__(self, stops: list[str]) -> None:
@@ -117,9 +117,11 @@ class PaletteRegistry:
         self._palettes: dict[str, ColorPalette] = {}
 
     def register(self, palette: ColorPalette) -> None:
+        """Register a palette by name."""
         self._palettes[palette.name] = palette
 
     def get(self, name: str) -> ColorPalette | None:
+        """Look up a palette by name."""
         return self._palettes.get(name)
 
 

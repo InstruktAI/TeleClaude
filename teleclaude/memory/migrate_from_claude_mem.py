@@ -36,7 +36,7 @@ def _map_type(old_type: str) -> str:
     return _TYPE_MAP.get(old_type, "discovery")
 
 
-def migrate(source_db: str, target_db: str) -> dict[str, int]:
+def migrate(source_db: str, target_db: str) -> dict[str, int]:  # pylint: disable=too-many-locals
     """Migrate observations + summaries from memory-management-api to teleclaude.db.
 
     Transaction-wrapped, re-run safe (INSERT OR IGNORE).
@@ -158,6 +158,7 @@ def migrate(source_db: str, target_db: str) -> dict[str, int]:
 
 
 def main() -> None:
+    """CLI entry point for memory migration."""
     parser = argparse.ArgumentParser(description="Migrate memory-management-api data to TeleClaude")
     parser.add_argument(
         "--source",

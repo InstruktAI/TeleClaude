@@ -1,4 +1,5 @@
 """Miscellaneous handlers: version, sync, watch, revive, computers, projects, tmux helpers."""
+# pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
 

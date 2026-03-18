@@ -142,7 +142,7 @@ def collect_inline_ref_errors(
     return errors
 
 
-def _resolve_snippet_ref(project_root: Path, snippet_path: Path, ref: str) -> Path | None:
+def _resolve_snippet_ref(project_root: Path, snippet_path: Path, ref: str) -> Path | None:  # pylint: disable=unused-argument
     if not ref.startswith("@"):
         return None
     target = ref[1:]
@@ -190,7 +190,7 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
             post = frontmatter.loads(content)
             meta: Mapping[str, object] = post.metadata or {}
             body = post.content
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             meta = {}
             body = content
     else:
@@ -206,7 +206,9 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
     if isinstance(meta.get("id"), str):
         parsed_id, id_error = validate_snippet_id_format(meta["id"], domains=domains)  # type: ignore[arg-type]
         if id_error:
-            _warn("snippet_invalid_id_format", path=str(path), reason=id_error, snippet_id=meta["id"])  # type: ignore[arg-type]
+            _warn(  # type: ignore[arg-type]
+                "snippet_invalid_id_format", path=str(path), reason=id_error, snippet_id=meta["id"],
+            )
     if expected_id and parsed_id and parsed_id.value() != expected_id:
         _warn(
             "snippet_id_path_mismatch",
@@ -230,7 +232,7 @@ def _validate_baseline_index(path: Path, content: str, project_root: Path, *, do
         try:
             post = frontmatter.loads(content)
             content = post.content
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
     lines = [line for line in content.splitlines() if line.strip()]
     ref_lines = [line for line in lines if line.startswith("@")]
@@ -244,7 +246,7 @@ def _validate_baseline_index(path: Path, content: str, project_root: Path, *, do
         _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
 
-def _validate_snippet_structure(
+def _validate_snippet_structure(  # pylint: disable=too-many-branches,unused-argument
     path: Path,
     lines: list[str],
     meta: Mapping[str, object],
@@ -357,7 +359,7 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
         _warn("snippet_see_also_missing", path=str(path), ref=raw, resolved=str(resolved))
 
 
-def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, domains: set[str]) -> None:
+def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, domains: set[str]) -> None:  # pylint: disable=too-many-branches
     in_required_reads = False
     in_see_also = False
     in_code_block = False
@@ -396,7 +398,7 @@ def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, 
         _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
 
-def _validate_snippet_sections(
+def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-branches,unused-argument
     path: Path,
     lines: list[str],
     meta: Mapping[str, object],
@@ -496,7 +498,7 @@ def validate_third_party_docs(project_root: Path) -> None:
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except Exception as exc:
+        except OSError as exc:
             _warn("third_party_read_failed", path=str(path), error=str(exc))
             continue
         lines = text.splitlines()
@@ -561,7 +563,7 @@ def validate_all_snippets(project_root: Path) -> None:
                 continue
             try:
                 text = path.read_text(encoding="utf-8")
-            except Exception as exc:
+            except OSError as exc:
                 _warn("snippet_read_failed", path=str(path), error=str(exc))
                 continue
             validate_snippet(path, text, project_root, domains=domains)

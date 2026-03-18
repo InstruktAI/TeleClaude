@@ -2,6 +2,7 @@
 
 Operates on the daemon's config.yml (not user-facing teleclaude.yml).
 """
+# pylint: disable=import-outside-toplevel,too-many-branches,too-many-statements,broad-exception-caught
 
 import json
 import os

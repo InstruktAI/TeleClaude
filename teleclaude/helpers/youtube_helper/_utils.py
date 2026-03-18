@@ -209,8 +209,10 @@ def _refresh_cookies_if_needed() -> bool:
             return False
 
     try:
-        from teleclaude.helpers.youtube.refresh_cookies import refresh_cookies
-    except Exception as exc:
+        from teleclaude.helpers.youtube.refresh_cookies import (  # pylint: disable=import-outside-toplevel
+            refresh_cookies,
+        )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         log.warning("refresh_cookies import failed - cannot auto-refresh cookies: %s", exc)
         return False
 
@@ -223,6 +225,6 @@ def _refresh_cookies_if_needed() -> bool:
             output_path=Path.home() / ".config" / "youtube" / "cookies.txt",
             headless=True,
         )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         log.error("Cookie refresh error: %s", e)
         return False

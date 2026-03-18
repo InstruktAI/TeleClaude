@@ -67,6 +67,7 @@ class IntegrationTriggerCartridge:
     name = "integration-trigger"
 
     def describe(self) -> str:
+        """Return cartridge name."""
         return self.name
 
     def __init__(

@@ -34,7 +34,7 @@ def _read_version_from_pyproject() -> str:
             ver = project.get("version")
             if isinstance(ver, str) and ver:
                 return ver
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         pass
     return "0.0.0"
 
@@ -42,11 +42,11 @@ def _read_version_from_pyproject() -> str:
 async def _set_status(redis: Redis, status_key: str, payload: dict) -> None:  # type: ignore[type-arg]
     try:
         await redis.set(status_key, json.dumps(payload))
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to update deploy status: %s", exc)
 
 
-async def execute_update(
+async def execute_update(  # pylint: disable=too-many-locals,too-many-statements  # Flat data assembly is intentionally verbose. Sequential pipeline is intentionally flat.
     channel: str,
     version_info: dict,  # type: ignore[type-arg]
     *,
@@ -70,7 +70,7 @@ async def execute_update(
         try:
             redis = await get_redis()
             await _set_status(redis, status_key, payload)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Deploy status update failed: %s", exc)
 
     try:
@@ -180,7 +180,7 @@ async def execute_update(
         logger.info("Deploy: exiting with code 42 to trigger service manager restart")
         os._exit(42)
 
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.error("Deploy: unexpected failure: %s", exc, exc_info=True)
         await update_status({"status": "update_failed", "error": str(exc)})
 

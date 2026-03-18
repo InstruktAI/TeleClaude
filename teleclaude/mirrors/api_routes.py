@@ -17,6 +17,8 @@ router = APIRouter(prefix="/api/mirrors", tags=["mirrors"])
 
 
 class MirrorSearchResponseRow(TypedDict):
+    """Wire format for a single mirror search hit."""
+
     session_id: str
     computer: str
     agent: str
@@ -28,6 +30,8 @@ class MirrorSearchResponseRow(TypedDict):
 
 
 class MirrorDetailResponse(TypedDict):
+    """Wire format for a full mirror detail response."""
+
     session_id: str
     computer: str
     agent: str

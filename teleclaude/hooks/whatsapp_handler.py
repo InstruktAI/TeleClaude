@@ -179,7 +179,7 @@ async def _dispatch_whatsapp_command(
         origin=InputOrigin.WHATSAPP.value,
         channel_metadata={"message_id": message_id} if message_id else None,
     )
-    dispatch_command = adapter._dispatch_command
+    dispatch_command = adapter._dispatch_command  # pylint: disable=protected-access
     await dispatch_command(
         session,
         message_id,

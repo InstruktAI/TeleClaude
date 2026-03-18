@@ -33,7 +33,7 @@ def _is_teleclaude_project(project_root: Path) -> bool:
 
 def _has_generated_snippets(project_root: Path) -> bool:
     """Check whether the project already has telec-init generated snippets."""
-    from teleclaude.project_setup.enrichment import read_existing_snippets
+    from teleclaude.project_setup.enrichment import read_existing_snippets  # pylint: disable=import-outside-toplevel
 
     return bool(read_existing_snippets(project_root))
 
@@ -53,7 +53,7 @@ def _prompt_yes_no(prompt: str, *, default: bool = True) -> bool:
     return answer in ("y", "yes")
 
 
-def _prompt_release_channel(project_root: Path) -> None:
+def _prompt_release_channel(project_root: Path) -> None:  # pylint: disable=too-many-return-statements,too-many-branches,too-many-statements
     """Prompt for release-channel enrollment and persist to teleclaude.yml."""
     config_path = project_root / "teleclaude.yml"
     if not config_path.exists():
@@ -61,7 +61,7 @@ def _prompt_release_channel(project_root: Path) -> None:
 
     try:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    except (yaml.YAMLError, OSError) as exc:
         logger.warning("Could not read %s: %s — skipping release channel prompt", config_path, exc)
         return
     if not isinstance(raw, dict):
@@ -109,7 +109,7 @@ def _prompt_release_channel(project_root: Path) -> None:
     _ryaml.preserve_quotes = True
     try:
         doc = _ryaml.load(config_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    except (yaml.YAMLError, OSError) as exc:
         logger.warning("Could not re-read %s for comment-preserving write: %s — using plain YAML", config_path, exc)
         doc = raw
 
@@ -142,7 +142,7 @@ def _launch_enrichment(project_root: Path) -> None:
     ]
     try:
         result = subprocess.run(cmd, check=False, timeout=300, capture_output=True, text=True)
-        if result.returncode == 0:
+        if not result.returncode:
             print("Enrichment session started. Analysis will produce project doc snippets.")
         else:
             logger.warning("Enrichment session failed (rc=%d): %s", result.returncode, result.stderr.strip())
@@ -190,7 +190,7 @@ def init_project(project_root: Path) -> None:
     update_gitattributes(project_root)
     install_precommit_hook(project_root)
     sync_project_artifacts(project_root)
-    from teleclaude.project_setup.domain_seeds import seed_event_domains
+    from teleclaude.project_setup.domain_seeds import seed_event_domains  # pylint: disable=import-outside-toplevel
 
     seed_event_domains(project_root)
     install_docs_watch(project_root)
@@ -201,7 +201,9 @@ def init_project(project_root: Path) -> None:
 
     # Bootstrap help desk workspace if running from the TeleClaude project
     if _is_teleclaude_project(project_root):
-        from teleclaude.project_setup.help_desk_bootstrap import bootstrap_help_desk
+        from teleclaude.project_setup.help_desk_bootstrap import (  # pylint: disable=import-outside-toplevel
+            bootstrap_help_desk,
+        )
 
         bootstrap_help_desk()
 

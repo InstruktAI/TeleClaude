@@ -49,7 +49,7 @@ def command_retry(
                 try:
                     return await func(*args, **kwargs)
 
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     # Elapsed operation time (excludes rate-limit waits)
                     elapsed_time = time.time() - start_time - excluded_wait_time
 
@@ -75,7 +75,8 @@ def command_retry(
                                 max_retries,
                             )
                             await asyncio.sleep(retry_after)
-                            excluded_wait_time += retry_after  # type: ignore[misc, unused-ignore]  # Don't count wait against timeout
+                            # Don't count wait against timeout
+                            excluded_wait_time += retry_after  # type: ignore[misc, unused-ignore]
                             last_exception = e
                         else:
                             logger.debug("%s: Rate limit exceeded after %d attempts", func.__name__, max_retries)
@@ -212,7 +213,7 @@ def format_completed_status_line(exit_code: int, started_timestamp: float, size_
     Returns:
         Formatted status line
     """
-    exit_emoji = "✅" if exit_code == 0 else "❌"
+    exit_emoji = "✅" if not exit_code else "❌"
     started_dt = datetime.fromtimestamp(started_timestamp, tz=UTC)
     completed_dt = datetime.now(UTC)
     started_time = format_local_datetime(started_dt)
@@ -296,7 +297,7 @@ def get_filtered_output(output_file: Path, max_len: int) -> tuple[str, bool]:
 
     try:
         raw_output = output_file.read_text(encoding="utf-8")
-    except Exception as e:
+    except OSError as e:
         logger.warning("Failed to read output file %s: %s", output_file, e)
         return ("", False)
 

@@ -103,7 +103,7 @@ def _project_user_text(
     )
 
 
-def _project_content_block(
+def _project_content_block(  # pylint: disable=too-many-arguments
     block: Mapping[str, object],
     *,
     role: str,

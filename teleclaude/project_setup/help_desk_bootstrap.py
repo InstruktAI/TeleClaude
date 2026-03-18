@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 def _resolve_help_desk_dir() -> Path:
     """Resolve help desk directory from config or default sibling location."""
-    from teleclaude.config import config
+    from teleclaude.config import config  # pylint: disable=import-outside-toplevel
 
     configured = config.computer.help_desk_dir
     if configured:
@@ -45,12 +45,12 @@ def bootstrap_help_desk() -> None:
 
     try:
         # git init
-        from teleclaude.git import Repo
+        from teleclaude.git import Repo  # pylint: disable=import-outside-toplevel
 
         repo = Repo.init(help_desk_dir)
 
         # Run telec init inside the new directory
-        from teleclaude.project_setup.init_flow import init_project
+        from teleclaude.project_setup.init_flow import init_project  # pylint: disable=import-outside-toplevel
 
         init_project(help_desk_dir)
 

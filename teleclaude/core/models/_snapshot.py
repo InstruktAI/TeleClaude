@@ -334,7 +334,7 @@ class ProjectInfo:
             description=str(data.get("description") or data.get("desc") or ""),
             computer=cast(str | None, data.get("computer")),
             todos=[
-                TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))  # guard: loose-dict - JSON deserialization
+                TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))  # guard: loose-dict - JSON deserialization  # pylint: disable=line-too-long
             ],
         )
         # fmt: on

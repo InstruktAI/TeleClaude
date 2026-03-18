@@ -9,7 +9,9 @@ from telegramify_markdown import markdownify as _markdownify
 from teleclaude.constants import MARKDOWN_FENCE, MARKDOWN_INLINE_CODE
 
 
-class MarkdownifyFn(Protocol):
+class MarkdownifyFn(Protocol):  # pylint: disable=too-few-public-methods
+    """Callable protocol for HTML-to-markdown conversion."""
+
     def __call__(
         self,
         content: str,
@@ -240,7 +242,7 @@ def _consume_markdown_code_state(text: str, index: int, stack: list[str]) -> int
     return None
 
 
-def _consume_markdown_format_marker(text: str, index: int, stack: list[str]) -> int | None:
+def _consume_markdown_format_marker(text: str, index: int, stack: list[str]) -> int | None:  # pylint: disable=too-many-return-statements
     if text[index] == "[":
         return index + 1
     if text[index : index + 2] == "||":
@@ -401,7 +403,7 @@ def leading_balanced_markdown_v2_entity_span(text: str, max_scan_chars: int = 51
         if state == MARKDOWN_V2_INITIAL_STATE:
             # If we just closed `[text]` and the next char starts a URL
             # section (`(`), keep scanning so links are treated atomically.
-            if idx < len(text) and text[idx] == "(" and idx > 0 and text[idx - 1] == "]":
+            if 0 < idx < len(text) and text[idx] == "(" and text[idx - 1] == "]":
                 continue
             return idx
 
@@ -451,7 +453,7 @@ def _required_markdown_closers_from_state(text: str, state: MarkdownV2State) -> 
     return "".join(closers)
 
 
-def _opening_marker_for_state(marker: str) -> str:
+def _opening_marker_for_state(marker: str) -> str:  # pylint: disable=too-many-return-statements
     """Return opening marker string for a state token."""
     if marker == _STATE_SPOILER:
         return "||"
@@ -470,7 +472,7 @@ def _opening_marker_for_state(marker: str) -> str:
     return ""
 
 
-def _closing_marker_for_state(marker: str, source_text: str) -> str:
+def _closing_marker_for_state(marker: str, source_text: str) -> str:  # pylint: disable=too-many-return-statements
     """Return closing marker string for a state token."""
     if marker == _STATE_SPOILER:
         return "||"

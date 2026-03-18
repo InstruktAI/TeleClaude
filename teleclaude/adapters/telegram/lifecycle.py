@@ -31,9 +31,9 @@ from telegram.request import HTTPXRequest
 try:
     from telegram.ext import AIORateLimiter as _AIORateLimiter
 except ImportError:
-    AIORateLimiter: Any = None  # optional dependency may be absent at runtime
+    AIORateLimiter: Any = None  # pylint: disable=invalid-name  # optional dependency may be absent at runtime
 else:
-    AIORateLimiter = _AIORateLimiter
+    AIORateLimiter = _AIORateLimiter  # pylint: disable=invalid-name
 
 from teleclaude.core.events import UiCommands
 

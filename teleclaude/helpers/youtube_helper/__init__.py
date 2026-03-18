@@ -124,7 +124,7 @@ __all__ = [
 ]
 
 
-async def youtube_history(
+async def youtube_history(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-positional-arguments,too-many-statements
     query: str | None = None,
     channel: str | None = None,
     max_results: int = 20,
@@ -202,7 +202,8 @@ async def youtube_history(
                         _retry_after_refresh=True,  # Prevent infinite recursion
                     )
                 raise RuntimeError(
-                    "YouTube did not recognize the session as logged in. Run: python -m teleclaude.helpers.youtube.refresh_cookies --setup"
+                    "YouTube did not recognize the session as logged in. "
+                    "Run: python -m teleclaude.helpers.youtube.refresh_cookies --setup"
                 )
 
             entries = _parse_history_entries(data)
@@ -256,8 +257,8 @@ async def youtube_history(
     return videos
 
 
-async def youtube_subscriptions(
-    query: str | None = None,
+async def youtube_subscriptions(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-positional-arguments,too-many-statements
+    query: str | None = None,  # pylint: disable=unused-argument
     channel: str | None = None,
     max_results: int = 20,
     cookies_file: str | None = None,
@@ -448,7 +449,7 @@ def _process_video_results(results: list[list[Video]], query: str | None, char_c
     return res
 
 
-async def youtube_search(
+async def youtube_search(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Parameters are explicit for clarity. Parameters are explicit for clarity.
     channels: str | None,
     end_date: str = "",
     query: str | None = None,

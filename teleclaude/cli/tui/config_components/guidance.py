@@ -22,9 +22,11 @@ class GuidanceRegistry:
         self._populate_defaults()
 
     def register(self, field_path: str, guidance: FieldGuidance) -> None:
+        """Register guidance for a config field path."""
         self._registry[field_path] = guidance
 
     def get(self, field_path: str) -> FieldGuidance | None:
+        """Retrieve guidance for a config field path."""
         return self._registry.get(field_path)
 
     def _populate_defaults(self) -> None:

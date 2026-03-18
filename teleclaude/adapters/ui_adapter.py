@@ -223,7 +223,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             return
         try:
             await self.delete_message(session, previous_footer_id)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.debug(
                 "Best-effort stale threaded footer delete failed: session=%s message_id=%s err=%s",
                 session.session_id,
@@ -233,7 +233,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         finally:
             await self._clear_footer_message_id(session)
 
-    def drop_pending_output(self, session_id: str) -> int:
+    def drop_pending_output(self, session_id: str) -> int:  # pylint: disable=unused-argument
         """Drop pending QoS output for a session. Override in subclasses with a QoS scheduler.
 
         Returns the number of dropped items (0 by default).
@@ -338,7 +338,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """
         # No-op default implementation
 
-    async def _dispatch_command(
+    async def _dispatch_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         session: Session,
         message_id: str | None,
@@ -487,7 +487,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                 )
                 try:
                     await self.send_typing_indicator(session)
-                except Exception:
+                except (OSError, RuntimeError, ValueError):
                     logger.debug(
                         "Typing indicator failed for session %s on status %s",
                         context.session_id,
@@ -504,7 +504,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     @staticmethod
     def _format_lifecycle_status(status: str) -> str:
         """Format a lifecycle status string for platform display."""
-        _EMOJI: dict[str, str] = {
+        emoji: dict[str, str] = {
             "accepted": "⏱",
             "active": "💬",
             "active_output": "🔄",
@@ -512,8 +512,8 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             "error": "❌",
             "closed": "🔒",
         }
-        emoji = _EMOJI.get(status, "❓")
-        return f"{emoji} {status.replace('_', ' ')}"
+        icon = emoji.get(status, "❓")
+        return f"{icon} {status.replace('_', ' ')}"
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Handle session_updated event - update channel title when fields change.

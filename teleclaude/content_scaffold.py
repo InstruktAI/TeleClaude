@@ -24,11 +24,11 @@ def _derive_slug(text: str) -> str:
 def _resolve_author() -> str:
     """Resolve the current terminal auth identity, or 'unknown'."""
     try:
-        from teleclaude.cli.session_auth import read_current_session_email
+        from teleclaude.cli.session_auth import read_current_session_email  # pylint: disable=import-outside-toplevel
 
         email = read_current_session_email()
         return email or "unknown"
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return "unknown"
 
 

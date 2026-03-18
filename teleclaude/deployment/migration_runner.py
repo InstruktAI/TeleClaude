@@ -40,9 +40,11 @@ class MigrationModuleContract:
     """Runtime contract expected from migration scripts."""
 
     def check(self) -> bool:
+        """Return True if migration is needed."""
         raise NotImplementedError
 
     def migrate(self) -> bool:
+        """Execute the migration and return True on success."""
         raise NotImplementedError
 
 
@@ -167,7 +169,7 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
 
     try:
         applied = _load_state(MIGRATION_STATE_FILE)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         result["error"] = f"Failed to load migration state: {traceback.format_exc()}"
         return result
 
@@ -181,7 +183,7 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
         try:
             module = _load_migration_module(migration_path)
             already_applied = _as_bool(module.check(), migration_name, "check")
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             result["error"] = f"Migration failed: {migration_name}\n{traceback.format_exc()}"
             return result
 
@@ -193,14 +195,14 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
             migrated = _as_bool(module.migrate(), migration_name, "migrate")
             if not migrated:
                 raise RuntimeError(f"Migration returned False: {migration_name}")
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             result["error"] = f"Migration failed: {migration_name}\n{traceback.format_exc()}"
             return result
 
         applied.add(migration_name)
         try:
             _write_state(MIGRATION_STATE_FILE, applied)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             result["error"] = f"Failed to persist state after {migration_name}\n{traceback.format_exc()}"
             return result
 

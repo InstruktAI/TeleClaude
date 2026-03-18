@@ -16,7 +16,7 @@ from teleclaude.utils.transcript import parse_session_transcript
 logger = get_logger(__name__)
 
 
-class HeadlessSnapshotService:
+class HeadlessSnapshotService:  # pylint: disable=too-few-public-methods
     """Emit transcript snapshots for headless sessions."""
 
     def __init__(self) -> None:
@@ -58,7 +58,7 @@ class HeadlessSnapshotService:
                 tail_chars=0 if first_snapshot else UI_MESSAGE_MAX_CHARS,
                 escape_triple_backticks=True,
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error(
                 "Headless snapshot parse failed for session %s: %s",
                 session.session_id,
@@ -84,7 +84,7 @@ class HeadlessSnapshotService:
                 now_ts,
                 render_markdown=True,
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error(
                 "Headless snapshot send failed for session %s: %s",
                 session.session_id,

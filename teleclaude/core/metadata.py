@@ -32,7 +32,7 @@ class AdapterMetadata(BaseModel):
         None, description="Redis-specific data"
     )
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
         """Pydantic configuration."""
 
         extra = "allow"  # Allow additional platform-specific fields

@@ -34,7 +34,7 @@ def _default_correlation_config() -> Any:
 
 
 @dataclass
-class PipelineContext:
+class PipelineContext:  # pylint: disable=too-many-instance-attributes  # Attributes are explicit for runtime state.
     """Shared services and configuration available to every cartridge invocation."""
 
     catalog: EventCatalog

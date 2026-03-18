@@ -51,7 +51,7 @@ def cookies_to_netscape(cookies: list[JsonDict]) -> str:
     return "\n".join(lines)
 
 
-def setup_profile(profile_dir: Path) -> bool:
+def setup_profile(profile_dir: Path) -> bool:  # pylint: disable=too-many-statements  # Sequential pipeline is intentionally flat.
     """Interactive setup: launch browser for user to log in to YouTube.
 
     Args:
@@ -60,7 +60,9 @@ def setup_profile(profile_dir: Path) -> bool:
     Returns:
         True if setup completed successfully
     """
-    from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]
+    from playwright.sync_api import (  # pylint: disable=import-error,import-outside-toplevel
+        sync_playwright,  # type: ignore[import-not-found]
+    )
 
     profile_dir.mkdir(parents=True, exist_ok=True)
     print(f"Profile directory: {profile_dir}")
@@ -117,7 +119,7 @@ def setup_profile(profile_dir: Path) -> bool:
                     print(f"Captured {len(cookies)} cookies - AUTH DETECTED: {found}")
                 else:
                     print(f"Captured {len(cookies)} cookies (no auth yet): {list(cookie_names)[:5]}...")
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
         # Capture cookies periodically and on close
@@ -127,7 +129,7 @@ def setup_profile(profile_dir: Path) -> bool:
             while len(context.pages) > 0:
                 capture_cookies()  # type: ignore[no-untyped-call]
                 time.sleep(2)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         # Final capture attempt
@@ -164,7 +166,9 @@ def refresh_cookies(
     Returns:
         True if successful
     """
-    from playwright.sync_api import sync_playwright  # type: ignore[unused-ignore]
+    from playwright.sync_api import (  # pylint: disable=import-error,import-outside-toplevel
+        sync_playwright,  # type: ignore[unused-ignore]
+    )
 
     if not profile_dir.exists():
         print(f"Error: Profile not found at {profile_dir}", file=sys.stderr)
@@ -193,7 +197,7 @@ def refresh_cookies(
         print("Navigating to youtube.com...")
         try:
             page.goto("https://www.youtube.com", timeout=timeout, wait_until="networkidle")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Navigation warning (may still work): {e}", file=sys.stderr)
 
         # Wait for cookie rotation
@@ -229,6 +233,7 @@ def refresh_cookies(
 
 
 def main():  # type: ignore[no-untyped-def]
+    """CLI entrypoint for refreshing YouTube cookies via Playwright."""
     parser = argparse.ArgumentParser(
         description="Refresh YouTube cookies via Playwright",
         epilog="First run with --setup to log in, then run without flags to refresh.",

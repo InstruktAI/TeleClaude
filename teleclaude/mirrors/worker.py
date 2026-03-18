@@ -43,6 +43,8 @@ __all__ = ["MirrorWorker", "ReconcileResult", "TranscriptCandidate"]
 
 @dataclass
 class ReconcileResult:
+    """Outcome counters from a single reconciliation pass."""
+
     discovered: int
     processed: int
     failed: int
@@ -101,16 +103,19 @@ class MirrorWorker:
     def _log_reconcile_result(self, result: ReconcileResult, wal_before_kb: int, wal_after_kb: int) -> None:
         logger.info(
             "mirror.reconciliation.complete "
-            f"discovered={result.discovered} "
-            f"processed={result.processed} "
-            f"failed={result.failed} "
-            f"skipped_unchanged={result.skipped_unchanged} "
-            f"duration_s={result.duration_s:.3f} "
-            f"wal_before_kb={wal_before_kb} "
-            f"wal_after_kb={wal_after_kb}"
+            "discovered=%d processed=%d failed=%d "
+            "skipped_unchanged=%d duration_s=%.3f "
+            "wal_before_kb=%d wal_after_kb=%d",
+            result.discovered,
+            result.processed,
+            result.failed,
+            result.skipped_unchanged,
+            result.duration_s,
+            wal_before_kb,
+            wal_after_kb,
         )
 
-    def _reconcile_sync(self) -> ReconcileResult:
+    def _reconcile_sync(self) -> ReconcileResult:  # pylint: disable=too-many-locals
         """Reconcile all known transcripts once."""
         wal_before_kb = self._wal_size_kb()
         started_at = perf_counter()
@@ -220,7 +225,7 @@ class MirrorWorker:
         while True:
             try:
                 await self.run_once()
-            except asyncio.CancelledError:
+            except asyncio.CancelledError:  # pylint: disable=try-except-raise
                 raise
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.error("Mirror reconciliation cycle failed: %s", exc, exc_info=True)

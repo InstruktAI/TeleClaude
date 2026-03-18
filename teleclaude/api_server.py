@@ -3,6 +3,8 @@
 This server provides HTTP endpoints for local clients (telec CLI, etc.)
 and routes write requests through AdapterClient.
 """
+# pylint: disable=import-outside-toplevel,too-many-instance-attributes,too-many-locals,too-many-statements
+# pylint: disable=too-many-arguments,too-many-positional-arguments,broad-exception-caught,protected-access
 
 from __future__ import annotations
 
@@ -364,16 +366,16 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     def _setup_routes(self) -> None:
         """Set up core HTTP endpoints (middleware, health, auth, todos, WebSocket)."""
 
-        _IDENTITY_HEADERS = {"x-web-user-email", "x-web-user-name", "x-web-user-role"}
-        _TRUSTED_HOSTS = {"127.0.0.1", "::1", "localhost"}
+        identity_headers = {"x-web-user-email", "x-web-user-name", "x-web-user-role"}
+        trusted_hosts = {"127.0.0.1", "::1", "localhost"}
 
         @self.app.middleware("http")
         async def _validate_identity_headers(request, call_next):  # type: ignore[no-untyped-def]
             """Reject identity headers from non-trusted sources."""
-            has_identity = any(h in _IDENTITY_HEADERS for h in request.headers)
+            has_identity = any(h in identity_headers for h in request.headers)
             if has_identity:
                 client_host = request.client.host if request.client else None
-                is_trusted = client_host in _TRUSTED_HOSTS or client_host is None or client_host == ""
+                is_trusted = client_host in trusted_hosts or client_host is None or client_host == ""
                 if not is_trusted:
                     logger.warning(
                         "Rejected identity headers from untrusted source: %s",
@@ -598,7 +600,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         self._cleanup_socket("start_server")
 
-        config = uvicorn.Config(
+        config = uvicorn.Config(  # pylint: disable=redefined-outer-name
             self.app,
             uds=self.socket_path,
             log_level="warning",

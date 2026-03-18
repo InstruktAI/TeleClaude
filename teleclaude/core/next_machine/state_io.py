@@ -67,7 +67,7 @@ def _get_head_commit(cwd: str) -> str:
         repo = Repo(cwd)
         result: str = repo.git.rev_parse("HEAD").strip()
         return result
-    except (GitCommandError, Exception):
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
         return ""
 
 
@@ -77,7 +77,7 @@ def _get_ref_commit(cwd: str, ref: str) -> str:
         repo = Repo(cwd)
         result: str = repo.git.rev_parse(ref).strip()
         return result
-    except (GitCommandError, Exception):
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
         return ""
 
 
@@ -86,7 +86,7 @@ def _get_remote_branch_head(cwd: str, branch: str) -> str:
     try:
         repo = Repo(cwd)
         output = repo.git.ls_remote("origin", f"refs/heads/{branch}").strip()
-    except (GitCommandError, Exception):
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
         return ""
     parts = output.split()
     return parts[0] if parts else ""
@@ -164,7 +164,7 @@ def _deep_merge_state(defaults: dict[str, StateValue], persisted: dict[str, Stat
                 merged_nested: dict[str, StateValue] = copy.deepcopy(default_val)
                 for nested_key, nested_val in value.items():
                     if isinstance(merged_nested.get(nested_key), dict) and isinstance(nested_val, dict):
-                        inner: dict[str, StateValue] = copy.deepcopy(merged_nested[nested_key])  # type: ignore[arg-type]
+                        inner: dict[str, StateValue] = copy.deepcopy(merged_nested[nested_key])  # type: ignore[arg-type]  # pylint: disable=line-too-long
                         inner.update(nested_val)
                         merged_nested[nested_key] = inner
                     else:
@@ -339,7 +339,7 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
 
     if status == PreparePhase.PREPARED.value:
         grounding = state.get("grounding", {})
-        grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+        grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
         rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
         if rc == 0 and current_sha.strip():
             grounding_dict["base_sha"] = current_sha.strip()
@@ -363,7 +363,7 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
     FINALIZE_READY. The record becomes the single source of truth consumed by
     the subsequent slug-specific `telec todo work {slug}` handoff step.
     """
-    from teleclaude.core.next_machine.git_ops import has_uncommitted_changes  # lazy: avoids circular dep
+    from teleclaude.core.next_machine.git_ops import has_uncommitted_changes  # lazy: avoids circular dep  # noqa: I001  # pylint: disable=import-outside-toplevel
 
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not Path(worktree_cwd).exists():
@@ -711,7 +711,7 @@ def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, S
 
     artifact_file = _PREPARE_ARTIFACT_FILES.get(artifact_key)
     if artifact_file is not None:
-        from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
+        from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced  # noqa: I001  # pylint: disable=import-outside-toplevel
 
         record_artifact_produced(cwd, slug, artifact_file)
         return read_phase_state(cwd, slug)

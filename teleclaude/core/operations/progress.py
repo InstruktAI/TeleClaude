@@ -19,8 +19,8 @@ def emit_operation_progress(phase: str, decision: str, reason: str) -> None:
     if callback is not None:
         try:
             callback(phase, decision, reason)
-        except Exception:
-            return
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
 
 
 def set_operation_progress_callback(callback: ProgressCallback | None) -> Token[ProgressCallback | None]:

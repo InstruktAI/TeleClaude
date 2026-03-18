@@ -60,7 +60,7 @@ async def send_discord_dm(
         if dm_response.status_code >= 400:
             try:
                 detail = dm_response.json().get("message") or dm_response.text[:200]
-            except Exception:
+            except (ValueError, KeyError):
                 detail = dm_response.text[:200]
             raise RuntimeError(f"Discord create DM channel failed (HTTP {dm_response.status_code}): {detail}")
 
@@ -76,7 +76,7 @@ async def send_discord_dm(
     if msg_response.status_code >= 400:
         try:
             detail = msg_response.json().get("message") or msg_response.text[:200]
-        except Exception:
+        except (ValueError, KeyError):
             detail = msg_response.text[:200]
         raise RuntimeError(f"Discord send message failed (HTTP {msg_response.status_code}): {detail}")
 

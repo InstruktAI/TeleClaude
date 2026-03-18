@@ -5,10 +5,10 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 
-class Pyttsx3Backend:
+class Pyttsx3Backend:  # pylint: disable=too-few-public-methods
     """pyttsx3 offline TTS - always available fallback."""
 
-    def speak(self, text: str, voice_name: str | None = None) -> bool:
+    def speak(self, text: str, voice_name: str | None = None) -> bool:  # pylint: disable=unused-argument
         """
         Speak text using pyttsx3 (offline).
 
@@ -20,7 +20,7 @@ class Pyttsx3Backend:
             True if successful, False otherwise
         """
         try:
-            import pyttsx3  # type: ignore[import-not-found]
+            import pyttsx3  # pylint: disable=import-outside-toplevel  # type: ignore[import-not-found]
 
             engine = pyttsx3.init()
             engine.setProperty("rate", 180)  # Words per minute
@@ -28,11 +28,11 @@ class Pyttsx3Backend:
             engine.say(text)
             engine.runAndWait()
 
-            logger.debug(f"pyttsx3: spoke {len(text)} chars (offline)")
+            logger.debug(f"pyttsx3: spoke {len(text)} chars (offline)")  # pylint: disable=logging-fstring-interpolation
             return True
         except ImportError:
             logger.debug("pyttsx3 library not installed")
             return False
-        except Exception as e:
-            logger.debug(f"pyttsx3 failed: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.debug(f"pyttsx3 failed: {e}")  # pylint: disable=logging-fstring-interpolation
             return False

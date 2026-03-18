@@ -1,3 +1,5 @@
+"""Extract and normalize required-read refs from markdown content."""
+
 from __future__ import annotations
 
 import re

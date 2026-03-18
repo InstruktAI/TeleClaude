@@ -135,11 +135,14 @@ def scaffold_personal_workspace(person_name: str) -> Path:
 
 def bind_discord_credentials(person_name: str, discord_user_id: str) -> None:
     """Bind Discord credentials to person config."""
-    from teleclaude.cli.config_handlers import get_person_config, save_person_config
+    from teleclaude.cli.config_handlers import (  # pylint: disable=import-outside-toplevel
+        get_person_config,
+        save_person_config,
+    )
 
     person_config = get_person_config(person_name)
     if not person_config.creds.discord:
-        from teleclaude.config.schema import DiscordCreds
+        from teleclaude.config.schema import DiscordCreds  # pylint: disable=import-outside-toplevel
 
         person_config.creds.discord = DiscordCreds(user_id=discord_user_id)
     else:
@@ -151,7 +154,7 @@ def bind_discord_credentials(person_name: str, discord_user_id: str) -> None:
 # --- Email Delivery ---
 
 
-async def send_invite_email(
+async def send_invite_email(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
     name: str,
     email: str,
     links: dict[str, str | None],
@@ -237,7 +240,7 @@ async def send_invite_email(
     )
 
     # Send email
-    from teleclaude.services.email import send_email
+    from teleclaude.services.email import send_email  # pylint: disable=import-outside-toplevel
 
     subject = f"Welcome to {org_name} — Your Personal AI Assistant"
     await send_email(email, subject, html_body, text_body)

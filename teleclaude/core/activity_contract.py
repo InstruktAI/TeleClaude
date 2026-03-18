@@ -50,7 +50,7 @@ HOOK_TO_CANONICAL: dict[str, CanonicalActivityEventType] = {
 
 
 @dataclass(frozen=True)
-class CanonicalActivityEvent:
+class CanonicalActivityEvent:  # pylint: disable=too-many-instance-attributes
     """Canonical outbound activity event for all consumer adapters.
 
     Carries all required identity/routing fields plus event-specific payload.
@@ -103,7 +103,7 @@ def _validate_canonical_event(event: CanonicalActivityEvent) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def serialize_activity_event(
+def serialize_activity_event(  # pylint: disable=too-many-arguments
     session_id: str,
     hook_event_type: str,
     timestamp: str,

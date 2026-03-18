@@ -157,7 +157,7 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
     return True
 
 
-def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tuple[bool, str]:
+def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tuple[bool, str]:  # pylint: disable=too-many-return-statements
     """Commit bookkeeping files on main and best-effort push.
 
     Safe to call from any context — returns early if not on the main branch.

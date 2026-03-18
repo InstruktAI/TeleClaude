@@ -28,6 +28,8 @@ class SessionDisplayInfo:
 
 @dataclass
 class ComputerNode:
+    """A tree node representing a computer."""
+
     type: NodeType
     data: ComputerDisplayInfo
     depth: int
@@ -37,6 +39,8 @@ class ComputerNode:
 
 @dataclass
 class ProjectNode:
+    """A tree node representing a project."""
+
     type: NodeType
     data: ProjectInfo
     depth: int
@@ -46,6 +50,8 @@ class ProjectNode:
 
 @dataclass
 class SessionNode:
+    """A tree node representing a session."""
+
     type: NodeType
     data: SessionDisplayInfo
     depth: int
@@ -91,7 +97,7 @@ def _same_project(path_a: str | None, path_b: str | None) -> bool:
     return _base_project_path(path_a) == _base_project_path(path_b)
 
 
-def build_tree(
+def build_tree(  # pylint: disable=too-many-locals,too-many-branches
     computers: list[ComputerDisplayInfo],
     projects: list[ProjectInfo],
     sessions: list[SessionInfo],

@@ -3,6 +3,8 @@
 Registers Discord gateway events (on_ready, on_message, thread delete/update)
 and the /cancel slash command.
 """
+# pylint: disable=import-outside-toplevel,too-many-locals,too-many-branches,too-many-return-statements,too-many-statements
+# pylint: disable=not-callable,assignment-from-no-return,function-redefined,unexpected-keyword-arg,broad-exception-caught
 
 from __future__ import annotations
 
@@ -26,7 +28,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class GatewayHandlersMixin:
+class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
     """Mixin providing Discord gateway event registration and handlers for DiscordAdapter.
 
     Required host attributes:
@@ -84,10 +86,12 @@ class GatewayHandlersMixin:
 
         _ready_event: asyncio.Event
 
-        def _parse_optional_int(self, value: object) -> int | None: ...
+        def _parse_optional_int(self, value: object) -> int | None: ...  # pylint: disable=unused-argument
 
         @staticmethod
-        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
+        def _require_async_callable(  # pylint: disable=unused-argument
+            fn: object, *, label: str
+        ) -> Callable[..., Awaitable[object]]: ...
 
         @property
         def _multi_agent(self) -> bool: ...
@@ -96,40 +100,52 @@ class GatewayHandlersMixin:
 
         async def _ensure_discord_infrastructure(self) -> None: ...
 
-        async def _post_or_update_launcher(self, forum_id: int) -> None: ...
+        async def _post_or_update_launcher(self, forum_id: int) -> None: ...  # pylint: disable=unused-argument
 
-        async def _handle_discord_dm(self, message: object) -> None: ...
+        async def _handle_discord_dm(self, message: object) -> None: ...  # pylint: disable=unused-argument
 
-        async def _handle_relay_thread_message(self, message: object, text: str) -> None: ...
+        async def _handle_relay_thread_message(  # pylint: disable=unused-argument
+            self, message: object, text: str
+        ) -> None: ...
 
-        def _is_managed_message(self, message: object) -> bool: ...
+        def _is_managed_message(self, message: object) -> bool: ...  # pylint: disable=unused-argument
 
-        def _is_help_desk_thread(self, message: object) -> bool: ...
+        def _is_help_desk_thread(self, message: object) -> bool: ...  # pylint: disable=unused-argument
 
-        def _is_bot_message(self, message: object) -> bool: ...
+        def _is_bot_message(self, message: object) -> bool: ...  # pylint: disable=unused-argument
 
-        def _extract_audio_attachment(self, message: object) -> object | None: ...
+        def _extract_audio_attachment(self, message: object) -> object | None: ...  # pylint: disable=unused-argument
 
-        def _extract_file_attachments(self, message: object) -> list[object]: ...
+        def _extract_file_attachments(self, message: object) -> list[object]: ...  # pylint: disable=unused-argument
 
-        async def _handle_voice_attachment(self, message: object, attachment: object) -> None: ...
+        async def _handle_voice_attachment(  # pylint: disable=unused-argument
+            self, message: object, attachment: object
+        ) -> None: ...
 
-        async def _handle_file_attachments(self, message: object, attachments: list[object]) -> None: ...
+        async def _handle_file_attachments(  # pylint: disable=unused-argument
+            self, message: object, attachments: list[object]
+        ) -> None: ...
 
-        async def _resolve_or_create_session(self, message: object) -> Session | None: ...
+        async def _resolve_or_create_session(  # pylint: disable=unused-argument
+            self, message: object
+        ) -> Session | None: ...
 
-        async def _forward_to_relay_thread(self, session: object, text: str, message: object) -> None: ...
+        async def _forward_to_relay_thread(  # pylint: disable=unused-argument
+            self, session: object, text: str, message: object
+        ) -> None: ...
 
-        async def _handle_cancel_slash(self, interaction: object) -> None: ...
+        async def _handle_cancel_slash(  # pylint: disable=unused-argument
+            self, interaction: object
+        ) -> None: ...
 
         @staticmethod
-        def _is_customer_session(session: object) -> bool: ...
+        def _is_customer_session(session: object) -> bool: ...  # pylint: disable=unused-argument
 
         @staticmethod
-        def _discord_actor_name(author: object, user_id: str) -> str: ...
+        def _discord_actor_name(author: object, user_id: str) -> str: ...  # pylint: disable=unused-argument
 
         @staticmethod
-        def _discord_actor_avatar_url(author: object) -> str | None: ...
+        def _discord_actor_avatar_url(author: object) -> str | None: ...  # pylint: disable=unused-argument
 
     # =========================================================================
     # Slash Command Registration
@@ -205,7 +221,7 @@ class GatewayHandlersMixin:
         # Auto-provision Discord infrastructure (category + forums)
         try:
             await self._ensure_discord_infrastructure()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Discord infrastructure provisioning failed: %s", exc)
 
         if self._tree is not None and self._guild_id is not None:

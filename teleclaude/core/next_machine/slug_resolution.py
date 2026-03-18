@@ -208,7 +208,7 @@ def resolve_canonical_project_root(cwd: str) -> str:
     try:
         repo = Repo(cwd)
         raw_common_dir = repo.git.rev_parse("--git-common-dir").strip()
-    except (GitCommandError, Exception):
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
         return cwd
     if not raw_common_dir:
         return cwd

@@ -3,6 +3,7 @@
 Handles auto-provisioning of Discord channels, categories, forums, launcher
 messages, project forum mapping, team channels, and config persistence.
 """
+# pylint: disable=import-outside-toplevel,too-many-locals,too-many-branches,too-many-statements,broad-exception-caught
 
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
+class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disable=too-many-instance-attributes
     """Mixin providing Discord channel infrastructure provisioning for DiscordAdapter.
 
     Required host attributes:
@@ -70,7 +71,9 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         @property
         def _multi_agent(self) -> bool: ...
 
-        async def _handle_launcher_click(self, interaction: object, agent_name: str) -> None: ...
+        async def _handle_launcher_click(  # pylint: disable=unused-argument
+            self, interaction: object, agent_name: str,
+        ) -> None: ...
 
     # =========================================================================
     # Channel Validation
@@ -202,7 +205,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             self._persist_discord_channel_ids(changes)
             logger.info("Discord infrastructure provisioned: %s", list(changes.keys()))
 
-    async def _ensure_category(
+    async def _ensure_category(  # pylint: disable=too-many-arguments
         self,
         guild: object,
         name: str,
@@ -506,7 +509,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         if project_changes:
             self._persist_project_forum_ids(project_changes)
 
-    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel edit dict; a TypedDict would need discord-py types
+    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel edit dict
     async def _sync_project_forum_positions(self, category: object | None) -> None:
         """Move forums into the category and set positions to match trusted_dirs order.
 

@@ -144,7 +144,7 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
     phase: Annotated[str, Body()],
     status: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_mark_phase),
+    _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
     force: Annotated[bool, Body()] = False,
 ) -> dict[str, str]:
     """Mark a work phase as complete/approved in state.yaml.
@@ -228,7 +228,7 @@ async def todo_mark_finalize_ready(  # pyright: ignore
     slug: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
     worker_session_id: Annotated[str, Body()] = "",
-    identity: CallerIdentity = Depends(clearance_todos_mark_phase),
+    _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
 ) -> dict[str, str]:
     """Record durable finalize readiness in worktree state.yaml.
 
@@ -257,7 +257,7 @@ async def todo_set_deps(  # pyright: ignore
     slug: Annotated[str, Body()],
     after: Annotated[list[str], Body()],
     cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_set_deps),
+    _identity: CallerIdentity = Depends(clearance_todos_set_deps),
 ) -> dict[str, str]:
     """Set dependencies for a work item in the roadmap.
 

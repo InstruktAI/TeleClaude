@@ -72,7 +72,7 @@ __all__ = [
     "handle_sessions_tail",
     "handle_sessions_unsubscribe",
     "handle_sessions_widget",
-    # todo + operations
+    # --- todo and operations ---
     "handle_todo_create",
     "handle_todo_integrate",
     "handle_todo_mark_finalize_ready",

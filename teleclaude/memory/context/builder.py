@@ -26,7 +26,7 @@ async def generate_context(project: str, identity_key: str | None = None) -> str
         timeline = compile_timeline(observations, summaries)
         timeline = filter_by_recency(timeline)
         return render_context(timeline)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to generate memory context", project=project, exc_info=True)
         return ""
 
@@ -65,7 +65,7 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
         timeline = compile_timeline(observations, summaries)
         timeline = filter_by_recency(timeline)
         return render_context(timeline)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to generate memory context (sync)", project=project, exc_info=True)
         return ""
 
@@ -74,7 +74,7 @@ async def _get_recent_observations(
     project: str, limit: int = 50, identity_key: str | None = None
 ) -> list[db_models.MemoryObservation]:
     """Fetch recent observations for a project, optionally scoped by identity."""
-    async with db._session() as session:
+    async with db._session() as session:  # pylint: disable=protected-access
         sql = "SELECT * FROM memory_observations WHERE project = :project"
         params: dict[str, str | int] = {"project": project, "limit": limit}
         if identity_key:
@@ -88,7 +88,7 @@ async def _get_recent_observations(
 
 async def _get_recent_summaries(project: str, limit: int = 5) -> list[db_models.MemorySummary]:
     """Fetch recent summaries for a project."""
-    async with db._session() as session:
+    async with db._session() as session:  # pylint: disable=protected-access
         result = await session.exec(  # type: ignore[call-overload]
             text(
                 "SELECT * FROM memory_summaries WHERE project = :project ORDER BY created_at_epoch DESC LIMIT :limit"
@@ -101,7 +101,7 @@ async def _get_recent_summaries(project: str, limit: int = 5) -> list[db_models.
 def _row_to_observation(row: object) -> db_models.MemoryObservation:
     """Convert a raw SQL row to MemoryObservation."""
     if hasattr(row, "_mapping"):
-        m = row._mapping
+        m = row._mapping  # pylint: disable=protected-access
         return db_models.MemoryObservation(**dict(m))
     if isinstance(row, tuple):
         return db_models.MemoryObservation(
@@ -128,7 +128,7 @@ def _row_to_observation(row: object) -> db_models.MemoryObservation:
 def _row_to_summary(row: object) -> db_models.MemorySummary:
     """Convert a raw SQL row to MemorySummary."""
     if hasattr(row, "_mapping"):
-        m = row._mapping
+        m = row._mapping  # pylint: disable=protected-access
         return db_models.MemorySummary(**dict(m))
     if isinstance(row, tuple):
         return db_models.MemorySummary(

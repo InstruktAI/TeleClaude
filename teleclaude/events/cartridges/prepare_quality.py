@@ -32,6 +32,8 @@ _TRIGGER_EVENTS = {
 
 
 class RequirementsScoreResult(TypedDict):
+    """Score result for requirements quality assessment."""
+
     dimensions: dict[str, int]
     gaps: list[str]
     raw: int
@@ -39,6 +41,8 @@ class RequirementsScoreResult(TypedDict):
 
 
 class PlanScoreResult(TypedDict):
+    """Score result for implementation plan quality assessment."""
+
     dimensions: dict[str, int]
     gaps: list[str]
     contradictions: list[str]
@@ -112,7 +116,7 @@ def score_requirements(content: str) -> RequirementsScoreResult:
     return {"dimensions": dims, "gaps": gaps, "raw": sum(dims.values()), "max": 8}
 
 
-def score_plan(content: str, requirements: str) -> PlanScoreResult:
+def score_plan(content: str, requirements: str) -> PlanScoreResult:  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
     """Score implementation-plan.md against DOR rubric. Returns scores and gaps."""
     dims: dict[str, int] = {}
     gaps: list[str] = []
@@ -295,14 +299,14 @@ def _get_todo_commit(slug: str, project_root: Path) -> str:
     Returns 'unknown' on failure; callers must not treat consecutive 'unknown'
     values as idempotency evidence (see _assess idempotency guard).
     """
-    from teleclaude.git import Repo
+    from teleclaude.git import Repo  # pylint: disable=import-outside-toplevel
 
     todo_path = f"todos/{slug}/"
     try:
         repo = Repo(str(project_root))
         result = repo.git.log("-1", "--format=%h", "--", todo_path)
         return result.strip() or "unknown"
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("prepare-quality: git log failed for todo", slug=slug)
         return "unknown"
 
@@ -321,7 +325,7 @@ def _write_state_yaml(state_path: Path, state: dict[str, StateValue]) -> None:
     state_path.write_text(yaml.safe_dump(state, default_flow_style=False, sort_keys=False))
 
 
-def _write_dor_report(
+def _write_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
     report_path: Path,
     slug: str,
     score: int,
@@ -386,12 +390,16 @@ def _find_project_root() -> Path:
 
 
 class PrepareQualityCartridge:
+    """Cartridge that assesses prepare-phase artifact quality (DOR scoring)."""
+
     name = "prepare-quality"
 
     def describe(self) -> str:
+        """Return cartridge name."""
         return self.name
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Assess prepare-phase artifact quality when planning events arrive."""
         # Pass through non-planning events immediately
         if not event.event.startswith(_PLANNING_PREFIX):
             return event
@@ -406,7 +414,7 @@ class PrepareQualityCartridge:
         start = time.monotonic()
         try:
             await self._assess(slug, event, context)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("prepare-quality: assessment failed", slug=slug, event=event.event)
         elapsed = time.monotonic() - start
         if elapsed > 2.0:
@@ -414,7 +422,9 @@ class PrepareQualityCartridge:
 
         return event
 
-    async def _assess(self, slug: str, _event: EventEnvelope, context: PipelineContext) -> None:
+    async def _assess(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+        self, slug: str, _event: EventEnvelope, context: PipelineContext
+    ) -> None:
         project_root = _find_project_root()
         todo_dir = project_root / "todos" / slug
 

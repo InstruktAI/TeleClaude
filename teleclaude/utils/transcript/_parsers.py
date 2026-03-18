@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import cast
 
 
-def _extract_codex_reasoning_text(
+def _extract_codex_reasoning_text(  # pylint: disable=too-many-branches
     payload: Mapping[str, object],  # guard: loose-dict - External payload
 ) -> str:
     """Extract displayable reasoning text from a Codex reasoning payload."""
@@ -49,7 +49,7 @@ def _extract_codex_reasoning_text(
     return "\n\n".join(deduped)
 
 
-def normalize_transcript_entry_message(
+def normalize_transcript_entry_message(  # pylint: disable=too-many-return-statements
     entry: Mapping[str, object],  # guard: loose-dict - External entry
 ) -> dict[str, object] | None:  # guard: loose-dict - Normalized message
     """Normalize transcript entry variants into a message-like dict.

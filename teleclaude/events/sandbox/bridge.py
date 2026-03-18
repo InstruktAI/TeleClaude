@@ -34,6 +34,7 @@ class SandboxBridgeCartridge:
     name = "sandbox-bridge"
 
     def describe(self) -> str:
+        """Return cartridge name."""
         return self.name
 
     def __init__(self, manager: SandboxContainerManager) -> None:

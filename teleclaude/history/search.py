@@ -22,6 +22,8 @@ BASE_URL = "http://localhost"
 
 
 class RemoteComputerPayload(TypedDict, total=False):
+    """Payload describing a remote computer for history queries."""
+
     name: str
     host: str | None
     is_local: bool
@@ -29,6 +31,8 @@ class RemoteComputerPayload(TypedDict, total=False):
 
 
 class RemoteMirrorRow(TypedDict, total=False):
+    """Single row from a remote mirror search result."""
+
     session_id: str
     computer: str
     agent: str
@@ -40,6 +44,8 @@ class RemoteMirrorRow(TypedDict, total=False):
 
 
 class RemoteSearchPayload(TypedDict):
+    """Payload wrapping remote search results from a computer."""
+
     computer: str
     rows: list[RemoteMirrorRow]
 
@@ -226,7 +232,7 @@ def display_combined_history(
     _print_results(search_term, local_results, show_computer=False, limit=limit)
 
 
-def show_transcript(
+def show_transcript(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
     agents: list[AgentName],
     session_id: str,
     tail_chars: int = 0,

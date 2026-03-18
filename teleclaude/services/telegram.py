@@ -15,7 +15,7 @@ DEFAULT_MESSAGE_MAX_LENGTH = 4000
 DEFAULT_CAPTION_MAX_LENGTH = 1024
 
 
-async def send_telegram_dm(
+async def send_telegram_dm(  # pylint: disable=too-many-locals
     chat_id: str,
     content: str,
     file: str | None = None,
@@ -67,7 +67,7 @@ async def send_telegram_dm(
         try:
             payload = response.json()
             detail = payload.get("description") or response.text[:200]
-        except Exception:
+        except (ValueError, KeyError):
             detail = response.text[:200]
         raise RuntimeError(f"Telegram send failed (HTTP {response.status_code}): {detail}")
 

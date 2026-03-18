@@ -230,8 +230,8 @@ async def compose_agent_guidance(db: Db) -> str:
     into every agent's context. This function only adds runtime availability
     information (enabled/disabled, degraded status).
     """
-    from teleclaude.config import config as app_config
-    from teleclaude.core.agents import AgentName
+    from teleclaude.config import config as app_config  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.agents import AgentName  # pylint: disable=import-outside-toplevel
 
     lines = ["AGENT SELECTION GUIDANCE:"]
     lines.append("")
