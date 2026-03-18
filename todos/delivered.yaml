@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: auto-commit-bookkeeping
+  date: '2026-03-18'
+  commit: 88b54b81e647
 - slug: main-cleanup
   date: '2026-03-18'
   commit: cb71c0b89852
