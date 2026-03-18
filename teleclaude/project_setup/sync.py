@@ -5,8 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import teleclaude.sync as teleclaude_sync
-
 from teleclaude.paths import REPO_ROOT
 
 
@@ -16,6 +14,8 @@ def sync_project_artifacts(project_root: Path) -> None:
     Args:
         project_root: Path to the project root directory.
     """
+    from teleclaude import sync as teleclaude_sync  # pylint: disable=import-outside-toplevel,ungrouped-imports
+
     ok = teleclaude_sync.sync(project_root, warn_only=True)
     if not ok:
         print("telec init: sync completed with warnings.")
