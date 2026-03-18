@@ -48,9 +48,11 @@
 - slug: mark-phase-force
 - slug: telec-message-primitive
 - slug: fix-tui-preview-race
-- slug: pylint-cleanup-8
-- slug: pylint-cleanup-7
-- slug: pylint-cleanup-4
-- slug: pylint-cleanup-6
-- slug: pylint-cleanup-5
+- slug: pylint-cleanup-1
+- slug: pylint-cleanup-2
 - slug: pylint-cleanup-3
+- slug: pylint-cleanup-4
+- slug: pylint-cleanup-5
+- slug: pylint-cleanup-6
+- slug: pylint-cleanup-7
+- slug: pylint-cleanup-8
