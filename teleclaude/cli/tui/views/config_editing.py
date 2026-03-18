@@ -21,6 +21,7 @@ from teleclaude.cli.tui.views._config_constants import (
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
+    from teleclaude.config.schema import PersonEntry  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
 
 class ConfigContentEditingMixin:  # pylint: disable=too-many-instance-attributes
@@ -28,6 +29,8 @@ class ConfigContentEditingMixin:  # pylint: disable=too-many-instance-attributes
 
     if TYPE_CHECKING:
         _adapter_sections: list[AdapterSectionProjection]
+        _env_data: list[EnvVarStatus]
+        _people_data: list[PersonEntry]
 
     def move_cursor(self, delta: int) -> None:
         """Move the cursor within the active config section."""
@@ -122,7 +125,9 @@ class ConfigContentEditingMixin:  # pylint: disable=too-many-instance-attributes
         """Enter edit mode for a specific field on the expanded person."""
         self._editing_person_field = field  # type: ignore[attr-defined]
         self._edit_buffer = str(getattr(person, field, "") or "")  # type: ignore[attr-defined]
-        self._status_message = f"Editing {getattr(person, 'name', '')}.{field}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
+        self._status_message = (
+            f"Editing {getattr(person, 'name', '')}.{field}. Enter saves, Esc cancels."
+        )  # type: ignore[attr-defined]
         self._status_is_error = False  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
 

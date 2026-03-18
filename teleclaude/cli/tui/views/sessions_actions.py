@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import time
-
-from textual.widget import Widget
+from typing import TYPE_CHECKING, Any
 
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
@@ -30,6 +29,9 @@ from teleclaude.cli.tui.widgets.modals import (
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
+if TYPE_CHECKING:
+    from textual.widget import Widget  # pylint: disable=import-outside-toplevel,ungrouped-imports
+
 # Double-press detection threshold (seconds)
 DOUBLE_PRESS_THRESHOLD = 0.65
 MAX_STICKY = 5
@@ -39,7 +41,12 @@ class SessionsViewActionsMixin:
     """Keyboard actions, check_action, watch_cursor_index, on_focus for SessionsView."""
 
     cursor_index = 0
-    _nav_items: list[Widget]
+
+    if TYPE_CHECKING:
+        app: Any
+        _nav_items: list[Widget]
+        _projects: list[Any]
+        _sessions: list[Any]
 
     def action_cursor_up(self) -> None:
         """Move the cursor to the previous sessions tree item."""

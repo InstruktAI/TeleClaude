@@ -5,8 +5,6 @@ from __future__ import annotations
 import subprocess
 from typing import Protocol
 
-from textual.app import App
-
 
 class NewProjectResultLike(Protocol):  # pylint: disable=too-few-public-methods
     """Duck-typed project modal result used by the view helpers."""
@@ -16,7 +14,14 @@ class NewProjectResultLike(Protocol):  # pylint: disable=too-few-public-methods
     description: str | None
 
 
-def save_new_project(app: App, result: NewProjectResultLike) -> bool:
+class ProjectNotifier(Protocol):  # pylint: disable=too-few-public-methods
+    """Minimal notification protocol needed by project action helpers."""
+
+    def notify(self, message: str, *, severity: str = "information") -> None:
+        """Notify the user of a project action result."""
+
+
+def save_new_project(app: ProjectNotifier, result: NewProjectResultLike) -> bool:
     """Persist a new trusted project and notify the user about the outcome."""
     yaml_patch = f"computer:\n  trusted_dirs:\n    - name: {result.name}\n      path: {result.path}\n"
     if result.description:

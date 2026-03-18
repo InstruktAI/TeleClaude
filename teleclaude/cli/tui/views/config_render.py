@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from rich.style import Style
 from rich.text import Text
 
+from teleclaude.cli.config_handlers import EnvVarStatus
 from teleclaude.cli.tui.views._config_constants import (
     _DIM,
     _FAIL,
@@ -23,9 +26,23 @@ from teleclaude.cli.tui.views._config_constants import (
     get_guidance_for_env,
 )
 
+if TYPE_CHECKING:
+    from teleclaude.cli.tui.views._config_constants import (
+        AdapterSectionProjection,
+        NotificationProjection,
+    )
+    from teleclaude.config.schema import PersonEntry  # pylint: disable=import-outside-toplevel,ungrouped-imports
+
 
 class ConfigContentRenderMixin:
     """Rendering, on_click, and watch_* methods for ConfigContent."""
+
+    if TYPE_CHECKING:
+        _adapter_sections: list[AdapterSectionProjection]
+        _env_data: list[EnvVarStatus]
+        _guided_step_index: int
+        _notification_projection: NotificationProjection
+        _people_data: list[PersonEntry]
 
     def _render_guidance(self, result: Text, env_name: str) -> None:
         """Render inline guidance block for the given env var."""

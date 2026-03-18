@@ -10,7 +10,6 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
-from textual.timer import Timer
 from textual.widget import Widget
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
@@ -46,6 +45,7 @@ from teleclaude.cli.tui.widgets.session_row import SessionRow
 if TYPE_CHECKING:
     from teleclaude.cli.models import AgentAvailabilityInfo
     from teleclaude.cli.tui.tree import TreeNode
+    from textual.timer import Timer  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
 
 class _PendingSelect(NamedTuple):

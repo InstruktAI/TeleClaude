@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.views._footer_actions import (
@@ -23,9 +24,16 @@ from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD, freeze_to_ice
 from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
 from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton, remove_todo
 
+if TYPE_CHECKING:
+    from teleclaude.cli.models import ProjectWithTodosInfo  # pylint: disable=import-outside-toplevel,ungrouped-imports
+
 
 class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,protected-access
     """Keyboard actions, check_action, watch_cursor_index, on_focus for PreparationView."""
+
+    if TYPE_CHECKING:
+        app: Any
+        _projects_with_todos: list[ProjectWithTodosInfo]
 
     @staticmethod
     def _next_command(base: str, slug: str | None) -> str:
