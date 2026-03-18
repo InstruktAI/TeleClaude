@@ -107,7 +107,7 @@ async def _memory_timeline(
 
 
 def _print_memory_table(
-    results: list[dict[str, object]],
+    results: list[dict[str, object]],  # guard: loose-dict - JSON API response
     heading: str,
     *,
     anchor_id: int | None = None,  # guard: loose-dict - dynamic payload
