@@ -2,22 +2,12 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from teleclaude.hooks.checkpoint import _git
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
-
-
-def _completed_process(
-    *,
-    returncode: int = 0,
-    stdout: str = "",
-    stderr: str = "",
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=["git"], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 class TestCheckpointProjectSupport:
@@ -53,7 +43,10 @@ class TestGitDiffHelpers:
             "teleclaude/hooks/inbound.py\ntests/unit/hooks/test_inbound.py\n",
         ]
 
-        monkeypatch.setattr("teleclaude.git.Repo", lambda *_a, **_kw: mock_repo)
+        def fake_repo(*_args: object, **_kwargs: object) -> MagicMock:
+            return mock_repo
+
+        monkeypatch.setattr("teleclaude.git.Repo", fake_repo)
 
         assert _git._get_uncommitted_files("/repo") == [
             "teleclaude/hooks/inbound.py",

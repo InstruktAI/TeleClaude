@@ -65,7 +65,8 @@ def _get_head_commit(cwd: str) -> str:
     """Return HEAD commit hash for cwd, or empty string when unavailable."""
     try:
         repo = Repo(cwd)
-        return str(repo.git.rev_parse("HEAD").strip())
+        result: str = repo.git.rev_parse("HEAD").strip()
+        return result
     except (GitCommandError, Exception):
         return ""
 
@@ -74,7 +75,8 @@ def _get_ref_commit(cwd: str, ref: str) -> str:
     """Return commit hash for a git ref in cwd, or empty string when unavailable."""
     try:
         repo = Repo(cwd)
-        return str(repo.git.rev_parse(ref).strip())
+        result: str = repo.git.rev_parse(ref).strip()
+        return result
     except (GitCommandError, Exception):
         return ""
 

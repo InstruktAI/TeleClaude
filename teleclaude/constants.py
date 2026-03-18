@@ -39,8 +39,12 @@ MAIN_MODULE = "__main__"
 LOCAL_COMPUTER = "local"
 ENV_ENABLE = "1"
 
+# Session environment variables (injected into tmux by daemon bootstrap)
+TELECLAUDE_SYSTEM_ROLE = "TELECLAUDE_SYSTEM_ROLE"
+TELEC_SESSION_TOKEN = "TELEC_SESSION_TOKEN"
+PRE_COMMIT_NO_STASH = "PRE_COMMIT_NO_STASH"
+
 # System roles
-ENV_SYSTEM_ROLE = "TELECLAUDE_SYSTEM_ROLE"
 ROLE_SYSTEM = "system"
 ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"

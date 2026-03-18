@@ -45,7 +45,7 @@ def _default_branch(repo: Repo) -> str:
         out = repo.git.remote("show", "origin")
         for line in out.splitlines():
             if "HEAD branch" in line:
-                return str(line.split(":")[-1].strip())
+                return line.split(":")[-1].strip()
     except GitCommandError:
         pass
     return "main"

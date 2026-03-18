@@ -19,12 +19,12 @@ class TestRunDistribute:
         script_path.parent.mkdir(parents=True)
         script_path.write_text("print('ok')", encoding="utf-8")
         calls: list[tuple[list[str], Path, bool, dict[str, str]]] = []
+
+        def fake_run(cmd: list[str], cwd: Path, check: bool, env: dict[str, str]) -> None:
+            calls.append((cmd, cwd, check, env.copy()))
+
         monkeypatch.setattr(sync, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(
-            sync.subprocess,
-            "run",
-            lambda cmd, cwd, check, env: calls.append((cmd, cwd, check, env.copy())),
-        )
+        monkeypatch.setattr(sync.subprocess, "run", fake_run)
 
         sync._run_distribute(tmp_path / "project", warn_only=True)
 
@@ -91,18 +91,22 @@ class TestRegisterProjectManifest:
         config_path = tmp_path / "teleclaude.yml"
         config_path.write_text("project: demo", encoding="utf-8")
         calls: list[tuple[Path, Path, str, str, Path]] = []
-        monkeypatch.setattr(
-            sync,
-            "load_project_config",
-            lambda path: SimpleNamespace(project_name=" Demo ", description=" Example "),
-        )
-        monkeypatch.setattr(
-            sync,
-            "register_project",
-            lambda path, project_root, project_name, description, index_path: calls.append(
-                (path, project_root, project_name, description, index_path)
-            ),
-        )
+
+        def fake_load_project_config(path: Path) -> SimpleNamespace:
+            assert path == config_path
+            return SimpleNamespace(project_name=" Demo ", description=" Example ")
+
+        def fake_register_project(
+            path: Path,
+            project_root: Path,
+            project_name: str,
+            description: str,
+            index_path: Path,
+        ) -> None:
+            calls.append((path, project_root, project_name, description, index_path))
+
+        monkeypatch.setattr(sync, "load_project_config", fake_load_project_config)
+        monkeypatch.setattr(sync, "register_project", fake_register_project)
 
         sync._register_project_manifest(tmp_path)
 
