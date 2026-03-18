@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from textual.message import Message
 
 from teleclaude.cli.models import (
@@ -16,43 +18,144 @@ from teleclaude.cli.models import (
 # --- Data refresh messages ---
 
 
+@dataclass(frozen=True)
+class _ChiptunesPendingCommand:
+    command_id: str = ""
+    action: str = ""
+
+
+@dataclass(frozen=True)
+class _ChiptunesState:
+    loaded: bool = False
+    playback: str = "cold"
+    state_version: int = 0
+    playing: bool = False
+    track: str = ""
+    sid_path: str = ""
+    pending: _ChiptunesPendingCommand = field(default_factory=_ChiptunesPendingCommand)
+
+
+@dataclass(frozen=True)
+class _RefreshPayload:
+    computers: list[ComputerInfo]
+    projects: list[ProjectInfo]
+    projects_with_todos: list[ProjectWithTodosInfo]
+    sessions: list[SessionInfo]
+    availability: dict[str, AgentAvailabilityInfo]
+    jobs: list[JobInfo]
+    tts_enabled: bool
+
+
 class DataRefreshed(Message):
     """Fired after API refresh completes with new data."""
 
-    def __init__(
-        self,
-        computers: list[ComputerInfo],
-        projects: list[ProjectInfo],
-        projects_with_todos: list[ProjectWithTodosInfo],
-        sessions: list[SessionInfo],
-        availability: dict[str, AgentAvailabilityInfo],
-        jobs: list[JobInfo],
-        tts_enabled: bool,
-        chiptunes_loaded: bool = False,
-        chiptunes_playback: str = "cold",
-        chiptunes_state_version: int = 0,
-        chiptunes_playing: bool = False,
-        chiptunes_track: str = "",
-        chiptunes_sid_path: str = "",
-        chiptunes_pending_command_id: str = "",
-        chiptunes_pending_action: str = "",
-    ) -> None:
+    def __init__(self, *payload: object, **chiptunes_state: object) -> None:
         super().__init__()
-        self.computers = computers
-        self.projects = projects
-        self.projects_with_todos = projects_with_todos
-        self.sessions = sessions
-        self.availability = availability
-        self.jobs = jobs
-        self.tts_enabled = tts_enabled
-        self.chiptunes_loaded = chiptunes_loaded
-        self.chiptunes_playback = chiptunes_playback
-        self.chiptunes_state_version = chiptunes_state_version
-        self.chiptunes_playing = chiptunes_playing
-        self.chiptunes_track = chiptunes_track
-        self.chiptunes_sid_path = chiptunes_sid_path
-        self.chiptunes_pending_command_id = chiptunes_pending_command_id
-        self.chiptunes_pending_action = chiptunes_pending_action
+        if len(payload) != 7:
+            raise TypeError("DataRefreshed expects 7 positional payload values")
+        self._payload = _RefreshPayload(*payload)
+        self._chiptunes = self._build_chiptunes_state(chiptunes_state)
+
+    @staticmethod
+    def _build_chiptunes_state(chiptunes_state: dict[str, object]) -> _ChiptunesState:
+        """Normalize optional chiptunes fields into an immutable payload."""
+        expected = {
+            "chiptunes_loaded": "loaded",
+            "chiptunes_playback": "playback",
+            "chiptunes_state_version": "state_version",
+            "chiptunes_playing": "playing",
+            "chiptunes_track": "track",
+            "chiptunes_sid_path": "sid_path",
+            "chiptunes_pending_command_id": "pending_command_id",
+            "chiptunes_pending_action": "pending_action",
+        }
+        unknown = set(chiptunes_state) - set(expected)
+        if unknown:
+            unknown_names = ", ".join(sorted(unknown))
+            raise TypeError(f"Unexpected chiptunes fields: {unknown_names}")
+        normalized = {
+            target: chiptunes_state[source] for source, target in expected.items() if source in chiptunes_state
+        }
+        pending = _ChiptunesPendingCommand(
+            command_id=str(normalized.pop("pending_command_id", "")),
+            action=str(normalized.pop("pending_action", "")),
+        )
+        return _ChiptunesState(**normalized, pending=pending)
+
+    @property
+    def computers(self) -> list[ComputerInfo]:
+        """Return the refreshed computer list."""
+        return self._payload.computers
+
+    @property
+    def projects(self) -> list[ProjectInfo]:
+        """Return the refreshed project list."""
+        return self._payload.projects
+
+    @property
+    def projects_with_todos(self) -> list[ProjectWithTodosInfo]:
+        """Return projects enriched with todo metadata."""
+        return self._payload.projects_with_todos
+
+    @property
+    def sessions(self) -> list[SessionInfo]:
+        """Return the refreshed session list."""
+        return self._payload.sessions
+
+    @property
+    def availability(self) -> dict[str, AgentAvailabilityInfo]:
+        """Return agent availability keyed by identifier."""
+        return self._payload.availability
+
+    @property
+    def jobs(self) -> list[JobInfo]:
+        """Return the refreshed job list."""
+        return self._payload.jobs
+
+    @property
+    def tts_enabled(self) -> bool:
+        """Return whether TTS is enabled."""
+        return self._payload.tts_enabled
+
+    @property
+    def chiptunes_loaded(self) -> bool:
+        """Return whether chiptunes assets are loaded."""
+        return self._chiptunes.loaded
+
+    @property
+    def chiptunes_playback(self) -> str:
+        """Return the current chiptunes playback mode."""
+        return self._chiptunes.playback
+
+    @property
+    def chiptunes_state_version(self) -> int:
+        """Return the chiptunes state version counter."""
+        return self._chiptunes.state_version
+
+    @property
+    def chiptunes_playing(self) -> bool:
+        """Return whether chiptunes audio is currently playing."""
+        return self._chiptunes.playing
+
+    @property
+    def chiptunes_track(self) -> str:
+        """Return the current chiptunes track name."""
+        return self._chiptunes.track
+
+    @property
+    def chiptunes_sid_path(self) -> str:
+        """Return the path to the current SID file."""
+        return self._chiptunes.sid_path
+
+    @property
+    def chiptunes_pending_command_id(self) -> str:
+        """Return the pending chiptunes command identifier."""
+        return self._chiptunes.pending.command_id
+
+    @property
+    def chiptunes_pending_action(self) -> str:
+        """Return the pending chiptunes action name."""
+        return self._chiptunes.pending.action
 
 
 # --- Session interaction messages ---
@@ -141,26 +244,72 @@ class CreateSessionRequest(Message):
     When native_session_id is set, agent_resume is used with the selected agent.
     """
 
-    def __init__(
-        self,
-        computer: str,
-        project_path: str,
-        agent: str | None = None,
-        thinking_mode: str | None = None,
-        title: str | None = None,
-        message: str | None = None,
-        revive_session_id: str | None = None,
-        native_session_id: str | None = None,
-    ) -> None:
+    def __init__(self, computer: str, project_path: str, **options: object) -> None:
         super().__init__()
-        self.computer = computer
-        self.project_path = project_path
-        self.agent = agent
-        self.thinking_mode = thinking_mode
-        self.title = title
-        self.message = message
-        self.revive_session_id = revive_session_id
-        self.native_session_id = native_session_id
+        expected = {
+            "agent",
+            "thinking_mode",
+            "title",
+            "message",
+            "revive_session_id",
+            "native_session_id",
+        }
+        unknown = set(options) - expected
+        if unknown:
+            unknown_names = ", ".join(sorted(unknown))
+            raise TypeError(f"Unexpected create-session fields: {unknown_names}")
+        self._request = {
+            "computer": computer,
+            "project_path": project_path,
+            "agent": options.get("agent"),
+            "thinking_mode": options.get("thinking_mode"),
+            "title": options.get("title"),
+            "message": options.get("message"),
+            "revive_session_id": options.get("revive_session_id"),
+            "native_session_id": options.get("native_session_id"),
+        }
+
+    @property
+    def computer(self) -> str:
+        """Return the target computer name."""
+        return str(self._request["computer"])
+
+    @property
+    def project_path(self) -> str:
+        """Return the project path for the session request."""
+        return str(self._request["project_path"])
+
+    @property
+    def agent(self) -> str | None:
+        """Return the requested agent when provided."""
+        return self._request["agent"] if isinstance(self._request["agent"], str) else None
+
+    @property
+    def thinking_mode(self) -> str | None:
+        """Return the requested thinking mode when provided."""
+        return self._request["thinking_mode"] if isinstance(self._request["thinking_mode"], str) else None
+
+    @property
+    def title(self) -> str | None:
+        """Return the requested session title when provided."""
+        return self._request["title"] if isinstance(self._request["title"], str) else None
+
+    @property
+    def message(self) -> str | None:
+        """Return the initial session message when provided."""
+        return self._request["message"] if isinstance(self._request["message"], str) else None
+
+    @property
+    def revive_session_id(self) -> str | None:
+        """Return the TeleClaude session ID to revive when provided."""
+        value = self._request["revive_session_id"]
+        return value if isinstance(value, str) else None
+
+    @property
+    def native_session_id(self) -> str | None:
+        """Return the native session ID to resume when provided."""
+        value = self._request["native_session_id"]
+        return value if isinstance(value, str) else None
 
 
 # --- WebSocket push messages ---
@@ -169,24 +318,62 @@ class CreateSessionRequest(Message):
 class AgentActivity(Message):
     """Agent activity event from WebSocket."""
 
-    def __init__(
-        self,
-        session_id: str,
-        activity_type: str,
-        canonical_type: str | None = None,
-        tool_name: str | None = None,
-        tool_preview: str | None = None,
-        summary: str | None = None,
-        timestamp: str | None = None,
-    ) -> None:
+    def __init__(self, session_id: str, activity_type: str, **details: object) -> None:
         super().__init__()
-        self.session_id = session_id
-        self.activity_type = activity_type
-        self.canonical_type = canonical_type
-        self.tool_name = tool_name
-        self.tool_preview = tool_preview
-        self.summary = summary
-        self.timestamp = timestamp
+        expected = {"canonical_type", "tool_name", "tool_preview", "summary", "timestamp"}
+        unknown = set(details) - expected
+        if unknown:
+            unknown_names = ", ".join(sorted(unknown))
+            raise TypeError(f"Unexpected agent activity fields: {unknown_names}")
+        self._event = {
+            "session_id": session_id,
+            "activity_type": activity_type,
+            "canonical_type": details.get("canonical_type"),
+            "tool_name": details.get("tool_name"),
+            "tool_preview": details.get("tool_preview"),
+            "summary": details.get("summary"),
+            "timestamp": details.get("timestamp"),
+        }
+
+    @property
+    def session_id(self) -> str:
+        """Return the session identifier for this activity event."""
+        return str(self._event["session_id"])
+
+    @property
+    def activity_type(self) -> str:
+        """Return the raw activity type from the event stream."""
+        return str(self._event["activity_type"])
+
+    @property
+    def canonical_type(self) -> str | None:
+        """Return the normalized activity type when available."""
+        value = self._event["canonical_type"]
+        return value if isinstance(value, str) else None
+
+    @property
+    def tool_name(self) -> str | None:
+        """Return the tool name for tool-related events."""
+        value = self._event["tool_name"]
+        return value if isinstance(value, str) else None
+
+    @property
+    def tool_preview(self) -> str | None:
+        """Return the tool preview text when supplied."""
+        value = self._event["tool_preview"]
+        return value if isinstance(value, str) else None
+
+    @property
+    def summary(self) -> str | None:
+        """Return the agent stop summary when present."""
+        value = self._event["summary"]
+        return value if isinstance(value, str) else None
+
+    @property
+    def timestamp(self) -> str | None:
+        """Return the event timestamp when present."""
+        value = self._event["timestamp"]
+        return value if isinstance(value, str) else None
 
 
 class SessionStarted(Message):

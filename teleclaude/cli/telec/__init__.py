@@ -7,8 +7,6 @@ import time as _t
 from collections.abc import Callable
 from pathlib import Path
 
-_BOOT = _t.monotonic()
-
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.session_auth import read_current_session_email
@@ -154,6 +152,9 @@ from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
 from teleclaude.logging_config import setup_logging
 from teleclaude.project_setup import init_project
 
+_BOOT = _t.monotonic()
+_CLI_RUNTIME_FAILURES = (LookupError, OSError, RuntimeError, TypeError, ValueError)
+
 __all__ = [
     "CLI_SURFACE",
     "HELP_SUBCOMMAND_EXPANSIONS",
@@ -277,54 +278,10 @@ def main() -> None:
         return
 
     if argv:
-        token = argv[0].lstrip("/")
-        if token in {cmd.value for cmd in TelecCommand}:
-            _handle_cli_command(argv)
-            return
-        if argv[0].startswith("/"):
-            _handle_cli_command(argv)
-            return
-        print(f"Unknown command: {argv[0]}")
-        print(_usage())
-        raise SystemExit(1)
+        _handle_cli_argv(argv)
+        return
 
-    # TUI mode - ensure we're in tmux for pane preview
-    if not os.environ.get(TMUX_ENV_KEY):
-        # Bridge outer-shell login identity into the trusted tc_tui session.
-        terminal_email = read_current_session_email()
-        if _requires_tui_login() and not terminal_email:
-            print("Error: telec auth login is required before starting the TUI in multi-user mode.")
-            print("Run: telec auth login <email>")
-            raise SystemExit(1)
-        # Always restart the TUI session to avoid adopting stale panes
-        tmux = config.computer.tmux_binary
-        result = subprocess.run(
-            [tmux, "has-session", "-t", TUI_SESSION_NAME],
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            subprocess.run(
-                [tmux, "kill-session", "-t", TUI_SESSION_NAME],
-                check=False,
-                capture_output=True,
-            )
-        # Create new named session and mark it as telec-managed
-        tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME, "-e", f"{TUI_ENV_KEY}={ENV_ENABLE}"]
-        if terminal_email:
-            tmux_args.extend(["-e", f"{TUI_AUTH_EMAIL_ENV_KEY}={terminal_email}"])
-        for key, value in os.environ.items():
-            if key in {TUI_ENV_KEY, TUI_AUTH_EMAIL_ENV_KEY}:
-                continue
-            tmux_args.extend(["-e", f"{key}={value}"])
-        tmux_args.append("telec")
-        os.execlp(tmux, *tmux_args)
-
-    try:
-        _run_tui()
-    except KeyboardInterrupt:
-        pass  # Clean exit on Ctrl-C
-    except Exception:
-        logger.exception("telec TUI crashed during startup")
+    _start_tui(logger)
 
 
 def _handle_cli_command(argv: list[str]) -> None:
@@ -356,6 +313,60 @@ def _handle_cli_command(argv: list[str]) -> None:
         print(_usage())
         return
     handler()
+
+
+def _handle_cli_argv(argv: list[str]) -> None:
+    token = argv[0].lstrip("/")
+    if token in {cmd.value for cmd in TelecCommand} or argv[0].startswith("/"):
+        _handle_cli_command(argv)
+        return
+    print(f"Unknown command: {argv[0]}")
+    print(_usage())
+    raise SystemExit(1)
+
+
+def _start_tui(logger) -> None:
+    if not os.environ.get(TMUX_ENV_KEY):
+        _exec_tmux_tui()
+        return
+
+    try:
+        _run_tui()
+    except KeyboardInterrupt:
+        pass  # Clean exit on Ctrl-C
+    except _CLI_RUNTIME_FAILURES:
+        logger.exception("telec TUI crashed during startup")
+
+
+def _exec_tmux_tui() -> None:
+    terminal_email = read_current_session_email()
+    if _requires_tui_login() and not terminal_email:
+        print("Error: telec auth login is required before starting the TUI in multi-user mode.")
+        print("Run: telec auth login <email>")
+        raise SystemExit(1)
+
+    tmux = config.computer.tmux_binary
+    result = subprocess.run(
+        [tmux, "has-session", "-t", TUI_SESSION_NAME],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        subprocess.run(
+            [tmux, "kill-session", "-t", TUI_SESSION_NAME],
+            check=False,
+            capture_output=True,
+        )
+
+    tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME, "-e", f"{TUI_ENV_KEY}={ENV_ENABLE}"]
+    if terminal_email:
+        tmux_args.extend(["-e", f"{TUI_AUTH_EMAIL_ENV_KEY}={terminal_email}"])
+    for key, value in os.environ.items():
+        if key in {TUI_ENV_KEY, TUI_AUTH_EMAIL_ENV_KEY}:
+            continue
+        tmux_args.extend(["-e", f"{key}={value}"])
+    tmux_args.append("telec")
+    os.execlp(tmux, *tmux_args)
 
 
 def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Callable[[], None] | None:

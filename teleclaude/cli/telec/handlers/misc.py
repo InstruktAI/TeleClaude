@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import subprocess
 from pathlib import Path
@@ -31,6 +32,34 @@ __all__ = [
 ]
 
 
+def _load_project_config():
+    return importlib.import_module("teleclaude.config.loader").load_project_config
+
+
+def _resolve_project_config_path(project_root: Path) -> Path:
+    return importlib.import_module("teleclaude.utils").resolve_project_config_path(project_root)
+
+
+def _teleclaude_version() -> str:
+    return importlib.import_module("teleclaude").__version__
+
+
+def _run_sync(project_root: Path, *, validate_only: bool, warn_only: bool) -> bool:
+    return importlib.import_module("teleclaude.sync").sync(
+        project_root,
+        validate_only=validate_only,
+        warn_only=warn_only,
+    )
+
+
+def _run_watch(project_root: Path) -> None:
+    importlib.import_module("teleclaude.cli.watch").run_watch(project_root)
+
+
+def _handle_tool_command(name: str, args: list[str]) -> None:
+    importlib.import_module("teleclaude.cli.tool_commands").__dict__[name](args)
+
+
 def _git_short_commit_hash() -> str:
     """Return HEAD short hash, or 'unknown' when unavailable."""
     try:
@@ -52,29 +81,23 @@ def _git_short_commit_hash() -> str:
 
 def _handle_version() -> None:
     """Print runtime version metadata."""
-    from teleclaude import __version__
-    from teleclaude.config.loader import load_project_config
-    from teleclaude.utils import resolve_project_config_path
-
     commit_hash = _git_short_commit_hash()
     project_root = Path(__file__).resolve().parents[4]
     try:
-        project_cfg_path = resolve_project_config_path(project_root)
-        project_config = load_project_config(project_cfg_path)
+        project_cfg_path = _resolve_project_config_path(project_root)
+        project_config = _load_project_config()(project_cfg_path)
         channel = project_config.deployment.channel
         pinned_minor = project_config.deployment.pinned_minor
-    except Exception:
+    except (AttributeError, OSError, TypeError, ValueError):
         channel = "alpha"
         pinned_minor = ""
 
     channel_str = f"{channel} ({pinned_minor})" if channel == "stable" and pinned_minor else channel
-    print(f"TeleClaude v{__version__} (channel: {channel_str}, commit: {commit_hash})")
+    print(f"TeleClaude v{_teleclaude_version()} (channel: {channel_str}, commit: {commit_hash})")
 
 
 def _handle_sync(args: list[str]) -> None:
     """Handle telec sync command."""
-    from teleclaude.sync import sync
-
     project_root = Path.cwd()
     warn_only = False
     validate_only = False
@@ -90,16 +113,14 @@ def _handle_sync(args: list[str]) -> None:
         else:
             i += 1
 
-    ok = sync(project_root, validate_only=validate_only, warn_only=warn_only)
+    ok = _run_sync(project_root, validate_only=validate_only, warn_only=warn_only)
     if not ok:
         raise SystemExit(1)
 
 
-def _handle_watch(args: list[str]) -> None:
+def _handle_watch(_args: list[str]) -> None:
     """Handle telec watch command."""
-    from teleclaude.cli.watch import run_watch
-
-    run_watch(Path.cwd())
+    _run_watch(Path.cwd())
 
 
 def _handle_revive(args: list[str]) -> None:
@@ -203,8 +224,6 @@ def _attach_tmux_session(tmux_session_name: str) -> None:
 
 def _handle_computers(args: list[str]) -> None:
     """Handle telec computers commands."""
-    from teleclaude.cli.tool_commands import handle_computers
-
     if not args:
         print(_usage("computers"))
         return
@@ -214,17 +233,15 @@ def _handle_computers(args: list[str]) -> None:
 
     subcommand = args[0]
     if subcommand == "list":
-        handle_computers(args[1:])
-    else:
-        print(f"Unknown computers subcommand: {subcommand}")
-        print(_usage("computers"))
-        raise SystemExit(1)
+        _handle_tool_command("handle_computers", args[1:])
+        return
+    print(f"Unknown computers subcommand: {subcommand}")
+    print(_usage("computers"))
+    raise SystemExit(1)
 
 
 def _handle_projects(args: list[str]) -> None:
     """Handle telec projects commands."""
-    from teleclaude.cli.tool_commands import handle_projects
-
     if not args:
         print(_usage("projects"))
         return
@@ -234,11 +251,11 @@ def _handle_projects(args: list[str]) -> None:
 
     subcommand = args[0]
     if subcommand == "list":
-        handle_projects(args[1:])
-    else:
-        print(f"Unknown projects subcommand: {subcommand}")
-        print(_usage("projects"))
-        raise SystemExit(1)
+        _handle_tool_command("handle_projects", args[1:])
+        return
+    print(f"Unknown projects subcommand: {subcommand}")
+    print(_usage("projects"))
+    raise SystemExit(1)
 
 
 def _maybe_kill_tui_session() -> None:

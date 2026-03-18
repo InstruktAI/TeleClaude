@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from teleclaude.cli.telec.handlers._arg_parsing import parse_slug_after_args
 from teleclaude.cli.telec.help import _usage
 
 if TYPE_CHECKING:
@@ -23,6 +26,14 @@ __all__ = [
     "_handle_roadmap_show",
     "_handle_roadmap_unfreeze",
 ]
+
+
+def _load_core_roadmap_module():
+    return import_module("teleclaude.core.roadmap")
+
+
+def _load_next_machine_core_module():
+    return import_module("teleclaude.core.next_machine.core")
 
 
 def _handle_roadmap(args: list[str]) -> None:
@@ -59,13 +70,10 @@ def _handle_roadmap(args: list[str]) -> None:
 
 def _handle_roadmap_show(args: list[str]) -> None:
     """Display the roadmap grouped by group, with deps and state."""
-    import json
-
-    from teleclaude.core.roadmap import assemble_roadmap
-
     parsed = _parse_roadmap_show_args(args)
 
-    todos = assemble_roadmap(
+    roadmap_module = _load_core_roadmap_module()
+    todos = roadmap_module.assemble_roadmap(
         str(Path.cwd()),
         include_icebox=parsed["include_icebox"],
         icebox_only=parsed["icebox_only"],
@@ -155,8 +163,6 @@ def _print_grouped_roadmap(todos: list[TodoInfo]) -> None:
 
 def _handle_roadmap_add(args: list[str]) -> None:
     """Handle telec roadmap add <slug> [--group <slug>] [--after d1,d2] [--description T] [--before S]."""
-    from teleclaude.core.next_machine.core import add_to_roadmap
-
     if not args:
         print(_usage("roadmap", "add"))
         return
@@ -200,7 +206,10 @@ def _handle_roadmap_add(args: list[str]) -> None:
         print(_usage("roadmap", "add"))
         raise SystemExit(1)
 
-    if add_to_roadmap(str(project_root), slug, group=group, after=after, description=description, before=before):
+    core_module = _load_next_machine_core_module()
+    if core_module.add_to_roadmap(
+        str(project_root), slug, group=group, after=after, description=description, before=before
+    ):
         print(f"Added {slug} to roadmap.")
     else:
         print(f"Slug already exists in roadmap: {slug}")
@@ -208,45 +217,23 @@ def _handle_roadmap_add(args: list[str]) -> None:
 
 def _handle_roadmap_remove(args: list[str]) -> None:
     """Handle telec roadmap remove <slug>."""
-    from teleclaude.core.next_machine.core import remove_from_roadmap
-
     if not args:
         print(_usage("roadmap", "remove"))
         return
 
-    slug: str | None = None
     project_root = Path.cwd()
+    slug = _parse_single_slug_args(args, "remove")
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("roadmap", "remove"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if not slug:
-        print("Missing required slug.")
-        print(_usage("roadmap", "remove"))
-        raise SystemExit(1)
-
-    if remove_from_roadmap(str(project_root), slug):
+    core_module = _load_next_machine_core_module()
+    if core_module.remove_from_roadmap(str(project_root), slug):
         print(f"Removed {slug} from roadmap.")
-    else:
-        print(f"Slug not found in roadmap: {slug}")
-        raise SystemExit(1)
+        return
+    print(f"Slug not found in roadmap: {slug}")
+    raise SystemExit(1)
 
 
 def _handle_roadmap_move(args: list[str]) -> None:
     """Handle telec roadmap move <slug> --before <s> | --after <s>."""
-    from teleclaude.core.next_machine.core import move_in_roadmap
-
     if not args:
         print(_usage("roadmap", "move"))
         return
@@ -286,7 +273,8 @@ def _handle_roadmap_move(args: list[str]) -> None:
         print(_usage("roadmap", "move"))
         raise SystemExit(1)
 
-    if move_in_roadmap(str(project_root), slug, before=before, after=after):
+    core_module = _load_next_machine_core_module()
+    if core_module.move_in_roadmap(str(project_root), slug, before=before, after=after):
         target = before or after
         direction = "before" if before else "after"
         print(f"Moved {slug} {direction} {target}.")
@@ -297,45 +285,16 @@ def _handle_roadmap_move(args: list[str]) -> None:
 
 def _handle_roadmap_deps(args: list[str]) -> None:
     """Handle telec roadmap deps <slug> --after dep1,dep2."""
-    from teleclaude.core.next_machine.core import load_roadmap, save_roadmap
-
     if not args:
         print(_usage("roadmap", "deps"))
         return
 
-    slug: str | None = None
     project_root = Path.cwd()
-    after: list[str] | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--after" and i + 1 < len(args):
-            after = [p.strip() for p in args[i + 1].split(",") if p.strip()]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("roadmap", "deps"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if not slug:
-        print("Missing required slug.")
-        print(_usage("roadmap", "deps"))
-        raise SystemExit(1)
-
-    if after is None:
-        print("--after is required.")
-        print(_usage("roadmap", "deps"))
-        raise SystemExit(1)
+    slug, after = _parse_roadmap_deps_args(args)
 
     cwd = str(project_root)
-    entries = load_roadmap(cwd)
+    core_module = _load_next_machine_core_module()
+    entries = core_module.load_roadmap(cwd)
     found = False
     for entry in entries:
         if entry.slug == slug:
@@ -347,7 +306,7 @@ def _handle_roadmap_deps(args: list[str]) -> None:
         print(f"Slug not found in roadmap: {slug}")
         raise SystemExit(1)
 
-    save_roadmap(cwd, entries)
+    core_module.save_roadmap(cwd, entries)
     if after:
         print(f"Set dependencies for {slug}: {', '.join(after)}")
     else:
@@ -356,82 +315,43 @@ def _handle_roadmap_deps(args: list[str]) -> None:
 
 def _handle_roadmap_freeze(args: list[str]) -> None:
     """Handle telec roadmap freeze <slug>."""
-    from teleclaude.core.next_machine.core import freeze_to_icebox
-
     if not args:
         print(_usage("roadmap", "freeze"))
         return
 
-    slug: str | None = None
     project_root = Path.cwd()
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("roadmap", "freeze"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                raise SystemExit(1)
-            slug = arg
-            i += 1
+    slug = _parse_single_slug_args(args, "freeze")
 
-    if not slug:
-        print("Missing required slug.")
-        print(_usage("roadmap", "freeze"))
-        raise SystemExit(1)
-
-    if freeze_to_icebox(str(project_root), slug):
+    core_module = _load_next_machine_core_module()
+    if core_module.freeze_to_icebox(str(project_root), slug):
         print(f"Froze {slug} → icebox.yaml")
-    else:
-        print(f"Slug not found in roadmap: {slug}")
-        raise SystemExit(1)
+        return
+    print(f"Slug not found in roadmap: {slug}")
+    raise SystemExit(1)
 
 
 def _handle_roadmap_unfreeze(args: list[str]) -> None:
     """Handle telec roadmap unfreeze <slug>."""
-    from teleclaude.core.next_machine.core import unfreeze_from_icebox
-
     if not args:
         print(_usage("roadmap", "unfreeze"))
         return
 
-    slug: str | None = None
     project_root = Path.cwd()
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("roadmap", "unfreeze"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                raise SystemExit(1)
-            slug = arg
-            i += 1
+    slug = _parse_single_slug_args(args, "unfreeze")
 
-    if not slug:
-        print("Missing required slug.")
-        print(_usage("roadmap", "unfreeze"))
-        raise SystemExit(1)
-
-    if unfreeze_from_icebox(str(project_root), slug):
+    core_module = _load_next_machine_core_module()
+    if core_module.unfreeze_from_icebox(str(project_root), slug):
         print(f"Unfroze {slug} → roadmap.yaml")
-    else:
-        print(f"Slug not found in icebox: {slug}")
-        raise SystemExit(1)
+        return
+    print(f"Slug not found in icebox: {slug}")
+    raise SystemExit(1)
 
 
-def _handle_roadmap_migrate_icebox(args: list[str]) -> None:
+def _handle_roadmap_migrate_icebox(_args: list[str]) -> None:
     """Handle telec roadmap migrate-icebox."""
-    from teleclaude.core.next_machine.core import migrate_icebox_to_subfolder
-
     project_root = Path.cwd()
-    count = migrate_icebox_to_subfolder(str(project_root))
+    core_module = _load_next_machine_core_module()
+    count = core_module.migrate_icebox_to_subfolder(str(project_root))
     if count == 0:
         print("Already migrated (nothing to move).")
     else:
@@ -443,8 +363,6 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
 
     Full idempotent delivery: moves YAML entry, cleans up worktree/branch/todo dir, commits.
     """
-    from teleclaude.core.next_machine.core import cleanup_delivered_slug, deliver_to_delivered
-
     if not args:
         print(_usage("roadmap", "deliver"))
         return
@@ -475,18 +393,20 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
         raise SystemExit(1)
 
     cwd = str(project_root)
+    core_module = _load_next_machine_core_module()
 
     # 1. Move YAML entry (idempotent — returns True if already delivered)
-    if not deliver_to_delivered(cwd, slug, commit=commit):
+    if not core_module.deliver_to_delivered(cwd, slug, commit=commit):
         print(f"Slug not found in roadmap or delivered: {slug}")
         raise SystemExit(1)
 
     # 2. Physical cleanup (idempotent — each step no-ops if already done)
-    cleanup_delivered_slug(cwd, slug)
+    core_module.cleanup_delivered_slug(cwd, slug)
 
     # 3. Stage and commit all delivery artifacts
     subprocess.run(
         ["git", "add", "todos/roadmap.yaml", "todos/delivered.yaml", f"todos/{slug}"],
+        check=False,
         capture_output=True,
         text=True,
         cwd=cwd,
@@ -494,6 +414,7 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
     # Only commit if there are staged changes
     diff_result = subprocess.run(
         ["git", "diff", "--cached", "--quiet"],
+        check=False,
         capture_output=True,
         text=True,
         cwd=cwd,
@@ -506,9 +427,39 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
                 "-m",
                 (f"chore({slug}): deliver and cleanup\n\nCo-Authored-By: TeleClaude <noreply@instrukt.ai>"),
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=cwd,
         )
 
     print(f"Delivered {slug} → delivered.yaml (cleanup complete)")
+
+
+def _parse_single_slug_args(args: list[str], subcommand: str) -> str:
+    slug: str | None = None
+    for arg in args:
+        if arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("roadmap", subcommand))
+            raise SystemExit(1)
+        if slug is not None:
+            print("Only one slug is allowed.")
+            raise SystemExit(1)
+        slug = arg
+
+    if slug:
+        return slug
+
+    print("Missing required slug.")
+    print(_usage("roadmap", subcommand))
+    raise SystemExit(1)
+
+
+def _parse_roadmap_deps_args(args: list[str]) -> tuple[str, list[str]]:
+    slug, after = parse_slug_after_args(args, lambda: _usage("roadmap", "deps"))
+    if after is None:
+        print("--after is required.")
+        print(_usage("roadmap", "deps"))
+        raise SystemExit(1)
+    return slug, after

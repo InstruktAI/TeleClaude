@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import sys
 import time as _t
@@ -11,6 +12,24 @@ __all__ = [
     "_run_tui_config_mode",
 ]
 
+_TUI_FAILURES = (LookupError, OSError, RuntimeError, TypeError, ValueError)
+
+
+def _load_tui_runtime():
+    logger = importlib.import_module("instrukt_ai_logging").get_logger(__name__)
+    api_client = importlib.import_module("teleclaude.cli.api_client").TelecAPIClient
+    misc = importlib.import_module("teleclaude.cli.telec.handlers.misc")
+    app_module = importlib.import_module("teleclaude.cli.tui.app")
+    return (
+        logger,
+        api_client,
+        misc._ensure_tmux_mouse_on,
+        misc._ensure_tmux_status_hidden_for_tui,
+        misc._maybe_kill_tui_session,
+        app_module.RELOAD_EXIT,
+        app_module.TelecApp,
+    )
+
 
 def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     """Run TUI application.
@@ -19,38 +38,36 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
     cleanup and os.execvp to restart the process, reloading all Python
     modules from disk.
     """
-    from instrukt_ai_logging import get_logger
-
-    logger = get_logger(__name__)
     _t0 = _t.monotonic()
-    from teleclaude.cli.api_client import TelecAPIClient
-    from teleclaude.cli.telec.handlers.misc import (
-        _ensure_tmux_mouse_on,
-        _ensure_tmux_status_hidden_for_tui,
-        _maybe_kill_tui_session,
-    )
-    from teleclaude.cli.tui.app import RELOAD_EXIT, TelecApp
+    (
+        logger,
+        api_client,
+        ensure_tmux_mouse_on,
+        ensure_tmux_status_hidden_for_tui,
+        maybe_kill_tui_session,
+        reload_exit,
+        telec_app,
+    ) = _load_tui_runtime()
 
     logger.trace("[PERF] _run_tui import TelecApp dt=%.3f", _t.monotonic() - _t0)
-    api = TelecAPIClient()
-    app = TelecApp(api, start_view=start_view, config_guided=config_guided)
+    api = api_client()
+    app = telec_app(api, start_view=start_view, config_guided=config_guided)
     logger.trace("[PERF] _run_tui TelecApp created dt=%.3f", _t.monotonic() - _t0)
 
     reload_requested = False
 
     try:
-        _ensure_tmux_status_hidden_for_tui()
-        _ensure_tmux_mouse_on()
+        ensure_tmux_status_hidden_for_tui()
+        ensure_tmux_mouse_on()
         logger.trace("[PERF] _run_tui pre-app.run dt=%.3f", _t.monotonic() - _t0)
-        result = app.run()
-        reload_requested = result == RELOAD_EXIT
+        reload_requested = app.run() == reload_exit
     except KeyboardInterrupt:
         pass  # Clean exit on Ctrl-C
-    except Exception:
+    except _TUI_FAILURES:
         logger.exception("telec TUI crashed")
     finally:
         if not reload_requested:
-            _maybe_kill_tui_session()
+            maybe_kill_tui_session()
 
     if reload_requested:
         # Re-exec via the Python interpreter + module flag, not sys.argv[0]

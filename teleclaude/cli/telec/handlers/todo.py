@@ -2,14 +2,32 @@
 
 from __future__ import annotations
 
+import importlib
+from collections.abc import Callable
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.telec.handlers._arg_parsing import parse_slug_after_args
+from teleclaude.cli.telec.handlers.demo import _handle_todo_demo
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.tool_client import tool_api_request
+from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
+from teleclaude.cli.tool_commands import (
+    handle_todo_create as _handle_machine_todo_create,
+)
+from teleclaude.cli.tool_commands import (
+    handle_todo_integrate,
+    handle_todo_mark_finalize_ready,
+    handle_todo_mark_phase,
+    handle_todo_prepare,
+    handle_todo_set_deps,
+    handle_todo_work,
+)
+from teleclaude.core.next_machine.state_io import mark_ready
 from teleclaude.events.envelope import EventEnvelope, EventLevel
-from teleclaude.todo_scaffold import create_todo_skeleton
+from teleclaude.todo_scaffold import (
+    create_todo_skeleton,
+)
 
 __all__ = [
     "_handle_todo",
@@ -23,6 +41,28 @@ __all__ = [
     "_handle_todo_verify_artifacts",
 ]
 
+_IGNORED_REMOTE_PUSH_REASONS = {"already_on_remote", "no_local_artifacts", "not_a_repo"}
+
+
+def _load_resource_validation_module():
+    """Load validation helpers lazily so tests can patch the module."""
+    return importlib.import_module("teleclaude.resource_validation")
+
+
+def _load_build_gates_module():
+    """Load build gate helpers lazily so tests can patch the module."""
+    return importlib.import_module("teleclaude.core.next_machine.core")
+
+
+def _load_worktrees_module():
+    """Load worktree helpers lazily so tests can patch the module."""
+    return importlib.import_module("teleclaude.core.next_machine.worktrees")
+
+
+def _load_todo_scaffold_module():
+    """Load scaffold helpers lazily so tests can patch the module."""
+    return importlib.import_module("teleclaude.todo_scaffold")
+
 
 def _handle_todo_mark_ready(args: list[str]) -> None:
     """Handle telec todo mark-ready <slug> [<slug> ...].
@@ -31,13 +71,11 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
     Promotes input.md → requirements.md, generates implementation-plan.md and quality-checklist.md,
     and sets state.yaml to satisfy all work state machine entry conditions.
     """
-    from teleclaude.core.next_machine.state_io import mark_ready
-
     if not args:
         print("Usage: telec todo mark-ready <slug> [<slug> ...]")
         raise SystemExit(1)
 
-    slugs = [a for a in args if not a.startswith("-")]
+    slugs = [arg for arg in args if not arg.startswith("-")]
     if not slugs:
         print("Missing required argument: <slug>")
         raise SystemExit(1)
@@ -45,8 +83,8 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
     cwd = str(Path.cwd())
     failed = 0
     for slug in slugs:
-        ok, msg = mark_ready(cwd, slug)
-        print(msg)
+        ok, message = mark_ready(cwd, slug)
+        print(message)
         if not ok:
             failed += 1
 
@@ -56,89 +94,59 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
 
 def _handle_todo(args: list[str]) -> None:
     """Handle telec todo commands."""
-    from teleclaude.cli.telec.handlers.demo import _handle_todo_demo
-    from teleclaude.cli.tool_commands import (
-        handle_todo_create,
-        handle_todo_integrate,
-        handle_todo_mark_finalize_ready,
-        handle_todo_mark_phase,
-        handle_todo_prepare,
-        handle_todo_set_deps,
-        handle_todo_work,
-    )
-
     if not args:
         print(_usage("todo"))
         return
 
+    handlers: dict[str, Callable[[list[str]], None]] = {
+        "create": _handle_machine_todo_create,
+        "scaffold": _handle_todo_create,
+        "remove": _handle_todo_remove,
+        "validate": _handle_todo_validate,
+        "demo": _handle_todo_demo,
+        "prepare": handle_todo_prepare,
+        "work": handle_todo_work,
+        "integrate": handle_todo_integrate,
+        "mark-phase": handle_todo_mark_phase,
+        "mark-finalize-ready": handle_todo_mark_finalize_ready,
+        "set-deps": handle_todo_set_deps,
+        "verify-artifacts": _handle_todo_verify_artifacts,
+        "dump": _handle_todo_dump,
+        "split": _handle_todo_split,
+        "mark-ready": _handle_todo_mark_ready,
+        "from-main": _handle_todo_from_main,
+    }
+
     subcommand = args[0]
-    if subcommand == "create":
-        handle_todo_create(args[1:])
-    elif subcommand == "scaffold":
-        _handle_todo_create(args[1:])
-    elif subcommand == "remove":
-        _handle_todo_remove(args[1:])
-    elif subcommand == "validate":
-        _handle_todo_validate(args[1:])
-    elif subcommand == "demo":
-        _handle_todo_demo(args[1:])
-    elif subcommand == "prepare":
-        handle_todo_prepare(args[1:])
-    elif subcommand == "work":
-        handle_todo_work(args[1:])
-    elif subcommand == "integrate":
-        handle_todo_integrate(args[1:])
-    elif subcommand == "mark-phase":
-        handle_todo_mark_phase(args[1:])
-    elif subcommand == "mark-finalize-ready":
-        handle_todo_mark_finalize_ready(args[1:])
-    elif subcommand == "set-deps":
-        handle_todo_set_deps(args[1:])
-    elif subcommand == "verify-artifacts":
-        _handle_todo_verify_artifacts(args[1:])
-    elif subcommand == "dump":
-        _handle_todo_dump(args[1:])
-    elif subcommand == "split":
-        _handle_todo_split(args[1:])
-    elif subcommand == "mark-ready":
-        _handle_todo_mark_ready(args[1:])
-    elif subcommand == "from-main":
-        _handle_todo_from_main(args[1:])
-    else:
+    handler = handlers.get(subcommand)
+    if handler is None:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
         raise SystemExit(1)
+    handler(args[1:])
 
 
 def _handle_todo_validate(args: list[str]) -> None:
     """Handle telec todo validate."""
-
-    from teleclaude.resource_validation import validate_all_todos, validate_todo
-
     slug: str | None = None
     project_root = Path.cwd()
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
+    index = 0
+    while index < len(args):
+        arg = args[index]
         if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "validate"))
             raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed for validation.")
-                print(_usage("todo", "validate"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
+        if slug is not None:
+            print("Only one slug is allowed for validation.")
+            print(_usage("todo", "validate"))
+            raise SystemExit(1)
+        slug = arg
+        index += 1
 
-    errors = []
-    if slug:
-        errors = validate_todo(slug, project_root)
-    else:
-        errors = validate_all_todos(project_root)
-
+    validation = _load_resource_validation_module()
+    errors = validation.validate_todo(slug, project_root) if slug else validation.validate_all_todos(project_root)
     if errors:
         print("Todo validation failed:")
         for error in errors:
@@ -147,35 +155,33 @@ def _handle_todo_validate(args: list[str]) -> None:
 
     if slug:
         print(f"✓ Todo {slug} is valid")
-    else:
-        print("✓ All active todos are valid")
+        return
+    print("✓ All active todos are valid")
 
 
 def _handle_todo_verify_artifacts(args: list[str]) -> None:
     """Handle telec todo verify-artifacts <slug> --phase <build|review>."""
-    from teleclaude.core.next_machine.core import is_bug_todo, verify_artifacts
-
     slug: str | None = None
     phase: str | None = None
     cwd = str(Path.cwd())
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("--phase",) and i + 1 < len(args):
-            phase = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--phase" and index + 1 < len(args):
+            phase = args[index + 1]
+            index += 2
+            continue
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "verify-artifacts"))
             raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "verify-artifacts"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
+        if slug is not None:
+            print("Only one slug is allowed.")
+            print(_usage("todo", "verify-artifacts"))
+            raise SystemExit(1)
+        slug = arg
+        index += 1
 
     if slug is None:
         print("Missing required argument: <slug>")
@@ -189,65 +195,50 @@ def _handle_todo_verify_artifacts(args: list[str]) -> None:
         print(f"Invalid phase: {phase!r} (expected 'build' or 'review')")
         raise SystemExit(1)
 
-    is_bug = is_bug_todo(cwd, slug)
-    passed, report = verify_artifacts(cwd, slug, phase, is_bug=is_bug)
+    build_gates = _load_build_gates_module()
+    passed, report = build_gates.verify_artifacts(cwd, slug, phase, is_bug=build_gates.is_bug_todo(cwd, slug))
     print(report)
     raise SystemExit(0 if passed else 1)
 
 
-def _handle_todo_dump(args: list[str]) -> None:
-    """Handle telec todo dump <slug> <content> [--after <deps>]."""
+def _parse_todo_dump_args(args: list[str]) -> tuple[str, str, list[str]]:
     if len(args) < 2:
         print(_usage("todo", "dump"))
-        return
+        raise SystemExit(1)
 
     slug: str | None = None
     content: str | None = None
-    project_root = Path.cwd()
-    after: list[str] | None = None
+    after: list[str] = []
+    index = 0
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--after" and i + 1 < len(args):
-            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
-            i += 2
-        elif arg.startswith("-"):
+    while index < len(args):
+        arg = args[index]
+        if arg == "--after" and index + 1 < len(args):
+            after = [part.strip() for part in args[index + 1].split(",") if part.strip()]
+            index += 2
+            continue
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "dump"))
             raise SystemExit(1)
+        if slug is None:
+            slug = arg
+        elif content is None:
+            content = arg
         else:
-            if slug is None:
-                slug = arg
-            elif content is None:
-                content = arg
-            else:
-                print("Too many positional arguments.")
-                print(_usage("todo", "dump"))
-                raise SystemExit(1)
-            i += 1
+            print("Too many positional arguments.")
+            print(_usage("todo", "dump"))
+            raise SystemExit(1)
+        index += 1
 
     if not slug or not content:
         print(_usage("todo", "dump"))
         raise SystemExit(1)
+    return slug, content, after
 
-    # Always register in roadmap (unlike create, which only registers with --after)
-    after_deps = after if after is not None else []
 
-    try:
-        todo_dir = create_todo_skeleton(project_root, slug, after=after_deps)
-    except ValueError as exc:
-        print(f"Error: {exc}")
-        raise SystemExit(1) from exc
-
-    slug = todo_dir.name  # Use resolved name in case collision resolution renamed it
-
-    # Overwrite input.md with brain dump content
-    input_path = todo_dir / "input.md"
-    input_path.write_text(f"# {todo_dir.name} — Input\n\n{content}\n", encoding="utf-8")
-
-    # Emit planning.todo_dumped notification via daemon API
-    _log = get_logger(__name__)
+def _emit_todo_dump_event(project_root: Path, slug: str, logger_name: str) -> None:
+    logger = get_logger(logger_name)
     try:
         envelope = EventEnvelope(
             event="domain.software-development.planning.todo_dumped",
@@ -258,117 +249,127 @@ def _handle_todo_dump(args: list[str]) -> None:
             payload={"slug": slug, "project_root": str(project_root)},
         )
         tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
-        _log.info("Dumped todo: todos/%s/ — notification sent.", slug)
-    except Exception:
-        _log.warning("Dumped todo: todos/%s/ — notification emission failed", slug)
+        logger.info("Dumped todo: todos/%s/ — notification sent.", slug)
+    except (OSError, RuntimeError, ToolAPIError, ValueError):
+        logger.warning("Dumped todo: todos/%s/ — notification emission failed", slug)
 
-    # --- Commit and push scaffold to remote ---
-    from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
 
-    pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
+def _ensure_todo_remote_sync(project_root: Path, slug: str) -> tuple[bool, str]:
+    ensure_todo = _load_worktrees_module()._ensure_todo_on_remote_main
+    return ensure_todo(str(project_root), slug)
+
+
+def _report_remote_push(project_root: Path, slug: str, success_message: str, warning_message: str) -> None:
+    pushed, reason = _ensure_todo_remote_sync(project_root, slug)
     if pushed:
-        print(f"Scaffold for {slug} pushed to remote: {reason}")
-    elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
-        print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
+        print(success_message.format(slug=slug, reason=reason))
+        return
+    if reason not in _IGNORED_REMOTE_PUSH_REASONS:
+        print(warning_message.format(slug=slug, reason=reason))
 
 
-def _handle_todo_split(args: list[str]) -> None:
-    """Handle telec todo split <slug> --into <child1> [<child2> ...]."""
-    from teleclaude.todo_scaffold import split_todo
+def _handle_todo_dump(args: list[str]) -> None:
+    """Handle telec todo dump <slug> <content> [--after <deps>]."""
+    slug, content, after = _parse_todo_dump_args(args)
+    project_root = Path.cwd()
 
+    try:
+        todo_dir = create_todo_skeleton(project_root, slug, after=after)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    resolved_slug = todo_dir.name
+    input_path = todo_dir / "input.md"
+    input_path.write_text(f"# {resolved_slug} — Input\n\n{content}\n", encoding="utf-8")
+    _emit_todo_dump_event(project_root, resolved_slug, __name__)
+    _report_remote_push(
+        project_root,
+        resolved_slug,
+        "Scaffold for {slug} pushed to remote: {reason}",
+        "Warning: Scaffold for {slug} not pushed to remote: {reason}",
+    )
+
+
+def _parse_todo_split_args(args: list[str]) -> tuple[str, list[str]]:
     if not args:
         print(_usage("todo", "split"))
-        return
+        raise SystemExit(1)
 
     slug: str | None = None
     children: list[str] = []
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--into" and i + 1 < len(args):
-            i += 1
-            children.append(args[i])
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--into" and index + 1 < len(args):
+            index += 1
+            children.append(args[index])
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "split"))
             raise SystemExit(1)
+        elif slug is not None:
+            print("Only one parent slug is allowed.")
+            print(_usage("todo", "split"))
+            raise SystemExit(1)
         else:
-            if slug is not None:
-                print("Only one parent slug is allowed.")
-                print(_usage("todo", "split"))
-                raise SystemExit(1)
             slug = arg
-        i += 1
+        index += 1
 
     if not slug:
         print("Missing required argument: <slug>")
         print(_usage("todo", "split"))
         raise SystemExit(1)
-
     if not children:
         print("Missing required flag: --into <child> (at least one)")
         print(_usage("todo", "split"))
         raise SystemExit(1)
+    return slug, children
 
+
+def _report_split_remote_pushes(project_root: Path, slug: str, children: list[str]) -> None:
+    _report_remote_push(
+        project_root,
+        slug,
+        "Parent '{slug}' update pushed to remote: {reason}",
+        "Warning: Parent '{slug}' scaffold not pushed to remote: {reason}",
+    )
+    for child in children:
+        _report_remote_push(
+            project_root,
+            child,
+            "Child '{slug}' pushed to remote: {reason}",
+            "Warning: Child '{slug}' scaffold not pushed to remote: {reason}",
+        )
+
+
+def _handle_todo_split(args: list[str]) -> None:
+    """Handle telec todo split <slug> --into <child1> [<child2> ...]."""
+    slug, children = _parse_todo_split_args(args)
     project_root = Path.cwd()
     try:
-        created = split_todo(project_root, slug, children)
-        print(f"Split '{slug}' into {len(created)} children: {', '.join(children)}")
-        for d in created:
-            print(f"  Created: {d}")
+        created = _load_todo_scaffold_module().split_todo(project_root, slug, children)
+    except (FileNotFoundError, ValueError, FileExistsError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
 
-        # --- Commit and push scaffold to remote ---
-        from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
+    print(f"Split '{slug}' into {len(created)} children: {', '.join(children)}")
+    for directory in created:
+        print(f"  Created: {directory}")
+    _report_split_remote_pushes(project_root, slug, children)
 
-        pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
-        if pushed:
-            print(f"Parent '{slug}' update pushed to remote: {reason}")
-        elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
-            print(f"Warning: Parent '{slug}' scaffold not pushed to remote: {reason}")
 
-        for child in children:
-            pushed, reason = _ensure_todo_on_remote_main(str(project_root), child)
-            if pushed:
-                print(f"Child '{child}' pushed to remote: {reason}")
-            elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
-                print(f"Warning: Child '{child}' scaffold not pushed to remote: {reason}")
-    except (FileNotFoundError, ValueError, FileExistsError) as e:
-        print(f"Error: {e}")
-        raise SystemExit(1) from e
+def _parse_todo_create_args(args: list[str]) -> tuple[str, list[str] | None]:
+    if not args:
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
+    return parse_slug_after_args(args, lambda: _usage("todo", "create"))
 
 
 def _handle_todo_create(args: list[str]) -> None:
     """Handle telec todo create."""
-    if not args:
-        print(_usage("todo", "create"))
-        return
-
-    slug: str | None = None
+    slug, after = _parse_todo_create_args(args)
     project_root = Path.cwd()
-    after: list[str] | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--after" and i + 1 < len(args):
-            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "create"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if not slug:
-        print("Missing required slug.")
-        print(_usage("todo", "create"))
-        raise SystemExit(1)
 
     try:
         todo_dir = create_todo_skeleton(project_root, slug, after=after)
@@ -379,50 +380,48 @@ def _handle_todo_create(args: list[str]) -> None:
     print(f"Created todo skeleton: {todo_dir}")
     if after:
         print(f"Updated dependencies for {todo_dir.name}: {', '.join(after)}")
+    _report_remote_push(
+        project_root,
+        slug,
+        "Scaffold for {slug} pushed to remote: {reason}",
+        "Warning: Scaffold for {slug} not pushed to remote: {reason}",
+    )
 
-    # --- Commit and push scaffold to remote ---
-    from teleclaude.core.next_machine.worktrees import _ensure_todo_on_remote_main
 
-    pushed, reason = _ensure_todo_on_remote_main(str(project_root), slug)
-    if pushed:
-        print(f"Scaffold for {slug} pushed to remote: {reason}")
-    elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
-        print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
+def _parse_single_slug_arg(args: list[str], subcommand: str, missing_message: str, duplicate_message: str) -> str:
+    if not args:
+        print(_usage("todo", subcommand))
+        raise SystemExit(1)
+
+    slug: str | None = None
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", subcommand))
+            raise SystemExit(1)
+        if slug is not None:
+            print(duplicate_message)
+            print(_usage("todo", subcommand))
+            raise SystemExit(1)
+        slug = arg
+        index += 1
+
+    if not slug:
+        print(missing_message)
+        print(_usage("todo", subcommand))
+        raise SystemExit(1)
+    return slug
 
 
 def _handle_todo_remove(args: list[str]) -> None:
     """Handle telec todo remove."""
-    from teleclaude.todo_scaffold import remove_todo
-
-    if not args:
-        print(_usage("todo", "remove"))
-        return
-
-    slug: str | None = None
+    slug = _parse_single_slug_arg(args, "remove", "Missing required slug.", "Only one slug is allowed.")
     project_root = Path.cwd()
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "remove"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "remove"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if not slug:
-        print("Missing required slug.")
-        print(_usage("todo", "remove"))
-        raise SystemExit(1)
-
     try:
-        remove_todo(project_root, slug)
+        _load_todo_scaffold_module().remove_todo(project_root, slug)
     except (ValueError, RuntimeError, FileNotFoundError) as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc
@@ -430,39 +429,42 @@ def _handle_todo_remove(args: list[str]) -> None:
     print(f"Removed todo: {slug}")
 
 
-def _handle_todo_from_main(args: list[str]) -> None:
-    """Handle telec todo from-main --slug <name> [--description <desc>]."""
-    from teleclaude.todo_scaffold import create_from_main_skeleton
-
+def _parse_from_main_args(args: list[str]) -> tuple[str, str | None]:
     slug: str | None = None
     description: str | None = None
+    index = 0
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--slug" and i + 1 < len(args):
-            slug = args[i + 1]
-            i += 2
-        elif arg == "--description" and i + 1 < len(args):
-            description = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
+    while index < len(args):
+        arg = args[index]
+        if arg == "--slug" and index + 1 < len(args):
+            slug = args[index + 1]
+            index += 2
+            continue
+        if arg == "--description" and index + 1 < len(args):
+            description = args[index + 1]
+            index += 2
+            continue
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "from-main"))
             raise SystemExit(1)
-        else:
-            print(f"Unexpected argument: {arg}")
-            print(_usage("todo", "from-main"))
-            raise SystemExit(1)
+        print(f"Unexpected argument: {arg}")
+        print(_usage("todo", "from-main"))
+        raise SystemExit(1)
 
     if not slug:
         print("Missing required flag: --slug <name>")
         print(_usage("todo", "from-main"))
         raise SystemExit(1)
+    return slug, description
 
+
+def _handle_todo_from_main(args: list[str]) -> None:
+    """Handle telec todo from-main --slug <name> [--description <desc>]."""
+    slug, description = _parse_from_main_args(args)
     project_root = str(Path.cwd())
     try:
-        output = create_from_main_skeleton(project_root, slug, description=description)
+        output = _load_todo_scaffold_module().create_from_main_skeleton(project_root, slug, description=description)
     except (ValueError, RuntimeError) as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from teleclaude.cli.telec.surface import CLI_SURFACE, CommandDef, Flag
 
 # Derived constants for completion (from schema)
@@ -50,6 +52,20 @@ _LONG_KEY_SAMPLE_RULES = (
     (("after",), "dep-a"),
     (("before",), "target-slug"),
     (("title",), '"Example Title"'),
+    (("description", "message", "content"), '"example"'),
+)
+_POSITIONAL_SAMPLE_RULES = (
+    (("email",), "person@example.com"),
+    (("session",), "sess-123"),
+    (("slug",), "my-slug"),
+    (("project", "cwd", "root"), "/tmp/project"),
+    (("path", "file"), "/tmp/example.txt"),
+    (("agent",), "claude"),
+    (("phase",), "build"),
+    (("status",), "complete"),
+    (("channel",), "channel:demo:events"),
+    (("json", "data"), '\'{"key":"value"}\''),
+    (("id",), "item-1"),
     (("description", "message", "content"), '"example"'),
 )
 
@@ -114,70 +130,18 @@ def _inline_flags(flags: list[Flag]) -> str:
 def _usage_main() -> str:
     """Generate main help overview. Hidden flags are excluded."""
     col = 42
-    lines = ["Usage:"]
-    lines.append(f"  {'telec':<{col}}# Open TUI (Sessions view)")
+    lines = ["Usage:", f"  {'telec':<{col}}# Open TUI (Sessions view)"]
     for name, cmd in CLI_SURFACE.items():
         if cmd.hidden:
             continue
-        visible_flags = cmd.visible_flags
-        flag_str = ""
-        if visible_flags:
-            parts = [f.short if f.short else f.long for f in visible_flags]
-            flag_str = " [" + "|".join(parts) + "]"
-
-        args_str = f" {cmd.args}" if cmd.args else ""
-
-        if cmd.subcommands:
-            if cmd.standalone:
-                entry = f"telec {name}"
-                lines.append(f"  {entry:<{col}}# {cmd.desc}")
-            for sub_name, sub_cmd in cmd.subcommands.items():
-                if sub_cmd.subcommands:
-                    # Two-level nesting: expand leaf subcommands inline
-                    for child_name, child_cmd in sub_cmd.subcommands.items():
-                        child_args = f" {child_cmd.args}" if child_cmd.args else ""
-                        child_flag_str = _inline_flags(child_cmd.flags)
-                        entry = f"telec {name} {sub_name} {child_name}{child_args}{child_flag_str}"
-                        lines.append(f"  {entry:<{col}}# {child_cmd.desc}")
-                    continue
-                sub_args = f" {sub_cmd.args}" if sub_cmd.args else ""
-                sub_flag_str = _inline_flags(sub_cmd.flags)
-                entry = f"telec {name} {sub_name}{sub_args}{sub_flag_str}"
-                lines.append(f"  {entry:<{col}}# {sub_cmd.desc}")
-        else:
-            entry = f"telec {name}{args_str}{flag_str}"
-            lines.append(f"  {entry:<{col}}# {cmd.desc}")
+        lines.extend(_usage_main_entries(name, cmd, col))
     return "\n".join(lines) + "\n"
 
 
 def _sample_positional_value(token: str) -> str:
     """Return a practical sample value for a positional argument token."""
     key = token.strip("<>[]").rstrip(".,").lower()
-    if "email" in key:
-        return "person@example.com"
-    if "session" in key:
-        return "sess-123"
-    if "slug" in key:
-        return "my-slug"
-    if "project" in key or "cwd" in key or "root" in key:
-        return "/tmp/project"
-    if "path" in key or "file" in key:
-        return "/tmp/example.txt"
-    if "agent" in key:
-        return "claude"
-    if "phase" in key:
-        return "build"
-    if "status" in key:
-        return "complete"
-    if "channel" in key:
-        return "channel:demo:events"
-    if "json" in key or "data" in key:
-        return '\'{"key":"value"}\''
-    if "id" in key:
-        return "item-1"
-    if "description" in key or "message" in key or "content" in key:
-        return '"example"'
-    return "value"
+    return _match_sample_rule(key, _POSITIONAL_SAMPLE_RULES) or "value"
 
 
 def _sample_flag_value(flag: Flag) -> str | None:
@@ -201,6 +165,49 @@ def _match_sample_rule(text: str, rules: tuple[tuple[tuple[str, ...], str], ...]
         if any(needle in text for needle in needles):
             return sample
     return None
+
+
+def _usage_main_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[str]:
+    visible_flags = cmd.visible_flags
+    flag_str = ""
+    if visible_flags:
+        parts = [flag.short if flag.short else flag.long for flag in visible_flags]
+        flag_str = " [" + "|".join(parts) + "]"
+
+    args_str = f" {cmd.args}" if cmd.args else ""
+    if not cmd.subcommands:
+        entry = f"telec {cmd_name}{args_str}{flag_str}"
+        return [f"  {entry:<{col}}# {cmd.desc}"]
+
+    entries: list[str] = []
+    if cmd.standalone:
+        entry = f"telec {cmd_name}"
+        entries.append(f"  {entry:<{col}}# {cmd.desc}")
+
+    for sub_name, sub_cmd in cmd.subcommands.items():
+        entries.extend(_usage_main_subcommand_entries(cmd_name, sub_name, sub_cmd, col))
+    return entries
+
+
+def _usage_main_subcommand_entries(cmd_name: str, sub_name: str, sub_cmd: CommandDef, col: int) -> list[str]:
+    if sub_cmd.subcommands:
+        return [
+            _format_usage_entry((cmd_name, sub_name, child_name), child_cmd.args, child_cmd.flags, child_cmd.desc, col)
+            for child_name, child_cmd in sub_cmd.subcommands.items()
+        ]
+    return [_format_usage_entry((cmd_name, sub_name), sub_cmd.args, sub_cmd.flags, sub_cmd.desc, col)]
+
+
+def _format_usage_entry(
+    command_parts: tuple[str, ...],
+    args_spec: str,
+    flags: list[Flag],
+    desc: str,
+    col: int,
+) -> str:
+    args_str = f" {args_spec}" if args_spec else ""
+    entry = f"telec {' '.join(command_parts)}{args_str}{_inline_flags(flags)}"
+    return f"  {entry:<{col}}# {desc}"
 
 
 def _example_positionals(args_spec: str) -> list[str]:
@@ -377,8 +384,6 @@ def _print_completion(value: str, description: str) -> None:
 
 def _handle_completion() -> None:
     """Handle shell completion requests."""
-    import os
-
     comp_line = os.environ.get("COMP_LINE", "")
     parts = comp_line.split()
 
@@ -405,10 +410,9 @@ def _handle_completion() -> None:
         return
 
     # Command-specific completions
-    if cmd in ("sync", "watch"):
-        if cmd in CLI_SURFACE:
-            _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
-    elif cmd in (
+    if cmd in ("sync", "watch") and cmd in CLI_SURFACE:
+        _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
+    elif cmd in {
         "todo",
         "roadmap",
         "config",
@@ -420,7 +424,7 @@ def _handle_completion() -> None:
         "projects",
         "bugs",
         "auth",
-    ):
+    }:
         _complete_subcmd(cmd, rest, current, is_partial)
 
 
@@ -480,15 +484,7 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
         return
 
     # Subcommand-level completion: positional args + flags
-    subcmd = rest[0]
-    sub_def = cmd_def.subcommands.get(subcmd)
-    flags = sub_def.flag_tuples if sub_def and sub_def.flags else cmd_def.flag_tuples
-
-    # Count non-flag args provided after the subcommand
-    positional_rest = [a for a in rest[1:] if not a.startswith("-")]
-    expected_positionals = sub_def.args.split() if sub_def and sub_def.args else []
-
-    used = set(rest[1:])
+    flags, positional_rest, expected_positionals, used = _subcommand_completion_context(cmd_def, rest)
     if is_partial and current.startswith("-"):
         for flag in flags:
             if _flag_matches(flag, current) and not _flag_used(flag, used):
@@ -503,3 +499,14 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
     for flag in flags:
         if not _flag_used(flag, used):
             _print_flag(flag)
+
+
+def _subcommand_completion_context(
+    cmd_def: CommandDef, rest: list[str]
+) -> tuple[list[tuple[str | None, str, str]], list[str], list[str], set[str]]:
+    sub_def = cmd_def.subcommands.get(rest[0])
+    flags = sub_def.flag_tuples if sub_def and sub_def.flags else cmd_def.flag_tuples
+    positional_rest = [arg for arg in rest[1:] if not arg.startswith("-")]
+    expected_positionals = sub_def.args.split() if sub_def and sub_def.args else []
+    used = set(rest[1:])
+    return flags, positional_rest, expected_positionals, used

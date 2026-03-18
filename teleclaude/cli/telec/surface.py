@@ -100,8 +100,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
                 ],
                 notes=[
-                    "Use --direct for peer conversation mode when you want shared linked output instead of worker supervision notifications.",
-                    "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
+                    (
+                        "Use --direct for peer conversation mode when you want shared linked output "
+                        "instead of worker supervision notifications."
+                    ),
+                    (
+                        "Use --detach for fire-and-forget dispatch: child inherits identity but caller "
+                        "receives no notifications."
+                    ),
                 ],
                 examples=[
                     "telec sessions start --project /tmp/project",
@@ -166,7 +172,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Creates a fresh session and runs the slash command as the first agent message.",
                     "Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.",
                     "Example: telec sessions run --command /next-build --args my-slug",
-                    "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
+                    (
+                        "Use --detach for fire-and-forget dispatch: child inherits identity but caller "
+                        "receives no notifications."
+                    ),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -457,7 +466,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--phase", desc="Phase: build, review, prepare, requirements_review, plan_review"),
                     Flag(
                         "--status",
-                        desc="Work: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work/needs_decision; Prepare lifecycle: prepared, gate, etc.",
+                        desc=(
+                            "Work: pending/started/complete/approved/changes_requested; Prepare verdict: "
+                            "approve/needs_work/needs_decision; Prepare lifecycle: prepared, gate, etc."
+                        ),
                     ),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
@@ -525,7 +537,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Scaffolds children, cleans parent artifacts, sets container state.",
-                    "Children inherit parent's approved prepare phase: if requirements were approved, children start at plan_drafting; if the plan was approved, children start at prepared (ready for build).",
+                    (
+                        "Children inherit parent's approved prepare phase: if requirements were approved, "
+                        "children start at plan_drafting; if the plan was approved, children start at "
+                        "prepared (ready for build)."
+                    ),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -768,7 +784,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 },
                 notes=[
-                    "To edit people's subscriptions, modify the person config: ~/.teleclaude/people/{name}/teleclaude.yml"
+                    (
+                        "To edit people's subscriptions, modify the person config: "
+                        "~/.teleclaude/people/{name}/teleclaude.yml"
+                    )
                 ],
             ),
             "env": CommandDef(
@@ -864,7 +883,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--project", desc="Project name"),
                 ],
                 examples=[
-                    'telec memories save "Root cause identified for session update reason suppression." --title "Session reason fix" --type discovery --project teleclaude',
+                    (
+                        'telec memories save "Root cause identified for session update reason suppression." '
+                        '--title "Session reason fix" --type discovery --project teleclaude'
+                    ),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

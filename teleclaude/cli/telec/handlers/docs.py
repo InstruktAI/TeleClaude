@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
+from pathlib import Path
+
 from teleclaude.cli.telec.help import _usage
 
 __all__ = [
@@ -9,6 +12,14 @@ __all__ = [
     "_handle_docs_get",
     "_handle_docs_index",
 ]
+
+
+def _build_context_output(**kwargs: object) -> str:
+    return importlib.import_module("teleclaude.context_selector").build_context_output(**kwargs)
+
+
+def _resolve_cli_caller_role() -> str | None:
+    return importlib.import_module("teleclaude.cli.session_auth").resolve_cli_caller_role()
 
 
 def _handle_docs(args: list[str]) -> None:
@@ -33,10 +44,6 @@ def _handle_docs(args: list[str]) -> None:
 
 def _handle_docs_index(args: list[str]) -> None:
     """Handle telec docs index."""
-    from pathlib import Path
-
-    from teleclaude.context_selector import build_context_output
-
     project_root = Path.cwd()
     baseline_only = False
     third_party = False
@@ -75,10 +82,8 @@ def _handle_docs_index(args: list[str]) -> None:
             print(_usage("docs", "index"))
             raise SystemExit(1)
 
-    from teleclaude.cli.session_auth import resolve_cli_caller_role
-
-    effective_role = resolve_cli_caller_role()
-    output = build_context_output(
+    effective_role = _resolve_cli_caller_role()
+    output = _build_context_output(
         areas=areas,
         project_root=project_root,
         snippet_ids=None,
@@ -92,10 +97,6 @@ def _handle_docs_index(args: list[str]) -> None:
 
 def _handle_docs_get(args: list[str]) -> None:
     """Handle telec docs get."""
-    from pathlib import Path
-
-    from teleclaude.context_selector import build_context_output
-
     project_root = Path.cwd()
     snippet_ids: list[str] = []
 
@@ -106,22 +107,19 @@ def _handle_docs_get(args: list[str]) -> None:
             print(f"Unknown option: {arg}")
             print(_usage("docs", "get"))
             raise SystemExit(1)
-        else:
-            for part in arg.split(","):
-                part = part.strip()
-                if part:
-                    snippet_ids.append(part)
-            i += 1
+        for part in arg.split(","):
+            part = part.strip()
+            if part:
+                snippet_ids.append(part)
+        i += 1
 
     if not snippet_ids:
         print("At least one snippet ID is required.")
         print(_usage("docs", "get"))
         raise SystemExit(1)
 
-    from teleclaude.cli.session_auth import resolve_cli_caller_role
-
-    effective_role = resolve_cli_caller_role()
-    output = build_context_output(
+    effective_role = _resolve_cli_caller_role()
+    output = _build_context_output(
         areas=[],
         project_root=project_root,
         snippet_ids=snippet_ids,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import os
 from dataclasses import dataclass
@@ -48,6 +49,22 @@ def _normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
+def _read_email_from_auth_payload(payload: str) -> str | None:
+    """Extract an email from the auth file payload."""
+    if not payload:
+        return None
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return _normalize_email(payload) or None
+    if not isinstance(data, dict):
+        return None
+    raw_email = data.get("email")
+    if not isinstance(raw_email, str):
+        return None
+    return _normalize_email(raw_email) or None
+
+
 def read_current_session_email() -> str | None:
     """Read login email.
 
@@ -62,19 +79,8 @@ def read_current_session_email() -> str | None:
     try:
         payload = AUTH_PATH.read_text(encoding="utf-8").strip()
     except OSError:
-        return None
-    if not payload:
-        return None
-    try:
-        data = json.loads(payload)
-    except json.JSONDecodeError:
-        return _normalize_email(payload) or None
-    if not isinstance(data, dict):
-        return None
-    raw_email = data.get("email")
-    if not isinstance(raw_email, str):
-        return None
-    return _normalize_email(raw_email) or None
+        payload = ""
+    return _read_email_from_auth_payload(payload)
 
 
 def write_current_session_email(email: str) -> TerminalAuthState:
@@ -123,6 +129,51 @@ def clear_current_session_email() -> bool:
         return False
 
 
+def _resolve_role_from_identity_file() -> str | None:
+    """Resolve role from terminal auth state via the public identity API."""
+    email = read_current_session_email()
+    if not email:
+        return None
+
+    identity = get_identity_resolver().resolve("web", {"email": email})
+    if identity.platform == "web":
+        return identity.person_role
+    return None
+
+
+async def _fetch_daemon_cli_role() -> str | None:
+    """Ask the daemon for the caller role when a managed session marker exists."""
+    api_client = importlib.import_module("teleclaude.cli.api_client")
+    api_error = api_client.APIError
+    telec_api_client = api_client.TelecAPIClient
+
+    api = telec_api_client()
+    try:
+        await api.connect()
+        data = await api.get_auth_whoami()
+    except api_error:
+        return None
+    finally:
+        await api.close()
+    return data.get("role")
+
+
+def _resolve_role_from_daemon() -> str | None:
+    """Resolve role via the daemon for TeleClaude-managed sessions."""
+    tmpdir = os.environ.get("TMPDIR", "")
+    if not tmpdir:
+        return None
+
+    session_id_path = Path(tmpdir) / "teleclaude_session_id"
+    if not session_id_path.exists():
+        return None
+
+    try:
+        return asyncio.run(_fetch_daemon_cli_role())
+    except (ImportError, OSError, RuntimeError):
+        return None
+
+
 def resolve_cli_caller_role() -> str | None:
     """Resolve the effective human role for the current CLI caller.
 
@@ -138,34 +189,8 @@ def resolve_cli_caller_role() -> str | None:
     if env_role:
         return env_role
 
-    # Path 2: TTY auth file → IdentityResolver
-    email = read_current_session_email()
-    if email:
-        resolver = get_identity_resolver()
-        person = resolver._by_email.get(email.lower())
-        if person:
-            return resolver._normalize_role(person.role)
+    role = _resolve_role_from_identity_file()
+    if role:
+        return role
 
-    # Path 3: daemon API — works for any TeleClaude-managed session
-    tmpdir = os.environ.get("TMPDIR", "")
-    if not tmpdir:
-        return None
-    session_id_path = Path(tmpdir) / "teleclaude_session_id"
-    if not session_id_path.exists():
-        return None
-
-    try:
-        from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
-
-        async def _fetch() -> str | None:
-            api = TelecAPIClient()
-            await api.connect()
-            try:
-                data = await api.get_auth_whoami()
-            finally:
-                await api.close()
-            return data.get("role")
-
-        return asyncio.run(_fetch())
-    except Exception:
-        return None
+    return _resolve_role_from_daemon()

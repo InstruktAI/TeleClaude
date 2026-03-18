@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import time
 from collections import deque
 from collections.abc import Callable
@@ -10,7 +11,8 @@ from enum import IntEnum
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.animations.base import Z50, Animation, RenderBuffer
+from teleclaude.cli.tui import theme
+from teleclaude.cli.tui.animations.base import Z0, Z50, Animation, RenderBuffer
 
 logger = get_logger(__name__)
 
@@ -61,6 +63,7 @@ class AnimationEngine:
 
     @property
     def is_enabled(self) -> bool:
+        """Whether animation playback is globally enabled."""
         return self._is_enabled
 
     @is_enabled.setter
@@ -71,6 +74,7 @@ class AnimationEngine:
 
     @property
     def animation_mode(self) -> str:
+        """Current animation mode applied to new animations."""
         return self._animation_mode
 
     @animation_mode.setter
@@ -99,16 +103,12 @@ class AnimationEngine:
         if not self._is_enabled:
             return
 
-        import random
-
-        from teleclaude.cli.tui.theme import get_terminal_background, is_dark_mode
-
         target_name = target or animation.target
         slot = self._ensure_target(target_name)
 
         # Update animation with current theme context before starting
-        animation.dark_mode = is_dark_mode()
-        animation.background_hex = get_terminal_background()
+        animation.dark_mode = theme.is_dark_mode()
+        animation.background_hex = theme.get_terminal_background()
         animation.animation_mode = self._animation_mode
         animation.seed = random.randint(0, 1000000)
         animation.rng = random.Random(animation.seed)
@@ -162,8 +162,81 @@ class AnimationEngine:
         self._has_active_animation = any(existing.animation is not None for existing in self._targets.values())
 
     def set_looping(self, target: str, looping: bool) -> None:
+        """Configure whether a target restarts its animation after completion."""
         if target in self._targets:
             self._targets[target].looping = looping
+
+    @staticmethod
+    def _clear_back_buffer(back_buffer: _ZBufferDict) -> None:
+        """Clear a back buffer while retaining per-layer dictionaries."""
+        for layer in back_buffer.values():
+            layer.clear()
+
+    @staticmethod
+    def _render_result(back_buffer: _ZBufferDict, result: dict[tuple[int, int], str | int] | RenderBuffer) -> None:
+        """Write a render result into the target back buffer."""
+        AnimationEngine._clear_back_buffer(back_buffer)
+        if isinstance(result, RenderBuffer):
+            for z_level, pixels in result.layers.items():
+                back_buffer.setdefault(z_level, {}).update(pixels)
+            return
+        back_buffer.setdefault(Z50, {}).update(result)
+
+    def _advance_completed_animation(self, slot: AnimationSlot, target_name: str, back_buffer: _ZBufferDict) -> None:
+        """Advance, loop, or clear a slot after its current animation completes."""
+        animation = slot.animation
+        if animation is None or not animation.is_complete(slot.frame_count):
+            return
+        if slot.looping:
+            slot.frame_count = 0
+            return
+        if slot.queue:
+            next_animation, next_priority = slot.queue.popleft()
+            slot.animation = next_animation
+            slot.frame_count = 0
+            slot.priority = next_priority
+            slot.looping = False
+            if self.on_animation_start:
+                self.on_animation_start(target_name, next_animation)
+            return
+        slot.animation = None
+        back_buffer.clear()
+
+    def _update_slot(
+        self,
+        target_name: str,
+        slot: AnimationSlot,
+        current_time_ms: float,
+    ) -> tuple[bool, bool]:
+        """Update one animation slot and return `(changed, is_active)`."""
+        back_buffer = self._buffers_back[target_name]
+        animation = slot.animation
+        if animation is None:
+            back_buffer.clear()
+            return False, False
+
+        elapsed_ms = current_time_ms - slot.last_update_ms
+        if elapsed_ms < animation.speed_ms:
+            return False, True
+
+        try:
+            result = animation.update(slot.frame_count)
+        except (ArithmeticError, AttributeError, LookupError, RuntimeError, TypeError, ValueError):
+            logger.exception(
+                "Animation update crashed",
+                animation=type(animation).__name__,
+                target=target_name,
+                frame=slot.frame_count,
+            )
+            slot.animation = None
+            back_buffer.clear()
+            return False, False
+
+        self._render_result(back_buffer, result)
+        slot.frame_count += 1
+        slot.last_update_ms = current_time_ms
+        self._advance_completed_animation(slot, target_name, back_buffer)
+        return True, slot.animation is not None
 
     def update(self) -> bool:
         """Update animation state. Call this once per render cycle (~100ms).
@@ -175,60 +248,9 @@ class AnimationEngine:
         any_active = False
 
         for target_name, slot in self._targets.items():
-            back_buffer = self._buffers_back[target_name]
-
-            if slot.animation:
-                any_active = True
-                elapsed_ms = current_time_ms - slot.last_update_ms
-                if elapsed_ms >= slot.animation.speed_ms:
-                    try:
-                        result = slot.animation.update(slot.frame_count)
-                    except Exception:
-                        logger.exception(
-                            "Animation update crashed",
-                            animation=type(slot.animation).__name__,
-                            target=target_name,
-                            frame=slot.frame_count,
-                        )
-                        slot.animation = None
-                        back_buffer.clear()
-                        continue
-
-                    # Clear inner dicts (reuse z-level dict allocations)
-                    for layer in back_buffer.values():
-                        layer.clear()
-                    if isinstance(result, RenderBuffer):
-                        # Multi-layer update
-                        for z, pixels in result.layers.items():
-                            if z not in back_buffer:
-                                back_buffer[z] = {}
-                            back_buffer[z].update(pixels)
-                    else:
-                        # Legacy single-layer update (default to billboard level)
-                        if Z50 not in back_buffer:
-                            back_buffer[Z50] = {}
-                        back_buffer[Z50].update(result)
-
-                    slot.frame_count += 1
-                    slot.last_update_ms = current_time_ms
-                    changed = True
-
-                    if slot.animation.is_complete(slot.frame_count):
-                        if slot.looping:
-                            slot.frame_count = 0
-                        elif slot.queue:
-                            next_animation, next_priority = slot.queue.popleft()
-                            slot.animation = next_animation
-                            slot.frame_count = 0
-                            slot.priority = next_priority
-                            slot.looping = False
-                            if self.on_animation_start:
-                                self.on_animation_start(target_name, next_animation)
-                        else:
-                            slot.animation = None
-                            back_buffer.clear()
-            else:
-                back_buffer.clear()
+            slot_changed, slot_active = self._update_slot(target_name, slot, current_time_ms)
+            changed = changed or slot_changed
+            any_active = any_active or slot_active
 
         # Swap buffers atomically
         self._buffers_front, self._buffers_back = self._buffers_back, self._buffers_front
@@ -270,8 +292,6 @@ class AnimationEngine:
 
         Excludes Z0 (sky gradient background).
         """
-        from teleclaude.cli.tui.animations.base import Z0
-
         z_buffer = self._buffers_front.get(target)
         if not z_buffer:
             return []
@@ -286,14 +306,24 @@ class AnimationEngine:
 
     def refresh_theme(self) -> None:
         """Push current dark_mode to all running animations."""
-        from teleclaude.cli.tui.theme import get_terminal_background, is_dark_mode
-
-        dark = is_dark_mode()
-        bg = get_terminal_background()
+        dark = theme.is_dark_mode()
+        bg = theme.get_terminal_background()
         for slot in self._targets.values():
             if slot.animation:
                 slot.animation.dark_mode = dark
                 slot.animation.background_hex = bg
+
+    @staticmethod
+    def _refresh_animation_term_width(animation: Animation, width: int | None) -> None:
+        """Update an animation's cached terminal width when supported."""
+        if not hasattr(animation, "_cached_term_width"):
+            return
+        if width is None:
+            fetch_term_width = getattr(animation, "_fetch_term_width", None)
+            if not callable(fetch_term_width):
+                return
+            width = fetch_term_width()
+        animation._cached_term_width = width
 
     def invalidate_term_width(self, width: int | None = None) -> None:
         """Force all running animations to re-fetch terminal width.
@@ -302,11 +332,8 @@ class AnimationEngine:
         reposition immediately.
         """
         for slot in self._targets.values():
-            if slot.animation and hasattr(slot.animation, "_cached_term_width"):
-                if width is not None:
-                    slot.animation._cached_term_width = width  # type: ignore[attr-defined]
-                else:
-                    slot.animation._cached_term_width = slot.animation._fetch_term_width()  # type: ignore[attr-defined]
+            if slot.animation:
+                self._refresh_animation_term_width(slot.animation, width)
 
     def is_external_light(self, target: str = "banner") -> bool:
         """True if the current animation for the target is an external light source."""

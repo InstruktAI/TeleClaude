@@ -17,6 +17,28 @@ from teleclaude.cli.tui.types import StickySessionInfo
 
 logger = get_logger(__name__)
 
+_SESSION_SELECTION_FIELDS = frozenset(
+    {
+        "selected_index",
+        "selected_session_id",
+        "last_selection_source",
+        "last_selection_session_id",
+        "scroll_offset",
+        "selection_method",
+    }
+)
+_SESSION_PANE_FIELDS = frozenset({"collapsed_sessions", "sticky_sessions", "preview"})
+_SESSION_HIGHLIGHT_FIELDS = frozenset({"input_highlights", "output_highlights", "temp_output_highlights"})
+_SESSION_ACTIVITY_FIELDS = frozenset(
+    {
+        "active_tool",
+        "activity_timer_reset",
+        "last_output_summary",
+        "last_output_summary_at",
+        "last_activity_at",
+    }
+)
+
 
 @dataclass(frozen=True)
 class PreviewState:
@@ -35,22 +57,31 @@ class DocPreviewState:
 
 
 @dataclass
-class SessionViewState:
-    """State for Sessions view."""
-
+class _SessionSelectionState:
     selected_index: int = 0
     selected_session_id: str | None = None
     last_selection_source: str = "system"  # "user" | "pane" | "system"
     last_selection_session_id: str | None = None
     scroll_offset: int = 0
     selection_method: str = "arrow"  # "arrow" | "click" | "pane"
+
+
+@dataclass
+class _SessionPaneState:
     collapsed_sessions: set[str] = field(default_factory=set)
     sticky_sessions: list[StickySessionInfo] = field(default_factory=list)
     preview: PreviewState | None = None
-    # Highlight state: sessions with active input/output highlights
+
+
+@dataclass
+class _SessionHighlightState:
     input_highlights: set[str] = field(default_factory=set)
     output_highlights: set[str] = field(default_factory=set)
     temp_output_highlights: set[str] = field(default_factory=set)  # For streaming safety timer
+
+
+@dataclass
+class _SessionActivityState:
     active_tool: dict[str, str] = field(default_factory=dict)  # session_id -> tool preview text
     activity_timer_reset: set[str] = field(default_factory=set)  # Sessions needing timer reset
     last_output_summary: dict[str, str] = field(default_factory=dict)  # session_id -> output summary from agent_stop
@@ -58,6 +89,45 @@ class SessionViewState:
     last_activity_at: dict[str, str] = field(
         default_factory=dict
     )  # session_id -> ISO timestamp of latest activity event
+
+
+@dataclass
+class SessionViewState:
+    """State for Sessions view."""
+
+    _selection: _SessionSelectionState = field(default_factory=_SessionSelectionState)
+    _panes: _SessionPaneState = field(default_factory=_SessionPaneState)
+    _highlights: _SessionHighlightState = field(default_factory=_SessionHighlightState)
+    _activity: _SessionActivityState = field(default_factory=_SessionActivityState)
+
+    def __getattr__(self, name: str) -> object:
+        if name in _SESSION_SELECTION_FIELDS:
+            return getattr(self._selection, name)
+        if name in _SESSION_PANE_FIELDS:
+            return getattr(self._panes, name)
+        if name in _SESSION_HIGHLIGHT_FIELDS:
+            return getattr(self._highlights, name)
+        if name in _SESSION_ACTIVITY_FIELDS:
+            return getattr(self._activity, name)
+        raise AttributeError(name)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name.startswith("_"):
+            super().__setattr__(name, value)
+            return
+        if name in _SESSION_SELECTION_FIELDS:
+            setattr(self._selection, name, value)
+            return
+        if name in _SESSION_PANE_FIELDS:
+            setattr(self._panes, name, value)
+            return
+        if name in _SESSION_HIGHLIGHT_FIELDS:
+            setattr(self._highlights, name, value)
+            return
+        if name in _SESSION_ACTIVITY_FIELDS:
+            setattr(self._activity, name, value)
+            return
+        super().__setattr__(name, value)
 
 
 @dataclass
@@ -129,6 +199,8 @@ class Intent:
 
 
 class IntentPayload(TypedDict, total=False):
+    """Payload fields carried by reducer intents."""
+
     session_id: str
     session_ids: list[str]
     todo_id: str

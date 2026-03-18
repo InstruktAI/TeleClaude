@@ -1,8 +1,12 @@
 """PaneLayoutMixin — layout calculation, rendering, and background refresh."""
 
+# The mixin intentionally manipulates private layout state on the host class.
+# pylint: disable=protected-access
+
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -17,39 +21,91 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True)
+class LayoutRequest:
+    """Resolved inputs for one pane-layout application."""
+
+    active_session_id: str | None
+    sticky_session_ids: list[str]
+    get_computer_info: Callable[[str], ComputerInfo | None]
+    active_doc_preview: DocPreviewState | None = None
+    selected_session_id: str | None = None
+    tree_node_has_focus: bool = False
+    focus: bool = True
+
+
 class PaneLayoutMixin:
     """Layout management methods for TmuxPaneManager."""
 
-    def apply_layout(
-        self,
-        *,
-        active_session_id: str | None,
-        sticky_session_ids: list[str],
-        get_computer_info: Callable[[str], ComputerInfo | None],
-        active_doc_preview: DocPreviewState | None = None,
-        selected_session_id: str | None = None,
-        tree_node_has_focus: bool = False,
-        focus: bool = True,
-    ) -> None:
+    def _layout_state_ref(self) -> object:
+        """Return grouped layout state when present, otherwise legacy harness attrs."""
+        return getattr(self, "_layout_state", self)
+
+    def _get_layout_attr(self, name: str, default: object = None) -> object:
+        """Read a layout attribute from grouped state or the legacy harness."""
+        return getattr(self._layout_state_ref(), name, default)
+
+    def _set_layout_attr(self, name: str, value: object) -> None:
+        """Write a layout attribute to grouped state or the legacy harness."""
+        setattr(self._layout_state_ref(), name, value)
+
+    def apply_layout(self, request: LayoutRequest | None = None, **legacy_kwargs: object) -> None:
         """Apply a deterministic layout from session ids."""
         if not self._in_tmux:  # type: ignore[attr-defined]
             return
+        if request is None:
+            request = LayoutRequest(**legacy_kwargs)
 
         self._reconcile()  # type: ignore[attr-defined]
-
         logger.debug(
             "apply_layout: active=%s sticky=%s doc_preview=%s focus=%s tui_pane=%s active_pane=%s",
-            active_session_id if active_session_id else None,
-            list(sticky_session_ids),
-            active_doc_preview.doc_id if active_doc_preview else None,
-            focus,
+            request.active_session_id if request.active_session_id else None,
+            list(request.sticky_session_ids),
+            request.active_doc_preview.doc_id if request.active_doc_preview else None,
+            request.focus,
             self._tui_pane_id,  # type: ignore[attr-defined]
             self._active_pane_id,  # type: ignore[attr-defined]
         )
 
-        self._selected_session_id = selected_session_id  # type: ignore[attr-defined]
-        self._tree_node_has_focus = tree_node_has_focus  # type: ignore[attr-defined]
+        self._set_layout_attr("_selected_session_id", request.selected_session_id)
+        self._set_layout_attr("_tree_node_has_focus", request.tree_node_has_focus)
 
+        active_spec = self._build_active_spec(request)
+        self._set_layout_attr(
+            "_sticky_specs",
+            self._build_sticky_specs(
+                request.sticky_session_ids,
+                request.get_computer_info,
+            ),
+        )
+        previous_active = self._get_layout_attr("_active_spec")
+        prev_command = previous_active.command if previous_active else None
+        self._set_layout_attr("_active_spec", active_spec)
+
+        if self._layout_is_unchanged():
+            logger.debug(
+                "apply_layout: layout unchanged, active_spec=%s active_session=%s active_pane=%s",
+                active_spec.session_id if active_spec else None,
+                self.state.active_session_id if self.state.active_session_id else None,  # type: ignore[attr-defined]
+                self._active_pane_id,  # type: ignore[attr-defined]
+            )
+            self._handle_unchanged_layout(active_spec, prev_command, request.focus)
+            return
+
+        logger.debug(
+            "apply_layout: layout CHANGED, calling _render_layout (specs=%d)",
+            len(self._build_session_specs()),
+        )
+        self._render_layout()
+        self.invalidate_bg_cache()
+        if request.focus and active_spec:
+            self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
+
+    def _build_sticky_specs(
+        self,
+        sticky_session_ids: list[str],
+        get_computer_info: Callable[[str], ComputerInfo | None],
+    ) -> list[SessionPaneSpec]:
         sticky_specs: list[SessionPaneSpec] = []
         for session_id in sticky_session_ids:
             session = self._session_catalog.get(session_id)  # type: ignore[attr-defined]
@@ -67,78 +123,73 @@ class PaneLayoutMixin:
                     active_agent=session.active_agent or "",
                 )
             )
-        active_spec: SessionPaneSpec | None = None
-        if active_session_id:
-            session = self._session_catalog.get(active_session_id)  # type: ignore[attr-defined]
+        return sticky_specs
+
+    def _build_active_spec(self, request: LayoutRequest) -> SessionPaneSpec | None:
+        if request.active_session_id:
+            session = self._session_catalog.get(request.active_session_id)  # type: ignore[attr-defined]
             if session and session.tmux_session_name:
-                active_spec = SessionPaneSpec(
+                return SessionPaneSpec(
                     session_id=session.session_id,
                     tmux_session_name=session.tmux_session_name,
-                    computer_info=get_computer_info(session.computer or "local"),
+                    computer_info=request.get_computer_info(session.computer or "local"),
                     is_sticky=False,
                     active_agent=session.active_agent or "",
                 )
-        elif active_doc_preview:
-            active_spec = SessionPaneSpec(
-                session_id=f"doc:{active_doc_preview.doc_id}",
+        elif request.active_doc_preview:
+            return SessionPaneSpec(
+                session_id=f"doc:{request.active_doc_preview.doc_id}",
                 tmux_session_name=None,
                 computer_info=None,
                 is_sticky=False,
                 active_agent="",
-                command=active_doc_preview.command,
+                command=request.active_doc_preview.command,
             )
+        return None
 
-        self._sticky_specs = sticky_specs  # type: ignore[attr-defined]
-        prev_command = self._active_spec.command if self._active_spec else None  # type: ignore[attr-defined]
-        self._active_spec = active_spec  # type: ignore[attr-defined]
+    def _handle_unchanged_layout(
+        self,
+        active_spec: SessionPaneSpec | None,
+        prev_command: str | None,
+        focus: bool,
+    ) -> None:
+        if active_spec and self.state.active_session_id != active_spec.session_id:  # type: ignore[attr-defined]
+            self._update_active_pane(active_spec)
+        elif self._active_doc_command_changed(active_spec, prev_command):
+            self._update_active_pane(active_spec)
 
-        if self._layout_is_unchanged():
-            logger.debug(
-                "apply_layout: layout unchanged, active_spec=%s active_session=%s active_pane=%s",
-                active_spec.session_id if active_spec else None,
-                self.state.active_session_id if self.state.active_session_id else None,  # type: ignore[attr-defined]
-                self._active_pane_id,  # type: ignore[attr-defined]
-            )
-            if active_spec and self.state.active_session_id != active_spec.session_id:  # type: ignore[attr-defined]
-                self._update_active_pane(active_spec)
-            elif (
-                active_spec
-                and active_spec.command
-                and self.state.active_session_id == active_spec.session_id  # type: ignore[attr-defined]
-                and active_spec.command != prev_command
-            ):
-                # Same doc_id but command changed (e.g. view → edit mode)
-                self._update_active_pane(active_spec)
-            if focus and active_spec:
-                self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
-            if not active_spec:
-                self._clear_active_state_if_sticky()
-            # Only re-apply pane backgrounds when the selection or agent
-            # actually changed.  Each call spawns ~5 tmux subprocesses per
-            # pane which dominates the per-click latency.
-            bg_sig = self._compute_bg_signature()
-            if bg_sig != self._bg_signature:  # type: ignore[attr-defined]
-                self._bg_signature = bg_sig  # type: ignore[attr-defined]
-                self._refresh_session_pane_backgrounds()
-                self._set_tui_pane_background()  # type: ignore[attr-defined]
-            return
-
-        logger.debug(
-            "apply_layout: layout CHANGED, calling _render_layout (specs=%d)",
-            len(self._build_session_specs()),
-        )
-        self._render_layout()
-        self.invalidate_bg_cache()
         if focus and active_spec:
             self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
+        if not active_spec:
+            self._clear_active_state_if_sticky()
+        self._refresh_backgrounds_if_needed()
+
+    def _active_doc_command_changed(
+        self,
+        active_spec: SessionPaneSpec | None,
+        prev_command: str | None,
+    ) -> bool:
+        return bool(
+            active_spec
+            and active_spec.command
+            and self.state.active_session_id == active_spec.session_id  # type: ignore[attr-defined]
+            and active_spec.command != prev_command
+        )
+
+    def _refresh_backgrounds_if_needed(self) -> None:
+        """Refresh pane backgrounds only when selection or agent state changed."""
+        bg_signature = self._compute_bg_signature()
+        if bg_signature == self._get_layout_attr("_bg_signature"):
+            return
+        self._set_layout_attr("_bg_signature", bg_signature)
+        self._refresh_session_pane_backgrounds()
+        self._set_tui_pane_background()  # type: ignore[attr-defined]
 
     def _build_session_specs(self) -> list[SessionPaneSpec]:
-        session_specs: list[SessionPaneSpec] = list(self._sticky_specs)  # type: ignore[attr-defined]
-        if self._active_spec and not any(  # type: ignore[attr-defined]
-            spec.session_id == self._active_spec.session_id
-            for spec in session_specs  # type: ignore[attr-defined]
-        ):
-            session_specs.append(self._active_spec)  # type: ignore[attr-defined]
+        session_specs: list[SessionPaneSpec] = list(self._get_layout_attr("_sticky_specs", []))
+        active_spec = self._get_layout_attr("_active_spec")
+        if active_spec and not any(spec.session_id == active_spec.session_id for spec in session_specs):
+            session_specs.append(active_spec)
         if len(session_specs) > 5:
             session_specs = session_specs[:5]
         return session_specs
@@ -149,11 +200,6 @@ class PaneLayoutMixin:
         layout = LAYOUT_SPECS.get(total_panes)
         if not layout:
             return None
-        # Track structural layout only — sticky IDs + whether an active slot
-        # exists.  The active session_id is intentionally excluded so that
-        # switching the preview between non-sticky sessions takes the
-        # lightweight _update_active_pane path (respawn-pane) instead of
-        # tearing down and recreating all tmux panes (_render_layout).
         structural_keys = tuple(spec.session_id if spec.is_sticky else "__active__" for spec in session_specs)
         return (
             layout.rows,
@@ -163,39 +209,34 @@ class PaneLayoutMixin:
         )
 
     def _compute_bg_signature(self) -> tuple[object, ...]:
-        """Compute a signature for pane background state.
-
-        Captures the inputs that determine _refresh_session_pane_backgrounds
-        and _set_tui_pane_background output: selected session, agents, and
-        theming mode.
-
-        Keyed on (pane_id, agent) — NOT session_id — so that switching
-        the active preview between sessions with the same agent doesn't
-        trigger a redundant full background refresh.
-        """
+        """Compute a signature for pane background state."""
         pane_agents = tuple(
             sorted(
-                (pid, (self._session_catalog.get(sid) or None) and self._session_catalog[sid].active_agent)  # type: ignore[attr-defined]
-                for sid, pid in self.state.session_to_pane.items()  # type: ignore[attr-defined]
+                (pane_id, self._get_session_agent(session_id))
+                for session_id, pane_id in self.state.session_to_pane.items()  # type: ignore[attr-defined]
             )
         )
         return (
-            self._selected_session_id,  # type: ignore[attr-defined]
-            self._tree_node_has_focus,  # type: ignore[attr-defined]
+            self._get_layout_attr("_selected_session_id"),
+            self._get_layout_attr("_tree_node_has_focus"),
             theme.get_pane_theming_mode(),
             theme.get_current_mode(),
             pane_agents,
         )
 
+    def _get_session_agent(self, session_id: str) -> str | None:
+        session = self._session_catalog.get(session_id)  # type: ignore[attr-defined]
+        return session.active_agent if session else None
+
     def invalidate_bg_cache(self) -> None:
-        """Force background re-application on next apply_layout (e.g. after theme change)."""
-        self._bg_signature = None  # type: ignore[attr-defined]
+        """Force background re-application on next apply_layout."""
+        self._set_layout_attr("_bg_signature", None)
 
     def _clear_active_state_if_sticky(self) -> None:
         """Clear active_session_id when active has been promoted to sticky."""
         if not self.state.active_session_id:  # type: ignore[attr-defined]
             return
-        if any(spec.session_id == self.state.active_session_id for spec in self._sticky_specs):  # type: ignore[attr-defined]
+        if any(spec.session_id == self.state.active_session_id for spec in self._get_layout_attr("_sticky_specs", [])):
             self.state.active_session_id = None  # type: ignore[attr-defined]
 
     def _refresh_session_pane_backgrounds(self) -> None:
@@ -235,7 +276,7 @@ class PaneLayoutMixin:
             return
         if active_pane == self._tui_pane_id:  # type: ignore[attr-defined]
             logger.error(
-                "_update_active_pane: active_pane == tui_pane_id (%s), refusing to respawn TUI — rebuilding layout",
+                "_update_active_pane: active_pane == tui_pane_id (%s), refusing to respawn TUI - rebuilding layout",
                 self._tui_pane_id,  # type: ignore[attr-defined]
             )
             self.state.active_session_id = None  # type: ignore[attr-defined]
@@ -251,9 +292,13 @@ class PaneLayoutMixin:
         attach_cmd = self._build_pane_command(active_spec)
         self._run_tmux("respawn-pane", "-k", "-t", active_pane, attach_cmd)  # type: ignore[attr-defined]
 
-        stale_ids = [sid for sid, pid in self.state.session_to_pane.items() if pid == active_pane]  # type: ignore[attr-defined]
-        for sid in stale_ids:
-            self.state.session_to_pane.pop(sid, None)  # type: ignore[attr-defined]
+        stale_ids = [
+            session_id
+            for session_id, pane_id in self.state.session_to_pane.items()  # type: ignore[attr-defined]
+            if pane_id == active_pane
+        ]
+        for session_id in stale_ids:
+            self.state.session_to_pane.pop(session_id, None)  # type: ignore[attr-defined]
         self.state.session_to_pane[active_spec.session_id] = active_pane  # type: ignore[attr-defined]
         self.state.active_session_id = active_spec.session_id  # type: ignore[attr-defined]
 
@@ -271,9 +316,9 @@ class PaneLayoutMixin:
         signature = self._compute_layout_signature()
         if signature is None:
             return False
-        if signature == self._layout_signature:  # type: ignore[attr-defined]
+        if signature == self._layout_state.layout_signature:  # type: ignore[attr-defined]
             return True
-        self._layout_signature = signature  # type: ignore[attr-defined]
+        self._layout_state.layout_signature = signature  # type: ignore[attr-defined]
         return False
 
     def _render_layout(self) -> None:
@@ -286,8 +331,8 @@ class PaneLayoutMixin:
             "_render_layout: tui_pane=%s specs=%d sticky=%s active=%s",
             self._tui_pane_id,  # type: ignore[attr-defined]
             len(session_specs),
-            [s.session_id for s in session_specs if s.is_sticky],
-            next((s.session_id for s in session_specs if not s.is_sticky), None),
+            [spec.session_id for spec in session_specs if spec.is_sticky],
+            next((spec.session_id for spec in session_specs if not spec.is_sticky), None),
         )
         if len(session_specs) > 5:
             logger.warning("_render_layout: truncating session panes from %d to 5", len(session_specs))
@@ -314,7 +359,11 @@ class PaneLayoutMixin:
         logger.warning("_render_layout: missing TUI pane id")
         return False
 
-    def _get_layout_spec(self, session_specs: list[SessionPaneSpec], index: int) -> SessionPaneSpec | None:
+    def _get_layout_spec(
+        self,
+        session_specs: list[SessionPaneSpec],
+        index: int,
+    ) -> SessionPaneSpec | None:
         if index <= 0 or index > len(session_specs):
             return None
         return session_specs[index - 1]
@@ -330,40 +379,40 @@ class PaneLayoutMixin:
             spec = self._get_layout_spec(session_specs, layout.grid[0][col])
             if not spec:
                 continue
-            pane_id = self._split_top_row_pane(layout, col, col_top_panes, spec, total_panes)
+            split_target, split_args = self._top_row_split_request(layout, col, col_top_panes, total_panes)
+            pane_id = self._split_top_row_pane(spec, split_target, split_args)
             if pane_id:
                 col_top_panes[col] = pane_id
                 self._track_session_pane(spec, pane_id)
         return col_top_panes
 
-    def _split_top_row_pane(
+    def _top_row_split_request(
         self,
         layout: LayoutSpec,
         col: int,
         col_top_panes: list[str | None],
-        spec: SessionPaneSpec,
         total_panes: int,
-    ) -> str | None:
-        attach_cmd = self._build_pane_command(spec)
+    ) -> tuple[str, list[str]]:
         if col == 1:
-            split_args = ["-t", self._tui_pane_id, "-h"]  # type: ignore[attr-defined]
+            split_args = ["-h"]
             if layout.cols == 2 and total_panes <= 3:
                 split_args.extend(["-p", "60"])
             split_args.append("-d")
-            return self._run_tmux(  # type: ignore[attr-defined]
-                "split-window",
-                *split_args,
-                "-P",
-                "-F",
-                "#{pane_id}",
-                attach_cmd,
-            )
+            return self._tui_pane_id or "", split_args  # type: ignore[attr-defined]
+        return col_top_panes[col - 1] or "", ["-h", "-d"]
+
+    def _split_top_row_pane(
+        self,
+        spec: SessionPaneSpec,
+        split_target: str,
+        split_args: list[str],
+    ) -> str | None:
+        attach_cmd = self._build_pane_command(spec)
         return self._run_tmux(  # type: ignore[attr-defined]
             "split-window",
             "-t",
-            col_top_panes[col - 1] or "",
-            "-h",
-            "-d",
+            split_target,
+            *split_args,
             "-P",
             "-F",
             "#{pane_id}",
@@ -403,21 +452,22 @@ class PaneLayoutMixin:
                 self._track_session_pane(spec, pane_id)
 
     def _finalize_layout_render(self) -> None:
-        if self._active_spec:  # type: ignore[attr-defined]
-            self.state.active_session_id = self._active_spec.session_id  # type: ignore[attr-defined]
+        active_spec = self._layout_state.active_spec  # type: ignore[attr-defined]
+        if active_spec:
+            self.state.active_session_id = active_spec.session_id  # type: ignore[attr-defined]
         logger.debug(
             "_render_layout: done. active_pane=%s active_session=%s tracked=%s",
             self._active_pane_id,  # type: ignore[attr-defined]
             self.state.active_session_id,  # type: ignore[attr-defined]
             dict(self.state.session_to_pane),  # type: ignore[attr-defined]
         )
-        self._layout_signature = self._compute_layout_signature()  # type: ignore[attr-defined]
+        self._layout_state.layout_signature = self._compute_layout_signature()  # type: ignore[attr-defined]
         self._set_tui_pane_background()  # type: ignore[attr-defined]
 
     def _track_session_pane(self, spec: SessionPaneSpec, pane_id: str) -> None:
         """Track pane ids for lookup and cleanup."""
         logger.debug(
-            "_track_session_pane: %s → %s (sticky=%s, tmux=%s)",
+            "_track_session_pane: %s -> %s (sticky=%s, tmux=%s)",
             spec.session_id,
             pane_id,
             spec.is_sticky,
@@ -425,7 +475,6 @@ class PaneLayoutMixin:
         )
         self.state.session_to_pane[spec.session_id] = pane_id  # type: ignore[attr-defined]
 
-        # Apply explicit pane styling so panes never inherit stale colors.
         if spec.tmux_session_name:
             self._set_pane_background(  # type: ignore[attr-defined]
                 pane_id,
@@ -439,20 +488,19 @@ class PaneLayoutMixin:
     def _is_tree_selected_session(self, session_id: str) -> bool:
         """Return True if this session row should get the lighter tree-selected haze."""
         return (
-            self._tree_node_has_focus  # type: ignore[attr-defined]
-            and self._selected_session_id is not None  # type: ignore[attr-defined]
-            and session_id == self._selected_session_id  # type: ignore[attr-defined]
+            self._layout_state.tree_node_has_focus  # type: ignore[attr-defined]
+            and self._layout_state.selected_session_id is not None  # type: ignore[attr-defined]
+            and session_id == self._layout_state.selected_session_id  # type: ignore[attr-defined]
         )
 
     def _build_pane_command(self, spec: SessionPaneSpec) -> str:
-        """Build the command used to populate a pane.
-
-        Doc pane commands (glow/less) get NO_COLOR=1 prefix at peaceful
-        levels (0, 1) to suppress CLI color output.
-        """
+        """Build the command used to populate a pane."""
         if spec.command:
             level = theme.get_pane_theming_mode_level()
             if level <= 1:
                 return f"NO_COLOR=1 {spec.command}"
             return spec.command
-        return self._build_attach_cmd(spec.tmux_session_name or "", spec.computer_info)  # type: ignore[attr-defined]
+        return self._build_attach_cmd(  # type: ignore[attr-defined]
+            spec.tmux_session_name or "",
+            spec.computer_info,
+        )
