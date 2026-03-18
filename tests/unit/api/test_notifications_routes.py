@@ -38,16 +38,18 @@ class TestNotificationsRoutes:
     @pytest.mark.asyncio
     async def test_list_notifications_forwards_filters_to_event_db(self, configured_event_db: object) -> None:
         """Notification listing passes query filters through to the event store."""
-        request = _make_request({
-            "level": "2",
-            "domain": "todos",
-            "human_status": "seen",
-            "agent_status": "claimed",
-            "visibility": "public",
-            "since": "2025-03-15T00:00:00Z",
-            "limit": "10",
-            "offset": "5",
-        })
+        request = _make_request(
+            {
+                "level": "2",
+                "domain": "todos",
+                "human_status": "seen",
+                "agent_status": "claimed",
+                "visibility": "public",
+                "since": "2025-03-15T00:00:00Z",
+                "limit": "10",
+                "offset": "5",
+            }
+        )
         rows = await notifications_routes.list_notifications(request)
 
         assert rows == [{"id": 1}]

@@ -353,7 +353,7 @@ class _TelecConnectionClient:
         if not self._http_state.client:
             raise APIError("Client not connected. Call connect() first.")
 
-        request_kwargs: dict[str, Any] = { # guard: loose-dict - HTTP request kwargs
+        request_kwargs: dict[str, Any] = {  # guard: loose-dict - HTTP request kwargs
             "params": request_options.params,
             "headers": self._http_state.identity_headers,
             "timeout": timeout,

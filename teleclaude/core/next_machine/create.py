@@ -231,7 +231,9 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
         CreativePhase.CREATIVE_COMPLETE: lambda: _creative_complete(slug),
         CreativePhase.BLOCKED: lambda: _creative_blocked(slug),
     }
-    builder: Callable[[], str] = builders.get(phase, lambda: f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml.")
+    builder: Callable[[], str] = builders.get(
+        phase, lambda: f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml."
+    )
     return builder()
 
 
