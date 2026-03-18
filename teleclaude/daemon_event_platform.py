@@ -380,12 +380,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         try:
             import anthropic  # pylint: disable=import-outside-toplevel
 
-            from company.cartridges.signal import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.cartridges.signal import (  # pylint: disable=import-outside-toplevel
                 SignalClusterCartridge,
                 SignalIngestCartridge,
                 SignalSynthesizeCartridge,
             )
-            from company.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel
                 SynthesizeConfig,
             )
             from teleclaude.events.signal.ai import (  # pylint: disable=import-outside-toplevel
