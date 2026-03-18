@@ -42,7 +42,7 @@ def _message_type(
 
 
 def _iter_whatsapp_messages(
-    payload: dict[str, object], # guard: loose-dict - dynamic payload
+    payload: dict[str, object],  # guard: loose-dict - dynamic payload
 ) -> list[dict[str, object]]:  # guard: loose-dict - webhook payload
     """Yield message dictionaries found in a WhatsApp webhook payload."""
     messages: list[dict[str, object]] = []  # guard: loose-dict - webhook payload

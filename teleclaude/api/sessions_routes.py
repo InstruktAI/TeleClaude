@@ -420,7 +420,7 @@ async def _prepare_create_session(
 
 
 async def _resolve_created_session_transport(
-    data: dict[str, object], # guard: loose-dict - dynamic payload
+    data: dict[str, object],  # guard: loose-dict - dynamic payload
 ) -> tuple[str, str]:  # guard: loose-dict - JSON API response
     """Resolve mandatory session creation response fields."""
     session_id = data.get("session_id")

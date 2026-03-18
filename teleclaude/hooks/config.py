@@ -25,7 +25,7 @@ def parse_criterion(data: dict[str, Any]) -> PropertyCriterion:  # guard: loose-
 
 
 def _parse_contract_criteria(
-    contract_data: dict[str, Any], # guard: loose-dict - dynamic payload
+    contract_data: dict[str, Any],  # guard: loose-dict - dynamic payload
 ) -> tuple[  # guard: loose-dict - YAML config
     PropertyCriterion | None,
     PropertyCriterion | None,
