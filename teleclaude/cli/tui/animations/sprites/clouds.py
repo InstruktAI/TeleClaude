@@ -70,7 +70,7 @@ PUFF_2 = CompositeSprite(
     y_weights=[(0, 1, 30), (2, 4, 40), (5, 7, 30)],
     speed_weights=[(0.15, 30), (0.22, 40), (0.30, 30)],
 )
-    
+
 PUFF_2_1 = CompositeSprite(
     layers=[SpriteLayer(positive=[
         "   ▒▒▒▒",

@@ -84,7 +84,9 @@ class SessionsViewHighlightsMixin:
         self._optimistically_hidden_session_ids.add(session_id)  # type: ignore[attr-defined]
         if all(session.session_id != session_id for session in self._sessions):  # type: ignore[attr-defined]
             return
-        remaining = [session for session in self._sessions if session.session_id != session_id]  # type: ignore[attr-defined]
+        remaining = [  # type: ignore[attr-defined]
+            session for session in self._sessions if session.session_id != session_id
+        ]
         self.update_data(  # type: ignore[attr-defined]
             computers=self._computers,  # type: ignore[attr-defined]
             projects=self._projects,  # type: ignore[attr-defined]
@@ -97,7 +99,9 @@ class SessionsViewHighlightsMixin:
         self._optimistically_hidden_session_ids.discard(session_id)  # type: ignore[attr-defined]
         if all(session.session_id != session_id for session in self._sessions):  # type: ignore[attr-defined]
             return
-        remaining = [session for session in self._sessions if session.session_id != session_id]  # type: ignore[attr-defined]
+        remaining = [  # type: ignore[attr-defined]
+            session for session in self._sessions if session.session_id != session_id
+        ]
         self.update_data(  # type: ignore[attr-defined]
             computers=self._computers,  # type: ignore[attr-defined]
             projects=self._projects,  # type: ignore[attr-defined]
@@ -108,7 +112,9 @@ class SessionsViewHighlightsMixin:
     def update_session(self, session: SessionInfo) -> None:
         """Update a single session row with new data."""
         if session.status in HIDDEN_SESSION_STATUSES:
-            remaining = [item for item in self._sessions if item.session_id != session.session_id]  # type: ignore[attr-defined]
+            remaining = [  # type: ignore[attr-defined]
+                item for item in self._sessions if item.session_id != session.session_id
+            ]
             if len(remaining) != len(self._sessions):  # type: ignore[attr-defined]
                 self.update_data(  # type: ignore[attr-defined]
                     computers=self._computers,  # type: ignore[attr-defined]
@@ -182,6 +188,6 @@ class SessionsViewHighlightsMixin:
                 if v.get("text")
             },
             "collapsed_sessions": sorted(self._collapsed_sessions),  # type: ignore[attr-defined]
-            "preview": {"session_id": self.preview_session_id} if self.preview_session_id else None,  # type: ignore[attr-defined]
+            "preview": ({"session_id": self.preview_session_id} if self.preview_session_id else None),  # type: ignore[attr-defined]
             "highlighted_session_id": self._highlighted_session_id,  # type: ignore[attr-defined]
         }

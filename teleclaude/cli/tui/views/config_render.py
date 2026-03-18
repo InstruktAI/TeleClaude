@@ -49,6 +49,7 @@ class ConfigContentRenderMixin:
         result.append("      └─\n", style=_SEP)
 
     def _render_tab_bar(self, result: Text, tabs: tuple[str, ...], active: int) -> None:
+        """Render the clickable subtab bar."""
         row = result.plain.count("\n")
         x = 0
         for idx, tab in enumerate(tabs):
@@ -63,7 +64,10 @@ class ConfigContentRenderMixin:
         result.append("\n")
 
     def _render_header(self, result: Text) -> None:
-        env_complete = all(status.is_set for status in self._env_data) if self._env_data else True  # type: ignore[attr-defined]
+        """Render the setup progress and any active status messages."""
+        env_complete = (  # type: ignore[attr-defined]
+            all(status.is_set for status in self._env_data) if self._env_data else True
+        )
         configured, total = completion_summary(
             self._adapter_sections,  # type: ignore[attr-defined]
             has_people=bool(self._people_data),  # type: ignore[attr-defined]
@@ -76,7 +80,7 @@ class ConfigContentRenderMixin:
         if self._guided_mode:  # type: ignore[attr-defined]
             step = _GUIDED_STEPS[self._guided_step_index]  # type: ignore[attr-defined]
             result.append(
-                f"Guided Step {self._guided_step_index + 1}/{len(_GUIDED_STEPS)}: {step.title}\n",  # type: ignore[attr-defined]
+                (f"Guided Step {self._guided_step_index + 1}/{len(_GUIDED_STEPS)}: {step.title}\n"),
                 style=_INFO,
             )
 
@@ -85,6 +89,7 @@ class ConfigContentRenderMixin:
             result.append(f"{self._status_message}\n", style=status_style)  # type: ignore[attr-defined]
 
     def _status_style(self, status: object) -> Style:
+        """Map adapter status values to Rich styles."""
         if status == "configured":
             return _OK
         if status == "partial":
@@ -92,6 +97,7 @@ class ConfigContentRenderMixin:
         return _FAIL
 
     def _render_adapters(self, result: Text) -> None:
+        """Render the adapter overview cards and active adapter vars."""
         result.append("\n")
         result.append("  Adapter Cards\n", style=Style(bold=True))
 
@@ -126,7 +132,10 @@ class ConfigContentRenderMixin:
             self._row_click_map[row] = ("env_row", status.info.name)  # type: ignore[attr-defined]
 
             if self._editing_var_name == status.info.name:  # type: ignore[attr-defined]
-                result.append(f"  {prefix} {status.info.name} = {self._edit_buffer}\n", style=row_style)  # type: ignore[attr-defined]
+                result.append(
+                    f"  {prefix} {status.info.name} = {self._edit_buffer}\n",
+                    style=row_style,
+                )  # type: ignore[attr-defined]
                 result.append("      Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
                 continue
 
@@ -138,7 +147,8 @@ class ConfigContentRenderMixin:
             if selected:
                 self._render_guidance(result, status.info.name)
 
-    def _render_people(self, result: Text) -> None:
+    def _render_people(self, result: Text) -> None:  # pylint: disable=too-many-locals
+        """Render configured people and any expanded editable fields."""
         result.append("\n")
         result.append("  People\n", style=Style(bold=True))
         if not self._people_data:  # type: ignore[attr-defined]
@@ -172,7 +182,10 @@ class ConfigContentRenderMixin:
                     self._row_click_map[field_row] = ("person_field", field)  # type: ignore[attr-defined]
 
                     if self._editing_person_field == field:  # type: ignore[attr-defined]
-                        result.append(f"      {field_prefix} {field} = {self._edit_buffer}█\n", style=field_row_style)  # type: ignore[attr-defined]
+                        result.append(
+                            f"      {field_prefix} {field} = {self._edit_buffer}█\n",
+                            style=field_row_style,
+                        )  # type: ignore[attr-defined]
                         result.append("          Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
                     elif field == "role":
                         value = str(getattr(person, field, "") or "")
@@ -193,6 +206,7 @@ class ConfigContentRenderMixin:
                         result.append(f"{value or '(not set)'}\n", style=field_row_style)
 
     def _render_notifications(self, result: Text) -> None:
+        """Render notification/subscription summary information."""
         projection = self._notification_projection  # type: ignore[attr-defined]
         result.append("\n")
         result.append("  Notifications\n", style=Style(bold=True))
@@ -205,6 +219,7 @@ class ConfigContentRenderMixin:
         result.append(f"  Next action: {projection.next_action}\n", style=_DIM)
 
     def _render_environment(self, result: Text) -> None:
+        """Render the global environment variable section."""
         result.append("\n")
         result.append("  Environment Variables\n", style=Style(bold=True))
 
@@ -222,7 +237,10 @@ class ConfigContentRenderMixin:
             self._row_click_map[row] = ("env_row", status.info.name)  # type: ignore[attr-defined]
 
             if self._editing_var_name == status.info.name:  # type: ignore[attr-defined]
-                result.append(f"  {prefix} {status.info.name} = {self._edit_buffer}\n", style=row_style)  # type: ignore[attr-defined]
+                result.append(
+                    f"  {prefix} {status.info.name} = {self._edit_buffer}\n",
+                    style=row_style,
+                )  # type: ignore[attr-defined]
                 result.append("      Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
                 continue
 
@@ -235,6 +253,7 @@ class ConfigContentRenderMixin:
                 self._render_guidance(result, status.info.name)
 
     def render(self) -> Text:
+        """Render the current config content for the active subtab."""
         self._tab_click_regions = []  # type: ignore[attr-defined]
         self._row_click_map = {}  # type: ignore[attr-defined]
         result = Text()
@@ -255,7 +274,8 @@ class ConfigContentRenderMixin:
 
         return result
 
-    def on_click(self, event: object) -> None:
+    def on_click(self, event: object) -> None:  # pylint: disable=too-many-branches,too-many-locals
+        """Handle click interactions for tabs, rows, and editable fields."""
         x = getattr(event, "x", -1)
         y = getattr(event, "y", -1)
 
@@ -299,7 +319,10 @@ class ConfigContentRenderMixin:
             for field_idx, f in enumerate(_PERSON_EDITABLE_FIELDS):
                 if f == field:
                     self._person_field_cursor = field_idx  # type: ignore[attr-defined]
-                    person = next((p for p in self._people_data if p.name == self._expanded_person), None)  # type: ignore[attr-defined]
+                    person = next(  # type: ignore[attr-defined]
+                        (p for p in self._people_data if p.name == self._expanded_person),
+                        None,
+                    )
                     if person is not None:
                         if field == "role":
                             self._cycle_person_role(person)  # type: ignore[attr-defined]
@@ -308,9 +331,11 @@ class ConfigContentRenderMixin:
                     break
 
     def watch_active_subtab(self, _value: int) -> None:
+        """Clamp cursor state after the active subtab changes."""
         self._clamp_current_cursor()  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
 
     def watch_active_adapter_tab(self, _value: int) -> None:
+        """Clamp cursor state after the active adapter tab changes."""
         self._clamp_current_cursor()  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]

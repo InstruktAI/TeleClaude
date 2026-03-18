@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-class BaseView:
+class BaseView:  # pylint: disable=too-few-public-methods
     """Base class for all TUI views.
 
     Provides testable interface for view rendering without curses dependency.
@@ -43,8 +43,7 @@ class ScrollableViewMixin[T]:
         """Move selection up, adjusting scroll if needed."""
         self.selected_index = max(0, self.selected_index - 1)
         # Scroll up if selection moved above visible area
-        if self.selected_index < self.scroll_offset:
-            self.scroll_offset = self.selected_index
+        self.scroll_offset = min(self.scroll_offset, self.selected_index)
 
     def move_down(self) -> None:
         """Move selection down, adjusting scroll if needed."""

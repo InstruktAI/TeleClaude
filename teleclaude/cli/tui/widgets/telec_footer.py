@@ -1,5 +1,7 @@
 """Unified three-row footer (context hints, global hints, controls)."""
 
+# pylint: disable=missing-function-docstring
+
 from __future__ import annotations
 
 from rich.style import Style
@@ -15,8 +17,14 @@ from textual.widgets import Static
 
 from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
-from teleclaude.cli.tui.theme import get_agent_color, get_agent_style, get_neutral_color
-from teleclaude.cli.tui.utils.formatters import format_countdown
+from teleclaude.cli.tui.theme import get_neutral_color
+from teleclaude.cli.tui.widgets._status_controls import (
+    build_agent_pill,
+    build_pane_theming_cells,
+    cycle_animation_mode,
+    get_persisted_state,
+    load_persisted_state,
+)
 
 
 class FooterActionButton(Static, can_focus=False):
@@ -25,6 +33,8 @@ class FooterActionButton(Static, can_focus=False):
     icon = reactive("")
 
     class Pressed(Message):
+        """Posted when the button is activated."""
+
         def __init__(self, button: FooterActionButton) -> None:
             self.button = button
             super().__init__()
@@ -268,53 +278,10 @@ class TelecFooter(Widget):
         return line
 
     def _build_agent_pill(self, agent: str) -> Text:
-        info = self._agent_availability.get(agent)
-        available = bool(info and info.available)
-        degraded = bool(info and (info.status == "degraded" or (info.reason and info.reason.startswith("degraded"))))
-
-        if degraded:
-            style = get_agent_style(agent, "muted")
-            return Text(f"{agent} ~", style=style)
-        if available:
-            style = get_agent_style(agent, "normal")
-            return Text(f"{agent} ✔", style=style)
-
-        until = info.unavailable_until if info else None
-        countdown = format_countdown(until)
-        style = get_agent_style(agent, "muted")
-        return Text(f"{agent} ✘({countdown})", style=style)
+        return build_agent_pill(agent, self._agent_availability.get(agent))
 
     def _build_pane_theming_cells(self) -> list[tuple[str, Style]]:
-        level = {"off": 0, "highlight": 1, "highlight2": 2, "agent": 3, "agent_plus": 4}.get(self.pane_theming_mode, 0)
-
-        outline_color = get_agent_color("codex", "muted")
-        outline_style = Style(color=outline_color, dim=True)
-        highlight_style = get_agent_style("codex", "highlight")
-        agent_styles = [
-            get_agent_style("claude", "normal"),
-            get_agent_style("gemini", "normal"),
-            get_agent_style("codex", "normal"),
-        ]
-        accent_style = get_agent_style("codex", "highlight")
-
-        if level == 0:
-            fill_styles: list[Style] = []
-        elif level == 1:
-            fill_styles = [highlight_style]
-        elif level == 2:
-            fill_styles = [highlight_style, highlight_style]
-        elif level == 3:
-            fill_styles = list(agent_styles)
-        else:
-            fill_styles = [*agent_styles, accent_style]
-
-        cells: list[tuple[str, Style]] = []
-        for box_idx in range(4):
-            if box_idx < len(fill_styles):
-                cells.append(("\u25fc", fill_styles[box_idx]))
-            else:
-                cells.append(("\u25fb", outline_style))
-        return cells
+        return build_pane_theming_cells(self.pane_theming_mode)
 
     def _refresh_hint_rows(self) -> None:
         if not self.is_mounted:
@@ -375,7 +342,7 @@ class TelecFooter(Widget):
         play_button.disabled = pending
         fav_button.disabled = (not controls_loaded) or pending
 
-    def on_click(self, event: Click) -> None:
+    def on_click(self, event: Click) -> None:  # pylint: disable=too-many-return-statements
         widget = event.widget
         if widget is None or widget is self:
             return
@@ -393,23 +360,19 @@ class TelecFooter(Widget):
         if widget_id == "footer-tts-toggle":
             self.post_message(SettingsChanged("tts_enabled", not self.tts_enabled))
             return
-        if widget_id == "footer-prev":
-            self.post_message(SettingsChanged("chiptunes_prev", None))
-            return
-        if widget_id == "footer-play":
-            self.post_message(SettingsChanged("chiptunes_play_pause", None))
-            return
-        if widget_id == "footer-next":
-            self.post_message(SettingsChanged("chiptunes_next", None))
-            return
-        if widget_id == "footer-fav":
-            self.post_message(SettingsChanged("chiptunes_favorite", None))
-            return
         if widget_id == "footer-anim-toggle":
-            cycle = ["off", "periodic", "party"]
-            idx = cycle.index(self.animation_mode) if self.animation_mode in cycle else 0
-            new_mode = cycle[(idx + 1) % len(cycle)]
-            self.post_message(SettingsChanged("animation_mode", new_mode))
+            self.post_message(SettingsChanged("animation_mode", cycle_animation_mode(self.animation_mode)))
+            return
+
+        action_map: dict[str, tuple[str, object]] = {
+            "footer-prev": ("chiptunes_prev", None),
+            "footer-play": ("chiptunes_play_pause", None),
+            "footer-next": ("chiptunes_next", None),
+            "footer-fav": ("chiptunes_favorite", None),
+        }
+        action = action_map.get(widget_id)
+        if action is not None:
+            self.post_message(SettingsChanged(*action))
 
     def on_footer_action_button_pressed(self, event: FooterActionButton.Pressed) -> None:
         button_id = event.button.id
@@ -459,21 +422,7 @@ class TelecFooter(Widget):
             self.post_message(StateChanged())
 
     def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict - widget state payload
-        return {
-            "animation_mode": self.animation_mode,
-            "pane_theming_mode": self.pane_theming_mode,
-        }
+        return get_persisted_state(self.animation_mode, self.pane_theming_mode)
 
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict - widget state payload
-        animation_mode = data.get("animation_mode")
-        if isinstance(animation_mode, str) and animation_mode in {"off", "periodic", "party"}:
-            self.animation_mode = animation_mode
-
-        pane_theming_mode = data.get("pane_theming_mode")
-        if isinstance(pane_theming_mode, str) and pane_theming_mode:
-            from teleclaude.cli.tui.theme import normalize_pane_theming_mode
-
-            try:
-                self.pane_theming_mode = normalize_pane_theming_mode(pane_theming_mode)
-            except ValueError:
-                pass
+        load_persisted_state(self, data)
