@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-integrate-state-machine-cleanup
+  date: '2026-03-18'
+  commit: c65f714819fa
 - slug: prepare-artifact-stamp-detection
   date: '2026-03-17'
   commit: c96efdb9dd2d
