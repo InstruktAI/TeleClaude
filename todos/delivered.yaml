@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: mark-phase-force
+  date: '2026-03-18'
+  commit: 84c961e7de41
 - slug: fix-tui-preview-race
   date: '2026-03-18'
   commit: 48a731044de5
