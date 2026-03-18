@@ -121,6 +121,18 @@ class Contract:
 
         self.id = resolved_id
         self.target = target
+        if source_criterion is not None and not isinstance(source_criterion, PropertyCriterion):
+            raise TypeError("source_criterion must be a PropertyCriterion or None")
+        if type_criterion is not None and not isinstance(type_criterion, PropertyCriterion):
+            raise TypeError("type_criterion must be a PropertyCriterion or None")
+        if not isinstance(active, bool):
+            raise TypeError("active must be a bool")
+        if created_at is not None and not isinstance(created_at, str):
+            raise TypeError("created_at must be a str or None")
+        if expires_at is not None and not isinstance(expires_at, str):
+            raise TypeError("expires_at must be a str or None")
+        if not isinstance(source, str):
+            raise TypeError("source must be a str")
         self.source_criterion = source_criterion
         self.type_criterion = type_criterion
         self.properties = {} if properties is None else dict(properties)

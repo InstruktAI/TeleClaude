@@ -40,7 +40,7 @@ async def ensure_consumer_group(redis: Redis, channel: str, group: str) -> None:
 
 def _decode_redis_value(value: bytes | str) -> str:
     """Decode a Redis bytes-or-string value into text."""
-    return value.decode() if hasattr(value, "decode") else str(value)
+    return value.decode() if isinstance(value, bytes) else value
 
 
 def _parse_consumed_message(

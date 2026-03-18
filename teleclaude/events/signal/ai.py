@@ -29,15 +29,19 @@ class SignalAIClient(Protocol):
 
     async def summarise(self, title: str, body: str) -> str:
         """Summarise one fetched item into a short sentence."""
+        raise NotImplementedError
 
     async def extract_tags(self, title: str, summary: str) -> list[str]:
         """Extract normalized tags from a title and summary."""
+        raise NotImplementedError
 
     async def embed(self, text: str) -> list[float] | None:
         """Return an embedding for text, or `None` when unavailable."""
+        raise NotImplementedError
 
     async def synthesise_cluster(self, items: list[SignalItemPayload]) -> SynthesisArtifact:
         """Produce a structured synthesis for a related cluster of items."""
+        raise NotImplementedError
 
 
 class DefaultSignalAIClient:

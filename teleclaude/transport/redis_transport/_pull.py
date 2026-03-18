@@ -50,13 +50,13 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             return None
         return envelope_obj
 
-    def _extract_response_data(self, envelope: JsonDict, computer: str, label: str) -> list[object] | None:
+    def _extract_response_data(self, envelope: JsonDict, computer: str, label: str) -> list[JsonDict] | None:
         """Return the `data` list from a response envelope when successful."""
         data = envelope.get("data")
         if not isinstance(data, list):
             logger.warning("Invalid %s data from %s: %s", label, computer, type(data))
             return None
-        return data
+        return [item for item in data if isinstance(item, dict)]
 
     async def _handle_error_status(
         self,
@@ -170,10 +170,9 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
 
             projects: list[ProjectInfo] = []
             for project_obj in data:
-                if isinstance(project_obj, dict):
-                    info = ProjectInfo.from_dict(project_obj)
-                    info.computer = computer
-                    projects.append(info)
+                info = ProjectInfo.from_dict(project_obj)
+                info.computer = computer
+                projects.append(info)
             self.cache.apply_projects_snapshot(computer, projects)
             logger.info("Pulled %d projects from %s", len(projects), computer)
 
@@ -210,8 +209,6 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
             projects: list[ProjectInfo] = []
             todos_by_project: dict[str, list[TodoInfo]] = {}
             for project_obj in data:
-                if not isinstance(project_obj, dict):
-                    continue
                 project_path = str(project_obj.get("path", ""))
                 if not project_path:
                     continue

@@ -16,7 +16,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session as SqlSession
 
 from teleclaude.config import config
-from teleclaude.config.schema import PersonEntry
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, is_internal_user_text
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
@@ -32,7 +31,6 @@ from teleclaude.hooks.checkpoint_flags import (
     is_checkpoint_disabled,
     set_checkpoint_flag,
 )
-from teleclaude.hooks.receiver import _session as receiver_session
 from teleclaude.hooks.receiver._session import (
     _create_sync_engine,
     _find_session_id_by_native,
@@ -53,7 +51,7 @@ from teleclaude.hooks.receiver._session import (
 from teleclaude.utils.transcript import extract_workdir_from_transcript
 
 if TYPE_CHECKING:
-    pass
+    from teleclaude.config.schema import PersonEntry
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -829,4 +827,23 @@ def main() -> None:
     _enqueue_hook_event(teleclaude_session_id, event_type, data)
 
 
-__all__ = [*receiver_session.__all__, "_read_stdin", "_render_person_header", "main"]
+__all__ = [
+    "_create_sync_engine",
+    "_find_session_id_by_native",
+    "_get_cached_session_id",
+    "_get_memory_context",
+    "_get_session_map_path",
+    "_get_tmux_contract_session_id",
+    "_get_tmux_contract_tmpdir",
+    "_is_headless_route",
+    "_is_tmux_contract_session_compatible",
+    "_load_session_map",
+    "_persist_session_map",
+    "_read_stdin",
+    "_render_person_header",
+    "_resolve_hook_session_id",
+    "_resolve_or_refresh_session_id",
+    "_session_map_key",
+    "_write_session_map_atomic",
+    "main",
+]

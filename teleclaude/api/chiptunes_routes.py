@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import ChiptunesCommandReceiptDTO, ChiptunesStatusDTO
 from teleclaude.config.runtime_settings import RuntimeSettings
+
+if TYPE_CHECKING:
+    from teleclaude.chiptunes.manager import ChiptunesManager
 
 logger = get_logger(__name__)
 
@@ -30,7 +34,7 @@ def _require_runtime_settings() -> RuntimeSettings:
     return runtime_settings
 
 
-def _require_chiptunes_manager(runtime_settings: RuntimeSettings) -> object:
+def _require_chiptunes_manager(runtime_settings: RuntimeSettings) -> ChiptunesManager:
     """Return the configured chiptunes manager or raise service unavailable."""
     manager = getattr(runtime_settings, "_chiptunes_manager", None)
     if manager is None:

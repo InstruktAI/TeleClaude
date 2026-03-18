@@ -75,7 +75,7 @@ class EventEnvelope(BaseModel):
         Extra fields (beyond declared model fields) are JSON-encoded into a
         single ``_extra`` key to preserve the flat dict[str, str] constraint.
         """
-        dumped = cast(dict[str, Any], self.model_dump(mode="json"))
+        dumped = self.model_dump(mode="json")
         d: dict[str, str] = {
             "event": self.event,
             "version": str(self.version),

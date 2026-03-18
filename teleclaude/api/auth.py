@@ -16,9 +16,9 @@ The human_role comes from DB session record or terminal email mapping.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Final, cast
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Header, HTTPException
 
@@ -40,11 +40,16 @@ if TYPE_CHECKING:
 
 
 _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
-_EMAIL_ROLE_CACHE_STATE = {
-    "role_map": {},
-    "mtime_ns": None,
-    "registered_people_count": 0,
-}
+
+
+@dataclass
+class _EmailRoleCacheState:
+    role_map: dict[str, str] = field(default_factory=dict)
+    mtime_ns: int | None = None
+    registered_people_count: int = 0
+
+
+_EMAIL_ROLE_CACHE_STATE = _EmailRoleCacheState()
 
 # In-memory session cache for verify_caller (avoids DB hit per authenticated request)
 _SESSION_CACHE_TTL = 30.0  # seconds
@@ -122,31 +127,31 @@ def _load_email_role_map() -> dict[str, str]:
     try:
         mtime_ns = _GLOBAL_CONFIG_PATH.stat().st_mtime_ns
     except OSError:
-        _EMAIL_ROLE_CACHE_STATE["role_map"] = {}
-        _EMAIL_ROLE_CACHE_STATE["mtime_ns"] = None
-        _EMAIL_ROLE_CACHE_STATE["registered_people_count"] = 0
-        return cast(dict[str, str], _EMAIL_ROLE_CACHE_STATE["role_map"])
+        _EMAIL_ROLE_CACHE_STATE.role_map = {}
+        _EMAIL_ROLE_CACHE_STATE.mtime_ns = None
+        _EMAIL_ROLE_CACHE_STATE.registered_people_count = 0
+        return _EMAIL_ROLE_CACHE_STATE.role_map
 
-    if _EMAIL_ROLE_CACHE_STATE["mtime_ns"] == mtime_ns:
-        return cast(dict[str, str], _EMAIL_ROLE_CACHE_STATE["role_map"])
+    if _EMAIL_ROLE_CACHE_STATE.mtime_ns == mtime_ns:
+        return _EMAIL_ROLE_CACHE_STATE.role_map
 
     role_map: dict[str, str] = {}
     try:
         global_cfg = load_global_config(_GLOBAL_CONFIG_PATH)
     except ValueError:
-        return cast(dict[str, str], _EMAIL_ROLE_CACHE_STATE["role_map"])
+        return _EMAIL_ROLE_CACHE_STATE.role_map
 
-    _EMAIL_ROLE_CACHE_STATE["registered_people_count"] = 0
+    _EMAIL_ROLE_CACHE_STATE.registered_people_count = 0
     for person in global_cfg.people:
-        _EMAIL_ROLE_CACHE_STATE["registered_people_count"] += 1
+        _EMAIL_ROLE_CACHE_STATE.registered_people_count += 1
         email = _normalize_email(person.email)
         role = (person.role or "").strip().lower()
         if not email or role not in HUMAN_ROLES:
             continue
         role_map[email] = role
 
-    _EMAIL_ROLE_CACHE_STATE["role_map"] = role_map
-    _EMAIL_ROLE_CACHE_STATE["mtime_ns"] = mtime_ns
+    _EMAIL_ROLE_CACHE_STATE.role_map = role_map
+    _EMAIL_ROLE_CACHE_STATE.mtime_ns = mtime_ns
     return role_map
 
 
@@ -160,7 +165,7 @@ def _resolve_terminal_role(email_header: str | None) -> str | None:
 def _requires_terminal_login() -> bool:
     """Return True when global config has multiple registered users."""
     _load_email_role_map()
-    return _EMAIL_ROLE_CACHE_STATE["registered_people_count"] > 1
+    return _EMAIL_ROLE_CACHE_STATE.registered_people_count > 1
 
 
 def _derive_session_system_role(session: Session) -> str | None:
@@ -351,67 +356,35 @@ def require_clearance(tool_name: str):  # type: ignore[no-untyped-def]
     return _check
 
 
-_clearance_exports = {
-    "clearance_sessions_start": require_clearance("telec sessions start"),
-    "clearance_sessions_list": require_clearance("telec sessions list"),
-    "clearance_sessions_run": require_clearance("telec sessions run"),
-    "clearance_sessions_send": require_clearance("telec sessions send"),
-    "clearance_sessions_keys": require_clearance("telec sessions send"),
-    "clearance_sessions_voice": require_clearance("telec sessions send"),
-    "clearance_sessions_agent_restart": require_clearance("telec sessions run"),
-    "clearance_sessions_revive": require_clearance("telec sessions run"),
-    "clearance_sessions_tail": require_clearance("telec sessions tail"),
-    "clearance_sessions_unsubscribe": require_clearance("telec sessions unsubscribe"),
-    "clearance_sessions_result": require_clearance("telec sessions result"),
-    "clearance_sessions_file": require_clearance("telec sessions file"),
-    "clearance_sessions_widget": require_clearance("telec sessions widget"),
-    "clearance_sessions_escalate": require_clearance("telec sessions escalate"),
-    "clearance_sessions_end": require_clearance("telec sessions end"),
-    "clearance_todos_create": require_clearance("telec todo create"),
-    "clearance_todos_prepare": require_clearance("telec todo prepare"),
-    "clearance_todos_work": require_clearance("telec todo work"),
-    "clearance_todos_integrate": require_clearance("telec todo integrate"),
-    "clearance_todos_mark_phase": require_clearance("telec todo mark-phase"),
-    "clearance_todos_set_deps": require_clearance("telec todo set-deps"),
-    "clearance_operations_get": require_clearance("telec operations get"),
-    "clearance_agents_status": require_clearance("telec agents status"),
-    "clearance_agents_availability": require_clearance("telec agents availability"),
-    "clearance_computers_list": require_clearance("telec computers list"),
-    "clearance_projects_list": require_clearance("telec projects list"),
-    "clearance_channels_list": require_clearance("telec channels list"),
-    "clearance_channels_publish": require_clearance("telec channels publish"),
-    "clearance_events_emit": require_clearance("telec events emit"),
-}
-
-clearance_sessions_start: Final = _clearance_exports["clearance_sessions_start"]
-clearance_sessions_list: Final = _clearance_exports["clearance_sessions_list"]
-clearance_sessions_run: Final = _clearance_exports["clearance_sessions_run"]
-clearance_sessions_send: Final = _clearance_exports["clearance_sessions_send"]
-clearance_sessions_keys: Final = _clearance_exports["clearance_sessions_keys"]
-clearance_sessions_voice: Final = _clearance_exports["clearance_sessions_voice"]
-clearance_sessions_agent_restart: Final = _clearance_exports["clearance_sessions_agent_restart"]
-clearance_sessions_revive: Final = _clearance_exports["clearance_sessions_revive"]
-clearance_sessions_tail: Final = _clearance_exports["clearance_sessions_tail"]
-clearance_sessions_unsubscribe: Final = _clearance_exports["clearance_sessions_unsubscribe"]
-clearance_sessions_result: Final = _clearance_exports["clearance_sessions_result"]
-clearance_sessions_file: Final = _clearance_exports["clearance_sessions_file"]
-clearance_sessions_widget: Final = _clearance_exports["clearance_sessions_widget"]
-clearance_sessions_escalate: Final = _clearance_exports["clearance_sessions_escalate"]
-clearance_sessions_end: Final = _clearance_exports["clearance_sessions_end"]
-clearance_todos_create: Final = _clearance_exports["clearance_todos_create"]
-clearance_todos_prepare: Final = _clearance_exports["clearance_todos_prepare"]
-clearance_todos_work: Final = _clearance_exports["clearance_todos_work"]
-clearance_todos_integrate: Final = _clearance_exports["clearance_todos_integrate"]
-clearance_todos_mark_phase: Final = _clearance_exports["clearance_todos_mark_phase"]
-clearance_todos_set_deps: Final = _clearance_exports["clearance_todos_set_deps"]
-clearance_operations_get: Final = _clearance_exports["clearance_operations_get"]
-clearance_agents_status: Final = _clearance_exports["clearance_agents_status"]
-clearance_agents_availability: Final = _clearance_exports["clearance_agents_availability"]
-clearance_computers_list: Final = _clearance_exports["clearance_computers_list"]
-clearance_projects_list: Final = _clearance_exports["clearance_projects_list"]
-clearance_channels_list: Final = _clearance_exports["clearance_channels_list"]
-clearance_channels_publish: Final = _clearance_exports["clearance_channels_publish"]
-clearance_events_emit: Final = _clearance_exports["clearance_events_emit"]
+clearance_sessions_start = require_clearance("telec sessions start")
+clearance_sessions_list = require_clearance("telec sessions list")
+clearance_sessions_run = require_clearance("telec sessions run")
+clearance_sessions_send = require_clearance("telec sessions send")
+clearance_sessions_keys = require_clearance("telec sessions send")
+clearance_sessions_voice = require_clearance("telec sessions send")
+clearance_sessions_agent_restart = require_clearance("telec sessions run")
+clearance_sessions_revive = require_clearance("telec sessions run")
+clearance_sessions_tail = require_clearance("telec sessions tail")
+clearance_sessions_unsubscribe = require_clearance("telec sessions unsubscribe")
+clearance_sessions_result = require_clearance("telec sessions result")
+clearance_sessions_file = require_clearance("telec sessions file")
+clearance_sessions_widget = require_clearance("telec sessions widget")
+clearance_sessions_escalate = require_clearance("telec sessions escalate")
+clearance_sessions_end = require_clearance("telec sessions end")
+clearance_todos_create = require_clearance("telec todo create")
+clearance_todos_prepare = require_clearance("telec todo prepare")
+clearance_todos_work = require_clearance("telec todo work")
+clearance_todos_integrate = require_clearance("telec todo integrate")
+clearance_todos_mark_phase = require_clearance("telec todo mark-phase")
+clearance_todos_set_deps = require_clearance("telec todo set-deps")
+clearance_operations_get = require_clearance("telec operations get")
+clearance_agents_status = require_clearance("telec agents status")
+clearance_agents_availability = require_clearance("telec agents availability")
+clearance_computers_list = require_clearance("telec computers list")
+clearance_projects_list = require_clearance("telec projects list")
+clearance_channels_list = require_clearance("telec channels list")
+clearance_channels_publish = require_clearance("telec channels publish")
+clearance_events_emit = require_clearance("telec events emit")
 
 __all__ = [
     "CallerIdentity",
@@ -419,5 +392,33 @@ __all__ = [
     "invalidate_token_cache",
     "require_clearance",
     "verify_caller",
-    *_clearance_exports,
+    "clearance_sessions_start",
+    "clearance_sessions_list",
+    "clearance_sessions_run",
+    "clearance_sessions_send",
+    "clearance_sessions_keys",
+    "clearance_sessions_voice",
+    "clearance_sessions_agent_restart",
+    "clearance_sessions_revive",
+    "clearance_sessions_tail",
+    "clearance_sessions_unsubscribe",
+    "clearance_sessions_result",
+    "clearance_sessions_file",
+    "clearance_sessions_widget",
+    "clearance_sessions_escalate",
+    "clearance_sessions_end",
+    "clearance_todos_create",
+    "clearance_todos_prepare",
+    "clearance_todos_work",
+    "clearance_todos_integrate",
+    "clearance_todos_mark_phase",
+    "clearance_todos_set_deps",
+    "clearance_operations_get",
+    "clearance_agents_status",
+    "clearance_agents_availability",
+    "clearance_computers_list",
+    "clearance_projects_list",
+    "clearance_channels_list",
+    "clearance_channels_publish",
+    "clearance_events_emit",
 ]

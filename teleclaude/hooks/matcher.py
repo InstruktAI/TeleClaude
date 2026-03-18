@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import fnmatch
+from typing import TYPE_CHECKING
 
-from teleclaude.hooks.webhook_models import Contract, HookEvent, PropertyCriterion
+from teleclaude.hooks.webhook_models import HookEvent, PropertyCriterion
+
+if TYPE_CHECKING:
+    from teleclaude.hooks.webhook_models import Contract
 
 
 def match_criterion(value: str | int | float | bool | list[str] | None, criterion: PropertyCriterion) -> bool:

@@ -450,11 +450,12 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
 
     def _build_generic_payload(self, event: str, data: object) -> JsonDict:
         """Fallback websocket payload for non-DTO events."""
-        if hasattr(data, "to_dict"):
+        to_dict = getattr(data, "to_dict", None)
+        if callable(to_dict):
             return {
                 "event": event,
-                "data": cast(JsonValue, data.to_dict()),
-            }  # pyright: ignore[reportAttributeAccessIssue]
+                "data": cast(JsonValue, to_dict()),
+            }
         return {"event": event, "data": cast(JsonValue, data)}
 
     def _get_optional_str_attr(self, obj: object, attr_name: str) -> str | None:

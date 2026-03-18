@@ -6,6 +6,7 @@ import mimetypes
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol, cast
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -24,7 +25,13 @@ from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, H
 logger = get_logger(__name__)
 
 
-def _get_whatsapp_metadata(session: object) -> object | None:
+class _WhatsAppSessionMetadata(Protocol):  # pylint: disable=too-few-public-methods
+    phone_number: str
+    last_received_message_id: str
+    last_customer_message_at: str
+
+
+def _get_whatsapp_metadata(session: object) -> _WhatsAppSessionMetadata | None:
     """Return the WhatsApp UI metadata object for a session, if available."""
     get_metadata = getattr(session, "get_metadata", None)
     if not callable(get_metadata):
@@ -37,7 +44,8 @@ def _get_whatsapp_metadata(session: object) -> object | None:
     get_whatsapp = getattr(ui_metadata, "get_whatsapp", None)
     if not callable(get_whatsapp):
         return None
-    return get_whatsapp()
+    metadata = get_whatsapp()
+    return cast(_WhatsAppSessionMetadata, metadata)
 
 
 def _normalize_phone_number(phone_number: str | None) -> str:
@@ -87,10 +95,11 @@ async def _update_whatsapp_session_metadata(
     metadata.last_customer_message_at = timestamp
 
     try:
-        await db.update_session(  # type: ignore[attr-defined]
-            session.session_id,
-            adapter_metadata=session.adapter_metadata,
-        )
+        session_id = getattr(session, "session_id", None)
+        adapter_metadata = getattr(session, "adapter_metadata", None)
+        if not isinstance(session_id, str):
+            return
+        await db.update_session(session_id, adapter_metadata=adapter_metadata)
     except (AttributeError, TypeError, ValueError):
         logger.debug("Failed to persist WhatsApp metadata for session", exc_info=True)
 
