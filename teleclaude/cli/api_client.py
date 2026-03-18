@@ -17,6 +17,7 @@ from pydantic import TypeAdapter, ValidationError
 from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import ClientConnection, unix_connect
 
+from teleclaude.api_models import RunSessionRequest
 from teleclaude.cli.models import (
     AgentAvailabilityInfo,
     ChiptunesCommandReceiptInfo,
@@ -526,6 +527,28 @@ class TelecAPIClient:
         if skip_listener_registration:
             payload["skip_listener_registration"] = True  # type: ignore[assignment]
         resp = await self._request("POST", "/sessions", timeout=30.0, json_body=payload)  # type: ignore[arg-type]
+        return TypeAdapter(CreateSessionResult).validate_json(resp.text)
+
+    async def run_session(
+        self,
+        *,
+        command: str,
+        args: str = "",
+        project_path: str,
+        agent: str = "claude",
+        thinking_mode: str = "slow",
+        detach: bool = False,
+    ) -> CreateSessionResult:
+        """Run a slash command in a new session (POST /sessions/run)."""
+        request = RunSessionRequest(
+            command=command,
+            args=args,
+            project=project_path,
+            agent=agent,  # type: ignore[arg-type]
+            thinking_mode=thinking_mode,  # type: ignore[arg-type]
+            detach=detach,
+        )
+        resp = await self._request("POST", "/sessions/run", timeout=30.0, json_body=request.model_dump())
         return TypeAdapter(CreateSessionResult).validate_json(resp.text)
 
     async def end_session(self, session_id: str, computer: str) -> bool:

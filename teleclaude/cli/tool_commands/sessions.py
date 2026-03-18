@@ -7,6 +7,7 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from teleclaude.cli.tool_client import _read_caller_session_id, print_json, tool_api_call
 
@@ -202,8 +203,7 @@ def handle_sessions_start(args: list[str]) -> None:
             i += 1
 
     if not body.get("project_path"):
-        print("Error: --project is required", file=sys.stderr)
-        raise SystemExit(1)
+        body["project_path"] = str(Path.cwd())
 
     data = tool_api_call("POST", "/sessions", json_body=body)
     print_json(data)
@@ -346,7 +346,8 @@ def handle_sessions_tail(args: list[str]) -> None:
 def handle_sessions_run(args: list[str]) -> None:
     """Run a slash command on a new agent session.
 
-    Usage: telec sessions run --command <cmd> --project <path>
+    Usage: telec sessions run --command <cmd>
+                              [--project <path>]
                               [--args <args>]
                               [--agent claude|gemini|codex]
                               [--mode fast|med|slow]
@@ -358,7 +359,7 @@ def handle_sessions_run(args: list[str]) -> None:
 
     Options:
       --command <cmd>    Slash command to run (e.g. /next-build)
-      --project <path>   Project directory path
+      --project <path>   Project directory path (default: cwd)
       --args <args>      Command arguments (e.g. "my-slug")
       --agent <name>     Agent to use (default: first enabled agent)
       --mode <mode>      Thinking mode: fast, med, slow (default: slow)
@@ -366,8 +367,8 @@ def handle_sessions_run(args: list[str]) -> None:
       --subfolder <dir>  Subdirectory within the project
 
     Examples:
-      telec sessions run --command /next-build --args my-slug --project /path/to/project
-      telec sessions run --command /next-review-build --args my-slug --project /p --agent gemini
+      telec sessions run --command /next-build --args my-slug
+      telec sessions run --command /next-review-build --args my-slug --agent gemini
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_run.__doc__ or "")
@@ -414,8 +415,7 @@ def handle_sessions_run(args: list[str]) -> None:
         print("Error: --command is required", file=sys.stderr)
         raise SystemExit(1)
     if not body.get("project"):
-        print("Error: --project is required", file=sys.stderr)
-        raise SystemExit(1)
+        body["project"] = str(Path.cwd())
 
     data = tool_api_call("POST", "/sessions/run", json_body=body)
     print_json(data)

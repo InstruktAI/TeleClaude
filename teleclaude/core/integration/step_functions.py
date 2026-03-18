@@ -28,7 +28,6 @@ from teleclaude.core.integration.formatters import (
     _format_conflict_decision,
     _format_error,
     _format_lease_busy,
-    _format_pull_blocked,
     _format_push_rejected,
     _format_queue_empty,
 )
@@ -116,6 +115,7 @@ def _read_file_safe(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
     except Exception:
+        logger.debug("_read_file_safe failed for %s", path, exc_info=True)
         return ""
 
 
@@ -214,7 +214,7 @@ async def _bridge_emit(
             )
         # Other event types are observability-only; logged below, not wired to bridge
     except Exception:
-        pass  # Never block integration on event emission failure
+        logger.debug("_bridge_emit failed for %s", event_type, exc_info=True)
 
 
 # guard: loose-dict-func - lifecycle event payload shape varies per event type
@@ -230,7 +230,7 @@ def _emit_lifecycle_event(
     try:
         asyncio.run_coroutine_threadsafe(_bridge_emit(event_type, payload), loop)
     except Exception:
-        pass  # Never block integration on event emission failure
+        logger.debug("_emit_lifecycle_event scheduling failed for %s", event_type, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +365,40 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
     )
 
 
+def _sweep_stale_artifacts(cwd: str) -> list[str]:
+    """Remove worktrees and branches for slugs already in delivered.yaml.
+
+    Returns list of swept slug names. Each step is idempotent — safe to
+    call on every IDLE entry without risk of double-cleanup.
+    """
+    from teleclaude.core.next_machine.core import cleanup_delivered_slug
+    from teleclaude.core.next_machine.delivery import load_delivered_slugs
+
+    delivered = load_delivered_slugs(cwd)
+    if not delivered:
+        return []
+
+    trees_dir = Path(cwd) / WORKTREE_DIR
+    if not trees_dir.is_dir():
+        return []
+
+    swept: list[str] = []
+    for entry in sorted(trees_dir.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("_"):
+            continue
+        if entry.name in delivered:
+            logger.info("Sweeping stale artifact for delivered slug: %s", entry.name)
+            try:
+                cleanup_delivered_slug(cwd, entry.name)
+            except Exception:
+                logger.warning("Stale artifact sweep failed for %s", entry.name, exc_info=True)
+            swept.append(entry.name)
+
+    if swept:
+        logger.info("Stale artifact sweep cleaned %d slug(s): %s", len(swept), swept)
+    return swept
+
+
 def _step_idle(
     *,
     checkpoint: IntegrationCheckpoint,
@@ -375,7 +409,10 @@ def _step_idle(
     cwd: str,
     started: float,
 ) -> tuple[bool, str]:
-    """IDLE: scan worktree state files for finalize-ready candidates, acquire lease, proceed to merge."""
+    """IDLE: sweep stale artifacts, scan for finalize-ready candidates, acquire lease, proceed to merge."""
+    # Sweep worktrees for already-delivered slugs left by crashed integrations
+    _sweep_stale_artifacts(cwd)
+
     exclude = checkpoint.candidate_slug
 
     if slug is not None:
@@ -710,19 +747,24 @@ def _step_push_succeeded(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """PUSH_SUCCEEDED: sync repo root with pushed origin/main, then cleanup."""
+    """PUSH_SUCCEEDED: sync repo root with pushed origin/main, then cleanup.
+
+    Cleanup always runs regardless of pull outcome — the pull is a
+    convenience sync for repo root, not a gate for artifact cleanup.
+    """
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
 
-    # Sync repo root with origin/main (now contains squash + bookkeeping + cleanup commits)
+    # Best-effort sync of repo root with origin/main. Failure is logged
+    # but does not block cleanup — the integration worktree already pushed.
     rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
     if rc != 0:
-        # Advance to CLEANUP so re-entry after agent fixes dirty files
-        # picks up at cleanup normally.
-        checkpoint.phase = IntegrationPhase.CLEANUP.value
-        _write_checkpoint(checkpoint_path, checkpoint)
-        return False, _format_pull_blocked(stderr.strip(), key.slug)
+        logger.warning(
+            "Repo root pull --ff-only failed for %s (non-blocking): %s",
+            key.slug,
+            stderr.strip(),
+        )
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
@@ -799,7 +841,7 @@ def _try_release_lease(lease_store: IntegrationLeaseStore, session_id: str, leas
     try:
         lease_store.release(key=_INTEGRATION_LEASE_KEY, owner_session_id=session_id, lease_token=lease_token)
     except Exception:
-        pass
+        logger.warning("Failed to release integration lease for session %s", session_id, exc_info=True)
 
 
 def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:

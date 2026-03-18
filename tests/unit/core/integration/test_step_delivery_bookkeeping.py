@@ -138,10 +138,8 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
     assert cp.phase == IntegrationPhase.PUSH_SUCCEEDED.value
 
 
-def test_repo_root_pull_failure_returns_pull_blocked(tmp_path: Path) -> None:
-    """When repo root pull fails due to dirty files, return a REPO ROOT SYNC
-    BLOCKED instruction instead of silently swallowing the failure.
-    """
+def test_repo_root_pull_failure_proceeds_to_cleanup(tmp_path: Path) -> None:
+    """When repo root pull fails, cleanup still runs — pull is non-blocking."""
     cp, cp_path = _make_checkpoint(tmp_path, phase=IntegrationPhase.PUSH_SUCCEEDED.value)
 
     pull_attempted = False
@@ -160,21 +158,20 @@ def test_repo_root_pull_failure_returns_pull_blocked(tmp_path: Path) -> None:
             "teleclaude.core.integration.step_functions._run_git",
             side_effect=mock_run_git,
         ),
+        patch("teleclaude.core.next_machine.core.cleanup_delivered_slug") as mock_cleanup,
         patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
         patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
     ):
-        ok, msg = _step_push_succeeded(
+        ok, _msg = _step_push_succeeded(
             checkpoint=cp,
             checkpoint_path=cp_path,
             cwd=str(tmp_path),
         )
 
     assert pull_attempted, "pull --ff-only must be attempted on repo root"
-    assert ok is False, "pull failure must stop the loop and return instruction"
-    assert cp.phase == IntegrationPhase.CLEANUP.value, "checkpoint must advance to CLEANUP"
-    assert "REPO ROOT SYNC BLOCKED" in msg
-    assert "git stash" in msg
-    assert "my-feature" in msg
+    assert ok is True, "pull failure must not block cleanup — loop continues"
+    assert cp.phase == IntegrationPhase.CANDIDATE_DELIVERED.value, "cleanup must complete to CANDIDATE_DELIVERED"
+    mock_cleanup.assert_called_once()
 
 
 def test_repo_root_pull_success_continues_to_cleanup(tmp_path: Path) -> None:

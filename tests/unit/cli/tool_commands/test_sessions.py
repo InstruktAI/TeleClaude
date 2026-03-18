@@ -24,12 +24,15 @@ def test_handle_sessions_routes_revive_to_telec_misc() -> None:
     assert received == [["sess-1", "--attach"]]
 
 
-def test_handle_sessions_start_requires_project(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        sessions.handle_sessions_start(["--agent", "claude"])
+def test_handle_sessions_start_defaults_project_to_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
+    tool_api_call = MagicMock(return_value={"session_id": "sess-1"})
+    monkeypatch.setattr(sessions, "tool_api_call", tool_api_call)
+    monkeypatch.setattr(sessions, "print_json", MagicMock())
 
-    assert exc_info.value.code == 1
-    assert "--project is required" in capsys.readouterr().err
+    sessions.handle_sessions_start(["--agent", "claude"])
+
+    call_body = tool_api_call.call_args[1]["json_body"]
+    assert call_body["project_path"] != ""
 
 
 def test_handle_sessions_start_posts_launch_body(monkeypatch: pytest.MonkeyPatch) -> None:

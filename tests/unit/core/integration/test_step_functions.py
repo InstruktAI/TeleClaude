@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -12,7 +13,41 @@ from teleclaude.core.integration.step_functions import (
     ScannedCandidate,
     _get_candidate_key,
     _run_git,
+    _sweep_stale_artifacts,
 )
+
+# ---------------------------------------------------------------------------
+# _sweep_stale_artifacts
+# ---------------------------------------------------------------------------
+
+
+def test_sweep_stale_artifacts_returns_empty_when_no_delivered_slugs(tmp_path: Path) -> None:
+    with patch("teleclaude.core.next_machine.delivery.load_delivered_slugs", return_value=[]):
+        assert _sweep_stale_artifacts(str(tmp_path)) == []
+
+
+def test_sweep_stale_artifacts_returns_empty_when_no_trees_dir(tmp_path: Path) -> None:
+    with patch("teleclaude.core.next_machine.delivery.load_delivered_slugs", return_value=["slug-1"]):
+        assert _sweep_stale_artifacts(str(tmp_path)) == []
+
+
+def test_sweep_stale_artifacts_cleans_up_delivered_slugs(tmp_path: Path) -> None:
+    delivered = ["slug-1", "slug-2"]
+    trees_dir = tmp_path / "trees"
+    trees_dir.mkdir()
+    (trees_dir / "slug-1").mkdir()
+    (trees_dir / "slug-3").mkdir()  # Not delivered
+    (trees_dir / "_internal").mkdir()  # Should be ignored
+
+    with (
+        patch("teleclaude.core.next_machine.delivery.load_delivered_slugs", return_value=delivered),
+        patch("teleclaude.core.next_machine.core.cleanup_delivered_slug") as mock_cleanup,
+    ):
+        swept = _sweep_stale_artifacts(str(tmp_path))
+
+    assert swept == ["slug-1"]
+    mock_cleanup.assert_called_once_with(str(tmp_path), "slug-1")
+
 
 # ---------------------------------------------------------------------------
 # _get_candidate_key

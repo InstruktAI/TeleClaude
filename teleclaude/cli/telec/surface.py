@@ -88,11 +88,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "start": CommandDef(
                 desc="Start a new agent session",
-                args="--project <path>",
                 flags=[
                     _H,
                     Flag("--computer", desc="Target computer (optional; defaults to local)"),
-                    Flag("--project", desc="Project directory path"),
+                    Flag("--project", desc="Project directory path (optional; defaults to cwd)"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
                     Flag("--message", desc="Initial message to send"),
@@ -101,7 +100,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
                 ],
                 notes=[
-                    "--project is required.",
                     "Use --direct for peer conversation mode when you want shared linked output instead of worker supervision notifications.",
                     "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
                 ],
@@ -155,7 +153,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--command", desc="Slash command (e.g. /next-build)"),
-                    Flag("--project", desc="Project directory path"),
+                    Flag("--project", desc="Project directory path (optional; defaults to cwd)"),
                     Flag("--args", desc="Command arguments"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
@@ -167,7 +165,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Creates a fresh session and runs the slash command as the first agent message.",
                     "Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.",
-                    "Example: telec sessions run --command /next-build --args my-slug --project /repo/path",
+                    "Example: telec sessions run --command /next-build --args my-slug",
                     "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),

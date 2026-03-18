@@ -707,7 +707,6 @@ def create_from_main_skeleton(
         f"the worktree at {WORKTREE_DIR}/{slug}/. The main branch is off-limits.\n"
         "\n"
         "Next steps:\n"
-        f"  1. cd {WORKTREE_DIR}/{slug}\n"
-        '  2. git add -A && git commit -m "your commit message"\n'
-        f"  3. telec sessions run --command /next-work --args {slug} --project {cwd} --detach"
+        f'  1. git -C {WORKTREE_DIR}/{slug} add -A && git -C {WORKTREE_DIR}/{slug} commit -m "your commit message"\n'
+        f"  2. telec sessions run --command /next-work --args {slug} --agent <agent> --mode med --detach  (choose a fitting agent)"
     )

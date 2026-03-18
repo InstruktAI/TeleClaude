@@ -186,19 +186,18 @@ def _handle_bugs_report(args: list[str]) -> None:
     elif reason not in ("already_on_remote", "no_local_artifacts", "not_a_repo"):
         print(f"Warning: Scaffold for {slug} not pushed to remote: {reason}")
 
-    # Dispatch orchestrator on mainline — the state machine handles branches/worktrees
+    # Dispatch work state machine via sessions/run
     async def _dispatch_bug_fix() -> CreateSessionResult:
         api = TelecAPIClient()
         await api.connect()
         try:
-            return await api.create_session(
-                computer="local",
+            return await api.run_session(
+                command="/next-work",
+                args=slug,
                 project_path=str(project_root),
                 agent="claude",
                 thinking_mode="slow",
-                title=f"Bug fix: {slug}",
-                message=f"Run telec todo work {slug} and follow output verbatim until done.",
-                skip_listener_registration=True,
+                detach=True,
             )
         finally:
             await api.close()
@@ -211,7 +210,9 @@ def _handle_bugs_report(args: list[str]) -> None:
     except Exception as exc:
         print(f"Error dispatching orchestrator: {exc}")
         print(f"Bug scaffold created at {todo_dir}.")
-        print(f"Start orchestrator manually: telec todo work {slug}")
+        print(
+            f"Start orchestrator manually: telec sessions run --command /next-work --args {slug} --agent claude --mode slow --detach"
+        )
 
 
 def _handle_bugs_list(args: list[str]) -> None:
