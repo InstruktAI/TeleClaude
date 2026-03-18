@@ -7,15 +7,15 @@ import sys
 from typing import cast
 
 
-def read_stdin_payload() -> tuple[str, dict[str, object]]:
+def read_stdin_payload() -> tuple[str, dict[str, object]]:  # guard: loose-dict - JSON deserialization
     """Read a JSON object payload from stdin when available."""
     raw_input = ""
-    data: dict[str, object] = {}
+    data: dict[str, object] = {}  # guard: loose-dict - JSON deserialization
     if not sys.stdin.isatty():
         raw_input = sys.stdin.read()
         if raw_input.strip():
             parsed = json.loads(raw_input)
             if not isinstance(parsed, dict):
                 raise ValueError("Hook stdin payload must be a JSON object")
-            data = cast(dict[str, object], parsed)
+            data = cast(dict[str, object], parsed)  # guard: loose-dict - JSON deserialization
     return raw_input, data

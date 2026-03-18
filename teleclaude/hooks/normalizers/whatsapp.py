@@ -41,9 +41,9 @@ def _message_type(
     return f"message.{msg_type}"
 
 
-def _iter_whatsapp_messages(payload: dict[str, object]) -> list[dict[str, object]]:
+def _iter_whatsapp_messages(payload: dict[str, object]) -> list[dict[str, object]]:  # guard: loose-dict - webhook payload
     """Yield message dictionaries found in a WhatsApp webhook payload."""
-    messages: list[dict[str, object]] = []
+    messages: list[dict[str, object]] = []  # guard: loose-dict - webhook payload
     entries = payload.get("entry")
     if not isinstance(entries, list):
         return messages
@@ -68,7 +68,7 @@ def _iter_whatsapp_messages(payload: dict[str, object]) -> list[dict[str, object
     return messages
 
 
-def _extract_media_properties(message: dict[str, object]) -> dict[str, str]:
+def _extract_media_properties(message: dict[str, object]) -> dict[str, str]:  # guard: loose-dict - webhook payload
     """Extract media identifiers from a WhatsApp message payload."""
     properties: dict[str, str] = {}
     for media_key in ("audio", "image", "document", "video"):
@@ -85,7 +85,7 @@ def _extract_media_properties(message: dict[str, object]) -> dict[str, str]:
 
 
 def _build_message_properties(
-    message: dict[str, object],
+    message: dict[str, object],  # guard: loose-dict - webhook payload
     message_type: str,
 ) -> dict[str, str | int | float | bool | list[str] | None]:
     """Build normalized HookEvent properties for a WhatsApp message."""

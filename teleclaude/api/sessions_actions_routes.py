@@ -279,7 +279,7 @@ def _prepare_run_session(
     )
 
 
-def _build_widget_summary(data: dict[str, object]) -> str:
+def _build_widget_summary(data: dict[str, object]) -> str:  # guard: loose-dict - dynamic payload
     """Build the text summary sent for a rich widget payload."""
     title = str(data.get("title", ""))
     sections = data.get("sections", [])

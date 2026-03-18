@@ -156,8 +156,8 @@ def _build_receiver_error_payload(
     code: str,
     agent: str,
     event_type: str | None,
-    details: dict[str, object] | None = None,
-) -> dict[str, object]:
+    details: dict[str, object] | None = None,  # guard: loose-dict - dynamic payload
+) -> dict[str, object]:  # guard: loose-dict - dynamic payload
     """Construct a normalized error payload for the hook outbox."""
     payload = dict(details or {})
     payload.update({"agent": agent, "event_type": event_type, "code": code})

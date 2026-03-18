@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import SlashCommand
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, PreparePhase
+from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, PreparePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.prepare_events import _derive_prepare_phase, _emit_prepare_event
@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 async def _apply_stale_artifact_reroute(
     cwd: str,
     slug: str,
-    state: dict[str, object],
+    state: dict[str, StateValue],
     stale_artifacts: list[str],
 ) -> None:
     """Reset prepare routing when tracked artifacts have gone stale."""

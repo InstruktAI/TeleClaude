@@ -24,7 +24,7 @@ def parse_criterion(data: dict[str, Any]) -> PropertyCriterion:  # guard: loose-
     )
 
 
-def _parse_contract_criteria(contract_data: dict[str, Any]) -> tuple[
+def _parse_contract_criteria(contract_data: dict[str, Any]) -> tuple[  # guard: loose-dict - YAML config
     PropertyCriterion | None,
     PropertyCriterion | None,
     dict[str, PropertyCriterion],
@@ -46,7 +46,7 @@ def _parse_contract_criteria(contract_data: dict[str, Any]) -> tuple[
     return source_criterion, type_criterion, properties
 
 
-def _build_config_contract(sub: dict[str, Any]) -> Contract:
+def _build_config_contract(sub: dict[str, Any]) -> Contract:  # guard: loose-dict - YAML config
     """Build a Contract model from a config subscription entry."""
     contract_data = sub.get("contract", {})
     target_data = sub.get("target", {})
@@ -68,8 +68,8 @@ def _build_config_contract(sub: dict[str, Any]) -> Contract:
 
 def _resolve_inbound_registration(
     source_name: str,
-    source_config: dict[str, Any],
-) -> tuple[str, str, dict[str, Any] | None]:
+    source_config: dict[str, Any],  # guard: loose-dict - YAML config
+) -> tuple[str, str, dict[str, Any] | None]:  # guard: loose-dict - YAML config
     """Resolve an inbound endpoint definition from config."""
     path = source_config.get("path")
     if not path:

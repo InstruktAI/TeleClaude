@@ -101,7 +101,7 @@ RELOAD_EXIT = "__RELOAD__"
 class _AppInitState:
     start_view: int
     config_guided: bool
-    persisted: dict[str, dict[str, object]]
+    persisted: dict[str, dict[str, object]]  # guard: loose-dict - dynamic payload
     is_reload: bool
     initial_layout_applied: bool
 
@@ -130,7 +130,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     """Main TeleClaude TUI application."""
 
     api: TelecAPIClient
-    _persisted: dict[str, dict[str, object]]
+    _persisted: dict[str, dict[str, object]]  # guard: loose-dict - dynamic payload
     _start_view: int
     _config_guided: bool
     _is_reload: bool

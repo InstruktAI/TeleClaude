@@ -56,7 +56,7 @@ API_CONNECT_RETRY_DELAYS_S = (0.1, 0.3, 0.6)
 __all__ = ["APIError", "TelecAPIClient"]
 
 type WsPayload = dict[str, dict[str, str | list[str]]]
-type JsonBody = dict[str, object]
+type JsonBody = dict[str, object]  # guard: loose-dict - JSON API response
 
 WS_OPERATION_ERRORS = (OSError, RuntimeError, WebSocketException)
 REQUEST_WRAP_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
@@ -112,7 +112,7 @@ class CreateSessionArgs(TypedDict, total=False):
     human_email: NotRequired[str | None]
     human_role: NotRequired[str | None]
     skip_listener_registration: NotRequired[bool]
-    metadata: NotRequired[dict[str, object] | None]
+    metadata: NotRequired[dict[str, object] | None]  # guard: loose-dict - dynamic payload
 
 
 class RunSessionArgs(TypedDict, total=False):

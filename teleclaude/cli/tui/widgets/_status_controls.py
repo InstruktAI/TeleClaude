@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, TypedDict
 
 from rich.style import Style
 from rich.text import Text
@@ -13,6 +13,13 @@ from teleclaude.cli.tui.utils.formatters import format_countdown
 
 _ANIMATION_MODES = ("off", "periodic", "party")
 _PANE_THEMING_LEVELS = {"off": 0, "highlight": 1, "highlight2": 2, "agent": 3, "agent_plus": 4}
+
+
+class PersistedControlState(TypedDict):
+    """Persisted state shape for footer status controls."""
+
+    animation_mode: str
+    pane_theming_mode: str
 
 
 class _SettingsWidget(Protocol):  # pylint: disable=too-few-public-methods
@@ -74,7 +81,7 @@ def cycle_animation_mode(animation_mode: str) -> str:
     return _ANIMATION_MODES[(index + 1) % len(_ANIMATION_MODES)]
 
 
-def get_persisted_state(animation_mode: str, pane_theming_mode: str) -> dict[str, object]:
+def get_persisted_state(animation_mode: str, pane_theming_mode: str) -> PersistedControlState:
     """Return the persisted state payload for shared footer controls."""
     return {
         "animation_mode": animation_mode,
@@ -82,7 +89,7 @@ def get_persisted_state(animation_mode: str, pane_theming_mode: str) -> dict[str
     }
 
 
-def load_persisted_state(widget: _SettingsWidget, data: dict[str, object]) -> None:
+def load_persisted_state(widget: _SettingsWidget, data: PersistedControlState) -> None:
     """Restore persisted footer control state onto a widget instance."""
     animation_mode = data.get("animation_mode")
     if isinstance(animation_mode, str) and animation_mode in _ANIMATION_MODES:

@@ -419,7 +419,7 @@ async def _prepare_create_session(
     return metadata, title, launch_intent, direct_caller_session
 
 
-async def _resolve_created_session_transport(data: dict[str, object]) -> tuple[str, str]:
+async def _resolve_created_session_transport(data: dict[str, object]) -> tuple[str, str]:  # guard: loose-dict - JSON API response
     """Resolve mandatory session creation response fields."""
     session_id = data.get("session_id")
     tmux_session_name = data.get("tmux_session_name")

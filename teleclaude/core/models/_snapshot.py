@@ -254,7 +254,7 @@ class ComputerInfo:  # pylint: disable=too-many-instance-attributes  # Computer 
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict
         """Convert computer info to a JSON-compatible dictionary."""
-        return cast(dict[str, object], asdict(self))
+        return cast(dict[str, object], asdict(self))  # guard: loose-dict - serialization output
 
 
 @dataclass
@@ -334,8 +334,8 @@ class ProjectInfo:
             description=str(data.get("description") or data.get("desc") or ""),
             computer=cast(str | None, data.get("computer")),
             todos=[
-                TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))
-            ],  # guard: loose-dict
+                TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))  # guard: loose-dict - JSON deserialization
+            ],
         )
         # fmt: on
 

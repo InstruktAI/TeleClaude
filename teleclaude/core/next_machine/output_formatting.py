@@ -150,7 +150,7 @@ WHEN WORKER COMPLETES:
 }
 
 
-class ToolCallRequest(dict[str, object]):
+class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
     """Structured request mapping for orchestrator tool-call formatting."""
 
 

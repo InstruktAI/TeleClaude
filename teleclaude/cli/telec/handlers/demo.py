@@ -268,7 +268,7 @@ def _project_major_version(project_root: Path) -> tuple[str, int]:
     return current_version, int(current_version.split(".")[0])
 
 
-def _load_demo_snapshot(snapshot_path: Path, slug: str) -> dict[str, object]:
+def _load_demo_snapshot(snapshot_path: Path, slug: str) -> dict[str, object]:  # guard: loose-dict - JSON deserialization
     """Load a demo snapshot.json file."""
     try:
         return json.loads(snapshot_path.read_text())
