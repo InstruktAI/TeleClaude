@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import (
     CLEARANCE_TODOS_CREATE,
@@ -27,7 +26,6 @@ from teleclaude.api_models import OperationStatusDTO
 from teleclaude.config import config
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import db
-from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine import next_create, next_prepare
 from teleclaude.core.next_machine.core import (
     _PREPARE_ARTIFACT_PHASES,
@@ -48,8 +46,6 @@ from teleclaude.core.next_machine.core import (
 )
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
-
-logger = get_logger(__name__)
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -119,31 +115,28 @@ async def todo_work(  # pyright: ignore
     )
 
 
-@router.post("/integrate")
+@router.post("/integrate", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
 async def todo_integrate(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(CLEARANCE_TODOS_INTEGRATE),
-) -> dict[str, str]:
+) -> SerializedOperation:
     """Run the integration state machine.
 
-    Executes the next deterministic integration step: acquires the lease,
-    pops the next candidate from the queue, merges, commits, pushes, and
-    cleans up. Returns structured instructions at decision points where
-    agent intelligence is required (squash commit composition, conflict
-    resolution, push rejection recovery).
-
-    Uses the caller's session_id as the lease owner. Requires integrator
-    clearance — workers cannot invoke this directly.
+    Submits a durable receipt-backed integration operation that preserves
+    the caller's session_id for lease ownership checks inside the background
+    runner. Requires integrator clearance.
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    try:
-        result = await next_integrate(db, slug, cwd, identity.session_id)
-    except Exception:
-        logger.exception("next_integrate raised (slug=%s, cwd=%s, session=%s)", slug, cwd, identity.session_id)
-        raise
-    return {"result": result}
+    operations = get_operations_service()
+    return await operations.submit_todo_integrate(
+        slug=slug,
+        cwd=cwd,
+        caller_session_id=identity.session_id,
+        client_request_id=client_request_id,
+    )
 
 
 @router.post("/mark-phase")

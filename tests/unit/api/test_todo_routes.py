@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+from fastapi.routing import APIRoute
+from typing_extensions import TypedDict
 
 from teleclaude.api import todo_routes
+
+
+class _TodoIntegrateReceipt(TypedDict):
+    operation_id: str
+    kind: str
+    state: str
+    poll_after_ms: int
+    status_path: str
+    recovery_command: str
 
 
 class TestTodoRoutes:
@@ -37,6 +50,56 @@ class TestTodoRoutes:
             await todo_routes.todo_work(slug="chartest-api-routes", cwd=None, client_request_id=None, identity=identity)
 
         assert exc_info.value.status_code == 400
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_integrate_requires_cwd(self) -> None:
+        """Todo integrate submissions reject requests without a working directory."""
+        identity = SimpleNamespace(session_id="sess-1")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await todo_routes.todo_integrate(slug="chartest-api-routes", cwd=None, identity=identity)
+
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_integrate_returns_202_receipt(self) -> None:
+        """Todo integrate should submit an operation receipt instead of blocking inline."""
+        identity = SimpleNamespace(session_id="sess-1")
+        receipt: _TodoIntegrateReceipt = {
+            "operation_id": "op-1",
+            "kind": "todo_integrate",
+            "state": "queued",
+            "poll_after_ms": 250,
+            "status_path": "/operations/op-1",
+            "recovery_command": "telec operations get op-1",
+        }
+        operations = MagicMock()
+        operations.submit_todo_integrate = AsyncMock(return_value=receipt)
+        todo_integrate = cast(Callable[..., Awaitable[_TodoIntegrateReceipt]], todo_routes.todo_integrate)
+        integrate_route = next(
+            route
+            for route in todo_routes.router.routes
+            if isinstance(route, APIRoute) and route.path == "/todos/integrate"
+        )
+
+        with patch("teleclaude.api.todo_routes.get_operations_service", return_value=operations):
+            response = await todo_integrate(
+                slug="chartest-api-routes",
+                cwd="/repo",
+                client_request_id="req-1",
+                identity=identity,
+            )
+
+        assert integrate_route.status_code == 202
+        assert response == receipt
+        operations.submit_todo_integrate.assert_awaited_once_with(
+            slug="chartest-api-routes",
+            cwd="/repo",
+            caller_session_id="sess-1",
+            client_request_id="req-1",
+        )
 
     @pytest.mark.unit
     @pytest.mark.asyncio

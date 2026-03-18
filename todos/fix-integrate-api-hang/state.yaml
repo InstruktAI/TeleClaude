@@ -1,22 +1,98 @@
-kind: todo
-build: pending
-review: pending
+schema_version: 1
+phase: in_progress
+build: complete
+review: approved
 deferrals_processed: false
+finalize:
+  status: pending
 breakdown:
   assessed: false
   todos: []
+review_round: 1
+max_review_rounds: 3
+review_baseline_commit: d8a41e9640b6fa38a345c08fc4de70b7decae6f6
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: prepared
+grounding:
+  valid: true
+  base_sha: d8eec2e6d7b67d5b3657945fac2ad7e98ea9f084
+  input_digest: d3cfbbaf6fa7a0fb88195bd02f96a66ace2df28c36b85c82d085dedb95928ea0
+  referenced_paths: []
+  last_grounded_at: '2026-03-18T00:32:55.534292+00:00'
+  invalidated_at: ''
+  invalidation_reason: ''
+  changed_paths: []
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-18T00:32:55.534292+00:00'
+  findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+test_spec_review:
+  verdict: ''
+  reviewed_at: ''
+  findings_count: 0
+  rounds: 0
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-18T00:32:55.534292+00:00'
+  findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
+artifacts:
+  input:
+    digest: ''
+    produced_at: ''
+    stale: false
+  requirements:
+    digest: ''
+    produced_at: ''
+    stale: false
+  test_specs:
+    digest: ''
+    produced_at: ''
+    stale: false
+  implementation_plan:
+    digest: ''
+    produced_at: ''
+    stale: false
+audit:
+  input_assessment:
+    started_at: ''
+    completed_at: ''
+  triangulation:
+    started_at: ''
+    completed_at: ''
+  requirements_review:
+    started_at: '2026-03-17T20:45:35.708694+00:00'
+    completed_at: '2026-03-17T20:49:30Z'
+    baseline_commit: 8ff59a3a74b2bc13f1df6dbf174308ba12f75ae4
+    verdict: approve
+    rounds: 1
+    findings: []
+  plan_drafting:
+    started_at: ''
+    completed_at: ''
+  plan_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
+    rounds: 0
+    findings: []
+  gate:
+    started_at: ''
+    completed_at: ''
+kind: todo
 dor:
-  last_assessed_at: null
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-03-18T00:32:55.534292+00:00'
+  score: 8
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []
-schema_version: 1

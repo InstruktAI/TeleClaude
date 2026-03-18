@@ -51,6 +51,29 @@ def test_handle_todo_work_polls_until_terminal_state(monkeypatch: pytest.MonkeyP
     print_json.assert_called_once_with({"operation_id": "op-1", "state": "completed"})
 
 
+def test_handle_todo_integrate_polls_until_terminal_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    print_json = MagicMock()
+    tool_api_call = MagicMock(
+        side_effect=[
+            {"operation_id": "op-1", "state": "running", "poll_after_ms": 10},
+            {"operation_id": "op-1", "state": "completed"},
+        ]
+    )
+    sleep_calls: list[float] = []
+
+    monkeypatch.setattr(todo_commands, "print_json", print_json)
+    monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
+    monkeypatch.setattr(todo_commands.time, "sleep", lambda delay: sleep_calls.append(delay))
+    monkeypatch.setattr(todo_commands, "tool_api_call", tool_api_call)
+
+    todo_commands.handle_todo_integrate(["sample-slug"])
+
+    assert sleep_calls == [0.01]
+    assert tool_api_call.call_args_list[0].args == ("POST", "/todos/integrate")
+    assert tool_api_call.call_args_list[1].args == ("GET", "/operations/op-1")
+    print_json.assert_called_once_with({"operation_id": "op-1", "state": "completed"})
+
+
 def test_handle_operations_routes_get(monkeypatch: pytest.MonkeyPatch) -> None:
     received: list[list[str]] = []
 

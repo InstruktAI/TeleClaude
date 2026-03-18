@@ -109,12 +109,14 @@ def _service(
     db: MagicMock | None = None,
     task_registry: _RecordingTaskRegistry | MagicMock | None = None,
     poll_after_ms: int = 250,
+    heartbeat_interval_s: float = 2.0,
     stale_after_s: float = 30.0,
 ) -> OperationsService:
     return OperationsService(
         db=db or MagicMock(),
         task_registry=task_registry or _RecordingTaskRegistry(),
         poll_after_ms=poll_after_ms,
+        heartbeat_interval_s=heartbeat_interval_s,
         stale_after_s=stale_after_s,
     )
 
@@ -212,6 +214,131 @@ async def test_submit_todo_work_returns_existing_request_match_without_creating_
     db.find_matching_nonterminal_operation.assert_not_awaited()
     db.create_operation.assert_not_awaited()
     assert registry.spawned_names == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_submit_todo_integrate_deduplicates_by_client_request_id() -> None:
+    existing = _operation(
+        operation_id="integrate-op",
+        kind="todo_integrate",
+        slug="chartest-core-operations",
+        client_request_id="req-1",
+    )
+    db = MagicMock()
+    db.get_operation_by_request = AsyncMock(return_value=existing)
+    db.find_matching_nonterminal_operation = AsyncMock()
+    db.create_operation = AsyncMock()
+    registry = _RecordingTaskRegistry()
+    service = _service(db=db, task_registry=registry)
+
+    result = await service.submit_todo_integrate(
+        slug="chartest-core-operations",
+        cwd="/tmp/worktree",
+        caller_session_id="session-1",
+        client_request_id="req-1",
+    )
+
+    assert result["operation_id"] == "integrate-op"
+    assert result["client_request_id"] == "req-1"
+    db.find_matching_nonterminal_operation.assert_not_awaited()
+    db.create_operation.assert_not_awaited()
+    assert registry.spawned_names == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_submit_todo_integrate_reattaches_nonterminal_operation() -> None:
+    existing = _operation(
+        operation_id="queued-integrate-op",
+        kind="todo_integrate",
+        slug="chartest-core-operations",
+        state="queued",
+    )
+    db = MagicMock()
+    db.get_operation_by_request = AsyncMock(return_value=None)
+    db.find_matching_nonterminal_operation = AsyncMock(return_value=existing)
+    db.create_operation = AsyncMock()
+    registry = _RecordingTaskRegistry()
+    service = _service(db=db, task_registry=registry)
+
+    result = await service.submit_todo_integrate(
+        slug="chartest-core-operations",
+        cwd="/tmp/worktree",
+        caller_session_id="session-1",
+        client_request_id=None,
+    )
+
+    assert result["operation_id"] == "queued-integrate-op"
+    assert registry.spawned_names == ["operation-queued-integrate-op"]
+    db.create_operation.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_submit_todo_integrate_creates_new_operation_with_serialized_payload() -> None:
+    created = _operation(
+        operation_id="generated-integrate-op",
+        kind="todo_integrate",
+        slug="chartest-core-operations",
+        client_request_id="req-1",
+    )
+    db = MagicMock()
+    db.get_operation_by_request = AsyncMock(return_value=None)
+    db.find_matching_nonterminal_operation = AsyncMock(return_value=None)
+    db.create_operation = AsyncMock(return_value=created)
+    registry = _RecordingTaskRegistry()
+    service = _service(db=db, task_registry=registry)
+
+    with patch.object(service_module.uuid, "uuid4", return_value="generated-integrate-op"):
+        result = await service.submit_todo_integrate(
+            slug="chartest-core-operations",
+            cwd="/tmp/worktree",
+            caller_session_id="session-1",
+            client_request_id="req-1",
+        )
+
+    create_kwargs = db.create_operation.await_args.kwargs
+    assert result["operation_id"] == "generated-integrate-op"
+    assert registry.spawned_names == ["operation-generated-integrate-op"]
+    assert create_kwargs["operation_id"] == "generated-integrate-op"
+    assert create_kwargs["kind"] == "todo_integrate"
+    assert create_kwargs["state"] == "queued"
+    assert json.loads(create_kwargs["payload_json"]) == {
+        "cwd": "/tmp/worktree",
+        "kind": "todo_integrate",
+        "slug": "chartest-core-operations",
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_todo_integrate_operation_uses_stored_caller_session_id() -> None:
+    operation = _operation(
+        operation_id="integrate-op",
+        kind="todo_integrate",
+        caller_session_id="integrator-session",
+        slug="chartest-core-operations",
+        state="queued",
+    )
+    db = MagicMock()
+    db.claim_operation = AsyncMock(return_value=True)
+    db.get_operation = AsyncMock(return_value=operation)
+    db.complete_operation = AsyncMock()
+    db.fail_operation = AsyncMock()
+    service = _service(db=db, heartbeat_interval_s=0.01)
+
+    with patch.object(service_module, "next_integrate", new=AsyncMock(return_value="integrated")) as next_integrate:
+        await service._run_todo_integrate_operation("integrate-op")
+
+    next_integrate.assert_awaited_once_with(
+        db,
+        "chartest-core-operations",
+        "/tmp/worktree",
+        "integrator-session",
+    )
+    db.complete_operation.assert_awaited_once()
+    db.fail_operation.assert_not_awaited()
 
 
 @pytest.mark.unit

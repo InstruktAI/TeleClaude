@@ -217,7 +217,10 @@ def handle_todo_integrate(args: list[str]) -> None:
         print(handle_todo_integrate.__doc__ or "")
         return
 
-    body: dict[str, object] = {"cwd": os.getcwd()}  # guard: loose-dict - JSON request body
+    body: dict[str, object] = {  # guard: loose-dict - JSON request body
+        "cwd": os.getcwd(),
+        "client_request_id": str(uuid.uuid4()),
+    }
 
     i = 0
     while i < len(args):
@@ -227,8 +230,37 @@ def handle_todo_integrate(args: list[str]) -> None:
         else:
             i += 1
 
-    data = tool_api_call("POST", "/todos/integrate", json_body=body)
-    print_json(data)
+    receipt = tool_api_call("POST", "/todos/integrate", json_body=body)
+    if not isinstance(receipt, dict):
+        print_json(receipt)
+        return
+
+    status = receipt
+    operation_id = status.get("operation_id")
+    if not isinstance(operation_id, str) or not operation_id:
+        print_json(status)
+        return
+
+    try:
+        while status.get("state") not in _TERMINAL_OPERATION_STATES:
+            poll_after_ms = status.get("poll_after_ms")
+            delay_s = 0.25
+            if isinstance(poll_after_ms, int) and poll_after_ms > 0:
+                delay_s = poll_after_ms / 1000.0
+            time.sleep(delay_s)
+            polled = tool_api_call("GET", f"/operations/{operation_id}")
+            if not isinstance(polled, dict):
+                print_json(polled)
+                return
+            status = polled
+    except KeyboardInterrupt:
+        _print_operation_recovery(status)
+        raise SystemExit(130)
+    except SystemExit:
+        _print_operation_recovery(status)
+        raise
+
+    print_json(status)
 
 
 def handle_operations(args: list[str]) -> None:
