@@ -1,4 +1,6 @@
 """Drop legacy notification_outbox table — replaced by teleclaude.events EventDB."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

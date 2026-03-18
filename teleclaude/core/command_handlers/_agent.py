@@ -11,6 +11,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
+from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ErrorEventContext, TeleClaudeEvents
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+_THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
 
 
 def _get_session_profile(session: Session) -> str:
@@ -39,7 +42,7 @@ def _get_session_profile(session: Session) -> str:
 
 
 @with_session
-async def start_agent(
+async def start_agent(  # pylint: disable=too-many-locals  # Existing handler keeps startup state explicit.
     session: Session,
     cmd: StartAgentCommand,
     client: "AdapterClient",
@@ -85,7 +88,7 @@ async def start_agent(
 
     user_args = list(args)
     thinking_mode = stored_mode
-    if user_args and user_args[0] in ThinkingMode._value2member_map_:
+    if user_args and user_args[0] in _THINKING_MODE_VALUES:
         thinking_mode = user_args.pop(0)
 
     if thinking_mode == ThinkingMode.DEEP.value and agent_name != AgentName.CODEX.value:
@@ -201,15 +204,13 @@ async def resume_agent(
 
 
 @with_session
-async def agent_restart(
+async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements  # Restart flow is intentionally linear.
     session: Session,
     cmd: RestartAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> tuple[bool, str | None]:
     """Restart an AI agent in the session by resuming the native session."""
-    from teleclaude.core import tmux_bridge, tmux_io
-
     active_agent = session.active_agent
     native_session_id = session.native_session_id
 
@@ -316,8 +317,6 @@ async def agent_restart(
     await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
     async def _inject_checkpoint_after_restart() -> None:
-        from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
-
         await asyncio.sleep(5)
         await inject_checkpoint_if_needed(
             session.session_id,

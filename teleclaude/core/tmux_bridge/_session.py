@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 
 from ._pane import session_exists
-from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, communicate_with_timeout
+from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
 
 logger = get_logger(__name__)
 
@@ -67,7 +67,7 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
     return session_tmp
 
 
-async def _create_tmux_session(
+async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing env/bootstrap flow is intentionally flat.
     name: str,
     working_dir: str,
     session_id: str | None = None,
@@ -168,7 +168,7 @@ async def _create_tmux_session(
                 *unset_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             await communicate_with_timeout(unset_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
-        except Exception:
+        except (OSError, ValueError, SubprocessTimeoutError):
             pass  # Best-effort; color loss is cosmetic, not critical.
 
         # Ensure detach does NOT destroy the session (respect persistent TC sessions).
@@ -195,14 +195,14 @@ async def _create_tmux_session(
                     name,
                     hook_err.decode().strip(),
                 )
-        except Exception as e:
+        except (OSError, ValueError, SubprocessTimeoutError) as e:
             logger.warning("Failed to set destroy-unattached off for %s: %s", name, e)
 
         await _apply_shell_guardrails(name, teleclaude_bin)
 
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, SubprocessTimeoutError) as e:
         print(f"Error creating tmux session: {e}")
         return False
 
@@ -253,7 +253,7 @@ async def _apply_shell_guardrails(session_name: str, teleclaude_bin: str) -> Non
                 session_name,
                 stderr.decode().strip() if stderr else "",
             )
-    except Exception as e:
+    except (OSError, ValueError, SubprocessTimeoutError) as e:
         logger.warning("Shell guardrails failed for %s: %s", session_name, e)
 
 
@@ -285,7 +285,7 @@ async def ensure_tmux_session(
         # If creation failed, re-check existence to handle race/duplicate creation.
         return await session_exists(name, log_missing=False)
 
-    except Exception as e:
+    except (OSError, ValueError, SubprocessTimeoutError) as e:
         logger.error("Exception ensuring tmux session %s: %s", name, e)
         return False
 
@@ -325,6 +325,6 @@ async def update_tmux_session(session_name: str, env_vars: dict[str, str]) -> bo
         logger.debug("Updated tmux env vars in %s: %s", session_name, list(env_vars.keys()))
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, SubprocessTimeoutError) as e:
         logger.error("Exception updating tmux session %s: %s", session_name, e)
         return False

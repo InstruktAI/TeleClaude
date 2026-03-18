@@ -1,4 +1,6 @@
 """Add human identity fields to sessions."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 
@@ -27,5 +29,5 @@ async def down(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE sessions DROP COLUMN human_email")
         await db.execute("ALTER TABLE sessions DROP COLUMN human_role")
         await db.commit()
-    except Exception:
-        pass  # Ignore if not supported or fails
+    except aiosqlite.Error:
+        pass  # Ignore if SQLite cannot drop columns on this runtime.

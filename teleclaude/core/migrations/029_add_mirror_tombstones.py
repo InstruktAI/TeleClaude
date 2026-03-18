@@ -1,4 +1,6 @@
 """Add tombstones for empty transcripts so reconciliation converges."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

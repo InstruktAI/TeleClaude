@@ -1,6 +1,7 @@
 """Subprocess timeout utilities for tmux operations."""
 
 import asyncio
+from asyncio.subprocess import Process
 
 from instrukt_ai_logging import get_logger
 
@@ -37,7 +38,7 @@ class SubprocessTimeoutError(Exception):
 
 
 async def wait_with_timeout(
-    process: asyncio.subprocess.Process,
+    process: Process,
     timeout: float = SUBPROCESS_TIMEOUT_DEFAULT,
     operation: str = "subprocess",
 ) -> None:
@@ -75,7 +76,7 @@ async def wait_with_timeout(
 
 
 async def communicate_with_timeout(
-    process: asyncio.subprocess.Process,
+    process: Process,
     input_data: bytes | None = None,
     timeout: float = SUBPROCESS_TIMEOUT_DEFAULT,
     operation: str = "subprocess",

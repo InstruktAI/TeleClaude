@@ -15,7 +15,7 @@ from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 
 from ._session import ensure_tmux_session
-from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, communicate_with_timeout, wait_with_timeout
+from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout, wait_with_timeout
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,7 @@ def pid_is_alive(pid: int) -> bool:
     return True
 
 
-async def send_keys(
+async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-arguments,redefined-outer-name
     session_name: str,
     text: str,
     session_id: str | None = None,
@@ -73,7 +73,7 @@ async def send_keys(
             active_agent=active_agent,
         )
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         logger.exception("Error sending keys to tmux session %s: %s", session_name, e)
         return False
 
@@ -82,7 +82,7 @@ async def send_keys_existing_tmux(
     session_name: str,
     text: str,
     *,
-    send_enter: bool = True,
+    send_enter: bool = True,  # pylint: disable=redefined-outer-name
     active_agent: str | None = None,
 ) -> bool:
     """Send keys to an existing tmux session (do not auto-create).
@@ -98,12 +98,14 @@ async def send_keys_existing_tmux(
             send_enter=send_enter,
             active_agent=active_agent,
         )
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         logger.exception("Error sending keys to existing tmux session %s: %s", session_name, e)
         return False
 
 
-async def send_keys_to_tty(tty_path: str, text: str, *, send_enter: bool = True) -> bool:
+async def send_keys_to_tty(  # pylint: disable=redefined-outer-name
+    tty_path: str, text: str, *, send_enter: bool = True
+) -> bool:
     """Send keys directly to a controlling TTY (non-tmux sessions)."""
     try:
         payload = text + ("\n" if send_enter else "")
@@ -148,12 +150,12 @@ async def send_keys_to_tty(tty_path: str, text: str, *, send_enter: bool = True)
 
         await asyncio.to_thread(_inject)
         return True
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.exception("Error sending keys to tty %s: %s", tty_path, e)
         return False
 
 
-async def _send_keys_tmux(
+async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
     *,
     session_name: str,
     text: str,
@@ -219,7 +221,9 @@ async def _send_keys_tmux(
     return True
 
 
-async def send_signal(session_name: str, signal: Signals = SIGINT) -> bool:
+async def send_signal(  # pylint: disable=too-many-return-statements  # Signal routing is intentionally branchy.
+    session_name: str, signal: Signals = SIGINT
+) -> bool:
     """Send signal to a tmux session.
 
     Args:
@@ -321,7 +325,7 @@ async def send_signal(session_name: str, signal: Signals = SIGINT) -> bool:
 
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         logger.error("Exception sending signal %s to tmux session %s: %s", signal, session_name, e)
         return False
 
@@ -342,7 +346,7 @@ async def send_escape(session_name: str) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         print(f"Error sending escape to tmux: {e}")
         return False
 
@@ -366,7 +370,7 @@ async def send_ctrl_key(session_name: str, key: str) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         print(f"Error sending ctrl+{key} to tmux: {e}")
         return False
 
@@ -387,7 +391,7 @@ async def send_tab(session_name: str) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         print(f"Error sending tab to tmux: {e}")
         return False
 
@@ -415,7 +419,7 @@ async def send_shift_tab(session_name: str, count: int = 1) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         print(f"Error sending shift+tab (x{count}) to tmux: {e}")
         return False
 
@@ -443,7 +447,7 @@ async def send_backspace(session_name: str, count: int = 1) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         print(f"Error sending backspace (x{count}) to tmux: {e}")
         return False
 
@@ -464,7 +468,7 @@ async def send_enter(session_name: str) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         print(f"Error sending enter to tmux: {e}")
         return False
 
@@ -500,6 +504,6 @@ async def send_arrow_key(session_name: str, direction: str, count: int = 1) -> b
 
         return result.returncode == 0
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
         print(f"Error sending arrow key ({direction} x{count}) to tmux: {e}")
         return False

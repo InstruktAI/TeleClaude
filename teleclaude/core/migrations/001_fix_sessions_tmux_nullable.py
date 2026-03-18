@@ -1,4 +1,6 @@
 """Fix sessions schema: allow NULL tmux_session_name and drop unique constraint."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

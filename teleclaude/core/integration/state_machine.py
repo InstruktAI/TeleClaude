@@ -12,7 +12,6 @@ The agent is the authority on intelligence. Neither does the other's job.
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 from time import perf_counter
 
@@ -42,6 +41,7 @@ from teleclaude.core.integration.step_functions import (
     _step_push_succeeded,
     _tls,
 )
+from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
 
@@ -57,6 +57,7 @@ __all__ = ["IntegrationPhase", "next_integrate"]
 # ---------------------------------------------------------------------------
 
 
+# pylint: disable=too-many-arguments,too-many-locals
 def _dispatch_sync(
     *,
     session_id: str,
@@ -146,6 +147,7 @@ def _dispatch_sync(
     return _format_error("LOOP_LIMIT", f"State machine exceeded {_LOOP_LIMIT} internal transitions")
 
 
+# pylint: disable=too-many-arguments,too-many-return-statements
 def _step(
     *,
     phase: IntegrationPhase,
@@ -249,7 +251,8 @@ def _step(
 
 
 async def next_integrate(
-    db: Db,  # pylint: disable=unused-argument — reserved for future DB-backed state
+    # Reserved for future DB-backed state.
+    db: Db,  # pylint: disable=unused-argument
     slug: str | None,
     cwd: str,
     caller_session_id: str | None = None,
@@ -269,7 +272,7 @@ async def next_integrate(
     Returns:
         Plain text instruction block for the agent to execute.
     """
-    session_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+    session_id = caller_session_id or get_session_id() or "unknown"
     started = perf_counter()
     state_dir = _default_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,6 @@
 """Add principal column to sessions table for inherited agent identity."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 
@@ -11,5 +13,5 @@ async def up(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
-async def down(db: aiosqlite.Connection) -> None:
+async def down(_db: aiosqlite.Connection) -> None:
     """No-op — SQLite < 3.35.0 does not support DROP COLUMN."""

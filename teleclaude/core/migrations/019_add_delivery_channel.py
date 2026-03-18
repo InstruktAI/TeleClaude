@@ -1,4 +1,6 @@
 """Migration: Add delivery_channel column to notification_outbox."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 import aiosqlite
 

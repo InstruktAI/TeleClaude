@@ -9,7 +9,7 @@ type JsonValue = JsonPrimitive | list[JsonValue] | dict[str, JsonValue]
 type JsonDict = dict[str, JsonValue]
 
 
-class _DataclassInstance(Protocol):
+class _DataclassInstance(Protocol):  # pylint: disable=too-few-public-methods  # Protocol shape only
     __dataclass_fields__: ClassVar[dict[str, object]]  # guard: loose-dict - dataclass introspection interface
 
 

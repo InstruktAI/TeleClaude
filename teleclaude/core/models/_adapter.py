@@ -36,7 +36,7 @@ class PeerInfo:  # pylint: disable=too-many-instance-attributes
 
 
 @dataclass
-class TelegramAdapterMetadata:
+class TelegramAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter payload shape
     """Telegram-specific adapter metadata."""
 
     topic_id: int | None = None
@@ -50,7 +50,7 @@ class TelegramAdapterMetadata:
 
 
 @dataclass
-class DiscordAdapterMetadata:
+class DiscordAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter payload shape
     """Discord-specific adapter metadata."""
 
     user_id: str | None = None
@@ -66,7 +66,7 @@ class DiscordAdapterMetadata:
 
 
 @dataclass
-class WhatsAppAdapterMetadata:
+class WhatsAppAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter payload shape
     """WhatsApp-specific adapter metadata."""
 
     phone_number: str | None = None
@@ -105,6 +105,21 @@ class UiAdapterMetadata:
             self._whatsapp = WhatsAppAdapterMetadata()
         return self._whatsapp
 
+    @property
+    def telegram(self) -> TelegramAdapterMetadata | None:
+        """Return Telegram metadata without creating a default container."""
+        return self._telegram
+
+    @property
+    def discord(self) -> DiscordAdapterMetadata | None:
+        """Return Discord metadata without creating a default container."""
+        return self._discord
+
+    @property
+    def whatsapp(self) -> WhatsAppAdapterMetadata | None:
+        """Return WhatsApp metadata without creating a default container."""
+        return self._whatsapp
+
 
 @dataclass
 class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
@@ -130,6 +145,11 @@ class TransportAdapterMetadata:
         """Get Redis metadata, initializing if missing."""
         if self._redis is None:
             self._redis = RedisTransportMetadata()
+        return self._redis
+
+    @property
+    def redis(self) -> RedisTransportMetadata | None:
+        """Return Redis metadata without creating a default container."""
         return self._redis
 
 
@@ -175,23 +195,27 @@ class SessionAdapterMetadata:
         """
         # manual dict construction to preserve root keys
         data: dict[str, JsonValue] = {}
+        ui_metadata = self.get_ui()
+        transport_metadata = self.get_transport()
 
         # UI Adapters (flattened)
-        if self._ui._telegram:
-            data["telegram"] = asdict_exclude_none(self._ui._telegram)
-        if self._ui._discord:
-            data["discord"] = asdict_exclude_none(self._ui._discord)
-        if self._ui._whatsapp:
-            data["whatsapp"] = asdict_exclude_none(self._ui._whatsapp)
+        if ui_metadata.telegram:
+            data["telegram"] = asdict_exclude_none(ui_metadata.telegram)
+        if ui_metadata.discord:
+            data["discord"] = asdict_exclude_none(ui_metadata.discord)
+        if ui_metadata.whatsapp:
+            data["whatsapp"] = asdict_exclude_none(ui_metadata.whatsapp)
 
         # Transport Adapters (flattened)
-        if self._transport._redis:
-            data["redis"] = asdict_exclude_none(self._transport._redis)
+        if transport_metadata.redis:
+            data["redis"] = asdict_exclude_none(transport_metadata.redis)
 
         return json.dumps(data)
 
     @classmethod
-    def from_json(cls, raw: str) -> "SessionAdapterMetadata":
+    def from_json(  # pylint: disable=too-many-locals,too-many-statements  # Backward-compatible payload parsing
+        cls, raw: str
+    ) -> "SessionAdapterMetadata":
         """Deserialize from JSON string, filtering unknown fields per adapter."""
         data_obj: object = json.loads(raw)
         telegram_metadata: TelegramAdapterMetadata | None = None

@@ -10,15 +10,21 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
 - [ ] Tests pass (`make test`)
 - [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate pylint-cleanup-6` exits 0, or exception noted)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate pylint-cleanup-6` exits 0, or exception noted)
 - [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Comments/docstrings updated where behavior changed
+
+## Build Notes
+
+- Scoped `pylint` passes for all paths listed in `requirements.md`.
+- `make test` still fails only in out-of-scope suites: `tests/unit/install/test_git_wrapper_permissions.py` and `tests/unit/test_todo_from_main.py`.
+- `make lint` still fails only in out-of-scope guardrail hits: `teleclaude/daemon_session.py`, `teleclaude/cli/session_auth.py`, `teleclaude/core/next_machine/`, and `scripts/helpers/nano_banana_helper.py`.
 
 ## Review Gates (Reviewer)
 

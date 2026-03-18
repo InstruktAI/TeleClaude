@@ -21,7 +21,7 @@ class ThinkingMode(str, Enum):
 
 
 @dataclass
-class StartSessionArgs:
+class StartSessionArgs:  # pylint: disable=too-many-instance-attributes  # Command payload shape
     """Typed arguments for starting a session."""
 
     computer: str
@@ -35,7 +35,7 @@ class StartSessionArgs:
 
 
 @dataclass
-class RunAgentCommandArgs:
+class RunAgentCommandArgs:  # pylint: disable=too-many-instance-attributes  # Command payload shape
     """Typed arguments for run-agent command execution."""
 
     computer: str
@@ -49,7 +49,7 @@ class RunAgentCommandArgs:
 
 
 @dataclass
-class RedisInboundMessage:
+class RedisInboundMessage:  # pylint: disable=too-many-instance-attributes  # Redis payload shape
     """Typed Redis message parsed from raw stream entry."""
 
     msg_type: str
@@ -65,7 +65,7 @@ class RedisInboundMessage:
 
 
 @dataclass
-class SessionSnapshot:
+class SessionSnapshot:  # pylint: disable=too-many-instance-attributes  # Session list payload shape
     """Typed session snapshot for list_sessions output."""
 
     session_id: str
@@ -94,6 +94,7 @@ class SessionSnapshot:
     session_metadata: SessionMetadata | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
+        """Convert snapshot to a JSON-compatible dictionary."""
         return {
             "session_id": self.session_id,
             "last_input_origin": self.last_input_origin,
@@ -220,8 +221,6 @@ class AgentResumeArgs:
 class KillArgs:
     """Typed arguments for kill command."""
 
-    pass
-
 
 @dataclass
 class SystemCommandArgs:
@@ -241,7 +240,7 @@ class MessagePayload:
 
 
 @dataclass
-class ComputerInfo:
+class ComputerInfo:  # pylint: disable=too-many-instance-attributes  # Computer summary payload
     """Information about a computer (local or remote)."""
 
     name: str
@@ -254,11 +253,12 @@ class ComputerInfo:
     tmux_binary: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict
+        """Convert computer info to a JSON-compatible dictionary."""
         return cast(dict[str, object], asdict(self))
 
 
 @dataclass
-class TodoInfo:
+class TodoInfo:  # pylint: disable=too-many-instance-attributes  # Todo summary payload
     """Information about a work item todo."""
 
     slug: str
@@ -333,7 +333,9 @@ class ProjectInfo:
             path=str(data.get("path", "")),
             description=str(data.get("description") or data.get("desc") or ""),
             computer=cast(str | None, data.get("computer")),
-            todos=[TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))],  # guard: loose-dict
+            todos=[
+                TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))
+            ],  # guard: loose-dict
         )
         # fmt: on
 

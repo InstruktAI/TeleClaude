@@ -31,11 +31,11 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
         async def _fanout_excluding(
             self,
-            session: "Session",
-            operation: str,
-            task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+            _session: "Session",
+            _operation: str,
+            _task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
             *,
-            exclude: str | None = None,
+            exclude: str | None = None,  # pylint: disable=unused-argument
         ) -> None: ...
 
     async def _run_ui_lane(
@@ -65,10 +65,10 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                 type(result).__name__ if result else "None",
             )
             return result
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # UI lanes isolate adapter failures.
             try:
                 return await adapter.recover_lane_error(session, exc, task_factory, display_title)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught  # Recovery is also adapter-defined.
                 logger.error(
                     "[UI_LANE] UI adapter %s failed in lane for session %s: %s",
                     adapter_type,
@@ -190,7 +190,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
         return None
 
-    async def create_channel(  # pylint: disable=too-many-locals
+    async def create_channel(  # pylint: disable=too-many-locals  # Fanout bookkeeping is intentionally explicit.
         self,
         session: "Session",
         title: str,
@@ -299,7 +299,11 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return session
 
-            ui_adapters = self._ui_adapters()
+            ui_adapters = [
+                (adapter_type, adapter)
+                for adapter_type, adapter in self.adapters.items()
+                if isinstance(adapter, UiAdapter)
+            ]
             if not ui_adapters:
                 raise ValueError("No UI adapters registered")
 

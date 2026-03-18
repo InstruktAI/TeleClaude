@@ -24,7 +24,7 @@ class ChannelMetadata:
 
 
 @dataclass(frozen=True)
-class SessionMetadata:
+class SessionMetadata:  # pylint: disable=too-few-public-methods  # Identity record container
     """Typed metadata for session identity and role."""
 
     system_role: str | None = None  # ROLE_* constant
@@ -35,7 +35,7 @@ class SessionMetadata:
 
 
 @dataclass
-class MessageMetadata:
+class MessageMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter call metadata
     """Per-call metadata for message operations."""
 
     reply_markup: Optional["InlineKeyboardMarkup"] = None
@@ -70,6 +70,7 @@ class SessionLaunchIntent:
     native_session_id: str | None = None
 
     def to_dict(self) -> JsonDict:
+        """Serialize launch intent into a JSON-compatible dictionary."""
         return {
             "kind": self.kind.value,
             "agent": self.agent,
@@ -80,6 +81,7 @@ class SessionLaunchIntent:
 
     @classmethod
     def from_dict(cls, data: JsonDict) -> "SessionLaunchIntent":
+        """Create launch intent from a JSON-compatible dictionary."""
         if FIELD_KIND not in data or data[FIELD_KIND] is None:
             raise ValueError("launch_intent.kind is required")
         return cls(
@@ -92,6 +94,8 @@ class SessionLaunchIntent:
 
 
 class SessionLaunchKind(Enum):
+    """Supported launch modes for session creation and resume."""
+
     EMPTY = "empty"
     AGENT = "agent"
     AGENT_THEN_MESSAGE = "agent_then_message"
@@ -186,7 +190,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
         """Get session adapter metadata."""
         return self.adapter_metadata
 
-    def to_dict(self) -> JsonDict:
+    def to_dict(self) -> JsonDict:  # pylint: disable=too-many-branches  # Datetime field serialization
         """Convert session to dictionary for JSON serialization."""
         data = cast(JsonDict, asdict(self))
         if self.created_at:
@@ -222,7 +226,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "Session":  # guard: loose-dict - Deserialization input
+    def from_dict(  # pylint: disable=too-many-locals  # Session deserialization normalizes many optional fields
+        cls, data: dict[str, object]
+    ) -> "Session":  # guard: loose-dict - Deserialization input
         """Create session from dictionary (from database/JSON)."""
 
         created_at_raw = data.get("created_at")

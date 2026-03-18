@@ -1,6 +1,6 @@
 """Remote execution and peer discovery methods for AdapterClient."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -42,8 +42,6 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
             - host: Hostname (optional)
             - ip: IP address (optional)
         """
-        from typing import cast
-
         logger.debug("AdapterClient.discover_peers() called, adapters: %s", list(self.adapters.keys()))
 
         # Determine Redis enabled state - explicit param takes precedence over config
@@ -83,7 +81,7 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
                         peer_dict["tmux_binary"] = peer_info.tmux_binary
                     all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught  # Adapters are isolated during discovery.
                 logger.error("Failed to discover peers from %s: %s", adapter_type, e)
 
         # Deduplicate by name (keep first occurrence = primary adapter wins)

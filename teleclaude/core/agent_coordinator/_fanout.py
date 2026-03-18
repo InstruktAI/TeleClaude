@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
+class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Mixin namespace
     """Extraction, fanout, TTS, snapshot, and notification methods for AgentCoordinator."""
 
     if TYPE_CHECKING:
@@ -57,7 +57,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         tts_manager: TTSManager
         headless_snapshot_service: HeadlessSnapshotService
 
-    async def _update_session_title_async(
+    async def _update_session_title_async(  # pylint: disable=too-many-return-statements  # Guarded early exits
         self, session_id: str, expected_prompt_at: datetime, prompt_text: str = ""
     ) -> None:
         """Best-effort asynchronous title update for the latest accepted prompt."""
@@ -93,7 +93,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
 
         try:
             new_title = await generate_session_title(recent_turns)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Title generation boundary
             logger.warning("Title summarization failed: %s", exc)
             return
 
@@ -113,7 +113,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         message = random.choice(SESSION_START_MESSAGES)
         try:
             await self.tts_manager.speak(message, session_id=session_id)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # TTS boundary
             logger.warning("TTS session_start failed: %s", exc)
 
     async def _extract_agent_output(self, session_id: str, payload: "AgentStopPayload") -> str | None:
@@ -161,11 +161,11 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         try:
             _title, summary = await summarize_agent_output(raw_output)
             return summary
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Summarizer boundary
             logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id})
             return None
 
-    async def _extract_user_input_for_codex(
+    async def _extract_user_input_for_codex(  # pylint: disable=too-many-return-statements  # Guarded transcript extraction
         self, session_id: str, payload: "AgentStopPayload"
     ) -> tuple[str, datetime | None] | None:
         """Extract last user input from transcript for Codex sessions.
@@ -273,10 +273,10 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                 metadata=MessageMetadata(),
             )
             logger.info("Forwarded stop to %s", initiator_computer)
-        except Exception as e:
-            logger.warning("Failed to forward stop to %s: %s", initiator_computer, e)
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Cross-computer delivery boundary
+            logger.warning("Failed to forward stop to %s: %s", initiator_computer, exc)
 
-    async def _fanout_linked_stop_output(
+    async def _fanout_linked_stop_output(  # pylint: disable=too-many-locals  # Fanout builds per-peer routing state
         self,
         sender_session_id: str,
         distilled_output: str,
@@ -335,7 +335,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                             ),
                         )
                     delivered += 1
-                except Exception as exc:
+                except Exception as exc:  # pylint: disable=broad-exception-caught  # Best-effort peer delivery
                     logger.warning(
                         "Linked stop output delivery failed: sender=%s peer=%s target=%s error=%s",
                         sender_session_id,
@@ -368,5 +368,5 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                 include_elapsed_since_turn_start=True,
                 default_agent=AgentName.from_str(get_default_agent()),
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Checkpoint injection boundary
             logger.warning("Checkpoint injection failed for session %s: %s", session_id, exc)

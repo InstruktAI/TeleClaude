@@ -10,10 +10,16 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
+from sqlalchemy import event, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import DB_IN_MEMORY
+from teleclaude.core.migrations.runner import run_pending_migrations
 
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
@@ -142,17 +148,14 @@ class DbBase:
 
     async def initialize(self) -> None:
         """Initialize database, create tables, and run migrations."""
-        from teleclaude.core.migrations.runner import run_pending_migrations
-
         # Ensure parent directory exists
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
         db_path = self.db_path
         use_uri = False
         if self.db_path == DB_IN_MEMORY:
-            temp_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-            self._temp_db_path = temp_file.name
-            temp_file.close()
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
+                self._temp_db_path = temp_file.name
             db_path = self._temp_db_path
 
         # Ensure schema + migrations via aiosqlite (single-shot bootstrap)
@@ -177,9 +180,6 @@ class DbBase:
 
         # Async engine for runtime access
         db_url = f"sqlite+aiosqlite:///{db_path}"
-        from sqlalchemy import event  # guard: raw-sql - PRAGMAs require raw SQL
-        from sqlalchemy.ext.asyncio import create_async_engine
-        from sqlalchemy.orm import sessionmaker
 
         connect_args = {"uri": True} if use_uri else {}
         self._engine = create_async_engine(
@@ -207,11 +207,7 @@ class DbBase:
 
     async def _normalize_adapter_metadata(self) -> None:
         """Normalize adapter_metadata types (e.g., topic_id stored as string)."""
-        from sqlalchemy.exc import OperationalError
-
         async with self._session() as session:
-            from sqlmodel import select
-
             try:
                 result = await session.exec(select(db_models.Session))
             except OperationalError:
@@ -247,11 +243,13 @@ class DbBase:
                 await session.commit()
 
     def _session(self) -> SqlAsyncSession:
+        """Create an async ORM session from the initialized session factory."""
         if self._sessionmaker is None:
             raise RuntimeError("Database not initialized - call initialize() first")
         return self._sessionmaker()  # type: ignore[call-arg]
 
     def is_initialized(self) -> bool:
+        """Return whether the async session factory has been initialized."""
         return self._sessionmaker is not None
 
     def set_client(self, client: "AdapterClient") -> None:
@@ -261,8 +259,6 @@ class DbBase:
     async def wal_checkpoint(self) -> None:
         """Run WAL checkpoint to prevent unbounded WAL growth."""
         async with self._session() as session:
-            from sqlalchemy import text  # guard: raw-sql - PRAGMA requires raw SQL
-
             result = await session.exec(text("PRAGMA wal_checkpoint(TRUNCATE)"))  # guard: raw-sql
             row = result.first()
             if row:

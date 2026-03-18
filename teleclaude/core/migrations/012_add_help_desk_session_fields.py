@@ -4,6 +4,8 @@ New columns: last_memory_extraction_at, help_desk_processed_at,
 relay_status, relay_discord_channel_id, relay_started_at.
 Also adds human_email and human_role if missing from older databases.
 """
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 
@@ -11,6 +13,7 @@ import aiosqlite
 
 
 async def up(db: aiosqlite.Connection) -> None:
+    """Add help desk and relay bookkeeping columns if they are missing."""
     cursor = await db.execute("PRAGMA table_info(sessions)")
     columns = await cursor.fetchall()
     existing = {col[1] for col in columns}
@@ -32,5 +35,5 @@ async def up(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
-async def down(db: aiosqlite.Connection) -> None:
-    pass  # SQLite does not support DROP COLUMN in older versions; no-op
+async def down(_db: aiosqlite.Connection) -> None:
+    """No-op downgrade for SQLite versions without DROP COLUMN support."""

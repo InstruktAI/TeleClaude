@@ -4,6 +4,8 @@ last_feedback_received    → last_output_raw
 last_feedback_received_at → last_output_at
 last_feedback_summary     → last_output_summary
 """
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 

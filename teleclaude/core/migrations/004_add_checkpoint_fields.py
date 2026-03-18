@@ -1,4 +1,6 @@
 """Add checkpoint tracking columns to sessions table."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
+
 
 from __future__ import annotations
 
@@ -20,6 +22,5 @@ async def up(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
-async def down(db: aiosqlite.Connection) -> None:
+async def down(_db: aiosqlite.Connection) -> None:
     """Revert migration - SQLite doesn't support DROP COLUMN easily."""
-    pass
