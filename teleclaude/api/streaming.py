@@ -33,12 +33,12 @@ from teleclaude.core.db_models import Session
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import WEB_POLICY
+from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import (
     _iter_claude_entries,
     _iter_codex_entries,
     _iter_gemini_entries,
 )
-from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
 

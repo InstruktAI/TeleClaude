@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import delete, func, select as sqlalchemy_select, update
+from sqlalchemy import delete, func, update
+from sqlalchemy import select as sqlalchemy_select
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 

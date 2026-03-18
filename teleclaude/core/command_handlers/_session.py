@@ -22,7 +22,6 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.roadmap import assemble_roadmap
 from teleclaude.core.models import (
     ComputerInfo,
     ProjectInfo,
@@ -31,6 +30,7 @@ from teleclaude.core.models import (
     ThinkingMode,
     TodoInfo,
 )
+from teleclaude.core.roadmap import assemble_roadmap
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_utils import resolve_working_dir

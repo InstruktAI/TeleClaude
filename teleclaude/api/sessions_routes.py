@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import shlex
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -18,6 +18,7 @@ from teleclaude.api.auth import (
     clearance_sessions_send,
     clearance_sessions_start,
 )
+from teleclaude.api.session_access import check_session_access
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -25,7 +26,6 @@ from teleclaude.api_models import (
     SendMessageResponseDTO,
     SessionDTO,
 )
-from teleclaude.api.session_access import check_session_access
 from teleclaude.config import config
 from teleclaude.constants import format_system_message
 from teleclaude.core import command_handlers

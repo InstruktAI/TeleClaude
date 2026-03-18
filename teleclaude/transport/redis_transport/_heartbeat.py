@@ -18,9 +18,7 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
 
-class _HeartbeatMixin(  # pyright: ignore[reportUnusedClass]
-    # pylint: disable=too-few-public-methods  # Internal mixin only exposes private heartbeat hooks.
-):
+class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Internal mixin only exposes private heartbeat hooks.:
     """Mixin: periodic heartbeat emission and cache-change no-op handler."""
 
     if TYPE_CHECKING:

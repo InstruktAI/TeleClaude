@@ -10,6 +10,14 @@ from typing import TYPE_CHECKING, Literal, cast
 from fastapi import WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.ws_constants import (
+    API_WS_CONTROL_EVENTS,
+    API_WS_CONTROL_SEND_TIMEOUT_S,
+    API_WS_DEFAULT_SEND_TIMEOUT_S,
+    API_WS_REPLACEABLE_EVENTS,
+    API_WS_REPLACEABLE_SEND_TIMEOUT_S,
+    _WsClientState,
+)
 from teleclaude.api_models import (
     ProjectDTO,
     ProjectsInitialDataDTO,
@@ -25,14 +33,6 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
     TodoDTO,
-)
-from teleclaude.api.ws_constants import (
-    API_WS_CONTROL_EVENTS,
-    API_WS_CONTROL_SEND_TIMEOUT_S,
-    API_WS_DEFAULT_SEND_TIMEOUT_S,
-    API_WS_REPLACEABLE_EVENTS,
-    API_WS_REPLACEABLE_SEND_TIMEOUT_S,
-    _WsClientState,
 )
 from teleclaude.config import config
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot

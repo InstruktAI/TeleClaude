@@ -43,9 +43,10 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
 if TYPE_CHECKING:
+    from textual.timer import Timer  # pylint: disable=import-outside-toplevel,ungrouped-imports
+
     from teleclaude.cli.models import AgentAvailabilityInfo
     from teleclaude.cli.tui.tree import TreeNode
-    from textual.timer import Timer  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
 
 class _PendingSelect(NamedTuple):

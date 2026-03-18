@@ -10,8 +10,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
-from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
 from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
 from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from importlib import import_module
 import logging
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from importlib import import_module
 from xml.etree import ElementTree
 
 logger = logging.getLogger(__name__)

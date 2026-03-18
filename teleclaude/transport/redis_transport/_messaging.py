@@ -59,9 +59,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 
-class _MessagingMixin(  # pyright: ignore[reportUnusedClass]
-    # pylint: disable=too-few-public-methods  # Internal mixin only exposes private polling hooks.
-):
+class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Internal mixin only exposes private polling hooks.:
     """Mixin: Redis stream polling, message parsing, command dispatch."""
 
     if TYPE_CHECKING:

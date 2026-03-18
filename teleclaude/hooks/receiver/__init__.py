@@ -19,8 +19,8 @@ from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, is_internal_user_text
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
-from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import JsonDict, SessionAdapterMetadata
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters._stdin import read_stdin_payload

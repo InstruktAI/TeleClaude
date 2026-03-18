@@ -14,8 +14,8 @@ from teleclaude.channels.types import ChannelInfo
 from teleclaude.transport.redis_transport import RedisTransport
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
-clearance_channels_list = getattr(auth_module, "clearance_channels_list")
-clearance_channels_publish = getattr(auth_module, "clearance_channels_publish")
+clearance_channels_list = auth_module.clearance_channels_list
+clearance_channels_publish = auth_module.clearance_channels_publish
 
 # Set once by daemon during startup before requests are served.
 # Safe because asyncio is single-threaded: set_redis_transport runs before

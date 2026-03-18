@@ -12,7 +12,8 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import create_engine
 from sqlalchemy import event as sa_event
 from sqlalchemy.exc import SQLAlchemyError
-from sqlmodel import Session as SqlSession, select
+from sqlmodel import Session as SqlSession
+from sqlmodel import select
 
 from teleclaude.config import config
 from teleclaude.core import db_models

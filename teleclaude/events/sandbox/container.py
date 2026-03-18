@@ -7,9 +7,9 @@ Also provides cartridge directory scanning and watching.
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from dataclasses import dataclass
 from importlib import import_module
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 

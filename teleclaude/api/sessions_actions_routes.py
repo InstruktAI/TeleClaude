@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import json
 import shlex
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -30,6 +30,7 @@ from teleclaude.api.auth import (
     clearance_sessions_voice,
     clearance_sessions_widget,
 )
+from teleclaude.api.session_access import check_session_access
 from teleclaude.api_models import (
     CreateSessionResponseDTO,
     EscalateRequest,
@@ -42,7 +43,6 @@ from teleclaude.api_models import (
     SessionMessagesDTO,
     VoiceInputRequest,
 )
-from teleclaude.api.session_access import check_session_access
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SlashCommand
 from teleclaude.core.agents import (
