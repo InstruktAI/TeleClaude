@@ -14,7 +14,25 @@ if TYPE_CHECKING:
     from teleclaude.config import DiscordQoSConfig, TelegramQoSConfig, WhatsAppQoSConfig
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
+class _QoSBudget:
+    """Budget-related QoS parameters."""
+
+    group_mpm: int = 20
+    output_budget_ratio: float = 0.8
+    reserve_mpm: int = 4
+
+
+@dataclass(frozen=True, slots=True)
+class _QoSCadence:
+    """Cadence-related QoS parameters."""
+
+    min_session_tick_s: float = 3.0
+    active_emitter_window_s: float = 10.0
+    active_emitter_ema_alpha: float = 0.2
+    rounding_ms: int = 100
+
+
 class QoSPolicy:
     """Output QoS policy parameters for an adapter.
 
@@ -30,15 +48,80 @@ class QoSPolicy:
         rounding_ms: Cadence rounding granularity in milliseconds.
     """
 
-    adapter_key: str
-    mode: str = "off"  # "off" | "coalesce_only" | "strict"
-    group_mpm: int = 20
-    output_budget_ratio: float = 0.8
-    reserve_mpm: int = 4
-    min_session_tick_s: float = 3.0
-    active_emitter_window_s: float = 10.0
-    active_emitter_ema_alpha: float = 0.2
-    rounding_ms: int = 100
+    __slots__ = ("adapter_key", "mode", "_budget", "_cadence")
+
+    def __init__(self, adapter_key: str, *args: object, **kwargs: object) -> None:
+        values = {
+            "mode": "off",
+            "group_mpm": 20,
+            "output_budget_ratio": 0.8,
+            "reserve_mpm": 4,
+            "min_session_tick_s": 3.0,
+            "active_emitter_window_s": 10.0,
+            "active_emitter_ema_alpha": 0.2,
+            "rounding_ms": 100,
+        }
+        field_order = tuple(values)
+        if len(args) > len(field_order):
+            msg = f"QoSPolicy expected at most {len(field_order) + 1} positional arguments"
+            raise TypeError(msg)
+        for field_name, field_value in zip(field_order, args, strict=False):
+            values[field_name] = field_value
+        for field_name, field_value in kwargs.items():
+            if field_name not in values:
+                raise TypeError(f"QoSPolicy got an unexpected keyword argument '{field_name}'")
+            if field_name in field_order[: len(args)]:
+                raise TypeError(f"QoSPolicy got multiple values for argument '{field_name}'")
+            values[field_name] = field_value
+
+        self.adapter_key = adapter_key
+        self.mode = values["mode"]
+        self._budget = _QoSBudget(
+            group_mpm=values["group_mpm"],
+            output_budget_ratio=values["output_budget_ratio"],
+            reserve_mpm=values["reserve_mpm"],
+        )
+        self._cadence = _QoSCadence(
+            min_session_tick_s=values["min_session_tick_s"],
+            active_emitter_window_s=values["active_emitter_window_s"],
+            active_emitter_ema_alpha=values["active_emitter_ema_alpha"],
+            rounding_ms=values["rounding_ms"],
+        )
+
+    @property
+    def group_mpm(self) -> int:
+        """Platform group message-per-minute budget."""
+        return self._budget.group_mpm
+
+    @property
+    def output_budget_ratio(self) -> float:
+        """Fraction of group_mpm available for output updates."""
+        return self._budget.output_budget_ratio
+
+    @property
+    def reserve_mpm(self) -> int:
+        """mpm reserved for non-output messages."""
+        return self._budget.reserve_mpm
+
+    @property
+    def min_session_tick_s(self) -> float:
+        """Minimum seconds between dispatches per session."""
+        return self._cadence.min_session_tick_s
+
+    @property
+    def active_emitter_window_s(self) -> float:
+        """Seconds a session remains counted as active after last emit."""
+        return self._cadence.active_emitter_window_s
+
+    @property
+    def active_emitter_ema_alpha(self) -> float:
+        """EMA smoothing factor for active session count."""
+        return self._cadence.active_emitter_ema_alpha
+
+    @property
+    def rounding_ms(self) -> int:
+        """Cadence rounding granularity in milliseconds."""
+        return self._cadence.rounding_ms
 
 
 def telegram_policy(cfg: TelegramQoSConfig) -> QoSPolicy:

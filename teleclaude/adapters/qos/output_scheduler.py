@@ -46,6 +46,15 @@ def _ceil_to_ms(seconds: float, rounding_ms: int) -> float:
     return math.ceil(seconds / granularity) * granularity
 
 
+async def _capture_failure(awaitable: Awaitable[object]) -> BaseException | None:
+    """Await a coroutine and return its failure instead of raising it."""
+    result = await asyncio.gather(awaitable, return_exceptions=True)
+    first_result = result[0]
+    if isinstance(first_result, BaseException):
+        return first_result
+    return None
+
+
 @dataclass
 class QoSPayload:
     """A pending output payload waiting for dispatch.
@@ -63,6 +72,28 @@ class QoSPayload:
     enqueued_at: float = field(default_factory=time.monotonic)
 
 
+@dataclass
+class _SchedulerQueues:
+    """Mutable queue and round-robin state."""
+
+    normal_slots: dict[str, QoSPayload] = field(default_factory=dict)
+    priority_queues: dict[str, deque[QoSPayload]] = field(default_factory=dict)
+    active_emitters: dict[str, float] = field(default_factory=dict)
+    rr_sessions: list[str] = field(default_factory=list)
+    rr_idx: int = 0
+
+
+@dataclass
+class _SchedulerStats:
+    """Mutable counters and cadence metrics."""
+
+    ema_session_count: float = 0.0
+    coalesced: int = 0
+    dispatched: int = 0
+    dispatch_errors: int = 0
+    last_summary_at: float = field(default_factory=time.monotonic)
+
+
 class OutputQoSScheduler:
     """Per-adapter output scheduler with coalescing and fairness dispatch.
 
@@ -70,26 +101,51 @@ class OutputQoSScheduler:
     and stop() at adapter shutdown.
     """
 
+    _QUEUE_ATTRS = {
+        "_normal_slots": "normal_slots",
+        "_priority_queues": "priority_queues",
+        "_active_emitters": "active_emitters",
+    }
+    _STATS_ATTRS = {
+        "_ema_session_count": "ema_session_count",
+        "_coalesced": "coalesced",
+        "_dispatched": "dispatched",
+        "_dispatch_errors": "dispatch_errors",
+        "_last_summary_at": "last_summary_at",
+    }
+
     def __init__(self, policy: QoSPolicy) -> None:
         self._policy = policy
-        # Normal (non-final) slots: session_id -> latest payload (latest-only).
-        self._normal_slots: dict[str, QoSPayload] = {}
-        # Priority (final) queue: session_id -> ordered FIFO of payloads.
-        self._priority_queues: dict[str, deque[QoSPayload]] = {}
-        # Active emitter tracking: session_id -> last dispatch monotonic time.
-        self._active_emitters: dict[str, float] = {}
-        # EMA-smoothed active session count.
-        self._ema_session_count: float = 0.0
-        # Round-robin pointer into session order list.
-        self._rr_sessions: list[str] = []
-        self._rr_idx: int = 0
+        self._queues = _SchedulerQueues()
+        self._stats = _SchedulerStats()
         # Background dispatch task.
         self._task: asyncio.Task[None] | None = None
-        # Stats counters.
-        self._coalesced: int = 0
-        self._dispatched: int = 0
-        self._dispatch_errors: int = 0
-        self._last_summary_at: float = time.monotonic()
+
+    def __getattr__(self, name: str) -> object:
+        """Expose queue and stats fields under the legacy private attribute names."""
+        if name == "_rr_sessions":
+            return self._queues.rr_sessions
+        if name == "_rr_idx":
+            return self._queues.rr_idx
+        queue_attr = self._QUEUE_ATTRS.get(name)
+        if queue_attr is not None:
+            return getattr(self._queues, queue_attr)
+        stat_attr = self._STATS_ATTRS.get(name)
+        if stat_attr is not None:
+            return getattr(self._stats, stat_attr)
+        msg = f"{type(self).__name__!s} object has no attribute {name!r}"
+        raise AttributeError(msg)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Keep legacy private attribute writes routed to the nested state objects."""
+        if name == "_rr_idx" and "_queues" in self.__dict__:
+            self._queues.rr_idx = int(value)
+            return
+        stat_attr = self._STATS_ATTRS.get(name)
+        if stat_attr is not None and "_stats" in self.__dict__:
+            setattr(self._stats, stat_attr, value)
+            return
+        super().__setattr__(name, value)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -167,14 +223,14 @@ class OutputQoSScheduler:
             )
         else:
             if session_id in self._normal_slots:
-                self._coalesced += 1
+                self._stats.coalesced += 1
                 age = time.monotonic() - self._normal_slots[session_id].enqueued_at
                 logger.debug(
                     "[QoS %s] Coalesced superseded payload: session=%s age=%.2fs total_coalesced=%d",
                     self._policy.adapter_key,
                     session_id,
                     age,
-                    self._coalesced,
+                    self._stats.coalesced,
                 )
             self._normal_slots[session_id] = payload
 
@@ -191,15 +247,14 @@ class OutputQoSScheduler:
         while True:
             tick = self._compute_tick_s()
             await asyncio.sleep(tick)
-            try:
-                await self._dispatch_cycle()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
+            error = await _capture_failure(self._dispatch_cycle())
+            if isinstance(error, asyncio.CancelledError):
+                raise error
+            if error is not None:
                 logger.error(
                     "[QoS %s] Dispatch cycle error",
                     self._policy.adapter_key,
-                    exc_info=True,
+                    exc_info=(type(error), error, error.__traceback__),
                 )
             self._maybe_log_summary()
 
@@ -247,9 +302,9 @@ class OutputQoSScheduler:
             return
 
         # Keep rr_idx within bounds.
-        self._rr_idx = self._rr_idx % len(sessions_with_slots)
-        session_id = sessions_with_slots[self._rr_idx]
-        self._rr_idx = (self._rr_idx + 1) % len(sessions_with_slots)
+        self._queues.rr_idx %= len(sessions_with_slots)
+        session_id = sessions_with_slots[self._queues.rr_idx]
+        self._queues.rr_idx = (self._queues.rr_idx + 1) % len(sessions_with_slots)
 
         payload = self._normal_slots.pop(session_id, None)
         if payload:
@@ -275,21 +330,21 @@ class OutputQoSScheduler:
             payload.is_final,
             wait_age,
         )
-        try:
-            await payload.factory()
-            now = time.monotonic()
-            self._active_emitters[payload.session_id] = now
-            self._dispatched += 1
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self._dispatch_errors += 1
+        error = await _capture_failure(payload.factory())
+        if isinstance(error, asyncio.CancelledError):
+            raise error
+        if error is not None:
+            self._stats.dispatch_errors += 1
             logger.error(
                 "[QoS %s] Dispatch error: session=%s",
                 self._policy.adapter_key,
                 payload.session_id,
-                exc_info=True,
+                exc_info=(type(error), error, error.__traceback__),
             )
+        else:
+            now = time.monotonic()
+            self._active_emitters[payload.session_id] = now
+            self._stats.dispatched += 1
 
     # ------------------------------------------------------------------
     # Cadence computation
@@ -330,10 +385,10 @@ class OutputQoSScheduler:
     def _update_ema(self, raw_count: float) -> None:
         """Update the EMA-smoothed active session count."""
         alpha = self._policy.active_emitter_ema_alpha
-        if self._ema_session_count == 0.0:
-            self._ema_session_count = raw_count
+        if self._stats.ema_session_count == 0.0:
+            self._stats.ema_session_count = raw_count
         else:
-            self._ema_session_count = alpha * raw_count + (1 - alpha) * self._ema_session_count
+            self._stats.ema_session_count = alpha * raw_count + (1 - alpha) * self._stats.ema_session_count
 
     # ------------------------------------------------------------------
     # Observability
@@ -342,9 +397,9 @@ class OutputQoSScheduler:
     def _maybe_log_summary(self) -> None:
         """Periodically log a cadence summary for operator observability."""
         now = time.monotonic()
-        if now - self._last_summary_at < _SUMMARY_INTERVAL_S:
+        if now - self._stats.last_summary_at < _SUMMARY_INTERVAL_S:
             return
-        self._last_summary_at = now
+        self._stats.last_summary_at = now
 
         tick = self._compute_tick_s()
         queue_depth = len(self._normal_slots) + sum(len(q) for q in self._priority_queues.values())

@@ -6,17 +6,20 @@ collection, sanitization, and context compilation.
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
+from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.tmux_bridge import send_keys_existing_tmux
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
-    from teleclaude.core.models import Session
+    pass
 
 logger = get_logger(__name__)
 
@@ -31,17 +34,18 @@ class RelayOperationsMixin:
     - _get_channel(channel_id) -> object | None (async)
     """
 
-    if TYPE_CHECKING:
-        _client: object
+    _client: object
+    client: object
+    _require_async_callable: Callable[..., AsyncDiscordCallable]
+    _get_channel: Callable[[int], Awaitable[object | None]]
 
-        from teleclaude.core.adapter_client import AdapterClient
+    async def forward_to_relay_thread(self, session: Session, text: str, message: object) -> None:
+        """Public wrapper for forwarding customer traffic into relay threads."""
+        await self._forward_to_relay_thread(session, text, message)
 
-        client: AdapterClient
-
-        @staticmethod
-        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
-
-        async def _get_channel(self, channel_id: int) -> object | None: ...
+    async def handle_relay_thread_message(self, message: object, text: str) -> None:
+        """Public wrapper for admin relay-thread traffic handling."""
+        await self._handle_relay_thread_message(message, text)
 
     # =========================================================================
     # Relay Forward / Receive
@@ -52,6 +56,7 @@ class RelayOperationsMixin:
         relay_channel_id = session.relay_discord_channel_id
         if not relay_channel_id:
             return
+        recoverable_errors = recoverable_operation_errors(getattr(self, "_discord", None))
         try:
             thread = await self._get_channel(int(relay_channel_id))
             if thread is None:
@@ -62,9 +67,13 @@ class RelayOperationsMixin:
             name = getattr(author, "display_name", None) or "Customer"
             origin = session.last_input_origin or "discord"
 
-            send_fn = self._require_async_callable(getattr(thread, "send", None), label="relay thread send")
+            send_fn = cast_async_callable(
+                self._require_async_callable,
+                getattr(thread, "send", None),
+                label="relay thread send",
+            )
             await send_fn(f"**{name}** ({origin}): {text}")
-        except Exception:
+        except recoverable_errors:
             logger.warning("Failed to forward message to relay thread %s", relay_channel_id)
 
     async def _handle_relay_thread_message(self, message: object, text: str) -> None:
@@ -87,12 +96,11 @@ class RelayOperationsMixin:
 
     async def _deliver_to_customer(self, session: Session, text: str) -> None:
         """Deliver a message to the customer via all UI adapters."""
-        from teleclaude.core.models import MessageMetadata
-
         metadata = MessageMetadata()
+        recoverable_errors = recoverable_operation_errors(getattr(self, "_discord", None))
         try:
             await self.client.send_message(session=session, text=text, metadata=metadata, ephemeral=False)
-        except Exception:
+        except recoverable_errors:
             logger.warning("Failed to deliver relay message to customer session %s", session.session_id)
 
     def _is_agent_tag(self, text: str) -> bool:
@@ -111,8 +119,6 @@ class RelayOperationsMixin:
         context_block = self._compile_relay_context(messages)
 
         # Inject context into the AI session's tmux
-        from teleclaude.core.tmux_bridge import send_keys_existing_tmux
-
         await send_keys_existing_tmux(session.tmux_session_name, context_block, send_enter=True)
 
         # Clear relay state
@@ -133,8 +139,6 @@ class RelayOperationsMixin:
 
     async def _collect_relay_messages(self, thread_id: str, since: datetime | None) -> list[dict[str, str]]:
         """Read all messages from a relay thread since the given timestamp."""
-        import re
-
         thread = await self._get_channel(int(thread_id))
         if not thread:
             return []
@@ -178,8 +182,6 @@ class RelayOperationsMixin:
     @staticmethod
     def _sanitize_relay_text(text: str) -> str:
         """Strip control characters and ANSI escape sequences from relay text."""
-        import re
-
         # Remove ANSI escape sequences
         text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
         # Remove other control characters (keep newlines and tabs)

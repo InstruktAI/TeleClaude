@@ -10,15 +10,27 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
 - [ ] Tests pass (`make test`)
 - [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
+- [x] No silent deferrals in implementation plan
 - [ ] Code committed
 - [ ] Demo validated (`telec todo demo validate pylint-cleanup-2` exits 0, or exception noted)
 - [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Comments/docstrings updated where behavior changed
+
+## Build Notes
+
+- Verified assigned-scope lint with `pylint teleclaude/adapters/discord teleclaude/adapters/qos` and it passes.
+- Verified assigned-scope regression coverage with `pytest tests/unit/adapters/discord tests/unit/adapters/qos` and it passes.
+- `make lint` currently fails on pre-existing guardrail findings in unrelated files outside this todo's scope:
+  `teleclaude/daemon_session.py`, `teleclaude/cli/session_auth.py`, `teleclaude/core/next_machine/work.py`,
+  `teleclaude/core/next_machine/prepare_events.py`, `teleclaude/core/integration/state_machine.py`,
+  `scripts/helpers/nano_banana_helper.py`.
+- `make test` currently fails on pre-existing unrelated tests outside this todo's scope:
+  `tests/unit/install/test_git_wrapper_permissions.py` and `tests/unit/test_todo_from_main.py`.
+- Manual verification for this lint-only delivery consisted of rerunning the assigned-path `pylint` command and the focused adapter test suites after each fix set.
 
 ## Review Gates (Reviewer)
 

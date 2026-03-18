@@ -8,15 +8,20 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
+from types import ModuleType
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude import config as teleclaude_config
 from teleclaude.core.db import db
+from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata
+from teleclaude.core.session_utils import get_short_project_name
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import ChannelMetadata, Session
+    pass
 
 logger = get_logger(__name__)
 
@@ -44,28 +49,19 @@ class ChannelOperationsMixin:
     _team_channel_map: dict[int, str]
     _guild_id: int | None
 
-    if TYPE_CHECKING:
-        from types import ModuleType
-
-        _discord: ModuleType
-        _client: object
-
-        def _parse_optional_int(self, value: object) -> int | None: ...
-
-        @staticmethod
-        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
-
-        async def _get_channel(self, channel_id: int) -> object | None: ...
-
-        def _resolve_parent_forum_id(self, channel: object | None) -> int | None: ...
+    _discord: ModuleType
+    _client: object
+    _parse_optional_int: Callable[[object], int | None]
+    _require_async_callable: Callable[..., AsyncDiscordCallable]
+    _get_channel: Callable[[int], Awaitable[object | None]]
+    _resolve_parent_forum_id: Callable[[object | None], int | None]
 
     # =========================================================================
     # store_channel_id / ensure_channel
     # =========================================================================
 
     def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
-        from teleclaude.core.models import SessionAdapterMetadata
-
+        """Store Discord channel/thread ids on session adapter metadata."""
         if not isinstance(adapter_metadata, SessionAdapterMetadata):
             return
         parsed = self._parse_optional_int(channel_id)
@@ -82,6 +78,7 @@ class ChannelOperationsMixin:
         discord_meta.channel_id = parsed
 
     async def ensure_channel(self, session: Session) -> Session:
+        """Ensure a session has its Discord destination channel or thread provisioned."""
         # Re-read from DB to prevent stale in-memory metadata from concurrent lanes
         fresh = await db.get_session(session.session_id)
         if fresh:
@@ -104,8 +101,6 @@ class ChannelOperationsMixin:
             return session
 
         title = self._build_thread_title(session, target_forum_id)
-
-        from teleclaude.core.models import ChannelMetadata
 
         await self.create_channel(session, title, ChannelMetadata())
         refreshed = await db.get_session(session.session_id)
@@ -149,8 +144,6 @@ class ChannelOperationsMixin:
         Returns (forum_type, project_path) where forum_type is one of:
         'help_desk', 'project', 'all_sessions', 'team'.
         """
-        from teleclaude.config import config
-
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
 
@@ -167,11 +160,11 @@ class ChannelOperationsMixin:
             parent_id = channel_id
 
         if parent_id is not None and parent_id == self._help_desk_channel_id:
-            return "help_desk", config.computer.help_desk_dir
+            return "help_desk", teleclaude_config.config.computer.help_desk_dir
 
         if parent_id is not None and parent_id == self._all_sessions_channel_id:
-            trusted = config.computer.get_all_trusted_dirs()
-            project_path = trusted[0].path if trusted else config.computer.help_desk_dir
+            trusted = teleclaude_config.config.computer.get_all_trusted_dirs()
+            project_path = trusted[0].path if trusted else teleclaude_config.config.computer.help_desk_dir
             return "all_sessions", project_path
 
         for path, forum_id in self._project_forum_map.items():
@@ -187,7 +180,7 @@ class ChannelOperationsMixin:
                 self._all_sessions_channel_id,
                 list(self._project_forum_map.values()),
             )
-        return "help_desk", config.computer.help_desk_dir
+        return "help_desk", teleclaude_config.config.computer.help_desk_dir
 
     def _build_thread_title(self, session: Session, target_forum_id: int) -> str:
         """Build Discord thread title based on routing target.
@@ -195,8 +188,6 @@ class ChannelOperationsMixin:
         Per-project forum: just the session description (project context is implicit).
         Catch-all fallback: prefixed with short project name for discoverability.
         """
-        from teleclaude.core.session_utils import get_short_project_name
-
         description = session.title or "Untitled"
         headless_prefix = "[HEADLESS] " if session.lifecycle_status == "headless" else ""
         # If routing to a project-specific forum, use description only
@@ -213,8 +204,6 @@ class ChannelOperationsMixin:
 
     def _build_thread_topper(self, session: Session) -> str:
         """Build metadata header for the first message in a Discord thread."""
-        from teleclaude.core.session_utils import get_short_project_name
-
         project = get_short_project_name(session.project_path, session.subdir)
         parts = [f"project: {project}"]
         agent = session.active_agent or "pending"
@@ -231,6 +220,7 @@ class ChannelOperationsMixin:
     # =========================================================================
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
+        """Create or reuse the Discord destination channel or thread for a session."""
         _ = metadata
         if self._client is None:
             raise AdapterError("Discord adapter not started")
@@ -253,7 +243,11 @@ class ChannelOperationsMixin:
                 raise AdapterError(f"Discord channel {target_forum_id} is not a Forum Channel")
 
             topper = self._build_thread_topper(session)
-            thread_id, topper_message_id = await self._create_forum_thread(forum, title=title, content=topper)  # type: ignore[attr-defined]
+            thread_id, topper_message_id = await self._create_forum_thread(  # type: ignore[attr-defined]
+                forum,
+                title=title,
+                content=topper,
+            )
             discord_meta.channel_id = target_forum_id
             discord_meta.thread_id = thread_id
             discord_meta.thread_topper_message_id = topper_message_id
@@ -265,7 +259,8 @@ class ChannelOperationsMixin:
 
         raise AdapterError("Discord session has no mapped destination channel")
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
+    async def update_channel_title(self, session: Session, _title: str) -> bool:
+        """Rename an existing Discord thread to match the current session title."""
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
@@ -275,18 +270,20 @@ class ChannelOperationsMixin:
         raw_edit_fn = getattr(thread, "edit", None)
         if raw_edit_fn is None:
             return False
-        edit_fn = self._require_async_callable(raw_edit_fn, label="Discord thread edit")
+        edit_fn = cast_async_callable(self._require_async_callable, raw_edit_fn, label="Discord thread edit")
         # Recompute Discord-specific title (same logic as thread creation)
         target_forum_id = self._resolve_target_forum(session)
         discord_title = self._build_thread_title(session, target_forum_id)
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await edit_fn(name=discord_title)
             return True
-        except Exception as exc:
+        except recoverable_errors as exc:
             logger.warning("Failed to rename Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
     async def close_channel(self, session: Session) -> bool:
+        """Delete the Discord thread for a closed session."""
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
@@ -296,15 +293,17 @@ class ChannelOperationsMixin:
         raw_delete_fn = getattr(thread, "delete", None)
         if raw_delete_fn is None:
             return False
-        delete_fn = self._require_async_callable(raw_delete_fn, label="Discord thread delete")
+        delete_fn = cast_async_callable(self._require_async_callable, raw_delete_fn, label="Discord thread delete")
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await delete_fn()
             return True
-        except Exception as exc:
+        except recoverable_errors as exc:
             logger.warning("Failed to delete Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
     async def reopen_channel(self, session: Session) -> bool:
+        """Reopen an archived Discord thread for an active session."""
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
@@ -314,15 +313,17 @@ class ChannelOperationsMixin:
         raw_edit_fn = getattr(thread, "edit", None)
         if raw_edit_fn is None:
             return False
-        edit_fn = self._require_async_callable(raw_edit_fn, label="Discord thread edit")
+        edit_fn = cast_async_callable(self._require_async_callable, raw_edit_fn, label="Discord thread edit")
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await edit_fn(archived=False, locked=False)
             return True
-        except Exception as exc:
+        except recoverable_errors as exc:
             logger.warning("Failed to reopen Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
     async def delete_channel(self, session: Session) -> bool:
+        """Delete the Discord thread associated with a session."""
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
             return False
@@ -332,11 +333,12 @@ class ChannelOperationsMixin:
         raw_delete_fn = getattr(thread, "delete", None)
         if raw_delete_fn is None:
             return False
-        delete_fn = self._require_async_callable(raw_delete_fn, label="Discord thread delete")
+        delete_fn = cast_async_callable(self._require_async_callable, raw_delete_fn, label="Discord thread delete")
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await delete_fn()
             return True
-        except Exception as exc:
+        except recoverable_errors as exc:
             logger.warning("Failed to delete Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
@@ -384,11 +386,12 @@ class ChannelOperationsMixin:
         # Collect archived threads
         archived_fn = getattr(forum, "archived_threads", None)
         if callable(archived_fn):
+            recoverable_errors = recoverable_operation_errors(self._discord)
             try:
                 archived_iter = cast(AsyncIterator[object], archived_fn(limit=100))
                 async for thread in archived_iter:
                     all_threads.append(thread)
-            except Exception as exc:
+            except recoverable_errors as exc:
                 logger.debug("Failed to fetch archived threads for forum %s: %s", forum_id, exc)
 
         cleaned = 0
@@ -402,12 +405,17 @@ class ChannelOperationsMixin:
                 # "active" → keep, "unknown" → not ours, skip
                 continue
 
+            recoverable_errors = recoverable_operation_errors(self._discord)
             try:
-                delete_fn = self._require_async_callable(getattr(thread, "delete", None), label="thread delete")
+                delete_fn = cast_async_callable(
+                    self._require_async_callable,
+                    getattr(thread, "delete", None),
+                    label="thread delete",
+                )
                 await delete_fn()
                 cleaned += 1
                 logger.info("Deleted orphan Discord thread %s in forum %s", thread_id, forum_id)
-            except Exception as exc:
+            except recoverable_errors as exc:
                 logger.warning("Failed to delete thread %s: %s", thread_id, exc)
 
             await asyncio.sleep(0.5)
