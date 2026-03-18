@@ -51,7 +51,7 @@ class QoSPolicy:
     __slots__ = ("_budget", "_cadence", "adapter_key", "mode")
 
     def __init__(self, adapter_key: str, *args: object, **kwargs: object) -> None:
-        values: dict[str, Any] = {
+        values: dict[str, Any] = { # guard: loose-dict - dynamic config values
             "mode": "off",
             "group_mpm": 20,
             "output_budget_ratio": 0.8,
