@@ -1,6 +1,6 @@
 schema_version: 1
-phase: done
-build: complete
+phase: pending
+build: pending
 review: pending
 deferrals_processed: false
 finalize:
@@ -27,9 +27,6 @@ requirements_review:
   verdict: approve
   reviewed_at: '2026-03-18T13:37:47.179149+00:00'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
-  findings: []
 test_spec_review:
   verdict: ''
   reviewed_at: ''
@@ -39,9 +36,6 @@ plan_review:
   verdict: approve
   reviewed_at: '2026-03-18T13:37:47.179149+00:00'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
-  findings: []
 artifacts:
   input:
     digest: ''
