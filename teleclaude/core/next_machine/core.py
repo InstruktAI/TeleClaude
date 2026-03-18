@@ -5,10 +5,44 @@ imports from ``teleclaude.core.next_machine.core`` working by lazily resolving
 symbols from their owning modules.
 """
 
+# pyright: reportUnusedImport=false
+
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from importlib import import_module
 from types import ModuleType
+
+if TYPE_CHECKING:
+    # pylint: disable=ungrouped-imports
+    from teleclaude.core.next_machine.create import next_create
+    from teleclaude.core.next_machine.delivery import (
+        cleanup_delivered_slug,
+        deliver_to_delivered,
+    )
+    from teleclaude.core.next_machine.icebox import (
+        clean_dependency_references,
+        freeze_to_icebox,
+        migrate_icebox_to_subfolder,
+        remove_from_icebox,
+        unfreeze_from_icebox,
+    )
+    from teleclaude.core.next_machine.prepare import next_prepare
+    from teleclaude.core.next_machine.prepare_events import (
+        _emit_prepare_event,
+    )
+    from teleclaude.core.next_machine.roadmap import (
+        add_to_roadmap,
+        load_roadmap,
+        move_in_roadmap,
+        remove_from_roadmap,
+        save_roadmap,
+    )
+    from teleclaude.core.next_machine.state_io import (
+        read_phase_state,
+        write_phase_state,
+    )
+    from teleclaude.core.next_machine.work import next_work
 
 _MODULE_EXPORTS: dict[str, list[str]] = {
     "teleclaude.core.next_machine._types": [
@@ -176,7 +210,7 @@ _MODULE_EXPORTS: dict[str, list[str]] = {
 
 _NAME_TO_MODULE = {export_name: module_name for module_name, names in _MODULE_EXPORTS.items() for export_name in names}
 _MODULE_CACHE: dict[str, ModuleType] = {}
-__all__ = [name for names in _MODULE_EXPORTS.values() for name in names]
+__all__ = [name for names in _MODULE_EXPORTS.values() for name in names]  # pyright: ignore[reportUnsupportedDunderAll]
 
 
 def _load_module(module_name: str) -> ModuleType:

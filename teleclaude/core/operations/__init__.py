@@ -3,6 +3,16 @@
 from __future__ import annotations
 
 from importlib import import_module
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from teleclaude.core.operations.progress import emit_operation_progress
+    from teleclaude.core.operations.service import (
+        OPERATION_KIND_TODO_WORK,
+        OperationsService,
+        get_operations_service,
+        set_operations_service,
+    )
 
 __all__ = [
     "OPERATION_KIND_TODO_WORK",
