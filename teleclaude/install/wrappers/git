@@ -67,7 +67,7 @@ _role="${TELECLAUDE_SYSTEM_ROLE:-worker}"
 # Blocked subcommands (version-control-safety policy)
 case "$_subcmd" in
     stash)
-        if [ "$_role" != "integrator" ]; then
+        if [ "$_role" != "system" ]; then
             echo "ERROR: 'git stash' is prohibited in agent sessions. Use commits instead." >&2
             exit 1
         fi
