@@ -3,7 +3,6 @@
 import logging
 import re
 import shlex
-import subprocess
 from collections.abc import Mapping
 from fnmatch import fnmatch
 from pathlib import Path
@@ -70,37 +69,22 @@ def _get_uncommitted_files(project_path: str) -> list[str] | None:
 
     Returns None if git is unavailable or the command fails (fail-open).
     """
+    from teleclaude.git import GitCommandError, Repo
 
-    def _run_git_diff_name_only() -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=project_path or None,
-        )
+    def _run_git_diff_name_only(repo: Repo) -> str:
+        return repo.git.diff("--name-only", "HEAD")
 
-    def _normalize_non_bare_repo() -> bool:
-        bare_probe = subprocess.run(
-            ["git", "rev-parse", "--is-bare-repository"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=project_path or None,
-        )
-        if bare_probe.returncode != 0:
+    def _normalize_non_bare_repo(repo: Repo) -> bool:
+        try:
+            is_bare = repo.git.rev_parse("--is-bare-repository").strip().lower()
+        except GitCommandError:
             return False
-        if bare_probe.stdout.strip().lower() != "true":
+        if is_bare != "true":
             return True
 
-        normalize = subprocess.run(
-            ["git", "config", "--local", "core.bare", "false"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=project_path or None,
-        )
-        if normalize.returncode != 0:
+        try:
+            repo.git.config("--local", "core.bare", "false")
+        except GitCommandError:
             logger.warning(
                 "Checkpoint git self-heal failed: unable to set core.bare=false for %s",
                 project_path,
@@ -113,14 +97,19 @@ def _get_uncommitted_files(project_path: str) -> list[str] | None:
         return True
 
     try:
-        _normalize_non_bare_repo()
-        result = _run_git_diff_name_only()
-        if result.returncode != 0 and "must be run in a work tree" in (result.stderr or "").lower():
-            if _normalize_non_bare_repo():
-                result = _run_git_diff_name_only()
-        if result.returncode != 0:
-            return None
-        files = [f.strip() for f in result.stdout.strip().splitlines() if f.strip()]
+        repo = Repo(project_path or ".", search_parent_directories=True)
+        _normalize_non_bare_repo(repo)
+        try:
+            output = _run_git_diff_name_only(repo)
+        except GitCommandError as exc:
+            if "must be run in a work tree" in (exc.stderr or "").lower():
+                if _normalize_non_bare_repo(repo):
+                    output = _run_git_diff_name_only(repo)
+                else:
+                    return None
+            else:
+                return None
+        files = [f.strip() for f in output.strip().splitlines() if f.strip()]
         return files
     except Exception:
         return None

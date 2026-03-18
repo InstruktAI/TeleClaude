@@ -7,7 +7,6 @@ Instruction formatters live in formatters.py.
 from __future__ import annotations
 
 import asyncio
-import subprocess
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +32,7 @@ from teleclaude.core.integration.formatters import (
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
+from teleclaude.git import GitCommandError, Repo
 
 logger = get_logger(__name__)
 
@@ -50,19 +50,17 @@ _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 
 
 def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
-    """Run a git command; return (returncode, stdout, stderr)."""
+    """Run a git command via GitPython; return (returncode, stdout, stderr)."""
     try:
-        result = subprocess.run(
-            ["git"] + args,
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-            timeout=timeout,
-        )
-        return result.returncode, result.stdout, result.stderr
-    except subprocess.TimeoutExpired:
-        logger.warning("git %s timed out after %.0fs", " ".join(args[:2]), timeout)
-        return 1, "", f"timeout after {timeout}s"
+        repo = Repo(cwd, search_parent_directories=True)
+        stdout = str(repo.git.execute(["git", *args]))
+        return 0, stdout, ""
+    except GitCommandError as exc:
+        rc = exc.status if isinstance(exc.status, int) else 1
+        return rc, exc.stdout or "", exc.stderr or ""
+    except Exception as exc:
+        logger.warning("git %s failed: %s", " ".join(args[:2]), exc)
+        return 1, "", str(exc)
 
 
 def _get_head_sha(cwd: str) -> str | None:

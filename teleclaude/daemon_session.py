@@ -307,8 +307,8 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         principal, role = resolve_session_principal(session)
         session_token = await db.issue_session_token(session_id, principal, role)
         env_vars["TELEC_SESSION_TOKEN"] = session_token
-        env_vars["TELECLAUDE_PRINCIPAL"] = principal
-        env_vars["TELECLAUDE_PRINCIPAL_ROLE"] = role
+        # Principal/role available via DB lookup from session marker file.
+        # Do NOT inject as env vars — file-based contract is the single source of truth.
 
         # Expose system_role to the git wrapper for permission decisions
         if session.session_metadata and session.session_metadata.system_role:

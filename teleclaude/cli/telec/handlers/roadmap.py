@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -485,30 +484,15 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
     cleanup_delivered_slug(cwd, slug)
 
     # 3. Stage and commit all delivery artifacts
-    subprocess.run(
-        ["git", "add", "todos/roadmap.yaml", "todos/delivered.yaml", f"todos/{slug}"],
-        capture_output=True,
-        text=True,
-        cwd=cwd,
-    )
+    from teleclaude.git import GitCommandError, Repo
+
+    repo = Repo(cwd)
+    repo.index.add(["todos/roadmap.yaml", "todos/delivered.yaml", f"todos/{slug}"])
     # Only commit if there are staged changes
-    diff_result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"],
-        capture_output=True,
-        text=True,
-        cwd=cwd,
-    )
-    if diff_result.returncode != 0:
-        subprocess.run(
-            [
-                "git",
-                "commit",
-                "-m",
-                (f"chore({slug}): deliver and cleanup\n\nCo-Authored-By: TeleClaude <noreply@instrukt.ai>"),
-            ],
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-        )
+    if repo.index.diff("HEAD"):
+        try:
+            repo.index.commit(f"chore({slug}): deliver and cleanup\n\nCo-Authored-By: TeleClaude <noreply@instrukt.ai>")
+        except GitCommandError:
+            pass
 
     print(f"Delivered {slug} → delivered.yaml (cleanup complete)")

@@ -6,7 +6,6 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,6 +18,7 @@ from teleclaude.core.next_machine._types import (
 )
 from teleclaude.core.next_machine.roadmap import load_roadmap_slugs
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+from teleclaude.session_identity import get_session_id
 
 
 def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
@@ -32,7 +32,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
             description = f"prepare.{event_type.split('.')[-1]}: {slug}"
             await emit_event(
                 event=event_type,
-                source=f"orchestrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+                source=f"orchestrator/{(get_session_id() or 'unknown')}",
                 level=EventLevel.WORKFLOW,
                 domain="software-development",
                 description=description,

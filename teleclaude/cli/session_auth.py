@@ -126,19 +126,13 @@ def clear_current_session_email() -> bool:
 def resolve_cli_caller_role() -> str | None:
     """Resolve the effective human role for the current CLI caller.
 
-    Three paths (tried in order):
-    1. Env var: TELECLAUDE_PRINCIPAL_ROLE injected at session bootstrap.
-    2. TTY auth: terminal human logged in via ``telec auth login``.
-    3. Daemon API: dual-factor auth (session_id + tmux session name).
+    Two paths (tried in order):
+    1. TTY auth: terminal human logged in via ``telec auth login``.
+    2. Daemon API: dual-factor auth (session_id + tmux session name).
 
     Returns the effective human role, or None if unidentifiable.
     """
-    # Path 1: env var injected at bootstrap
-    env_role = os.environ.get("TELECLAUDE_PRINCIPAL_ROLE")
-    if env_role:
-        return env_role
-
-    # Path 2: TTY auth file → IdentityResolver
+    # Path 1: TTY auth file → IdentityResolver
     email = read_current_session_email()
     if email:
         resolver = get_identity_resolver()
@@ -146,7 +140,7 @@ def resolve_cli_caller_role() -> str | None:
         if person:
             return resolver._normalize_role(person.role)
 
-    # Path 3: daemon API — works for any TeleClaude-managed session
+    # Path 2: daemon API — works for any TeleClaude-managed session
     tmpdir = os.environ.get("TMPDIR", "")
     if not tmpdir:
         return None

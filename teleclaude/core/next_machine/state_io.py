@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,6 +28,7 @@ from teleclaude.core.next_machine._types import (
     PreparePhase,
     StateValue,
 )
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
 
@@ -64,55 +64,43 @@ def _file_sha256(path: Path) -> str:
 def _get_head_commit(cwd: str) -> str:
     """Return HEAD commit hash for cwd, or empty string when unavailable."""
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, OSError):
+        repo = Repo(cwd)
+        return str(repo.git.rev_parse("HEAD").strip())
+    except (GitCommandError, Exception):
         return ""
-    return result.stdout.strip()
 
 
 def _get_ref_commit(cwd: str, ref: str) -> str:
     """Return commit hash for a git ref in cwd, or empty string when unavailable."""
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", ref],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, OSError):
+        repo = Repo(cwd)
+        return str(repo.git.rev_parse(ref).strip())
+    except (GitCommandError, Exception):
         return ""
-    return result.stdout.strip()
 
 
 def _get_remote_branch_head(cwd: str, branch: str) -> str:
     """Return origin/<branch> HEAD commit, or empty string when unavailable."""
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "ls-remote", "origin", f"refs/heads/{branch}"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, OSError):
+        repo = Repo(cwd)
+        output = repo.git.ls_remote("origin", f"refs/heads/{branch}").strip()
+    except (GitCommandError, Exception):
         return ""
-    parts = result.stdout.strip().split()
+    parts = output.split()
     return parts[0] if parts else ""
 
 
 def _run_git_prepare(args: list[str], cwd: str) -> tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
-    result = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode, result.stdout, result.stderr
+    try:
+        repo = Repo(cwd, search_parent_directories=True)
+        output = str(repo.git.execute(["git", *args]))
+        return 0, output, ""
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return 128, "", "not a git repository"
+    except GitCommandError as exc:
+        rc = exc.status if isinstance(exc.status, int) else 1
+        return rc, exc.stdout or "", exc.stderr or ""
 
 
 # ---------------------------------------------------------------------------

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from teleclaude.git import GitCommandError
 from teleclaude.helpers import git_repo_helper
 
 pytestmark = pytest.mark.unit
@@ -26,48 +27,39 @@ class TestParseUrl:
 
 
 class TestDefaultBranch:
-    def test_falls_back_to_remote_head_output(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        repo_path = tmp_path / "repo"
-        repo_path.mkdir()
-        error = subprocess.CalledProcessError(1, "git")
-        responses = iter([error, error, "  HEAD branch: trunk"])
+    def test_falls_back_to_remote_head_output(self, tmp_path: Path) -> None:
+        mock_repo = MagicMock()
+        # First two rev-parse calls raise GitCommandError, then remote show returns HEAD branch
+        mock_repo.git.rev_parse.side_effect = GitCommandError("rev-parse", 1)
+        mock_repo.git.remote.return_value = "  HEAD branch: trunk"
 
-        def fake_git_output(cmd: list[str], cwd: Path | None) -> str:
-            result = next(responses)
-            if isinstance(result, Exception):
-                raise result
-            return result
-
-        monkeypatch.setattr(git_repo_helper, "_git_output", fake_git_output)
-
-        assert git_repo_helper._default_branch(repo_path) == "trunk"
+        assert git_repo_helper._default_branch(mock_repo) == "trunk"
 
 
 class TestEnsureRepo:
     def test_returns_dirty_changes_without_fetching(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         repo_path = tmp_path / "repo"
         (repo_path / ".git").mkdir(parents=True)
-        calls: list[list[str]] = []
-        monkeypatch.setattr(git_repo_helper, "_ensure_on_branch", lambda path: None)
-        monkeypatch.setattr(git_repo_helper, "_dirty_worktree", lambda path: [" M tracked.txt"])
-        monkeypatch.setattr(git_repo_helper, "_run", lambda cmd, cwd=None: calls.append(cmd))
+        mock_repo = MagicMock()
+        monkeypatch.setattr(git_repo_helper, "_ensure_on_branch", lambda repo: None)
+        monkeypatch.setattr(git_repo_helper, "_dirty_worktree", lambda repo: [" M tracked.txt"])
 
-        changes, dirty = git_repo_helper._ensure_repo("https://github.com/openai/repo.git", repo_path)
+        with patch.object(git_repo_helper, "Repo", return_value=mock_repo):
+            changes, dirty = git_repo_helper._ensure_repo("https://github.com/openai/repo.git", repo_path)
 
         assert changes == []
         assert dirty == [" M tracked.txt"]
-        assert calls == []
+        mock_repo.git.fetch.assert_not_called()
 
-    def test_clones_when_repository_is_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_clones_when_repository_is_missing(self, tmp_path: Path) -> None:
         repo_path = tmp_path / "github.com" / "openai" / "repo"
-        calls: list[list[str]] = []
-        monkeypatch.setattr(git_repo_helper, "_run", lambda cmd, cwd=None: calls.append(cmd))
 
-        changes, dirty = git_repo_helper._ensure_repo("https://github.com/openai/repo.git", repo_path)
+        with patch.object(git_repo_helper, "Repo") as mock_repo_cls:
+            changes, dirty = git_repo_helper._ensure_repo("https://github.com/openai/repo.git", repo_path)
 
         assert changes == []
         assert dirty == []
-        assert calls == [["git", "clone", "https://github.com/openai/repo.git", str(repo_path)]]
+        mock_repo_cls.clone_from.assert_called_once_with("https://github.com/openai/repo.git", str(repo_path))
         assert repo_path.parent.exists()
 
 

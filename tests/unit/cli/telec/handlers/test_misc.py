@@ -10,8 +10,12 @@ misc = importlib.import_module("teleclaude.cli.telec.handlers.misc")
 
 
 def test_git_short_commit_hash_returns_unknown_on_git_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(misc.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout=""))
+    from teleclaude.git import InvalidGitRepositoryError
 
+    def _raise(*_args: object, **_kwargs: object) -> None:
+        raise InvalidGitRepositoryError("mock")
+
+    monkeypatch.setattr("teleclaude.git.Repo", _raise)
     assert misc._git_short_commit_hash() == "unknown"
 
 

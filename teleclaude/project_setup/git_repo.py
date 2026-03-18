@@ -3,32 +3,23 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 from pathlib import Path
+
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 
 def ensure_git_repo(project_root: Path) -> None:
     """Initialize a git repo if the project is not already in one."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--is-inside-work-tree"],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode == 0:
+    try:
+        Repo(project_root, search_parent_directories=True)
         return
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        pass
 
-    init_result = subprocess.run(
-        ["git", "init"],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if init_result.returncode == 0:
+    try:
+        Repo.init(project_root)
         print("telec init: initialized git repository.")
-    else:
+    except GitCommandError:
         print("telec init: failed to initialize git repository; skipping git setup.")
 
 
@@ -49,22 +40,19 @@ def ensure_hooks_path(project_root: Path, hooks_path: str = ".githooks") -> None
         return
 
     # If core.hooksPath was previously set, unset it to restore .git/hooks/
-    result = subprocess.run(
-        ["git", "config", "--local", "--get", "core.hooksPath"],
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode == 0:
-        subprocess.run(
-            ["git", "config", "--local", "--unset", "core.hooksPath"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+    try:
+        repo = Repo(project_root)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return
+
+    try:
+        repo.git.config("--local", "--get", "core.hooksPath")
+        # If we got here, the value exists — unset it
+        repo.git.config("--local", "--unset", "core.hooksPath")
         print("telec init: removed core.hooksPath (restoring .git/hooks/).")
+    except GitCommandError:
+        # core.hooksPath not set — expected, continue
+        pass
 
     # Copy project-local hooks into .git/hooks/ (preserving pre-commit)
     for hook_file in source_dir.iterdir():

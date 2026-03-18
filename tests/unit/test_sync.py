@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,24 +44,27 @@ class TestRepairBrokenDocsLinks:
     def test_restores_self_referential_symlink_from_git_blob(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from teleclaude.git import GitCommandError
+
         project_root = tmp_path
         docs_dir = project_root / "docs" / "global"
         docs_dir.mkdir(parents=True)
         baseline_path = docs_dir / "baseline.md"
         os.symlink("baseline.md", baseline_path)
-        responses = {
-            "HEAD:docs/global/baseline.md": subprocess.CompletedProcess([], 0, stdout="restored baseline\n"),
-            "HEAD:docs/global/index.yaml": subprocess.CompletedProcess([], 1, stdout=""),
-        }
 
-        def fake_run(
-            cmd: list[str], cwd: Path, capture_output: bool, text: bool, check: bool
-        ) -> subprocess.CompletedProcess:
-            return responses[cmd[2]]
+        mock_repo = MagicMock()
 
-        monkeypatch.setattr(sync.subprocess, "run", fake_run)
+        def fake_show(ref: str) -> str:
+            if ref == "HEAD:docs/global/baseline.md":
+                return "restored baseline\n"
+            raise GitCommandError("git show", 1)
 
-        sync._repair_broken_docs_links(project_root)
+        mock_repo.git.show = fake_show
+
+        with patch("teleclaude.git.Repo", return_value=mock_repo):
+            sync._repair_broken_docs_links(project_root)
 
         assert baseline_path.is_symlink() is False
         assert baseline_path.read_text(encoding="utf-8") == "restored baseline\n"

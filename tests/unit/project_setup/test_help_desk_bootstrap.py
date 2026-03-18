@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
-from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,11 +17,6 @@ def test_bootstrap_help_desk_skips_existing_directory(tmp_path: Path, monkeypatc
     marker = target / "keep.txt"
     marker.write_text("keep\n", encoding="utf-8")
     monkeypatch.setattr(help_desk_bootstrap, "_resolve_help_desk_dir", lambda: target)
-    monkeypatch.setattr(
-        help_desk_bootstrap.subprocess,
-        "run",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("subprocess.run should not be called")),
-    )
 
     help_desk_bootstrap.bootstrap_help_desk()
 
@@ -33,26 +27,23 @@ def test_bootstrap_help_desk_copies_template_runs_init_and_commits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "help-desk"
-    calls: list[list[str]] = []
     init_calls: list[object] = []
     monkeypatch.setattr(help_desk_bootstrap, "_resolve_help_desk_dir", lambda: target)
     monkeypatch.setattr(init_flow, "init_project", lambda project_root: init_calls.append(project_root))
 
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        return SimpleNamespace(returncode=0)
+    mock_repo = MagicMock()
+    mock_index = MagicMock()
+    mock_repo.index = mock_index
 
-    monkeypatch.setattr(help_desk_bootstrap.subprocess, "run", fake_run)
-
-    help_desk_bootstrap.bootstrap_help_desk()
+    with patch("teleclaude.git.Repo") as mock_repo_cls:
+        mock_repo_cls.init.return_value = mock_repo
+        help_desk_bootstrap.bootstrap_help_desk()
 
     assert (target / "README.md").exists()
     assert init_calls == [target]
-    assert calls == [
-        ["git", "init"],
-        ["git", "add", "."],
-        ["git", "commit", "-m", "Initial help desk scaffold"],
-    ]
+    mock_repo_cls.init.assert_called_once_with(target)
+    mock_repo.git.add.assert_called_once_with(".")
+    mock_index.commit.assert_called_once_with("Initial help desk scaffold")
 
 
 def test_bootstrap_help_desk_cleans_up_directory_when_bootstrap_fails(
@@ -61,12 +52,10 @@ def test_bootstrap_help_desk_cleans_up_directory_when_bootstrap_fails(
     target = tmp_path / "help-desk"
     monkeypatch.setattr(help_desk_bootstrap, "_resolve_help_desk_dir", lambda: target)
 
-    def fail_run(cmd, **kwargs):
-        raise subprocess.CalledProcessError(1, cmd)
+    with patch("teleclaude.git.Repo") as mock_repo_cls:
+        mock_repo_cls.init.side_effect = Exception("git init failed")
 
-    monkeypatch.setattr(help_desk_bootstrap.subprocess, "run", fail_run)
-
-    with pytest.raises(subprocess.CalledProcessError):
-        help_desk_bootstrap.bootstrap_help_desk()
+        with pytest.raises(Exception, match="git init failed"):
+            help_desk_bootstrap.bootstrap_help_desk()
 
     assert not target.exists()

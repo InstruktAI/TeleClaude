@@ -8,7 +8,6 @@ Note: slug_in_roadmap lives in roadmap.py (used by check_dependencies_satisfied 
 from __future__ import annotations
 
 import asyncio
-import subprocess
 from pathlib import Path
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, ItemPhase, PhaseName, PhaseStatus
@@ -19,6 +18,7 @@ from teleclaude.core.next_machine.roadmap import (
     slug_in_roadmap,
 )
 from teleclaude.core.next_machine.state_io import read_breakdown_state, read_phase_state, write_phase_state
+from teleclaude.git import GitCommandError, Repo
 
 
 def _find_next_prepare_slug(cwd: str) -> str | None:
@@ -214,16 +214,10 @@ def resolve_canonical_project_root(cwd: str) -> str:
     to the provided cwd when git metadata is unavailable.
     """
     try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--git-common-dir"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, OSError):
+        repo = Repo(cwd)
+        raw_common_dir = repo.git.rev_parse("--git-common-dir").strip()
+    except (GitCommandError, Exception):
         return cwd
-
-    raw_common_dir = result.stdout.strip()
     if not raw_common_dir:
         return cwd
 

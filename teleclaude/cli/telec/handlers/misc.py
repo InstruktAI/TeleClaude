@@ -33,21 +33,14 @@ __all__ = [
 
 def _git_short_commit_hash() -> str:
     """Return HEAD short hash, or 'unknown' when unavailable."""
+    from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
+
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
+        repo = Repo(Path.cwd(), search_parent_directories=True)
+        short_hash = repo.head.commit.hexsha[:7]
+        return short_hash if short_hash else "unknown"
+    except (InvalidGitRepositoryError, NoSuchPathError, ValueError, OSError):
         return "unknown"
-
-    if result.returncode != 0:
-        return "unknown"
-
-    commit_hash = result.stdout.strip()
-    return commit_hash if commit_hash else "unknown"
 
 
 def _handle_version() -> None:

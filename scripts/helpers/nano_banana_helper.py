@@ -378,8 +378,13 @@ def _resolve_output_dir(args: argparse.Namespace) -> Path:
     """Resolve the output directory from args or session env."""
     if args.output_dir:
         return args.output_dir  # type: ignore[no-any-return]
-    session_id = os.environ.get("TELECLAUDE_SESSION_ID", "default")
-    return Path(f"workspace/{session_id}")
+    tmpdir = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP") or ""
+    _sid_path = Path(tmpdir) / "teleclaude_session_id" if tmpdir else None
+    try:
+        session_id = _sid_path.read_text(encoding="utf-8").strip() if _sid_path else "default"
+    except OSError:
+        session_id = "default"
+    return Path(f"workspace/{session_id or 'default'}")
 
 
 def main() -> None:

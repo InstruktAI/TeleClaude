@@ -206,11 +206,11 @@ def test_bug_build_passes_without_implementation_plan_or_checklist(tmp_path: Pat
     _write_state(todo_dir, {"kind": "bug", "build": "complete"})
     (todo_dir / "bug.md").write_text("Real bug report content here.", encoding="utf-8")
 
-    with patch("subprocess.run") as mock_run:
-        mock_run.side_effect = [
-            _git_result(0, "abc123"),
-            _git_result(0, "abc123 fix the crash"),
-        ]
+    mock_repo = MagicMock()
+    mock_repo.git.merge_base.return_value = "abc123"
+    mock_repo.git.log.return_value = "abc123 fix the crash"
+
+    with patch("teleclaude.core.next_machine.build_gates.Repo", return_value=mock_repo):
         passed, _ = verify_artifacts(str(tmp_path), "fix-crash", "build", is_bug=True)
 
     assert passed is True

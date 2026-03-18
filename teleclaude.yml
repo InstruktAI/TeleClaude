@@ -19,8 +19,8 @@ jobs:
       at: '06:00'
     script: jobs/youtube_scraper.py
     tags:
-      - ai
-      - devtools
+    - ai
+    - devtools
 
   temp_reaper:
     category: system

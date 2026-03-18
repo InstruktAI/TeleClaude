@@ -12,7 +12,6 @@ The agent is the authority on intelligence. Neither does the other's job.
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 from time import perf_counter
 
@@ -269,7 +268,9 @@ async def next_integrate(
     Returns:
         Plain text instruction block for the agent to execute.
     """
-    session_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+    from teleclaude.session_identity import get_session_id
+
+    session_id = caller_session_id or get_session_id() or "unknown"
     started = perf_counter()
     state_dir = _default_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)

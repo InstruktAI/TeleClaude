@@ -15,11 +15,9 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ROLE_SYSTEM, WORKTREE_DIR
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     _PREP_INPUT_FILES,
     _PREP_ROOT_INPUT_FILES,
@@ -29,6 +27,7 @@ from teleclaude.core.next_machine._types import (
     WorktreePrepDecision,
 )
 from teleclaude.core.next_machine.state_io import _file_sha256
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
 
@@ -196,65 +195,58 @@ def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
     # Todo exists locally but not on remote — commit and push
     todo_rel = f"todos/{slug}"
 
-    # Bypass git wrapper commit/push gates — this is automation bookkeeping
-    old_env = repo.git.update_environment(
-        TELECLAUDE_SYSTEM_ROLE=ROLE_SYSTEM,
-    )
-    try:
-        # Commit if there are uncommitted todo artifacts
-        status_output = repo.git.status("--porcelain", "--", todo_rel)
-        if status_output.strip():
-            commit_paths = [todo_rel]
-            # Include roadmap.yaml if dirty (may have been updated by auto-add)
-            roadmap_status = repo.git.status("--porcelain", "--", "todos/roadmap.yaml")
-            if roadmap_status.strip():
-                commit_paths.append("todos/roadmap.yaml")
+    # Commit if there are uncommitted todo artifacts
+    status_output = repo.git.status("--porcelain", "--", todo_rel)
+    if status_output.strip():
+        commit_paths = [todo_rel]
+        # Include roadmap.yaml if dirty (may have been updated by auto-add)
+        roadmap_status = repo.git.status("--porcelain", "--", "todos/roadmap.yaml")
+        if roadmap_status.strip():
+            commit_paths.append("todos/roadmap.yaml")
 
-            msg = (
-                f"chore(todos): scaffold {slug} [skip ci]\n\n"
-                "Automated pre-worktree housekeeping: local todo artifacts must exist on\n"
-                "origin/main before worktree creation so workers find them.\n\n"
-                "\U0001f916 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
-                "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-            )
-            try:
-                repo.git.add("--", *commit_paths)
-                # --no-verify: pre-commit stash/restore conflicts with --only
-                # (index corruption). Safe to skip — this is scaffold markdown,
-                # not code, and the commit is already [skip ci].
-                repo.git.commit("-m", msg, "--no-verify", "--only", "--", *commit_paths)
-            except GitCommandError as exc:
-                logger.warning("Failed to commit todo artifacts for %s: %s", slug, exc)
-                return False, "commit_skipped"
-
-        # Push — try direct first, then reconcile with rebase if diverged
+        msg = (
+            f"chore(todos): scaffold {slug} [skip ci]\n\n"
+            "Automated pre-worktree housekeeping: local todo artifacts must exist on\n"
+            "origin/main before worktree creation so workers find them.\n\n"
+            "\U0001f916 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
+            "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
+        )
         try:
-            repo.git.push("origin", "main")
-            logger.info("Pushed todo artifacts for %s to origin/main", slug)
-            return True, "committed_and_pushed"
+            repo.git.add("--", *commit_paths)
+            # --no-verify: pre-commit stash/restore conflicts with --only
+            # (index corruption). Safe to skip — this is scaffold markdown,
+            # not code, and the commit is already [skip ci].
+            repo.git.commit("-m", msg, "--no-verify", "--only", "--", *commit_paths)
+        except GitCommandError as exc:
+            logger.warning("Failed to commit todo artifacts for %s: %s", slug, exc)
+            return False, "commit_skipped"
+
+    # Push — try direct first, then reconcile with rebase if diverged
+    try:
+        repo.git.push("origin", "main")
+        logger.info("Pushed todo artifacts for %s to origin/main", slug)
+        return True, "committed_and_pushed"
+    except GitCommandError:
+        pass
+
+    # Push failed (likely non-fast-forward) — try pull --rebase then push
+    try:
+        repo.git.pull("--rebase", "origin", "main")
+        repo.git.push("origin", "main")
+        logger.info("Rebased and pushed todo artifacts for %s to origin/main", slug)
+        return True, "rebased_and_pushed"
+    except GitCommandError as exc:
+        # Abort rebase if it's stuck
+        try:
+            repo.git.rebase("--abort")
         except GitCommandError:
             pass
-
-        # Push failed (likely non-fast-forward) — try pull --rebase then push
-        try:
-            repo.git.pull("--rebase", "origin", "main")
-            repo.git.push("origin", "main")
-            logger.info("Rebased and pushed todo artifacts for %s to origin/main", slug)
-            return True, "rebased_and_pushed"
-        except GitCommandError as exc:
-            # Abort rebase if it's stuck
-            try:
-                repo.git.rebase("--abort")
-            except GitCommandError:
-                pass
-            logger.warning(
-                "Could not push todo artifacts for %s to origin/main: %s",
-                slug,
-                exc,
-            )
-            return False, "push_deferred"
-    finally:
-        repo.git.update_environment(**old_env)
+        logger.warning(
+            "Could not push todo artifacts for %s to origin/main: %s",
+            slug,
+            exc,
+        )
+        return False, "push_deferred"
 
 
 def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
