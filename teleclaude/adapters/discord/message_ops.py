@@ -8,18 +8,18 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.adapters.base_adapter import AdapterError
-from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
-    from teleclaude.core.models import PeerInfo, Session
+    from teleclaude.core.models import MessageMetadata, PeerInfo, Session
 
 logger = get_logger(__name__)
 
@@ -361,6 +361,8 @@ class MessageOperationsMixin:
 
     def _build_metadata_for_thread(self) -> MessageMetadata:
         """Build default metadata for Discord-originated thread messages."""
+        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
+
         return MessageMetadata(parse_mode=None)
 
     def _fit_output_to_limit(self, tmux_output: str) -> str:

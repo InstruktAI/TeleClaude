@@ -121,31 +121,69 @@ class OutputQoSScheduler:
         # Background dispatch task.
         self._task: asyncio.Task[None] | None = None
 
-    def __getattr__(self, name: str) -> object:
-        """Expose queue and stats fields under the legacy private attribute names."""
-        if name == "_rr_sessions":
-            return self._queues.rr_sessions
-        if name == "_rr_idx":
-            return self._queues.rr_idx
-        queue_attr = self._QUEUE_ATTRS.get(name)
-        if queue_attr is not None:
-            return getattr(self._queues, queue_attr)
-        stat_attr = self._STATS_ATTRS.get(name)
-        if stat_attr is not None:
-            return getattr(self._stats, stat_attr)
-        msg = f"{type(self).__name__!s} object has no attribute {name!r}"
-        raise AttributeError(msg)
+    @property
+    def _normal_slots(self) -> dict[str, QoSPayload]:
+        return self._queues.normal_slots
 
-    def __setattr__(self, name: str, value: object) -> None:
-        """Keep legacy private attribute writes routed to the nested state objects."""
-        if name == "_rr_idx" and "_queues" in self.__dict__:
-            self._queues.rr_idx = int(value)
-            return
-        stat_attr = self._STATS_ATTRS.get(name)
-        if stat_attr is not None and "_stats" in self.__dict__:
-            setattr(self._stats, stat_attr, value)
-            return
-        super().__setattr__(name, value)
+    @property
+    def _priority_queues(self) -> dict[str, deque[QoSPayload]]:
+        return self._queues.priority_queues
+
+    @property
+    def _active_emitters(self) -> dict[str, float]:
+        return self._queues.active_emitters
+
+    @property
+    def _rr_sessions(self) -> list[str]:
+        return self._queues.rr_sessions
+
+    @property
+    def _rr_idx(self) -> int:
+        return self._queues.rr_idx
+
+    @_rr_idx.setter
+    def _rr_idx(self, value: int) -> None:
+        self._queues.rr_idx = value
+
+    @property
+    def _ema_session_count(self) -> float:
+        return self._stats.ema_session_count
+
+    @_ema_session_count.setter
+    def _ema_session_count(self, value: float) -> None:
+        self._stats.ema_session_count = value
+
+    @property
+    def _coalesced(self) -> int:
+        return self._stats.coalesced
+
+    @_coalesced.setter
+    def _coalesced(self, value: int) -> None:
+        self._stats.coalesced = value
+
+    @property
+    def _dispatched(self) -> int:
+        return self._stats.dispatched
+
+    @_dispatched.setter
+    def _dispatched(self, value: int) -> None:
+        self._stats.dispatched = value
+
+    @property
+    def _dispatch_errors(self) -> int:
+        return self._stats.dispatch_errors
+
+    @_dispatch_errors.setter
+    def _dispatch_errors(self, value: int) -> None:
+        self._stats.dispatch_errors = value
+
+    @property
+    def _last_summary_at(self) -> float:
+        return self._stats.last_summary_at
+
+    @_last_summary_at.setter
+    def _last_summary_at(self, value: float) -> None:
+        self._stats.last_summary_at = value
 
     # ------------------------------------------------------------------
     # Lifecycle

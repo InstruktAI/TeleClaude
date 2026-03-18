@@ -11,7 +11,7 @@ import tempfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-
+from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
@@ -21,10 +21,12 @@ from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.models import MessageMetadata, Session, SessionMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, KeysCommand
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import MessageMetadata, Session, SessionMetadata
 
 logger = get_logger(__name__)
 
@@ -72,19 +74,19 @@ class InputHandlersMixin:
     _team_channel_map: dict[int, str]
     _project_forum_map: dict[str, int]
 
-    _client: object
-    _escalation_channel_id: int | None
-    _parse_optional_int: Callable[[object], int | None]
-    _require_async_callable: Callable[..., AsyncDiscordCallable]
-    _is_forum_channel: Callable[[object], bool]
-    _extract_forum_thread_result: Callable[[object], tuple[object | None, object | None]]
-    _fit_message_text: Callable[..., str]
-    _resolve_project_from_forum: Callable[[int], str | None]
-    _resolve_interaction_forum_id: Callable[[object], Awaitable[int | None]]
-    _get_channel: Callable[[int], Awaitable[object | None]]
-    _resolve_forum_context: Callable[[object], tuple[str, str | None]]
-    _discord_actor_name: Callable[[object, str], str]
-    _discord_actor_avatar_url: Callable[[object], str | None]
+    if TYPE_CHECKING:
+        _client: object
+        _escalation_channel_id: int | None
+        _parse_optional_int: Callable[[object], int | None]
+        _require_async_callable: Callable[..., AsyncDiscordCallable]
+        _is_forum_channel: Callable[[object], bool]
+        _extract_forum_thread_result: Callable[[object], tuple[object | None, object | None]]
+        _fit_message_text: Callable[..., str]
+        _resolve_project_from_forum: Callable[[int], str | None]
+        _resolve_interaction_forum_id: Callable[[object], Awaitable[int | None]]
+        _resolve_forum_context: Callable[[object], tuple[str, str | None]]
+        _discord_actor_name: Callable[[object, str], str]
+        _discord_actor_avatar_url: Callable[[object], str | None]
 
     async def resolve_or_create_session(self, message: object, *, first_message: str | None = None) -> Session | None:
         """Public wrapper for Discord session resolution or creation."""
@@ -154,9 +156,11 @@ class InputHandlersMixin:
         context: _SessionCreationContext,
     ) -> tuple[str, SessionMetadata | None]:
         """Resolve the effective project path and session metadata for a new session."""
+        from teleclaude.core.models import SessionMetadata as RuntimeSessionMetadata  # pylint: disable=import-outside-toplevel
+
         session_meta: SessionMetadata | None = None
         if context.forum_type == "help_desk":
-            session_meta = SessionMetadata(human_role="customer")
+            session_meta = RuntimeSessionMetadata(human_role="customer")
             return context.project_path or teleclaude_config.config.computer.help_desk_dir, session_meta
 
         forum_id, _ = self._extract_channel_ids(message)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import cast
 
 from teleclaude.adapters.base_adapter import AdapterError
 
@@ -17,7 +16,7 @@ def cast_async_callable(
     label: str,
 ) -> AsyncDiscordCallable:
     """Validate and cast a dynamically resolved Discord coroutine method."""
-    return cast(AsyncDiscordCallable, require_async_callable(fn, label=label))
+    return require_async_callable(fn, label=label)
 
 
 def recoverable_operation_errors(discord_module: object) -> tuple[type[Exception], ...]:

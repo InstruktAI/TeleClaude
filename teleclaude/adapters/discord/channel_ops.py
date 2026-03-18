@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
-from types import ModuleType
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
@@ -17,11 +16,12 @@ from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_asyn
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude import config as teleclaude_config
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata
 from teleclaude.core.session_utils import get_short_project_name
 
 if TYPE_CHECKING:
-    pass
+    from types import ModuleType
+
+    from teleclaude.core.models import ChannelMetadata, Session
 
 logger = get_logger(__name__)
 
@@ -49,12 +49,13 @@ class ChannelOperationsMixin:
     _team_channel_map: dict[int, str]
     _guild_id: int | None
 
-    _discord: ModuleType
-    _client: object
-    _parse_optional_int: Callable[[object], int | None]
-    _require_async_callable: Callable[..., AsyncDiscordCallable]
-    _get_channel: Callable[[int], Awaitable[object | None]]
-    _resolve_parent_forum_id: Callable[[object | None], int | None]
+    if TYPE_CHECKING:
+        _discord: ModuleType
+        _client: object
+        _parse_optional_int: Callable[[object], int | None]
+        _require_async_callable: Callable[..., AsyncDiscordCallable]
+        _get_channel: Callable[[int], Awaitable[object | None]]
+        _resolve_parent_forum_id: Callable[[object | None], int | None]
 
     # =========================================================================
     # store_channel_id / ensure_channel
@@ -62,6 +63,8 @@ class ChannelOperationsMixin:
 
     def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
         """Store Discord channel/thread ids on session adapter metadata."""
+        from teleclaude.core.models import SessionAdapterMetadata  # pylint: disable=import-outside-toplevel
+
         if not isinstance(adapter_metadata, SessionAdapterMetadata):
             return
         parsed = self._parse_optional_int(channel_id)
@@ -79,6 +82,8 @@ class ChannelOperationsMixin:
 
     async def ensure_channel(self, session: Session) -> Session:
         """Ensure a session has its Discord destination channel or thread provisioned."""
+        from teleclaude.core.models import ChannelMetadata  # pylint: disable=import-outside-toplevel
+
         # Re-read from DB to prevent stale in-memory metadata from concurrent lanes
         fresh = await db.get_session(session.session_id)
         if fresh:

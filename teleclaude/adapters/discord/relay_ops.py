@@ -15,11 +15,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.tmux_bridge import send_keys_existing_tmux
 
 if TYPE_CHECKING:
-    pass
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -35,9 +35,11 @@ class RelayOperationsMixin:
     """
 
     _client: object
-    client: object
     _require_async_callable: Callable[..., AsyncDiscordCallable]
     _get_channel: Callable[[int], Awaitable[object | None]]
+
+    if TYPE_CHECKING:
+        client: AdapterClient
 
     async def forward_to_relay_thread(self, session: Session, text: str, message: object) -> None:
         """Public wrapper for forwarding customer traffic into relay threads."""
@@ -96,6 +98,8 @@ class RelayOperationsMixin:
 
     async def _deliver_to_customer(self, session: Session, text: str) -> None:
         """Deliver a message to the customer via all UI adapters."""
+        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
+
         metadata = MessageMetadata()
         recoverable_errors = recoverable_operation_errors(getattr(self, "_discord", None))
         try:
