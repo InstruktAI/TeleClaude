@@ -7,14 +7,27 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
+
+from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
+from teleclaude.cli.config_handlers import get_person_config
 
 if TYPE_CHECKING:
     from types import ModuleType
 
 logger = get_logger(__name__)
+
+AsyncDiscordCallable = Callable[..., Awaitable[object]]
+discord_operation_exceptions = (AttributeError, RuntimeError, TypeError, ValueError)
+
+try:
+    from discord import DiscordException
+except ImportError:
+    pass
+else:
+    discord_operation_exceptions = (DiscordException,) + discord_operation_exceptions
 
 
 class TeamChannelsMixin:
@@ -34,13 +47,17 @@ class TeamChannelsMixin:
     if TYPE_CHECKING:
         _discord: ModuleType
         _client: object
+        _parse_optional_int: Callable[[object], int | None]
+        _require_async_callable: Callable[..., AsyncDiscordCallable]
+        _get_channel: Callable[[int], Awaitable[object | None]]
 
-        def _parse_optional_int(self, value: object) -> int | None: ...
+    async def ensure_team_channels(self, guild: object, category: object | None, people: list[object]) -> None:
+        """Public wrapper for team-channel provisioning."""
+        await self._ensure_team_channels(guild, category, people)
 
-        @staticmethod
-        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
-
-        async def _get_channel(self, channel_id: int) -> object | None: ...
+    async def ensure_channel_private(self, channel_id: int, guild: object, owner_user_id: int) -> None:
+        """Public wrapper for team-channel permission enforcement."""
+        await self._ensure_channel_private(channel_id, guild, owner_user_id)
 
     async def _ensure_team_channels(
         self,
@@ -56,8 +73,6 @@ class TeamChannelsMixin:
         if category is None:
             return
 
-        from teleclaude.cli.config_handlers import get_person_config
-
         for person in people:
             name = getattr(person, "name", None)
             if not isinstance(name, str) or not name.strip():
@@ -70,7 +85,7 @@ class TeamChannelsMixin:
                 person_cfg = get_person_config(name)
                 if person_cfg.creds.discord:
                     discord_user_id = self._parse_optional_int(person_cfg.creds.discord.user_id)
-            except Exception:
+            except (AttributeError, OSError, TypeError, ValueError):
                 pass
 
             ch_id = await self._find_or_create_private_text_channel(guild, category, slug, discord_user_id)
@@ -81,7 +96,8 @@ class TeamChannelsMixin:
             if ch_id is not None and discord_user_id is not None:
                 await self._ensure_channel_private(ch_id, guild, discord_user_id)
 
-    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel create dict; a TypedDict would need discord-py types
+    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel create dict;
+    # a TypedDict would need discord-py types
     async def _find_or_create_private_text_channel(
         self,
         guild: object,
@@ -93,19 +109,9 @@ class TeamChannelsMixin:
 
         Denies @everyone view access, allows only the owner and the bot.
         """
-        channels = getattr(guild, "channels", None)
-        if channels is None:
-            logger.warning("Guild channel cache not populated; refusing to create text channel '%s'", name)
-            return None
-
-        for ch in channels:
-            ch_name = getattr(ch, "name", None)
-            ch_type = getattr(ch, "type", None)
-            is_text = ch_type is not None and getattr(ch_type, "value", ch_type) == 0
-            if isinstance(ch_name, str) and ch_name.lower() == name.lower() and is_text:
-                found_id = self._parse_optional_int(getattr(ch, "id", None))
-                if found_id is not None:
-                    return found_id
+        existing_channel_id = find_existing_text_channel_id(guild, name, self._parse_optional_int)
+        if existing_channel_id is not None:
+            return existing_channel_id
 
         # Build permission overwrites for a private channel
         overwrites = self._build_private_overwrites(guild, owner_user_id)
@@ -115,7 +121,10 @@ class TeamChannelsMixin:
             return None
 
         try:
-            create = self._require_async_callable(create_fn, label="guild.create_text_channel")
+            create = cast(
+                Callable[..., Awaitable[object]],
+                self._require_async_callable(create_fn, label="guild.create_text_channel"),
+            )
             # guard: loose-dict - dynamic kwargs; category key conditionally added
             kwargs: dict[str, object] = {"name": name, "overwrites": overwrites}
             if category is not None:
@@ -125,14 +134,14 @@ class TeamChannelsMixin:
             if ch_id is not None:
                 logger.info("Created private Discord text channel: %s (id=%s)", name, ch_id)
             return ch_id
-        except Exception as exc:
+        except discord_operation_exceptions as exc:
             logger.warning("Failed to create private text channel '%s': %s", name, exc)
             return None
 
     def _build_private_overwrites(self, guild: object, owner_user_id: int | None) -> dict[object, object]:
         """Build Discord permission overwrites: deny @everyone, allow owner + bot."""
-        PermissionOverwrite = getattr(self._discord, "PermissionOverwrite", None)
-        if PermissionOverwrite is None:
+        permission_overwrite_cls = getattr(self._discord, "PermissionOverwrite", None)
+        if permission_overwrite_cls is None:
             return {}
 
         overwrites: dict[object, object] = {}
@@ -140,25 +149,29 @@ class TeamChannelsMixin:
         # Deny @everyone
         default_role = getattr(guild, "default_role", None)
         if default_role is not None:
-            overwrites[default_role] = PermissionOverwrite(view_channel=False, read_messages=False)
+            overwrites[default_role] = permission_overwrite_cls(view_channel=False, read_messages=False)
 
         # Allow the bot
         bot_user = getattr(self._client, "user", None) if self._client is not None else None
         if bot_user is not None:
-            overwrites[bot_user] = PermissionOverwrite(
+            overwrites[bot_user] = permission_overwrite_cls(
                 view_channel=True, read_messages=True, send_messages=True, manage_messages=True
             )
 
         # Allow the person
         if owner_user_id is not None:
-            Object = getattr(self._discord, "Object", None)
+            object_cls = getattr(self._discord, "Object", None)
             get_member = getattr(guild, "get_member", None)
             member = get_member(owner_user_id) if callable(get_member) else None
             if member is not None:
-                overwrites[member] = PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
-            elif Object is not None:
+                overwrites[member] = permission_overwrite_cls(
+                    view_channel=True,
+                    read_messages=True,
+                    send_messages=True,
+                )
+            elif object_cls is not None:
                 # Use Object as fallback (discord.py accepts it for overwrites)
-                overwrites[Object(id=owner_user_id)] = PermissionOverwrite(
+                overwrites[object_cls(id=owner_user_id)] = permission_overwrite_cls(
                     view_channel=True, read_messages=True, send_messages=True
                 )
 
@@ -186,7 +199,11 @@ class TeamChannelsMixin:
         edit_fn = getattr(channel, "edit", None)
         if callable(edit_fn):
             try:
-                await self._require_async_callable(edit_fn, label="channel.edit overwrites")(overwrites=overwrites_dict)
+                edit_channel = cast(
+                    Callable[..., Awaitable[object]],
+                    self._require_async_callable(edit_fn, label="channel.edit overwrites"),
+                )
+                await edit_channel(overwrites=overwrites_dict)
                 logger.info("Applied private permissions to team channel %s", channel_id)
-            except Exception as exc:
+            except discord_operation_exceptions as exc:
                 logger.warning("Failed to apply private permissions to channel %s: %s", channel_id, exc)

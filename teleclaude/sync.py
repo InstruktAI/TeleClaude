@@ -133,19 +133,17 @@ def _repair_broken_docs_links(project_root: Path) -> None:
         if not needs_repair:
             continue
 
-        blob = subprocess.run(
-            ["git", "show", f"HEAD:{rel_path}"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if blob.returncode != 0:
+        from teleclaude.git import GitCommandError, Repo
+
+        try:
+            repo = Repo(str(project_root))
+            blob_content = repo.git.show(f"HEAD:{rel_path}")
+        except (GitCommandError, Exception):
             continue
 
         file_path.unlink(missing_ok=True)
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(blob.stdout, encoding="utf-8")
+        file_path.write_text(blob_content, encoding="utf-8")
 
 
 def _print_warnings(warnings: list[dict[str, str]], *, quiet: bool) -> None:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -46,7 +45,9 @@ def bootstrap_help_desk() -> None:
 
     try:
         # git init
-        subprocess.run(["git", "init"], cwd=help_desk_dir, check=True, capture_output=True)
+        from teleclaude.git import Repo
+
+        repo = Repo.init(help_desk_dir)
 
         # Run telec init inside the new directory
         from teleclaude.project_setup.init_flow import init_project
@@ -54,13 +55,8 @@ def bootstrap_help_desk() -> None:
         init_project(help_desk_dir)
 
         # Initial commit
-        subprocess.run(["git", "add", "."], cwd=help_desk_dir, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Initial help desk scaffold"],
-            cwd=help_desk_dir,
-            check=True,
-            capture_output=True,
-        )
+        repo.git.add(".")
+        repo.index.commit("Initial help desk scaffold")
     except Exception:
         shutil.rmtree(help_desk_dir, ignore_errors=True)
         raise

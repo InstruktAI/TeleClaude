@@ -6,7 +6,6 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -77,6 +76,7 @@ from teleclaude.core.next_machine.worktrees import (
     _ensure_todo_on_remote_main,
     ensure_worktree_with_policy_async,
 )
+from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
 
@@ -812,7 +812,7 @@ async def _dispatch_finalize_handoff(
             next_call=f"telec todo work {resolved_slug}",
         )
 
-    session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+    session_id = get_session_id() or "unknown"
     handoff_started = perf_counter()
     try:
         await emit_branch_pushed(
@@ -899,7 +899,7 @@ async def _dispatch_finalize_prepare(
 
     review_round_val = state.get("review_round")
     review_round = review_round_val if isinstance(review_round_val, int) else 1
-    session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+    session_id = get_session_id() or "unknown"
     try:
         await emit_review_approved(slug=resolved_slug, reviewer_session_id=session_id, review_round=review_round)
     except Exception:

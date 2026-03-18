@@ -168,77 +168,8 @@ class DeliveredDict(TypedDict, total=False):
     children: list[str]
 
 
-DEFAULT_STATE: dict[str, StateValue] = {
-    "schema_version": 2,
-    "phase": ItemPhase.PENDING.value,
-    PhaseName.BUILD.value: PhaseStatus.PENDING.value,
-    PhaseName.REVIEW.value: PhaseStatus.PENDING.value,
-    "deferrals_processed": False,
-    "finalize": {"status": "pending"},
-    "breakdown": {"assessed": False, "todos": []},
-    "review_round": 0,
-    "max_review_rounds": DEFAULT_MAX_REVIEW_ROUNDS,
-    "review_baseline_commit": "",
-    "unresolved_findings": [],
-    "resolved_findings": [],
-    "prepare_phase": "",
-    "grounding": {
-        "valid": False,
-        "base_sha": "",
-        "input_digest": "",
-        "referenced_paths": [],
-        "last_grounded_at": "",
-        "invalidated_at": "",
-        "invalidation_reason": "",
-    },
-    "requirements_review": {
-        "verdict": "",
-        "reviewed_at": "",
-        "findings_count": 0,
-        "rounds": 0,
-        "baseline_commit": "",
-        "findings": [],
-    },
-    "test_spec_review": {
-        "verdict": "",
-        "reviewed_at": "",
-        "findings_count": 0,
-        "rounds": 0,
-    },
-    "plan_review": {
-        "verdict": "",
-        "reviewed_at": "",
-        "findings_count": 0,
-        "rounds": 0,
-        "baseline_commit": "",
-        "findings": [],
-    },
-    "artifacts": {
-        "input": {"digest": "", "produced_at": "", "stale": False},
-        "requirements": {"digest": "", "produced_at": "", "stale": False},
-        "test_specs": {"digest": "", "produced_at": "", "stale": False},
-        "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
-    },
-    "audit": {
-        "input_assessment": {"started_at": "", "completed_at": ""},
-        "triangulation": {"started_at": "", "completed_at": ""},
-        "requirements_review": {
-            "started_at": "",
-            "completed_at": "",
-            "baseline_commit": "",
-            "verdict": "",
-            "rounds": 0,
-            "findings": [],
-        },
-        "plan_drafting": {"started_at": "", "completed_at": ""},
-        "plan_review": {
-            "started_at": "",
-            "completed_at": "",
-            "baseline_commit": "",
-            "verdict": "",
-            "rounds": 0,
-            "findings": [],
-        },
-        "gate": {"started_at": "", "completed_at": ""},
-    },
-}
+def default_state() -> dict[str, StateValue]:
+    """Return a fresh default state dict from the canonical TodoState model."""
+    from teleclaude.types.todos import TodoState
+
+    return TodoState().model_dump(exclude_none=True)  # type: ignore[return-value]

@@ -7,18 +7,16 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
 from pathlib import Path
 from typing import cast
 
-from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL
 from teleclaude.core.next_machine.state_io import read_text_sync, write_text_sync
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
 
@@ -154,31 +152,30 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
     Returns empty string on success (including when fetch is unavailable),
     or an error message only when merge conflicts occur.
     """
-    fetch_result = subprocess.run(
-        ["git", "-C", worktree_cwd, "fetch", "origin", "main"],
-        capture_output=True,
-        text=True,
-    )
-    if fetch_result.returncode != 0:
-        # Fetch failure is non-fatal (no remote, offline, test env)
-        logger.info("Skipping origin/main merge for %s — fetch failed: %s", slug, fetch_result.stderr.strip())
+    try:
+        repo = Repo(worktree_cwd)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        logger.warning("Invalid git repository at %s", worktree_cwd)
         return ""
 
-    merge_result = subprocess.run(
-        ["git", "-C", worktree_cwd, "merge", "origin/main", "--no-edit"],
-        capture_output=True,
-        text=True,
-    )
-    if merge_result.returncode != 0:
+    try:
+        repo.git.fetch("origin", "main")
+    except GitCommandError as exc:
+        # Fetch failure is non-fatal (no remote, offline, test env)
+        logger.info("Skipping origin/main merge for %s — fetch failed: %s", slug, str(exc).strip())
+        return ""
+
+    try:
+        repo.git.merge("origin/main", "--no-edit")
+    except GitCommandError as exc:
         # Abort the failed merge so the worktree stays clean
-        subprocess.run(
-            ["git", "-C", worktree_cwd, "merge", "--abort"],
-            capture_output=True,
-            text=True,
-        )
+        try:
+            repo.git.merge("--abort")
+        except GitCommandError:
+            pass
         return (
             f"Merge origin/main into worktree {slug} failed with conflicts. "
-            f"The merge was aborted. Resolve manually or rebase.\n{merge_result.stderr.strip()}"
+            f"The merge was aborted. Resolve manually or rebase.\n{(exc.stderr or '').strip()}"
         )
 
     logger.info("Merged origin/main into worktree %s", slug)
@@ -197,32 +194,24 @@ def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
     bug where a file touched by both a merge commit and a regular commit would be
     incorrectly excluded, producing a false negative and allowing a stale approval through.
 
-    Returns True on subprocess errors (fail-safe: assume meaningful diff, invalidate).
+    Returns True on git errors (fail-safe: assume meaningful diff, invalidate).
     """
     infra_prefixes = ("todos/", ".teleclaude/")
     try:
-        log_result = subprocess.run(
-            [
-                "git",
-                "-C",
-                cwd,
-                "log",
-                "--no-merges",
-                "--name-only",
-                "--pretty=format:",
-                f"{baseline}..{head}",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
+        repo = Repo(cwd)
+        log_output = repo.git.log(
+            "--no-merges",
+            "--name-only",
+            "--pretty=format:",
+            f"{baseline}..{head}",
         )
         meaningful_files = {
-            f for f in log_result.stdout.splitlines() if f.strip() and not any(f.startswith(p) for p in infra_prefixes)
+            f for f in log_output.splitlines() if f.strip() and not any(f.startswith(p) for p in infra_prefixes)
         }
         return bool(meaningful_files)
-    except (subprocess.CalledProcessError, OSError) as exc:
+    except (GitCommandError, OSError) as exc:
         logger.warning(
-            "has_meaningful_diff: subprocess error; assuming meaningful diff (fail-safe)",
+            "has_meaningful_diff: git error; assuming meaningful diff (fail-safe)",
             extra={"cwd": cwd, "baseline": baseline, "head": head, "error": str(exc)},
         )
         return True  # Fail-safe: assume meaningful diff, invalidate approval

@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+from teleclaude.git import GitCommandError, Repo
 
 logger = logging.getLogger(__name__)
 
@@ -217,12 +217,11 @@ def _filename_to_artifact_key(filename: str) -> str:
 
 def _run_git_prepare(args: list[str], cwd: str) -> tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
-    result = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        logger.warning("git %s failed (rc=%d): %s", " ".join(args), result.returncode, result.stderr.strip())
-    return result.returncode, result.stdout, result.stderr
+    try:
+        repo = Repo(cwd, search_parent_directories=True)
+        output = str(repo.git.execute(["git", *args]))
+        return 0, output, ""
+    except GitCommandError as exc:
+        rc = exc.status if isinstance(exc.status, int) else 1
+        logger.warning("git %s failed (rc=%d): %s", " ".join(args), rc, (exc.stderr or "").strip())
+        return rc, exc.stdout or "", exc.stderr or ""

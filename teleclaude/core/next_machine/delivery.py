@@ -6,13 +6,10 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import shutil
-import subprocess
 from datetime import date
 from pathlib import Path
 
 import yaml
-from git import Repo
-from git.exc import InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
@@ -20,6 +17,7 @@ from teleclaude.core.next_machine._types import DeliveredDict, DeliveredEntry, R
 from teleclaude.core.next_machine.icebox import clean_dependency_references
 from teleclaude.core.next_machine.roadmap import load_roadmap, save_roadmap
 from teleclaude.core.next_machine.state_io import read_text_sync, write_text_sync
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
 
@@ -107,6 +105,8 @@ def deliver_to_delivered(
     else:
         save_roadmap(cwd, entries)
 
+    clean_dependency_references(cwd, slug)
+
     if commit is None:
         try:
             repo = Repo(cwd, search_parent_directories=True)
@@ -161,17 +161,15 @@ def reconcile_roadmap_after_merge(cwd: str) -> list[str]:
 def _run_git_cmd(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
     """Run a git command; return (returncode, stdout, stderr)."""
     try:
-        result = subprocess.run(
-            ["git"] + args,
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-            timeout=timeout,
-        )
-        return result.returncode, result.stdout, result.stderr
-    except subprocess.TimeoutExpired:
-        logger.warning("git %s timed out after %.0fs", " ".join(args[:2]), timeout)
-        return 1, "", f"timeout after {timeout}s"
+        repo = Repo(cwd, search_parent_directories=True)
+        output = str(repo.git.execute(["git", *args]))
+        return 0, output, ""
+    except GitCommandError as exc:
+        if "timeout" in str(exc).lower():
+            logger.warning("git %s timed out after %.0fs", " ".join(args[:2]), timeout)
+            return 1, "", f"timeout after {timeout}s"
+        rc = exc.status if isinstance(exc.status, int) else 1
+        return rc, exc.stdout or "", exc.stderr or ""
 
 
 def cleanup_delivered_slug(
@@ -236,11 +234,6 @@ def sweep_completed_groups(cwd: str) -> list[str]:
         if not entry.is_dir():
             continue
         state_path = entry / "state.yaml"
-        # Backward compat: fall back to state.json
-        if not state_path.exists():
-            legacy_path = entry / "state.json"
-            if legacy_path.exists():
-                state_path = legacy_path
         if not state_path.exists():
             continue
 

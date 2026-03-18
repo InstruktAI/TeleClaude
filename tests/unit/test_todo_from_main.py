@@ -34,6 +34,7 @@ def _make_repo_ns(
         status=MagicMock(return_value=status),
         diff=MagicMock(return_value=diff_stat),
         show=MagicMock(side_effect=lambda ref: f"clean-content-of-{ref}"),
+        checkout=MagicMock(),
         reset=MagicMock(),
         update_environment=update_environment,
     )
@@ -65,7 +66,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(branch="feature-x")
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             pytest.raises(ValueError, match="from-main requires being on the main branch"),
         ):
             create_from_main_skeleton(str(tmp_path), "test-slug")
@@ -77,7 +78,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(status="")
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             pytest.raises(ValueError, match="No uncommitted changes"),
         ):
             create_from_main_skeleton(str(tmp_path), "test-slug")
@@ -94,7 +95,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
@@ -135,7 +136,7 @@ class TestCreateFromMainSkeleton:
         assert (worktree_path / "src" / "new.py").exists()
 
         # Verify main was cleaned — modified files restored from HEAD
-        repo.git.show.assert_any_call("HEAD:src/app.py")
+        repo.git.checkout.assert_any_call("HEAD", "--", "src/app.py")
 
         # Verify untracked file removed from main
         assert not (project / "src" / "new.py").exists()
@@ -157,7 +158,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(status=" D removed.py")
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"removed.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
@@ -180,7 +181,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(False, "push_deferred")),
             pytest.raises(RuntimeError, match="push_deferred"),
@@ -195,7 +196,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(False, "not_a_repo")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
@@ -219,7 +220,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
@@ -252,7 +253,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(status=" M src/app.py\n M docs/guide.md\n?? src/new.py")
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
@@ -280,9 +281,9 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("git.Repo", return_value=repo),
-            patch("teleclaude.session_identity.get_session_id", return_value=None),
-            pytest.raises(ValueError, match="session marker"),
+            patch("teleclaude.git.Repo", return_value=repo),
+            patch(_COLLECT, side_effect=ValueError("from-main requires an active agent session")),
+            pytest.raises(ValueError, match="active agent session"),
         ):
             create_from_main_skeleton(str(project), "no-session")
 
@@ -294,7 +295,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, side_effect=ValueError("Could not determine session-touched files")),
             pytest.raises(ValueError, match="Could not determine"),
         ):
@@ -305,10 +306,10 @@ class TestCreateFromMainSkeleton:
         from teleclaude.todo_scaffold import create_from_main_skeleton
 
         project = _setup_project(tmp_path)
-        repo = _make_repo_ns(status=" M src/app.py\n?? src/new.py")
+        repo = _make_repo_ns()
 
         with (
-            patch("git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"completely/unrelated.py"}),
             pytest.raises(ValueError, match="No uncommitted changes match session-touched files"),
         ):
@@ -343,7 +344,7 @@ class TestCollectSessionTouchedFiles:
         expected_files = {"src/app.py", "src/utils.py"}
 
         with (
-            patch("teleclaude.session_identity.get_session_id", return_value="sess-123"),
+            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-123"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
@@ -364,8 +365,8 @@ class TestCollectSessionTouchedFiles:
         from teleclaude.todo_scaffold import _collect_session_touched_files
 
         with (
-            patch("teleclaude.session_identity.get_session_id", return_value=None),
-            pytest.raises(ValueError, match="session marker"),
+            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value=None),
+            pytest.raises(ValueError, match="active agent session"),
         ):
             _collect_session_touched_files("/project")
 
@@ -377,7 +378,7 @@ class TestCollectSessionTouchedFiles:
         mock_db.get.return_value = None
 
         with (
-            patch("teleclaude.session_identity.get_session_id", return_value="sess-missing"),
+            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-missing"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             pytest.raises(ValueError, match="Session sess-missing not found"),
@@ -396,7 +397,7 @@ class TestCollectSessionTouchedFiles:
         mock_db.get.return_value = mock_row
 
         with (
-            patch("teleclaude.session_identity.get_session_id", return_value="sess-no-log"),
+            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-no-log"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             pytest.raises(ValueError, match="No transcript found"),
@@ -407,7 +408,7 @@ class TestCollectSessionTouchedFiles:
             _collect_session_touched_files("/project")
 
     def test_empty_timeline_raises(self) -> None:
-        """Raises ValueError when transcript parsing returns no data."""
+        """Raises ValueError when transcript parsing returns no touched files."""
         from teleclaude.todo_scaffold import _collect_session_touched_files
 
         mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
@@ -417,13 +418,14 @@ class TestCollectSessionTouchedFiles:
         mock_timeline = SimpleNamespace(has_data=False, tool_calls=[])
 
         with (
-            patch("teleclaude.session_identity.get_session_id", return_value="sess-empty"),
+            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-empty"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
             patch(self._AGENT_NAME) as mock_agent_name,
             patch(self._EXTRACT_TURNS, return_value=mock_timeline),
-            pytest.raises(ValueError, match="Transcript parsing returned no data"),
+            patch(self._EXTRACT_SIGNALS, return_value=(set(), False)),
+            pytest.raises(ValueError, match="Could not determine session-touched files"),
         ):
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -442,7 +444,7 @@ class TestCollectSessionTouchedFiles:
         mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
 
         with (
-            patch("teleclaude.session_identity.get_session_id", return_value="sess-no-files"),
+            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-no-files"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),

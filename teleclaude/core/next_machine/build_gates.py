@@ -16,6 +16,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName, PhaseStatus, StateValue
 from teleclaude.core.next_machine.state_io import is_bug_todo
+from teleclaude.git import GitCommandError, Repo
 
 logger = get_logger(__name__)
 
@@ -383,33 +384,18 @@ def _verify_implementation_plan(todo_base: Path, results: list[str]) -> bool:
 def _verify_build_commits(worktree_cwd: str, results: list[str]) -> bool:
     """Verify the worktree contains at least one build commit ahead of main."""
     try:
-        merge_base_result = subprocess.run(
-            ["git", "-C", worktree_cwd, "merge-base", "HEAD", "main"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if merge_base_result.returncode == 0:
-            base = merge_base_result.stdout.strip()
-            log_result = subprocess.run(
-                ["git", "-C", worktree_cwd, "log", "--oneline", f"{base}..HEAD"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        else:
-            log_result = subprocess.run(
-                ["git", "-C", worktree_cwd, "log", "--oneline", "-1"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        if log_result.stdout.strip():
+        repo = Repo(worktree_cwd)
+        try:
+            base = repo.git.merge_base("HEAD", "main").strip()
+            log_output = repo.git.log("--oneline", f"{base}..HEAD")
+        except GitCommandError:
+            log_output = repo.git.log("--oneline", "-1")
+        if log_output.strip():
             results.append("PASS: build commits exist on worktree branch")
             return True
         results.append("FAIL: no build commits found on worktree branch beyond main")
         return False
-    except (subprocess.TimeoutExpired, OSError) as exc:
+    except (GitCommandError, OSError, Exception) as exc:
         results.append(f"FAIL: could not verify commits: {exc}")
         return False
 

@@ -63,10 +63,12 @@ def test_get_stash_entries_returns_empty_on_git_command_error(tmp_path: Path) ->
 
 
 def test_has_meaningful_diff_filters_infrastructure_only_changes() -> None:
-    with patch(
-        "subprocess.run",
-        return_value=SimpleNamespace(returncode=0, stdout="todos/slug/file.md\n.teleclaude/run.json\n", stderr=""),
-    ):
+    from unittest.mock import MagicMock
+
+    mock_repo = MagicMock()
+    mock_repo.git.log.return_value = "todos/slug/file.md\n.teleclaude/run.json\n"
+
+    with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=mock_repo):
         meaningful = _has_meaningful_diff("/repo", "base", "head")
 
     assert meaningful is False

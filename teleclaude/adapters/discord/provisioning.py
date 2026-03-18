@@ -6,11 +6,27 @@ Handles guild resolution, channel/category/forum creation, and config persistenc
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude import config as teleclaude_config
+from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
+
 logger = get_logger(__name__)
+
+
+AsyncDiscordCallable = Callable[..., Awaitable[object]]
+config_persist_exceptions = (AttributeError, OSError, TypeError, ValueError, yaml.YAMLError)
+discord_operation_exceptions = (AttributeError, RuntimeError, TypeError, ValueError)
+
+try:
+    from discord import DiscordException
+except ImportError:
+    pass
+else:
+    discord_operation_exceptions = (DiscordException,) + discord_operation_exceptions
 
 
 class ProvisioningMixin:
@@ -29,15 +45,18 @@ class ProvisioningMixin:
 
     if TYPE_CHECKING:
         _client: object
+        _parse_optional_int: Callable[[object], int | None]
+        _require_async_callable: Callable[..., AsyncDiscordCallable]
+        _get_channel: Callable[[int], Awaitable[object | None]]
+        _is_forum_channel: Callable[[object], bool]
 
-        def _parse_optional_int(self, value: object) -> int | None: ...
+    async def resolve_guild(self) -> object | None:
+        """Public wrapper for guild resolution used by infrastructure callers."""
+        return await self._resolve_guild()
 
-        @staticmethod
-        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
-
-        async def _get_channel(self, channel_id: int) -> object | None: ...
-
-        def _is_forum_channel(self, channel: object) -> bool: ...
+    def persist_discord_channel_ids(self, changes: dict[str, int | dict[str, int]]) -> None:
+        """Public wrapper for config persistence used by infrastructure callers."""
+        self._persist_discord_channel_ids(changes)
 
     async def _resolve_guild(self) -> object | None:
         """Resolve the configured guild by ID."""
@@ -51,8 +70,12 @@ class ProvisioningMixin:
             fetch_guild_fn = getattr(self._client, "fetch_guild", None)
             if callable(fetch_guild_fn):
                 try:
-                    guild = await self._require_async_callable(fetch_guild_fn, label="fetch_guild")(self._guild_id)
-                except Exception as exc:
+                    fetch_guild = cast(
+                        Callable[[int], Awaitable[object]],
+                        self._require_async_callable(fetch_guild_fn, label="fetch_guild"),
+                    )
+                    guild = await fetch_guild(self._guild_id)
+                except discord_operation_exceptions as exc:
                     logger.debug("Failed to fetch guild %s: %s", self._guild_id, exc)
 
         return guild  # type: ignore[no-any-return]
@@ -82,10 +105,14 @@ class ProvisioningMixin:
             return None
 
         try:
-            category = await self._require_async_callable(create_fn, label="guild.create_category")(name=name)
+            create_category = cast(
+                Callable[..., Awaitable[object]],
+                self._require_async_callable(create_fn, label="guild.create_category"),
+            )
+            category = await create_category(name=name)
             logger.info("Created Discord category: %s (id=%s)", name, getattr(category, "id", "?"))
             return category
-        except Exception as exc:
+        except discord_operation_exceptions as exc:
             logger.warning("Failed to create Discord category '%s': %s", name, exc)
             return None
 
@@ -114,16 +141,19 @@ class ProvisioningMixin:
             return None
 
         try:
-            create = self._require_async_callable(create_fn, label="guild.create_forum")
+            create_forum = cast(
+                Callable[..., Awaitable[object]],
+                self._require_async_callable(create_fn, label="guild.create_forum"),
+            )
             if category is not None:
-                forum = await create(name=name, topic=topic, category=category)
+                forum = await create_forum(name=name, topic=topic, category=category)
             else:
-                forum = await create(name=name, topic=topic)
+                forum = await create_forum(name=name, topic=topic)
             forum_id = self._parse_optional_int(getattr(forum, "id", None))
             if forum_id is not None:
                 logger.info("Created Discord forum: %s (id=%s)", name, forum_id)
             return forum_id
-        except Exception as exc:
+        except discord_operation_exceptions as exc:
             logger.warning("Failed to create Discord forum '%s': %s", name, exc)
             return None
 
@@ -132,21 +162,10 @@ class ProvisioningMixin:
 
         Refuses to create when the guild channel cache is not populated.
         """
-        channels = getattr(guild, "channels", None)
-        if channels is None:
-            logger.warning("Guild channel cache not populated; refusing to create text channel '%s'", name)
-            return None
-
-        for ch in channels:
-            ch_name = getattr(ch, "name", None)
-            ch_type = getattr(ch, "type", None)
-            # discord.ChannelType.text has value 0
-            is_text = ch_type is not None and getattr(ch_type, "value", ch_type) == 0
-            if isinstance(ch_name, str) and ch_name.lower() == name.lower() and is_text:
-                found_id = self._parse_optional_int(getattr(ch, "id", None))
-                if found_id is not None:
-                    logger.debug("Found existing Discord text channel: %s (id=%s)", name, found_id)
-                    return found_id
+        existing_channel_id = find_existing_text_channel_id(guild, name, self._parse_optional_int)
+        if existing_channel_id is not None:
+            logger.debug("Found existing Discord text channel: %s (id=%s)", name, existing_channel_id)
+            return existing_channel_id
 
         # Cache is populated and channel not found — safe to create.
         create_fn = getattr(guild, "create_text_channel", None)
@@ -155,16 +174,19 @@ class ProvisioningMixin:
             return None
 
         try:
-            create = self._require_async_callable(create_fn, label="guild.create_text_channel")
+            create_text_channel = cast(
+                Callable[..., Awaitable[object]],
+                self._require_async_callable(create_fn, label="guild.create_text_channel"),
+            )
             if category is not None:
-                channel = await create(name=name, category=category)
+                channel = await create_text_channel(name=name, category=category)
             else:
-                channel = await create(name=name)
+                channel = await create_text_channel(name=name)
             ch_id = self._parse_optional_int(getattr(channel, "id", None))
             if ch_id is not None:
                 logger.info("Created Discord text channel: %s (id=%s)", name, ch_id)
             return ch_id
-        except Exception as exc:
+        except discord_operation_exceptions as exc:
             logger.warning("Failed to create Discord text channel '%s': %s", name, exc)
             return None
 
@@ -175,12 +197,8 @@ class ProvisioningMixin:
         A None value removes the discord_forum key for that entry so stale IDs
         do not persist across restarts when re-provisioning fails.
         """
-        import yaml
-
-        from teleclaude.config import config_path
-
         try:
-            with open(config_path, encoding="utf-8") as f:
+            with open(teleclaude_config.config_path, encoding="utf-8") as f:
                 raw = yaml.safe_load(f) or {}
 
             comp = raw.get("computer", {})
@@ -195,22 +213,18 @@ class ProvisioningMixin:
                     else:
                         td["discord_forum"] = new_id
 
-            with open(config_path, "w", encoding="utf-8") as f:
+            with open(teleclaude_config.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False)
 
-            logger.info("Persisted project forum IDs to %s: %s", config_path, name_to_id)
-        except Exception as exc:
+            logger.info("Persisted project forum IDs to %s: %s", teleclaude_config.config_path, name_to_id)
+        except config_persist_exceptions as exc:
             logger.warning("Failed to persist project forum IDs to config: %s", exc)
 
     @staticmethod
     def _persist_discord_channel_ids(changes: dict[str, int | dict[str, int]]) -> None:
         """Write auto-provisioned channel IDs to config.yml."""
-        import yaml
-
-        from teleclaude.config import config_path
-
         try:
-            with open(config_path, encoding="utf-8") as f:
+            with open(teleclaude_config.config_path, encoding="utf-8") as f:
                 raw = yaml.safe_load(f) or {}
 
             discord_section = raw.setdefault("discord", {})
@@ -222,9 +236,9 @@ class ProvisioningMixin:
                 else:
                     discord_section[key] = value
 
-            with open(config_path, "w", encoding="utf-8") as f:
+            with open(teleclaude_config.config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False)
 
-            logger.info("Persisted discord channel IDs to %s: %s", config_path, changes)
-        except Exception as exc:
+            logger.info("Persisted discord channel IDs to %s: %s", teleclaude_config.config_path, changes)
+        except config_persist_exceptions as exc:
             logger.warning("Failed to persist discord channel IDs to config: %s", exc)

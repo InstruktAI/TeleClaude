@@ -8,17 +8,18 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
+from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
-    from types import ModuleType
-
     from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
-    from teleclaude.core.models import MessageMetadata, PeerInfo, Session
+    from teleclaude.core.models import PeerInfo, Session
 
 logger = get_logger(__name__)
 
@@ -45,32 +46,13 @@ class MessageOperationsMixin:
     _TRUNCATION_SUFFIX: str
     ADAPTER_KEY: str
     _reflection_webhook_cache: dict[int, object]
-
-    if TYPE_CHECKING:
-        _qos_scheduler: OutputQoSScheduler
-        _discord: ModuleType
-
-        def _is_thread_channel(self, channel: object) -> bool: ...
-
-        @staticmethod
-        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
-
-        def format_output(self, tmux_output: str) -> str: ...
-
-        async def _resolve_destination_channel(
-            self,
-            session: Session,
-            *,
-            metadata: MessageMetadata | None = None,
-        ) -> object: ...
-
-        async def _fetch_destination_message(
-            self,
-            session: Session,
-            message_id: str,
-            *,
-            metadata: MessageMetadata | None = None,
-        ) -> object: ...
+    _qos_scheduler: OutputQoSScheduler
+    _discord: ModuleType
+    _is_thread_channel: Callable[[object], bool]
+    _require_async_callable: Callable[..., AsyncDiscordCallable]
+    format_output: Callable[[str], str]
+    _resolve_destination_channel: Callable[..., Awaitable[object]]
+    _fetch_destination_message: Callable[..., Awaitable[object]]
 
     # =========================================================================
     # Message Chunking
@@ -115,6 +97,7 @@ class MessageOperationsMixin:
         metadata: MessageMetadata | None = None,
         multi_message: bool = False,
     ) -> str:
+        """Send Discord text, optionally chunking oversized multi-part payloads."""
         # Reflection suppression: drop own-user reflections silently.
         if metadata is not None and metadata.reflection_origin == self.ADAPTER_KEY:
             logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id)
@@ -146,7 +129,11 @@ class MessageOperationsMixin:
             if webhook_message_id:
                 return webhook_message_id
 
-        send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")
+        send_fn = cast_async_callable(
+            self._require_async_callable,
+            getattr(destination, "send", None),
+            label="Discord channel send",
+        )
         sent = await send_fn(text)
         message_id = getattr(sent, "id", None)
         if message_id is None:
@@ -174,8 +161,13 @@ class MessageOperationsMixin:
         if webhook is None:
             return None
 
-        send_fn = self._require_async_callable(getattr(webhook, "send", None), label="Discord webhook send")
+        send_fn = cast_async_callable(
+            self._require_async_callable,
+            getattr(webhook, "send", None),
+            label="Discord webhook send",
+        )
         text = self._fit_message_text(text, context="reflection_webhook")
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             if thread is not None and metadata.reflection_actor_avatar_url:
                 sent = await send_fn(
@@ -205,7 +197,7 @@ class MessageOperationsMixin:
                     username=actor_name,
                     wait=True,
                 )
-        except Exception as exc:
+        except recoverable_errors as exc:
             logger.warning("Discord reflection webhook send failed: %s", exc)
             return None
 
@@ -217,28 +209,37 @@ class MessageOperationsMixin:
         if cached is not None:
             return cached
 
+        recoverable_errors = recoverable_operation_errors(self._discord)
         webhooks_fn = getattr(channel, "webhooks", None)
         if callable(webhooks_fn):
             try:
-                webhooks = await self._require_async_callable(webhooks_fn, label="Discord channel webhooks")()
+                list_webhooks = cast_async_callable(
+                    self._require_async_callable,
+                    webhooks_fn,
+                    label="Discord channel webhooks",
+                )
+                webhooks = await list_webhooks()
                 if isinstance(webhooks, list):
                     for webhook in webhooks:
                         if getattr(webhook, "name", None) == "TeleClaude Reflections":
                             self._reflection_webhook_cache[channel_id] = webhook
-                            return webhook  # type: ignore[no-any-return]
-            except Exception as exc:
+                            return webhook
+            except recoverable_errors as exc:
                 logger.debug("Failed to list Discord webhooks for channel %s: %s", channel_id, exc)
 
         create_fn = getattr(channel, "create_webhook", None)
         if not callable(create_fn):
             return None
         try:
-            webhook = await self._require_async_callable(create_fn, label="Discord channel create_webhook")(
-                name="TeleClaude Reflections"
+            create_webhook = cast_async_callable(
+                self._require_async_callable,
+                create_fn,
+                label="Discord channel create_webhook",
             )
+            webhook = await create_webhook(name="TeleClaude Reflections")
             self._reflection_webhook_cache[channel_id] = webhook
             return webhook
-        except Exception as exc:
+        except recoverable_errors as exc:
             logger.warning("Failed to create Discord reflection webhook for channel %s: %s", channel_id, exc)
             return None
 
@@ -268,30 +269,42 @@ class MessageOperationsMixin:
         *,
         metadata: MessageMetadata | None = None,
     ) -> bool:
+        """Edit an existing Discord message if it can still be resolved."""
         text = self._fit_message_text(text, context="edit_message")
         logger.debug("[DISCORD EDIT] text=%r", text[:100])
         try:
             message = await self._fetch_destination_message(session, message_id, metadata=metadata)
         except AdapterError:
             return False
-        edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
+        edit_fn = cast_async_callable(
+            self._require_async_callable,
+            getattr(message, "edit", None),
+            label="Discord message edit",
+        )
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await edit_fn(content=text)
             return True
-        except Exception as exc:
+        except recoverable_errors as exc:
             logger.warning("Failed to edit Discord message %s: %s", message_id, exc)
             return False
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
+        """Delete a Discord message if it can still be resolved."""
         try:
             message = await self._fetch_destination_message(session, message_id)
         except AdapterError:
             return False
-        delete_fn = self._require_async_callable(getattr(message, "delete", None), label="Discord message delete")
+        delete_fn = cast_async_callable(
+            self._require_async_callable,
+            getattr(message, "delete", None),
+            label="Discord message delete",
+        )
+        recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await delete_fn()
             return True
-        except Exception as exc:
+        except recoverable_errors as exc:
             logger.warning("Failed to delete Discord message %s: %s", message_id, exc)
             return False
 
@@ -303,10 +316,15 @@ class MessageOperationsMixin:
         caption: str | None = None,
         metadata: MessageMetadata | None = None,
     ) -> str:
+        """Upload a file to the resolved Discord destination channel."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
         destination = await self._resolve_destination_channel(session, metadata=metadata)
-        send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")
+        send_fn = cast_async_callable(
+            self._require_async_callable,
+            getattr(destination, "send", None),
+            label="Discord channel send",
+        )
         discord_file = self._discord.File(file_path)
         safe_caption = self._fit_message_text(caption, context="send_file_caption") if caption else None
         sent = await send_fn(content=safe_caption, file=discord_file)
@@ -340,8 +358,7 @@ class MessageOperationsMixin:
         return clipped
 
     def _build_metadata_for_thread(self) -> MessageMetadata:
-        from teleclaude.core.models import MessageMetadata
-
+        """Build default metadata for Discord-originated thread messages."""
         return MessageMetadata(parse_mode=None)
 
     def _fit_output_to_limit(self, tmux_output: str) -> str:
@@ -358,9 +375,11 @@ class MessageOperationsMixin:
         return self.format_output(tmux_output[-max_body:]) if max_body > 0 else ""
 
     def get_max_message_length(self) -> int:
+        """Return Discord's effective maximum message length."""
         return self.max_message_size
 
     def get_ai_session_poll_interval(self) -> float:
+        """Return the Discord adapter poll cadence used for AI session updates."""
         return 0.5
 
     @staticmethod
@@ -379,6 +398,7 @@ class MessageOperationsMixin:
     # =========================================================================
 
     async def discover_peers(self) -> list[PeerInfo]:
+        """Return known Discord peers for adapters that support discovery."""
         return []
 
     async def poll_output_stream(
@@ -386,6 +406,8 @@ class MessageOperationsMixin:
         session: Session,
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
+        """Discord does not expose a pull-based output stream iterator."""
         _ = (session, timeout)
+        if TYPE_CHECKING:
+            yield ""
         raise NotImplementedError("Discord adapter does not support poll_output_stream")
-        yield ""  # pragma: no cover

@@ -15,11 +15,9 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ROLE_SYSTEM, WORKTREE_DIR
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     _PREP_INPUT_FILES,
     _PREP_ROOT_INPUT_FILES,
@@ -29,6 +27,7 @@ from teleclaude.core.next_machine._types import (
     WorktreePrepDecision,
 )
 from teleclaude.core.next_machine.state_io import _file_sha256
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
 
@@ -158,6 +157,86 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
     return True
 
 
+def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tuple[bool, str]:
+    """Commit bookkeeping files on main and best-effort push.
+
+    Safe to call from any context — returns early if not on the main branch.
+    Bypasses the git wrapper commit/push gates (automation bookkeeping).
+
+    Args:
+        cwd: Project root directory.
+        paths: Relative paths to stage and commit (files or directories).
+        subject: Commit subject line (``[skip ci]`` is appended automatically).
+
+    Returns:
+        Tuple of (action_taken, reason).
+    """
+    try:
+        repo = Repo(cwd)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return False, "not_a_repo"
+
+    # Only commit on main branch — safe no-op from worktrees
+    try:
+        if repo.active_branch.name != "main":
+            return False, "not_on_main"
+    except TypeError:
+        return False, "detached_head"
+
+    # Check if any of the paths are dirty (modified, untracked, or deleted)
+    status_output = repo.git.status("--porcelain", "--", *paths)
+    if not status_output.strip():
+        return False, "nothing_to_commit"
+
+    # Bypass git wrapper commit/push gates — this is automation bookkeeping
+    old_env = repo.git.update_environment(
+        TELECLAUDE_ALLOW_MAIN_COMMIT="1",
+        TELECLAUDE_ALLOW_MAIN_PUSH="1",
+    )
+    try:
+        subject_clean = subject.rstrip()
+        if "[skip ci]" not in subject_clean:
+            subject_clean += " [skip ci]"
+        msg = (
+            f"{subject_clean}\n\n"
+            "\U0001f916 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
+            "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
+        )
+        try:
+            repo.git.add("--", *paths)
+            # --no-verify: pre-commit stash/restore conflicts with --only
+            # (index corruption). Safe to skip — these are bookkeeping artifacts
+            # (scaffolds, roadmap YAML, state files), not code, and the commit
+            # is already [skip ci].
+            repo.git.commit("-m", msg, "--no-verify", "--only", "--", *paths)
+        except GitCommandError as exc:
+            logger.warning("Bookkeeping commit failed (%s): %s", subject_clean, exc)
+            return False, "commit_failed"
+
+        # Best-effort push — try direct first, then reconcile with rebase
+        try:
+            repo.git.push("origin", "main")
+            logger.info("Bookkeeping committed and pushed: %s", subject_clean)
+            return True, "committed_and_pushed"
+        except GitCommandError as push_exc:
+            logger.debug("First push attempt failed: %s", push_exc)
+
+        try:
+            repo.git.pull("--rebase", "origin", "main")
+            repo.git.push("origin", "main")
+            logger.info("Bookkeeping rebased and pushed: %s", subject_clean)
+            return True, "rebased_and_pushed"
+        except GitCommandError as exc:
+            try:
+                repo.git.rebase("--abort")
+            except GitCommandError:
+                pass
+            logger.warning("Bookkeeping push deferred (%s): %s", subject_clean, exc)
+            return True, "committed_push_deferred"
+    finally:
+        repo.git.update_environment(**old_env)
+
+
 def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
     """Commit and push todo artifacts to origin/main.
 
@@ -193,68 +272,13 @@ def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
     except GitCommandError:
         pass  # ls-tree errors if path doesn't exist — means not on remote
 
-    # Todo exists locally but not on remote — commit and push
-    todo_rel = f"todos/{slug}"
+    # Build path list — include roadmap.yaml if dirty
+    commit_paths = [f"todos/{slug}"]
+    roadmap_status = repo.git.status("--porcelain", "--", "todos/roadmap.yaml")
+    if roadmap_status.strip():
+        commit_paths.append("todos/roadmap.yaml")
 
-    # Bypass git wrapper commit/push gates — this is automation bookkeeping
-    old_env = repo.git.update_environment(
-        TELECLAUDE_SYSTEM_ROLE=ROLE_SYSTEM,
-    )
-    try:
-        # Commit if there are uncommitted todo artifacts
-        status_output = repo.git.status("--porcelain", "--", todo_rel)
-        if status_output.strip():
-            commit_paths = [todo_rel]
-            # Include roadmap.yaml if dirty (may have been updated by auto-add)
-            roadmap_status = repo.git.status("--porcelain", "--", "todos/roadmap.yaml")
-            if roadmap_status.strip():
-                commit_paths.append("todos/roadmap.yaml")
-
-            msg = (
-                f"chore(todos): scaffold {slug} [skip ci]\n\n"
-                "Automated pre-worktree housekeeping: local todo artifacts must exist on\n"
-                "origin/main before worktree creation so workers find them.\n\n"
-                "\U0001f916 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
-                "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-            )
-            try:
-                repo.git.add("--", *commit_paths)
-                # --no-verify: pre-commit stash/restore conflicts with --only
-                # (index corruption). Safe to skip — this is scaffold markdown,
-                # not code, and the commit is already [skip ci].
-                repo.git.commit("-m", msg, "--no-verify", "--only", "--", *commit_paths)
-            except GitCommandError as exc:
-                logger.warning("Failed to commit todo artifacts for %s: %s", slug, exc)
-                return False, "commit_skipped"
-
-        # Push — try direct first, then reconcile with rebase if diverged
-        try:
-            repo.git.push("origin", "main")
-            logger.info("Pushed todo artifacts for %s to origin/main", slug)
-            return True, "committed_and_pushed"
-        except GitCommandError:
-            pass
-
-        # Push failed (likely non-fast-forward) — try pull --rebase then push
-        try:
-            repo.git.pull("--rebase", "origin", "main")
-            repo.git.push("origin", "main")
-            logger.info("Rebased and pushed todo artifacts for %s to origin/main", slug)
-            return True, "rebased_and_pushed"
-        except GitCommandError as exc:
-            # Abort rebase if it's stuck
-            try:
-                repo.git.rebase("--abort")
-            except GitCommandError:
-                pass
-            logger.warning(
-                "Could not push todo artifacts for %s to origin/main: %s",
-                slug,
-                exc,
-            )
-            return False, "push_deferred"
-    finally:
-        repo.git.update_environment(**old_env)
+    return commit_bookkeeping_to_main(cwd, commit_paths, f"chore(todos): scaffold {slug}")
 
 
 def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
@@ -373,6 +397,7 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
 
 __all__ = [
     "_ensure_todo_on_remote_main",
+    "commit_bookkeeping_to_main",
     "ensure_worktree_with_policy",
     "ensure_worktree_with_policy_async",
 ]

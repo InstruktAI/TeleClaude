@@ -295,18 +295,13 @@ def _get_todo_commit(slug: str, project_root: Path) -> str:
     Returns 'unknown' on failure; callers must not treat consecutive 'unknown'
     values as idempotency evidence (see _assess idempotency guard).
     """
-    import subprocess
+    from teleclaude.git import Repo
 
     todo_path = f"todos/{slug}/"
     try:
-        result = subprocess.run(
-            ["git", "log", "-1", "--format=%h", "--", todo_path],
-            capture_output=True,
-            text=True,
-            cwd=project_root,
-            timeout=5,
-        )
-        return result.stdout.strip() or "unknown"
+        repo = Repo(str(project_root))
+        result = repo.git.log("-1", "--format=%h", "--", todo_path)
+        return result.strip() or "unknown"
     except Exception:
         logger.warning("prepare-quality: git log failed for todo", slug=slug)
         return "unknown"

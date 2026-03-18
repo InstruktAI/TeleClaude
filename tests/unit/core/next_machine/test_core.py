@@ -103,27 +103,6 @@ def test_ghost_plan_not_treated_as_produced_v2(tmp_path: Path) -> None:
     assert phase == PreparePhase.TEST_SPEC_BUILD
 
 
-def test_v1_state_file_existence_respected(tmp_path: Path) -> None:
-    """v1 state (no artifacts key) with requirements.md on disk → REQUIREMENTS_REVIEW."""
-    from teleclaude.core.next_machine.core import _derive_prepare_phase
-
-    cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md")
-    _write_file(tmp_path / "todos" / slug, "requirements.md")
-
-    v1_state: dict[str, StateValue] = {
-        "requirements_review": {
-            "verdict": "",
-            "findings_count": 0,
-            "rounds": 0,
-        },
-        "plan_review": {"verdict": "", "findings_count": 0, "rounds": 0},
-    }
-
-    phase = _derive_prepare_phase(slug, cwd, v1_state)
-    assert phase == PreparePhase.REQUIREMENTS_REVIEW
-
-
 # ---------------------------------------------------------------------------
 # format_tool_call — additional_context parameter
 # ---------------------------------------------------------------------------
@@ -206,11 +185,11 @@ def test_bug_build_passes_without_implementation_plan_or_checklist(tmp_path: Pat
     _write_state(todo_dir, {"kind": "bug", "build": "complete"})
     (todo_dir / "bug.md").write_text("Real bug report content here.", encoding="utf-8")
 
-    with patch("subprocess.run") as mock_run:
-        mock_run.side_effect = [
-            _git_result(0, "abc123"),
-            _git_result(0, "abc123 fix the crash"),
-        ]
+    mock_repo = MagicMock()
+    mock_repo.git.merge_base.return_value = "abc123"
+    mock_repo.git.log.return_value = "abc123 fix the crash"
+
+    with patch("teleclaude.core.next_machine.build_gates.Repo", return_value=mock_repo):
         passed, _ = verify_artifacts(str(tmp_path), "fix-crash", "build", is_bug=True)
 
     assert passed is True

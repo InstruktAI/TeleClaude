@@ -33,7 +33,6 @@ from teleclaude.core.next_machine.core import (
     _PREPARE_VERDICT_PHASES,
     _PREPARE_VERDICT_VALUES,
     detect_circular_dependency,
-    get_stash_entries,
     has_uncommitted_changes,
     load_roadmap,
     load_roadmap_deps,
@@ -140,18 +139,20 @@ async def todo_integrate(  # pyright: ignore
 
 
 @router.post("/mark-phase")
-async def todo_mark_phase(  # pyright: ignore
+async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
     slug: Annotated[str, Body()],
     phase: Annotated[str, Body()],
     status: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(CLEARANCE_TODOS_MARK_PHASE),
+    force: Annotated[bool, Body()] = False,
 ) -> dict[str, str]:
     """Mark a work phase as complete/approved in state.yaml.
 
-    Updates the phase status for the given slug. Terminal statuses (complete,
-    approved) require the worktree to have no uncommitted changes and no stash
-    debt. Requires clearance to modify phase state.
+    Updates the phase status for the given slug. For build:complete/approved,
+    uncommitted changes are blocked unless --force is set. When --force is set
+    and no worktree exists, falls back to cwd. Requires clearance to modify
+    phase state.
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
@@ -195,31 +196,30 @@ async def todo_mark_phase(  # pyright: ignore
             detail=f"invalid status '{status}': must be one of {', '.join(valid_statuses)}",
         )
 
-    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
-    if not Path(worktree_cwd).exists():
-        raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_cwd}")
+    # R1: Flexible cwd resolution — worktree if exists, cwd fallback with --force, 404 otherwise
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    if worktree_path.exists():
+        effective_cwd = str(worktree_path)
+    elif force:
+        effective_cwd = cwd
+    else:
+        raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_path}")
 
-    terminal_statuses = ("complete", "approved")
-    if status in terminal_statuses:
+    # R3: Uncommitted-changes guard narrowed to build terminal statuses only
+    build_terminal = ("complete", "approved")
+    if not force and phase == "build" and status in build_terminal:
         if has_uncommitted_changes(cwd, slug):
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes — commit them before marking phase complete"
-                ),
-            )
-        stash_entries = get_stash_entries(cwd)
-        if stash_entries:
-            noun = "entry" if len(stash_entries) == 1 else "entries"
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"repository has {len(stash_entries)} git stash {noun} — "
-                    "clear stash entries before marking phases complete"
+                    f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes"
+                    " — commit them before marking phase complete"
                 ),
             )
 
-    updated_state = mark_phase(worktree_cwd, slug, phase, status)
+    # R2: Stash check removed entirely
+
+    updated_state = mark_phase(effective_cwd, slug, phase, status)
     return {"result": f"OK: {slug} state updated - {phase}: {status}", "state": str(updated_state)}
 
 

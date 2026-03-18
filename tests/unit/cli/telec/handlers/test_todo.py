@@ -18,8 +18,15 @@ def mock_ensure_pushed():
         yield mock
 
 
+@pytest.fixture
+def mock_commit_bookkeeping():
+    with patch("teleclaude.core.next_machine.worktrees.commit_bookkeeping_to_main") as mock:
+        mock.return_value = (True, "committed")
+        yield mock
+
+
 def test_handle_todo_create_pushes_to_remote(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_ensure_pushed: MagicMock
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_commit_bookkeeping: MagicMock
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -28,7 +35,7 @@ def test_handle_todo_create_pushes_to_remote(
 
     todo_handler._handle_todo_create(["sample-todo"])
 
-    mock_ensure_pushed.assert_called_once_with(str(tmp_path), "sample-todo")
+    mock_commit_bookkeeping.assert_called_once()
 
 
 def test_handle_todo_dump_pushes_to_remote(

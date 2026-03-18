@@ -2,22 +2,12 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from teleclaude.hooks.checkpoint import _git
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
-
-
-def _completed_process(
-    *,
-    returncode: int = 0,
-    stdout: str = "",
-    stderr: str = "",
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=["git"], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 class TestCheckpointProjectSupport:
@@ -38,26 +28,32 @@ class TestGitDiffHelpers:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        responses = iter(
-            [
-                _completed_process(stdout="true\n"),
-                _completed_process(),
-                _completed_process(returncode=128, stderr="fatal: this operation must be run in a work tree"),
-                _completed_process(stdout="true\n"),
-                _completed_process(),
-                _completed_process(stdout="teleclaude/hooks/inbound.py\ntests/unit/hooks/test_inbound.py\n"),
-            ]
-        )
+        from unittest.mock import MagicMock
 
-        def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-            return next(responses)
+        from teleclaude.git import GitCommandError
 
-        monkeypatch.setattr(_git.subprocess, "run", _run)
+        mock_repo = MagicMock()
+        # First rev_parse returns "true" (bare repo), normalize sets core.bare=false
+        # First diff raises "must be run in a work tree"
+        # Second rev_parse returns "true" again, normalize sets core.bare=false again
+        # Second diff succeeds
+        mock_repo.git.rev_parse.return_value = "true"
+        mock_repo.git.diff.side_effect = [
+            GitCommandError("git diff", 128, stderr="fatal: this operation must be run in a work tree"),
+            "teleclaude/hooks/inbound.py\ntests/unit/hooks/test_inbound.py\n",
+        ]
+
+        def fake_repo(*_args: object, **_kwargs: object) -> MagicMock:
+            return mock_repo
+
+        monkeypatch.setattr("teleclaude.git.Repo", fake_repo)
 
         assert _git._get_uncommitted_files("/repo") == [
             "teleclaude/hooks/inbound.py",
             "tests/unit/hooks/test_inbound.py",
         ]
+        # Verify bare-repo normalization happened
+        mock_repo.git.config.assert_called_with("--local", "core.bare", "false")
 
     @pytest.mark.unit
     def test_extract_shell_and_apply_patch_paths_normalize_project_relative_files(self) -> None:

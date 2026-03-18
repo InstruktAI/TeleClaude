@@ -11,81 +11,74 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
 from teleclaude.config.loader import load_global_config
+from teleclaude.git import GitCommandError, Repo
 
 
-def _run(cmd: list[str], cwd: Path | None = None) -> None:
-    subprocess.run(cmd, cwd=cwd, check=True)
-
-
-def _git_output(cmd: list[str], cwd: Path) -> str:
-    return subprocess.check_output(cmd, cwd=cwd, text=True).strip()
-
-
-def _current_head(repo_path: Path) -> str | None:
+def _current_head(repo: Repo) -> str | None:
     try:
-        return _git_output(["git", "rev-parse", "HEAD"], cwd=repo_path)
-    except subprocess.CalledProcessError:
+        return repo.head.commit.hexsha
+    except (ValueError, TypeError):
         return None
 
 
 DEFAULT_CHECKOUT_ROOT = Path.home() / "Workspace" / "public-repos"
 
 
-def _dirty_worktree(repo_path: Path) -> list[str]:
-    status = _git_output(["git", "status", "--porcelain"], cwd=repo_path)
+def _dirty_worktree(repo: Repo) -> list[str]:
+    status = repo.git.status("--porcelain")
     return [line for line in status.splitlines() if line]
 
 
-def _default_branch(repo_path: Path) -> str:
+def _default_branch(repo: Repo) -> str:
     """Return the default branch name (main, master, etc.)."""
     for ref in ("refs/remotes/origin/main", "refs/remotes/origin/master"):
         try:
-            _git_output(["git", "rev-parse", "--verify", ref], cwd=repo_path)
+            repo.git.rev_parse("--verify", ref)
             return ref.rsplit("/", 1)[1]
-        except subprocess.CalledProcessError:
+        except GitCommandError:
             continue
     try:
-        out = _git_output(["git", "remote", "show", "origin"], cwd=repo_path)
+        out = repo.git.remote("show", "origin")
         for line in out.splitlines():
             if "HEAD branch" in line:
                 return line.split(":")[-1].strip()
-    except subprocess.CalledProcessError:
+    except GitCommandError:
         pass
     return "main"
 
 
-def _ensure_on_branch(repo_path: Path) -> None:
+def _ensure_on_branch(repo: Repo) -> None:
     """If HEAD is detached or missing, checkout the default branch."""
     try:
-        _git_output(["git", "symbolic-ref", "HEAD"], cwd=repo_path)
-    except subprocess.CalledProcessError:
-        branch = _default_branch(repo_path)
-        _run(["git", "checkout", branch], cwd=repo_path)
+        repo.git.symbolic_ref("HEAD")
+    except GitCommandError:
+        branch = _default_branch(repo)
+        repo.git.checkout(branch)
 
 
 def _ensure_repo(repo_url: str, repo_path: Path) -> tuple[list[str], list[str]]:
     """Ensure repo exists; return (changes, dirty_changes)."""
     if repo_path.exists() and (repo_path / ".git").exists():
-        _ensure_on_branch(repo_path)
-        dirty = _dirty_worktree(repo_path)
+        repo = Repo(repo_path)
+        _ensure_on_branch(repo)
+        dirty = _dirty_worktree(repo)
         if dirty:
             return [], dirty
-        before = _current_head(repo_path)
-        _run(["git", "fetch", "--all", "--prune"], cwd=repo_path)
-        _run(["git", "pull", "--ff-only"], cwd=repo_path)
-        after = _current_head(repo_path)
+        before = _current_head(repo)
+        repo.git.fetch("--all", "--prune")
+        repo.git.pull("--ff-only")
+        after = _current_head(repo)
         if before and after and before != after:
-            commits = _git_output(["git", "log", "--oneline", f"{before}..{after}"], cwd=repo_path)
+            commits = repo.git.log("--oneline", f"{before}..{after}")
             return [line for line in commits.splitlines() if line], []
         return [], []
 
     repo_path.parent.mkdir(parents=True, exist_ok=True)
-    _run(["git", "clone", repo_url, str(repo_path)])
+    Repo.clone_from(repo_url, str(repo_path))
     return [], []
 
 

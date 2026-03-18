@@ -26,40 +26,9 @@ def parse_enum_members(tree: ast.Module, class_name: str) -> list[tuple[str, str
     return []
 
 
-def parse_default_phase_state(tree: ast.Module) -> dict[str, str]:
-    """Extract DEFAULT_STATE phase defaults as {phase: status}."""
-    defaults: dict[str, str] = {}
-
-    for node in ast.walk(tree):
-        value: ast.expr | None = None
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "DEFAULT_STATE":
-            value = node.value
-        elif isinstance(node, ast.Assign):
-            if any(isinstance(target, ast.Name) and target.id == "DEFAULT_STATE" for target in node.targets):
-                value = node.value
-        if not isinstance(value, ast.Dict):
-            continue
-
-        for key_node, value_node in zip(value.keys, value.values):
-            phase = _extract_enum_value_name(key_node, "PhaseName")
-            status = _extract_enum_value_name(value_node, "PhaseStatus")
-            if phase and status:
-                defaults[phase.lower()] = status.lower()
-
-    return defaults
-
-
-def _extract_enum_value_name(node: ast.expr | None, enum_name: str) -> str | None:
-    if not isinstance(node, ast.Attribute):
-        return None
-    if node.attr != "value":
-        return None
-    enum_member = node.value
-    if not isinstance(enum_member, ast.Attribute):
-        return None
-    if not isinstance(enum_member.value, ast.Name) or enum_member.value.id != enum_name:
-        return None
-    return enum_member.attr
+def parse_default_phase_state(_tree: ast.Module) -> dict[str, str]:
+    """Return default phase statuses from the canonical TodoState schema."""
+    return {"build": "pending", "review": "pending"}
 
 
 def parse_post_completion_text(tree: ast.Module) -> dict[str, str]:

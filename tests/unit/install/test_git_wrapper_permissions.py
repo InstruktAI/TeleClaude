@@ -47,21 +47,18 @@ class TestStashPermissions:
         result = _run_wrapper(["stash"], role=None)
         assert result.returncode != 0
 
-    def test_integrator_allowed(self, tmp_path: Path) -> None:
-        # Init a real repo so stash has something to work with
+    def test_integrator_blocked(self) -> None:
+        result = _run_wrapper(["stash"], role="integrator")
+        assert result.returncode != 0
+        assert "prohibited" in result.stderr
+
+    def test_system_allowed(self, tmp_path: Path) -> None:
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         (tmp_path / "f.txt").write_text("x")
         subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
         subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
-        # stash with nothing to stash returns 1, but the point is the wrapper doesn't block it
-        result = _run_wrapper(["stash"], role="integrator", cwd=str(tmp_path))
-        # Wrapper should NOT emit "prohibited" — it passes through to real git
+        result = _run_wrapper(["stash"], role="system", cwd=str(tmp_path))
         assert "prohibited" not in result.stderr
-
-    def test_system_blocked(self) -> None:
-        result = _run_wrapper(["stash"], role="system")
-        assert result.returncode != 0
-        assert "prohibited" in result.stderr
 
 
 class TestCheckoutPermissions:
