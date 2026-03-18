@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from collections.abc import Callable
-from contextvars import ContextVar, Token
 from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
@@ -17,7 +15,12 @@ from sqlalchemy.exc import IntegrityError
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.integration.state_machine import next_integrate
-from teleclaude.core.next_machine import next_work
+from teleclaude.core.next_machine.work import next_work
+from teleclaude.core.operations import progress as progress_module
+from teleclaude.core.operations.progress import (
+    reset_operation_progress_callback,
+    set_operation_progress_callback,
+)
 from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
@@ -45,10 +48,7 @@ TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 
 _operations_service: OperationsService | None = None
-_progress_callback: ContextVar[Callable[[str, str, str], None] | None] = ContextVar(
-    "operations_progress_callback",
-    default=None,
-)
+_progress_callback = progress_module._progress_callback
 
 
 def set_operations_service(service: OperationsService) -> None:
@@ -62,13 +62,6 @@ def get_operations_service() -> OperationsService:
     if _operations_service is None:
         raise HTTPException(status_code=503, detail="operations service not initialized")
     return _operations_service
-
-
-def emit_operation_progress(phase: str, decision: str, reason: str) -> None:
-    """Forward next-machine phase updates to the active operation, if any."""
-    callback = _progress_callback.get()
-    if callback is not None:
-        callback(phase, decision, reason)
 
 
 class OperationsService:
@@ -327,7 +320,7 @@ class OperationsService:
                 progress_tasks.add(task)
                 task.add_done_callback(progress_tasks.discard)
 
-            token = _progress_callback.set(_capture_progress)
+            token = set_operation_progress_callback(_capture_progress)
             result = await next_work(
                 self._db,
                 operation.slug,
@@ -358,7 +351,7 @@ class OperationsService:
             logger.exception("Background operation failed for %s", operation_id)
         finally:
             if token is not None:
-                _progress_callback.reset(token)
+                reset_operation_progress_callback(token)
             if progress_tasks:
                 await asyncio.gather(*progress_tasks, return_exceptions=True)
             if heartbeat_task is not None:
@@ -399,7 +392,7 @@ class OperationsService:
                 progress_tasks.add(task)
                 task.add_done_callback(progress_tasks.discard)
 
-            token = _progress_callback.set(_capture_progress)
+            token = set_operation_progress_callback(_capture_progress)
             result = await next_integrate(
                 self._db,
                 operation.slug,
@@ -431,7 +424,7 @@ class OperationsService:
             logger.exception("Background operation failed for %s", operation_id)
         finally:
             if token is not None:
-                _progress_callback.reset(token)
+                reset_operation_progress_callback(token)
             if progress_tasks:
                 await asyncio.gather(*progress_tasks, return_exceptions=True)
             if heartbeat_task is not None:

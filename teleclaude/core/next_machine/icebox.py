@@ -10,9 +10,9 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.core.next_machine._types import RoadmapDict, RoadmapEntry
+from teleclaude.core.next_machine._types import RoadmapEntry
+from teleclaude.core.next_machine.manifest_io import load_manifest_entries, save_manifest_entries
 from teleclaude.core.next_machine.roadmap import load_roadmap, save_roadmap
-from teleclaude.core.next_machine.state_io import read_text_sync, write_text_sync
 
 
 def _icebox_dir(cwd: str) -> Path:
@@ -26,50 +26,16 @@ def _icebox_path(cwd: str) -> Path:
 
 def load_icebox(cwd: str) -> list[RoadmapEntry]:
     """Parse todos/icebox.yaml and return ordered list of entries."""
-    path = _icebox_path(cwd)
-    if not path.exists():
-        return []
-
-    content = read_text_sync(path)
-    raw = yaml.safe_load(content)
-    if not isinstance(raw, list):
-        return []
-
-    entries: list[RoadmapEntry] = []
-    for item in raw:
-        if not isinstance(item, dict) or "slug" not in item:
-            continue
-        after = item.get("after")
-        entries.append(
-            RoadmapEntry(
-                slug=item["slug"],
-                group=item.get("group"),
-                after=list(after) if isinstance(after, list) else [],
-                description=item.get("description"),
-            )
-        )
-    return entries
+    return load_manifest_entries(_icebox_path(cwd))
 
 
 def save_icebox(cwd: str, entries: list[RoadmapEntry]) -> None:
     """Write entries back to todos/icebox.yaml."""
-    path = _icebox_path(cwd)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    data: list[RoadmapDict] = []
-    for entry in entries:
-        item: RoadmapDict = {"slug": entry.slug}
-        if entry.group:
-            item["group"] = entry.group
-        if entry.after:
-            item["after"] = entry.after
-        if entry.description:
-            item["description"] = entry.description
-        data.append(item)
-
-    header = "# Parked work items. Promote back to roadmap.yaml when priority changes.\n\n"
-    body = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    write_text_sync(path, header + body)
+    save_manifest_entries(
+        _icebox_path(cwd),
+        entries,
+        "# Parked work items. Promote back to roadmap.yaml when priority changes.\n\n",
+    )
 
 
 def load_icebox_slugs(cwd: str) -> list[str]:

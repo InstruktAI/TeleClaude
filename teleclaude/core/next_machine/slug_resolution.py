@@ -11,6 +11,7 @@ import asyncio
 from pathlib import Path
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, ItemPhase, PhaseName, PhaseStatus
+from teleclaude.core.next_machine.build_gates import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     check_dependencies_satisfied,
     load_roadmap,
@@ -31,8 +32,6 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
     - implementation-plan.md missing
     - phase still pending (needs promotion to ready)
     """
-    from teleclaude.core.next_machine.build_gates import check_file_has_content  # lazy: build_gates created later
-
     for slug in load_roadmap_slugs(cwd):
         phase = get_item_phase(cwd, slug)
 
@@ -97,8 +96,9 @@ def resolve_first_runnable_holder_child(
           "deps_unsatisfied", "item_not_ready"} otherwise
     """
     children = resolve_holder_children(cwd, holder_slug)
+    reason = "not_holder"
     if not children:
-        return None, "not_holder"
+        return None, reason
 
     has_children_in_roadmap = False
     has_incomplete_children = False
@@ -126,15 +126,15 @@ def resolve_first_runnable_holder_child(
 
         return child, "ok"
 
-    if not has_children_in_roadmap:
-        return None, "children_not_in_roadmap"
-    if not has_incomplete_children:
-        return None, "complete"
-    if has_deps_blocked:
-        return None, "deps_unsatisfied"
-    if has_not_ready:
-        return None, "item_not_ready"
-    return None, "item_not_ready"
+    if has_children_in_roadmap:
+        reason = "complete" if not has_incomplete_children else "item_not_ready"
+        if has_deps_blocked:
+            reason = "deps_unsatisfied"
+        elif has_not_ready:
+            reason = "item_not_ready"
+    else:
+        reason = "children_not_in_roadmap"
+    return None, reason
 
 
 def resolve_slug(
@@ -160,36 +160,28 @@ def resolve_slug(
         If found in roadmap, returns (slug, True if ready/in_progress, False if pending, description).
         If nothing found, returns (None, False, "").
     """
-    if slug:
-        return slug, True, ""
-
-    entries = load_roadmap(cwd)
-    if not entries:
-        return None, False, ""
-
-    for entry in entries:
-        found_slug = entry.slug
-        phase = get_item_phase(cwd, found_slug)
-
-        if ready_only:
-            if not is_ready_for_work(cwd, found_slug):
+    resolved: tuple[str | None, bool, str] = (slug, True, "") if slug else (None, False, "")
+    if not slug:
+        entries = load_roadmap(cwd)
+        for entry in entries:
+            found_slug = entry.slug
+            phase = get_item_phase(cwd, found_slug)
+            is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, found_slug)
+            should_skip = ready_only and not is_ready
+            if not ready_only and phase == ItemPhase.DONE.value:
+                should_skip = True
+            if (
+                ready_only
+                and dependencies is not None
+                and not check_dependencies_satisfied(cwd, found_slug, dependencies)
+            ):
+                should_skip = True
+            if should_skip:
                 continue
-        else:
-            # Skip done items for next_prepare
-            if phase == ItemPhase.DONE.value:
-                continue
+            resolved = (found_slug, is_ready, entry.description or "")
+            break
 
-        is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, found_slug)
-
-        # R6: Enforce dependency gating when ready_only=True and dependencies provided
-        if ready_only and dependencies is not None:
-            if not check_dependencies_satisfied(cwd, found_slug, dependencies):
-                continue  # Skip items with unsatisfied dependencies
-
-        description = entry.description or ""
-        return found_slug, is_ready, description
-
-    return None, False, ""
+    return resolved
 
 
 async def resolve_slug_async(
