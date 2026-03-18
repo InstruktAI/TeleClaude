@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -393,21 +392,22 @@ def remove_todo(project_root: Path, slug: str) -> None:
     slug = slug.strip()
 
     # Remove worktree if present (best-effort: non-fatal)
+    from teleclaude.git import GitCommandError, Repo
+
     worktree_path = project_root / WORKTREE_DIR / slug
     found_worktree = worktree_path.exists()
+    repo = Repo(str(project_root))
     if found_worktree:
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", str(worktree_path)],
-            capture_output=True,
-            cwd=str(project_root),
-        )
+        try:
+            repo.git.worktree("remove", "--force", str(worktree_path))
+        except GitCommandError:
+            pass
 
     # Remove local branch if present (best-effort: non-fatal)
-    subprocess.run(
-        ["git", "branch", "-D", slug],
-        capture_output=True,
-        cwd=str(project_root),
-    )
+    try:
+        repo.git.branch("-D", slug)
+    except GitCommandError:
+        pass
 
     todos_root = project_root / "todos"
     todo_dir = todos_root / slug
@@ -436,11 +436,12 @@ def remove_todo(project_root: Path, slug: str) -> None:
 
 def _classify_porcelain_status(
     status_output: str,
-) -> tuple[list[str], list[str], list[str]]:
-    """Classify git porcelain status lines into modified, untracked, deleted."""
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Classify git porcelain status lines into modified, untracked, deleted, added."""
     modified: list[str] = []
     untracked: list[str] = []
     deleted: list[str] = []
+    added: list[str] = []
     for line in status_output.rstrip().splitlines():
         if len(line) < 4:
             continue
@@ -452,9 +453,11 @@ def _classify_porcelain_status(
             untracked.append(filepath)
         elif code.strip().startswith("D"):
             deleted.append(filepath)
+        elif code == "A ":
+            added.append(filepath)
         else:
             modified.append(filepath)
-    return modified, untracked, deleted
+    return modified, untracked, deleted, added
 
 
 def _transfer_files_to_worktree(
@@ -490,15 +493,27 @@ def _clean_main_working_tree(
     project_root: Path,
     modified: list[str],
     untracked: list[str],
+    added: list[str] | None = None,
 ) -> None:
-    """Restore tracked files from HEAD and remove untracked files."""
-    for filepath in modified:
+    """Restore tracked files from HEAD, remove untracked/added files, and unstage."""
+    if modified:
         try:
-            clean_content = repo.git.show(f"HEAD:{filepath}")
-            src = project_root / filepath
-            src.write_text(clean_content, encoding="utf-8")
+            repo.git.checkout("HEAD", "--", *modified)
         except Exception:
             pass
+
+    # Added files don't exist at HEAD — delete from disk and unstage
+    for filepath in added or []:
+        src = project_root / filepath
+        if src.exists():
+            if src.is_dir():
+                shutil.rmtree(src)
+            else:
+                src.unlink()
+            parent = src.parent
+            while parent != project_root and parent.exists() and not any(parent.iterdir()):
+                parent.rmdir()
+                parent = parent.parent
 
     for filepath in untracked:
         src = project_root / filepath
@@ -513,10 +528,13 @@ def _clean_main_working_tree(
             parent.rmdir()
             parent = parent.parent
 
-    try:
-        repo.git.reset("HEAD")
-    except Exception:
-        pass
+    # Unstage all transferred files explicitly using pathspec reset
+    all_files = list(modified) + list(untracked) + list(added or [])
+    if all_files:
+        try:
+            repo.git.reset("HEAD", "--", *all_files)
+        except Exception:
+            pass
 
 
 _scaffold_logger = logging.getLogger(__name__)
@@ -587,12 +605,14 @@ def create_from_main_skeleton(
     slug: str,
     *,
     description: str | None = None,
+    paths: list[str] | None = None,
 ) -> str:
     """Transfer uncommitted changes from main into a todo worktree for review.
 
     File scoping is automatic: the session transcript is parsed to determine
     which files this agent session actually touched. Only those files are
-    transferred. Requires session marker file at {TMPDIR}/teleclaude_session_id.
+    transferred. When ``paths`` is provided, it overrides transcript scoping
+    (human-supervised explicit file list).
 
     Steps:
     1. Validate preconditions (on main, has uncommitted changes)
@@ -611,9 +631,6 @@ def create_from_main_skeleton(
         ValueError: If not on main or no uncommitted changes
         RuntimeError: If scaffold push or worktree creation fails
     """
-    from git import Repo
-    from git.exc import InvalidGitRepositoryError
-
     from teleclaude.core.next_machine.state_io import mark_phase, mark_ready
     from teleclaude.core.next_machine.worktrees import (
         _create_or_attach_worktree,
@@ -622,6 +639,7 @@ def create_from_main_skeleton(
         _prepare_worktree,
         _write_worktree_prep_state,
     )
+    from teleclaude.git import InvalidGitRepositoryError, Repo
 
     # --- 5a. Validate preconditions ---
     validate_slug(slug)
@@ -641,15 +659,19 @@ def create_from_main_skeleton(
         raise ValueError("No uncommitted changes on main. Nothing to transfer.")
 
     # --- 5b. Capture uncommitted changes ---
-    modified_files, untracked_files, deleted_files = _classify_porcelain_status(status_output)
+    modified_files, untracked_files, deleted_files, added_files = _classify_porcelain_status(status_output)
 
-    # Scope to files this session actually touched (transcript-based)
-    session_files = _collect_session_touched_files(cwd)
+    # Scope to files: explicit paths override or session transcript
+    if paths:
+        session_files = set(paths)
+    else:
+        session_files = _collect_session_touched_files(cwd)
     modified_files = [f for f in modified_files if f in session_files]
     untracked_files = [f for f in untracked_files if f in session_files]
     deleted_files = [f for f in deleted_files if f in session_files]
+    added_files = [f for f in added_files if f in session_files]
 
-    all_changed = modified_files + untracked_files + deleted_files
+    all_changed = modified_files + untracked_files + deleted_files + added_files
     if not all_changed:
         raise ValueError(
             f"No uncommitted changes match session-touched files.\nSession touched: {sorted(session_files)}"
@@ -686,10 +708,12 @@ def create_from_main_skeleton(
         _write_worktree_prep_state(cwd, slug, prep_decision.inputs_digest)
 
     # --- 5f. Transfer changes to worktree ---
-    _transfer_files_to_worktree(project_root, worktree_path, modified_files, untracked_files, deleted_files)
+    _transfer_files_to_worktree(
+        project_root, worktree_path, modified_files + added_files, untracked_files, deleted_files
+    )
 
     # --- 5g. Clean main working tree ---
-    _clean_main_working_tree(repo, project_root, modified_files, untracked_files)
+    _clean_main_working_tree(repo, project_root, modified_files, untracked_files, added_files)
 
     # --- 5h. Set state for review dispatch ---
     worktree_cwd = str(worktree_path)
