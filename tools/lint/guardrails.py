@@ -194,7 +194,7 @@ def _check_lint_pipeline_integrity(repo_root: Path) -> None:
     precommit_path = repo_root / ".pre-commit-config.yaml"
     if precommit_path.exists():
         precommit = precommit_path.read_text(encoding="utf-8")
-        for hook_id in ("commitizen", "format", "guardrails", "ruff-check", "pyright", "mypy", "pylint"):
+        for hook_id in ("commitizen", "format", "guardrails", "ruff-check", "typecheck"):
             if f"id: {hook_id}" not in precommit:
                 _fail(f".pre-commit-config.yaml: required hook '{hook_id}' is missing")
 
@@ -402,6 +402,18 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
         exception_marker="guard: allow-git-stash",
         message="git stash in agent artifacts — use commits and worktrees",
     ),
+    PatternRule(
+        name="banned-session-env-vars",
+        pattern=re.compile(r"TELECLAUDE_SESSION" + r"_ID|TELECLAUDE_PRINCIPAL" + r"(?:_ROLE)?(?!\s*=)"),
+        scan_dirs=["teleclaude", "scripts", "tests", ".githooks"],
+        glob="*.py",
+        exclude_prefixes=("tools/lint/",),
+        exception_marker=None,
+        message=(
+            "banned env var — use teleclaude.session_identity.get_session_id() "
+            "for session ID, DB lookup for principal/role"
+        ),
+    ),
 ]
 
 
@@ -576,3 +588,6 @@ def _line_has_exception_marker(lines: list[str], lineno: int, markers: tuple[str
 
 if __name__ == "__main__":
     main()
+
+# Appended by migration: banned session env vars rule
+# (rule is in SOURCE_PATTERN_RULES but appended here to avoid self-match during edit)

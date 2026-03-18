@@ -25,21 +25,9 @@ repos:
     language: system
     types: [python]
     pass_filenames: true
-  - id: pyright
-    name: Pyright type check
-    entry: ./tools/lint/precommit-hook.sh pyright
-    language: system
-    types: [python]
-    pass_filenames: false
-  - id: mypy
-    name: Mypy type check
-    entry: ./tools/lint/precommit-hook.sh mypy
-    language: system
-    types: [python]
-    pass_filenames: false
-  - id: pylint
-    name: Pylint
-    entry: ./tools/lint/precommit-hook.sh pylint
+  - id: typecheck
+    name: Pyright + Mypy + Pylint (parallel)
+    entry: ./tools/lint/precommit-hook.sh parallel-typecheck
     language: system
     types: [python]
     pass_filenames: false
