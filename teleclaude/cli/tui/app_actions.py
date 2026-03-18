@@ -53,11 +53,11 @@ class TelecAppActionsMixin:
             set_preview(focus=False)
 
     @staticmethod
-    def _session_widgets(sessions_view: object) -> object:
+    def _session_widgets(sessions_view: object) -> list[object]:
         query = getattr(sessions_view, "query", None)
         if callable(query):
-            return query("SessionRow")
-        return getattr(sessions_view, "_nav_items", [])
+            return list(query("SessionRow"))
+        return list(getattr(sessions_view, "_nav_items", []))
 
     @staticmethod
     def _notify_sessions_state_changed(sessions_view: object) -> None:
@@ -89,7 +89,7 @@ class TelecAppActionsMixin:
                 sticky_ids.clear()
             for widget in self._session_widgets(sessions_view):
                 if hasattr(widget, "is_sticky"):
-                    widget.is_sticky = False
+                    setattr(widget, "is_sticky", False)
             self.post_message(StickyChanged([]))  # type: ignore[attr-defined]
         if had_doc:
             self._clear_bridge_preview(pane_bridge)

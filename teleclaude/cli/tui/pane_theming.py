@@ -5,6 +5,7 @@ from __future__ import annotations
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui import theme
+from teleclaude.cli.tui._pane_specs import SessionPaneSpec
 from teleclaude.cli.tui.color_utils import hex_to_nearest_xterm256
 
 logger = get_logger(__name__)
@@ -174,7 +175,7 @@ class PaneThemingMixin:
             self._unset_pane_option(pane_id, "window-style")
             self._unset_pane_option(pane_id, "window-active-style")
 
-    def _reapply_spec_pane(self, spec: object, reapplied_panes: set[str]) -> None:
+    def _reapply_spec_pane(self, spec: SessionPaneSpec, reapplied_panes: set[str]) -> None:
         """Re-apply colors for a sticky or active session spec."""
         pane_id = self.state.session_to_pane.get(spec.session_id)  # type: ignore[attr-defined]
         if not pane_id or not self._get_pane_exists(pane_id):  # type: ignore[attr-defined]

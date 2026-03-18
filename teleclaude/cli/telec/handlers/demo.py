@@ -298,7 +298,7 @@ def _run_snapshot_demo(slug: str, project_root: Path) -> None:
         raise SystemExit(0)
 
     demo_command = snapshot.get("demo")
-    if not demo_command:
+    if not isinstance(demo_command, str) or not demo_command:
         print(f"Warning: Demo '{slug}' has no demo.md or 'demo' field. Skipping execution.")
         raise SystemExit(0)
 

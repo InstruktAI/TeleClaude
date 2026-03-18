@@ -37,18 +37,6 @@ class LayoutRequest:
 class PaneLayoutMixin:
     """Layout management methods for TmuxPaneManager."""
 
-    def _layout_state_ref(self) -> object:
-        """Return grouped layout state when present, otherwise legacy harness attrs."""
-        return getattr(self, "_layout_state", self)
-
-    def _get_layout_attr(self, name: str, default: object = None) -> object:
-        """Read a layout attribute from grouped state or the legacy harness."""
-        return getattr(self._layout_state_ref(), name, default)
-
-    def _set_layout_attr(self, name: str, value: object) -> None:
-        """Write a layout attribute to grouped state or the legacy harness."""
-        setattr(self._layout_state_ref(), name, value)
-
     def apply_layout(self, request: LayoutRequest | None = None, **legacy_kwargs: object) -> None:
         """Apply a deterministic layout from session ids."""
         if not self._in_tmux:  # type: ignore[attr-defined]
@@ -67,20 +55,17 @@ class PaneLayoutMixin:
             self._active_pane_id,  # type: ignore[attr-defined]
         )
 
-        self._set_layout_attr("_selected_session_id", request.selected_session_id)
-        self._set_layout_attr("_tree_node_has_focus", request.tree_node_has_focus)
+        self._selected_session_id = request.selected_session_id  # type: ignore[attr-defined]
+        self._tree_node_has_focus = request.tree_node_has_focus  # type: ignore[attr-defined]
 
         active_spec = self._build_active_spec(request)
-        self._set_layout_attr(
-            "_sticky_specs",
-            self._build_sticky_specs(
-                request.sticky_session_ids,
-                request.get_computer_info,
-            ),
+        self._sticky_specs = self._build_sticky_specs(  # type: ignore[attr-defined]
+            request.sticky_session_ids,
+            request.get_computer_info,
         )
-        previous_active = self._get_layout_attr("_active_spec")
+        previous_active = self._active_spec  # type: ignore[attr-defined]
         prev_command = previous_active.command if previous_active else None
-        self._set_layout_attr("_active_spec", active_spec)
+        self._active_spec = active_spec  # type: ignore[attr-defined]
 
         if self._layout_is_unchanged():
             logger.debug(
@@ -179,15 +164,15 @@ class PaneLayoutMixin:
     def _refresh_backgrounds_if_needed(self) -> None:
         """Refresh pane backgrounds only when selection or agent state changed."""
         bg_signature = self._compute_bg_signature()
-        if bg_signature == self._get_layout_attr("_bg_signature"):
+        if bg_signature == self._bg_signature:  # type: ignore[attr-defined]
             return
-        self._set_layout_attr("_bg_signature", bg_signature)
+        self._bg_signature = bg_signature  # type: ignore[attr-defined]
         self._refresh_session_pane_backgrounds()
         self._set_tui_pane_background()  # type: ignore[attr-defined]
 
     def _build_session_specs(self) -> list[SessionPaneSpec]:
-        session_specs: list[SessionPaneSpec] = list(self._get_layout_attr("_sticky_specs", []))
-        active_spec = self._get_layout_attr("_active_spec")
+        session_specs: list[SessionPaneSpec] = list(self._sticky_specs)  # type: ignore[attr-defined]
+        active_spec = self._active_spec  # type: ignore[attr-defined]
         if active_spec and not any(spec.session_id == active_spec.session_id for spec in session_specs):
             session_specs.append(active_spec)
         if len(session_specs) > 5:
@@ -217,8 +202,8 @@ class PaneLayoutMixin:
             )
         )
         return (
-            self._get_layout_attr("_selected_session_id"),
-            self._get_layout_attr("_tree_node_has_focus"),
+            self._selected_session_id,  # type: ignore[attr-defined]
+            self._tree_node_has_focus,  # type: ignore[attr-defined]
             theme.get_pane_theming_mode(),
             theme.get_current_mode(),
             pane_agents,
@@ -230,13 +215,16 @@ class PaneLayoutMixin:
 
     def invalidate_bg_cache(self) -> None:
         """Force background re-application on next apply_layout."""
-        self._set_layout_attr("_bg_signature", None)
+        self._bg_signature = None  # type: ignore[attr-defined]
 
     def _clear_active_state_if_sticky(self) -> None:
         """Clear active_session_id when active has been promoted to sticky."""
         if not self.state.active_session_id:  # type: ignore[attr-defined]
             return
-        if any(spec.session_id == self.state.active_session_id for spec in self._get_layout_attr("_sticky_specs", [])):
+        active_session_id = self.state.active_session_id  # type: ignore[attr-defined]
+        if any(
+            spec.session_id == active_session_id for spec in self._sticky_specs
+        ):  # type: ignore[attr-defined]
             self.state.active_session_id = None  # type: ignore[attr-defined]
 
     def _refresh_session_pane_backgrounds(self) -> None:

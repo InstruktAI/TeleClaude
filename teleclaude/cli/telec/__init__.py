@@ -1,5 +1,6 @@
 """telec: TUI client for TeleClaude."""
 
+import logging
 import os
 import subprocess
 import sys
@@ -325,7 +326,7 @@ def _handle_cli_argv(argv: list[str]) -> None:
     raise SystemExit(1)
 
 
-def _start_tui(logger) -> None:
+def _start_tui(logger: logging.Logger) -> None:
     if not os.environ.get(TMUX_ENV_KEY):
         _exec_tmux_tui()
         return

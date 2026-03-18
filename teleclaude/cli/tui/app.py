@@ -129,6 +129,25 @@ class _AppMediaState:
 class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[str | None]):
     """Main TeleClaude TUI application."""
 
+    api: TelecAPIClient
+    _persisted: dict[str, dict[str, object]]
+    _start_view: int
+    _config_guided: bool
+    _is_reload: bool
+    _initial_layout_applied: bool
+    _state_save_timer: Timer | None
+    _computers: list[ComputerInfo]
+    _session_agents: dict[str, str]
+    _sky_width_timer: Timer | None
+    _reload_loop: asyncio.AbstractEventLoop | None
+    _animation_engine: AnimationEngine
+    _periodic_trigger: object | None
+    _activity_trigger: object | None
+    _animation_timer: object | None
+    _animation_requested_mode: str
+    _chiptunes_state_version: int
+    _chiptunes_reconcile_task: asyncio.Task[None] | None
+
     CSS_PATH = "telec.tcss"
 
     TITLE = "TeleClaude"
@@ -464,7 +483,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     def _extract_tts_enabled(settings: object) -> bool:
         """Best-effort extraction of TTS enabled state from settings payloads."""
         try:
-            return bool(settings and settings.tts.enabled)
+            return bool(getattr(getattr(settings, "tts", None), "enabled", False))
         except (AttributeError, TypeError, ValueError):
             return False
 

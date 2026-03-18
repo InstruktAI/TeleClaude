@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from importlib import import_module
-
 from teleclaude.cli.telec.help import _usage
 
 __all__ = [
@@ -25,190 +23,146 @@ def _handle_history(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "search":
         _handle_history_search(args[1:])
-        return
-    if subcommand == "show":
+    elif subcommand == "show":
         _handle_history_show(args[1:])
-        return
-    print(f"Unknown history subcommand: {subcommand}")
-    print(_usage("history"))
-    raise SystemExit(1)
-
-
-def _load_history_search_module():
-    return import_module("teleclaude.history.search")
-
-
-def _handle_history_search(args: list[str]) -> None:
-    """Handle telec history search."""
-    parsed = _parse_history_search_args(args)
-    if parsed is None:
-        return
-
-    history_search = _load_history_search_module()
-    agents = history_search.parse_agents(parsed["agent_arg"])
-    history_search.display_combined_history(
-        agents,
-        search_term=" ".join(parsed["terms"]),
-        limit=parsed["limit"],
-        computers=parsed["computers"] or None,
-    )
-
-
-def _handle_history_show(args: list[str]) -> None:
-    """Handle telec history show."""
-    parsed = _parse_history_show_args(args)
-    if parsed is None:
-        return
-
-    history_search = _load_history_search_module()
-    agents = history_search.parse_agents(parsed["agent_arg"])
-    history_search.show_transcript(
-        agents,
-        parsed["session_id"],
-        tail_chars=parsed["tail"],
-        include_thinking=parsed["thinking"],
-        raw=parsed["raw"],
-        computers=parsed["computers"],
-    )
-
-
-def _parse_history_search_args(args: list[str]) -> dict[str, object] | None:
-    parsed: dict[str, object] = {
-        "agent_arg": "all",
-        "limit": 20,
-        "computers": [],
-        "terms": [],
-    }
-    index = 0
-
-    while index < len(args):
-        index = _consume_history_search_arg(args, index, parsed)
-        if index < 0:
-            return None
-
-    terms = parsed["terms"]
-    if terms:
-        return parsed
-
-    print("Search terms are required.")
-    print(_usage("history", "search"))
-    raise SystemExit(1)
-
-
-def _consume_history_search_arg(args: list[str], index: int, parsed: dict[str, object]) -> int:
-    arg = args[index]
-    if arg in ("-h", "--help"):
-        print(_usage("history", "search"))
-        return -1
-    if arg in ("--agent", "-a"):
-        parsed["agent_arg"] = _require_option_value(args, index, "history", "search", "--agent")
-        return index + 2
-    if arg in ("--limit", "-l"):
-        parsed["limit"] = _parse_int_option(args, index, "history", "search", "--limit")
-        return index + 2
-    if arg == "--computer":
-        computers, next_index = _parse_computers(args, index, "search")
-        parsed["computers"].extend(computers)
-        return next_index
-    if arg.startswith("-"):
-        _raise_history_usage_error(f"Unknown option: {arg}", "search")
-    parsed["terms"].append(arg)
-    return index + 1
-
-
-def _parse_history_show_args(args: list[str]) -> dict[str, object] | None:
-    parsed: dict[str, object] = {
-        "agent_arg": "all",
-        "thinking": False,
-        "raw": False,
-        "tail": 0,
-        "computers": [],
-        "session_id": None,
-    }
-    index = 0
-
-    while index < len(args):
-        index = _consume_history_show_arg(args, index, parsed)
-        if index < 0:
-            return None
-
-    if parsed["session_id"]:
-        return parsed
-
-    print("Session ID is required.")
-    print(_usage("history", "show"))
-    raise SystemExit(1)
-
-
-def _consume_history_show_arg(args: list[str], index: int, parsed: dict[str, object]) -> int:
-    arg = args[index]
-    if arg in ("-h", "--help"):
-        print(_usage("history", "show"))
-        return -1
-    if arg in ("--agent", "-a"):
-        parsed["agent_arg"] = _require_option_value(args, index, "history", "show", "--agent")
-        return index + 2
-    next_index = index + 1
-    if arg == "--thinking":
-        parsed["thinking"] = True
-    elif arg == "--raw":
-        parsed["raw"] = True
-    elif arg == "--tail":
-        parsed["tail"] = _parse_int_option(args, index, "history", "show", "--tail")
-        next_index = index + 2
-    elif arg == "--computer":
-        computers, next_index = _parse_computers(args, index, "show")
-        parsed["computers"].extend(computers)
-    elif arg.startswith("-"):
-        _raise_history_usage_error(f"Unknown option: {arg}", "show")
     else:
-        next_index = _consume_session_id(arg, index, parsed)
-    return next_index
+        print(f"Unknown history subcommand: {subcommand}")
+        print(_usage("history"))
+        raise SystemExit(1)
 
 
-def _require_option_value(args: list[str], index: int, command: str, subcommand: str, option: str) -> str:
-    if index + 1 < len(args):
-        return args[index + 1]
-    print(f"Missing value for {option}.")
-    print(_usage(command, subcommand))
-    raise SystemExit(1)
+def _handle_history_search(args: list[str]) -> None:  # pylint: disable=too-many-branches
+    """Handle telec history search."""
+    from teleclaude.history.search import (  # pylint: disable=import-outside-toplevel
+        display_combined_history,
+        parse_agents,
+    )
 
-
-def _parse_int_option(args: list[str], index: int, command: str, subcommand: str, option: str) -> int:
-    value = _require_option_value(args, index, command, subcommand, option)
-    try:
-        return int(value)
-    except ValueError as exc:
-        print(f"Invalid value for {option}: {value}")
-        raise SystemExit(1) from exc
-
-
-def _parse_computers(args: list[str], index: int, subcommand: str) -> tuple[list[str], int]:
+    agent_arg = "all"
+    limit = 20
     computers: list[str] = []
-    index += 1
-    while index < len(args) and not args[index].startswith("-"):
-        computers.append(args[index])
-        index += 1
+    terms: list[str] = []
 
-    if computers:
-        return computers, index
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-h", "--help"):
+            print(_usage("history", "search"))
+            return
+        if arg in ("--agent", "-a") and i + 1 < len(args):
+            agent_arg = args[i + 1]
+            i += 2
+        elif arg in ("--agent", "-a"):
+            print("Missing value for --agent.")
+            print(_usage("history", "search"))
+            raise SystemExit(1)
+        elif arg in ("--limit", "-l") and i + 1 < len(args):
+            try:
+                limit = int(args[i + 1])
+            except ValueError as exc:
+                print(f"Invalid value for --limit: {args[i + 1]}")
+                raise SystemExit(1) from exc
+            i += 2
+        elif arg in ("--limit", "-l"):
+            print("Missing value for --limit.")
+            print(_usage("history", "search"))
+            raise SystemExit(1)
+        elif arg == "--computer":
+            i += 1
+            while i < len(args) and not args[i].startswith("-"):
+                computers.append(args[i])
+                i += 1
+            if not computers:
+                print("Missing value for --computer.")
+                print(_usage("history", "search"))
+                raise SystemExit(1)
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("history", "search"))
+            raise SystemExit(1)
+        else:
+            terms.append(arg)
+            i += 1
 
-    print("Missing value for --computer.")
-    print(_usage("history", subcommand))
-    raise SystemExit(1)
+    if not terms:
+        print("Search terms are required.")
+        print(_usage("history", "search"))
+        raise SystemExit(1)
+
+    agents = parse_agents(agent_arg)
+    display_combined_history(agents, search_term=" ".join(terms), limit=limit, computers=computers or None)
 
 
-def _consume_session_id(arg: str, index: int, parsed: dict[str, object]) -> int:
-    if parsed["session_id"] is None:
-        parsed["session_id"] = arg
-        return index + 1
+def _handle_history_show(args: list[str]) -> None:  # pylint: disable=too-many-branches,too-many-statements
+    """Handle telec history show."""
+    from teleclaude.history.search import (  # pylint: disable=import-outside-toplevel
+        parse_agents,
+        show_transcript,
+    )
 
-    print(f"Unexpected positional argument: {arg}")
-    print(_usage("history", "show"))
-    raise SystemExit(1)
+    agent_arg = "all"
+    thinking = False
+    raw = False
+    tail = 0
+    computers: list[str] = []
+    session_id: str | None = None
 
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-h", "--help"):
+            print(_usage("history", "show"))
+            return
+        if arg in ("--agent", "-a") and i + 1 < len(args):
+            agent_arg = args[i + 1]
+            i += 2
+        elif arg in ("--agent", "-a"):
+            print("Missing value for --agent.")
+            print(_usage("history", "show"))
+            raise SystemExit(1)
+        elif arg == "--thinking":
+            thinking = True
+            i += 1
+        elif arg == "--raw":
+            raw = True
+            i += 1
+        elif arg == "--tail" and i + 1 < len(args):
+            try:
+                tail = int(args[i + 1])
+            except ValueError as exc:
+                print(f"Invalid value for --tail: {args[i + 1]}")
+                raise SystemExit(1) from exc
+            i += 2
+        elif arg == "--tail":
+            print("Missing value for --tail.")
+            print(_usage("history", "show"))
+            raise SystemExit(1)
+        elif arg == "--computer":
+            i += 1
+            while i < len(args) and not args[i].startswith("-"):
+                computers.append(args[i])
+                i += 1
+            if not computers:
+                print("Missing value for --computer.")
+                print(_usage("history", "show"))
+                raise SystemExit(1)
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("history", "show"))
+            raise SystemExit(1)
+        else:
+            if session_id is None:
+                session_id = arg
+            else:
+                print(f"Unexpected positional argument: {arg}")
+                print(_usage("history", "show"))
+                raise SystemExit(1)
+            i += 1
 
-def _raise_history_usage_error(message: str, subcommand: str) -> None:
-    print(message)
-    print(_usage("history", subcommand))
-    raise SystemExit(1)
+    if not session_id:
+        print("Session ID is required.")
+        print(_usage("history", "show"))
+        raise SystemExit(1)
+
+    agents = parse_agents(agent_arg)
+    show_transcript(agents, session_id, tail_chars=tail, include_thinking=thinking, raw=raw, computers=computers)

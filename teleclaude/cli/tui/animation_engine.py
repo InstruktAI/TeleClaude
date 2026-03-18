@@ -322,8 +322,11 @@ class AnimationEngine:
             fetch_term_width = getattr(animation, "_fetch_term_width", None)
             if not callable(fetch_term_width):
                 return
-            width = fetch_term_width()
-        animation._cached_term_width = width
+            fetched_width = fetch_term_width()
+            if not isinstance(fetched_width, int):
+                return
+            width = fetched_width
+        setattr(animation, "_cached_term_width", width)
 
     def invalidate_term_width(self, width: int | None = None) -> None:
         """Force all running animations to re-fetch terminal width.
