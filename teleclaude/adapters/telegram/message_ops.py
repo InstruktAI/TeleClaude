@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,12 +20,14 @@ from telegram import (
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
-from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
+from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
 
+from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES, UI_MESSAGE_MAX_CHARS
 from teleclaude.core.models import MessageMetadata
 from teleclaude.utils import command_retry
 from teleclaude.utils.markdown import (
     _required_markdown_closers_from_state,
+    escape_markdown_v2,
     scan_markdown_v2_state,
     truncate_markdown_v2_by_bytes,
 )
@@ -49,6 +52,18 @@ class EditContext:
     text: str
     reply_markup: object | None = None
     parse_mode: str | None = None
+
+
+@dataclass(frozen=True)
+class EditAttempt:
+    """Immutable edit request details shared across helper methods."""
+
+    session_id: str
+    message_id: str
+    text: str
+    reply_markup: object | None
+    parse_mode: str | None
+    content_hash: str
 
 
 class MessageOperationsMixin:
@@ -76,15 +91,12 @@ class MessageOperationsMixin:
     _pending_edits: dict[str, EditContext]
     _last_edit_hash: dict[str, str]
 
+    if TYPE_CHECKING:
+        _wait_for_topic_ready: Callable[[int, str], Awaitable[None]]
+
     def _ensure_started(self) -> None:
         """Ensure the adapter is started before operations."""
         raise NotImplementedError
-
-    if TYPE_CHECKING:
-        # Type stub for method provided by ChannelOperationsMixin via MRO
-        async def _wait_for_topic_ready(self, topic_id: int, title: str) -> None:
-            """Wait for forum topic to be ready (from ChannelOperationsMixin)."""
-            ...
 
     # =========================================================================
     # Message Operations Implementation
@@ -108,8 +120,6 @@ class MessageOperationsMixin:
         multi-byte Unicode that inflates byte count beyond the API limit.
         """
         if parse_mode == "MarkdownV2":
-            from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
-
             byte_size = len(text.encode("utf-8"))
             if byte_size <= TELEGRAM_MAX_MESSAGE_BYTES:
                 return text
@@ -136,6 +146,8 @@ class MessageOperationsMixin:
         """Send message to session's topic with automatic retry on rate limits and network errors."""
         self._ensure_started()
         metadata = metadata or MessageMetadata()
+        if multi_message:
+            logger.trace("send_message: multi_message requested for session %s", session.session_id)
 
         # Reflection suppression: drop own-user reflections; format cross-source ones.
         if metadata.reflection_origin is not None:
@@ -165,14 +177,10 @@ class MessageOperationsMixin:
 
         # Transcription: plain text, escape for MarkdownV2
         if metadata.is_transcription:
-            from teleclaude.utils.markdown import escape_markdown_v2
-
             text = escape_markdown_v2(text)
             parse_mode = "MarkdownV2"
 
         # Truncation is a platform constraint (Telegram max 4096)
-        from teleclaude.constants import UI_MESSAGE_MAX_CHARS
-
         text = self._truncate_for_platform(text, parse_mode, UI_MESSAGE_MAX_CHARS)
 
         # Best-effort wait for topic readiness to avoid "thread not found" races.
@@ -214,7 +222,7 @@ class MessageOperationsMixin:
                 parse_mode=parse_mode,
                 reply_markup=reply_markup,
             )
-        except Exception as exc:
+        except BadRequest as exc:
             if "message thread not found" in str(exc).lower():
                 logger.warning("Topic %s not ready yet; retrying send", topic_id)
                 raise TimeoutError("message thread not found") from exc
@@ -233,18 +241,18 @@ class MessageOperationsMixin:
 
         guard: allow-string-compare
         """
-        with open(file_path, "rb") as f:
+        with open(file_path, "rb") as file_handle:
             try:
                 return await self.bot.send_document(
                     chat_id=chat_id,
                     message_thread_id=message_thread_id,
-                    document=f,
+                    document=file_handle,
                     filename=filename,
                     caption=caption,
                     write_timeout=15.0,
                     read_timeout=15.0,
                 )
-            except Exception as exc:
+            except BadRequest as exc:
                 if "message thread not found" in str(exc).lower():
                     logger.warning("Topic %s not ready yet; retrying document send", message_thread_id)
                     raise TimeoutError("message thread not found") from exc
@@ -280,28 +288,16 @@ class MessageOperationsMixin:
         parse_mode = metadata.parse_mode
 
         # Apply the same platform-safe truncation rules used for send_message.
-        from teleclaude.constants import UI_MESSAGE_MAX_CHARS
-
         text = self._truncate_for_platform(text, parse_mode, UI_MESSAGE_MAX_CHARS)
-
-        # Skip no-op edits: if content hasn't changed, avoid the API round-trip entirely.
-        content_hash = self._content_hash(text, parse_mode, reply_markup)
-        if self._last_edit_hash.get(message_id) == content_hash:
-            return True
-
-        # Platform-specific optimization: if an edit is already pending for this message,
-        # just update the existing context with the latest text. The already-running
-        # retry loop will use this updated text on its next attempt.
-        if message_id in self._pending_edits:
-            existing_ctx = self._pending_edits[message_id]
-            existing_ctx.text = text
-            existing_ctx.reply_markup = reply_markup
-            existing_ctx.parse_mode = parse_mode
-            logger.trace(
-                "[TELEGRAM %s] Updated pending edit for message %s with latest content",
-                session.session_id,
-                message_id,
-            )
+        attempt = EditAttempt(
+            session_id=session.session_id,
+            message_id=message_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            content_hash=self._content_hash(text, parse_mode, reply_markup),
+        )
+        if self._edit_already_satisfied(attempt):
             return True
 
         # Create new edit context (mutable)
@@ -313,70 +309,47 @@ class MessageOperationsMixin:
         )
         self._pending_edits[message_id] = ctx
 
+        result = False
         try:
             start_time = time.time()
             logger.trace("[TELEGRAM %s] Starting edit_message API call", session.session_id)
             await self._edit_message_with_retry(session, ctx)
-            self._last_edit_hash[message_id] = content_hash
+            self._last_edit_hash[message_id] = attempt.content_hash
             elapsed = time.time() - start_time
             logger.debug(
                 "[TELEGRAM %s] edit_message completed in %.2fs",
                 session.session_id,
                 elapsed,
             )
-            return True
-        except RetryAfter as e:
+            result = True
+        except RetryAfter as error:
             logger.debug(
                 "[TELEGRAM %s] Rate limited, edit_message deferred: %s",
                 session.session_id,
-                e,
+                error,
             )
             # Keep output_message_id so we can retry on next update without creating new messages.
-            return True
-        except BadRequest as e:
-            # "Message is not modified" is benign - message exists, just unchanged
-            # Return True to prevent clearing output_message_id (which would cause new messages)
-            if "message is not modified" in str(e).lower():
-                logger.trace(
-                    "[TELEGRAM %s] Message not modified (content unchanged)",
-                    session.session_id,
-                )
-                self._last_edit_hash[message_id] = content_hash
-                return True
-            if "can't parse entities" in str(e).lower():
-                fence_count = text.count("```")
-                state = scan_markdown_v2_state(text)
-                closers = _required_markdown_closers_from_state(text, state)
-                logger.error(
-                    "[TELEGRAM %s] Markdown parse diagnostics: len=%d parse_mode=%s fences=%d needs_closers=%s suffix=%r",
-                    session.session_id,
-                    len(text),
-                    parse_mode,
-                    fence_count,
-                    bool(closers),
-                    text[-40:],
-                )
-            # Other BadRequest errors (e.g., "Message to edit not found") are real failures
-            logger.error("[TELEGRAM %s] edit_message failed: %s", session.session_id, e)
-            return False
-        except (NetworkError, TimedOut, TimeoutError, ConnectionError) as e:
+            result = True
+        except BadRequest as error:
+            result = self._handle_edit_bad_request(attempt, error)
+        except (NetworkError, TimedOut, TimeoutError, ConnectionError) as error:
             logger.warning(
                 "[TELEGRAM %s] transient network error editing message %s; keeping message id and retrying later: %s",
                 session.session_id,
                 message_id,
-                e,
+                error,
             )
-            return True
-        except Exception as e:
+            result = True
+        except (TelegramError, TypeError, ValueError) as error:
             logger.error(
                 "[TELEGRAM %s] edit_message failed after retries: %s",
                 session.session_id,
-                e,
+                error,
             )
-            return False
         finally:
             # Remove from pending edits regardless of outcome
             self._pending_edits.pop(message_id, None)
+        return result
 
     @command_retry(max_retries=3, max_timeout=60.0)
     async def _edit_message_with_retry(self, _session: Session, ctx: EditContext) -> None:
@@ -420,7 +393,7 @@ class MessageOperationsMixin:
         except (NetworkError, TimedOut, ConnectionError, TimeoutError) as e:
             logger.error("Failed to delete message %s after retries: %s", message_id, e)
             return False
-        except Exception as e:
+        except (TelegramError, TypeError, ValueError) as e:
             logger.error("Failed to delete message %s: %s", message_id, e)
             return False
 
@@ -439,6 +412,7 @@ class MessageOperationsMixin:
     ) -> str:
         """Send file to session's topic."""
         self._ensure_started()
+        _ = metadata
 
         # Skip when topic_id absent (channel still creating, or headless session without a topic).
         telegram_meta = session.get_metadata().get_ui().get_telegram()
@@ -527,41 +501,94 @@ class MessageOperationsMixin:
         if self._last_edit_hash.get(message_id) == content_hash:
             return True
 
+        result = True
         try:
             await self._edit_general_message_with_retry(message_id, text, parse_mode, reply_markup)
             self._last_edit_hash[message_id] = content_hash
-            return True
         except RetryAfter as e:
             logger.debug(
                 "Rate limited editing general message %s; keeping existing id and retrying later: %s",
                 message_id,
                 e,
             )
-            return True
         except BadRequest as e:
-            if "message is not modified" in str(e).lower():
-                self._last_edit_hash[message_id] = content_hash
-                return True
-            if "message to edit not found" in str(e).lower():
-                logger.debug("Menu message %s not found, will recreate", message_id)
-                return False
-            if "message can't be edited" in str(e).lower():
-                logger.debug("Menu message %s cannot be edited, will recreate", message_id)
-                return False
-            logger.error("Failed to edit general message %s: %s", message_id, e)
-            # Non-not-found BadRequest is often transient under Telegram load.
-            return True
+            result = self._handle_general_edit_bad_request(message_id, content_hash, e)
         except (NetworkError, TimedOut, TimeoutError, ConnectionError) as e:
             logger.warning(
                 "Transient network error editing general message %s; keeping existing id and retrying later: %s",
                 message_id,
                 e,
             )
-            return True
-        except Exception as e:
+        except (TelegramError, TypeError, ValueError) as e:
             logger.error("Failed to edit general message %s: %s", message_id, e)
             # Avoid creating duplicate menu messages on unknown transient failures.
+        return result
+
+    def _edit_already_satisfied(self, attempt: EditAttempt) -> bool:
+        """Return True when an edit can be skipped or folded into an in-flight retry."""
+        if self._last_edit_hash.get(attempt.message_id) == attempt.content_hash:
             return True
+
+        existing_ctx = self._pending_edits.get(attempt.message_id)
+        if existing_ctx is None:
+            return False
+
+        existing_ctx.text = attempt.text
+        existing_ctx.reply_markup = attempt.reply_markup
+        existing_ctx.parse_mode = attempt.parse_mode
+        logger.trace(
+            "[TELEGRAM %s] Updated pending edit for message %s with latest content",
+            attempt.session_id,
+            attempt.message_id,
+        )
+        return True
+
+    def _handle_edit_bad_request(self, attempt: EditAttempt, error: BadRequest) -> bool:
+        """Translate Telegram bad-request edit failures into success/failure semantics."""
+        message = str(error).lower()
+        if "message is not modified" in message:
+            logger.trace(
+                "[TELEGRAM %s] Message not modified (content unchanged)",
+                attempt.session_id,
+            )
+            self._last_edit_hash[attempt.message_id] = attempt.content_hash
+            return True
+        if "can't parse entities" in message:
+            fence_count = attempt.text.count("```")
+            state = scan_markdown_v2_state(attempt.text)
+            closers = _required_markdown_closers_from_state(attempt.text, state)
+            logger.error(
+                ("[TELEGRAM %s] Markdown parse diagnostics: len=%d parse_mode=%s fences=%d needs_closers=%s suffix=%r"),
+                attempt.session_id,
+                len(attempt.text),
+                attempt.parse_mode,
+                fence_count,
+                bool(closers),
+                attempt.text[-40:],
+            )
+        logger.error("[TELEGRAM %s] edit_message failed: %s", attempt.session_id, error)
+        return False
+
+    def _handle_general_edit_bad_request(
+        self,
+        message_id: str,
+        content_hash: str,
+        error: BadRequest,
+    ) -> bool:
+        """Translate general-topic edit failures into keep/recreate decisions."""
+        message = str(error).lower()
+        if "message is not modified" in message:
+            self._last_edit_hash[message_id] = content_hash
+            return True
+        if "message to edit not found" in message:
+            logger.debug("Menu message %s not found, will recreate", message_id)
+            return False
+        if "message can't be edited" in message:
+            logger.debug("Menu message %s cannot be edited, will recreate", message_id)
+            return False
+        logger.error("Failed to edit general message %s: %s", message_id, error)
+        # Non-not-found BadRequest is often transient under Telegram load.
+        return True
 
     @command_retry(max_retries=3, max_timeout=60.0)
     async def _edit_general_message_with_retry(

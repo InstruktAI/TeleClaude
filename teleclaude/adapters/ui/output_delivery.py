@@ -3,17 +3,21 @@
 Handles standard (edit-in-place) output delivery, footer management,
 error feedback, and output formatting helpers.
 """
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
 import time
+from collections.abc import Awaitable, Callable, MutableMapping
+from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from zoneinfo import ZoneInfo
 
 from instrukt_ai_logging import get_logger
 
+import teleclaude.core.db as core_db
 from teleclaude.config import config
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.utils import (
@@ -24,10 +28,55 @@ from teleclaude.utils import (
 )
 
 if TYPE_CHECKING:
+    import asyncio  # pylint: disable=import-outside-toplevel
+    from typing import Protocol
+
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
+    class _OutputDeliveryHost(Protocol):  # pylint: disable=too-few-public-methods
+        client: AdapterClient
+        ADAPTER_KEY: str
+        THREADED_OUTPUT: bool
+        max_message_size: int
+        _convert_markdown_for_platform: Callable[[str], str]
+        _fit_output_to_limit: Callable[[str], str]
+        _get_output_delivery_lock: Callable[[str], asyncio.Lock]
+        _get_output_message_id: Callable[[Session], Awaitable[str | None]]
+        _store_output_message_id: Callable[[Session, str], Awaitable[None]]
+        _clear_output_message_id: Callable[[Session], Awaitable[None]]
+        _get_footer_message_id: Callable[[Session], Awaitable[str | None]]
+        _store_footer_message_id: Callable[[Session, str], Awaitable[None]]
+        _clear_footer_message_id: Callable[[Session], Awaitable[None]]
+        _cleanup_footer_if_present: Callable[[Session], Awaitable[None]]
+        send_message: Callable[..., Awaitable[str | None]]
+        edit_message: Callable[..., Awaitable[bool]]
+        _metadata: Callable[..., MessageMetadata]
+        _build_session_id_lines: Callable[[Session], str]
+
+
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class DeliveryOptions:
+    """Delivery flags shared between the lock wrapper and unlocked implementation."""
+
+    multi_message: bool = False
+    status_line: str = ""
+    dedupe_by_digest: bool = True
+
+
+def _delivery_options_from_kwargs(delivery_kwargs: MutableMapping[str, object]) -> DeliveryOptions:
+    """Normalize delivery kwargs while preserving the legacy call surface for tests."""
+    options = delivery_kwargs.pop("options", None)
+    if isinstance(options, DeliveryOptions):
+        return options
+    return DeliveryOptions(
+        multi_message=bool(delivery_kwargs.get("multi_message", False)),
+        status_line=str(delivery_kwargs.get("status_line", "")),
+        dedupe_by_digest=bool(delivery_kwargs.get("dedupe_by_digest", True)),
+    )
 
 
 class OutputDeliveryMixin:
@@ -52,60 +101,10 @@ class OutputDeliveryMixin:
     - _fit_output_to_limit(tmux_output) -> str
     """
 
-    if TYPE_CHECKING:
-        import asyncio
-
-        client: AdapterClient
-        ADAPTER_KEY: str
-        THREADED_OUTPUT: bool
-        max_message_size: int
-
-        async def _get_output_message_id(self, session: Session) -> str | None: ...
-
-        async def _store_output_message_id(self, session: Session, message_id: str) -> None: ...
-
-        async def _clear_output_message_id(self, session: Session) -> None: ...
-
-        async def _get_footer_message_id(self, session: Session) -> str | None: ...
-
-        async def _store_footer_message_id(self, session: Session, message_id: str) -> None: ...
-
-        async def _clear_footer_message_id(self, session: Session) -> None: ...
-
-        async def _cleanup_footer_if_present(self, session: Session) -> None: ...
-
-        async def send_message(
-            self,
-            session: Session,
-            text: str,
-            *,
-            metadata: MessageMetadata,
-            multi_message: bool = False,
-            cleanup_trigger: CleanupTrigger | None = None,
-            ephemeral: bool = True,
-        ) -> str | None: ...
-
-        async def edit_message(
-            self,
-            session: Session,
-            message_id: str,
-            text: str,
-            *,
-            metadata: MessageMetadata,
-        ) -> bool: ...
-
-        async def delete_message(self, session: Session, message_id: str) -> bool: ...
-
-        def _convert_markdown_for_platform(self, text: str) -> str: ...
-
-        def _fit_output_to_limit(self, tmux_output: str) -> str: ...
-
-        @classmethod
-        def _get_output_delivery_lock(cls, session_id: str) -> asyncio.Lock: ...
-
-        def _build_session_id_lines(self, session: Session) -> str: ...
-
-        def _metadata(self) -> MessageMetadata: ...
+    client: AdapterClient
+    ADAPTER_KEY: str
+    THREADED_OUTPUT: bool
+    max_message_size: int
 
     def _build_metadata_for_thread(self) -> MessageMetadata:
         """Build metadata for threaded content messages. Override for platform-specific parse mode."""
@@ -173,6 +172,7 @@ class OutputDeliveryMixin:
             )
 
         # Format output (tmux only; status line goes in footer)
+        host = cast("_OutputDeliveryHost", self)
         if render_markdown:
             if is_truncated:
                 prefix = f"[...truncated, showing last {self.max_message_size} chars...]"
@@ -182,70 +182,69 @@ class OutputDeliveryMixin:
             else:
                 display_output = tmux_output
 
-            display_output = self._convert_markdown_for_platform(display_output)
+            display_output = host._convert_markdown_for_platform(display_output)
         else:
-            display_output = self._fit_output_to_limit(tmux_output)
+            display_output = host._fit_output_to_limit(tmux_output)
 
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session, is_truncated)
 
-        return await self._deliver_output(session, display_output, metadata, status_line=status_line)
+        return await self._deliver_output(
+            session,
+            display_output,
+            metadata,
+            status_line=status_line,
+        )
 
     async def _deliver_output(
         self,
         session: Session,
         text: str,
         metadata: MessageMetadata,
-        multi_message: bool = False,
-        status_line: str = "",
-        dedupe_by_digest: bool = True,
+        **delivery_kwargs: object,
     ) -> str | None:
         """Unified output delivery: dedup, edit/send, footer management."""
-        lock = self._get_output_delivery_lock(session.session_id)
+        options = _delivery_options_from_kwargs(delivery_kwargs)
+        host = cast("_OutputDeliveryHost", self)
+        lock = host._get_output_delivery_lock(session.session_id)
         async with lock:
-            return await self._deliver_output_unlocked(
-                session,
-                text,
-                metadata,
-                multi_message=multi_message,
-                status_line=status_line,
-                dedupe_by_digest=dedupe_by_digest,
-            )
+            return await self._deliver_output_unlocked(session, text, metadata, options=options)
 
     async def _deliver_output_unlocked(
         self,
         session: Session,
         text: str,
         metadata: MessageMetadata,
-        multi_message: bool = False,
-        status_line: str = "",
-        dedupe_by_digest: bool = True,
+        **delivery_kwargs: object,
     ) -> str | None:
         """Core output delivery logic. Caller must hold the session output lock."""
+        host = cast("_OutputDeliveryHost", self)
+        options = _delivery_options_from_kwargs(delivery_kwargs)
         display_digest = sha256(text.encode("utf-8")).hexdigest()
 
         # Digest short-circuit is kept for non-threaded output updates.
         # Threaded mode dedupe belongs upstream in the coordinator.
-        if dedupe_by_digest and session.last_output_digest == display_digest:
-            return await self._get_output_message_id(session)
+        if options.dedupe_by_digest and session.last_output_digest == display_digest:
+            return await host._get_output_message_id(session)
 
         # 2. Try edit existing
         if await self._try_edit_output_message(session, text, metadata):
-            from teleclaude.core.db import db
-
-            await db.update_session(session.session_id, last_output_digest=display_digest)
-            await self._send_footer(session, status_line=status_line)
-            return await self._get_output_message_id(session)
+            await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
+            await self._send_footer(session, status_line=options.status_line)
+            return await host._get_output_message_id(session)
 
         # 3. Edit failed → cleanup footer, send new, send footer below
-        await self._cleanup_footer_if_present(session)
-        new_id = await self.send_message(session, text, metadata=metadata, multi_message=multi_message)
+        await host._cleanup_footer_if_present(session)
+        new_id = await host.send_message(
+            session,
+            text,
+            metadata=metadata,
+            multi_message=options.multi_message,
+        )
         if new_id:
-            await self._store_output_message_id(session, new_id)
-            from teleclaude.core.db import db
-
-            await db.update_session(session.session_id, last_output_digest=display_digest)
-            await self._send_footer(session, status_line=status_line)
+            await host._store_output_message_id(session, new_id)
+            await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
+            await self._send_footer(session, status_line=options.status_line)
         return new_id
 
     async def _try_edit_output_message(self, session: Session, text: str, metadata: MessageMetadata) -> bool:
@@ -254,7 +253,8 @@ class OutputDeliveryMixin:
         Returns:
             True if edited successfully, False if no message_id or edit failed
         """
-        message_id = await self._get_output_message_id(session)
+        host = cast("_OutputDeliveryHost", self)
+        message_id = await host._get_output_message_id(session)
         logger.debug(
             "[TRY_EDIT] session=%s existing_message_id=%s",
             session.session_id,
@@ -265,7 +265,7 @@ class OutputDeliveryMixin:
             return False
 
         logger.debug("[TRY_EDIT] Attempting to edit message %s for session %s", message_id, session.session_id)
-        success = await self.edit_message(session, message_id, text, metadata=metadata)
+        success = await host.edit_message(session, message_id, text, metadata=metadata)
         logger.debug(
             "[TRY_EDIT] Edit result for message %s: %s",
             message_id,
@@ -275,7 +275,7 @@ class OutputDeliveryMixin:
         if not success:
             # Edit failed - clear stale message_id
             logger.warning("[TRY_EDIT] Failed to edit message %s, clearing stale message_id", message_id)
-            await self._clear_output_message_id(session)
+            await host._clear_output_message_id(session)
 
         return success
 
@@ -287,18 +287,17 @@ class OutputDeliveryMixin:
             error_message: Human-readable error description
         """
         try:
-            from teleclaude.core.db import db
-
-            session = await db.get_session(session_id)
+            session = await core_db.db.get_session(session_id)
             if session:
+                host = cast("_OutputDeliveryHost", self)
                 await self.client.send_message(
                     session,
                     f"❌ {error_message}",
-                    metadata=self._metadata(),
+                    metadata=host._metadata(),
                     cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )
-        except Exception as e:
-            logger.error("Failed to send error feedback for session %s: %s", session_id, e)
+        except (AttributeError, RuntimeError, TypeError, ValueError) as error:
+            logger.error("Failed to send error feedback for session %s: %s", session_id, error)
 
     async def _send_footer(self, session: Session, status_line: str = "") -> str | None:
         """Send or edit footer message below output."""
@@ -306,10 +305,11 @@ class OutputDeliveryMixin:
         if self.THREADED_OUTPUT:
             return None
 
+        host = cast("_OutputDeliveryHost", self)
         footer_text = self._build_footer_text(session, status_line=status_line)
         metadata = self._build_footer_metadata(session)
 
-        existing_id = await self._get_footer_message_id(session)
+        existing_id = await host._get_footer_message_id(session)
         logger.trace(
             "[FOOTER] session=%s existing_id=%s footer_len=%d",
             session.session_id,
@@ -317,26 +317,27 @@ class OutputDeliveryMixin:
             len(footer_text),
         )
         if existing_id:
-            success = await self.edit_message(session, existing_id, footer_text, metadata=metadata)
+            success = await host.edit_message(session, existing_id, footer_text, metadata=metadata)
             if success:
                 return existing_id
             # Edit failed (stale message) — clear tracked ID and skip.
             # Do NOT fall back to sending a new message here; the next
             # render cycle will create a fresh footer naturally.
             logger.debug("[FOOTER] Edit failed for session=%s, clearing stale id %s", session.session_id, existing_id)
-            await self._clear_footer_message_id(session)
+            await host._clear_footer_message_id(session)
             return None
 
-        new_id = await self.send_message(session, footer_text, metadata=metadata)
+        new_id = await host.send_message(session, footer_text, metadata=metadata)
         logger.debug("[FOOTER] send_message returned %s for session=%s", new_id, session.session_id)
         if new_id:
-            await self._store_footer_message_id(session, new_id)
+            await host._store_footer_message_id(session, new_id)
         return new_id
 
     def _build_footer_text(self, session: Session, status_line: str = "") -> str:
         """Build footer text with session IDs first and status line last."""
+        host = cast("_OutputDeliveryHost", self)
         parts: list[str] = []
-        session_lines = self._build_session_id_lines(session)
+        session_lines = host._build_session_id_lines(session)
         if session_lines:
             parts.append(session_lines)
         if status_line:
