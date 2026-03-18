@@ -5,10 +5,6 @@ MARKER="TELECLAUDE_PRE_PUSH_MAIN_GUARD_BLOCK"
 LOG_FILE="${HOME}/.teleclaude/logs/guardrails.log"
 
 read_session_id() {
-    if [ -n "${TELECLAUDE_SESSION_ID:-}" ]; then
-        printf '%s' "$TELECLAUDE_SESSION_ID"
-        return
-    fi
     local sid_file="${TMPDIR:-}/teleclaude_session_id"
     if [ -f "$sid_file" ]; then
         tr -d '\n' < "$sid_file"

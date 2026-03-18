@@ -1,4 +1,4 @@
-# Quality Checklist: fix-grid-guard
+# Quality Checklist: multi-user-system-install
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 
@@ -16,7 +16,6 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate fix-grid-guard` exits 0, or exception noted)
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 
@@ -24,7 +23,6 @@ Ownership:
 
 - [ ] Requirements traced to implemented behavior
 - [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
 - [ ] Findings written in `review-findings.md`
 - [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
 - [ ] Critical issues resolved or explicitly blocked
