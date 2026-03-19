@@ -109,10 +109,6 @@ def _make_bookkeeping_repo(
     else:
         repo.active_branch.name = branch
     repo.git.status.return_value = status
-    repo.git.update_environment.return_value = {
-        "TELECLAUDE_ALLOW_MAIN_COMMIT": None,
-        "TELECLAUDE_ALLOW_MAIN_PUSH": None,
-    }
     return repo
 
 
@@ -134,7 +130,6 @@ class TestBookkeepingEarlyReturns:
             result = commit_bookkeeping_to_main("/tmp", ["f"], "msg")
 
         assert result == (False, "not_on_main")
-        repo.git.update_environment.assert_not_called()
         repo.git.add.assert_not_called()
         repo.git.commit.assert_not_called()
         repo.git.push.assert_not_called()
@@ -145,7 +140,6 @@ class TestBookkeepingEarlyReturns:
             result = commit_bookkeeping_to_main("/tmp", ["f"], "msg")
 
         assert result == (False, "detached_head")
-        repo.git.update_environment.assert_not_called()
         repo.git.add.assert_not_called()
         repo.git.commit.assert_not_called()
 
@@ -157,8 +151,7 @@ class TestBookkeepingEarlyReturns:
         assert result == (False, "nothing_to_commit")
         # Verify status was called with --porcelain and the exact paths
         repo.git.status.assert_called_once_with("--porcelain", "--", "todos/my-slug", "todos/roadmap.yaml")
-        # Must not proceed to env bypass or git ops
-        repo.git.update_environment.assert_not_called()
+        # Must not proceed to git ops
         repo.git.add.assert_not_called()
         repo.git.commit.assert_not_called()
 
@@ -167,7 +160,7 @@ class TestBookkeepingCommitContract:
     """Verify the exact git commands, flags, and message structure."""
 
     def test_happy_path_verifies_full_command_sequence(self) -> None:
-        """End-to-end: status check → env bypass → add → commit → push → env restore."""
+        """End-to-end: status check → add → commit → push."""
         repo = _make_bookkeeping_repo()
         paths = ["todos/my-slug", "todos/roadmap.yaml"]
 
@@ -178,13 +171,6 @@ class TestBookkeepingCommitContract:
 
         # Status check uses --porcelain with exact paths
         repo.git.status.assert_called_once_with("--porcelain", "--", "todos/my-slug", "todos/roadmap.yaml")
-
-        # Env bypass set with string "1" values (not int)
-        env_set_call = repo.git.update_environment.call_args_list[0]
-        assert env_set_call == call(
-            TELECLAUDE_ALLOW_MAIN_COMMIT="1",
-            TELECLAUDE_ALLOW_MAIN_PUSH="1",
-        )
 
         # Add uses "--" separator with exact paths
         repo.git.add.assert_called_once_with("--", "todos/my-slug", "todos/roadmap.yaml")
@@ -200,13 +186,6 @@ class TestBookkeepingCommitContract:
 
         # Push to origin main
         repo.git.push.assert_called_once_with("origin", "main")
-
-        # Env restored in finally block
-        env_restore_call = repo.git.update_environment.call_args_list[1]
-        assert env_restore_call == call(
-            TELECLAUDE_ALLOW_MAIN_COMMIT=None,
-            TELECLAUDE_ALLOW_MAIN_PUSH=None,
-        )
 
     def test_commit_message_structure(self) -> None:
         """Subject line with [skip ci], TeleClaude link, Co-Authored-By trailer."""
@@ -281,53 +260,6 @@ class TestBookkeepingPushRecovery:
             result = commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
 
         assert result == (True, "committed_push_deferred")
-
-
-class TestBookkeepingEnvBypassContract:
-    """Environment bypass must be set before ops and restored in ALL code paths."""
-
-    def test_env_set_before_add_restored_after_push(self) -> None:
-        repo = _make_bookkeeping_repo()
-        call_order: list[str] = []
-
-        original_update_env = repo.git.update_environment
-
-        def _track_update_env(**kwargs: object) -> dict[str, None]:
-            if "TELECLAUDE_ALLOW_MAIN_COMMIT" in kwargs:
-                val = kwargs["TELECLAUDE_ALLOW_MAIN_COMMIT"]
-                call_order.append("env_set" if val == "1" else "env_restore")
-            return original_update_env.return_value
-
-        repo.git.update_environment = _track_update_env
-        repo.git.add.side_effect = lambda *_: call_order.append("add")
-        repo.git.commit.side_effect = lambda *_: call_order.append("commit")
-        repo.git.push.side_effect = lambda *_: call_order.append("push")
-
-        with patch(_PATCH_REPO, return_value=repo):
-            commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
-
-        assert call_order == ["env_set", "add", "commit", "push", "env_restore"]
-
-    def test_env_restored_even_when_commit_fails(self) -> None:
-        repo = _make_bookkeeping_repo()
-        repo.git.commit.side_effect = GitCommandError("commit", "index lock")
-        with patch(_PATCH_REPO, return_value=repo):
-            commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
-
-        assert repo.git.update_environment.call_count == 2
-        restore_call = repo.git.update_environment.call_args_list[1]
-        assert restore_call == call(TELECLAUDE_ALLOW_MAIN_COMMIT=None, TELECLAUDE_ALLOW_MAIN_PUSH=None)
-
-    def test_env_restored_even_when_push_and_rebase_both_fail(self) -> None:
-        repo = _make_bookkeeping_repo()
-        repo.git.push.side_effect = GitCommandError("push", "auth failed")
-        repo.git.pull.side_effect = GitCommandError("pull", "auth failed")
-        with patch(_PATCH_REPO, return_value=repo):
-            commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
-
-        assert repo.git.update_environment.call_count == 2
-        restore_call = repo.git.update_environment.call_args_list[1]
-        assert restore_call == call(TELECLAUDE_ALLOW_MAIN_COMMIT=None, TELECLAUDE_ALLOW_MAIN_PUSH=None)
 
 
 class TestBookkeepingDiagnostics:

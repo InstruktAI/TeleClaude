@@ -179,20 +179,41 @@ MSG
     fi
 fi
 
-# Block commits on main (agents must use review pipeline)
+# Block commits on main (agents must use review pipeline or get explicit human approval)
 if [ "$_subcmd" = "commit" ]; then
     _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ] && [ "$_role" != "system" ]; then
         cat >&2 <<'MSG'
 ERROR: Commits on main are blocked for agent sessions.
-Your changes must go through the review pipeline.
 
-Run:  telec todo from-main --slug <meaningful-name>
+You are in a human-supervised context. Inspect the changeset, then reason about
+the right path and PROPOSE your decision to the user before acting.
 
-This creates a worktree with your changes, scaffolds a todo,
-and prepares everything for the review cycle.
+STEP 1 — Inspect:
+  git diff --staged --name-only
+  git status
 
-Then run:  telec todo work <slug>
+STEP 2 — Classify and propose ONE of these paths to the user:
+
+  A) Only non-functional files (Markdown, YAML, todo scaffolding, roadmap,
+     state files, doc snippets — no .py / .ts / .sh logic):
+     → Commit directly, no hooks needed:
+       TELECLAUDE_SYSTEM_ROLE=system git commit --no-verify -m "chore(...): <subject> [skip ci]"
+
+  B) Functional code change that is small and self-evident (human is present
+     and driving this, no meaningful review value):
+     → Commit directly, hooks run normally:
+       TELECLAUDE_SYSTEM_ROLE=system git commit -m "<type>(<scope>): <subject>"
+
+  C) Functional code change of any real substance:
+     → Must go through the review pipeline:
+       telec todo from-main --slug <meaningful-name>
+       telec todo work <slug>
+
+STEP 3 — Rationalize and ask:
+  State which path you recommend and why (file types seen, size, context).
+  Then ask: "Shall I proceed with [path X]?"
+  Wait for the user to confirm or redirect before executing.
 MSG
         exit 1
     fi
@@ -204,10 +225,10 @@ if [ "$_subcmd" = "push" ]; then
     if [ "$_current_branch" = "main" ] && [ "$_role" != "system" ]; then
         cat >&2 <<'MSG'
 ERROR: Push from main is blocked for agent sessions.
-Only the system role may push to remote.
+Only the system role may push to remote. Leave pushes to the integrator.
 
-If you have uncommitted work, run: telec todo from-main --slug <meaningful-name>
-Then run:  telec todo work <slug>
+If you have uncommitted changes, inspect them first (git diff --staged --name-only),
+then follow the commit guard decision tree above to handle them correctly.
 MSG
         exit 1
     fi

@@ -188,53 +188,46 @@ def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tupl
     if not status_output.strip():
         return False, "nothing_to_commit"
 
-    # Bypass git wrapper commit/push gates — this is automation bookkeeping
-    old_env = repo.git.update_environment(
-        TELECLAUDE_ALLOW_MAIN_COMMIT="1",
-        TELECLAUDE_ALLOW_MAIN_PUSH="1",
+    # teleclaude.git resolves the real git binary (bypasses the shell wrapper).
+    subject_clean = subject.rstrip()
+    if "[skip ci]" not in subject_clean:
+        subject_clean += " [skip ci]"
+    msg = (
+        f"{subject_clean}\n\n"
+        "\U0001f916 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
+        "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
     )
     try:
-        subject_clean = subject.rstrip()
-        if "[skip ci]" not in subject_clean:
-            subject_clean += " [skip ci]"
-        msg = (
-            f"{subject_clean}\n\n"
-            "\U0001f916 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
-            "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-        )
-        try:
-            repo.git.add("--", *paths)
-            # --no-verify: pre-commit stash/restore conflicts with --only
-            # (index corruption). Safe to skip — these are bookkeeping artifacts
-            # (scaffolds, roadmap YAML, state files), not code, and the commit
-            # is already [skip ci].
-            repo.git.commit("-m", msg, "--no-verify", "--only", "--", *paths)
-        except GitCommandError as exc:
-            logger.warning("Bookkeeping commit failed (%s): %s", subject_clean, exc)
-            return False, "commit_failed"
+        repo.git.add("--", *paths)
+        # --no-verify: pre-commit stash/restore conflicts with --only
+        # (index corruption). Safe to skip — these are bookkeeping artifacts
+        # (scaffolds, roadmap YAML, state files), not code, and the commit
+        # is already [skip ci].
+        repo.git.commit("-m", msg, "--no-verify", "--only", "--", *paths)
+    except GitCommandError as exc:
+        logger.warning("Bookkeeping commit failed (%s): %s", subject_clean, exc)
+        return False, "commit_failed"
 
-        # Best-effort push — try direct first, then reconcile with rebase
-        try:
-            repo.git.push("origin", "main")
-            logger.info("Bookkeeping committed and pushed: %s", subject_clean)
-            return True, "committed_and_pushed"
-        except GitCommandError as push_exc:
-            logger.debug("First push attempt failed: %s", push_exc)
+    # Best-effort push — try direct first, then reconcile with rebase
+    try:
+        repo.git.push("origin", "main")
+        logger.info("Bookkeeping committed and pushed: %s", subject_clean)
+        return True, "committed_and_pushed"
+    except GitCommandError as push_exc:
+        logger.debug("First push attempt failed: %s", push_exc)
 
+    try:
+        repo.git.pull("--rebase", "origin", "main")
+        repo.git.push("origin", "main")
+        logger.info("Bookkeeping rebased and pushed: %s", subject_clean)
+        return True, "rebased_and_pushed"
+    except GitCommandError as exc:
         try:
-            repo.git.pull("--rebase", "origin", "main")
-            repo.git.push("origin", "main")
-            logger.info("Bookkeeping rebased and pushed: %s", subject_clean)
-            return True, "rebased_and_pushed"
-        except GitCommandError as exc:
-            try:
-                repo.git.rebase("--abort")
-            except GitCommandError:
-                pass
-            logger.warning("Bookkeeping push deferred (%s): %s", subject_clean, exc)
-            return True, "committed_push_deferred"
-    finally:
-        repo.git.update_environment(**old_env)
+            repo.git.rebase("--abort")
+        except GitCommandError:
+            pass
+        logger.warning("Bookkeeping push deferred (%s): %s", subject_clean, exc)
+        return True, "committed_push_deferred"
 
 
 def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
