@@ -15,9 +15,12 @@ from teleclaude.core.next_machine.prepare_steps import (
     _prepare_step_grounding_check,
     _prepare_step_input_assessment,
     _prepare_step_plan_drafting,
+    _prepare_step_plan_review,
     _prepare_step_re_grounding,
+    _prepare_step_requirements_review,
     _prepare_step_test_spec_build,
     _prepare_step_triangulation,
+    _restamp_artifact_digest,
 )
 
 
@@ -326,3 +329,92 @@ async def test_ghost_plan_not_loop_in_plan_drafting_step_v2(tmp_path: Path) -> N
 
     assert keep_going is False
     assert 'telec sessions run --command "/next-prepare-draft"' in instruction
+
+
+def test_restamp_artifact_digest_updates_when_file_changed(tmp_path: Path) -> None:
+    """Re-stamp updates the stored digest when the file on disk has changed."""
+    todo_dir = tmp_path / "todos" / "slug-rs1"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "requirements.md").write_text("original content", encoding="utf-8")
+    original_digest = hashlib.sha256(b"original content").hexdigest()
+    state: dict[str, StateValue] = {
+        "artifacts": {"requirements": {"digest": original_digest, "produced_at": "2026-01-01T00:00:00Z"}},
+    }
+
+    # Simulate reviewer modifying the file
+    (todo_dir / "requirements.md").write_text("reviewer-modified content", encoding="utf-8")
+    expected_digest = hashlib.sha256(b"reviewer-modified content").hexdigest()
+
+    _restamp_artifact_digest(state, str(tmp_path), "slug-rs1", "requirements", "requirements.md")
+
+    artifacts = state["artifacts"]
+    assert isinstance(artifacts, dict)
+    assert artifacts["requirements"]["digest"] == expected_digest
+
+
+def test_restamp_artifact_digest_noop_when_unchanged(tmp_path: Path) -> None:
+    """Re-stamp is a no-op when the file digest matches the stored digest."""
+    todo_dir = tmp_path / "todos" / "slug-rs2"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "requirements.md").write_text("same content", encoding="utf-8")
+    same_digest = hashlib.sha256(b"same content").hexdigest()
+    state: dict[str, StateValue] = {
+        "artifacts": {"requirements": {"digest": same_digest, "produced_at": "2026-01-01T00:00:00Z"}},
+    }
+
+    _restamp_artifact_digest(state, str(tmp_path), "slug-rs2", "requirements", "requirements.md")
+
+    artifacts = state["artifacts"]
+    assert isinstance(artifacts, dict)
+    assert artifacts["requirements"]["digest"] == same_digest
+
+
+@pytest.mark.asyncio
+async def test_requirements_review_approve_restamps_digest_when_reviewer_modified_artifact(tmp_path: Path) -> None:
+    """When reviewer modifies requirements.md and approves, the digest is updated before advancing."""
+    todo_dir = tmp_path / "todos" / "slug-rv1"
+    todo_dir.mkdir(parents=True)
+    # File on disk has been modified by reviewer
+    (todo_dir / "requirements.md").write_text("reviewer-modified requirements", encoding="utf-8")
+    _write_state(todo_dir, {})
+    old_digest = hashlib.sha256(b"original requirements").hexdigest()
+    new_digest = hashlib.sha256(b"reviewer-modified requirements").hexdigest()
+    state: dict[str, StateValue] = {
+        "requirements_review": {"verdict": "approve"},
+        "artifacts": {"requirements": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00Z"}},
+    }
+
+    with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
+        keep_going, instruction = await _prepare_step_requirements_review(AsyncMock(), "slug-rv1", str(tmp_path), state)
+
+    assert keep_going is True
+    assert instruction == ""
+    assert state["prepare_phase"] == PreparePhase.TEST_SPEC_BUILD.value
+    artifacts = state["artifacts"]
+    assert isinstance(artifacts, dict)
+    assert artifacts["requirements"]["digest"] == new_digest
+
+
+@pytest.mark.asyncio
+async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifact(tmp_path: Path) -> None:
+    """When reviewer modifies implementation-plan.md and approves, the digest is updated before advancing."""
+    todo_dir = tmp_path / "todos" / "slug-rv2"
+    todo_dir.mkdir(parents=True)
+    (todo_dir / "implementation-plan.md").write_text("reviewer-modified plan", encoding="utf-8")
+    _write_state(todo_dir, {})
+    old_digest = hashlib.sha256(b"original plan").hexdigest()
+    new_digest = hashlib.sha256(b"reviewer-modified plan").hexdigest()
+    state: dict[str, StateValue] = {
+        "plan_review": {"verdict": "approve"},
+        "artifacts": {"implementation_plan": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00Z"}},
+    }
+
+    with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
+        keep_going, instruction = await _prepare_step_plan_review(AsyncMock(), "slug-rv2", str(tmp_path), state)
+
+    assert keep_going is True
+    assert instruction == ""
+    assert state["prepare_phase"] == PreparePhase.GATE.value
+    artifacts = state["artifacts"]
+    assert isinstance(artifacts, dict)
+    assert artifacts["implementation_plan"]["digest"] == new_digest

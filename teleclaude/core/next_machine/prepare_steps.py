@@ -22,7 +22,7 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
-from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
+from teleclaude.core.next_machine.artifacts import artifact_digest, compute_artifact_diff, compute_todo_folder_diff
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
 from teleclaude.core.next_machine.path_checks import check_file_has_content
@@ -36,6 +36,26 @@ from teleclaude.core.next_machine.state_io import _run_git_prepare, write_phase_
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 logger = get_logger(__name__)
+
+
+def _restamp_artifact_digest(state: dict[str, StateValue], cwd: str, slug: str, artifact_key: str, filename: str) -> None:
+    """Re-stamp an artifact's digest after a reviewer may have modified it.
+
+    Prevents the staleness check from looping when the reviewed artifact
+    was changed by the reviewer (auto-remediation). The review is the last
+    entity to touch the file — the machine acknowledges the new state.
+    """
+    artifacts = state.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        return
+    entry = artifacts.get(artifact_key, {})
+    if not isinstance(entry, dict):
+        return
+    current = artifact_digest(cwd, slug, filename)
+    if current and current != entry.get("digest", ""):
+        entry["digest"] = current
+        artifacts[artifact_key] = entry
+        state["artifacts"] = artifacts
 
 
 async def _prepare_step_input_assessment(
@@ -126,6 +146,10 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
 
     req_review = state.get("requirements_review", {})
     verdict = (isinstance(req_review, dict) and req_review.get("verdict")) or ""
+
+    # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
+    if verdict:
+        _restamp_artifact_digest(state, cwd, slug, "requirements", "requirements.md")
 
     if verdict == "approve":
         stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
@@ -431,6 +455,10 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
 
     plan_review = state.get("plan_review", {})
     verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
+
+    # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
+    if verdict:
+        _restamp_artifact_digest(state, cwd, slug, "implementation_plan", "implementation-plan.md")
 
     if verdict == "approve":
         stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
