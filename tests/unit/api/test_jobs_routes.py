@@ -34,7 +34,7 @@ class TestJobsRoutes:
         with (
             patch("teleclaude.api.jobs_routes.run_in_threadpool", new=_run_sync_immediately),
             patch("teleclaude.cron.runner.discover_jobs", return_value=discovered_jobs),
-            patch("teleclaude.cron.runner._load_job_schedules", return_value=schedules),
+            patch("teleclaude.cron.runner.load_job_schedules", return_value=schedules),
             patch("teleclaude.cron.state.CronState.load", return_value=state),
         ):
             response = await jobs_routes.list_jobs()

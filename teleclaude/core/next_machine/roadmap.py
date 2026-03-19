@@ -8,19 +8,27 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
-
-from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine._types import (
     ItemPhase,
     PhaseName,
     PhaseStatus,
-    RoadmapDict,
     RoadmapEntry,
 )
+from teleclaude.core.next_machine.manifest_io import load_manifest_entries, save_manifest_entries
 from teleclaude.core.next_machine.state_io import read_phase_state
+
+
+@dataclass(frozen=True)
+class RoadmapInsertion:
+    """Optional metadata for inserting a roadmap entry."""
+
+    group: str | None = None
+    after: list[str] | None = None
+    description: str | None = None
+    before: str | None = None
 
 
 def _roadmap_path(cwd: str) -> Path:
@@ -29,50 +37,16 @@ def _roadmap_path(cwd: str) -> Path:
 
 def load_roadmap(cwd: str) -> list[RoadmapEntry]:
     """Parse todos/roadmap.yaml and return ordered list of entries."""
-    path = _roadmap_path(cwd)
-    if not path.exists():
-        return []
-
-    content = read_text_sync(path)
-    raw = yaml.safe_load(content)
-    if not isinstance(raw, list):
-        return []
-
-    entries: list[RoadmapEntry] = []
-    for item in raw:
-        if not isinstance(item, dict) or "slug" not in item:
-            continue
-        after = item.get("after")
-        entries.append(
-            RoadmapEntry(
-                slug=item["slug"],
-                group=item.get("group"),
-                after=list(after) if isinstance(after, list) else [],
-                description=item.get("description"),
-            )
-        )
-    return entries
+    return load_manifest_entries(_roadmap_path(cwd))
 
 
 def save_roadmap(cwd: str, entries: list[RoadmapEntry]) -> None:
     """Write entries back to todos/roadmap.yaml."""
-    path = _roadmap_path(cwd)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    data: list[RoadmapDict] = []
-    for entry in entries:
-        item: RoadmapDict = {"slug": entry.slug}
-        if entry.group:
-            item["group"] = entry.group
-        if entry.after:
-            item["after"] = entry.after
-        if entry.description:
-            item["description"] = entry.description
-        data.append(item)
-
-    header = "# Priority order (first = highest). Per-item state in {slug}/state.yaml.\n\n"
-    body = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    write_text_sync(path, header + body)
+    save_manifest_entries(
+        _roadmap_path(cwd),
+        entries,
+        "# Priority order (first = highest). Per-item state in {slug}/state.yaml.\n\n",
+    )
 
 
 def load_roadmap_slugs(cwd: str) -> list[str]:
@@ -93,26 +67,41 @@ def slug_in_roadmap(cwd: str, slug: str) -> bool:
 def add_to_roadmap(
     cwd: str,
     slug: str,
-    *,
-    group: str | None = None,
-    after: list[str] | None = None,
-    description: str | None = None,
-    before: str | None = None,
+    options: RoadmapInsertion | None = None,
+    **legacy_options: object,
 ) -> bool:
     """Add entry to roadmap.yaml at specified position (default: append).
 
     Returns True if the entry was added, False if it already existed.
     """
+    if options is None:
+        _group = legacy_options.get("group")
+        _after = legacy_options.get("after")
+        _desc = legacy_options.get("description")
+        _before = legacy_options.get("before")
+        insertion = RoadmapInsertion(
+            group=_group if isinstance(_group, str) else None,
+            after=list(_after) if isinstance(_after, list) else None,
+            description=_desc if isinstance(_desc, str) else None,
+            before=_before if isinstance(_before, str) else None,
+        )
+    else:
+        insertion = options
     entries = load_roadmap(cwd)
     # Avoid duplicates
     if any(e.slug == slug for e in entries):
         return False
 
-    entry = RoadmapEntry(slug=slug, group=group, after=after or [], description=description)
+    entry = RoadmapEntry(
+        slug=slug,
+        group=insertion.group,
+        after=insertion.after or [],
+        description=insertion.description,
+    )
 
-    if before:
+    if insertion.before:
         for i, e in enumerate(entries):
-            if e.slug == before:
+            if e.slug == insertion.before:
                 entries.insert(i, entry)
                 save_roadmap(cwd, entries)
                 return True

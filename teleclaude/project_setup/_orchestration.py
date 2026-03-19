@@ -53,7 +53,7 @@ def _prompt_yes_no(prompt: str, *, default: bool = True) -> bool:
     return answer in ("y", "yes")
 
 
-def _prompt_release_channel(project_root: Path) -> None:
+def _prompt_release_channel(project_root: Path) -> None:  # pylint: disable=too-many-return-statements,too-many-branches,too-many-statements
     """Prompt for release-channel enrollment and persist to teleclaude.yml."""
     config_path = project_root / "teleclaude.yml"
     if not config_path.exists():
@@ -61,7 +61,7 @@ def _prompt_release_channel(project_root: Path) -> None:
 
     try:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("Could not read %s: %s — skipping release channel prompt", config_path, exc)
         return
     if not isinstance(raw, dict):
@@ -107,7 +107,7 @@ def _prompt_release_channel(project_root: Path) -> None:
     ryaml.preserve_quotes = True
     try:
         doc = ryaml.load(config_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("Could not re-read %s for comment-preserving write: %s — using plain YAML", config_path, exc)
         doc = raw
 

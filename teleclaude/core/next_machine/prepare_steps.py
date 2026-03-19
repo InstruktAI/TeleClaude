@@ -24,13 +24,13 @@ from teleclaude.core.next_machine._types import (
 )
 from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
-from teleclaude.core.next_machine.output_formatting import format_prepared, format_tool_call
+from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
+from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event,
     _has_test_spec_artifacts,
     _is_artifact_produced,
 )
-from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
 from teleclaude.core.next_machine.state_io import _run_git_prepare, write_phase_state
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
@@ -62,18 +62,20 @@ async def _prepare_step_input_assessment(
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command=SlashCommand.NEXT_PREPARE_DISCOVERY,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder="",
-        note=(
-            f"Assess todos/{slug}/input.md and produce todos/{slug}/requirements.md. "
-            "Work solo if the input is already concrete enough. If important intent, "
-            "constraints, or code grounding still need another perspective, run "
-            "triangulated discovery with a complementary partner."
-        ),
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_PREPARE_DISCOVERY,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=(
+                f"Assess todos/{slug}/input.md and produce todos/{slug}/requirements.md. "
+                "Work solo if the input is already concrete enough. If important intent, "
+                "constraints, or code grounding still need another perspective, run "
+                "triangulated discovery with a complementary partner."
+            ),
+            next_call=f"telec todo prepare {slug}",
+        )
     )
 
 
@@ -98,20 +100,22 @@ async def _prepare_step_triangulation(
     _emit_prepare_event("domain.software-development.prepare.triangulation_started", {"slug": slug})
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command=SlashCommand.NEXT_PREPARE_DISCOVERY,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder="",
-        note=(
-            f"Produce todos/{slug}/requirements.md. Use solo discovery if you already have "
-            "enough grounding; otherwise triangulate with a complementary partner before writing."
-        ),
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_PREPARE_DISCOVERY,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=(
+                f"Produce todos/{slug}/requirements.md. Use solo discovery if you already have "
+                "enough grounding; otherwise triangulate with a complementary partner before writing."
+            ),
+            next_call=f"telec todo prepare {slug}",
+        )
     )
 
 
-async def _prepare_step_requirements_review(
+async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,too-many-statements
     db: Db,
     slug: str,
     cwd: str,
@@ -198,14 +202,16 @@ async def _prepare_step_requirements_review(
         )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
-            command=SlashCommand.NEXT_PREPARE_DISCOVERY,
-            args=slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder="",
-            note=findings_note,
-            next_call=f"telec todo prepare {slug}",
-            additional_context=additional_context,
+            ToolCallRequest(
+                command=SlashCommand.NEXT_PREPARE_DISCOVERY,
+                args=slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder="",
+                note=findings_note,
+                next_call=f"telec todo prepare {slug}",
+                additional_context=additional_context,
+            )
         )
 
     # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
@@ -220,13 +226,15 @@ async def _prepare_step_requirements_review(
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command=SlashCommand.NEXT_REVIEW_REQUIREMENTS,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder="",
-        note=f"Review todos/{slug}/requirements.md and write verdict to state.yaml requirements_review.verdict.",
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_REVIEW_REQUIREMENTS,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=f"Review todos/{slug}/requirements.md and write verdict to state.yaml requirements_review.verdict.",
+            next_call=f"telec todo prepare {slug}",
+        )
     )
 
 
@@ -255,17 +263,19 @@ async def _prepare_step_test_spec_build(
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command=SlashCommand.NEXT_BUILD_SPECS,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{slug}",
-        note=(
-            f"Read todos/{slug}/requirements.md and write xfail-marked pytest test specs "
-            f"in the worktree. Each test should capture a requirement as a failing test. "
-            f"Commit the specs to the worktree branch."
-        ),
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_BUILD_SPECS,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{slug}",
+            note=(
+                f"Read todos/{slug}/requirements.md and write xfail-marked pytest test specs "
+                f"in the worktree. Each test should capture a requirement as a failing test. "
+                f"Commit the specs to the worktree branch."
+            ),
+            next_call=f"telec todo prepare {slug}",
+        )
     )
 
 
@@ -316,28 +326,32 @@ async def _prepare_step_test_spec_review(
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
-            command=SlashCommand.NEXT_BUILD_SPECS,
-            args=slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=(
-                f"Test specs need revision (round {rounds}). "
-                f"Review feedback and update xfail test specs in the worktree."
-            ),
-            next_call=f"telec todo prepare {slug}",
+            ToolCallRequest(
+                command=SlashCommand.NEXT_BUILD_SPECS,
+                args=slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder=f"{WORKTREE_DIR}/{slug}",
+                note=(
+                    f"Test specs need revision (round {rounds}). "
+                    f"Review feedback and update xfail test specs in the worktree."
+                ),
+                next_call=f"telec todo prepare {slug}",
+            )
         )
 
     # No verdict yet — dispatch reviewer
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command=SlashCommand.NEXT_REVIEW_SPECS,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{slug}",
-        note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and write verdict to state.yaml test_spec_review.verdict.",
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_REVIEW_SPECS,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{slug}",
+            note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and write verdict to state.yaml test_spec_review.verdict.",  # pylint: disable=line-too-long
+            next_call=f"telec todo prepare {slug}",
+        )
     )
 
 
@@ -366,18 +380,20 @@ async def _prepare_step_plan_drafting(
             guidance = await compose_agent_guidance(db)
             missing_list = "\n".join(f"- {p}" for p in missing_paths)
             return False, format_tool_call(
-                command=SlashCommand.NEXT_PREPARE_DRAFT,
-                args=slug,
-                project=cwd,
-                guidance=guidance,
-                subfolder="",
-                note=(
-                    f"FIX MODE: todos/{slug}/implementation-plan.md references {len(missing_paths)} "
-                    f"path(s) that do not exist in the codebase. Correct the paths or remove "
-                    f"references to non-existent files, then rewrite implementation-plan.md."
-                ),
-                next_call=f"telec todo prepare {slug}",
-                additional_context=f"Missing referenced paths:\n{missing_list}",
+                ToolCallRequest(
+                    command=SlashCommand.NEXT_PREPARE_DRAFT,
+                    args=slug,
+                    project=cwd,
+                    guidance=guidance,
+                    subfolder="",
+                    note=(
+                        f"FIX MODE: todos/{slug}/implementation-plan.md references {len(missing_paths)} "
+                        f"path(s) that do not exist in the codebase. Correct the paths or remove "
+                        f"references to non-existent files, then rewrite implementation-plan.md."
+                    ),
+                    next_call=f"telec todo prepare {slug}",
+                    additional_context=f"Missing referenced paths:\n{missing_list}",
+                )
             )
 
         stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
@@ -388,21 +404,23 @@ async def _prepare_step_plan_drafting(
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command=SlashCommand.NEXT_PREPARE_DRAFT,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder="",
-        note=(
-            f"Ground the approved requirements for todos/{slug}. If the work is atomic, "
-            f"write todos/{slug}/implementation-plan.md and demo.md. If planning shows the "
-            "parent is too large, split it into child todos and update the holder breakdown."
-        ),
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_PREPARE_DRAFT,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=(
+                f"Ground the approved requirements for todos/{slug}. If the work is atomic, "
+                f"write todos/{slug}/implementation-plan.md and demo.md. If planning shows the "
+                "parent is too large, split it into child todos and update the holder breakdown."
+            ),
+            next_call=f"telec todo prepare {slug}",
+        )
     )
 
 
-async def _prepare_step_plan_review(
+async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many-statements
     db: Db,
     slug: str,
     cwd: str,
@@ -489,14 +507,16 @@ async def _prepare_step_plan_review(
         )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
-            command=SlashCommand.NEXT_PREPARE_DRAFT,
-            args=slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder="",
-            note=findings_note,
-            next_call=f"telec todo prepare {slug}",
-            additional_context=additional_context,
+            ToolCallRequest(
+                command=SlashCommand.NEXT_PREPARE_DRAFT,
+                args=slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder="",
+                note=findings_note,
+                next_call=f"telec todo prepare {slug}",
+                additional_context=additional_context,
+            )
         )
 
     # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
@@ -511,13 +531,15 @@ async def _prepare_step_plan_review(
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command=SlashCommand.NEXT_REVIEW_PLAN,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder="",
-        note=f"Review todos/{slug}/implementation-plan.md and write verdict to state.yaml plan_review.verdict.",
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_REVIEW_PLAN,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=f"Review todos/{slug}/implementation-plan.md and write verdict to state.yaml plan_review.verdict.",
+            next_call=f"telec todo prepare {slug}",
+        )
     )
 
 
@@ -539,27 +561,29 @@ async def _prepare_step_gate(
     # Dispatch gate worker to run DOR assessment
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command=SlashCommand.NEXT_PREPARE_GATE,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder="",
-        note=(
-            f"Requirements/plan exist for {slug}, but DOR score is below threshold. "
-            f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
-        ),
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_PREPARE_GATE,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=(
+                f"Requirements/plan exist for {slug}, but DOR score is below threshold. "
+                f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
+            ),
+            next_call=f"telec todo prepare {slug}",
+        )
     )
 
 
-def _prepare_step_grounding_check(
+def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-statements
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """GROUNDING_CHECK: mechanical freshness check (no agent dispatch)."""
     grounding = state.get("grounding", {})
-    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
 
     base_sha = str(grounding_dict.get("base_sha", ""))
     stored_input_digest = str(grounding_dict.get("input_digest", ""))
@@ -671,7 +695,7 @@ async def _prepare_step_re_grounding(
 ) -> tuple[bool, str]:
     """RE_GROUNDING: dispatch plan update against changed files."""
     grounding = state.get("grounding", {})
-    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
     changed_paths = grounding_dict.get("changed_paths", [])  # I1: actual changed paths, not all referenced
     if not isinstance(changed_paths, list):
         changed_paths = []
@@ -687,16 +711,18 @@ async def _prepare_step_re_grounding(
     state["plan_review"] = plan_review
     await asyncio.to_thread(write_phase_state, cwd, slug, state)
 
-    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."  # type: ignore[arg-type]
+    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."  # type: ignore[arg-type]  # pylint: disable=line-too-long
     guidance = await compose_agent_guidance(db)
     result = format_tool_call(
-        command=SlashCommand.NEXT_PREPARE_DRAFT,
-        args=slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder="",
-        note=f"Update todos/{slug}/implementation-plan.md against current codebase. {changed_note}",
-        next_call=f"telec todo prepare {slug}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_PREPARE_DRAFT,
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=f"Update todos/{slug}/implementation-plan.md against current codebase. {changed_note}",
+            next_call=f"telec todo prepare {slug}",
+        )
     )
     _emit_prepare_event("domain.software-development.prepare.regrounded", {"slug": slug})
     return False, result
@@ -727,7 +753,7 @@ def _prepare_step_blocked(slug: str, state: dict[str, StateValue]) -> tuple[bool
 # =============================================================================
 
 
-async def _prepare_dispatch(
+async def _prepare_dispatch(  # pylint: disable=too-many-return-statements
     *,
     db: Db,
     slug: str,

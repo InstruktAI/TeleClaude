@@ -13,59 +13,59 @@ from teleclaude.events.domain_config import (
 
 class TestAutonomyLevel:
     def test_manual_value(self) -> None:
-        assert AutonomyLevel.manual == "manual"
+        assert AutonomyLevel.MANUAL.value == "manual"
 
     def test_notify_value(self) -> None:
-        assert AutonomyLevel.notify == "notify"
+        assert AutonomyLevel.NOTIFY.value == "notify"
 
     def test_auto_notify_value(self) -> None:
-        assert AutonomyLevel.auto_notify == "auto_notify"
+        assert AutonomyLevel.AUTO_NOTIFY.value == "auto_notify"
 
     def test_autonomous_value(self) -> None:
-        assert AutonomyLevel.autonomous == "autonomous"
+        assert AutonomyLevel.AUTONOMOUS.value == "autonomous"
 
 
 class TestAutonomyMatrix:
     def test_global_default_is_notify(self) -> None:
         m = AutonomyMatrix()
-        assert m.global_default == AutonomyLevel.notify
+        assert m.global_default == AutonomyLevel.NOTIFY
 
     def test_resolve_returns_global_default_when_no_overrides(self) -> None:
-        m = AutonomyMatrix(global_default=AutonomyLevel.autonomous)
+        m = AutonomyMatrix(global_default=AutonomyLevel.AUTONOMOUS)
         result = m.resolve("dom", "cart", "evt")
-        assert result == AutonomyLevel.autonomous
+        assert result == AutonomyLevel.AUTONOMOUS
 
     def test_resolve_domain_override(self) -> None:
-        m = AutonomyMatrix(by_domain={"eng": AutonomyLevel.manual})
+        m = AutonomyMatrix(by_domain={"eng": AutonomyLevel.MANUAL})
         result = m.resolve("eng", "cart", "evt")
-        assert result == AutonomyLevel.manual
+        assert result == AutonomyLevel.MANUAL
 
     def test_resolve_cartridge_overrides_domain(self) -> None:
         m = AutonomyMatrix(
-            by_domain={"eng": AutonomyLevel.manual},
-            by_cartridge={"eng/cart": AutonomyLevel.auto_notify},
+            by_domain={"eng": AutonomyLevel.MANUAL},
+            by_cartridge={"eng/cart": AutonomyLevel.AUTO_NOTIFY},
         )
         result = m.resolve("eng", "cart", "evt")
-        assert result == AutonomyLevel.auto_notify
+        assert result == AutonomyLevel.AUTO_NOTIFY
 
     def test_resolve_event_type_overrides_cartridge(self) -> None:
         m = AutonomyMatrix(
-            by_domain={"eng": AutonomyLevel.manual},
-            by_cartridge={"eng/cart": AutonomyLevel.auto_notify},
-            by_event_type={"eng/evt": AutonomyLevel.autonomous},
+            by_domain={"eng": AutonomyLevel.MANUAL},
+            by_cartridge={"eng/cart": AutonomyLevel.AUTO_NOTIFY},
+            by_event_type={"eng/evt": AutonomyLevel.AUTONOMOUS},
         )
         result = m.resolve("eng", "cart", "evt")
-        assert result == AutonomyLevel.autonomous
+        assert result == AutonomyLevel.AUTONOMOUS
 
     def test_resolve_event_key_format(self) -> None:
-        m = AutonomyMatrix(by_event_type={"dom/specific.event": AutonomyLevel.notify})
+        m = AutonomyMatrix(by_event_type={"dom/specific.event": AutonomyLevel.NOTIFY})
         result = m.resolve("dom", "any-cart", "specific.event")
-        assert result == AutonomyLevel.notify
+        assert result == AutonomyLevel.NOTIFY
 
     def test_resolve_cartridge_key_format(self) -> None:
-        m = AutonomyMatrix(by_cartridge={"dom/specific-cart": AutonomyLevel.autonomous})
+        m = AutonomyMatrix(by_cartridge={"dom/specific-cart": AutonomyLevel.AUTONOMOUS})
         result = m.resolve("dom", "specific-cart", "any.event")
-        assert result == AutonomyLevel.autonomous
+        assert result == AutonomyLevel.AUTONOMOUS
 
 
 class TestDomainGuardianConfig:

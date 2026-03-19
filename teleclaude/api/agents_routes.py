@@ -21,6 +21,7 @@ from teleclaude.core.db import db
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["agents"])
+_AGENT_AVAILABILITY_EXCEPTIONS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
 
 
 def _build_agent_dto(agent: str, info: dict[str, bool | str | None] | None) -> AgentAvailabilityDTO:
@@ -67,7 +68,7 @@ async def get_agent_availability(
 
         try:
             info = await db.get_agent_availability(agent)
-        except SQLAlchemyError as exc:
+        except _AGENT_AVAILABILITY_EXCEPTIONS as exc:
             logger.error("Failed to get availability for agent %s: %s", agent, exc)
             result[agent] = AgentAvailabilityDTO(
                 agent=agent,
@@ -128,6 +129,6 @@ async def set_agent_status(
 
         info = await db.get_agent_availability(agent_name)
         return _build_agent_dto(agent_name, info).model_dump()
-    except SQLAlchemyError as exc:
+    except _AGENT_AVAILABILITY_EXCEPTIONS as exc:
         logger.error("set_agent_status failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to set agent status: {exc}") from exc

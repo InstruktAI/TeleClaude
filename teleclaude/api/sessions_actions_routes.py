@@ -45,11 +45,11 @@ from teleclaude.api_models import (
 )
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SlashCommand
+from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import (
     assert_agent_enabled,
     get_default_agent,
     get_known_agents,
-    resolve_parser_agent,
 )
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
@@ -59,9 +59,9 @@ from teleclaude.core.models import MessageMetadata, SessionMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
-from teleclaude.output_projection.conversation_projector import project_conversation_chain
+from teleclaude.output_projection import conversation_projector as conversation_projector_module
+from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import VisibilityPolicy
-from teleclaude.output_projection.serializers import to_structured_message
 from teleclaude.types.commands import GetSessionDataCommand
 from teleclaude.utils.markdown import telegramify_markdown
 
@@ -190,9 +190,9 @@ def _project_session_messages(
     if not chain:
         return []
 
-    projected_blocks = project_conversation_chain(
+    projected_blocks = conversation_projector_module.project_conversation_chain(
         chain,
-        resolve_parser_agent(active_agent),
+        agents_module.resolve_parser_agent(active_agent),
         VisibilityPolicy(
             include_tools=include_tools,
             include_tool_results=include_tools,
@@ -209,7 +209,9 @@ def _project_session_messages(
             entry_index=message.entry_index,
             file_index=message.file_index,
         )
-        for message in (to_structured_message(projected_block) for projected_block in projected_blocks)
+        for message in (
+            output_serializers.to_structured_message(projected_block) for projected_block in projected_blocks
+        )
     ]
 
 

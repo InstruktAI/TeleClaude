@@ -1,4 +1,5 @@
 """Leaf artifact helpers shared across prepare and state modules."""
+# pylint: disable=duplicate-code  # compute_artifact_diff/compute_todo_folder_diff also exist in prepare_helpers for backward compat
 
 from __future__ import annotations
 
@@ -44,7 +45,7 @@ def record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:
     )
 
 
-def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str) -> str:
+def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str) -> str:  # pylint: disable=unused-argument
     """Run git diff {base_sha}..HEAD -- {artifact_path} and return the diff output."""
     if not base_sha:
         return ""

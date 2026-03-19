@@ -95,8 +95,8 @@ async def test_compose_agent_guidance_lists_enabled_agents_and_skips_unavailable
     ]
 
     with (
-        patch("teleclaude.config.config", app_config),
-        patch("teleclaude.core.agents.AgentName", agent_names),
+        patch("teleclaude.core.next_machine.git_ops.app_config", app_config),
+        patch("teleclaude.core.next_machine.git_ops.AgentName", agent_names),
     ):
         guidance = await compose_agent_guidance(db)
 

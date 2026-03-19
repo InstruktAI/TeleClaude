@@ -7,13 +7,12 @@ import shutil
 import time
 from typing import TypedDict
 
+from teleclaude.cli.tui.animations import sprites as sprites_module
 from teleclaude.cli.tui.animations.base import Z0, Z10, Z20, Animation, RenderBuffer, render_sprite
 from teleclaude.cli.tui.animations.sprites import (
     MOON_SPRITE,
     SUN_SPRITE,
-    get_optional_motion_groups,
     get_sky_entities,
-    get_weather_clouds,
 )
 from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite, SpriteGroup
 from teleclaude.cli.tui.theme import blend_colors, is_dark_mode
@@ -135,14 +134,14 @@ class GlobalSky(Animation):  # pylint: disable=too-many-instance-attributes
         """Spawn sky entities: standalone sprites + non-cloud groups + weather clouds."""
         entities: list[SkyEntity] = []
         # Standalone sprites (15% chance each)
-        for sprite in get_sky_entities():
+        for sprite in sprites_module.get_sky_entities():
             if self._theme_matches(sprite) and self.rng.random() < 0.15:
                 entities.append(self._spawn_sky_entity(sprite))
         if self.show_extra_motion:
-            for group in get_optional_motion_groups():
+            for group in sprites_module.get_optional_motion_groups():
                 self._spawn_group_entities(group, entities, optional_motion=True)
 
-        cloud_group = get_weather_clouds(self._weather)
+        cloud_group = sprites_module.get_weather_clouds(self._weather)
         self._spawn_group_entities(cloud_group, entities)
         return entities
 
@@ -246,7 +245,7 @@ class GlobalSky(Animation):  # pylint: disable=too-many-instance-attributes
             self._sky_entities = [entity for entity in self._sky_entities if not entity["optional_motion"]]
             return
 
-        for group in get_optional_motion_groups():
+        for group in sprites_module.get_optional_motion_groups():
             self._spawn_group_entities(group, self._sky_entities, optional_motion=True)
 
     def force_spawn(self, sprite: object | None = None) -> None:
@@ -265,7 +264,7 @@ class GlobalSky(Animation):  # pylint: disable=too-many-instance-attributes
                     k=1,
                 )[0]
                 group_dir = sprite.direction if sprite.direction is not None else self.rng.choice([-1, 1])
-                is_optional_motion = any(group is sprite for group in get_optional_motion_groups())
+                is_optional_motion = any(group is sprite for group in sprites_module.get_optional_motion_groups())
                 self._sky_entities.append(
                     self._spawn_sky_entity(
                         chosen_sprite,

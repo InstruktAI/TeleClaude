@@ -53,7 +53,9 @@ class TestSessionsActionsRoutes:
         service = SimpleNamespace(keys=AsyncMock())
 
         with (
-            patch("teleclaude.api.session_access.check_session_access", new=AsyncMock()) as check_session_access,
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
             patch.object(
                 sessions_actions_routes.CommandMapper,
                 "map_api_input",
@@ -94,7 +96,9 @@ class TestSessionsActionsRoutes:
         service = SimpleNamespace(handle_voice=AsyncMock())
 
         with (
-            patch("teleclaude.api.session_access.check_session_access", new=AsyncMock()) as check_session_access,
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
             patch.object(
                 sessions_actions_routes.CommandMapper,
                 "map_api_input",
@@ -173,7 +177,9 @@ class TestSessionsActionsRoutes:
         service = SimpleNamespace(restart_agent=AsyncMock())
 
         with (
-            patch("teleclaude.api.session_access.check_session_access", new=AsyncMock()) as check_session_access,
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
             patch.object(sessions_actions_routes, "db") as db,
             patch.object(sessions_actions_routes.CommandMapper, "map_api_input") as map_api_input,
             patch.object(sessions_actions_routes, "get_command_service", return_value=service),
@@ -203,7 +209,9 @@ class TestSessionsActionsRoutes:
         refreshed_session = SimpleNamespace(tmux_session_name="tmux-revive")
 
         with (
-            patch("teleclaude.api.session_access.check_session_access", new=AsyncMock()) as check_session_access,
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
             patch.object(sessions_actions_routes, "db") as db,
             patch.object(
                 sessions_actions_routes.CommandMapper,
@@ -259,7 +267,9 @@ class TestSessionsActionsRoutes:
         )
 
         with (
-            patch("teleclaude.api.session_access.check_session_access", new=AsyncMock()) as check_session_access,
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
             patch.object(sessions_actions_routes, "db") as db,
             patch("teleclaude.core.agents.resolve_parser_agent", return_value="claude") as resolve_parser_agent,
             patch(
@@ -319,7 +329,9 @@ class TestSessionsActionsRoutes:
         service = SimpleNamespace(get_session_data=AsyncMock(return_value={"messages": "terminal tail output"}))
 
         with (
-            patch("teleclaude.api.session_access.check_session_access", new=AsyncMock()) as check_session_access,
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
             patch.object(sessions_actions_routes, "db") as db,
             patch.object(sessions_actions_routes, "get_command_service", return_value=service),
         ):
@@ -436,7 +448,7 @@ class TestSessionsActionsRoutes:
         identity = _identity("caller-unsub")
 
         with patch(
-            "teleclaude.core.session_listeners.unregister_listener",
+            "teleclaude.api.sessions_actions_routes.unregister_listener",
             new=AsyncMock(return_value=unregister_result),
         ) as unregister_listener:
             response = await sessions_actions_routes.unsubscribe_session("sess-unsub", identity=identity)
@@ -463,9 +475,13 @@ class TestSessionsActionsRoutes:
         fake_markdown.telegramify_markdown = MagicMock(return_value="formatted-body")
 
         with (
-            patch.object(sessions_actions_routes, "_client", client),
+            patch.object(sessions_actions_routes._STATE, "client", client),
+            patch.object(
+                sessions_actions_routes,
+                "telegramify_markdown",
+                fake_markdown.telegramify_markdown,
+            ),
             patch.object(sessions_actions_routes, "db") as db,
-            patch.dict("sys.modules", {"teleclaude.utils.markdown": fake_markdown}),
         ):
             db.get_session = AsyncMock(return_value=session)
 
@@ -514,9 +530,13 @@ class TestSessionsActionsRoutes:
         fake_markdown.telegramify_markdown = MagicMock(return_value="widget-body")
 
         with (
-            patch.object(sessions_actions_routes, "_client", client),
+            patch.object(sessions_actions_routes._STATE, "client", client),
+            patch.object(
+                sessions_actions_routes,
+                "telegramify_markdown",
+                fake_markdown.telegramify_markdown,
+            ),
             patch.object(sessions_actions_routes, "db") as db,
-            patch.dict("sys.modules", {"teleclaude.utils.markdown": fake_markdown}),
         ):
             db.get_session = AsyncMock(return_value=session)
 
@@ -553,7 +573,7 @@ class TestSessionsActionsRoutes:
         client = SimpleNamespace(adapters={"telegram": object()})
 
         with (
-            patch.object(sessions_actions_routes, "_client", client),
+            patch.object(sessions_actions_routes._STATE, "client", client),
             patch.object(sessions_actions_routes, "db") as db,
             patch.dict("sys.modules", {"teleclaude.adapters.discord_adapter": fake_discord_module}),
         ):

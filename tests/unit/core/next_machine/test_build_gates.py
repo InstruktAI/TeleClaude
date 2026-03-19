@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 from teleclaude.core.next_machine.build_gates import (
     _count_test_failures,
-    check_file_has_content,
     format_build_gate_failure,
     run_build_gates,
 )
+from teleclaude.core.next_machine.path_checks import check_file_has_content
 
 
 class _Result:

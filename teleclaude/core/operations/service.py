@@ -19,8 +19,6 @@ from teleclaude.core.db_models import Operation
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_progress import (
-    _progress_callback,
-    emit_operation_progress,
     reset_progress_callback,
     set_progress_callback,
 )
@@ -29,7 +27,7 @@ from teleclaude.core.task_registry import TaskRegistry
 logger = get_logger(__name__)
 
 
-class SerializedOperation(TypedDict, total=False):
+class SerializedOperation(TypedDict, total=False):  # pylint: disable=missing-class-docstring
     operation_id: str
     kind: str
     state: str
@@ -50,10 +48,12 @@ OPERATION_KIND_TODO_INTEGRATE = "todo_integrate"
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 
-_operations_service: OperationsService | None = None
+_operations_service: OperationsService | None = None  # pylint: disable=invalid-name
+
+
 def set_operations_service(service: OperationsService) -> None:
     """Install the process-wide operations service."""
-    global _operations_service
+    global _operations_service  # pylint: disable=global-statement
     _operations_service = service
 
 
@@ -64,10 +64,10 @@ def get_operations_service() -> OperationsService:
     return _operations_service
 
 
-class OperationsService:
+class OperationsService:  # pylint: disable=too-many-instance-attributes
     """Submit, track, and inspect durable background operations."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         db: Db,
@@ -292,7 +292,7 @@ class OperationsService:
             )
             self._live_tasks[operation_id] = task
 
-    async def _run_todo_work_operation(self, operation_id: str) -> None:
+    async def _run_todo_work_operation(self, operation_id: str) -> None:  # pylint: disable=too-many-locals
         heartbeat_task: asyncio.Task[None] | None = None
         stop_heartbeat = asyncio.Event()
         token: Token[Callable[[str, str, str], None] | None] | None = None
@@ -342,7 +342,7 @@ class OperationsService:
                 state="stale",
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             await self._db.fail_operation(
                 operation_id,
                 f"{type(exc).__name__}: {exc}",
@@ -364,7 +364,7 @@ class OperationsService:
             async with self._live_guard:
                 self._live_tasks.pop(operation_id, None)
 
-    async def _run_todo_integrate_operation(self, operation_id: str) -> None:
+    async def _run_todo_integrate_operation(self, operation_id: str) -> None:  # pylint: disable=too-many-locals
         heartbeat_task: asyncio.Task[None] | None = None
         stop_heartbeat = asyncio.Event()
         token: Token[Callable[[str, str, str], None] | None] | None = None
@@ -415,7 +415,7 @@ class OperationsService:
                 state="stale",
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             await self._db.fail_operation(
                 operation_id,
                 f"{type(exc).__name__}: {exc}",

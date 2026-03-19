@@ -114,7 +114,7 @@ class TestGlobalSkyForceSpawn:
         )
 
         with (
-            patch("teleclaude.cli.tui.animations.sprites.get_sky_entities", return_value=[sprite]),
+            patch("teleclaude.cli.tui.animations.sky.get_sky_entities", return_value=[sprite]),
             patch.object(sky.rng, "randint", side_effect=[0, 11]),
         ):
             sky.force_spawn_entity()

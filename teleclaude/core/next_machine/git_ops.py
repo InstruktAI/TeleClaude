@@ -12,8 +12,8 @@ from typing import cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
 from teleclaude.config import config as app_config
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL

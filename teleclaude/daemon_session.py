@@ -98,7 +98,7 @@ class OutputChangeSummary:
     after_snippet: str | None = None
 
 
-class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
+class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Mixin only exposes private hooks.
     """Session and agent event handling methods extracted from TeleClaudeDaemon."""
 
     if TYPE_CHECKING:
@@ -113,9 +113,9 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         headless_snapshot_service: HeadlessSnapshotService
         output_poller: OutputPoller
 
-        def _track_background_task(self, task: asyncio.Task[object], label: str) -> None: ...
-        async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None: ...
-        async def _start_polling_for_session(self, session_id: str, tmux_session_name: str) -> None: ...
+        def _track_background_task(self, task: asyncio.Task[object], label: str) -> None: ...  # pylint: disable=unused-argument
+        async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None: ...  # pylint: disable=unused-argument
+        async def _start_polling_for_session(self, session_id: str, tmux_session_name: str) -> None: ...  # pylint: disable=unused-argument
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
@@ -163,7 +163,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 await worker
             except asyncio.CancelledError:
                 pass
-        polling_coordinator._cleanup_codex_input_state(ctx.session_id)
+        polling_coordinator._cleanup_codex_input_state(ctx.session_id)  # pylint: disable=protected-access
         try:
             await handle_mirror_session_closed(ctx)
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -195,7 +195,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 reason="close_requested",
                 session=session,
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Failed to close session %s: %s", ctx.session_id, exc, exc_info=True)
 
             restored = await db.get_session(ctx.session_id)
@@ -357,7 +357,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         if auto_command:
             try:
                 auto_command_result = await self._execute_auto_command(session_id, auto_command)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.error(
                     "Bootstrap auto-command failed for session %s",
                     session_id,
@@ -410,7 +410,9 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             )
         return await self._wait_for_output_stable(session, timeout_s, quiet_s)
 
-    async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
+    async def _handle_agent_then_message(  # pylint: disable=too-many-locals,too-many-return-statements
+        self, session_id: str, args: list[str]
+    ) -> dict[str, str]:
         """Start agent, wait for TUI input prompt, then inject message."""
         start_time = time.time()
         logger.debug("agent_then_message: started for session=%s", session_id)
@@ -587,7 +589,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
     async def _wait_for_output_change(
         self,
         session: Session,
-        before: str,
+        before: str,  # pylint: disable=unused-argument
         before_digest: str,
         timeout_s: float,
     ) -> tuple[bool, str]:

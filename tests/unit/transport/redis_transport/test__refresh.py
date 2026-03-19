@@ -162,10 +162,6 @@ class TestRequestRefresh:
         transport._schedule_refresh = MagicMock(return_value=True)
         result = transport.request_refresh("remote", "projects", reason="startup")
         transport._schedule_refresh.assert_called_once_with(
-            computer="remote",
-            data_type="projects",
-            reason="startup",
-            project_path=None,
-            force=False,
+            _RefreshRequest(computer="remote", data_type="projects", reason="startup", project_path=None, force=False)
         )
         assert result is True

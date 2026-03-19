@@ -711,7 +711,9 @@ def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, S
 
     artifact_file = _PREPARE_ARTIFACT_FILES.get(artifact_key)
     if artifact_file is not None:
-        from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced  # noqa: I001  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.next_machine.artifacts import (  # pylint: disable=import-outside-toplevel
+            record_artifact_produced,
+        )
 
         record_artifact_produced(cwd, slug, artifact_file)
         return read_phase_state(cwd, slug)

@@ -26,6 +26,7 @@ from teleclaude.session_identity import get_session_id
 
 def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
     """Fire-and-forget lifecycle event emission for prepare state machine."""
+
     async def _emit() -> None:
         try:
             slug = str(payload.get("slug", ""))
@@ -37,9 +38,9 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
                 domain="software-development",
                 description=description,
                 entity=slug,
-                payload=dict(payload),  # type: ignore[arg-type]
+                payload=dict(payload),
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass  # Never block prepare on event emission failure
 
     try:
@@ -49,7 +50,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
         # No running loop (thread or sync CLI context) — fire-and-forget via new event loop
         try:
             asyncio.run(_emit())
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass  # Never block prepare on event emission failure
 
 
@@ -81,7 +82,7 @@ def _has_test_spec_artifacts(cwd: str, slug: str) -> bool:
     return False
 
 
-def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:
+def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:  # pylint: disable=too-many-locals,too-many-return-statements
     """Derive the initial prepare phase from artifact existence when no durable phase is set.
 
     Ghost artifact protection (R5) means a file on disk without a

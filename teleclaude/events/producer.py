@@ -1,4 +1,4 @@
-"""Event producer — emit events to the Redis Stream."""
+"""Event producer - emit events to the Redis Stream."""
 
 from __future__ import annotations
 

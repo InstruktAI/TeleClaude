@@ -78,7 +78,6 @@ async def consume(
         redis: Connected Redis client.
         channel: Full channel key (e.g. ``channel:myproject:events``).
         group: Consumer group name.
-        consumer: Consumer name within the group.
         count: Maximum messages to read per call.
         block_ms: How long to block waiting for messages (0 = no block).
 

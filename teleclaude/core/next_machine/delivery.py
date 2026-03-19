@@ -13,8 +13,8 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine._types import DeliveredDict, DeliveredEntry, RoadmapEntry
+from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine.icebox import clean_dependency_references
 from teleclaude.core.next_machine.roadmap import load_roadmap, save_roadmap
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -214,7 +214,7 @@ def cleanup_delivered_slug(
     clean_dependency_references(cwd, slug)
 
 
-def sweep_completed_groups(cwd: str) -> list[str]:
+def sweep_completed_groups(cwd: str) -> list[str]:  # pylint: disable=too-many-branches
     """Auto-deliver group parents whose children are all delivered.
 
     A group parent is any todo with a non-empty breakdown.todos list.

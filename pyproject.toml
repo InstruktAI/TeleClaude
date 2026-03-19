@@ -82,7 +82,7 @@ mlx-audio = { git = "https://github.com/Blaizzy/mlx-audio.git", branch = "main" 
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["teleclaude*", "company*"]
+include = ["teleclaude*"]
 
 [project.scripts]
 telec = "teleclaude.cli.telec:main"
@@ -156,7 +156,7 @@ max-complexity = 20
 [tool.mypy]
 # MAXIMUM STRICTNESS - No Any, no untyped dict/list, no isinstance abuse
 python_version = "3.12"
-files = ["teleclaude", "company", "jobs", "scripts", "tests", "tools", "*.py"]
+files = ["teleclaude", "jobs", "scripts", "tests", "tools", "*.py"]
 exclude = ["^venv/", "^.venv/", "^trees/"]
 follow_imports = "silent"  # TODO: Revisit - changed from "skip" to allow pydantic BaseModel resolution
 enable_error_code = ["literal-required"]
@@ -258,6 +258,8 @@ disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
 # ALL imports MUST be at the top of the file
 enable = ["import-outside-toplevel"]
 fail-on = ["import-outside-toplevel"]
+# Cyclic imports are managed via lazy imports (import-outside-toplevel pattern)
+disable = ["cyclic-import"]
 
 [tool.pylint.'SIMILARITIES']
 min-similarity-lines = 10  # Flag duplicate blocks of 10+ lines

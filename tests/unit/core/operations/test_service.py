@@ -13,12 +13,13 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from typing_extensions import TypedDict
 
+import teleclaude.core.operation_progress as operation_progress_module
 import teleclaude.core.operations.service as service_module
 from teleclaude.core.db_models import Operation
+from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.operations.service import (
     OPERATION_KIND_TODO_WORK,
     OperationsService,
-    emit_operation_progress,
     get_operations_service,
     set_operations_service,
 )
@@ -69,13 +70,13 @@ class _OperationValues(TypedDict, total=False):
 @pytest.fixture(autouse=True)
 def reset_operations_globals() -> Iterator[None]:
     previous_service = service_module._operations_service
-    token = service_module._progress_callback.set(None)
+    token = operation_progress_module._progress_callback.set(None)
     service_module._operations_service = None
     try:
         yield
     finally:
         service_module._operations_service = previous_service
-        service_module._progress_callback.reset(token)
+        operation_progress_module._progress_callback.reset(token)
 
 
 def _operation(**overrides: Unpack[_OperationValues]) -> Operation:
@@ -145,11 +146,11 @@ def test_emit_operation_progress_forwards_phase_updates_to_active_callback() -> 
     def capture(phase: str, decision: str, reason: str) -> None:
         seen.append((phase, decision, reason))
 
-    token = service_module._progress_callback.set(capture)
+    token = operation_progress_module._progress_callback.set(capture)
     try:
         emit_operation_progress("build", "continue", "tests ready")
     finally:
-        service_module._progress_callback.reset(token)
+        operation_progress_module._progress_callback.reset(token)
 
     assert seen == [("build", "continue", "tests ready")]
 

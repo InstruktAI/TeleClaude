@@ -77,7 +77,7 @@ class TestSessionsRoutes:
                 "teleclaude.api.sessions_routes.command_handlers.list_sessions",
                 new=AsyncMock(return_value=sessions),
             ),
-            patch.object(sessions_routes, "_cache", None),
+            patch.object(sessions_routes._STATE, "cache", None),
         ):
             response = await sessions_routes.list_sessions(
                 request,

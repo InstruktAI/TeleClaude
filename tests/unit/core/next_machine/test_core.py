@@ -610,8 +610,8 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     tmp_path: Path,
 ) -> None:
     """Modifying input.md after recording triggers cascade and emits artifact_invalidated."""
+    from teleclaude.core.next_machine.artifacts import record_artifact_produced
     from teleclaude.core.next_machine.core import next_prepare, write_phase_state
-    from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
 
     cwd, slug = _make_todo(tmp_path)
     long_content = "This is the original content that is long enough to pass the scaffold content check in teleclaude."
@@ -670,8 +670,8 @@ async def test_next_prepare_no_staleness_proceeds_normally(
     tmp_path: Path,
 ) -> None:
     """When no artifacts are stale, phase routing proceeds normally."""
+    from teleclaude.core.next_machine.artifacts import record_artifact_produced
     from teleclaude.core.next_machine.core import next_prepare, write_phase_state
-    from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
 
     cwd, slug = _make_todo(tmp_path)
     _write_file(

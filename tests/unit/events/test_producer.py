@@ -75,9 +75,9 @@ class TestConfigureProducer:
         redis = _make_redis()
         producer = EventProducer(redis)
         configure_producer(producer)
-        assert _mod._producer is producer
+        assert _mod._PRODUCER_STATE["producer"] is producer
         # cleanup
-        _mod._producer = None
+        _mod._PRODUCER_STATE["producer"] = None
 
 
 class TestEmitEvent:
@@ -85,7 +85,7 @@ class TestEmitEvent:
     async def test_raises_when_not_configured(self) -> None:
         import teleclaude.events.producer as _mod
 
-        _mod._producer = None
+        _mod._PRODUCER_STATE["producer"] = None
         with pytest.raises(RuntimeError):
             await emit_event(
                 event="test.event",
@@ -110,7 +110,7 @@ class TestEmitEvent:
             )
             assert result == "9999-0"
         finally:
-            _mod._producer = None
+            _mod._PRODUCER_STATE["producer"] = None
 
     @pytest.mark.asyncio
     async def test_emit_event_passes_visibility(self) -> None:
@@ -130,4 +130,4 @@ class TestEmitEvent:
             stream_data = call_args.args[1]
             assert stream_data["visibility"] == "cluster"
         finally:
-            _mod._producer = None
+            _mod._PRODUCER_STATE["producer"] = None

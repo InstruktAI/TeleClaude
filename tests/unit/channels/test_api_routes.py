@@ -12,8 +12,8 @@ import teleclaude.channels.api_routes as api_routes
 
 
 @pytest.fixture(autouse=True)
-def _reset_redis_transport(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(api_routes, "_redis_transport", None)
+def _reset_redis_transport() -> None:
+    api_routes._TRANSPORT_STATE["transport"] = None
 
 
 class TestTransportConfiguration:
@@ -38,7 +38,7 @@ class TestRoutes:
     @pytest.mark.asyncio
     async def test_publish_to_channel_uses_transport_and_returns_response(self) -> None:
         redis_client = object()
-        transport = SimpleNamespace(_get_redis=AsyncMock(return_value=redis_client))
+        transport = SimpleNamespace(get_redis=AsyncMock(return_value=redis_client))
         api_routes.set_redis_transport(transport)
 
         with patch("teleclaude.channels.api_routes.publish", new=AsyncMock(return_value="170-0")) as mock_publish:
@@ -47,7 +47,7 @@ class TestRoutes:
                 api_routes.PublishRequest(payload={"kind": "deploy"}),
             )
 
-        transport._get_redis.assert_awaited_once_with()
+        transport.get_redis.assert_awaited_once_with()
         mock_publish.assert_awaited_once_with(redis_client, "channel:demo:events", {"kind": "deploy"})
         assert response == api_routes.PublishResponse(channel="channel:demo:events", message_id="170-0")
 
@@ -55,7 +55,7 @@ class TestRoutes:
     @pytest.mark.asyncio
     async def test_list_all_channels_passes_project_filter_to_publisher(self) -> None:
         redis_client = object()
-        transport = SimpleNamespace(_get_redis=AsyncMock(return_value=redis_client))
+        transport = SimpleNamespace(get_redis=AsyncMock(return_value=redis_client))
         api_routes.set_redis_transport(transport)
         listed_channels = [
             {
@@ -71,6 +71,6 @@ class TestRoutes:
         ) as mock_list:
             response = await api_routes.list_all_channels(project="demo")
 
-        transport._get_redis.assert_awaited_once_with()
+        transport.get_redis.assert_awaited_once_with()
         mock_list.assert_awaited_once_with(redis_client, "demo")
         assert response == listed_channels

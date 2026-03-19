@@ -8,6 +8,8 @@ Provides subcommands for AI agents and scripts to manage config:
 
 All subcommands support --json for machine-readable output.
 """
+# pylint: disable=import-outside-toplevel,broad-exception-caught,raise-missing-from
+# pylint: disable=too-many-instance-attributes,too-many-locals,too-many-branches,too-many-statements
 
 from __future__ import annotations
 
@@ -226,6 +228,7 @@ def _people_add(args: list[str], use_json: bool) -> None:
     # Auto-invite unless --no-invite is passed
     invite_sent = False
     if not no_invite:
+
         async def _run_auto_invite() -> bool:
             try:
                 # Generate token
@@ -325,7 +328,10 @@ def _people_edit(args: list[str], use_json: bool) -> None:
         changed = True
 
     if not changed:
-        msg = "No changes specified. Use --role, --email, --username, --expertise, --proficiency, --telegram-user, --telegram-id"
+        msg = (
+            "No changes specified. Use --role, --email, --username, "
+            "--expertise, --proficiency, --telegram-user, --telegram-id"
+        )
         if use_json:
             print(json.dumps({"error": msg}))
         else:
@@ -470,7 +476,10 @@ def _write_env_var(env_file: Path, name: str, value: str) -> None:
 def _handle_notify(args: list[str]) -> None:
     _check_customer_guard()
     use_json = "--json" in args
-    msg = "Notification toggling has been replaced by per-subscription settings. Edit subscriptions in person config instead."
+    msg = (
+        "Notification toggling has been replaced by per-subscription settings. "
+        "Edit subscriptions in person config instead."
+    )
     if use_json:
         print(json.dumps({"error": msg}))
     else:

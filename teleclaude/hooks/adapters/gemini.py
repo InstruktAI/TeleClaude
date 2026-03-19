@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+from typing import cast
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters._stdin import read_stdin_payload
 
 
@@ -16,13 +18,13 @@ class GeminiAdapter:
     mint_events: frozenset[AgentHookEventType] = frozenset({AgentHookEvents.AGENT_SESSION_START})
     supports_hook_checkpoint: bool = True
 
-    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, dict[str, object]]:  # guard: loose-dict
+    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""
         event_type: str = args.event_type
         raw_input, raw_data = read_stdin_payload()
-        return raw_input, event_type, raw_data
+        return raw_input, event_type, cast(JsonDict, raw_data)
 
-    def normalize_payload(self, data: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
+    def normalize_payload(self, data: JsonDict) -> JsonDict:
         """Identity: Gemini already uses canonical field names."""
         return data
 

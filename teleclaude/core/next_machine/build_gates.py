@@ -18,8 +18,6 @@ from teleclaude.cli import demo_validation
 from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName, PhaseStatus, StateValue
 from teleclaude.core.next_machine.path_checks import (
     _has_from_main_marker,
-    _is_scaffold_template,
-    check_file_has_content,
 )
 from teleclaude.core.next_machine.state_io import is_bug_todo
 from teleclaude.git import GitCommandError, Repo
@@ -35,7 +33,7 @@ def _count_test_failures(output: str) -> int:
     return int(match.group(1)) if match else 0
 
 
-def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
+def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint: disable=too-many-branches,too-many-locals
     """Run build gates (tests + demo validation) in the worktree.
 
     Returns (all_passed, output_details).
@@ -45,7 +43,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
 
     # Gate 1: Test suite
     try:
-        test_result = subprocess.run(
+        test_result = subprocess.run(  # pylint: disable=subprocess-run-check
             ["make", "test"],
             cwd=worktree_cwd,
             capture_output=True,
@@ -70,7 +68,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
                     "TELECLAUDE_ENV_PATH": "tests/integration/.env",
                 }
                 try:
-                    retry_result = subprocess.run(
+                    retry_result = subprocess.run(  # pylint: disable=subprocess-run-check
                         [pytest_cmd, "--lf", "-q"],
                         cwd=worktree_cwd,
                         capture_output=True,
@@ -177,6 +175,8 @@ def _is_review_findings_template(content: str) -> bool:
     if has_findings_header and not has_verdict:
         return True
     return False
+
+
 def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool = False) -> tuple[bool, str]:
     """Mechanically verify artifacts for a given phase.
 
@@ -223,7 +223,7 @@ def _verify_state_yaml(todo_base: Path, phase: str, results: list[str]) -> bool:
         if not isinstance(raw_state, dict):
             raise ValueError("state.yaml content is not a mapping")
         state: dict[str, StateValue] = raw_state
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         results.append(f"FAIL: state.yaml is not parseable: {exc}")
         return False
 
@@ -317,7 +317,7 @@ def _verify_build_commits(worktree_cwd: str, results: list[str]) -> bool:
             return True
         results.append("FAIL: no build commits found on worktree branch beyond main")
         return False
-    except (GitCommandError, OSError, Exception) as exc:
+    except (GitCommandError, OSError, Exception) as exc:  # pylint: disable=broad-exception-caught
         results.append(f"FAIL: could not verify commits: {exc}")
         return False
 

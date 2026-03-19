@@ -45,7 +45,7 @@ def _normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
-def read_current_session_email() -> str | None:
+def read_current_session_email() -> str | None:  # pylint: disable=too-many-return-statements
     """Read the current login email from env override or auth state."""
     env_email = (os.environ.get(TUI_AUTH_EMAIL_ENV_KEY) or "").strip()
     if env_email:

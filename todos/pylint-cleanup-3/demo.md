@@ -2,11 +2,24 @@
 
 ## Validation
 
-<!-- Bash code blocks that prove the feature works. -->
-<!-- Blocks are validated by `telec todo demo validate pylint-cleanup-3` (structural check) during build. -->
-<!-- Execution (`telec todo demo run pylint-cleanup-3`) happens on main after merge. -->
+```bash
+pylint teleclaude/adapters/telegram teleclaude/adapters/ui
+```
+
+```bash
+pytest -q \
+  tests/unit/adapters/telegram/test_message_ops.py \
+  tests/unit/adapters/telegram/test_callback_handlers.py \
+  tests/unit/adapters/telegram/test_input_handlers.py \
+  tests/unit/adapters/telegram/test_private_handlers.py \
+  tests/unit/adapters/ui/test_threaded_output.py \
+  tests/unit/adapters/ui/test_output_delivery.py
+```
 
 ## Guided Presentation
 
-<!-- Walk through the delivery step by step. For each step: what to do, what to observe, why it matters. -->
-<!-- The AI presenter reads this top-to-bottom and executes. Write it as a continuous sequence. -->
+Run the `pylint` block first. The expected result is exit code `0` with no violations across
+`teleclaude/adapters/telegram` and `teleclaude/adapters/ui`.
+
+Run the `pytest` block next. The expected result is the adapter-focused regression suite passing,
+showing that the lint cleanup preserved existing Telegram and UI adapter behavior.

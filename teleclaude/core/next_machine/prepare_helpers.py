@@ -4,17 +4,17 @@ Workers call these after producing or consuming artifacts. The machine invokes
 staleness checks on each prepare invocation. All state mutations go through
 read_phase_state/write_phase_state for atomicity.
 """
+# pylint: disable=duplicate-code  # compute_artifact_diff/compute_todo_folder_diff are intentionally mirrored in artifacts.py
 
 from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
 
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.artifacts import (
     artifact_digest,
-    record_artifact_produced,
 )
-from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_io import _run_git_prepare, read_phase_state, write_phase_state
 
@@ -60,7 +60,7 @@ def check_artifact_staleness(cwd: str, slug: str) -> list[str]:
     return [key for key, _ in _ARTIFACT_CASCADE[stale_from:]]
 
 
-def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str) -> str:
+def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str) -> str:  # pylint: disable=unused-argument
     """Run git diff {base_sha}..HEAD -- {artifact_path} and return the diff output."""
     if not base_sha:
         return ""

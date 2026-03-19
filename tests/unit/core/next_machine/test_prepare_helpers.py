@@ -63,13 +63,13 @@ def test_artifact_digest_returns_empty_for_missing_file(tmp_path: Path) -> None:
 
 
 def test_record_artifact_produced_writes_digest_and_produced_at(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
+    from teleclaude.core.next_machine.artifacts import record_artifact_produced
 
     cwd, slug = _make_todo(tmp_path)
     _write_file(tmp_path / "todos" / slug, "input.md", "my input")
     expected_digest = hashlib.sha256(b"my input").hexdigest()
 
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event"):
+    with patch("teleclaude.core.next_machine.artifacts._emit_prepare_event"):
         record_artifact_produced(cwd, slug, "input.md")
 
     state = _read_state(cwd, slug)
@@ -84,12 +84,13 @@ def test_record_artifact_produced_writes_digest_and_produced_at(tmp_path: Path) 
 
 
 def test_check_artifact_staleness_no_changes_returns_empty(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness, record_artifact_produced
+    from teleclaude.core.next_machine.artifacts import record_artifact_produced
+    from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness
 
     cwd, slug = _make_todo(tmp_path)
     _write_file(tmp_path / "todos" / slug, "input.md", "hello")
 
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event"):
+    with patch("teleclaude.core.next_machine.artifacts._emit_prepare_event"):
         record_artifact_produced(cwd, slug, "input.md")
 
     result = check_artifact_staleness(cwd, slug)
@@ -97,13 +98,14 @@ def test_check_artifact_staleness_no_changes_returns_empty(tmp_path: Path) -> No
 
 
 def test_check_artifact_staleness_detects_changed_input(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness, record_artifact_produced
+    from teleclaude.core.next_machine.artifacts import record_artifact_produced
+    from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness
 
     cwd, slug = _make_todo(tmp_path)
     input_file = _write_file(tmp_path / "todos" / slug, "input.md", "original")
     _write_file(tmp_path / "todos" / slug, "requirements.md", "reqs")
 
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event"):
+    with patch("teleclaude.core.next_machine.artifacts._emit_prepare_event"):
         record_artifact_produced(cwd, slug, "input.md")
         record_artifact_produced(cwd, slug, "requirements.md")
 
@@ -117,14 +119,15 @@ def test_check_artifact_staleness_detects_changed_input(tmp_path: Path) -> None:
 
 
 def test_check_artifact_staleness_only_requirements_stale(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness, record_artifact_produced
+    from teleclaude.core.next_machine.artifacts import record_artifact_produced
+    from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness
 
     cwd, slug = _make_todo(tmp_path)
     _write_file(tmp_path / "todos" / slug, "input.md", "stable input")
     reqs_file = _write_file(tmp_path / "todos" / slug, "requirements.md", "original reqs")
     _write_file(tmp_path / "todos" / slug, "implementation-plan.md", "plan")
 
-    with patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event"):
+    with patch("teleclaude.core.next_machine.artifacts._emit_prepare_event"):
         record_artifact_produced(cwd, slug, "input.md")
         record_artifact_produced(cwd, slug, "requirements.md")
         record_artifact_produced(cwd, slug, "implementation-plan.md")
