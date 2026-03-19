@@ -139,34 +139,82 @@ WHEN WORKER COMPLETES:
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-specs": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
-2. telec todo mark-phase {args} --phase test_spec_review --status <verdict from worker: approve or needs_work>
-3. telec sessions end <session_id>
-4. Call {next_call}
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+1. Read worker output via get_session_data to extract verdict
+2. If verdict is APPROVE:
+   a. telec todo mark-phase {args} --phase test_spec_review --status approve
+   b. telec sessions end <session_id>
+   c. Call {next_call}
+3. If verdict is NEEDS WORK — PEER CONVERSATION PROTOCOL (keep reviewer alive):
+   a. DO NOT end the reviewer session — keep it alive throughout peer iteration
+   b. telec todo mark-phase {args} --phase test_spec_review --status needs_work
+   c. Dispatch fixer: telec sessions run --command /next-build-specs --args {args} \
+        --project <project-root> --subfolder trees/{args}
+   d. Save <reviewer_session_id> and <fixer_session_id>
+   e. Tell the reviewer to start a direct conversation with the fixer:
+        telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \
+        Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \
+        Collaborate until all findings are resolved, then report FIX COMPLETE." (you will use regular send, NOT --direct)
+   f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
+   g. When fixer reports FIX COMPLETE:
+      - telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>
+      - telec todo mark-phase {args} --phase test_specs --status complete
+      - Call {next_call}
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-requirements": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
-2. telec todo mark-phase {args} --phase requirements_review --status <verdict from worker: approve or needs_work>
-3. telec sessions end <session_id>
-4. Call {next_call}
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+1. Read worker output via get_session_data to extract verdict
+2. If verdict is APPROVE:
+   a. telec todo mark-phase {args} --phase requirements_review --status approve
+   b. telec sessions end <session_id>
+   c. Call {next_call}
+3. If verdict is NEEDS WORK — PEER CONVERSATION PROTOCOL (keep reviewer alive):
+   a. DO NOT end the reviewer session — keep it alive throughout peer iteration
+   b. telec todo mark-phase {args} --phase requirements_review --status needs_work
+   c. Dispatch fixer: telec sessions run --command /next-prepare-discovery --args {args} \
+        --project <project-root>
+   d. Save <reviewer_session_id> and <fixer_session_id>
+   e. Tell the reviewer to start a direct conversation with the fixer:
+        telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \
+        Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \
+        Collaborate until all findings are resolved, then report FIX COMPLETE." (you will use regular send, NOT --direct)
+   f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
+   g. When fixer reports FIX COMPLETE:
+      - telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>
+      - telec todo mark-phase {args} --phase requirements --status complete
+      - Call {next_call}
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-plan": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
-2. telec todo mark-phase {args} --phase plan_review --status <verdict from worker: approve or needs_work>
-3. telec sessions end <session_id>
-4. Call {next_call}
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+1. Read worker output via get_session_data to extract verdict
+2. If verdict is APPROVE:
+   a. telec todo mark-phase {args} --phase plan_review --status approve
+   b. telec sessions end <session_id>
+   c. Call {next_call}
+3. If verdict is NEEDS WORK — PEER CONVERSATION PROTOCOL (keep reviewer alive):
+   a. DO NOT end the reviewer session — keep it alive throughout peer iteration
+   b. telec todo mark-phase {args} --phase plan_review --status needs_work
+   c. Dispatch fixer: telec sessions run --command /next-prepare-draft --args {args} \
+        --project <project-root>
+   d. Save <reviewer_session_id> and <fixer_session_id>
+   e. Tell the reviewer to start a direct conversation with the fixer:
+        telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \
+        Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \
+        Collaborate until all findings are resolved, then report FIX COMPLETE." (you will use regular send, NOT --direct)
+   f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
+   g. When fixer reports FIX COMPLETE:
+      - telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>
+      - telec todo mark-phase {args} --phase implementation_plan --status complete
+      - Call {next_call}
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
 }
 
