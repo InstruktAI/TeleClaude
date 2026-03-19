@@ -1,9 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: fix-integrator-session-start-no-focus
+  date: '2026-03-19'
+  commit: 890ea3d622d1
 - slug: pylint-consolidation
   date: '2026-03-19'
   commit: 1f32d106a8f3
-
 - slug: auto-commit-bookkeeping
   date: '2026-03-18'
   commit: 88b54b81e647
