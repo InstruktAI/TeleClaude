@@ -1,5 +1,9 @@
 # Delivered work items. Newest first.
 
+- slug: pylint-consolidation
+  date: '2026-03-19'
+  commit: 1f32d106a8f3
+
 - slug: auto-commit-bookkeeping
   date: '2026-03-18'
   commit: 88b54b81e647

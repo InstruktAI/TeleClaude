@@ -218,7 +218,11 @@ class TelecAppWsMixin:
         sessions_view.update_session(session)
 
         # Auto-select new user-initiated sessions only while Sessions tab is active.
-        if not session.initiator_session_id:
+        # Daemon-spawned sessions (with a job role in session_metadata) must not
+        # steal focus — they have no initiator_session_id but are not user-initiated.
+        meta = session.session_metadata
+        is_daemon_spawned = bool(meta and meta.get("job"))
+        if not session.initiator_session_id and not is_daemon_spawned:
             tabs = self.query_one("#main-tabs", TabbedContent)  # type: ignore[attr-defined]
             if tabs.active == "sessions":
                 sessions_view.request_select_session(session.session_id, request_focus=True)

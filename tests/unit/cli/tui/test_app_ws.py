@@ -28,6 +28,7 @@ class _SessionsView:
         self.closed: list[str] = []
         self.updated: list[object] = []
         self.pending_applied: int = 0
+        self.select_requests: list[tuple[str, bool]] = []
 
     def update_activity(self, session_id: str, activity_type: str, detail: str | None = None) -> None:
         self.activity_calls.append((session_id, activity_type, detail))
@@ -38,14 +39,29 @@ class _SessionsView:
     def update_session(self, session: object) -> None:
         self.updated.append(session)
 
+    def request_select_session(self, session_id: str, request_focus: bool = False) -> None:
+        self.select_requests.append((session_id, request_focus))
+
     def _apply_pending_selection(self) -> None:
         self.pending_applied += 1
 
 
+class _Tabs:
+    def __init__(self, active: str = "sessions") -> None:
+        self.active = active
+
+
 class _WsApp(app_ws.TelecAppWsMixin):
-    def __init__(self, sessions_view: _SessionsView, pane_bridge: _PaneBridge) -> None:
+    def __init__(
+        self,
+        sessions_view: _SessionsView,
+        pane_bridge: _PaneBridge,
+        *,
+        tabs: _Tabs | None = None,
+    ) -> None:
         self._sessions_view = sessions_view
         self._pane_bridge = pane_bridge
+        self._tabs = tabs or _Tabs()
         self._post_messages: list[object] = []
         self._session_agents = {"session-1": "codex"}
         self._activity_trigger = None
@@ -57,6 +73,8 @@ class _WsApp(app_ws.TelecAppWsMixin):
             return self._sessions_view
         if selector == "#pane-bridge":
             return self._pane_bridge
+        if selector == "#main-tabs":
+            return self._tabs
         raise AssertionError(selector)
 
     def post_message(self, message: object) -> None:
@@ -161,4 +179,53 @@ def test_on_session_updated_updates_bridge_catalog() -> None:
     assert len(pane_bridge.updated_sessions) == 1
     assert pane_bridge.updated_sessions[0].tmux_session_name == "tc_session1"
     assert len(sessions_view.updated) == 1
+    assert sessions_view.pending_applied == 1
+
+
+@pytest.mark.unit
+def test_on_session_started_daemon_spawned_session_does_not_auto_focus() -> None:
+    """Daemon-spawned sessions (with session_metadata.job) must not steal focus."""
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge, tabs=_Tabs(active="sessions"))
+    # Integrator session: no initiator_session_id, but has session_metadata with job
+    session = SessionDTO(
+        session_id="integrator-1",
+        title="/next-integrate",
+        status="idle",
+        computer="c1",
+        active_agent="claude",
+        session_metadata={"system_role": "integrator", "job": "integrator"},
+    )
+
+    from teleclaude.cli.tui.messages import SessionStarted
+
+    app.on_session_started(SessionStarted(session))
+
+    # Session should be updated in views but NOT auto-selected/focused
+    assert len(sessions_view.updated) == 1
+    assert sessions_view.select_requests == []
+    assert sessions_view.pending_applied == 0
+
+
+@pytest.mark.unit
+def test_on_session_started_user_initiated_session_auto_focuses() -> None:
+    """User-initiated sessions (no initiator, no job metadata) should auto-focus."""
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge, tabs=_Tabs(active="sessions"))
+    # User-initiated session: no initiator_session_id, no session_metadata
+    session = SessionDTO(
+        session_id="user-session-1",
+        title="my session",
+        status="idle",
+        computer="c1",
+        active_agent="claude",
+    )
+
+    from teleclaude.cli.tui.messages import SessionStarted
+
+    app.on_session_started(SessionStarted(session))
+
+    assert sessions_view.select_requests == [("user-session-1", True)]
     assert sessions_view.pending_applied == 1
