@@ -37,7 +37,7 @@ from teleclaude.cli.models import (
     UnsubscribeRequest,
     WsEvent,
 )
-from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.session_identity import read_current_session_email
 from teleclaude.constants import API_SOCKET_PATH
 
 logger = get_logger(__name__)

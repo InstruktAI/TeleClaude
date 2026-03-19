@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import sys
 
+from teleclaude.cli.cartridge_cli import handle_cartridge_cli
+from teleclaude.cli.config_cli import handle_config_cli
+from teleclaude.cli.config_cmd import handle_config_command
+from teleclaude.cli.telec._run_tui import _run_tui_config_mode
 from teleclaude.cli.telec.help import _usage
 
 __all__ = [
@@ -31,20 +35,12 @@ def _handle_config(args: list[str]) -> None:
         if not sys.stdin.isatty():
             print("Error: Interactive config requires a terminal.")
             raise SystemExit(1)
-        from teleclaude.cli.telec._run_tui import _run_tui_config_mode
-
         _run_tui_config_mode(guided=True)
     elif subcommand in ("get", "patch"):
-        from teleclaude.cli.config_cmd import handle_config_command
-
         handle_config_command(args)
     elif subcommand == "cartridges":
-        from teleclaude.cli.cartridge_cli import handle_cartridge_cli
-
         handle_cartridge_cli(args[1:])
     elif subcommand in ("people", "env", "notify", "validate", "invite"):
-        from teleclaude.cli.config_cli import handle_config_cli
-
         handle_config_cli(args)
     else:
         print(f"Unknown config subcommand: {subcommand}")

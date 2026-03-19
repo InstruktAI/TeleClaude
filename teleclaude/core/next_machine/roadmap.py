@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine._types import (
     ItemPhase,
     PhaseName,
@@ -19,7 +20,7 @@ from teleclaude.core.next_machine._types import (
     RoadmapDict,
     RoadmapEntry,
 )
-from teleclaude.core.next_machine.state_io import read_phase_state, read_text_sync, write_text_sync
+from teleclaude.core.next_machine.state_io import read_phase_state
 
 
 def _roadmap_path(cwd: str) -> Path:

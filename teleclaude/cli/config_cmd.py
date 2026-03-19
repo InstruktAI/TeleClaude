@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.cli.telec.help import _maybe_show_help
+
 
 def handle_config_command(args: list[str]) -> None:
     """Dispatcher for config subcommands."""
@@ -22,8 +24,6 @@ def handle_config_command(args: list[str]) -> None:
 
     # Intercept --help/-h at any level
     if subcommand in ("--help", "-h") or "--help" in sub_args or "-h" in sub_args:
-        from teleclaude.cli.telec import _maybe_show_help
-
         _maybe_show_help("config", args)
         return
 

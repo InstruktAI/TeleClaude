@@ -7,13 +7,15 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
+from teleclaude.git import Repo
+from teleclaude.project_setup._orchestration import run_project_init_flow
+
 logger = get_logger(__name__)
 
 
 def _resolve_help_desk_dir() -> Path:
     """Resolve help desk directory from config or default sibling location."""
-    from teleclaude.config import config
-
     configured = config.computer.help_desk_dir
     if configured:
         return Path(configured).expanduser().resolve()
@@ -44,15 +46,8 @@ def bootstrap_help_desk() -> None:
     shutil.copytree(template_dir, help_desk_dir)
 
     try:
-        # git init
-        from teleclaude.git import Repo
-
         repo = Repo.init(help_desk_dir)
-
-        # Run telec init inside the new directory
-        from teleclaude.project_setup.init_flow import init_project
-
-        init_project(help_desk_dir)
+        run_project_init_flow(help_desk_dir)
 
         # Initial commit
         repo.git.add(".")

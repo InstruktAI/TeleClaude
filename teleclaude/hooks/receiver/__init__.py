@@ -8,26 +8,27 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
-
-if TYPE_CHECKING:
-    from teleclaude.config.schema import PersonEntry
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import configure_logging, get_logger
+from sqlmodel import Session as SqlSession
 
 from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, is_internal_user_text
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
-from teleclaude.core.models import JsonDict
+from teleclaude.core.identity import derive_identity_key
+from teleclaude.core.models import JsonDict, SessionAdapterMetadata
 from teleclaude.hooks.adapters import get_adapter
+from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
     is_checkpoint_disabled,
     set_checkpoint_flag,
 )
+from teleclaude.hooks.payload_io import read_stdin_payload
 from teleclaude.hooks.receiver._session import (
     _create_sync_engine,
     _find_session_id_by_native,
@@ -45,6 +46,10 @@ from teleclaude.hooks.receiver._session import (
     _session_map_key,
     _write_session_map_atomic,
 )
+from teleclaude.utils.transcript._extraction import extract_workdir_from_transcript
+
+if TYPE_CHECKING:
+    from teleclaude.config.schema import PersonEntry
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -81,8 +86,6 @@ def _maybe_checkpoint_output(
     if stop_hook_active and consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG):
         logger.info("Checkpoint skipped (recheck limit reached)", session_id=session_id, agent=agent)
         return None
-
-    from sqlmodel import Session as SqlSession
 
     try:
         with SqlSession(_create_sync_engine()) as db_session:
@@ -121,14 +124,10 @@ def _maybe_checkpoint_output(
     logger.debug("Checkpoint eval for session %s (%.1fs elapsed)", session_id, elapsed)
 
     # Build context-aware checkpoint message from git diff + transcript
-    from teleclaude.hooks.checkpoint import get_checkpoint_content
-
     # Prefer persisted session project_path (source of truth). Fall back to
     # transcript-derived workdir only when project_path is missing.
     project_path = str(getattr(row, "project_path", "") or "")
     if not project_path and transcript_path:
-        from teleclaude.utils.transcript import extract_workdir_from_transcript
-
         project_path = extract_workdir_from_transcript(transcript_path) or ""
     try:
         agent_enum = AgentName.from_str(agent)
@@ -218,11 +217,6 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
     person_header: str | None = None
     if session_id:
         try:
-            from sqlmodel import Session as SqlSession
-
-            from teleclaude.core.identity import derive_identity_key
-            from teleclaude.core.models import SessionAdapterMetadata
-
             with SqlSession(_create_sync_engine()) as db_session:
                 row = db_session.get(db_models.Session, session_id)
                 if row:
@@ -270,16 +264,7 @@ def _parse_args() -> argparse.Namespace:
 
 # guard: loose-dict-func - Raw stdin JSON payload at process boundary.
 def _read_stdin() -> tuple[str, dict[str, object]]:
-    raw_input = ""
-    data: dict[str, object] = {}
-    if not sys.stdin.isatty():
-        raw_input = sys.stdin.read()
-        if raw_input.strip():
-            parsed = json.loads(raw_input)
-            if not isinstance(parsed, dict):
-                raise ValueError("Hook stdin payload must be a JSON object")
-            data = cast(dict[str, object], parsed)
-    return raw_input, data
+    return read_stdin_payload()
 
 
 def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:
@@ -309,8 +294,6 @@ def _enqueue_hook_event(
     """Persist hook event to local outbox for durable delivery."""
     now = datetime.now(UTC).isoformat()
     payload_json = json.dumps(data)
-    from sqlmodel import Session as SqlSession
-
     with SqlSession(_create_sync_engine()) as session:
         row = db_models.HookOutbox(
             session_id=session_id,
@@ -339,8 +322,6 @@ def _update_session_native_fields(
     """
     if not native_log_file and not native_session_id:
         return
-    from sqlmodel import Session as SqlSession
-
     with SqlSession(_create_sync_engine()) as session:
         row = session.get(db_models.Session, session_id)
         if not row:

@@ -26,12 +26,7 @@ from teleclaude.core.next_machine._types import (
     PreparePhase,
     StateValue,
 )
-from teleclaude.core.next_machine.build_gates import (
-    check_file_has_content,
-    format_build_gate_failure,
-    run_build_gates,
-    verify_artifacts,
-)
+from teleclaude.core.next_machine.build_gates import format_build_gate_failure, run_build_gates, verify_artifacts
 from teleclaude.core.next_machine.delivery import sweep_completed_groups
 from teleclaude.core.next_machine.git_ops import (
     _has_meaningful_diff,
@@ -47,6 +42,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
     format_uncommitted_changes,
 )
+from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     add_to_roadmap,
     check_dependencies_satisfied,
@@ -76,6 +72,7 @@ from teleclaude.core.next_machine.worktrees import (
     _ensure_todo_on_remote_main,
     ensure_worktree_with_policy_async,
 )
+from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
@@ -119,8 +116,6 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         elapsed_ms,
     )
     try:
-        from teleclaude.core.operations import emit_operation_progress
-
         emit_operation_progress(phase, decision, reason)
     except Exception:
         logger.debug("Operation progress emission skipped", exc_info=True)

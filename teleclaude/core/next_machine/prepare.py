@@ -15,6 +15,7 @@ from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, PreparePhas
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import format_tool_call
 from teleclaude.core.next_machine.prepare_events import _derive_prepare_phase, _emit_prepare_event
+from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness
 from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
 from teleclaude.core.next_machine.roadmap import add_to_roadmap, slug_in_roadmap
 from teleclaude.core.next_machine.slug_resolution import (
@@ -72,10 +73,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
 
             # Artifact staleness check (R6): run before routing
-            from teleclaude.core.next_machine.prepare_helpers import (
-                check_artifact_staleness,
-            )
-
             stale_artifacts = await asyncio.to_thread(check_artifact_staleness, cwd, resolved_slug)
             if stale_artifacts:
                 earliest = stale_artifacts[0] if stale_artifacts else ""

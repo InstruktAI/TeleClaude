@@ -10,6 +10,8 @@ from pathlib import Path
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
+from teleclaude.output_projection.conversation_projector import project_entries
+from teleclaude.output_projection.models import THREADED_CLEAN_POLICY, VisibilityPolicy
 
 from ._block_renderers import (
     _extract_tool_subject,
@@ -309,9 +311,6 @@ def render_clean_agent_output(
     # Policy: thinking visible, tool invocations visible, tool results hidden.
     # Behavior is identical to the previous iter_assistant_blocks() iteration;
     # the projection layer now owns the visibility decision.
-    from teleclaude.output_projection.conversation_projector import project_entries  # pylint: disable=C0415
-    from teleclaude.output_projection.models import THREADED_CLEAN_POLICY  # pylint: disable=C0415
-
     lines: list[str] = []
     emitted = False
     last_entry_dt: datetime | None = None
@@ -438,9 +437,6 @@ def render_agent_output(
     # Route through canonical conversation projection with a policy derived
     # from the caller's include_tools / include_tool_results flags.
     # Visibility decision is now owned by the projection layer.
-    from teleclaude.output_projection.conversation_projector import project_entries  # pylint: disable=C0415
-    from teleclaude.output_projection.models import VisibilityPolicy  # pylint: disable=C0415
-
     render_policy = VisibilityPolicy(
         include_tools=include_tools,
         include_tool_results=include_tool_results,

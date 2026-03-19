@@ -8,9 +8,9 @@ Note: slug_in_roadmap lives in roadmap.py (used by check_dependencies_satisfied 
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, ItemPhase, PhaseName, PhaseStatus
+from teleclaude.core.next_machine.path_checks import check_file_exists, check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     check_dependencies_satisfied,
     load_roadmap,
@@ -31,8 +31,6 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
     - implementation-plan.md missing
     - phase still pending (needs promotion to ready)
     """
-    from teleclaude.core.next_machine.build_gates import check_file_has_content  # lazy: build_gates created later
-
     for slug in load_roadmap_slugs(cwd):
         phase = get_item_phase(cwd, slug)
 
@@ -200,13 +198,6 @@ async def resolve_slug_async(
 ) -> tuple[str | None, bool, str]:
     """Async wrapper for resolve_slug using a thread to avoid blocking."""
     return await asyncio.to_thread(resolve_slug, cwd, slug, ready_only, dependencies)
-
-
-def check_file_exists(cwd: str, relative_path: str) -> bool:
-    """Check if a file exists relative to cwd."""
-    return (Path(cwd) / relative_path).exists()
-
-
 def resolve_canonical_project_root(cwd: str) -> str:
     """Resolve canonical repository root from cwd.
 

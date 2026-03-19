@@ -116,7 +116,9 @@ make install
 make init
 ```
 
-`telec init` synchronizes your agents, documentation, and hooks. It also offers optional AI-driven project analysis that generates doc snippets from your codebase, and prompts for release-channel enrollment. From there, `telec docs index` is your entry point into the knowledge system.
+`make install` and `make init` are for this TeleClaude repo itself. They set up the development checkout, tooling, and local repo wiring.
+
+`telec init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up docs sync, hooks, local runtime integration, and optional project analysis. It is project setup, not repo installation.
 
 ---
 

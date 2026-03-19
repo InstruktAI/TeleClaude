@@ -6,9 +6,11 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
+from teleclaude.cli.session_revive import handle_revive_command
 from teleclaude.cli.tool_client import _read_caller_session_id, print_json, tool_api_call
 
 __all__ = [
@@ -66,9 +68,7 @@ def handle_sessions(args: list[str]) -> None:
     elif sub == "revive":
         # Keep revive behavior centralized in telec CLI entrypoint since it
         # includes post-revive kick and optional tmux attach semantics.
-        from teleclaude.cli.telec.handlers.misc import _handle_revive
-
-        _handle_revive(rest)
+        handle_revive_command(rest)
     elif sub == "end":
         handle_sessions_end(rest)
     elif sub == "unsubscribe":
@@ -664,8 +664,6 @@ def handle_sessions_widget(args: list[str]) -> None:
     if "--help" in args or "-h" in args:
         print(handle_sessions_widget.__doc__ or "")
         return
-
-    import json
 
     data_str: str | None = None
 

@@ -311,12 +311,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "init": CommandDef(
-        desc="Initialize docs sync, auto-rebuild watcher, and optional project enrichment",
+        desc="Initialize the current project for TeleClaude runtime use",
         notes=[
-            "Sets up git hooks, syncs artifacts, installs file watchers.",
-            "Optionally runs AI-driven project analysis to generate doc snippets.",
-            "First init offers enrichment; re-init offers refresh of existing analysis.",
-            "Prompts for release-channel enrollment (alpha/beta/stable).",
+            "This is project wiring, not TeleClaude repo installation.",
+            "Sets up hooks, docs sync, local runtime integration, and file watchers.",
+            "Can run optional AI project analysis to generate doc snippets.",
+            "Safe to run again when project setup needs to be refreshed.",
         ],
         auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),

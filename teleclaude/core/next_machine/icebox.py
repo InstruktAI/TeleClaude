@@ -10,9 +10,9 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine._types import RoadmapDict, RoadmapEntry
 from teleclaude.core.next_machine.roadmap import load_roadmap, save_roadmap
-from teleclaude.core.next_machine.state_io import read_text_sync, write_text_sync
 
 
 def _icebox_dir(cwd: str) -> Path:

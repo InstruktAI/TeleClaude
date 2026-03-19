@@ -8,7 +8,6 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import copy
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,33 +27,11 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
+from teleclaude.core.next_machine.file_io import _file_sha256, read_text_sync, write_text_sync
+from teleclaude.core.next_machine.git_ops import has_uncommitted_changes
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# File helpers
-# ---------------------------------------------------------------------------
-
-
-def read_text_sync(path: Path) -> str:
-    """Read text from a file in a typed sync wrapper."""
-    return path.read_text(encoding="utf-8")
-
-
-def write_text_sync(path: Path, content: str) -> None:
-    """Write text to a file in a typed sync wrapper."""
-    path.write_text(content, encoding="utf-8")
-
-
-def _file_sha256(path: Path) -> str:
-    """Return sha256 digest for a file."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8192), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
 
 # ---------------------------------------------------------------------------
 # Git primitives (needed by mark operations below)
@@ -345,7 +322,7 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
             grounding_dict["base_sha"] = current_sha.strip()
         input_path = Path(cwd) / "todos" / slug / "input.md"
         if input_path.exists():
-            grounding_dict["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
+            grounding_dict["input_digest"] = _file_sha256(input_path)
         grounding_dict["valid"] = True
         grounding_dict["last_grounded_at"] = datetime.now(UTC).isoformat()
         grounding_dict["invalidation_reason"] = ""
@@ -363,8 +340,6 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
     FINALIZE_READY. The record becomes the single source of truth consumed by
     the subsequent slug-specific `telec todo work {slug}` handoff step.
     """
-    from teleclaude.core.next_machine.git_ops import has_uncommitted_changes  # lazy: avoids circular dep
-
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not Path(worktree_cwd).exists():
         raise ValueError(f"worktree not found at {worktree_cwd}")
@@ -676,7 +651,7 @@ def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
     if rc == 0 and current_sha.strip():
         grounding["base_sha"] = current_sha.strip()
     if input_path.exists():
-        grounding["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
+        grounding["input_digest"] = _file_sha256(input_path)
     state["grounding"] = grounding
 
     write_phase_state(cwd, slug, state)
@@ -711,9 +686,20 @@ def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, S
 
     artifact_file = _PREPARE_ARTIFACT_FILES.get(artifact_key)
     if artifact_file is not None:
-        from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced
-
-        record_artifact_produced(cwd, slug, artifact_file)
+        state = read_phase_state(cwd, slug)
+        artifacts = state.get("artifacts", {})
+        if not isinstance(artifacts, dict):
+            artifacts = {}
+        entry = artifacts.get(artifact_key, {})
+        if not isinstance(entry, dict):
+            entry = {}
+        artifact_path = Path(cwd) / "todos" / slug / artifact_file
+        entry["digest"] = _file_sha256(artifact_path) if artifact_path.exists() else ""
+        entry["produced_at"] = datetime.now(UTC).isoformat()
+        entry["stale"] = False
+        artifacts[artifact_key] = entry
+        state["artifacts"] = artifacts
+        write_phase_state(cwd, slug, state)
         return read_phase_state(cwd, slug)
 
     state = read_phase_state(cwd, slug)

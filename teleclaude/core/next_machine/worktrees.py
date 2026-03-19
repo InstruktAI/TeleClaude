@@ -18,6 +18,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.next_machine.file_io import _file_sha256
 from teleclaude.core.next_machine._types import (
     _PREP_INPUT_FILES,
     _PREP_ROOT_INPUT_FILES,
@@ -26,7 +27,6 @@ from teleclaude.core.next_machine._types import (
     EnsureWorktreeResult,
     WorktreePrepDecision,
 )
-from teleclaude.core.next_machine.state_io import _file_sha256
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)

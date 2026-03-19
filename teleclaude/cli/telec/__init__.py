@@ -11,7 +11,7 @@ _BOOT = _t.monotonic()
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.session_identity import read_current_session_email
 
 # Re-export TUI runners
 from teleclaude.cli.telec._run_tui import _run_tui, _run_tui_config_mode
@@ -144,12 +144,7 @@ from teleclaude.cli.telec.surface import (  # type: ignore[attr-defined]
     Flag,
     TelecCommand,
 )
-from teleclaude.cli.tool_commands import (
-    handle_agents,
-    handle_channels,
-    handle_operations,
-    handle_sessions,
-)
+from teleclaude.cli.tool_commands import handle_agents, handle_channels, handle_operations, handle_sessions
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
 from teleclaude.logging_config import setup_logging
 from teleclaude.project_setup import init_project

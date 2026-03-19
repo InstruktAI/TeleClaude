@@ -9,10 +9,20 @@ import uuid
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import create_engine
+from sqlalchemy import event as sa_event
+from sqlmodel import Session as SqlSession
+from sqlmodel import select
 
 from teleclaude.config import config
 from teleclaude.core import db_models
+from teleclaude.memory.context import generate_context_sync
 from teleclaude.paths import SESSION_MAP_PATH
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - platform-specific import
+    fcntl = None
 
 logger = get_logger("teleclaude.hooks.receiver")
 
@@ -37,9 +47,6 @@ __all__ = [
 
 def _create_sync_engine() -> object:
     """Create a sync SQLAlchemy engine with SQLite PRAGMAs set at connect time."""
-    from sqlalchemy import create_engine
-    from sqlalchemy import event as sa_event
-
     engine = create_engine(f"sqlite:///{config.database.path}")
 
     @sa_event.listens_for(engine, "connect")
@@ -58,8 +65,6 @@ def _create_sync_engine() -> object:
 def _get_memory_context(project_name: str, identity_key: str | None = None) -> str:
     """Fetch pre-formatted memory context from local database."""
     try:
-        from teleclaude.memory.context import generate_context_sync
-
         db_path = str(config.database.path)
         return generate_context_sync(project_name, db_path, identity_key=identity_key)
     except Exception:
@@ -132,8 +137,6 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
     """
     if not native_session_id:
         return True
-
-    from sqlmodel import Session as SqlSession
 
     try:
         with SqlSession(_create_sync_engine()) as session:
@@ -230,8 +233,6 @@ def _resolve_or_refresh_session_id(
     if not candidate_session_id or not raw_native_session_id:
         return candidate_session_id
 
-    from sqlmodel import Session as SqlSession
-
     try:
         with SqlSession(_create_sync_engine()) as session:
             row = session.get(db_models.Session, candidate_session_id)
@@ -279,9 +280,6 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
     """Look up the latest non-closed session for a native session id."""
     if not native_session_id:
         return None
-    from sqlmodel import Session as SqlSession
-    from sqlmodel import select
-
     try:
         with SqlSession(_create_sync_engine()) as session:
             statement = (
@@ -314,9 +312,8 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
     try:
         with open(lock_path, "w", encoding="utf-8") as lock_file:
             try:
-                import fcntl
-
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             except Exception:
                 pass
             data = _load_session_map(path)

@@ -39,13 +39,10 @@ from teleclaude.constants import is_internal_user_text
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
-from teleclaude.utils.transcript import (
-    _get_entries_for_agent,
-    _is_compaction_entry,
-    _is_user_tool_result_only_message,
-    _parse_timestamp,
-    normalize_transcript_entry_message,
-)
+from teleclaude.utils.transcript._iterators import _get_entries_for_agent
+from teleclaude.utils.transcript._parsers import normalize_transcript_entry_message
+from teleclaude.utils.transcript._tool_calls import _is_compaction_entry, _is_user_tool_result_only_message
+from teleclaude.utils.transcript._utils import _parse_timestamp
 
 logger = logging.getLogger(__name__)
 
