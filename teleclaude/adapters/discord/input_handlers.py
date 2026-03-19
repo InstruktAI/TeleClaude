@@ -81,7 +81,6 @@ class InputHandlersMixin:
     _fit_message_text: Callable[..., str]
     _resolve_project_from_forum: Callable[[int], str | None]
     _resolve_interaction_forum_id: Callable[[object], Awaitable[int | None]]
-    _get_channel: Callable[[int], Awaitable[object | None]]
     _resolve_forum_context: Callable[[object], tuple[str, str | None]]
     _discord_actor_name: Callable[[object, str], str]
     _discord_actor_avatar_url: Callable[[object], str | None]

@@ -6,7 +6,7 @@ Handles guild resolution, channel/category/forum creation, and config persistenc
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -19,7 +19,12 @@ logger = get_logger(__name__)
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
 config_persist_exceptions = (AttributeError, OSError, TypeError, ValueError, yaml.YAMLError)
-discord_operation_exceptions = (AttributeError, RuntimeError, TypeError, ValueError)
+discord_operation_exceptions: tuple[type[Exception], ...] = (
+    AttributeError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
 
 try:
     from discord import DiscordException
@@ -45,10 +50,14 @@ class ProvisioningMixin:
 
     if TYPE_CHECKING:
         _client: object
-        _parse_optional_int: Callable[[object], int | None]
+
+        def _parse_optional_int(self, value: object) -> int | None: ...
+
         _require_async_callable: Callable[..., AsyncDiscordCallable]
-        _get_channel: Callable[[int], Awaitable[object | None]]
-        _is_forum_channel: Callable[[object], bool]
+
+        async def _get_channel(self, channel_id: int) -> object | None: ...
+
+        def _is_forum_channel(self, channel: object) -> bool: ...
 
     async def resolve_guild(self) -> object | None:
         """Public wrapper for guild resolution used by infrastructure callers."""
@@ -70,15 +79,13 @@ class ProvisioningMixin:
             fetch_guild_fn = getattr(self._client, "fetch_guild", None)
             if callable(fetch_guild_fn):
                 try:
-                    fetch_guild = cast(
-                        Callable[[int], Awaitable[object]],
-                        self._require_async_callable(fetch_guild_fn, label="fetch_guild"),
-                    )
+                    fetch_guild = self._require_async_callable(fetch_guild_fn, label="fetch_guild")
                     guild = await fetch_guild(self._guild_id)
                 except discord_operation_exceptions as exc:
                     logger.debug("Failed to fetch guild %s: %s", self._guild_id, exc)
 
-        return guild  # type: ignore[no-any-return]
+        resolved_guild: object | None = guild
+        return resolved_guild
 
     async def _find_or_create_category(self, guild: object, name: str) -> object | None:
         """Find an existing category by name, or create one.
@@ -105,10 +112,7 @@ class ProvisioningMixin:
             return None
 
         try:
-            create_category = cast(
-                Callable[..., Awaitable[object]],
-                self._require_async_callable(create_fn, label="guild.create_category"),
-            )
+            create_category = self._require_async_callable(create_fn, label="guild.create_category")
             category = await create_category(name=name)
             logger.info("Created Discord category: %s (id=%s)", name, getattr(category, "id", "?"))
             return category
@@ -141,10 +145,7 @@ class ProvisioningMixin:
             return None
 
         try:
-            create_forum = cast(
-                Callable[..., Awaitable[object]],
-                self._require_async_callable(create_fn, label="guild.create_forum"),
-            )
+            create_forum = self._require_async_callable(create_fn, label="guild.create_forum")
             if category is not None:
                 forum = await create_forum(name=name, topic=topic, category=category)
             else:
@@ -174,10 +175,7 @@ class ProvisioningMixin:
             return None
 
         try:
-            create_text_channel = cast(
-                Callable[..., Awaitable[object]],
-                self._require_async_callable(create_fn, label="guild.create_text_channel"),
-            )
+            create_text_channel = self._require_async_callable(create_fn, label="guild.create_text_channel")
             if category is not None:
                 channel = await create_text_channel(name=name, category=category)
             else:

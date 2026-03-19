@@ -221,9 +221,10 @@ class MessageOperationsMixin:
                 webhooks = await list_webhooks()
                 if isinstance(webhooks, list):
                     for webhook in webhooks:
+                        resolved_webhook: object = webhook
                         if getattr(webhook, "name", None) == "TeleClaude Reflections":
-                            self._reflection_webhook_cache[channel_id] = webhook
-                            return webhook
+                            self._reflection_webhook_cache[channel_id] = resolved_webhook
+                            return resolved_webhook
             except recoverable_errors as exc:
                 logger.debug("Failed to list Discord webhooks for channel %s: %s", channel_id, exc)
 

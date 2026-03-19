@@ -16,7 +16,7 @@ def write_text_sync(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _file_sha256(path: Path) -> str:
+def file_sha256(path: Path) -> str:
     """Return sha256 digest for a file."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:

@@ -10,7 +10,7 @@ import re
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TypedDict
+from typing import TypedDict, cast
 
 type StateScalar = str | bool | int | None
 type StateValue = StateScalar | list[StateValue] | dict[str, StateValue]
@@ -172,4 +172,4 @@ def default_state() -> dict[str, StateValue]:
     """Return a fresh default state dict from the canonical TodoState model."""
     from teleclaude.types.todos import TodoState
 
-    return TodoState().model_dump(exclude_none=True)  # type: ignore[return-value]
+    return cast(dict[str, StateValue], TodoState().model_dump(exclude_none=True))

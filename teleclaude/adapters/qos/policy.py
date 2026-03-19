@@ -50,42 +50,213 @@ class QoSPolicy:
 
     __slots__ = ("_budget", "_cadence", "adapter_key", "mode")
 
+    @staticmethod
+    def _apply_override(
+        field_name: str,
+        field_value: object,
+        *,
+        mode: str,
+        group_mpm: int,
+        output_budget_ratio: float,
+        reserve_mpm: int,
+        min_session_tick_s: float,
+        active_emitter_window_s: float,
+        active_emitter_ema_alpha: float,
+        rounding_ms: int,
+    ) -> tuple[str, int, float, int, float, float, float, int]:
+        """Apply one positional/keyword override to the typed local values."""
+        if field_name == "mode":
+            if isinstance(field_value, str):
+                mode = field_value
+            return (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            )
+        if field_name == "group_mpm":
+            if isinstance(field_value, int):
+                group_mpm = field_value
+            return (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            )
+        if field_name == "output_budget_ratio":
+            if isinstance(field_value, int | float):
+                output_budget_ratio = float(field_value)
+            return (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            )
+        if field_name == "reserve_mpm":
+            if isinstance(field_value, int):
+                reserve_mpm = field_value
+            return (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            )
+        if field_name == "min_session_tick_s":
+            if isinstance(field_value, int | float):
+                min_session_tick_s = float(field_value)
+            return (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            )
+        if field_name == "active_emitter_window_s":
+            if isinstance(field_value, int | float):
+                active_emitter_window_s = float(field_value)
+            return (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            )
+        if field_name == "active_emitter_ema_alpha":
+            if isinstance(field_value, int | float):
+                active_emitter_ema_alpha = float(field_value)
+            return (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            )
+        if field_name == "rounding_ms" and isinstance(field_value, int):
+            rounding_ms = field_value
+        return (
+            mode,
+            group_mpm,
+            output_budget_ratio,
+            reserve_mpm,
+            min_session_tick_s,
+            active_emitter_window_s,
+            active_emitter_ema_alpha,
+            rounding_ms,
+        )
+
     def __init__(self, adapter_key: str, *args: object, **kwargs: object) -> None:
-        values = {
-            "mode": "off",
-            "group_mpm": 20,
-            "output_budget_ratio": 0.8,
-            "reserve_mpm": 4,
-            "min_session_tick_s": 3.0,
-            "active_emitter_window_s": 10.0,
-            "active_emitter_ema_alpha": 0.2,
-            "rounding_ms": 100,
-        }
-        field_order = tuple(values)
+        mode = "off"
+        group_mpm = 20
+        output_budget_ratio = 0.8
+        reserve_mpm = 4
+        min_session_tick_s = 3.0
+        active_emitter_window_s = 10.0
+        active_emitter_ema_alpha = 0.2
+        rounding_ms = 100
+        field_order = (
+            "mode",
+            "group_mpm",
+            "output_budget_ratio",
+            "reserve_mpm",
+            "min_session_tick_s",
+            "active_emitter_window_s",
+            "active_emitter_ema_alpha",
+            "rounding_ms",
+        )
         if len(args) > len(field_order):
             msg = f"QoSPolicy expected at most {len(field_order) + 1} positional arguments"
             raise TypeError(msg)
+        seen_fields: set[str] = set()
+
         for field_name, field_value in zip(field_order, args, strict=False):
-            values[field_name] = field_value
+            seen_fields.add(field_name)
+            (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            ) = self._apply_override(
+                field_name,
+                field_value,
+                mode=mode,
+                group_mpm=group_mpm,
+                output_budget_ratio=output_budget_ratio,
+                reserve_mpm=reserve_mpm,
+                min_session_tick_s=min_session_tick_s,
+                active_emitter_window_s=active_emitter_window_s,
+                active_emitter_ema_alpha=active_emitter_ema_alpha,
+                rounding_ms=rounding_ms,
+            )
+
         for field_name, field_value in kwargs.items():
-            if field_name not in values:
+            if field_name not in field_order:
                 raise TypeError(f"QoSPolicy got an unexpected keyword argument '{field_name}'")
-            if field_name in field_order[: len(args)]:
+            if field_name in seen_fields:
                 raise TypeError(f"QoSPolicy got multiple values for argument '{field_name}'")
-            values[field_name] = field_value
+            seen_fields.add(field_name)
+            (
+                mode,
+                group_mpm,
+                output_budget_ratio,
+                reserve_mpm,
+                min_session_tick_s,
+                active_emitter_window_s,
+                active_emitter_ema_alpha,
+                rounding_ms,
+            ) = self._apply_override(
+                field_name,
+                field_value,
+                mode=mode,
+                group_mpm=group_mpm,
+                output_budget_ratio=output_budget_ratio,
+                reserve_mpm=reserve_mpm,
+                min_session_tick_s=min_session_tick_s,
+                active_emitter_window_s=active_emitter_window_s,
+                active_emitter_ema_alpha=active_emitter_ema_alpha,
+                rounding_ms=rounding_ms,
+            )
 
         self.adapter_key = adapter_key
-        self.mode = values["mode"]
+        self.mode = mode
         self._budget = _QoSBudget(
-            group_mpm=values["group_mpm"],
-            output_budget_ratio=values["output_budget_ratio"],
-            reserve_mpm=values["reserve_mpm"],
+            group_mpm=group_mpm,
+            output_budget_ratio=output_budget_ratio,
+            reserve_mpm=reserve_mpm,
         )
         self._cadence = _QoSCadence(
-            min_session_tick_s=values["min_session_tick_s"],
-            active_emitter_window_s=values["active_emitter_window_s"],
-            active_emitter_ema_alpha=values["active_emitter_ema_alpha"],
-            rounding_ms=values["rounding_ms"],
+            min_session_tick_s=min_session_tick_s,
+            active_emitter_window_s=active_emitter_window_s,
+            active_emitter_ema_alpha=active_emitter_ema_alpha,
+            rounding_ms=rounding_ms,
         )
 
     @property

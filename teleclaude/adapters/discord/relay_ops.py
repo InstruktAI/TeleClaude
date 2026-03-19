@@ -19,7 +19,7 @@ from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.tmux_bridge import send_keys_existing_tmux
 
 if TYPE_CHECKING:
-    pass
+    from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
 
@@ -35,7 +35,7 @@ class RelayOperationsMixin:
     """
 
     _client: object
-    client: object
+    client: AdapterClient
     _require_async_callable: Callable[..., AsyncDiscordCallable]
     _get_channel: Callable[[int], Awaitable[object | None]]
 

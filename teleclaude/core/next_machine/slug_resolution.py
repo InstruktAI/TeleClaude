@@ -8,6 +8,7 @@ Note: slug_in_roadmap lives in roadmap.py (used by check_dependencies_satisfied 
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, ItemPhase, PhaseName, PhaseStatus
 from teleclaude.core.next_machine.path_checks import check_file_exists, check_file_has_content
@@ -198,6 +199,8 @@ async def resolve_slug_async(
 ) -> tuple[str | None, bool, str]:
     """Async wrapper for resolve_slug using a thread to avoid blocking."""
     return await asyncio.to_thread(resolve_slug, cwd, slug, ready_only, dependencies)
+
+
 def resolve_canonical_project_root(cwd: str) -> str:
     """Resolve canonical repository root from cwd.
 

@@ -18,7 +18,6 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.next_machine.file_io import _file_sha256
 from teleclaude.core.next_machine._types import (
     _PREP_INPUT_FILES,
     _PREP_ROOT_INPUT_FILES,
@@ -27,6 +26,7 @@ from teleclaude.core.next_machine._types import (
     EnsureWorktreeResult,
     WorktreePrepDecision,
 )
+from teleclaude.core.next_machine.file_io import file_sha256
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
@@ -58,7 +58,7 @@ def _compute_prep_inputs_digest(cwd: str, slug: str) -> str:
         is_executable = os.access(path, os.X_OK)
         digest.update(b"1" if is_executable else b"0")
         if path.is_file():
-            digest.update(_file_sha256(path).encode("utf-8"))
+            digest.update(file_sha256(path).encode("utf-8"))
     return digest.hexdigest()
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from teleclaude.core.next_machine.file_io import _file_sha256
+from teleclaude.core.next_machine.file_io import file_sha256
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_io import _run_git_prepare, read_phase_state, write_phase_state
 
@@ -15,7 +15,7 @@ def artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
     path = Path(cwd) / "todos" / slug / artifact_name
     if not path.exists():
         return ""
-    return _file_sha256(path)
+    return file_sha256(path)
 
 
 def record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:

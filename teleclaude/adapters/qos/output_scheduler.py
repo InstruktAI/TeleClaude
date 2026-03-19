@@ -101,19 +101,6 @@ class OutputQoSScheduler:
     and stop() at adapter shutdown.
     """
 
-    _QUEUE_ATTRS = {
-        "_normal_slots": "normal_slots",
-        "_priority_queues": "priority_queues",
-        "_active_emitters": "active_emitters",
-    }
-    _STATS_ATTRS = {
-        "_ema_session_count": "ema_session_count",
-        "_coalesced": "coalesced",
-        "_dispatched": "dispatched",
-        "_dispatch_errors": "dispatch_errors",
-        "_last_summary_at": "last_summary_at",
-    }
-
     def __init__(self, policy: QoSPolicy) -> None:
         self._policy = policy
         self._queues = _SchedulerQueues()
@@ -121,31 +108,80 @@ class OutputQoSScheduler:
         # Background dispatch task.
         self._task: asyncio.Task[None] | None = None
 
-    def __getattr__(self, name: str) -> object:
-        """Expose queue and stats fields under the legacy private attribute names."""
-        if name == "_rr_sessions":
-            return self._queues.rr_sessions
-        if name == "_rr_idx":
-            return self._queues.rr_idx
-        queue_attr = self._QUEUE_ATTRS.get(name)
-        if queue_attr is not None:
-            return getattr(self._queues, queue_attr)
-        stat_attr = self._STATS_ATTRS.get(name)
-        if stat_attr is not None:
-            return getattr(self._stats, stat_attr)
-        msg = f"{type(self).__name__!s} object has no attribute {name!r}"
-        raise AttributeError(msg)
+    @property
+    def _normal_slots(self) -> dict[str, QoSPayload]:
+        """Legacy compatibility view for non-final per-session slots."""
+        return self._queues.normal_slots
 
-    def __setattr__(self, name: str, value: object) -> None:
-        """Keep legacy private attribute writes routed to the nested state objects."""
-        if name == "_rr_idx" and "_queues" in self.__dict__:
-            self._queues.rr_idx = int(value)
-            return
-        stat_attr = self._STATS_ATTRS.get(name)
-        if stat_attr is not None and "_stats" in self.__dict__:
-            setattr(self._stats, stat_attr, value)
-            return
-        super().__setattr__(name, value)
+    @property
+    def _priority_queues(self) -> dict[str, deque[QoSPayload]]:
+        """Legacy compatibility view for final-payload queues."""
+        return self._queues.priority_queues
+
+    @property
+    def _active_emitters(self) -> dict[str, float]:
+        """Legacy compatibility view for recent-dispatch timestamps."""
+        return self._queues.active_emitters
+
+    @property
+    def _rr_sessions(self) -> list[str]:
+        """Legacy compatibility view for round-robin session order."""
+        return self._queues.rr_sessions
+
+    @property
+    def _rr_idx(self) -> int:
+        """Legacy compatibility view for the round-robin cursor."""
+        return self._queues.rr_idx
+
+    @_rr_idx.setter
+    def _rr_idx(self, value: int | str | float) -> None:
+        """Keep legacy round-robin cursor writes routed to nested queue state."""
+        self._queues.rr_idx = int(value)
+
+    @property
+    def _ema_session_count(self) -> float:
+        """Legacy compatibility view for EMA-smoothed active session count."""
+        return self._stats.ema_session_count
+
+    @_ema_session_count.setter
+    def _ema_session_count(self, value: float) -> None:
+        self._stats.ema_session_count = value
+
+    @property
+    def _coalesced(self) -> int:
+        """Legacy compatibility view for coalesced-payload count."""
+        return self._stats.coalesced
+
+    @_coalesced.setter
+    def _coalesced(self, value: int) -> None:
+        self._stats.coalesced = value
+
+    @property
+    def _dispatched(self) -> int:
+        """Legacy compatibility view for successful dispatch count."""
+        return self._stats.dispatched
+
+    @_dispatched.setter
+    def _dispatched(self, value: int) -> None:
+        self._stats.dispatched = value
+
+    @property
+    def _dispatch_errors(self) -> int:
+        """Legacy compatibility view for failed dispatch count."""
+        return self._stats.dispatch_errors
+
+    @_dispatch_errors.setter
+    def _dispatch_errors(self, value: int) -> None:
+        self._stats.dispatch_errors = value
+
+    @property
+    def _last_summary_at(self) -> float:
+        """Legacy compatibility view for summary-log timestamp."""
+        return self._stats.last_summary_at
+
+    @_last_summary_at.setter
+    def _last_summary_at(self, value: float) -> None:
+        self._stats.last_summary_at = value
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -190,8 +226,8 @@ class OutputQoSScheduler:
             Number of payloads dropped.
         """
         dropped = 0
-        if session_id in self._normal_slots:
-            del self._normal_slots[session_id]
+        if session_id in self._queues.normal_slots:
+            del self._queues.normal_slots[session_id]
             dropped += 1
         return dropped
 
@@ -213,18 +249,18 @@ class OutputQoSScheduler:
         payload = QoSPayload(session_id=session_id, factory=factory, is_final=is_final)
 
         if is_final:
-            if session_id not in self._priority_queues:
-                self._priority_queues[session_id] = deque()
-            self._priority_queues[session_id].append(payload)
+            if session_id not in self._queues.priority_queues:
+                self._queues.priority_queues[session_id] = deque()
+            self._queues.priority_queues[session_id].append(payload)
             logger.debug(
                 "[QoS %s] Priority payload enqueued: session=%s",
                 self._policy.adapter_key,
                 session_id,
             )
         else:
-            if session_id in self._normal_slots:
+            if session_id in self._queues.normal_slots:
                 self._stats.coalesced += 1
-                age = time.monotonic() - self._normal_slots[session_id].enqueued_at
+                age = time.monotonic() - self._queues.normal_slots[session_id].enqueued_at
                 logger.debug(
                     "[QoS %s] Coalesced superseded payload: session=%s age=%.2fs total_coalesced=%d",
                     self._policy.adapter_key,
@@ -232,11 +268,11 @@ class OutputQoSScheduler:
                     age,
                     self._stats.coalesced,
                 )
-            self._normal_slots[session_id] = payload
+            self._queues.normal_slots[session_id] = payload
 
         # Maintain round-robin session order.
-        if session_id not in self._rr_sessions:
-            self._rr_sessions.append(session_id)
+        if session_id not in self._queues.rr_sessions:
+            self._queues.rr_sessions.append(session_id)
 
     # ------------------------------------------------------------------
     # Dispatch loop
@@ -275,7 +311,7 @@ class OutputQoSScheduler:
     async def _dispatch_all_pending(self) -> None:
         """Dispatch one payload per active session (coalesce_only mode)."""
         # Collect session IDs that have pending payloads.
-        pending_sessions = list(set(list(self._priority_queues.keys()) + list(self._normal_slots.keys())))
+        pending_sessions = list(set(list(self._queues.priority_queues.keys()) + list(self._queues.normal_slots.keys())))
         for session_id in pending_sessions:
             payload = self._pick_payload_for(session_id)
             if payload:
@@ -284,20 +320,20 @@ class OutputQoSScheduler:
     async def _dispatch_one(self) -> None:
         """Dispatch the next single payload in round-robin + priority order."""
         # Priority queue: find any session with a priority payload first.
-        for session_id, q in list(self._priority_queues.items()):
+        for session_id, q in list(self._queues.priority_queues.items()):
             if q:
                 payload = q.popleft()
                 if not q:
-                    del self._priority_queues[session_id]
+                    del self._queues.priority_queues[session_id]
                 await self._execute(payload)
                 return
 
         # Normal round-robin.
-        if not self._normal_slots:
+        if not self._queues.normal_slots:
             return
 
         # Advance round-robin pointer to find a session with a pending slot.
-        sessions_with_slots = [s for s in self._rr_sessions if s in self._normal_slots]
+        sessions_with_slots = [s for s in self._queues.rr_sessions if s in self._queues.normal_slots]
         if not sessions_with_slots:
             return
 
@@ -306,19 +342,19 @@ class OutputQoSScheduler:
         session_id = sessions_with_slots[self._queues.rr_idx]
         self._queues.rr_idx = (self._queues.rr_idx + 1) % len(sessions_with_slots)
 
-        payload = self._normal_slots.pop(session_id, None)
+        payload = self._queues.normal_slots.pop(session_id, None)
         if payload:
             await self._execute(payload)
 
     def _pick_payload_for(self, session_id: str) -> QoSPayload | None:
         """Pick the next payload for a specific session (priority first)."""
-        q = self._priority_queues.get(session_id)
+        q = self._queues.priority_queues.get(session_id)
         if q:
             payload = q.popleft()
             if not q:
-                del self._priority_queues[session_id]
+                del self._queues.priority_queues[session_id]
             return payload
-        return self._normal_slots.pop(session_id, None)
+        return self._queues.normal_slots.pop(session_id, None)
 
     async def _execute(self, payload: QoSPayload) -> None:
         """Execute a payload and update tracking state."""
@@ -343,7 +379,7 @@ class OutputQoSScheduler:
             )
         else:
             now = time.monotonic()
-            self._active_emitters[payload.session_id] = now
+            self._queues.active_emitters[payload.session_id] = now
             self._stats.dispatched += 1
 
     # ------------------------------------------------------------------
@@ -378,8 +414,8 @@ class OutputQoSScheduler:
         """
         now = time.monotonic()
         window = self._policy.active_emitter_window_s
-        recently_active = {s for s, t in self._active_emitters.items() if now - t <= window}
-        pending_sessions = set(self._normal_slots.keys()) | set(self._priority_queues.keys())
+        recently_active = {s for s, t in self._queues.active_emitters.items() if now - t <= window}
+        pending_sessions = set(self._queues.normal_slots.keys()) | set(self._queues.priority_queues.keys())
         return float(len(recently_active | pending_sessions))
 
     def _update_ema(self, raw_count: float) -> None:
@@ -402,16 +438,16 @@ class OutputQoSScheduler:
         self._stats.last_summary_at = now
 
         tick = self._compute_tick_s()
-        queue_depth = len(self._normal_slots) + sum(len(q) for q in self._priority_queues.values())
+        queue_depth = len(self._queues.normal_slots) + sum(len(q) for q in self._queues.priority_queues.values())
         logger.info(
             "[QoS %s] Output cadence summary: mode=%s tick_s=%.2f active_sessions_ema=%.1f "
             "queue_depth=%d dispatched=%d coalesced=%d errors=%d",
             self._policy.adapter_key,
             self._policy.mode,
             tick,
-            self._ema_session_count,
+            self._stats.ema_session_count,
             queue_depth,
-            self._dispatched,
-            self._coalesced,
-            self._dispatch_errors,
+            self._stats.dispatched,
+            self._stats.coalesced,
+            self._stats.dispatch_errors,
         )

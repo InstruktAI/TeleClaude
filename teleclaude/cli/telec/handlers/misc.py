@@ -2,34 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
+import sys
 from pathlib import Path
 
+import teleclaude.git as git
+import teleclaude.sync as sync_module
 from teleclaude import __version__
-from teleclaude.cli.session_revive import (
-    attach_tmux_session as _attach_tmux_session,
-)
-from teleclaude.cli.session_revive import (
-    handle_revive_command as _handle_revive,
-)
-from teleclaude.cli.session_revive import (
-    revive_session as _revive_session,
-)
-from teleclaude.cli.session_revive import (
-    revive_session_via_api as _revive_session_via_api,
-)
-from teleclaude.cli.session_revive import (
-    send_revive_enter_via_api as _send_revive_enter_via_api,
-)
+from teleclaude.cli import session_revive
+from teleclaude.cli.api_client import APIError
+from teleclaude.cli.models import CreateSessionResult
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_commands.infra import handle_computers, handle_projects
 from teleclaude.cli.watch import run_watch
 from teleclaude.config.loader import load_project_config
 from teleclaude.constants import ENV_ENABLE
-from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.sync import sync
 from teleclaude.utils import resolve_project_config_path
 
 __all__ = [
@@ -53,10 +43,10 @@ __all__ = [
 def _git_short_commit_hash() -> str:
     """Return HEAD short hash, or 'unknown' when unavailable."""
     try:
-        repo = Repo(Path.cwd(), search_parent_directories=True)
+        repo = git.Repo(Path.cwd(), search_parent_directories=True)
         short_hash = repo.head.commit.hexsha[:7]
         return short_hash if short_hash else "unknown"
-    except (InvalidGitRepositoryError, NoSuchPathError, ValueError, OSError):
+    except (git.InvalidGitRepositoryError, git.NoSuchPathError, ValueError, OSError):
         return "unknown"
 
 
@@ -94,9 +84,88 @@ def _handle_sync(args: list[str]) -> None:
         else:
             i += 1
 
-    ok = sync(project_root, validate_only=validate_only, warn_only=warn_only)
+    active_sync_module = sys.modules.get("teleclaude.sync", sync_module)
+    ok = active_sync_module.sync(project_root, validate_only=validate_only, warn_only=warn_only)
     if not ok:
         raise SystemExit(1)
+
+
+def _handle_revive(args: list[str]) -> None:
+    """Handle `telec sessions revive` while preserving local patch points."""
+    if not args:
+        print(_usage("sessions", "revive"))
+        return
+
+    attach = False
+    agent: str | None = None
+    session_id: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--attach":
+            attach = True
+            i += 1
+        elif arg == "--agent":
+            if i + 1 >= len(args):
+                print("--agent requires a value.")
+                print(_usage("sessions", "revive"))
+                raise SystemExit(1)
+            agent = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("sessions", "revive"))
+            raise SystemExit(1)
+        else:
+            if session_id is not None:
+                print("Only one session_id is allowed.")
+                print(_usage("sessions", "revive"))
+                raise SystemExit(1)
+            session_id = arg
+            i += 1
+
+    if not session_id:
+        print("Missing required session_id.")
+        print(_usage("sessions", "revive"))
+        raise SystemExit(1)
+
+    _revive_session(session_id, attach, agent=agent)
+
+
+def _revive_session(session_id: str, attach: bool, *, agent: str | None = None) -> None:
+    """Revive a session by TeleClaude or native session ID."""
+    try:
+        result = asyncio.run(_revive_session_via_api(session_id, agent=agent))
+    except APIError as exc:
+        print(f"Error: {exc}")
+        return
+
+    if getattr(result, "status", None) != "success":
+        print(getattr(result, "error", None) or "Revive failed")
+        return
+
+    print(f"Revived session {result.session_id}")
+    try:
+        asyncio.run(_send_revive_enter_via_api(result.session_id))
+    except APIError as exc:
+        print(f"Warning: revive kick failed: {exc}")
+    if attach and getattr(result, "tmux_session_name", None):
+        _attach_tmux_session(result.tmux_session_name)
+
+
+async def _revive_session_via_api(session_id: str, *, agent: str | None = None) -> CreateSessionResult:
+    """Delegate revive API call through the extracted session-revive module."""
+    return await session_revive.revive_session_via_api(session_id, agent=agent)
+
+
+async def _send_revive_enter_via_api(session_id: str) -> bool:
+    """Delegate revive-enter API call through the extracted session-revive module."""
+    return await session_revive.send_revive_enter_via_api(session_id)
+
+
+def _attach_tmux_session(tmux_session_name: str) -> None:
+    """Attach or switch to a tmux session."""
+    session_revive.attach_tmux_session(tmux_session_name)
 
 
 def _handle_watch(args: list[str]) -> None:

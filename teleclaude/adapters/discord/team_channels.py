@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -20,7 +20,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
-discord_operation_exceptions = (AttributeError, RuntimeError, TypeError, ValueError)
+discord_operation_exceptions: tuple[type[Exception], ...] = (
+    AttributeError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
 
 try:
     from discord import DiscordException
@@ -47,9 +52,12 @@ class TeamChannelsMixin:
     if TYPE_CHECKING:
         _discord: ModuleType
         _client: object
-        _parse_optional_int: Callable[[object], int | None]
+
+        def _parse_optional_int(self, value: object) -> int | None: ...
+
         _require_async_callable: Callable[..., AsyncDiscordCallable]
-        _get_channel: Callable[[int], Awaitable[object | None]]
+
+        async def _get_channel(self, channel_id: int) -> object | None: ...
 
     async def ensure_team_channels(self, guild: object, category: object | None, people: list[object]) -> None:
         """Public wrapper for team-channel provisioning."""
@@ -121,10 +129,7 @@ class TeamChannelsMixin:
             return None
 
         try:
-            create = cast(
-                Callable[..., Awaitable[object]],
-                self._require_async_callable(create_fn, label="guild.create_text_channel"),
-            )
+            create = self._require_async_callable(create_fn, label="guild.create_text_channel")
             # guard: loose-dict - dynamic kwargs; category key conditionally added
             kwargs: dict[str, object] = {"name": name, "overwrites": overwrites}
             if category is not None:
@@ -199,10 +204,7 @@ class TeamChannelsMixin:
         edit_fn = getattr(channel, "edit", None)
         if callable(edit_fn):
             try:
-                edit_channel = cast(
-                    Callable[..., Awaitable[object]],
-                    self._require_async_callable(edit_fn, label="channel.edit overwrites"),
-                )
+                edit_channel = self._require_async_callable(edit_fn, label="channel.edit overwrites")
                 await edit_channel(overwrites=overwrites_dict)
                 logger.info("Applied private permissions to team channel %s", channel_id)
             except discord_operation_exceptions as exc:

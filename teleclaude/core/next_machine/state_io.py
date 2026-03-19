@@ -27,7 +27,7 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
-from teleclaude.core.next_machine.file_io import _file_sha256, read_text_sync, write_text_sync
+from teleclaude.core.next_machine.file_io import file_sha256, read_text_sync, write_text_sync
 from teleclaude.core.next_machine.git_ops import has_uncommitted_changes
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
@@ -322,7 +322,7 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
             grounding_dict["base_sha"] = current_sha.strip()
         input_path = Path(cwd) / "todos" / slug / "input.md"
         if input_path.exists():
-            grounding_dict["input_digest"] = _file_sha256(input_path)
+            grounding_dict["input_digest"] = file_sha256(input_path)
         grounding_dict["valid"] = True
         grounding_dict["last_grounded_at"] = datetime.now(UTC).isoformat()
         grounding_dict["invalidation_reason"] = ""
@@ -651,7 +651,7 @@ def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
     if rc == 0 and current_sha.strip():
         grounding["base_sha"] = current_sha.strip()
     if input_path.exists():
-        grounding["input_digest"] = _file_sha256(input_path)
+        grounding["input_digest"] = file_sha256(input_path)
     state["grounding"] = grounding
 
     write_phase_state(cwd, slug, state)
@@ -694,7 +694,7 @@ def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, S
         if not isinstance(entry, dict):
             entry = {}
         artifact_path = Path(cwd) / "todos" / slug / artifact_file
-        entry["digest"] = _file_sha256(artifact_path) if artifact_path.exists() else ""
+        entry["digest"] = file_sha256(artifact_path) if artifact_path.exists() else ""
         entry["produced_at"] = datetime.now(UTC).isoformat()
         entry["stale"] = False
         artifacts[artifact_key] = entry
@@ -727,11 +727,11 @@ def _has_content(path: Path) -> bool:
 
 
 __all__ = [
-    "_file_sha256",
     "_is_review_round_limit_reached",
     "_mark_finalize_handed_off",
     "_review_scope_note",
     "check_review_status",
+    "file_sha256",
     "get_state_path",
     "has_pending_deferrals",
     "is_bug_todo",

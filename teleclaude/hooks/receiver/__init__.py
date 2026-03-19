@@ -28,7 +28,7 @@ from teleclaude.hooks.checkpoint_flags import (
     is_checkpoint_disabled,
     set_checkpoint_flag,
 )
-from teleclaude.hooks.payload_io import read_stdin_payload
+from teleclaude.hooks.payload_io import JsonObject, read_stdin_payload
 from teleclaude.hooks.receiver._session import (
     _create_sync_engine,
     _find_session_id_by_native,
@@ -263,7 +263,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 # guard: loose-dict-func - Raw stdin JSON payload at process boundary.
-def _read_stdin() -> tuple[str, dict[str, object]]:
+def _read_stdin() -> tuple[str, JsonObject]:
     return read_stdin_payload()
 
 
