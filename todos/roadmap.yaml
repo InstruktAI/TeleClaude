@@ -58,3 +58,7 @@
     nav, activity highlights, footer, toasts
 - slug: ts-migration-requirements
 - slug: fix-mlx-tts-extra-flag
+- slug: refactor-agent-readiness
+- slug: fix-api-command-receipt
+  after:
+  - web-tui-parity
