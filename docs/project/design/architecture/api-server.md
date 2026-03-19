@@ -7,13 +7,18 @@ type: 'design'
 
 # Api Server — Design
 
+## Required reads
+
+- @docs/project/design/architecture/command-classification.md
+
 ## Purpose
 
 Provide a resource-first API for TUI and CLI clients.
 
 - Read endpoints return cached data immediately (local-only if cache is absent).
-- Most write endpoints map to explicit command objects via CommandService.
-- Session close is a direct lifecycle handoff: the API marks the session `closing`, emits `SESSION_CLOSE_REQUESTED`, and returns immediately while the daemon finishes cleanup asynchronously.
+- Write endpoints map to typed command objects via CommandService. Each command declares
+  its `response_mode` (`IMMEDIATE`, `FIRE_AND_FORGET`, or `RECEIPT`); routes derive their
+  HTTP status code and response shape from that declaration — never from hardcoded logic.
 - WebSocket subscriptions drive cache interest tracking and refresh pushes.
 - API handlers do not fetch remote data directly; cache owns refresh.
 - Session updates are merged from local DB and cached remote summaries.
@@ -59,7 +64,7 @@ flowchart LR
 - **Read-Only Cache Access**: API never writes to cache; only reads snapshots.
 - **Explicit Write Boundaries**: Agent/session mutations either go through CommandService or through a documented lifecycle intent handoff owned by the API.
 - **Immediate Response**: API returns cached data instantly; never blocks on refresh.
-- **Non-Blocking Session Close**: `DELETE /sessions/{id}` returns after recording close intent; cleanup continues in daemon event handlers.
+- **Non-Blocking Mutations**: FIRE_AND_FORGET and RECEIPT commands return immediately; the route never awaits async work. Response shape is derived from `command.response_mode`.
 - **Subscription Cleanup**: WebSocket disconnect removes all subscriptions for that client.
 - **No Remote Fetching**: API does not perform remote computer queries; cache owns that responsibility.
 - **Integrated Memory Router**: Memory routes are served by the same API server process and share daemon lifecycle.
@@ -119,21 +124,34 @@ sequenceDiagram
 
 ### 4. Resource Endpoints
 
-| Method | Endpoint             | Action                           | Cache Key           |
-| ------ | -------------------- | -------------------------------- | ------------------- |
-| GET    | /health              | Health check                     | N/A                 |
-| GET    | /sessions            | List sessions                    | sessions:{computer} |
-| POST   | /sessions            | Create session                   | Command             |
-| POST   | /sessions/{id}/msg   | Send message                     | Command             |
-| DELETE | /sessions/{id}       | Request async session close      | Lifecycle intent    |
-| GET    | /computers           | List computers                   | computers:all       |
-| GET    | /projects            | List projects                    | projects:{computer} |
-| GET    | /todos               | List todos                       | todos:{project}     |
-| POST   | /api/memory/save     | Save observation                 | DB write            |
-| GET    | /api/memory/search   | Search observations              | DB/FTS query        |
-| GET    | /api/memory/timeline | Timeline around anchor           | DB query            |
-| POST   | /api/memory/batch    | Bulk fetch observations          | DB query            |
-| GET    | /api/memory/inject   | Generate memory context markdown | DB query            |
+Response mode is declared on the command, not the route. Routes derive HTTP status from it:
+`IMMEDIATE` → 200/201, `FIRE_AND_FORGET` → 202 + `completion_event`, `RECEIPT` → 202 + `OperationReceipt`.
+
+| Method | Endpoint                    | Mode              | Action                              |
+| ------ | --------------------------- | ----------------- | ----------------------------------- |
+| GET    | /health                     | READ              | Health check                        |
+| GET    | /sessions                   | READ              | List sessions (cache)               |
+| POST   | /sessions                   | IMMEDIATE         | Create session → session_id         |
+| POST   | /sessions/{id}/message      | FIRE_AND_FORGET   | Send message to session             |
+| POST   | /sessions/{id}/keys         | FIRE_AND_FORGET   | Inject key input                    |
+| POST   | /sessions/{id}/voice        | FIRE_AND_FORGET   | Handle voice input                  |
+| POST   | /sessions/self/file         | FIRE_AND_FORGET   | Handle file upload                  |
+| POST   | /sessions/{id}/agent-restart| FIRE_AND_FORGET   | Restart agent                       |
+| POST   | /sessions/run               | IMMEDIATE         | Create session + run slash command  |
+| DELETE | /sessions/{id}              | FIRE_AND_FORGET   | Request async session close         |
+| GET    | /computers                  | READ              | List computers (cache + remote)     |
+| GET    | /projects                   | READ              | List projects (cache)               |
+| GET    | /todos                      | READ              | List todos (cache)                  |
+| POST   | /todos/work                 | RECEIPT           | Run next-work state machine         |
+| POST   | /todos/integrate            | RECEIPT           | Run integration state machine       |
+| POST   | /todos/create               | RECEIPT           | Run creative state machine          |
+| POST   | /todos/prepare              | RECEIPT           | Run prepare state machine           |
+| GET    | /operations/{id}            | READ              | Poll operation receipt              |
+| POST   | /api/memory/save            | IMMEDIATE         | Save observation                    |
+| GET    | /api/memory/search          | READ              | Search observations                 |
+| GET    | /api/memory/timeline        | READ              | Timeline around anchor              |
+| POST   | /api/memory/batch           | READ              | Bulk fetch observations             |
+| GET    | /api/memory/inject          | READ              | Generate memory context markdown    |
 
 ## Failure modes
 
