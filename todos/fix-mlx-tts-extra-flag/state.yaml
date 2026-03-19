@@ -1,17 +1,11 @@
 schema_version: 1
 phase: pending
 kind: todo
-build: pending
+build: complete
 review: pending
 deferrals_processed: false
 finalize:
   status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
@@ -20,18 +14,19 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: ''
+prepare_phase: prepared
 grounding:
-  valid: false
-  base_sha: ''
-  input_digest: ''
+  valid: true
+  base_sha: 4ff68c1ebf3fcadac807443b052b616a9e6f29f8
+  input_digest: 9c5f6ae10ec1398f51a0ab88b899f217d740ef3c14c776ab5a42ad879952f846
   referenced_paths: []
-  last_grounded_at: ''
+  last_grounded_at: '2026-03-19T16:27:01.603927+00:00'
   invalidated_at: ''
   invalidation_reason: ''
+  changed_paths: []
 requirements_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-19T16:27:01.603927+00:00'
   findings_count: 0
   rounds: 0
   baseline_commit: ''
@@ -42,8 +37,8 @@ test_spec_review:
   findings_count: 0
   rounds: 0
 plan_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-19T16:27:01.603927+00:00'
   findings_count: 0
   rounds: 0
   baseline_commit: ''
@@ -93,8 +88,9 @@ audit:
     started_at: ''
     completed_at: ''
 dor:
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-03-19T16:27:01.603927+00:00'
+  score: 8
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:
