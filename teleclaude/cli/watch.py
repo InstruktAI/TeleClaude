@@ -2,7 +2,6 @@
 
 import fnmatch
 import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -134,9 +133,12 @@ class SmartWatcher(FileSystemEventHandler):
     def _sync(self) -> None:
         logger.info("Syncing artifacts...")
 
-        # Run telec sync
         cmd = [
-            sys.executable,
+            "uv",
+            "run",
+            "--quiet",
+            "--project",
+            str(self.project_root),
             "-m",
             "teleclaude.cli.telec",
             "sync",
@@ -144,7 +146,11 @@ class SmartWatcher(FileSystemEventHandler):
         ]
 
         try:
-            subprocess.run(cmd, cwd=self.project_root, check=False)
+            result = subprocess.run(cmd, cwd=self.project_root, capture_output=True, text=True, check=False)
+            if result.returncode != 0:
+                logger.error("Sync failed (exit=%d):\n%s", result.returncode, result.stderr or result.stdout)
+            else:
+                logger.info("Sync complete")
         except (OSError, subprocess.SubprocessError) as e:
             logger.error("Sync failed: %s", e)
 

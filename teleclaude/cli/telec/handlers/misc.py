@@ -15,6 +15,7 @@ from teleclaude.cli.models import CreateSessionResult
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
 from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
+from teleclaude.paths import REPO_ROOT
 
 __all__ = [
     "_attach_tmux_session",
@@ -118,7 +119,7 @@ def _handle_sync(args: list[str]) -> None:
 
 def _handle_watch(_args: list[str]) -> None:
     """Handle telec watch command."""
-    _run_watch(Path.cwd())
+    _run_watch(REPO_ROOT)
 
 
 def _handle_revive(args: list[str]) -> None:
