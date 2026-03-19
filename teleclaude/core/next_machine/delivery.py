@@ -14,9 +14,9 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import DeliveredDict, DeliveredEntry, RoadmapEntry
+from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine.icebox import clean_dependency_references
 from teleclaude.core.next_machine.roadmap import load_roadmap, save_roadmap
-from teleclaude.core.next_machine.state_io import read_text_sync, write_text_sync
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)

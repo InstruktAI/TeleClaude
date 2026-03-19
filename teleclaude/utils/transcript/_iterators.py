@@ -329,4 +329,4 @@ def _get_entries_for_agent(
         return list(_iter_gemini_entries(path))
     if agent_name == AgentName.CODEX:
         return list(_iter_codex_entries(path, tail_entries=tail_entries))
-    return None  # type: ignore[unreachable]  # Defensive fallback
+    return None

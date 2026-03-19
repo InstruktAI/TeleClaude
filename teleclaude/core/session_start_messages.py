@@ -1,6 +1,6 @@
 """Shared human-friendly session-start prompts."""
 
-SESSION_START_MESSAGES: list[str] = [
+SESSION_START_MESSAGES: tuple[str, ...] = (
     "Standing by with grep patterns locked and loaded. What can I find?",
     "Warmed up and ready to hunt down that bug!",
     "Cache cleared, mind fresh. What's the task?",
@@ -21,4 +21,4 @@ SESSION_START_MESSAGES: list[str] = [
     "Warmed up and waiting to assist!",
     "Initialized and ready to solve problems. What's the issue?",
     "All set to help you build something great!",
-]
+)

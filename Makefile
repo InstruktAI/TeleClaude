@@ -1,13 +1,13 @@
-.PHONY: help install init link certs format lint check-test-mapping test-unit test-e2e test-all test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
+.PHONY: help install init link certs format lint lint-cycles lint-topimports check-test-mapping test-unit test-e2e test-all test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
 
 # Default target
 help:
 	@echo "TeleClaude Development Commands"
 	@echo "==============================="
 	@echo ""
-	@echo "Setup:"
-	@echo "  make install      Install binaries and Python dependencies"
-	@echo "  make init         Run first-time setup wizard (ARGS=-y for unattended)"
+	@echo "Repo Setup:"
+	@echo "  make install      Set up this TeleClaude checkout and install repo dependencies"
+	@echo "  make init         Initialize this TeleClaude repo for development (ARGS=-y for unattended)"
 	@echo "  make bootstrap    Non-interactive install AND init (for CI)"
 	@echo "  make bootstrap-ci Lean non-interactive bootstrap for CI environments"
 	@echo "  make build-artifacts  Generate and deploy agent artifacts (docs, skills, prompts)"
@@ -17,6 +17,8 @@ help:
 	@echo "Code Quality:"
 	@echo "  make format       Format code with ruff"
 	@echo "  make lint                 Run linting checks (ruff, pyright)"
+	@echo "  make lint-cycles          Run pylint cyclic-import check only"
+	@echo "  make lint-topimports      Run pylint import-outside-toplevel check only"
 	@echo "  make check-test-mapping   Check 1:1 source-to-test mapping (expected to fail during overhaul)"
 	@echo ""
 	@echo "Testing:"
@@ -73,6 +75,16 @@ lint:
 	@echo "Running lint checks..."
 	@./tools/lint.sh
 	@echo "✓ Lint checks passed"
+
+lint-cycles:
+	@echo "Running cyclic import check..."
+	@. .venv/bin/activate && pylint --disable=all --enable=cyclic-import teleclaude tests
+	@echo "✓ Cyclic import check passed"
+
+lint-topimports:
+	@echo "Running top-level import check..."
+	@. .venv/bin/activate && pylint --disable=all --enable=import-outside-toplevel teleclaude tests
+	@echo "✓ Top-level import check passed"
 
 check-test-mapping:
 	@python tools/lint/test_mapping.py

@@ -9,7 +9,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import configure_logging, get_logger
 from sqlalchemy.exc import SQLAlchemyError
@@ -343,11 +343,6 @@ def _parse_args() -> argparse.Namespace:
 # guard: loose-dict-func - Raw stdin JSON payload at process boundary.
 def _read_stdin() -> tuple[str, dict[str, object]]:
     return read_stdin_payload()
-
-
-def read_stdin() -> tuple[str, JsonDict]:
-    """Read a hook payload from stdin."""
-    return cast(tuple[str, JsonDict], _read_stdin())
 
 
 def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:

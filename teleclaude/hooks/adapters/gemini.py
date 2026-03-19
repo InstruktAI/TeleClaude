@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from typing import Any, cast
+from typing import cast
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
-from teleclaude.hooks import receiver as receiver_module
+from teleclaude.hooks.adapters._stdin import read_stdin_payload
 
 
 class GeminiAdapter:
@@ -22,9 +21,8 @@ class GeminiAdapter:
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""
         event_type: str = args.event_type
-        receiver = cast(Any, sys.modules.get("teleclaude.hooks.receiver", receiver_module))
-        raw_input, raw_data = cast(tuple[str, JsonDict], receiver.read_stdin())
-        return raw_input, event_type, raw_data
+        raw_input, raw_data = read_stdin_payload()
+        return raw_input, event_type, cast(JsonDict, raw_data)
 
     def normalize_payload(self, data: JsonDict) -> JsonDict:
         """Identity: Gemini already uses canonical field names."""

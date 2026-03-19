@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
-from teleclaude.channels.consumer import consume, ensure_consumer_group
+from teleclaude.channels.consumer import ConsumerGroupSpec, consume, ensure_consumer_group
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 # Consumer group / consumer name for the subscription worker
 _WORKER_GROUP = "teleclaude-worker"
 _WORKER_CONSUMER = "main"
+_WORKER_CONSUMER_GROUP = ConsumerGroupSpec(group=_WORKER_GROUP, consumer=_WORKER_CONSUMER)
 
 # Polling interval when no messages are received
 _POLL_INTERVAL_S = 5.0
@@ -115,8 +116,7 @@ async def run_subscription_worker(
                 messages = await consume(
                     redis,
                     sub.channel,
-                    _WORKER_GROUP,
-                    _WORKER_CONSUMER,
+                    _WORKER_CONSUMER_GROUP,
                     count=10,
                     block_ms=0,
                 )

@@ -12,10 +12,12 @@ from typing import cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config as app_config
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL
-from teleclaude.core.next_machine.state_io import read_text_sync, write_text_sync
+from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
@@ -230,9 +232,6 @@ async def compose_agent_guidance(db: Db) -> str:
     into every agent's context. This function only adds runtime availability
     information (enabled/disabled, degraded status).
     """
-    from teleclaude.config import config as app_config  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.agents import AgentName  # pylint: disable=import-outside-toplevel
-
     lines = ["AGENT SELECTION GUIDANCE:"]
     lines.append("")
     lines.append("Agent characteristics are in your baseline context (Agent Characteristics concept).")

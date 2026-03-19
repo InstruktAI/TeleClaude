@@ -22,14 +22,16 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
-from teleclaude.core.next_machine.build_gates import check_file_has_content
+from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
+from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event,
     _has_test_spec_artifacts,
     _is_artifact_produced,
 )
+from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
 from teleclaude.core.next_machine.state_io import _run_git_prepare, write_phase_state
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
@@ -43,8 +45,6 @@ async def _prepare_step_input_assessment(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """INPUT_ASSESSMENT: choose requirements strategy and produce requirements."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
-
     _now = datetime.now(UTC).isoformat()
     stamp_audit(state, "input_assessment", "started_at", _now)
 
@@ -54,8 +54,6 @@ async def _prepare_step_input_assessment(
         has_requirements = False
     if has_requirements:
         # Emit input_consumed event before transitioning (R13)
-        from teleclaude.core.next_machine.prepare_helpers import record_input_consumed  # noqa: I001  # pylint: disable=import-outside-toplevel
-
         await asyncio.to_thread(record_input_consumed, cwd, slug)
         stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())
         state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
@@ -124,8 +122,6 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """REQUIREMENTS_REVIEW: awaiting review verdict."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
-
     stamp_audit(state, "requirements_review", "started_at", datetime.now(UTC).isoformat())
 
     req_review = state.get("requirements_review", {})
@@ -188,11 +184,6 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         state["prepare_phase"] = PreparePhase.TRIANGULATION.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         # Compute diff context for re-dispatch (I-2)
-        from teleclaude.core.next_machine.prepare_helpers import (  # pylint: disable=import-outside-toplevel
-            compute_artifact_diff,
-            compute_todo_folder_diff,
-        )
-
         base_sha = (isinstance(req_review, dict) and req_review.get("baseline_commit")) or ""
         req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", str(base_sha))
         folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
@@ -254,8 +245,6 @@ async def _prepare_step_test_spec_build(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TEST_SPEC_BUILD: xfail test specs needed in worktree."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
-
     stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())
 
     has_test_specs = await asyncio.to_thread(_has_test_spec_artifacts, cwd, slug)
@@ -297,8 +286,6 @@ async def _prepare_step_test_spec_review(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TEST_SPEC_REVIEW: awaiting test spec review verdict."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
-
     stamp_audit(state, "test_spec_review", "started_at", datetime.now(UTC).isoformat())
 
     spec_review = state.get("test_spec_review", {})
@@ -375,8 +362,6 @@ async def _prepare_step_plan_drafting(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_DRAFTING: implementation-plan.md needed."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
-
     stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
     has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
@@ -442,8 +427,6 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_REVIEW: awaiting plan review verdict."""
-    from teleclaude.core.next_machine.prepare_helpers import stamp_audit  # pylint: disable=import-outside-toplevel
-
     stamp_audit(state, "plan_review", "started_at", datetime.now(UTC).isoformat())
 
     plan_review = state.get("plan_review", {})
@@ -506,11 +489,6 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         # Compute diff context for re-dispatch (I-2)
-        from teleclaude.core.next_machine.prepare_helpers import (  # pylint: disable=import-outside-toplevel
-            compute_artifact_diff,
-            compute_todo_folder_diff,
-        )
-
         base_sha = (isinstance(plan_review, dict) and plan_review.get("baseline_commit")) or ""
         plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", str(base_sha))
         folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))

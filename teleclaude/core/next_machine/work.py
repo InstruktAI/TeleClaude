@@ -27,7 +27,6 @@ from teleclaude.core.next_machine._types import (
     StateValue,
 )
 from teleclaude.core.next_machine.build_gates import (
-    check_file_has_content,
     format_build_gate_failure,
     run_build_gates,
     verify_artifacts,
@@ -48,6 +47,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
     format_uncommitted_changes,
 )
+from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     add_to_roadmap,
     check_dependencies_satisfied,

@@ -13,6 +13,7 @@ All subcommands support --json for machine-readable output.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from dataclasses import asdict, dataclass, field
@@ -24,13 +25,25 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.config_handlers import (
     add_person,
     check_env_vars,
+    get_global_config,
     get_person_config,
     list_people,
     remove_person,
+    save_global_config,
     save_person_config,
+    set_invite_token,
     validate_all,
 )
+from teleclaude.cli.session_auth import resolve_cli_caller_role
+from teleclaude.cli.telec.help import _maybe_show_help, _usage
 from teleclaude.config.schema import PersonEntry, TelegramCreds
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+from teleclaude.invite import (
+    generate_invite_links,
+    resolve_discord_bot_user_id,
+    resolve_telegram_bot_username,
+    send_invite_email,
+)
 
 logger = get_logger(__name__)
 
@@ -47,9 +60,6 @@ class InviteResult(TypedDict):
 
 def _check_customer_guard() -> None:
     """Block customer-role sessions from mutating config commands."""
-    from teleclaude.cli.session_auth import resolve_cli_caller_role  # pylint: disable=import-outside-toplevel
-    from teleclaude.constants import HUMAN_ROLE_CUSTOMER  # pylint: disable=import-outside-toplevel
-
     role = resolve_cli_caller_role()
     if role == HUMAN_ROLE_CUSTOMER:
         print("Error: Permission denied. This operation requires member role or higher.")
@@ -82,8 +92,6 @@ def handle_config_cli(args: list[str]) -> None:
 
     # Intercept --help/-h at any level (e.g. "telec config people -h")
     if sub in ("--help", "-h") or "--help" in rest or "-h" in rest:
-        from teleclaude.cli.telec import _maybe_show_help
-
         _maybe_show_help("config", args)
         return
 
@@ -108,8 +116,6 @@ def handle_config_cli(args: list[str]) -> None:
 
 def _handle_people(args: list[str]) -> None:
     if not args:
-        from teleclaude.cli.telec import _usage
-
         print(_usage("config", "people"))
         raise SystemExit(1)
 
@@ -222,15 +228,6 @@ def _people_add(args: list[str], use_json: bool) -> None:
     # Auto-invite unless --no-invite is passed
     invite_sent = False
     if not no_invite:
-        import asyncio
-
-        from teleclaude.cli.config_handlers import set_invite_token
-        from teleclaude.invite import (
-            generate_invite_links,
-            resolve_discord_bot_user_id,
-            resolve_telegram_bot_username,
-            send_invite_email,
-        )
 
         async def _run_auto_invite() -> bool:
             try:
@@ -303,8 +300,6 @@ def _people_edit(args: list[str], use_json: bool) -> None:
 
     # Edit global entry fields (role, email, username, expertise, proficiency)
     if any(k in opts for k in ("role", "email", "username", "expertise", "proficiency")):
-        from teleclaude.cli.config_handlers import get_global_config, save_global_config
-
         config = get_global_config()
         for p in config.people:
             if p.name == name:
@@ -561,16 +556,6 @@ def _handle_invite(args: list[str]) -> None:
         raise SystemExit(1)
 
     # Run async invite flow
-    import asyncio
-
-    from teleclaude.cli.config_handlers import set_invite_token
-    from teleclaude.invite import (
-        generate_invite_links,
-        resolve_discord_bot_user_id,
-        resolve_telegram_bot_username,
-        send_invite_email,
-    )
-
     async def _run_invite() -> InviteResult:
         # Generate/rotate token
         token = set_invite_token(name)

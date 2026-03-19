@@ -123,13 +123,13 @@ async def _call_summarizer(
                     "strict": True,
                 },
             }
-            response = await openai_client.chat.completions.create(
+            oai_response = await openai_client.chat.completions.create(
                 model=SUMMARY_MODEL_OPENAI,
                 max_tokens=200,
                 messages=[{"role": "user", "content": prompt}],
                 response_format=response_format,
             )
-            response_any = cast(Any, response)
+            response_any = cast(Any, oai_response)
             text = response_any.choices[0].message.content or ""
             return parser(text)
         except Exception as e:  # pylint: disable=broad-exception-caught

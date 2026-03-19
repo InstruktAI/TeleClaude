@@ -14,7 +14,11 @@ from pathlib import Path
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli import demo_validation
 from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName, PhaseStatus, StateValue
+from teleclaude.core.next_machine.path_checks import (
+    _has_from_main_marker,
+)
 from teleclaude.core.next_machine.state_io import is_bug_todo
 from teleclaude.git import GitCommandError, Repo
 
@@ -103,9 +107,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint
     if is_bug_todo(worktree_cwd, slug):
         results.append("GATE SKIPPED: demo validate (bug workflow)")
     else:
-        from teleclaude.cli.demo_validation import validate_demo  # pylint: disable=import-outside-toplevel
-
-        passed, is_no_demo, message = validate_demo(slug, Path(worktree_cwd))
+        passed, is_no_demo, message = demo_validation.validate_demo(slug, Path(worktree_cwd))
         if not passed:
             all_passed = False
             results.append(f"GATE FAILED: demo validate\n{message}")
@@ -159,70 +161,6 @@ def _extract_checklist_section(content: str, section_name: str) -> str | None:
     return "\n".join(section_lines)
 
 
-FROM_MAIN_MARKER = "<!-- from-main:"
-
-
-def _has_from_main_marker(content: str) -> bool:
-    """Check if content starts with a from-main HTML comment marker."""
-    return content.lstrip().startswith(FROM_MAIN_MARKER)
-
-
-def _is_scaffold_template(content: str) -> bool:
-    """Check if a todo artifact is an unfilled scaffold template.
-
-    The scaffold creator (``telec todo create``) writes all files from
-    ``templates/todos/`` with placeholder content.  A file that still matches
-    its scaffold shape should be treated as *not yet written* by the state
-    machine so that it routes to the authoring phase rather than the review
-    phase.
-
-    Heuristic: scaffold templates are short and contain only headings,
-    empty list markers (``- [ ]``, ``-``), placeholder prose from the
-    template (``Define the intended outcome``, ``Summarize the approach``),
-    and whitespace.  Real authored content will exceed these markers.
-    """
-    stripped = content.strip()
-    if len(stripped) < 50:
-        return True
-
-    # Known phrases that appear only in scaffold templates.
-    _SCAFFOLD_PHRASES = (  # pylint: disable=invalid-name
-        "Define the intended outcome",
-        "Summarize the approach",
-        "Complete this task",
-        "Add or update tests",
-        "Run `make test`",
-        "Run `make lint`",
-        "Verify no unchecked",
-        "Confirm requirements are reflected",
-        "Confirm implementation tasks",
-        "Document any deferrals",
-        "In scope",
-        "Out of scope",
-    )
-
-    remaining_lines: list[str] = []
-    for line in stripped.splitlines():
-        text = line.strip()
-        # Skip blank lines, headings, horizontal rules
-        if not text or text.startswith("#") or re.fullmatch(r"-{3,}", text):
-            continue
-        # Skip bare list markers (-, - [ ], - [x])
-        if re.fullmatch(r"-\s*(\[[ x]?\]\s*)?", text):
-            continue
-        # Skip **File(s):** `` (empty file ref from impl plan template)
-        if re.fullmatch(r"\*\*[^*]+\*\*\s*``", text):
-            continue
-        # Skip lines that consist entirely of a scaffold phrase (with optional list marker)
-        bare = re.sub(r"^-\s*", "", text)
-        if any(phrase in bare for phrase in _SCAFFOLD_PHRASES):
-            continue
-        remaining_lines.append(text)
-
-    remaining = " ".join(remaining_lines).strip()
-    return len(remaining) < 30
-
-
 def _is_review_findings_template(content: str) -> bool:
     """Check if review-findings.md looks like an unfilled scaffold template.
 
@@ -237,22 +175,6 @@ def _is_review_findings_template(content: str) -> bool:
     if has_findings_header and not has_verdict:
         return True
     return False
-
-
-def check_file_has_content(cwd: str, relative_path: str) -> bool:
-    """Check if a file exists and contains real (non-scaffold) content.
-
-    Returns False when the file is missing or is still an unfilled scaffold
-    template from ``telec todo create``.
-    """
-    fpath = Path(cwd) / relative_path
-    if not fpath.exists():
-        return False
-    try:
-        content = fpath.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    return _has_from_main_marker(content) or not _is_scaffold_template(content)
 
 
 def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool = False) -> tuple[bool, str]:

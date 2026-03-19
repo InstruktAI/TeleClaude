@@ -168,6 +168,46 @@ async def test_bootstrap_omits_system_role_when_absent(monkeypatch: pytest.Monke
 
 
 @pytest.mark.unit
+async def test_bootstrap_skips_token_for_human_principal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Human-initiated sessions (human:<email> principal) do not receive a token."""
+    daemon_inst = _TestDaemon()
+    captured_env: dict[str, str] = {}
+
+    session = SimpleNamespace(
+        session_id="sess-human",
+        tmux_session_name="tc_sess-human",
+        project_path="/tmp/proj",
+        subdir=None,
+        lifecycle_status="initializing",
+        session_metadata=None,
+        principal=None,
+        human_email="maurice@instrukt.ai",
+        human_role="admin",
+    )
+
+    async def fake_ensure_tmux(*, name: str, working_dir: str, session_id: str, env_vars: dict[str, str]) -> bool:
+        captured_env.update(env_vars)
+        return True
+
+    db_stub = SimpleNamespace(
+        get_session=AsyncMock(return_value=session),
+        get_voice=AsyncMock(return_value=None),
+        issue_session_token=AsyncMock(return_value="tok"),
+        update_session=AsyncMock(),
+    )
+    monkeypatch.setattr(daemon_session, "db", db_stub)
+    monkeypatch.setattr(daemon_session, "resolve_session_principal", lambda s: ("human:maurice@instrukt.ai", "admin"))
+    monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda p, s: "/tmp/proj")
+    monkeypatch.setattr(daemon_session, "tmux_bridge", SimpleNamespace(ensure_tmux_session=fake_ensure_tmux))
+    monkeypatch.setattr(daemon_inst, "_start_polling_for_session", AsyncMock())
+
+    await daemon_inst._bootstrap_session_resources("sess-human", None)
+
+    assert "TELEC_SESSION_TOKEN" not in captured_env
+    db_stub.issue_session_token.assert_not_called()
+
+
+@pytest.mark.unit
 async def test_wait_for_agent_prompt_ready_uses_marker_when_found(monkeypatch: pytest.MonkeyPatch) -> None:
     """When the agent has a known prompt marker and it appears in output, returns True immediately."""
     daemon_inst = _TestDaemon()

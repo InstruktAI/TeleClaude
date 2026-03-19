@@ -12,6 +12,7 @@ from teleclaude.cli.tui.animations.base import Z0, Z10, Z20, Animation, RenderBu
 from teleclaude.cli.tui.animations.sprites import (
     MOON_SPRITE,
     SUN_SPRITE,
+    get_sky_entities,
 )
 from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite, SpriteGroup
 from teleclaude.cli.tui.theme import blend_colors, is_dark_mode
@@ -275,7 +276,7 @@ class GlobalSky(Animation):  # pylint: disable=too-many-instance-attributes
         if sprite is not None:
             self._sky_entities.append(self._spawn_sky_entity(sprite))
         else:
-            entities = sprites_module.get_sky_entities()
+            entities = get_sky_entities()
             if entities:
                 self._sky_entities.append(self._spawn_sky_entity(self.rng.choice(entities)))
 

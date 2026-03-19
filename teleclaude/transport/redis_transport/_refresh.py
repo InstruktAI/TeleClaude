@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -117,22 +117,14 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         project_path: str | None = None,
     ) -> bool:
         """Request a remote refresh if the reason is allowed and cooldown permits it."""
-        return self._schedule_refresh(
-            computer=computer,
-            data_type=data_type,
-            reason=reason,
-            project_path=project_path,
-            force=False,
-        )
+        return self._schedule_refresh(_RefreshRequest(computer, data_type, reason, project_path=project_path))
 
     def _schedule_refresh(
         self,
-        request: _RefreshRequest | None = None,
+        request: _RefreshRequest,
         on_success: Callable[[], None] | None = None,
-        **request_fields: object,
     ) -> bool:
         """Coalesce refresh requests by peer+data type and enforce cooldown."""
-        request = self._coerce_refresh_request(request, request_fields)
         if request.reason not in self._ALLOWED_REFRESH_REASONS:
             logger.warning(
                 "Skipping refresh for %s:%s: reason not allowed (%s)",
@@ -174,26 +166,6 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         task = self._spawn_refresh_task(_refresh_wrapper(), key=key)
         self._refresh_tasks[key] = task
         return True
-
-    def _coerce_refresh_request(
-        self,
-        request: _RefreshRequest | None,
-        request_fields: Mapping[str, object],
-    ) -> _RefreshRequest:
-        if request is not None:
-            return request
-        computer = request_fields.get("computer")
-        data_type = request_fields.get("data_type")
-        reason = request_fields.get("reason")
-        if not isinstance(computer, str) or not isinstance(data_type, str) or not isinstance(reason, str):
-            raise TypeError("schedule_refresh requires either a request or computer/data_type/reason")
-        return _RefreshRequest(
-            computer=computer,
-            data_type=data_type,
-            reason=reason,
-            project_path=cast("str | None", request_fields.get("project_path")),
-            force=bool(request_fields.get("force", False)),
-        )
 
     def _refresh_key(self, computer: str, data_type: str, project_path: str | None) -> str:
         if data_type == "sessions":

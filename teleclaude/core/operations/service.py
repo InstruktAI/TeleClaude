@@ -18,10 +18,9 @@ from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine.work import next_work
-from teleclaude.core.operations import progress as progress_module
-from teleclaude.core.operations.progress import (
-    reset_operation_progress_callback,
-    set_operation_progress_callback,
+from teleclaude.core.operation_progress import (
+    reset_progress_callback,
+    set_progress_callback,
 )
 from teleclaude.core.task_registry import TaskRegistry
 
@@ -50,8 +49,6 @@ TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 
 _operations_service: OperationsService | None = None  # pylint: disable=invalid-name
-_progress_callback = progress_module._progress_callback  # pylint: disable=protected-access
-emit_operation_progress = progress_module.emit_operation_progress
 
 
 def set_operations_service(service: OperationsService) -> None:
@@ -323,7 +320,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
                 progress_tasks.add(task)
                 task.add_done_callback(progress_tasks.discard)
 
-            token = set_operation_progress_callback(_capture_progress)
+            token = set_progress_callback(_capture_progress)
             result = await next_work(
                 self._db,
                 operation.slug,
@@ -354,7 +351,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             logger.exception("Background operation failed for %s", operation_id)
         finally:
             if token is not None:
-                reset_operation_progress_callback(token)
+                reset_progress_callback(token)
             if progress_tasks:
                 await asyncio.gather(*progress_tasks, return_exceptions=True)
             if heartbeat_task is not None:
@@ -395,7 +392,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
                 progress_tasks.add(task)
                 task.add_done_callback(progress_tasks.discard)
 
-            token = set_operation_progress_callback(_capture_progress)
+            token = set_progress_callback(_capture_progress)
             result = await next_integrate(
                 self._db,
                 operation.slug,
@@ -427,7 +424,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             logger.exception("Background operation failed for %s", operation_id)
         finally:
             if token is not None:
-                reset_operation_progress_callback(token)
+                reset_progress_callback(token)
             if progress_tasks:
                 await asyncio.gather(*progress_tasks, return_exceptions=True)
             if heartbeat_task is not None:

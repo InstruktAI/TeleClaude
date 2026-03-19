@@ -452,8 +452,8 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         self._runtime_state.computers = computers
         chiptunes_status = await self._load_chiptunes_status()
         return DataRefreshed(
-            computers=computers,
-            projects=[
+            computers,
+            [
                 ProjectInfo(
                     computer=project.computer,
                     name=project.name,
@@ -462,11 +462,11 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
                 )
                 for project in projects_with_todos
             ],
-            projects_with_todos=projects_with_todos,
-            sessions=sessions,
-            availability=availability,
-            jobs=jobs,
-            tts_enabled=self._extract_tts_enabled(settings),
+            projects_with_todos,
+            sessions,
+            availability,
+            jobs,
+            self._extract_tts_enabled(settings),
             chiptunes_loaded=bool(getattr(chiptunes_status, "loaded", False)) if chiptunes_status else False,
             chiptunes_playback=str(getattr(chiptunes_status, "playback", "cold")) if chiptunes_status else "cold",
             chiptunes_state_version=int(getattr(chiptunes_status, "state_version", 0)) if chiptunes_status else 0,

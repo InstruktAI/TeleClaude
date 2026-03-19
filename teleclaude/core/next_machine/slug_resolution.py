@@ -11,7 +11,7 @@ import asyncio
 from pathlib import Path
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, ItemPhase, PhaseName, PhaseStatus
-from teleclaude.core.next_machine.build_gates import check_file_has_content
+from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     check_dependencies_satisfied,
     load_roadmap,

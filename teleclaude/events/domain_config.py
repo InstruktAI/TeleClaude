@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -76,10 +75,3 @@ class DomainsConfig(BaseModel):
     personal_base_path: str = "~/.teleclaude/personal"
     helpdesk_path: str = "~/.teleclaude/helpdesk"
     domains: dict[str, DomainConfig] = Field(default_factory=dict)
-
-
-AutonomyLevelAliases = cast(Any, AutonomyLevel)
-AutonomyLevelAliases.manual = AutonomyLevel.MANUAL
-AutonomyLevelAliases.notify = AutonomyLevel.NOTIFY
-AutonomyLevelAliases.auto_notify = AutonomyLevel.AUTO_NOTIFY
-AutonomyLevelAliases.autonomous = AutonomyLevel.AUTONOMOUS
