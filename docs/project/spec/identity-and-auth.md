@@ -43,21 +43,45 @@ Protected local API routes use these headers:
 
 ### 3) Agent session token auth
 
-Daemon-spawned agent sessions use a token-based credential instead of the
-terminal-email or dual-factor session-id path.
+Token-based auth exists exclusively for daemon-spawned agent sessions — sessions
+that have no human behind them and therefore cannot authenticate via terminal email
+or the dual-factor session-id path.
 
-**Flow:**
+**Human-initiated sessions never receive a token.** They authenticate via
+`x-telec-email` (terminal login) or `x-caller-session-id` (dual-factor tmux
+cross-check). The daemon does not issue a token for sessions with a `human:<email>`
+principal.
+
+**Who gets a token:**
+
+| Principal type                | Token issued?                  | Auth path                                                   |
+| ----------------------------- | ------------------------------ | ----------------------------------------------------------- |
+| `human:<email>`               | **No**                         | `x-telec-email` or `x-caller-session-id` + tmux cross-check |
+| `system:<session_id>`         | **Yes**                        | `x-session-token` header                                    |
+| Inherited `session.principal` | **Yes** (if system-originated) | Inherits parent's auth path                                 |
+
+**Token lifecycle:**
+
+Each token is bound to exactly one `session_id`. It cannot be used to
+authenticate as a different session. Tokens have no time-based expiry. A token
+lives exactly as long as its session. The only event that invalidates a token
+is session close, which calls `db.revoke_session_tokens(session_id)`. There is
+no TTL, no timeout, no background sweep. Session close is the single lifecycle
+boundary.
+
+**Flow (system-principal sessions only):**
 
 1. Daemon calls `resolve_session_principal(session)` at bootstrap to derive a principal:
-   - `human:<email>` when `session.human_email` is set.
-   - `system:<session_id>` for daemon-spawned (automated) sessions.
+   - `human:<email>` when `session.human_email` is set → **no token issued**.
+   - `system:<session_id>` for daemon-spawned (automated) sessions → **token issued**.
    - Inherited `session.principal` is reused directly for child sessions so the full
      agent chain shares one stable identity.
-2. Daemon issues a token: `db.issue_session_token(session_id, principal, role)` → UUID.
+2. For system principals only: daemon issues a token via
+   `db.issue_session_token(session_id, principal, role)` → UUID.
 3. Token is injected into the tmux environment as `TELEC_SESSION_TOKEN`.
 4. CLI calls from within the session send `x-session-token: <token>` header.
 5. `verify_caller()` validates the token first (before the session-id dual-factor path):
-   - Calls `db.validate_session_token(token)` (checks expiry and revoked_at).
+   - Calls `db.validate_session_token(token)` — checks `revoked_at` only.
    - Populates `CallerIdentity.principal` and `CallerIdentity.principal_role` from the record.
 6. `is_command_allowed()` uses `principal_role` as the effective human role when `human_role`
    is absent — this lets daemon-spawned sessions pass role clearance without a human behind them.
@@ -66,21 +90,23 @@ terminal-email or dual-factor session-id path.
 
 **Key headers:**
 
-- `x-session-token`: daemon-issued credential (takes priority over `x-caller-session-id`).
+- `x-session-token`: daemon-issued credential for system sessions only
+  (takes priority over `x-caller-session-id` when present).
 
 **`telec auth whoami` inside an agent session:**
 When `TELEC_SESSION_TOKEN` is present, `whoami` resolves the principal via the daemon's
 `GET /auth/whoami` endpoint and prints `Principal: <principal>` and `Role: <role>`.
-Falls back to terminal email display when no token is present.
+Falls back to terminal email display when no token is present (human sessions).
 
 **Principal types:**
-| Format | When set |
-|---|---|
-| `human:<email>` | Session created with a human identity (human_email set) |
-| `system:<session_id>` | Daemon-spawned automated session |
+| Format | When set | Token? |
+|---|---|---|
+| `human:<email>` | Session created with a human identity (human_email set) | No |
+| `system:<session_id>` | Daemon-spawned automated session | Yes |
 
 **Token ledger table:** `session_tokens` — stores token, session_id, principal, role,
-issued_at, expires_at, revoked_at. Tokens expire after 24 h and are revoked on session close.
+issued_at, revoked_at. Token lifetime is controlled exclusively by revocation on
+session close.
 
 ### 4) Web authentication (NextAuth)
 

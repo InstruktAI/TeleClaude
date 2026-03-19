@@ -304,14 +304,13 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         env_vars = voice_env_vars.copy()
         working_dir = resolve_working_dir(session.project_path, session.subdir)
 
-        # Issue a session token and inject it as TELEC_SESSION_TOKEN into the tmux env.
-        # This gives every agent session a daemon-issued credential before the process starts.
-        # Child sessions inherit the parent principal so the full agent chain shares one identity.
+        # Resolve principal for role derivation and (for system sessions) token issuance.
+        # Human sessions authenticate via x-telec-email / x-caller-session-id — no token.
+        # System sessions get a token injected as TELEC_SESSION_TOKEN.
         principal, role = resolve_session_principal(session)
-        session_token = await db.issue_session_token(session_id, principal, role)
-        env_vars[TELEC_SESSION_TOKEN] = session_token
-        # Principal/role available via DB lookup from session marker file.
-        # Do NOT inject as env vars — file-based contract is the single source of truth.
+        if principal.startswith("system:"):
+            session_token = await db.issue_session_token(session_id, principal, role)
+            env_vars[TELEC_SESSION_TOKEN] = session_token
 
         # Prevent pre-commit from auto-stashing unstaged files for non-system roles.
         # Stash is repo-wide and corrupts multi-worktree flows. Worktrees are

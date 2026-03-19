@@ -1,36 +1,35 @@
 """Mixin: DbTokensMixin."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
 
 from .. import db_models
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 
 
 class DbTokensMixin:
     async def issue_session_token(self, session_id: str, principal: str, role: str) -> str:
-        """Issue a new session token and store it in the ledger.
+        """Issue a new session token bound to a session_id.
+
+        Tokens have no time-based expiry. They live until the session closes
+        and revoke_session_tokens() is called. Only system-principal sessions
+        receive tokens — human sessions authenticate via x-telec-email or
+        x-caller-session-id.
 
         Returns the token string (UUID).
         """
         token = str(uuid.uuid4())
-        now = datetime.now(UTC)
-        issued_at = now.isoformat()
-        expires_at = (now + timedelta(hours=24)).isoformat()
+        issued_at = datetime.now(UTC).isoformat()
         record = db_models.SessionToken(
             token=token,
             session_id=session_id,
             principal=principal,
             role=role,
             issued_at=issued_at,
-            expires_at=expires_at,
+            expires_at="",
             revoked_at=None,
         )
         async with self._session() as db_session:
@@ -41,7 +40,8 @@ class DbTokensMixin:
     async def validate_session_token(self, token: str) -> db_models.SessionToken | None:
         """Validate a token against the ledger.
 
-        Returns the SessionToken record if valid (not expired, not revoked), else None.
+        Returns the SessionToken record if valid (not revoked), else None.
+        Revocation is the only invalidation path — there is no expiry check.
         """
         from sqlmodel import select
 
@@ -51,10 +51,6 @@ class DbTokensMixin:
             record = result.first()
 
         if record is None:
-            return None
-
-        now_iso = datetime.now(UTC).isoformat()
-        if record.expires_at < now_iso:
             return None
         if record.revoked_at is not None:
             return None
