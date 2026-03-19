@@ -1,5 +1,6 @@
 """API request/response models for API server."""
 
+import dataclasses
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -125,9 +126,39 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
     @classmethod
     def from_core(cls, session: "SessionSnapshot", computer: str | None = None) -> "SessionDTO":
         """Map from core SessionSnapshot dataclass."""
-        payload = session.to_dict()
+        payload_obj = session.to_dict() if callable(getattr(session, "to_dict", None)) else None
+        if not isinstance(payload_obj, dict):
+            payload_obj = {
+                "session_id": session.session_id,
+                "last_input_origin": session.last_input_origin,
+                "title": session.title,
+                "project_path": session.project_path,
+                "subdir": session.subdir,
+                "thinking_mode": session.thinking_mode,
+                "active_agent": session.active_agent,
+                "status": session.status,
+                "created_at": session.created_at,
+                "last_activity": session.last_activity,
+                "closed_at": session.closed_at,
+                "last_input": session.last_input,
+                "last_input_at": session.last_input_at,
+                "last_output_summary": session.last_output_summary,
+                "last_output_summary_at": session.last_output_summary_at,
+                "last_output_digest": session.last_output_digest,
+                "native_session_id": session.native_session_id,
+                "tmux_session_name": session.tmux_session_name,
+                "initiator_session_id": session.initiator_session_id,
+                "computer": session.computer,
+                "human_email": session.human_email,
+                "human_role": session.human_role,
+                "visibility": session.visibility,
+                "session_metadata": session.session_metadata,
+            }
+        payload = dict(payload_obj)
         payload["visibility"] = session.visibility or "private"
         payload["computer"] = computer
+        if session.session_metadata:
+            payload["session_metadata"] = dataclasses.asdict(session.session_metadata)
         return cls.model_validate(payload)
 
 
