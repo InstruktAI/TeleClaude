@@ -46,6 +46,8 @@ def load_domains(project_root: Path) -> set[str]:  # pylint: disable=too-many-re
         return set(_DEFAULT_DOMAINS)
     business = payload.get("business")
     if not isinstance(business, dict):
+        business = payload.get("event_domains")
+    if not isinstance(business, dict):
         return set(_DEFAULT_DOMAINS)
     domains = business.get("domains")
     if isinstance(domains, list):
