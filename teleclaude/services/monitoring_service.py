@@ -168,7 +168,23 @@ class MonitoringService:  # pylint: disable=too-many-instance-attributes
 
         tasks = snapshot.get("asyncio_tasks")
         if isinstance(tasks, int) and tasks > _ASYNCIO_TASKS_WARN:
-            logger.warning("Resource pressure: asyncio_tasks=%d exceeds threshold %d", tasks, _ASYNCIO_TASKS_WARN)
+            breakdown = ""
+            try:
+                all_tasks = asyncio.all_tasks()
+                name_counts: dict[str, int] = {}
+                for t in all_tasks:
+                    name = t.get_name()
+                    name_counts[name] = name_counts.get(name, 0) + 1
+                top_names = sorted(name_counts.items(), key=lambda x: -x[1])[:15]
+                breakdown = ", ".join(f"{n}={c}" for n, c in top_names)
+            except RuntimeError:
+                breakdown = "(no running loop)"
+            logger.warning(
+                "Resource pressure: asyncio_tasks=%d exceeds threshold %d | top: %s",
+                tasks,
+                _ASYNCIO_TASKS_WARN,
+                breakdown,
+            )
 
         lag = snapshot.get("loop_lag_ms")
         if isinstance(lag, (int, float)) and lag > _LOOP_LAG_WARN_MS:
