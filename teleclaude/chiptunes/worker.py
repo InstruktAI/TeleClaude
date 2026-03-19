@@ -37,7 +37,6 @@ from teleclaude.chiptunes.player import ChiptunesPlayer
 SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
 PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 _RSID_MAGIC = b"RSID"
-_MAX_TRACK_DURATION = 300.0
 
 
 def _is_rsid(path: Path) -> bool:
@@ -292,7 +291,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 if self._player is not None:
                     self._player.stop()
 
-                player = ChiptunesPlayer(volume=self._volume, max_track_duration=_MAX_TRACK_DURATION)
+                player = ChiptunesPlayer(volume=self._volume)
                 player.on_track_end = lambda reason=None: self._on_track_end(reason, gen=gen)  # type: ignore[misc]
                 self._player = player
                 self._current_track = track
@@ -352,7 +351,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 return
         if reason is None:
             reason = self._player.track_end_reason if self._player is not None else None
-        if reason in {"track_completed", "max_duration"}:
+        if reason == "track_completed":
             if self._enabled:
                 threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()
             else:

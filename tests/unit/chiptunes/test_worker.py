@@ -36,9 +36,8 @@ class _ImmediateThread:
 class _FakePlayer:
     instances: list[_FakePlayer] = []
 
-    def __init__(self, volume: float, max_track_duration: float = 300.0) -> None:
+    def __init__(self, volume: float) -> None:
         self.volume = volume
-        self.max_track_duration = max_track_duration
         self.play_calls: list[tuple[Path, bool, float]] = []
         self.stop_calls = 0
         self.pause_calls = 0

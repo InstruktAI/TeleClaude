@@ -163,9 +163,18 @@ class TestChiptunesPlayer:
     def test_emulation_loop_updates_position_and_reports_completion(self, monkeypatch: pytest.MonkeyPatch) -> None:
         driver = _FakeDriver(_header())
         renderer = _FakeRenderer(sample_rate=48000, pal=True, volume=0.5)
+
+        class _SingleFrameDriver(_FakeDriver):
+            def play_frame(self) -> list[tuple[int, int]]:
+                self.play_calls += 1
+                if self.play_calls > 1:
+                    raise RuntimeError("track ended")
+                return [(0, self.play_calls)]
+
+        driver = _SingleFrameDriver(_header(flags=4))
         monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
         monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
-        player = player_module.ChiptunesPlayer(volume=0.5, max_track_duration=1.0 / 50.0)
+        player = player_module.ChiptunesPlayer(volume=0.5)
         reasons: list[str | None] = []
         player.on_track_end = reasons.append
         monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
@@ -176,4 +185,4 @@ class TestChiptunesPlayer:
         assert renderer.frames == [([(0, 1)], 1.0 / 50.0)]
         assert player.playback_position_seconds == pytest.approx(1.0 / 50.0)
         assert player.track_end_reason == "track_completed"
-        assert reasons == ["track_completed"]
+        assert reasons == ["emulation_error", "track_completed"]

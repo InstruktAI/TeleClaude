@@ -32,9 +32,8 @@ _SAMPLE_RATE = 48000
 class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
     """Plays a SID file in a background thread via sounddevice."""
 
-    def __init__(self, volume: float = 0.5, max_track_duration: float = 300.0) -> None:
+    def __init__(self, volume: float = 0.5) -> None:
         self._volume = max(0.0, min(1.0, volume))
-        self._max_track_duration = max_track_duration
         self._stop_event = threading.Event()
         self._resume_event = threading.Event()
         self._resume_event.set()
@@ -325,8 +324,6 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             for _ in range(target_frames):
                 if self._stop_event.is_set():
                     break
-                if playback_elapsed >= self._max_track_duration:
-                    break
                 driver.play_frame()
                 playback_elapsed += frame_duration
             with self._position_lock:
@@ -336,9 +333,6 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             if not self._resume_event.wait(timeout=0.1):
                 continue
             if self._stop_event.is_set():
-                break
-            if playback_elapsed >= self._max_track_duration:
-                logger.debug("ChipTunes: max track duration reached, advancing to next track")
                 break
             try:
                 writes = driver.play_frame()
