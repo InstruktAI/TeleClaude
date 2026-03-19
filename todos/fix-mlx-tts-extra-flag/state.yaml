@@ -1,8 +1,8 @@
 schema_version: 1
 phase: in_progress
 kind: todo
-build: started
-review: pending
+build: complete
+review: approved
 deferrals_processed: false
 finalize:
   status: pending
