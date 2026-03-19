@@ -64,11 +64,38 @@ def _parse_consumed_message(
     return ConsumedMessage(id=decoded_id, payload=payload), msg_id
 
 
+def _resolve_consumer_group(
+    consumer_group: ConsumerGroupSpec | str,
+    group_args: tuple[str, ...],
+) -> tuple[str, str]:
+    """Normalize consumer-group inputs across legacy and structured call styles."""
+    if isinstance(consumer_group, ConsumerGroupSpec):
+        return consumer_group.group, consumer_group.consumer
+    if not group_args:
+        raise TypeError("consumer name is required when consumer_group is passed as a string")
+    return consumer_group, group_args[0]
+
+
+def _collect_consumed_messages(
+    raw: list[tuple[bytes | str, list[tuple[bytes | str, dict[bytes | str, bytes | str]]]]],
+) -> tuple[list[ConsumedMessage], list[bytes | str]]:
+    """Decode consumed Redis entries and collect ack ids."""
+    messages: list[ConsumedMessage] = []
+    ack_ids: list[bytes | str] = []
+    for _stream_name, entries in raw:
+        for msg_id, fields in entries:
+            message, ack_id = _parse_consumed_message(msg_id, fields)
+            if message is not None:
+                messages.append(message)
+            ack_ids.append(ack_id)
+    return messages, ack_ids
+
+
 async def consume(
     redis: Redis,
     channel: str,
-    consumer_group: ConsumerGroupSpec,
-    *,
+    consumer_group: ConsumerGroupSpec | str,
+    *group_args: str,
     count: int = 10,
     block_ms: int = 0,
 ) -> list[ConsumedMessage]:
@@ -78,7 +105,6 @@ async def consume(
         redis: Connected Redis client.
         channel: Full channel key (e.g. ``channel:myproject:events``).
         group: Consumer group name.
-        consumer: Consumer name within the group.
         count: Maximum messages to read per call.
         block_ms: How long to block waiting for messages (0 = no block).
 
@@ -86,9 +112,11 @@ async def consume(
         List of ConsumedMessage dicts with ``id`` and ``payload`` fields.  Each
         message is automatically acknowledged after being returned.
     """
+    group_name, consumer_name = _resolve_consumer_group(consumer_group, group_args)
+
     raw = await redis.xreadgroup(
-        consumer_group.group,
-        consumer_group.consumer,
+        group_name,
+        consumer_name,
         {channel: ">"},
         count=count,
         block=block_ms if block_ms > 0 else None,
@@ -96,16 +124,9 @@ async def consume(
     if not raw:
         return []
 
-    messages: list[ConsumedMessage] = []
-    ack_ids: list[bytes | str] = []
-    for _stream_name, entries in raw:
-        for msg_id, fields in entries:
-            message, ack_id = _parse_consumed_message(msg_id, fields)
-            if message is not None:
-                messages.append(message)
-            ack_ids.append(ack_id)
+    messages, ack_ids = _collect_consumed_messages(raw)
 
     if ack_ids:
-        await redis.xack(channel, consumer_group.group, *ack_ids)
+        await redis.xack(channel, group_name, *ack_ids)
 
     return messages

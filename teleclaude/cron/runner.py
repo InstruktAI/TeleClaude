@@ -64,6 +64,11 @@ def _load_job_schedules(config_path: Path | None = None) -> dict[str, JobSchedul
     return config.jobs
 
 
+def load_job_schedules(config_path: Path | None = None) -> dict[str, JobScheduleConfig]:
+    """Load job schedule configuration from teleclaude.yml."""
+    return _load_job_schedules(config_path)
+
+
 def _parse_duration(duration: str) -> timedelta:
     """Parse duration string (e.g., '10m', '2h', '1d') into timedelta."""
     match = re.match(r"^(\d+)([mhd])$", duration)

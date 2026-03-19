@@ -79,6 +79,15 @@ class SandboxContainerManager:
         return self._state.container_id is not None
 
     @property
+    def _container_id(self) -> str | None:
+        """Compatibility view of the container id state."""
+        return self._state.container_id
+
+    @_container_id.setter
+    def _container_id(self, value: str | None) -> None:
+        self._state.container_id = value
+
+    @property
     def has_cartridges(self) -> bool:
         """Return whether any sandbox cartridges are currently present on disk."""
         return self._state.has_cartridges
@@ -87,6 +96,15 @@ class SandboxContainerManager:
     def permanently_failed(self) -> bool:
         """Return whether the sandbox sidecar has exceeded its restart budget."""
         return self._state.permanently_failed
+
+    @property
+    def _permanently_failed(self) -> bool:
+        """Compatibility view of the failure latch."""
+        return self._state.permanently_failed
+
+    @_permanently_failed.setter
+    def _permanently_failed(self, value: bool) -> None:
+        self._state.permanently_failed = value
 
     @property
     def docker_unavailable(self) -> bool:

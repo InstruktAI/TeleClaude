@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
-from teleclaude.api.auth import _get_cached_session
+from teleclaude.api import auth as auth_module
 from teleclaude.core.db import db
 
 
@@ -39,7 +39,7 @@ async def check_session_access(
     if role == "admin":
         return
 
-    session = _get_cached_session(session_id)
+    session = auth_module.get_cached_session(session_id)
     if session is None:
         session = await db.get_session(session_id)
     if not session:

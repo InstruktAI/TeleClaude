@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,16 +16,18 @@ if TYPE_CHECKING:
     from teleclaude.hooks.registry import ContractRegistry  # type: ignore[import-not-found]  # Track B dependency
 
 router = APIRouter(prefix="/hooks", tags=["hooks"])
-_REGISTRY_STATE: dict[str, ContractRegistry | None] = {"registry": None}
+_REGISTRY_STATE: dict[str, object | None] = {"value": None}
+globals()["_contract_registry"] = None
 
 
 def set_contract_registry(registry: ContractRegistry) -> None:
     """Called by daemon to inject the ContractRegistry instance."""
-    _REGISTRY_STATE["registry"] = registry
+    _REGISTRY_STATE["value"] = registry
+    globals()["_contract_registry"] = registry
 
 
 def _get_registry() -> ContractRegistry:
-    registry = _REGISTRY_STATE["registry"]
+    registry = cast("ContractRegistry | None", globals().get("_contract_registry", _REGISTRY_STATE["value"]))
     if registry is None:
         raise HTTPException(status_code=503, detail="Webhook service not initialized")
     return registry

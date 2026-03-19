@@ -7,6 +7,7 @@ import json
 from typing import cast
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.core.models import JsonDict
 
 
 class CodexAdapter:
@@ -25,7 +26,7 @@ class CodexAdapter:
     )
     supports_hook_checkpoint: bool = False
 
-    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, dict[str, object]]:  # guard: loose-dict
+    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Parse JSON from positional arg; event is always agent_stop."""
         raw_input = args.event_type or ""
         if raw_input.strip():
@@ -34,11 +35,11 @@ class CodexAdapter:
             parsed = {}
         if not isinstance(parsed, dict):
             raise ValueError("Codex hook payload must be a JSON object")
-        raw_data = cast(dict[str, object], parsed)  # guard: loose-dict
+        raw_data = cast(JsonDict, parsed)
         event_type = "agent_stop"
         return raw_input, event_type, raw_data
 
-    def normalize_payload(self, data: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
+    def normalize_payload(self, data: JsonDict) -> JsonDict:
         """Map Codex kebab-case fields to canonical internal names."""
         result = dict(data)
 

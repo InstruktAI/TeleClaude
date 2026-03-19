@@ -111,6 +111,10 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             self._schedule_reconnect("get_online_computers", e)
             return []
 
+    async def _get_online_computers(self) -> list[str]:
+        """Compatibility wrapper for older call sites and tests."""
+        return await self.get_online_computers()
+
     async def discover_peers(self) -> list[PeerInfo]:
         """Discover peers via Redis heartbeat keys.
 

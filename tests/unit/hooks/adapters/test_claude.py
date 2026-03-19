@@ -20,10 +20,10 @@ class TestClaudeAdapter:
         adapter = ClaudeAdapter()
         receiver_stub = types.ModuleType("teleclaude.hooks.receiver")
 
-        def _read_stdin() -> tuple[str, JsonDict]:
+        def read_stdin() -> tuple[str, JsonDict]:
             return '{"session_id":"s1"}', {"session_id": "s1"}
 
-        receiver_stub._read_stdin = _read_stdin
+        receiver_stub.read_stdin = read_stdin
 
         monkeypatch.setitem(sys.modules, "teleclaude.hooks.receiver", receiver_stub)
         monkeypatch.setattr(hooks_package, "receiver", receiver_stub, raising=False)

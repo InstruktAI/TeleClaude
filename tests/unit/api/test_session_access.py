@@ -41,7 +41,7 @@ class TestSessionAccess:
         request = _make_request(email="bob@example.com", role="member")
         session = SimpleNamespace(human_email="alice@example.com", visibility="shared")
 
-        with patch("teleclaude.api.auth._get_cached_session", return_value=session):
+        with patch("teleclaude.api.auth.get_cached_session", return_value=session):
             await session_access.check_session_access(request, "sess-2")
 
     @pytest.mark.unit
@@ -51,7 +51,7 @@ class TestSessionAccess:
         request = _make_request(email="bob@example.com", role="member")
         session = SimpleNamespace(human_email="alice@example.com", visibility="shared")
 
-        with patch("teleclaude.api.auth._get_cached_session", return_value=session):
+        with patch("teleclaude.api.auth.get_cached_session", return_value=session):
             with pytest.raises(HTTPException) as exc_info:
                 await session_access.check_session_access(request, "sess-3", require_owner=True)
 

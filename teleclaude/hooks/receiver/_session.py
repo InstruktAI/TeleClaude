@@ -5,19 +5,20 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import uuid
 from pathlib import Path
+from typing import Any, cast
 
+import sqlmodel
 from instrukt_ai_logging import get_logger
 from sqlalchemy import create_engine
 from sqlalchemy import event as sa_event
 from sqlalchemy.exc import SQLAlchemyError
-from sqlmodel import Session as SqlSession
-from sqlmodel import select
 
 from teleclaude.config import config
 from teleclaude.core import db_models
-from teleclaude.memory.context import generate_context_sync
+from teleclaude.memory import context as memory_context_module
 from teleclaude.paths import SESSION_MAP_PATH
 
 try:
@@ -26,6 +27,7 @@ except ImportError:  # pragma: no cover - platform-dependent.
     fcntl = None
 
 logger = get_logger("teleclaude.hooks.receiver")
+
 
 _SESSION_EXPORTS = [
     "_create_sync_engine",
@@ -81,11 +83,20 @@ def _create_sync_engine() -> object:
     return engine
 
 
+def _get_memory_context_module() -> Any:
+    return sys.modules.get("teleclaude.memory.context", memory_context_module)
+
+
+def _get_sqlmodel_module() -> Any:
+    return sys.modules.get("sqlmodel", sqlmodel)
+
+
 def _get_memory_context(project_name: str, identity_key: str | None = None) -> str:
     """Fetch pre-formatted memory context from local database."""
     try:
         db_path = str(config.database.path)
-        return generate_context_sync(project_name, db_path, identity_key=identity_key)
+        context_module = _get_memory_context_module()
+        return context_module.generate_context_sync(project_name, db_path, identity_key=identity_key)
     except (OSError, RuntimeError, TypeError, ValueError):
         return ""
 
@@ -158,8 +169,9 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
         return True
 
     try:
-        with SqlSession(_create_sync_engine()) as session:
-            row = session.get(db_models.Session, session_id)
+        sqlmodel_module = _get_sqlmodel_module()
+        with sqlmodel_module.Session(_create_sync_engine()) as session:
+            row = cast(db_models.Session | None, session.get(db_models.Session, session_id))
     except SQLAlchemyError as exc:
         logger.debug(
             "TMUX contract DB lookup skipped (db unavailable)",
@@ -250,8 +262,9 @@ def _resolve_or_refresh_session_id(
         return candidate_session_id
 
     try:
-        with SqlSession(_create_sync_engine()) as session:
-            row = session.get(db_models.Session, candidate_session_id)
+        sqlmodel_module = _get_sqlmodel_module()
+        with sqlmodel_module.Session(_create_sync_engine()) as session:
+            row = cast(db_models.Session | None, session.get(db_models.Session, candidate_session_id))
             if not row:
                 logger.debug(
                     "Invalidating cached session mapping: session row not found",
@@ -298,15 +311,16 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
         return None
 
     try:
-        with SqlSession(_create_sync_engine()) as session:
+        sqlmodel_module = _get_sqlmodel_module()
+        with sqlmodel_module.Session(_create_sync_engine()) as session:
+            statement = sqlmodel_module.select(db_models.Session)
             statement = (
-                select(db_models.Session)
-                .where(db_models.Session.native_session_id == native_session_id)
+                statement.where(db_models.Session.native_session_id == native_session_id)
                 .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
                 .order_by(db_models.Session.created_at.desc())  # type: ignore[union-attr]
                 .limit(1)
             )
-            row = session.exec(statement).first()
+            row = cast(db_models.Session | None, session.exec(statement).first())
     except SQLAlchemyError as exc:
         logger.debug(
             "Native session lookup skipped (db unavailable)",

@@ -51,6 +51,7 @@ NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 
 _operations_service: OperationsService | None = None  # pylint: disable=invalid-name
 _progress_callback = progress_module._progress_callback  # pylint: disable=protected-access
+emit_operation_progress = progress_module.emit_operation_progress
 
 
 def set_operations_service(service: OperationsService) -> None:

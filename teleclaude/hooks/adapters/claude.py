@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from typing import Any, cast
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
-from teleclaude.hooks.adapters._stdin import read_stdin_payload
+from teleclaude.core.models import JsonDict
+from teleclaude.hooks import receiver as receiver_module
 
 
 class ClaudeAdapter:
@@ -16,13 +19,14 @@ class ClaudeAdapter:
     mint_events: frozenset[AgentHookEventType] = frozenset({AgentHookEvents.AGENT_SESSION_START})
     supports_hook_checkpoint: bool = True
 
-    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, dict[str, object]]:  # guard: loose-dict
+    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""
         event_type: str = args.event_type
-        raw_input, raw_data = read_stdin_payload()
+        receiver = cast(Any, sys.modules.get("teleclaude.hooks.receiver", receiver_module))
+        raw_input, raw_data = cast(tuple[str, JsonDict], receiver.read_stdin())
         return raw_input, event_type, raw_data
 
-    def normalize_payload(self, data: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
+    def normalize_payload(self, data: JsonDict) -> JsonDict:
         """Identity: Claude already uses canonical field names."""
         return data
 

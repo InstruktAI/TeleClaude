@@ -1,8 +1,8 @@
-"""Event producer — emit events to the Redis Stream."""
+"""Event producer - emit events to the Redis Stream."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -11,7 +11,8 @@ from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibilit
 logger = get_logger(__name__)
 
 # Module-level singleton producer — configured by daemon on startup
-_PRODUCER_STATE: dict[str, EventProducer | None] = {"producer": None}
+_PRODUCER_STATE: dict[str, EventProducer | None] = {"value": None}
+globals()["_producer"] = None
 
 
 class EventProducer:
@@ -47,12 +48,13 @@ class EventProducer:
 
 def configure_producer(producer: EventProducer) -> None:
     """Install the process-wide producer used by `emit_event`."""
-    _PRODUCER_STATE["producer"] = producer
+    _PRODUCER_STATE["value"] = producer
+    globals()["_producer"] = producer
 
 
 async def emit_event(event: str, source: str, level: EventLevel, **kwargs: Any) -> str:
     """Build an envelope from explicit fields and publish it via the configured producer."""
-    producer = _PRODUCER_STATE["producer"]
+    producer = cast(EventProducer | None, globals().get("_producer", _PRODUCER_STATE["value"]))
     if producer is None:
         logger.error("emit_event called but EventProducer not configured: event=%s", event)
         raise RuntimeError("EventProducer not configured. Call configure_producer() first.")

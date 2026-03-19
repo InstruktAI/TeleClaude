@@ -74,6 +74,11 @@ def _get_cached_session(session_id: str) -> Session | None:
     return session
 
 
+def get_cached_session(session_id: str) -> Session | None:
+    """Return a cached session when present."""
+    return _get_cached_session(session_id)
+
+
 def _put_cached_session(session_id: str, session: Session) -> None:
     """Store session in cache with eviction when full."""
     if len(_session_cache) >= _SESSION_CACHE_MAX:

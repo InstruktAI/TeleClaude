@@ -8,14 +8,14 @@ import shlex
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord_adapter import DiscordAdapter
+from teleclaude.api import session_access as session_access_module
 from teleclaude.api.auth import (
     CallerIdentity,
     clearance_sessions_agent_restart,
@@ -30,7 +30,6 @@ from teleclaude.api.auth import (
     clearance_sessions_voice,
     clearance_sessions_widget,
 )
-from teleclaude.api.session_access import check_session_access
 from teleclaude.api_models import (
     CreateSessionResponseDTO,
     EscalateRequest,
@@ -45,11 +44,12 @@ from teleclaude.api_models import (
 )
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SlashCommand
+from teleclaude.core import agents as agents_module
+from teleclaude.core import session_listeners as session_listeners_module
 from teleclaude.core.agents import (
     assert_agent_enabled,
     get_default_agent,
     get_known_agents,
-    resolve_parser_agent,
 )
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
@@ -57,11 +57,10 @@ from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, SessionMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
-from teleclaude.output_projection.conversation_projector import project_conversation_chain
+from teleclaude.output_projection import conversation_projector as conversation_projector_module
+from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import VisibilityPolicy
-from teleclaude.output_projection.serializers import to_structured_message
 from teleclaude.types.commands import GetSessionDataCommand
 from teleclaude.utils.markdown import telegramify_markdown
 
@@ -77,7 +76,8 @@ WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.NEXT_FINALIZE,
 }
 
-_STATE = SimpleNamespace(client=None)
+_CLIENT_STATE: dict[str, AdapterClient | None] = {"value": None}
+globals()["_client"] = None
 
 router = APIRouter()
 
@@ -85,7 +85,12 @@ router = APIRouter()
 def configure(client: AdapterClient | None = None) -> None:
     """Wire client; called from APIServer at construction."""
     if client is not None:
-        _STATE.client = client
+        _CLIENT_STATE["value"] = client
+        globals()["_client"] = client
+
+
+def _get_client() -> Any:
+    return globals().get("_client", _CLIENT_STATE["value"])
 
 
 def _build_metadata(**kwargs: object) -> MessageMetadata:
@@ -190,9 +195,9 @@ def _project_session_messages(
     if not chain:
         return []
 
-    projected_blocks = project_conversation_chain(
+    projected_blocks = conversation_projector_module.project_conversation_chain(
         chain,
-        resolve_parser_agent(active_agent),
+        agents_module.resolve_parser_agent(active_agent),
         VisibilityPolicy(
             include_tools=include_tools,
             include_tool_results=include_tools,
@@ -209,7 +214,9 @@ def _project_session_messages(
             entry_index=message.entry_index,
             file_index=message.file_index,
         )
-        for message in (to_structured_message(projected_block) for projected_block in projected_blocks)
+        for message in (
+            output_serializers.to_structured_message(projected_block) for projected_block in projected_blocks
+        )
     ]
 
 
@@ -331,7 +338,7 @@ async def send_keys_endpoint(
     _identity: CallerIdentity = Depends(clearance_sessions_keys),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send key command to session."""
-    await check_session_access(http_request, session_id)
+    await session_access_module.check_session_access(http_request, session_id)
     try:
         metadata = _build_metadata()
         args: list[str] = []
@@ -358,7 +365,7 @@ async def send_voice_endpoint(
     _identity: CallerIdentity = Depends(clearance_sessions_voice),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send voice input to session."""
-    await check_session_access(http_request, session_id)
+    await session_access_module.check_session_access(http_request, session_id)
     try:
         metadata = _build_metadata()
         cmd = CommandMapper.map_api_input(
@@ -413,7 +420,7 @@ async def agent_restart(
     _identity: CallerIdentity = Depends(clearance_sessions_agent_restart),
 ) -> dict[str, str]:
     """Restart agent in session (preserves conversation via --resume)."""
-    await check_session_access(http_request, session_id)
+    await session_access_module.check_session_access(http_request, session_id)
     try:
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
@@ -451,7 +458,7 @@ async def revive_session(
 ) -> CreateSessionResponseDTO:
     """Revive a session by TeleClaude or native session ID."""
     session_id = await _resolve_revive_session_id(http_request, session_id, agent, identity)
-    await check_session_access(http_request, session_id)
+    await session_access_module.check_session_access(http_request, session_id)
     try:
         session = await db.get_session(session_id)
         if not session:
@@ -495,7 +502,7 @@ async def get_session_messages(
     _identity: CallerIdentity = Depends(clearance_sessions_tail),
 ) -> SessionMessagesDTO:
     """Get structured messages from a session's transcript files."""
-    await check_session_access(request, session_id)
+    await session_access_module.check_session_access(request, session_id)
 
     try:
         session = await db.get_session(session_id)
@@ -618,7 +625,10 @@ async def unsubscribe_session(
     continues running but the caller no longer receives events from it.
     Requires dual-factor caller identity.
     """
-    success = await unregister_listener(target_session_id=session_id, caller_session_id=identity.session_id)
+    success = await session_listeners_module.unregister_listener(
+        target_session_id=session_id,
+        caller_session_id=identity.session_id,
+    )
     if success:
         return {"status": "success", "message": f"Stopped notifications from session {session_id}"}
     return {"status": "error", "message": f"No listener found for session {session_id}"}
@@ -635,7 +645,8 @@ async def send_result_endpoint(
     as a persistent (non-ephemeral) message. Supports markdown and HTML formats.
     Requires dual-factor caller identity.
     """
-    if _STATE.client is None:
+    client = _get_client()
+    if client is None:
         raise HTTPException(status_code=503, detail="Adapter client not available")
 
     session = await db.get_session(identity.session_id)
@@ -654,7 +665,7 @@ async def send_result_endpoint(
 
     meta = MessageMetadata(parse_mode=parse_mode)
     try:
-        message_id = await _STATE.client.send_message(
+        message_id = await client.send_message(
             session=session,
             text=formatted_content,
             metadata=meta,
@@ -664,7 +675,7 @@ async def send_result_endpoint(
     except (AdapterError, RuntimeError, ValueError, TypeError) as e:
         logger.warning("send_result formatted send failed, retrying as plain text: %s", e)
         try:
-            message_id = await _STATE.client.send_message(
+            message_id = await client.send_message(
                 session=session,
                 text=request.content[:4096],
                 metadata=MessageMetadata(),
@@ -690,7 +701,8 @@ async def render_widget_endpoint(
     session's adapter, and stores named widgets for retrieval. Requires
     dual-factor caller identity.
     """
-    if _STATE.client is None:
+    client = _get_client()
+    if client is None:
         raise HTTPException(status_code=503, detail="Adapter client not available")
 
     session = await db.get_session(identity.session_id)
@@ -700,7 +712,7 @@ async def render_widget_endpoint(
     text_summary = _build_widget_summary(request.data)
     meta = MessageMetadata(parse_mode="MarkdownV2")
     try:
-        await _STATE.client.send_message(
+        await client.send_message(
             session=session,
             text=telegramify_markdown(text_summary),
             metadata=meta,
@@ -724,7 +736,8 @@ async def escalate_session(
     and activates relay mode on the session. Only available for customer
     sessions. Requires dual-factor caller identity.
     """
-    if _STATE.client is None:
+    client = _get_client()
+    if client is None:
         raise HTTPException(status_code=503, detail="Adapter client not available")
 
     session_id = identity.session_id
@@ -735,7 +748,7 @@ async def escalate_session(
         raise HTTPException(status_code=403, detail="Escalation is only available in customer sessions")
 
     discord_adapter: DiscordAdapter | None = None
-    for adapter in _STATE.client.adapters.values():
+    for adapter in client.adapters.values():
         if isinstance(adapter, DiscordAdapter):
             discord_adapter = adapter
             break

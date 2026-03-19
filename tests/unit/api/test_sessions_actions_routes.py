@@ -464,8 +464,12 @@ class TestSessionsActionsRoutes:
 
         with (
             patch.object(sessions_actions_routes, "_client", client),
+            patch.object(
+                sessions_actions_routes,
+                "telegramify_markdown",
+                fake_markdown.telegramify_markdown,
+            ),
             patch.object(sessions_actions_routes, "db") as db,
-            patch.dict("sys.modules", {"teleclaude.utils.markdown": fake_markdown}),
         ):
             db.get_session = AsyncMock(return_value=session)
 
@@ -515,8 +519,12 @@ class TestSessionsActionsRoutes:
 
         with (
             patch.object(sessions_actions_routes, "_client", client),
+            patch.object(
+                sessions_actions_routes,
+                "telegramify_markdown",
+                fake_markdown.telegramify_markdown,
+            ),
             patch.object(sessions_actions_routes, "db") as db,
-            patch.dict("sys.modules", {"teleclaude.utils.markdown": fake_markdown}),
         ):
             db.get_session = AsyncMock(return_value=session)
 

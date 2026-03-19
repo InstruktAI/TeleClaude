@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass
-from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -63,8 +62,8 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
-
-_STATE = SimpleNamespace(cache=None)
+_CACHE_STATE: dict[str, DaemonCache | None] = {"value": None}
+globals()["_cache"] = None
 
 router = APIRouter()
 
@@ -75,7 +74,12 @@ def configure(
 ) -> None:
     """Wire client and cache; called from APIServer."""
     _ = client
-    _STATE.cache = cache
+    _CACHE_STATE["value"] = cache
+    globals()["_cache"] = cache
+
+
+def _get_cache() -> Any:
+    return globals().get("_cache", _CACHE_STATE["value"])
 
 
 def _build_metadata(**kwargs: object) -> MessageMetadata:
@@ -468,13 +472,14 @@ async def list_sessions(
         local_sessions = await command_handlers.list_sessions(include_closed=query.include_closed)
 
         # No cache: serve local sessions only (respect computer filter)
-        if not _STATE.cache:
+        cache = _get_cache()
+        if not cache:
             if query.computer and query.computer not in ("local", config.computer.name):
                 return []
             merged = local_sessions
         elif query.computer:
             # With cache, merge local + cached sessions
-            cached_filtered = _STATE.cache.get_sessions(query.computer)
+            cached_filtered = cache.get_sessions(query.computer)
             if query.computer in ("local", config.computer.name):
                 by_id = {s.session_id: s for s in local_sessions}
                 for s in cached_filtered:
@@ -483,7 +488,7 @@ async def list_sessions(
             else:
                 merged = cached_filtered
         else:
-            cached_sessions = _STATE.cache.get_sessions()
+            cached_sessions = cache.get_sessions()
             by_id = {s.session_id: s for s in local_sessions}
             for s in cached_sessions:
                 by_id.setdefault(s.session_id, s)

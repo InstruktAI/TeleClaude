@@ -13,6 +13,7 @@ from teleclaude.constants import (
     CHECKPOINT_MESSAGE,
     CHECKPOINT_PREFIX,
 )
+from teleclaude.core import session_start_messages as session_start_messages_module
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.origins import InputOrigin
 
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 _NOOP_LOG_INTERVAL_SECONDS = 30.0
 _MAX_FORWARDED_LINK_OUTPUT_CHARS = 12000
+SESSION_START_MESSAGES = session_start_messages_module.SESSION_START_MESSAGES
 
 
 @dataclass

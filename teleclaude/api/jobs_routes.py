@@ -8,8 +8,8 @@ from fastapi.concurrency import run_in_threadpool
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import JobDTO
-from teleclaude.cron.runner import _load_job_schedules, discover_jobs, run_due_jobs
-from teleclaude.cron.state import CronState
+from teleclaude.cron import runner as cron_runner_module
+from teleclaude.cron import state as cron_state_module
 
 logger = get_logger(__name__)
 
@@ -22,9 +22,9 @@ async def list_jobs() -> list[JobDTO]:
 
     def _get_jobs_sync() -> list[JobDTO]:
         try:
-            python_jobs = discover_jobs()
-            state = CronState.load()
-            schedules = _load_job_schedules()
+            python_jobs = cron_runner_module.discover_jobs()
+            state = cron_state_module.CronState.load()
+            schedules = cron_runner_module.load_job_schedules()
 
             results: list[JobDTO] = []
             python_job_names = {job.name for job in python_jobs}
@@ -87,7 +87,7 @@ async def run_job(
     def _run_sync() -> None:
         try:
             logger.info("Background job triggered: %s", name)
-            run_due_jobs(force=True, job_filter=name)
+            cron_runner_module.run_due_jobs(force=True, job_filter=name)
         except (OSError, RuntimeError, ValueError) as exc:
             logger.error("Background job failed (job=%s): %s", name, exc, exc_info=True)
 
