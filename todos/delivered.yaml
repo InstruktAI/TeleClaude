@@ -157,9 +157,18 @@
 - slug: chartest-core-integration
   date: '2026-03-15'
   commit: f666c354f6ad
+- slug: rlf-core-infra
+  date: '2026-03-14T00:30:52+01:00'
+  commit: f2de29f319d6
+- slug: rlf-cli
+  date: '2026-03-14T00:25:35+01:00'
+  commit: 71c352a71d08
 - slug: fix-integration-delivery-bookkeeping-commits
   date: '2026-03-13'
   commit: 29b3b6d652ad
+- slug: fix-integration-state-machine-infinite-loop-2
+  date: '2026-03-13T15:36:13+01:00'
+  commit: bd1b80ad8306
 - slug: fix-state-machine-triggers-unnecessary-revie
   date: '2026-03-13'
   commit: 28fbe9f90
@@ -184,12 +193,18 @@
 - slug: fix-bugs-report-event-system-regression
   date: '2026-03-13'
   commit: 140a63e74ff6
+- slug: fix-integrator-spawn-broken-integration-brid
+  date: '2026-03-12T01:24:11+01:00'
+  commit: 4d5370b2a9d3
 - slug: agent-session-auth
   date: '2026-03-12'
   commit: 02a7da425980
 - slug: prepare-pipeline-hardening
   date: '2026-03-12'
   commit: dbf4379eb446
+- slug: split-children-deps
+  date: '2026-03-11T13:49:23+01:00'
+  commit: 6ae635cba0be
 - slug: event-alpha-container
   date: '2026-03-11'
   commit: 8873144fb35e
@@ -238,6 +253,9 @@
 - slug: chiptunes-playlist-controls
   date: '2026-03-06'
   commit: 61d159a9f888
+- slug: fix-telec-config-people-edit-fails-with-ruam
+  date: '2026-03-06T16:50:34+01:00'
+  commit: ae748df56f8e
 - slug: async-operation-receipts
   date: '2026-03-06'
   commit: f277cdf77ce0
