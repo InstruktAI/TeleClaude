@@ -77,6 +77,7 @@ _APP_STATE_FIELDS = {
     "_state_save_timer": ("_runtime_state", "state_save_timer"),
     "_computers": ("_runtime_state", "computers"),
     "_session_agents": ("_runtime_state", "session_agents"),
+    "_tui_initiated_sessions": ("_runtime_state", "tui_initiated_sessions"),
     "_sky_width_timer": ("_runtime_state", "sky_width_timer"),
     "_reload_loop": ("_runtime_state", "reload_loop"),
     "_animation_engine": ("_media_state", "animation_engine"),
@@ -111,6 +112,7 @@ class _AppRuntimeState:
     state_save_timer: object | None = None
     computers: list[ComputerInfo] = field(default_factory=list)
     session_agents: dict[str, str] = field(default_factory=dict)
+    tui_initiated_sessions: set[str] = field(default_factory=set)
     sky_width_timer: Timer | None = None
     reload_loop: asyncio.AbstractEventLoop | None = None
 
@@ -138,6 +140,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     _state_save_timer: Timer | None
     _computers: list[ComputerInfo]
     _session_agents: dict[str, str]
+    _tui_initiated_sessions: set[str]
     _sky_width_timer: Timer | None
     _reload_loop: asyncio.AbstractEventLoop | None
     _animation_engine: AnimationEngine

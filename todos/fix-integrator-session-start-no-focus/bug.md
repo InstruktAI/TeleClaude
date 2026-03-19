@@ -1,8 +1,8 @@
-# Bug: 
+# Bug:
 
 ## Symptom
 
-Whenever the demon starts up the integrator, that session immediately takes focus. But that should not happen. Non-human initiated sessions are not to be interpreted as to have focus. Only headless sessions may take focus when they are adopted by the user. Or new sessions that are started by the user may take focus. There are some other paths that should also take focus which are the other scenarios that start a session by the user by the human which is from the to-do pane where we can start a session with the letter S or prepare a to do with the letter P, which starts an agent in the next prepare routine. Also the letter R or refining starts an agent session with a preset command. Stuff like that. Those three should also be listened for and taking focus. Potentially those have different event names when they come in via the web socket. So analyze. 
+Whenever the daemon starts up the integrator, that session immediately takes focus. But that should not happen. Non-human initiated sessions are not to be interpreted as to have focus. Only headless sessions may take focus when they are adopted by the user. Or new sessions that are started by the user may take focus. There are some other paths that should also take focus which are the other scenarios that start a session by the user by the human which is from the to-do pane where we can start a session with the letter S or prepare a to do with the letter P, which starts an agent in the next prepare routine. Also the letter R or refining starts an agent session with a preset command. Stuff like that. Those three should also be listened for and taking focus. Potentially those have different event names when they come in via the web socket. So analyze.
 
 ## Detail
 
@@ -37,15 +37,26 @@ as the sole discriminator for user-initiated vs daemon-spawned sessions. Daemon-
 sessions via `run_slash_command` have no initiator (since there's no parent session) but
 carry `session_metadata.job` — a signal the focus logic did not check.
 
-## Fix Applied
+## Fix Applied (v2 — after review)
 
-Added a check for `session_metadata.job` in the auto-focus guard in `on_session_started()`.
-Sessions with a `job` role in their metadata are daemon-spawned agents and skip auto-focus,
-regardless of `initiator_session_id` being None.
+Replaced metadata-based heuristic with TUI-side session tracking. The original fix
+checked `session_metadata.job` to identify daemon-spawned sessions, but user-initiated
+run-session flows also set `job` via `_prepare_run_session`, causing those sessions
+to incorrectly skip auto-focus.
 
-Changed file: `teleclaude/cli/tui/app_ws.py` — added `is_daemon_spawned` check before
-the auto-select logic.
+**New approach:** The TUI tracks session IDs it creates in `_tui_initiated_sessions`.
+`on_create_session_request` adds the returned `session_id` after successful creation.
+`on_session_started` auto-focuses only if the session_id is in the tracking set,
+then removes it. This is correct by construction — no metadata heuristics needed.
 
-Test file: `tests/unit/cli/tui/test_app_ws.py` — added two reproduction tests:
-- `test_on_session_started_daemon_spawned_session_does_not_auto_focus` (was RED, now GREEN)
-- `test_on_session_started_user_initiated_session_auto_focuses` (regression guard)
+Changed files:
+
+- `teleclaude/cli/tui/app.py` — added `tui_initiated_sessions: set[str]` to `_AppRuntimeState`
+- `teleclaude/cli/tui/app_actions.py` — track session IDs after successful create/revive/resume
+- `teleclaude/cli/tui/app_ws.py` — replaced `is_daemon_spawned` check with set membership
+
+Test file: `tests/unit/cli/tui/test_app_ws.py` — three tests:
+
+- `test_on_session_started_daemon_spawned_session_does_not_auto_focus` (not in tracking set)
+- `test_on_session_started_user_initiated_session_auto_focuses` (in tracking set, gets focus)
+- `test_on_session_started_user_run_session_with_job_auto_focuses` (has job metadata BUT is TUI-tracked)
