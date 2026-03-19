@@ -54,3 +54,6 @@
 - slug: pylint-cleanup-6
 - slug: pylint-cleanup-7
 - slug: pylint-cleanup-8
+- slug: fix-watcher-cwd
+- slug: ts-migration
+  description: Migrate Python daemon and CLI to TypeScript/Bun
