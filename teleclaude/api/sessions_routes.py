@@ -577,7 +577,7 @@ async def create_session(
 async def end_session(
     request: Request,
     session_id: str,
-    _computer: str = Query(...),
+    _computer: str | None = Query(None),
     _identity: CallerIdentity = Depends(clearance_sessions_end),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """End session - local sessions only (remote management uses RPC transport)."""
