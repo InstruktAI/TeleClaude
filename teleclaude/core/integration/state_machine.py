@@ -56,7 +56,7 @@ __all__ = ["IntegrationPhase", "next_integrate"]
 # ---------------------------------------------------------------------------
 
 
-def _dispatch_sync(
+def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
     *,
     session_id: str,
     slug: str | None,
@@ -145,7 +145,7 @@ def _dispatch_sync(
     return _format_error("LOOP_LIMIT", f"State machine exceeded {_LOOP_LIMIT} internal transitions")
 
 
-def _step(
+def _step(  # pylint: disable=too-many-arguments,too-many-return-statements
     *,
     phase: IntegrationPhase,
     checkpoint: IntegrationCheckpoint,
@@ -248,7 +248,7 @@ def _step(
 
 
 async def next_integrate(
-    db: Db,  # pylint: disable=unused-argument — reserved for future DB-backed state
+    db: Db,  # pylint: disable=unknown-option-value,unused-argument — reserved for future DB-backed state
     slug: str | None,
     cwd: str,
     caller_session_id: str | None = None,
@@ -268,7 +268,7 @@ async def next_integrate(
     Returns:
         Plain text instruction block for the agent to execute.
     """
-    from teleclaude.session_identity import get_session_id
+    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
 
     session_id = caller_session_id or get_session_id() or "unknown"
     started = perf_counter()

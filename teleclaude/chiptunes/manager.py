@@ -18,10 +18,10 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
-
-from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
 
 logger = get_logger(__name__)
 
@@ -29,7 +29,7 @@ SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
 PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 
 
-class ChiptunesManager:
+class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
     """Manages chiptunes playback via a subprocess worker.
 
     The worker process owns all playback state: player, history, track
@@ -200,7 +200,7 @@ class ChiptunesManager:
                 os.unlink(path)
             except OSError:
                 pass
-        subprocess.Popen(
+        subprocess.Popen(  # pylint: disable=consider-using-with
             [
                 sys.executable,
                 "-m",
@@ -353,7 +353,7 @@ class ChiptunesManager:
     def _worker_alive() -> bool:
         """Check if the worker process is running."""
         try:
-            pid = int(Path(PID_PATH).read_text().strip())
+            pid = int(Path(PID_PATH).read_text(encoding="utf-8").strip())
             os.kill(pid, 0)
             return True
         except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
@@ -363,7 +363,7 @@ class ChiptunesManager:
     def _kill_worker() -> None:
         """Terminate the worker process."""
         try:
-            pid = int(Path(PID_PATH).read_text().strip())
+            pid = int(Path(PID_PATH).read_text(encoding="utf-8").strip())
             os.kill(pid, signal.SIGTERM)
         except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
             pass

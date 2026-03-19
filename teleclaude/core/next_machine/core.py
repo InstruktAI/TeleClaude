@@ -7,6 +7,8 @@ for backward compatibility so that existing imports from
 Do NOT add new code here — implement in the appropriate sub-module.
 """
 
+# pylint: disable=useless-import-alias,unused-import
+
 from __future__ import annotations
 
 from teleclaude.core.next_machine._types import (
@@ -111,6 +113,12 @@ from teleclaude.core.next_machine.build_gates import (
 )
 from teleclaude.core.next_machine.build_gates import (
     _is_review_findings_template as _is_review_findings_template,
+)
+from teleclaude.core.next_machine.build_gates import (
+    _is_scaffold_template as _is_scaffold_template,
+)
+from teleclaude.core.next_machine.build_gates import (
+    check_file_has_content as check_file_has_content,
 )
 from teleclaude.core.next_machine.build_gates import (
     format_build_gate_failure as format_build_gate_failure,
@@ -237,12 +245,6 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.output_formatting import (
     format_uncommitted_changes as format_uncommitted_changes,
 )
-from teleclaude.core.next_machine.path_checks import (
-    _is_scaffold_template as _is_scaffold_template,
-)
-from teleclaude.core.next_machine.path_checks import (
-    check_file_has_content as check_file_has_content,
-)
 from teleclaude.core.next_machine.prepare import next_prepare as next_prepare
 
 # ── prepare events & phase derivation ─────────────────────────────────────────
@@ -358,6 +360,9 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_io import (
     _extract_finding_ids as _extract_finding_ids,
+)
+from teleclaude.core.next_machine.state_io import (
+    _file_sha256 as _file_sha256,
 )
 from teleclaude.core.next_machine.state_io import (
     _get_finalize_state as _get_finalize_state,

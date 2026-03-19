@@ -3,17 +3,19 @@
 Handles button clicks from inline keyboards including session creation,
 project selection, and AI tool launching.
 """
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
+from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes, ExtBot
 
@@ -21,13 +23,27 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata
 from teleclaude.utils import command_retry
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from teleclaude.config import TrustedDir
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import MessageMetadata
+
+    class _CallbackHandlersHost(Protocol):  # pylint: disable=too-few-public-methods
+        client: AdapterClient
+        trusted_dirs: list[TrustedDir]
+        user_whitelist: set[int]
+        computer_name: str
+        bot: ExtBot[None]
+        _build_project_keyboard: Callable[[str], InlineKeyboardMarkup]
+        _build_heartbeat_keyboard: Callable[[str], InlineKeyboardMarkup]
+        _metadata: Callable[..., MessageMetadata]
+        _send_document_with_retry: Callable[..., Awaitable[Message]]
+
 
 logger = get_logger(__name__)
 
@@ -96,35 +112,10 @@ class CallbackHandlersMixin:
     user_whitelist: set[int]
     computer_name: str
 
-    if TYPE_CHECKING:
-
-        @property
-        def bot(self) -> ExtBot[None]:
-            """Return the Telegram bot instance."""
-            ...
-
-        def _build_project_keyboard(self, callback_prefix: str) -> InlineKeyboardMarkup:
-            """Build keyboard with trusted directories."""
-            ...
-
-        def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup:
-            """Build heartbeat keyboard with action buttons."""
-            ...
-
-        async def _send_document_with_retry(
-            self,
-            chat_id: int,
-            message_thread_id: int,
-            file_path: str,
-            filename: str,
-            caption: str | None = None,
-        ) -> Message:
-            """Send document with retry logic."""
-            ...
-
-        def _metadata(self, **kwargs: object) -> MessageMetadata:
-            """Create adapter metadata."""
-            ...
+    @property
+    def bot(self) -> ExtBot[None]:
+        """Return the Telegram bot instance."""
+        raise NotImplementedError
 
     # =========================================================================
     # Callback Query Handler Implementation
@@ -200,8 +191,6 @@ class CallbackHandlersMixin:
         reply_markup: InlineKeyboardMarkup | None = None,
     ) -> None:
         """Edit callback message with retry and benign-error tolerance."""
-        from telegram import CallbackQuery
-
         if not isinstance(query, CallbackQuery):
             return
 
@@ -222,8 +211,6 @@ class CallbackHandlersMixin:
         reply_markup: InlineKeyboardMarkup | None = None,
     ) -> None:
         """Internal retry-protected callback message edit."""
-        from telegram import CallbackQuery
-
         if not isinstance(query, CallbackQuery):
             return
 
@@ -235,9 +222,6 @@ class CallbackHandlersMixin:
 
     async def _handle_download_full(self, query: object, args: list[str]) -> None:
         """Handle download_full callback to download session transcript."""
-        # Type narrow query
-        from telegram import CallbackQuery
-
         if not isinstance(query, CallbackQuery):
             return
 
@@ -246,78 +230,24 @@ class CallbackHandlersMixin:
             return
 
         try:
-            # Get session for metadata
-            session = await db.get_session(session_id)
-            if not session:
+            download_payload = await self._build_transcript_download_payload(query, session_id)
+            if download_payload is None:
                 return
-
-            # Check if there's a session transcript
-            native_log_file = session.native_log_file
-            agent_value = session.active_agent
-            if not agent_value:
-                await self._edit_callback_message(
-                    query,
-                    "❌ Active agent unknown for this session",
-                    parse_mode="Markdown",
-                )
-                return
-            try:
-                agent_name = AgentName.from_str(agent_value)
-            except ValueError as exc:
-                await self._edit_callback_message(query, f"❌ {exc}", parse_mode="Markdown")
-                return
-            parser_info = get_transcript_parser_info(agent_name)
-
-            # Convert transcript to markdown
-            if not native_log_file:
-                await self._edit_callback_message(
-                    query,
-                    f"❌ No {parser_info.display_name} session file found",
-                    parse_mode="Markdown",
-                )
-                return
-            markdown_content = parse_session_transcript(
-                native_log_file,
-                session.title,
-                agent_name=agent_name,
-                tail_chars=0,
+            markdown_content, filename, caption = download_payload
+            doc_message = await self._send_transcript_document(
+                query,
+                markdown_content,
+                filename,
+                caption,
             )
-            filename = f"{parser_info.file_prefix}-{session_id:8}.md"
-            caption = f"{parser_info.display_name} session transcript"
-
-            # Create a temporary file to send
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as tmp:
-                tmp.write(markdown_content)
-                tmp_path = tmp.name
-
-            try:
-                # Send as document with retry logic (artifact - not tracked for deletion)
-                msg = query.message
-                if not isinstance(msg, Message):  # Type guard
-                    return
-                msg_thread_id = msg.message_thread_id
-                assert isinstance(msg_thread_id, int), "message_thread_id must be int"
-                doc_message = await self._send_document_with_retry(
-                    chat_id=msg.chat_id,
-                    message_thread_id=msg_thread_id,
-                    file_path=tmp_path,
-                    filename=filename,
-                    caption=caption,
-                )
-            finally:
-                # Clean up temp file
-                Path(tmp_path).unlink()
-
             # Track download message for cleanup when next feedback is sent
             await db.add_pending_deletion(session_id, str(doc_message.message_id), deletion_type="feedback")
-        except Exception as e:
-            logger.error("Failed to send output file: %s", e)
-            await self._edit_callback_message(query, f"❌ Error sending file: {e}", parse_mode="Markdown")
+        except (BadRequest, OSError, RuntimeError, TypeError, ValueError) as error:
+            logger.error("Failed to send output file: %s", error)
+            await self._edit_callback_message(query, f"❌ Error sending file: {error}", parse_mode="Markdown")
 
     async def _handle_session_select(self, query: object) -> None:
         """Handle ssel callback to show project selection for Tmux Session."""
-        from telegram import CallbackQuery
-
         if not isinstance(query, CallbackQuery):
             return
 
@@ -330,7 +260,7 @@ class CallbackHandlersMixin:
             return
 
         # Build keyboard with trusted directories using helper
-        reply_markup = self._build_project_keyboard("s")
+        reply_markup = cast("_CallbackHandlersHost", self)._build_project_keyboard("s")
 
         # Add cancel button to return to original view
         bot_info = await self.bot.get_me()
@@ -354,8 +284,6 @@ class CallbackHandlersMixin:
 
     async def _handle_agent_select(self, query: object, agent_name: str, *, is_resume: bool) -> None:
         """Handle agent selection callbacks."""
-        from telegram import CallbackQuery
-
         if not isinstance(query, CallbackQuery):
             return
 
@@ -379,7 +307,7 @@ class CallbackHandlersMixin:
         mode_label = f"{agent_name.title()}{' Resume' if is_resume else ''}"
 
         # Build keyboard with trusted directories using helper
-        reply_markup = self._build_project_keyboard(callback_prefix)
+        reply_markup = cast("_CallbackHandlersHost", self)._build_project_keyboard(callback_prefix)
 
         # Add cancel button to return to original view
         bot_info = await self.bot.get_me()
@@ -403,25 +331,21 @@ class CallbackHandlersMixin:
 
     async def _restore_heartbeat_menu(self, query: object) -> None:
         """Restore the menu message back to the heartbeat keyboard view."""
-        from telegram import CallbackQuery
-
         if not isinstance(query, CallbackQuery):
             return
 
         bot_info = await self.bot.get_me()
         bot_username = bot_info.username or "unknown"
-        reply_markup = self._build_heartbeat_keyboard(bot_username)
+        reply_markup = cast("_CallbackHandlersHost", self)._build_heartbeat_keyboard(bot_username)
         text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         await self._edit_callback_message(query, text, reply_markup=reply_markup)
 
-    async def _handle_cancel(self, query: object, args: list[str]) -> None:
+    async def _handle_cancel(self, query: object, _args: list[str]) -> None:
         """Handle ccancel callback to return to heartbeat view."""
         await self._restore_heartbeat_menu(query)
 
     async def _handle_session_start(self, query: object, args: list[str]) -> None:
         """Handle s callback to create Tmux Session in selected project."""
-        from telegram import CallbackQuery
-
         if not isinstance(query, CallbackQuery):
             return
 
@@ -449,7 +373,7 @@ class CallbackHandlersMixin:
 
         # Create session in background
         logger.info("_handle_session_start: creating session with project_path=%s", project_path)
-        metadata = self._metadata(project_path=project_path)
+        metadata = cast("_CallbackHandlersHost", self)._metadata(project_path=project_path)
         from_user = getattr(query, "from_user", None)
         if from_user and hasattr(from_user, "id"):
             metadata.channel_metadata = metadata.channel_metadata or {}
@@ -463,8 +387,6 @@ class CallbackHandlersMixin:
 
     async def _handle_agent_start(self, query: object, agent_name: str, *, is_resume: bool, args: list[str]) -> None:
         """Handle agent start callbacks."""
-        from telegram import CallbackQuery
-
         if not isinstance(query, CallbackQuery):
             return
 
@@ -505,7 +427,10 @@ class CallbackHandlersMixin:
             project_path,
             auto_command,
         )
-        metadata = self._metadata(project_path=project_path, auto_command=auto_command)
+        metadata = cast("_CallbackHandlersHost", self)._metadata(
+            project_path=project_path,
+            auto_command=auto_command,
+        )
         if query.from_user:
             metadata.channel_metadata = metadata.channel_metadata or {}
             metadata.channel_metadata["user_id"] = str(query.from_user.id)
@@ -515,3 +440,99 @@ class CallbackHandlersMixin:
             metadata=metadata,
         )
         await get_command_service().create_session(cmd)  # type: ignore[arg-type]
+
+    async def edit_callback_message(
+        self,
+        query: object,
+        text: str,
+        *,
+        parse_mode: str | None = None,
+        reply_markup: InlineKeyboardMarkup | None = None,
+    ) -> None:
+        """Public wrapper for callback message edits."""
+        await self._edit_callback_message(
+            query,
+            text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+
+    async def restore_heartbeat_menu(self, query: object) -> None:
+        """Public wrapper for restoring the registry heartbeat menu."""
+        await self._restore_heartbeat_menu(query)
+
+    async def _build_transcript_download_payload(
+        self,
+        query: CallbackQuery,
+        session_id: str,
+    ) -> tuple[str, str, str] | None:
+        """Resolve transcript download inputs or notify the user when prerequisites are missing."""
+        session = await db.get_session(session_id)
+        if session is None:
+            return None
+
+        agent_value = session.active_agent
+        if not agent_value:
+            await self._edit_callback_message(
+                query,
+                "❌ Active agent unknown for this session",
+                parse_mode="Markdown",
+            )
+            return None
+
+        try:
+            agent_name = AgentName.from_str(agent_value)
+        except ValueError as error:
+            await self._edit_callback_message(query, f"❌ {error}", parse_mode="Markdown")
+            return None
+
+        parser_info = get_transcript_parser_info(agent_name)
+        native_log_file = session.native_log_file
+        if not native_log_file:
+            await self._edit_callback_message(
+                query,
+                f"❌ No {parser_info.display_name} session file found",
+                parse_mode="Markdown",
+            )
+            return None
+
+        markdown_content = parse_session_transcript(
+            native_log_file,
+            session.title,
+            agent_name=agent_name,
+            tail_chars=0,
+        )
+        filename = f"{parser_info.file_prefix}-{session_id:8}.md"
+        caption = f"{parser_info.display_name} session transcript"
+        return markdown_content, filename, caption
+
+    async def _send_transcript_document(
+        self,
+        query: CallbackQuery,
+        markdown_content: str,
+        filename: str,
+        caption: str,
+    ) -> Message:
+        """Write a transcript to a temporary file and upload it to the callback thread."""
+        message = query.message
+        if not isinstance(message, Message):
+            raise TypeError("Callback query message missing")
+
+        msg_thread_id = message.message_thread_id
+        if not isinstance(msg_thread_id, int):
+            raise TypeError("message_thread_id must be int")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+            tmp.write(markdown_content)
+            tmp_path = tmp.name
+
+        try:
+            return await cast("_CallbackHandlersHost", self)._send_document_with_retry(
+                chat_id=message.chat_id,
+                message_thread_id=msg_thread_id,
+                file_path=tmp_path,
+                filename=filename,
+                caption=caption,
+            )
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)

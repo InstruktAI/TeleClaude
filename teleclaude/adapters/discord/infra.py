@@ -3,6 +3,7 @@
 Handles auto-provisioning of Discord channels, categories, forums, launcher
 messages, project forum mapping, team channels, and config persistence.
 """
+# pylint: disable=import-outside-toplevel,too-many-locals,too-many-branches,too-many-statements,broad-exception-caught
 
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
+class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disable=too-many-instance-attributes
     """Mixin providing Discord channel infrastructure provisioning for DiscordAdapter.
 
     Required host attributes:
@@ -60,22 +61,21 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         _operator_chat_channel_id: int | None
         _announcements_channel_id: int | None
         _general_channel_id: int | None
-
-        def _parse_optional_int(self, value: object) -> int | None: ...
-
-        @staticmethod
-        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
-
-        async def _get_channel(self, channel_id: int) -> object | None: ...
-
-        def _is_forum_channel(self, channel: object) -> bool: ...
+        _parse_optional_int: Callable[[object], int | None]  # pylint: disable=used-before-assignment
+        _require_async_callable: Callable[..., Callable[..., Awaitable[object]]]  # pylint: disable=used-before-assignment
+        _get_channel: Callable[[int], Awaitable[object | None]]  # pylint: disable=used-before-assignment
+        _is_forum_channel: Callable[[object], bool]  # pylint: disable=used-before-assignment
 
         def _get_enabled_agents(self) -> list[str]: ...
 
         @property
         def _multi_agent(self) -> bool: ...
 
-        async def _handle_launcher_click(self, interaction: object, agent_name: str) -> None: ...
+        async def _handle_launcher_click(  # pylint: disable=unused-argument
+            self,
+            interaction: object,
+            agent_name: str,
+        ) -> None: ...
 
     # =========================================================================
     # Channel Validation
@@ -207,7 +207,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             self._persist_discord_channel_ids(changes)
             logger.info("Discord infrastructure provisioned: %s", list(changes.keys()))
 
-    async def _ensure_category(
+    async def _ensure_category(  # pylint: disable=too-many-arguments
         self,
         guild: object,
         name: str,
@@ -511,7 +511,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         if project_changes:
             self._persist_project_forum_ids(project_changes)
 
-    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel edit dict; a TypedDict would need discord-py types
+    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel edit dict
     async def _sync_project_forum_positions(self, category: object | None) -> None:
         """Move forums into the category and set positions to match trusted_dirs order.
 

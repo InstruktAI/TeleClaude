@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional, cast
 
 from teleclaude.constants import FIELD_ADAPTER_METADATA, HUMAN_ROLE_ADMIN
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
+from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
 from ._adapter import SessionAdapterMetadata
 from ._types import JsonDict
@@ -24,7 +25,7 @@ class ChannelMetadata:
 
 
 @dataclass(frozen=True)
-class SessionMetadata:
+class SessionMetadata:  # pylint: disable=too-few-public-methods  # Identity record container
     """Typed metadata for session identity and role."""
 
     system_role: str | None = None  # ROLE_* constant
@@ -35,7 +36,7 @@ class SessionMetadata:
 
 
 @dataclass
-class MessageMetadata:
+class MessageMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter call metadata
     """Per-call metadata for message operations."""
 
     reply_markup: Optional["InlineKeyboardMarkup"] = None
@@ -70,6 +71,7 @@ class SessionLaunchIntent:
     native_session_id: str | None = None
 
     def to_dict(self) -> JsonDict:
+        """Serialize launch intent into a JSON-compatible dictionary."""
         return {
             "kind": self.kind.value,
             "agent": self.agent,
@@ -80,6 +82,7 @@ class SessionLaunchIntent:
 
     @classmethod
     def from_dict(cls, data: JsonDict) -> "SessionLaunchIntent":
+        """Create launch intent from a JSON-compatible dictionary."""
         if FIELD_KIND not in data or data[FIELD_KIND] is None:
             raise ValueError("launch_intent.kind is required")
         return cls(
@@ -92,6 +95,8 @@ class SessionLaunchIntent:
 
 
 class SessionLaunchKind(Enum):
+    """Supported launch modes for session creation and resume."""
+
     EMPTY = "empty"
     AGENT = "agent"
     AGENT_THEN_MESSAGE = "agent_then_message"
@@ -132,7 +137,7 @@ class TranscriptFormat(str, Enum):
 
 
 @dataclass
-class Session:  # pylint: disable=too-many-instance-attributes
+class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: disable=too-many-instance-attributes
     """Represents a tmux session."""
 
     session_id: str
@@ -158,17 +163,6 @@ class Session:  # pylint: disable=too-many-instance-attributes
     thinking_mode: str | None = None
     tui_log_file: str | None = None
     tui_capture_started: bool = False
-    last_message_sent: str | None = None
-    last_message_sent_at: datetime | None = None
-    last_output_raw: str | None = None
-    last_output_at: datetime | None = None
-    last_output_summary: str | None = None
-    last_output_digest: str | None = None
-    last_tool_done_at: datetime | None = None
-    last_tool_use_at: datetime | None = None
-    last_checkpoint_at: datetime | None = None
-    turn_triggered_by_linked_output: bool = False
-    working_slug: str | None = None
     human_email: str | None = None
     human_role: str | None = HUMAN_ROLE_ADMIN
     principal: str | None = None
@@ -186,7 +180,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
         """Get session adapter metadata."""
         return self.adapter_metadata
 
-    def to_dict(self) -> JsonDict:
+    def to_dict(self) -> JsonDict:  # pylint: disable=too-many-branches  # Datetime field serialization
         """Convert session to dictionary for JSON serialization."""
         data = cast(JsonDict, asdict(self))
         if self.created_at:
@@ -222,7 +216,10 @@ class Session:  # pylint: disable=too-many-instance-attributes
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "Session":  # guard: loose-dict - Deserialization input
+    def from_dict(  # pylint: disable=too-many-locals  # Session deserialization normalizes many optional fields
+        cls,
+        data: dict[str, object],  # guard: loose-dict - JSON deserialization
+    ) -> "Session":
         """Create session from dictionary (from database/JSON)."""
 
         created_at_raw = data.get("created_at")

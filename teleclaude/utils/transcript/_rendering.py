@@ -10,8 +10,6 @@ from pathlib import Path
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
-from teleclaude.output_projection.conversation_projector import project_entries
-from teleclaude.output_projection.models import THREADED_CLEAN_POLICY, VisibilityPolicy
 
 from ._block_renderers import (
     _extract_tool_subject,
@@ -33,7 +31,7 @@ from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _format_thinking
 logger = logging.getLogger(__name__)
 
 
-def parse_claude_transcript(
+def parse_claude_transcript(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     transcript_path: str,
     title: str,
     since_timestamp: str | None = None,
@@ -69,11 +67,11 @@ def parse_claude_transcript(
             tail_chars,
             collapse_tool_results=collapse_tool_results,
         )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         return f"Error parsing transcript: {e}"
 
 
-def parse_codex_transcript(
+def parse_codex_transcript(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     transcript_path: str,
     title: str,
     since_timestamp: str | None = None,
@@ -101,11 +99,11 @@ def parse_codex_transcript(
             tail_limit_fn=_apply_tail_limit_codex,
             collapse_tool_results=collapse_tool_results,
         )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         return f"Error parsing transcript: {e}"
 
 
-def parse_gemini_transcript(
+def parse_gemini_transcript(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     transcript_path: str,
     title: str,
     since_timestamp: str | None = None,
@@ -132,7 +130,7 @@ def parse_gemini_transcript(
             tail_chars,
             collapse_tool_results=collapse_tool_results,
         )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         return f"Error parsing transcript: {e}"
 
 
@@ -173,7 +171,7 @@ def _append_clean_tool_use_block(
 ) -> None:
     """Append a single clean-render tool_use block."""
     tool_name = str(block.get("name", "unknown"))
-    tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
+    tool_name_safe = tool_name.split("\n", maxsplit=1)[0].split("(")[0].split("{")[0].strip()
 
     formatted_name = f"**`{tool_name_safe}`**"
     subject = _extract_tool_subject(block)  # type: ignore[arg-type]
@@ -226,7 +224,7 @@ def _append_clean_render_block(
     return False
 
 
-def _append_standard_render_block(
+def _append_standard_render_block(  # pylint: disable=too-many-return-statements
     block: JsonDict,
     block_type: str,
     time_prefix: str,
@@ -311,6 +309,9 @@ def render_clean_agent_output(
     # Policy: thinking visible, tool invocations visible, tool results hidden.
     # Behavior is identical to the previous iter_assistant_blocks() iteration;
     # the projection layer now owns the visibility decision.
+    from teleclaude.output_projection.conversation_projector import project_entries  # pylint: disable=C0415
+    from teleclaude.output_projection.models import THREADED_CLEAN_POLICY  # pylint: disable=C0415
+
     lines: list[str] = []
     emitted = False
     last_entry_dt: datetime | None = None
@@ -334,7 +335,7 @@ def render_clean_agent_output(
     return "\n".join(lines).strip(), last_entry_dt
 
 
-def _render_transcript_from_entries(
+def _render_transcript_from_entries(  # pylint: disable=too-many-arguments,too-many-locals
     entries: Iterable[dict[str, object]],  # guard: loose-dict - External entries
     title: str,
     since_timestamp: str | None,
@@ -378,7 +379,7 @@ def _render_transcript_from_entries(
     return tail_limit_fn(result, tail_chars)
 
 
-def render_agent_output(
+def render_agent_output(  # pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments
     transcript_path: str,
     agent_name: AgentName,
     include_tools: bool = False,
@@ -437,6 +438,9 @@ def render_agent_output(
     # Route through canonical conversation projection with a policy derived
     # from the caller's include_tools / include_tool_results flags.
     # Visibility decision is now owned by the projection layer.
+    from teleclaude.output_projection.conversation_projector import project_entries  # pylint: disable=C0415
+    from teleclaude.output_projection.models import VisibilityPolicy  # pylint: disable=C0415
+
     render_policy = VisibilityPolicy(
         include_tools=include_tools,
         include_tool_results=include_tool_results,

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
-from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+from teleclaude.cli.tui.animation_colors import rgb_to_hex
 from teleclaude.cli.tui.animations.base import Animation, Spectrum
 from teleclaude.cli.tui.animations.creative import ColorSweep, EQBars, Glitch, LaserScan, LavaLamp, NeonFlicker, Plasma
 
@@ -54,6 +55,45 @@ __all__ = [
 ]
 
 
+PositionFn = Callable[[int, int], tuple[float, float]]
+
+
+def _letter_count(is_big: bool) -> int:
+    return len(BIG_BANNER_LETTERS if is_big else LOGO_LETTERS)
+
+
+def _render_letter_colors(
+    is_big: bool,
+    color_for_letter: Callable[[int], str | int],
+) -> dict[tuple[int, int], str | int]:
+    result: dict[tuple[int, int], str | int] = {}
+    for index in range(_letter_count(is_big)):
+        color = color_for_letter(index)
+        for pixel in PixelMap.get_letter_pixels(is_big, index):
+            result[pixel] = color
+    return result
+
+
+def _render_spectrum_surge(
+    anim: Animation,
+    spec: Spectrum,
+    active: float,
+    beam_width: float,
+    position: PositionFn,
+) -> dict[tuple[int, int], str | int]:
+    result: dict[tuple[int, int], str | int] = {}
+    for index in range(_letter_count(anim.is_big)):
+        for x, y in PixelMap.get_letter_pixels(anim.is_big, index):
+            pos, color_frac = position(x, y)
+            surge = anim.linear_surge(pos, active, beam_width)
+            if surge <= 0:
+                result[(x, y)] = -1
+                continue
+            color = anim.enforce_vibrancy(spec.get_color(color_frac))
+            result[(x, y)] = anim.scale_color(color, surge)
+    return result
+
+
 class FullSpectrumCycle(Animation):
     """G1: Cycle through the entire seven-color spectrum synchronously."""
 
@@ -69,44 +109,32 @@ class LetterWaveLR(Animation):
     """G2: Each letter lights up sequentially from left to right."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
+        num_letters = _letter_count(self.is_big)
         active_letter_idx = frame % num_letters
         color_pair = self.palette.get(frame // num_letters)
 
         base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
-        from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-        r, g, b = hex_to_rgb(base_color)
-        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
-
-        result = {}
-        for i in range(num_letters):
-            color = base_color if i == active_letter_idx else dim_color
-            for p in PixelMap.get_letter_pixels(self.is_big, i):
-                result[p] = color
-        return result
+        dim_color = self.get_dim_color(base_color)
+        return _render_letter_colors(
+            self.is_big,
+            lambda index: base_color if index == active_letter_idx else dim_color,
+        )
 
 
 class LetterWaveRL(Animation):
     """G3: Each letter lights up sequentially from right to left."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
+        num_letters = _letter_count(self.is_big)
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
         color_pair = self.palette.get(frame // num_letters)
 
         base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
-        from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-        r, g, b = hex_to_rgb(base_color)
-        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
-
-        result = {}
-        for i in range(num_letters):
-            color = base_color if i == active_letter_idx else dim_color
-            for p in PixelMap.get_letter_pixels(self.is_big, i):
-                result[p] = color
-        return result
+        dim_color = self.get_dim_color(base_color)
+        return _render_letter_colors(
+            self.is_big,
+            lambda index: base_color if index == active_letter_idx else dim_color,
+        )
 
 
 class LineSweepTopBottom(Animation):
@@ -122,22 +150,13 @@ class LineSweepTopBottom(Animation):
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         modulation = self.get_modulation(frame)
         active_y = (frame * modulation * 0.5) % (height + 2) - 1
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        for i in range(num_letters):
-            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                surge = self.linear_surge(y, active_y, 1.5)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
-                color = self.spec.get_color(y / max(1, height - 1))
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
-        return result
+        return _render_spectrum_surge(
+            self,
+            self.spec,
+            active_y,
+            1.5,
+            lambda _x, y: (y, y / max(1, height - 1)),
+        )
 
 
 class LineSweepBottomTop(Animation):
@@ -153,22 +172,13 @@ class LineSweepBottomTop(Animation):
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         modulation = self.get_modulation(frame)
         active_y = (height - 1) - ((frame * modulation * 0.5) % (height + 2) - 1)
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        for i in range(num_letters):
-            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                surge = self.linear_surge(y, active_y, 1.5)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
-                color = self.spec.get_color(y / max(1, height - 1))
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
-        return result
+        return _render_spectrum_surge(
+            self,
+            self.spec,
+            active_y,
+            1.5,
+            lambda _x, y: (y, y / max(1, height - 1)),
+        )
 
 
 class MiddleOutVertical(Animation):
@@ -190,20 +200,16 @@ class MiddleOutVertical(Animation):
         active_step = (frame * modulation * 0.5) % 4
         active_rows = {2 - int(active_step), 3 + int(active_step)}
 
-        result = {}
-        for i in range(len(BIG_BANNER_LETTERS)):
-            for x, y in PixelMap.get_letter_pixels(True, i):
+        result: dict[tuple[int, int], str | int] = {}
+        for index in range(len(BIG_BANNER_LETTERS)):
+            for x, y in PixelMap.get_letter_pixels(True, index):
                 min_dist = min(abs(y - ar) for ar in active_rows)
                 surge = 1.0 - (min_dist / 2.0) if min_dist < 2 else 0.0
                 if surge <= 0:
                     result[(x, y)] = -1
                     continue
                 color = self.spec.get_color(y / max(1, height - 1))
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
+                result[(x, y)] = self.scale_color(self.enforce_vibrancy(color), surge)
         return result
 
 
@@ -221,23 +227,13 @@ class WithinLetterSweepLR(Animation):
         width = BIG_BANNER_WIDTH
         modulation = self.get_modulation(frame)
         active_x = (frame * modulation * 1.5) % (width + 10) - 5
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        for i in range(num_letters):
-            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                surge = self.linear_surge(x - 1, active_x, 3.0)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
-                color = self.spec.get_color((x - 1) / width)
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
-
-        return result
+        return _render_spectrum_surge(
+            self,
+            self.spec,
+            active_x,
+            3.0,
+            lambda x, _y: (x - 1, (x - 1) / width),
+        )
 
 
 class WithinLetterSweepRL(Animation):
@@ -254,23 +250,13 @@ class WithinLetterSweepRL(Animation):
         width = BIG_BANNER_WIDTH
         modulation = self.get_modulation(frame)
         active_x = (width - 1) - ((frame * modulation * 1.5) % (width + 10) - 5)
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        for i in range(num_letters):
-            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                surge = self.linear_surge(x - 1, active_x, 3.0)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
-                color = self.spec.get_color((x - 1) / width)
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
-
-        return result
+        return _render_spectrum_surge(
+            self,
+            self.spec,
+            active_x,
+            3.0,
+            lambda x, _y: (x - 1, (x - 1) / width),
+        )
 
 
 class WordSplitBlink(Animation):
@@ -280,20 +266,11 @@ class WordSplitBlink(Animation):
         color_pair = self.palette.get(frame // 2)
         safe_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
         parity = frame % 2
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        for i in range(num_letters):
-            is_first_word = i < 4
-            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                if (is_first_word and parity == 0) or (not is_first_word and parity == 1):
-                    result[(x, y)] = safe_color
-                else:
-                    from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-
-                    r, g, b = hex_to_rgb(safe_color)
-                    result[(x, y)] = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
-        return result
+        dim_color = self.get_dim_color(safe_color)
+        return _render_letter_colors(
+            self.is_big,
+            lambda index: safe_color if (index < 4 and parity == 0) or (index >= 4 and parity == 1) else dim_color,
+        )
 
 
 class DiagonalSweepDR(Animation):
@@ -313,22 +290,13 @@ class DiagonalSweepDR(Animation):
         max_val = width + height
         modulation = self.get_modulation(frame)
         active = (frame * modulation * 1.5) % (max_val + 10) - 5
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS)
-        for i in range(num_letters):
-            for x, y in PixelMap.get_letter_pixels(True, i):
-                surge = self.linear_surge((x - 1) + y, active, 4.0)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
-                color = self.spec.get_color(((x - 1) + y) / max_val)
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
-        return result
+        return _render_spectrum_surge(
+            self,
+            self.spec,
+            active,
+            4.0,
+            lambda x, y: ((x - 1) + y, ((x - 1) + y) / max_val),
+        )
 
 
 class DiagonalSweepDL(Animation):
@@ -349,22 +317,13 @@ class DiagonalSweepDL(Animation):
         max_val = width + height
         modulation = self.get_modulation(frame)
         active = (width - 1) - ((frame * modulation * 1.5) % (max_val + 10) - 5)
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS)
-        for i in range(num_letters):
-            for x, y in PixelMap.get_letter_pixels(True, i):
-                surge = self.linear_surge((x - 1) - y, active, 4.0)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
-                color = self.spec.get_color(((x - 1) + y) / max_val)
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
-        return result
+        return _render_spectrum_surge(
+            self,
+            self.spec,
+            active,
+            4.0,
+            lambda x, y: ((x - 1) - y, ((x - 1) + y) / max_val),
+        )
 
 
 class LetterShimmer(Animation):
@@ -394,23 +353,13 @@ class WavePulse(Animation):
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         modulation = self.get_modulation(frame)
         active_x = (frame * modulation * 1.5) % (width + 10) - 5
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        for i in range(num_letters):
-            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                surge = self.linear_surge(x - 1, active_x, 4.0)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
-                color = self.spec.get_color((x - 1) / width)
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
-
-        return result
+        return _render_spectrum_surge(
+            self,
+            self.spec,
+            active_x,
+            4.0,
+            lambda x, _y: (x - 1, (x - 1) / width),
+        )
 
 
 class BlinkSweep(Animation):
@@ -425,22 +374,13 @@ class BlinkSweep(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         active_x = (frame * 2.0) % (width + 5) - 2
-
-        result = {}
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        for i in range(num_letters):
-            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                surge = self.linear_surge(x - 1, active_x, 2.0)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
-                color = self.spec.get_color((x - 1) / width)
-                color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import rgb_to_hex
-
-                r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
-        return result
+        return _render_spectrum_surge(
+            self,
+            self.spec,
+            active_x,
+            2.0,
+            lambda x, _y: (x - 1, (x - 1) / width),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -453,10 +393,8 @@ class SunsetGradient(Animation):
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-        _height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-
         modulation = self.get_modulation(frame)
-        result = {}
+        result: dict[tuple[int, int], str | int] = {}
         for x, y in PixelMap.get_all_pixels(self.is_big):
             # Slow multi-color gradient
             progress = (frame * 0.01 * modulation + x / width) % 1.0

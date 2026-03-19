@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TypedDict, cast
 
 import aiosqlite
@@ -60,10 +60,13 @@ _SIGNAL_INDEXES = [
 
 
 def _now_iso() -> str:
+    """Return the current UTC timestamp in ISO-8601 format."""
     return datetime.now(UTC).isoformat()
 
 
 class SignalItemPayload(TypedDict, total=False):
+    """Stored or pending signal-item payload."""
+
     id: int
     idempotency_key: str
     source_id: str
@@ -77,6 +80,8 @@ class SignalItemPayload(TypedDict, total=False):
 
 
 class SignalClusterRow(TypedDict):
+    """Stored signal-cluster row returned from SQLite."""
+
     id: int
     cluster_key: str
     tags: str | None
@@ -85,6 +90,17 @@ class SignalClusterRow(TypedDict):
     summary: str | None
     member_count: int
     formed_at: str
+
+
+class SignalClusterInsert(TypedDict):
+    """Payload required to insert one signal cluster row."""
+
+    cluster_key: str
+    tags: list[str]
+    is_burst: bool
+    is_novel: bool
+    summary: str
+    member_ids: list[int]
 
 
 class SignalDB:
@@ -103,6 +119,7 @@ class SignalDB:
         await self._conn.commit()
 
     async def insert_signal_item(self, payload: SignalItemPayload) -> int:
+        """Insert one signal item if its idempotency key is not already present."""
         cursor = await self._conn.execute(
             """
             INSERT OR IGNORE INTO signal_items
@@ -124,10 +141,12 @@ class SignalDB:
         return cursor.lastrowid or 0
 
     async def signal_item_exists(self, idempotency_key: str) -> bool:
+        """Return whether a signal item with the given idempotency key exists."""
         cursor = await self._conn.execute("SELECT 1 FROM signal_items WHERE idempotency_key = ?", (idempotency_key,))
         return (await cursor.fetchone()) is not None
 
     async def get_unclustered_items(self, since: datetime, limit: int = 500) -> list[SignalItemPayload]:
+        """Return recent signal items that have not yet been assigned to a cluster."""
         cursor = await self._conn.execute(
             """
             SELECT id, idempotency_key, source_id, item_url, raw_title, summary, tags, embedding, fetched_at
@@ -156,15 +175,8 @@ class SignalDB:
             result.append(d)
         return result
 
-    async def insert_cluster(
-        self,
-        cluster_key: str,
-        tags: list[str],
-        is_burst: bool,
-        is_novel: bool,
-        summary: str,
-        member_ids: list[int],
-    ) -> int:
+    async def insert_cluster(self, cluster: SignalClusterInsert) -> int:
+        """Insert one signal cluster row and return its database id."""
         cursor = await self._conn.execute(
             """
             INSERT OR IGNORE INTO signal_clusters
@@ -172,12 +184,12 @@ class SignalDB:
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                cluster_key,
-                ",".join(tags),
-                1 if is_burst else 0,
-                1 if is_novel else 0,
-                summary,
-                len(member_ids),
+                cluster["cluster_key"],
+                ",".join(cluster["tags"]),
+                1 if cluster["is_burst"] else 0,
+                1 if cluster["is_novel"] else 0,
+                cluster["summary"],
+                len(cluster["member_ids"]),
                 _now_iso(),
             ),
         )
@@ -185,6 +197,7 @@ class SignalDB:
         return cursor.lastrowid or 0
 
     async def assign_items_to_cluster(self, item_ids: list[int], cluster_id: int) -> None:
+        """Assign a set of signal item ids to a cluster id."""
         placeholders = ",".join("?" * len(item_ids))
         await self._conn.execute(
             f"UPDATE signal_items SET cluster_id = ? WHERE id IN ({placeholders})",
@@ -193,6 +206,7 @@ class SignalDB:
         await self._conn.commit()
 
     async def get_cluster(self, cluster_id: int) -> SignalClusterRow | None:
+        """Return one cluster row by id."""
         cursor = await self._conn.execute("SELECT * FROM signal_clusters WHERE id = ?", (cluster_id,))
         row = await cursor.fetchone()
         if row is None:
@@ -200,6 +214,7 @@ class SignalDB:
         return cast(SignalClusterRow, dict(row))
 
     async def get_cluster_members(self, cluster_id: int, limit: int = 10) -> list[SignalItemPayload]:
+        """Return up to `limit` members belonging to a cluster."""
         cursor = await self._conn.execute(
             """
             SELECT id, idempotency_key, source_id, item_url, raw_title, summary, tags, fetched_at
@@ -221,6 +236,7 @@ class SignalDB:
         return result
 
     async def insert_synthesis(self, cluster_id: int, artifact: JsonDict) -> int:
+        """Insert one synthesized artifact for a cluster and return its row id."""
         cursor = await self._conn.execute(
             "INSERT INTO signal_syntheses (cluster_id, artifact, produced_at) VALUES (?, ?, ?)",
             (cluster_id, json.dumps(artifact), _now_iso()),
@@ -229,8 +245,7 @@ class SignalDB:
         return cursor.lastrowid or 0
 
     async def get_recent_cluster_tags(self, hours: int = 24) -> list[str]:
-        from datetime import timedelta
-
+        """Return all tags seen on clusters formed within the given time window."""
         since = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
         cursor = await self._conn.execute(
             "SELECT tags FROM signal_clusters WHERE formed_at >= ? AND tags IS NOT NULL",
@@ -245,6 +260,7 @@ class SignalDB:
         return all_tags
 
     async def get_signal_counts(self) -> dict[str, int]:
+        """Return aggregate counts for signal items, clusters, syntheses, and pending items."""
         items_cur = await self._conn.execute("SELECT COUNT(*) FROM signal_items")
         clusters_cur = await self._conn.execute("SELECT COUNT(*) FROM signal_clusters")
         synths_cur = await self._conn.execute("SELECT COUNT(*) FROM signal_syntheses")
@@ -261,6 +277,7 @@ class SignalDB:
         }
 
     async def get_last_ingest_time(self) -> str | None:
+        """Return the most recent signal-item fetch time, if any items exist."""
         cursor = await self._conn.execute("SELECT MAX(fetched_at) FROM signal_items")
         row = await cursor.fetchone()
         return str(row[0]) if row and row[0] else None

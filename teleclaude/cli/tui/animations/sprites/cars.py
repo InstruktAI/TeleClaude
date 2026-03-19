@@ -64,7 +64,7 @@ CAR_SPRITE_RIGHT = CompositeSprite(
     z_weights=[(72, 25), (74, 25), (76, 25), (78, 25)],
     y_weights=[(7, 7, 100)],
     speed_weights=[(0.5, 10), (0.7, 10), (0.9, 20), (1.1, 30), (1.3, 20), (1.5, 10)],
-    layers=[  
+    layers=[
         SpriteLayer( # car body
             positive=[
                 "      █ █  ╲▁    ",

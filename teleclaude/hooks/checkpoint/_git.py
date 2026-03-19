@@ -1,5 +1,7 @@
 """Git diff analysis, file categorization, and shell parsing utilities."""
 
+# pylint: disable=broad-exception-caught,subprocess-run-check,too-many-return-statements,too-many-branches,too-many-nested-blocks
+
 import logging
 import re
 import shlex
@@ -69,7 +71,7 @@ def _get_uncommitted_files(project_path: str) -> list[str] | None:
 
     Returns None if git is unavailable or the command fails (fail-open).
     """
-    from teleclaude.git import GitCommandError, Repo
+    from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
 
     def _run_git_diff_name_only(repo: Repo) -> str:
         return repo.git.diff("--name-only", "HEAD")

@@ -14,6 +14,7 @@ from fastapi.routing import APIRoute
 from typing_extensions import TypedDict
 
 from teleclaude.api import todo_routes
+from teleclaude.api.auth import CallerIdentity
 
 
 class _TodoIntegrateReceipt(TypedDict):
@@ -23,6 +24,15 @@ class _TodoIntegrateReceipt(TypedDict):
     poll_after_ms: int
     status_path: str
     recovery_command: str
+
+
+def _identity(session_id: str = "sess-1") -> CallerIdentity:
+    return CallerIdentity(
+        session_id=session_id,
+        system_role=None,
+        human_role=None,
+        tmux_session_name=None,
+    )
 
 
 class TestTodoRoutes:
@@ -36,7 +46,7 @@ class TestTodoRoutes:
             patch("teleclaude.api.todo_routes.config", config_stub),
             patch("teleclaude.api.todo_routes.next_create", new=AsyncMock(return_value="create-next")) as next_create,
         ):
-            response = await todo_routes.todo_create(slug="chartest-api-routes", cwd=None, _identity=object())
+            response = await todo_routes.todo_create(slug="chartest-api-routes", cwd=None, _identity=_identity())
 
         assert response == {"result": "create-next"}
         next_create.assert_awaited_once_with(todo_routes.db, "chartest-api-routes", "/repo")
@@ -45,10 +55,10 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_todo_work_requires_explicit_cwd(self) -> None:
         """Todo work submissions reject requests without a working directory."""
-        identity = SimpleNamespace(session_id="sess-1")
-
         with pytest.raises(HTTPException) as exc_info:
-            await todo_routes.todo_work(slug="chartest-api-routes", cwd=None, client_request_id=None, identity=identity)
+            await todo_routes.todo_work(
+                slug="chartest-api-routes", cwd=None, client_request_id=None, identity=_identity()
+            )
 
         assert exc_info.value.status_code == 400
 
@@ -56,10 +66,8 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_todo_integrate_requires_cwd(self) -> None:
         """Todo integrate submissions reject requests without a working directory."""
-        identity = SimpleNamespace(session_id="sess-1")
-
         with pytest.raises(HTTPException) as exc_info:
-            await todo_routes.todo_integrate(slug="chartest-api-routes", cwd=None, identity=identity)
+            await todo_routes.todo_integrate(slug="chartest-api-routes", cwd=None, identity=_identity())
 
         assert exc_info.value.status_code == 400
 
@@ -67,7 +75,6 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_todo_integrate_returns_202_receipt(self) -> None:
         """Todo integrate should submit an operation receipt instead of blocking inline."""
-        identity = SimpleNamespace(session_id="sess-1")
         receipt: _TodoIntegrateReceipt = {
             "operation_id": "op-1",
             "kind": "todo_integrate",
@@ -90,7 +97,7 @@ class TestTodoRoutes:
                 slug="chartest-api-routes",
                 cwd="/repo",
                 client_request_id="req-1",
-                identity=identity,
+                identity=_identity(),
             )
 
         assert integrate_route.status_code == 202
@@ -112,7 +119,7 @@ class TestTodoRoutes:
                 phase="prepare",
                 status="bogus",
                 cwd="/repo",
-                identity=object(),
+                _identity=_identity(),
             )
 
         assert exc_info.value.status_code == 400
@@ -133,7 +140,7 @@ class TestTodoRoutes:
                     slug="chartest-api-routes",
                     after=["base-task"],
                     cwd="/repo",
-                    identity=object(),
+                    _identity=_identity(),
                 )
 
         assert exc_info.value.status_code == 409
@@ -154,7 +161,7 @@ class TestTodoRoutes:
                 slug="chartest-api-routes",
                 after=["base-task"],
                 cwd="/repo",
-                identity=object(),
+                _identity=_identity(),
             )
 
         assert "result" in response
@@ -178,7 +185,7 @@ class TestTodoRoutes:
                 phase="build",
                 status="complete",
                 cwd=str(tmp_path),
-                identity=object(),
+                _identity=_identity(),
                 force=True,
             )
         assert "result" in response
@@ -200,7 +207,7 @@ class TestTodoRoutes:
                 phase="review",
                 status="approved",
                 cwd=str(tmp_path),
-                identity=object(),
+                _identity=_identity(),
             )
         assert "result" in response
         mock_mark.assert_called_once()
@@ -222,7 +229,7 @@ class TestTodoRoutes:
                 phase="build",
                 status="complete",
                 cwd=str(tmp_path),
-                identity=object(),
+                _identity=_identity(),
             )
         assert "result" in response
         mock_mark.assert_called_once()
@@ -240,7 +247,7 @@ class TestTodoRoutes:
                 phase="build",
                 status="pending",
                 cwd=str(tmp_path),
-                identity=object(),
+                _identity=_identity(),
                 force=True,
             )
         assert "result" in response
@@ -259,6 +266,6 @@ class TestTodoRoutes:
                     phase="build",
                     status="pending",
                     cwd=str(tmp_path),
-                    identity=object(),
+                    _identity=_identity(),
                 )
         assert exc_info.value.status_code == 404

@@ -105,7 +105,9 @@ def write_snippet(
         project_root: Project root directory.
         snippet_id: Must match project/{taxonomy}/{slug}.
         content: Markdown body (without frontmatter).
-        metadata: Optional metadata fields (type, scope, description, generated_at); defaults are derived from snippet_id.
+        metadata:
+            Optional metadata fields (type, scope, description, generated_at);
+            defaults are derived from snippet_id.
 
     Returns:
         Path to the written file.
@@ -144,7 +146,7 @@ def read_existing_snippets(project_root: Path) -> dict[str, Path]:
             continue
         try:
             post = frontmatter.load(md_file)
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
             logger.warning("Skipping unreadable snippet %s: %s", md_file, exc)
             continue
         meta = post.metadata or {}
@@ -203,7 +205,7 @@ def refresh_snippet(
     try:
         existing_post = frontmatter.loads(existing_content)
         existing_ts = existing_post.metadata.get("generated_at")
-    except Exception as exc:
+    except (ValueError, TypeError, yaml.YAMLError) as exc:
         logger.debug("Could not parse frontmatter for timestamp in %s: %s", file_path, exc)
         existing_ts = None
 
@@ -279,6 +281,6 @@ def read_metadata(project_root: Path) -> AnalysisMetadata | None:
             logger.warning("Malformed metadata in %s: missing keys %s", meta_path, sorted(missing))
             return None
         return data  # type: ignore[return-value]
-    except Exception as exc:
+    except (OSError, yaml.YAMLError) as exc:
         logger.warning("Could not read analysis metadata from %s: %s", meta_path, exc)
         return None

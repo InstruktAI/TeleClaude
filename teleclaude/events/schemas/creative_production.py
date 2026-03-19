@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 
 def register_creative_production(catalog: EventCatalog) -> None:
+    """Register creative production domain event schemas."""
     # --- Asset lifecycle events ---
 
     catalog.register(

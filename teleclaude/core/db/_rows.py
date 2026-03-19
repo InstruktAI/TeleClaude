@@ -4,6 +4,8 @@ from typing import TypedDict
 
 
 class HookOutboxRow(TypedDict):
+    """Typed view of a hook outbox row fetched for delivery."""
+
     id: int
     session_id: str
     event_type: str
@@ -13,6 +15,8 @@ class HookOutboxRow(TypedDict):
 
 
 class InboundQueueRow(TypedDict):
+    """Typed view of an inbound queue row fetched for delivery."""
+
     id: int
     session_id: str
     origin: str
@@ -32,6 +36,8 @@ class InboundQueueRow(TypedDict):
 
 
 class OperationRow(TypedDict):
+    """Typed view of a durable operation row."""
+
     operation_id: str
     kind: str
     caller_session_id: str

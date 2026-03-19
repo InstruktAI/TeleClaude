@@ -2,23 +2,39 @@
 
 Handles slash commands like /new_session, /claude.
 """
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
-from telegram import InlineKeyboardMarkup, Update
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
+    from teleclaude.core.models import MessageMetadata, Session
+
+    class _CommandHandlersHost(Protocol):  # pylint: disable=too-few-public-methods
+        client: AdapterClient
+        user_whitelist: set[int]
+        _validate_update_for_command: Callable[[Update], bool]
+        _metadata: Callable[..., MessageMetadata]
+        _handle_simple_command: Callable[[Update, ContextTypes.DEFAULT_TYPE, str], Awaitable[None]]
+        _get_session_from_topic: Callable[[Update], Awaitable[Session | None]]
+        _require_session_from_topic: Callable[[Update], Awaitable[Session | None]]
+        _dispatch_command: Callable[
+            [Session, str | None, MessageMetadata, str, Mapping[str, object], Callable[[], Awaitable[object]]],
+            Awaitable[object],
+        ]
+
 
 logger = get_logger(__name__)
 
@@ -42,55 +58,14 @@ class CommandHandlersMixin:
     client: AdapterClient
     user_whitelist: set[int]
 
-    if TYPE_CHECKING:
-
-        def _validate_update_for_command(self, update: Update) -> bool:
-            """Validate update has required fields for command handling."""
-            ...
-
-        def _event_to_command(self, event_name: str) -> str:
-            """Convert event name to command string."""
-            ...
-
-        def _metadata(self, **kwargs: object) -> MessageMetadata:
-            """Create adapter metadata."""
-            ...
-
-        def _build_project_keyboard(self, callback_prefix: str) -> InlineKeyboardMarkup:
-            """Build keyboard with trusted directories."""
-            ...
-
-        async def _get_session_from_topic(self, update: Update) -> Session | None:
-            """Get session from update's topic."""
-            ...
-
-        async def _require_session_from_topic(self, update: Update) -> Session | None:
-            """Require session from update's topic, showing error if not found."""
-            ...
-
-        async def _pre_handle_user_input(self, session: Session) -> None:
-            """Pre-handle user input (delete old messages)."""
-            ...
-
-        async def _dispatch_command(
-            self,
-            session: Session,
-            message_id: str | None,
-            metadata: MessageMetadata,
-            command_name: str,
-            payload: Mapping[str, object],
-            handler: Callable[[], Awaitable[object]],
-        ) -> None:
-            """Dispatch command via UiAdapter hooks (type-check stub)."""
-            ...
-
     # =========================================================================
     # Command Handler Implementation
     # =========================================================================
 
     async def _handle_new_session(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /new_session command."""
-        if not self._validate_update_for_command(update) or not update.effective_chat:
+        host = cast("_CommandHandlersHost", self)
+        if not host._validate_update_for_command(update) or not update.effective_chat:
             return
 
         user = update.effective_user
@@ -107,7 +82,7 @@ class CommandHandlersMixin:
         logger.debug("User authorized, emitting command with args: %s", context.args)
 
         # Normalize command through mapper before dispatching
-        metadata = self._metadata()
+        metadata = host._metadata()
         cmd = CommandMapper.map_telegram_input(
             event="new_session",
             args=context.args or [],
@@ -118,17 +93,20 @@ class CommandHandlersMixin:
     async def _handle_claude_plan(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude_plan command - alias for /shift_tab 3 (navigate to Claude Code plan mode)."""
         context.args = ["3"]
-        await self._handle_simple_command(update, context, "shift_tab")
+        await cast("_CommandHandlersHost", self)._handle_simple_command(update, context, "shift_tab")
 
-    if TYPE_CHECKING:
+    async def handle_agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, agent_name: str) -> None:
+        """Public wrapper for direct agent-command dispatch."""
+        await self._handle_agent_command(update, context, agent_name)
 
-        async def _handle_simple_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: str) -> None:
-            """Handle simple command - stub for type checking."""
-            ...
+    async def handle_simple_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: str) -> None:
+        """Public wrapper for the shared simple-command dispatcher."""
+        await cast("_CommandHandlersHost", self)._handle_simple_command(update, context, event)
 
     async def _handle_agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, agent_name: str) -> None:
         """Generic handler for agent start commands."""
-        session = await self._get_session_from_topic(update)
+        host = cast("_CommandHandlersHost", self)
+        session = await host._get_session_from_topic(update)
         if not session:
             return
 
@@ -137,7 +115,7 @@ class CommandHandlersMixin:
         assert update.effective_message is not None
 
         # Normalize command through mapper before dispatching
-        metadata = self._metadata()
+        metadata = host._metadata()
         metadata.channel_metadata = metadata.channel_metadata or {}
         metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
 
@@ -147,7 +125,7 @@ class CommandHandlersMixin:
             metadata=metadata,
             session_id=session.session_id,
         )
-        await self._dispatch_command(
+        await host._dispatch_command(
             session,
             str(update.effective_message.message_id),
             metadata,
@@ -161,7 +139,8 @@ class CommandHandlersMixin:
 
         Resumes the active agent from the session's UX state. No arguments needed.
         """
-        session = await self._require_session_from_topic(update)
+        host = cast("_CommandHandlersHost", self)
+        session = await host._require_session_from_topic(update)
         if not session:
             return
 
@@ -170,7 +149,7 @@ class CommandHandlersMixin:
 
         # Agent name comes from session's active_agent in UX state (handled by daemon)
         # Normalize command through mapper before dispatching
-        metadata = self._metadata()
+        metadata = host._metadata()
         metadata.channel_metadata = metadata.channel_metadata or {}
         metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
 
@@ -180,7 +159,7 @@ class CommandHandlersMixin:
             metadata=metadata,
             session_id=session.session_id,
         )
-        await self._dispatch_command(
+        await host._dispatch_command(
             session,
             str(update.effective_message.message_id),
             metadata,
@@ -203,14 +182,15 @@ class CommandHandlersMixin:
 
     async def _handle_agent_restart(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /agent_restart command - restart Agent in this session."""
-        session = await self._require_session_from_topic(update)
+        host = cast("_CommandHandlersHost", self)
+        session = await host._require_session_from_topic(update)
         if not session:
             return
 
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        metadata = self._metadata()
+        metadata = host._metadata()
         metadata.channel_metadata = metadata.channel_metadata or {}
         metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
 
@@ -220,7 +200,7 @@ class CommandHandlersMixin:
             metadata=metadata,
             session_id=session.session_id,
         )
-        await self._dispatch_command(
+        await host._dispatch_command(
             session,
             str(update.effective_message.message_id),
             metadata,

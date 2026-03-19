@@ -48,7 +48,7 @@ def _render_conversation(messages: list[StructuredMessage]) -> str:
     return "\n\n".join(lines)
 
 
-def generate_mirror_sync(
+def generate_mirror_sync(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     session_id: str,
     source_identity: str,
     transcript_path: str,
@@ -93,7 +93,7 @@ def generate_mirror_sync(
     return True
 
 
-async def generate_mirror(
+async def generate_mirror(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     session_id: str,
     source_identity: str,
     transcript_path: str,

@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import delete, or_
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlmodel import select
 
 from .. import db_models
 from ..voice_assignment import VoiceConfig
@@ -15,6 +18,8 @@ logger = get_logger(__name__)
 
 
 class DbSettingsMixin:
+    """System setting and voice assignment persistence helpers."""
+
     async def get_system_setting(self, key: str) -> str | None:
         """Get system setting value by key.
 
@@ -53,8 +58,6 @@ class DbSettingsMixin:
             voice_id: Either teleclaude session ID or Agent session ID
             voice: VoiceConfig to assign
         """
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
         now = datetime.now(UTC)
         stmt = sqlite_insert(db_models.VoiceAssignment).values(
             id=voice_id,
@@ -99,16 +102,13 @@ class DbSettingsMixin:
         Returns:
             Set of (service_name, voice) tuples currently in use.
         """
-        from sqlalchemy import or_
-        from sqlmodel import select
-
         stmt = (
             select(db_models.VoiceAssignment.service_name, db_models.VoiceAssignment.voice)
             .join(db_models.Session, db_models.VoiceAssignment.id == db_models.Session.session_id)
             .where(
                 db_models.Session.closed_at.is_(None),
                 or_(
-                    db_models.Session.lifecycle_status.is_(None),
+                    db_models.Session.lifecycle_status.is_(None),  # pylint: disable=no-member  # SQLModel comparator methods are attached dynamically.
                     db_models.Session.lifecycle_status != "closed",
                 ),
                 db_models.VoiceAssignment.service_name.is_not(None),
@@ -127,8 +127,6 @@ class DbSettingsMixin:
         Returns:
             Number of records deleted
         """
-
-        from sqlalchemy import delete
 
         cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
         stmt = delete(db_models.VoiceAssignment).where(db_models.VoiceAssignment.assigned_at < cutoff)

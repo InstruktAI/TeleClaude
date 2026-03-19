@@ -6,6 +6,7 @@ No imports from state_machine.py or step_functions.py (circular-import guard).
 from __future__ import annotations
 
 
+# pylint: disable=too-many-arguments,too-many-positional-arguments
 def _format_commit_decision(
     slug: str,
     branch: str,

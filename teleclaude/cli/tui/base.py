@@ -10,3 +10,12 @@ class TelecMixin:
     """
 
     auto_links = False
+
+    @classmethod
+    def allows_auto_links(cls) -> bool:
+        """Return whether Textual auto-link handling stays enabled."""
+        return cls.auto_links
+
+    def should_suppress_links(self) -> bool:
+        """Return whether link interaction artifacts should be suppressed."""
+        return not self.auto_links

@@ -66,7 +66,7 @@ def export_config_markdown() -> str:
     return "\n".join(sections)
 
 
-def _resolve_type(
+def _resolve_type(  # pylint: disable=too-many-return-statements
     field_info: dict[str, object],  # guard: loose-dict - JSON schema field info is untyped at runtime
 ) -> str:
     """Extract a human-readable type string from a JSON Schema field."""

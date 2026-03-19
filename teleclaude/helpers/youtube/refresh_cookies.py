@@ -8,9 +8,11 @@
 """Refresh YouTube cookies using Playwright with dedicated automation profile."""
 
 import argparse
+import importlib
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from teleclaude.core.models import JsonDict
 
@@ -51,7 +53,7 @@ def cookies_to_netscape(cookies: list[JsonDict]) -> str:
     return "\n".join(lines)
 
 
-def setup_profile(profile_dir: Path) -> bool:
+def setup_profile(profile_dir: Path) -> bool:  # pylint: disable=too-many-statements  # Sequential pipeline is intentionally flat.
     """Interactive setup: launch browser for user to log in to YouTube.
 
     Args:
@@ -60,7 +62,8 @@ def setup_profile(profile_dir: Path) -> bool:
     Returns:
         True if setup completed successfully
     """
-    from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]
+    sync_api = importlib.import_module("playwright.sync_api")
+    sync_playwright = sync_api.sync_playwright
 
     profile_dir.mkdir(parents=True, exist_ok=True)
     print(f"Profile directory: {profile_dir}")
@@ -117,7 +120,7 @@ def setup_profile(profile_dir: Path) -> bool:
                     print(f"Captured {len(cookies)} cookies - AUTH DETECTED: {found}")
                 else:
                     print(f"Captured {len(cookies)} cookies (no auth yet): {list(cookie_names)[:5]}...")
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
         # Capture cookies periodically and on close
@@ -127,7 +130,7 @@ def setup_profile(profile_dir: Path) -> bool:
             while len(context.pages) > 0:
                 capture_cookies()  # type: ignore[no-untyped-call]
                 time.sleep(2)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         # Final capture attempt
@@ -164,7 +167,8 @@ def refresh_cookies(
     Returns:
         True if successful
     """
-    from playwright.sync_api import sync_playwright  # type: ignore[unused-ignore]
+    sync_api = importlib.import_module("playwright.sync_api")
+    sync_playwright = sync_api.sync_playwright
 
     if not profile_dir.exists():
         print(f"Error: Profile not found at {profile_dir}", file=sys.stderr)
@@ -174,52 +178,22 @@ def refresh_cookies(
     print(f"Using profile: {profile_dir}")
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=str(profile_dir),
+        cookies = _extract_playwright_cookies(
+            playwright=p,
+            profile_dir=profile_dir,
             headless=headless,
-            channel="chrome",
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-infobars",
-            ],
-            ignore_default_args=["--enable-automation"],
+            timeout=timeout,
         )
 
-        page = context.new_page()
-
-        print("Navigating to youtube.com...")
-        try:
-            page.goto("https://www.youtube.com", timeout=timeout, wait_until="networkidle")
-        except Exception as e:
-            print(f"Navigation warning (may still work): {e}", file=sys.stderr)
-
-        # Wait for cookie rotation
-        page.wait_for_timeout(2000)
-
-        # Extract cookies
-        cookies = context.cookies(["https://www.youtube.com", "https://accounts.google.com"])
-        print(f"Extracted {len(cookies)} cookies")
-
-        context.close()
-
-    # Filter to YouTube-relevant cookies
-    yt_cookies = [c for c in cookies if ".youtube.com" in c.get("domain", "") or ".google.com" in c.get("domain", "")]
+    yt_cookies = _filter_youtube_cookies(cookies)
     print(f"Filtered to {len(yt_cookies)} YouTube/Google cookies")
 
-    # Check for essential auth cookies
-    cookie_names = {c["name"] for c in yt_cookies}
-    essential = {"SID", "HSID", "SSID", "APISID", "SAPISID"}
-    missing = essential - cookie_names
-
+    missing = _missing_auth_cookies(yt_cookies)
     if missing:
         print(f"Warning: Missing essential cookies: {missing}", file=sys.stderr)
         print("Session may have expired. Run --setup again to re-login.", file=sys.stderr)
         return False
 
-    # Save
     netscape = cookies_to_netscape(yt_cookies)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(netscape, encoding="utf-8")
@@ -228,7 +202,54 @@ def refresh_cookies(
     return True
 
 
+def _extract_playwright_cookies(*, playwright: Any, profile_dir: Path, headless: bool, timeout: int) -> list[JsonDict]:
+    context = playwright.chromium.launch_persistent_context(
+        user_data_dir=str(profile_dir),
+        headless=headless,
+        channel="chrome",
+        args=[
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-infobars",
+        ],
+        ignore_default_args=["--enable-automation"],
+    )
+    try:
+        page = context.new_page()
+        print("Navigating to youtube.com...")
+        try:
+            page.goto("https://www.youtube.com", timeout=timeout, wait_until="networkidle")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            print(f"Navigation warning (may still work): {exc}", file=sys.stderr)
+        page.wait_for_timeout(2000)
+        raw_cookies = context.cookies(["https://www.youtube.com", "https://accounts.google.com"])
+        cookies = [cookie for cookie in raw_cookies if isinstance(cookie, dict)]
+        print(f"Extracted {len(cookies)} cookies")
+        return cookies
+    finally:
+        context.close()
+
+
+def _filter_youtube_cookies(cookies: list[JsonDict]) -> list[JsonDict]:
+    filtered: list[JsonDict] = []
+    for cookie in cookies:
+        domain_value = cookie.get("domain", "")
+        domain = domain_value if isinstance(domain_value, str) else ""
+        if ".youtube.com" in domain or ".google.com" in domain:
+            filtered.append(cookie)
+    return filtered
+
+
+def _missing_auth_cookies(cookies: list[JsonDict]) -> set[str]:
+    cookie_names = {name_value for cookie in cookies if isinstance((name_value := cookie.get("name")), str)}
+    essential = {"SID", "HSID", "SSID", "APISID", "SAPISID"}
+    return essential - cookie_names
+
+
 def main():  # type: ignore[no-untyped-def]
+    """CLI entrypoint for refreshing YouTube cookies via Playwright."""
     parser = argparse.ArgumentParser(
         description="Refresh YouTube cookies via Playwright",
         epilog="First run with --setup to log in, then run without flags to refresh.",

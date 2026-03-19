@@ -11,6 +11,7 @@ from textual.widget import Widget
 
 from teleclaude.cli.models import JobInfo
 from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.messages import SettingsChanged
 from teleclaude.cli.tui.widgets.job_row import JobRow
 
 
@@ -58,7 +59,7 @@ class JobsView(Widget, can_focus=True):
 
     cursor_index = reactive(0)
 
-    def watch_cursor_index(self, value: int) -> None:
+    def watch_cursor_index(self, _value: int) -> None:
         """Update cursor highlight and refresh footer bindings on move."""
         self._update_cursor_highlight()
         if self.is_attached:
@@ -123,6 +124,7 @@ class JobsView(Widget, can_focus=True):
         return item if isinstance(item, JobRow) else None
 
     def action_cursor_up(self) -> None:
+        """Move the cursor to the previous job row."""
         if self._nav_items and self.cursor_index > 0:
             self.cursor_index -= 1
             self._update_cursor_highlight()
@@ -130,6 +132,7 @@ class JobsView(Widget, can_focus=True):
                 self._nav_items[self.cursor_index].scroll_visible()
 
     def action_cursor_down(self) -> None:
+        """Move the cursor to the next job row."""
         if self._nav_items and self.cursor_index < len(self._nav_items) - 1:
             self.cursor_index += 1
             self._update_cursor_highlight()
@@ -140,6 +143,4 @@ class JobsView(Widget, can_focus=True):
         """Enter: run selected job."""
         row = self._current_job_row()
         if row:
-            from teleclaude.cli.tui.messages import SettingsChanged
-
             self.post_message(SettingsChanged(key=f"run_job:{row.job.name}", value=True))

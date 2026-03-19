@@ -5,8 +5,6 @@ Redis Streams as the transport layer. It bypasses Telegram's bot-to-bot
 messaging restriction.
 """
 
-# pylint: disable=too-many-instance-attributes
-
 from __future__ import annotations
 
 import asyncio
@@ -38,7 +36,7 @@ logger = get_logger(__name__)
 
 
 class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
-    # pylint: disable=too-many-instance-attributes  # Redis transport requires many connection and state attributes
+    # pylint: disable=too-many-ancestors,too-many-instance-attributes  # Redis transport requires mixins and state
     _ConnectionMixin,
     _RefreshMixin,
     _MessagingMixin,

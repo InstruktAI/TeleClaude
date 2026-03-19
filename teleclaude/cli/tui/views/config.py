@@ -7,15 +7,24 @@ from typing import Any
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
+from textual.css.query import NoMatches, WrongType
 from textual.events import Key
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.config_handlers import EnvVarStatus, ValidationResult, get_person_config
+from teleclaude.cli.config_handlers import (
+    EnvVarStatus,
+    ValidationResult,
+    check_env_vars,
+    get_person_config,
+    list_people,
+    validate_all,
+)
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
+    _PERSON_EDITABLE_FIELDS,
     _SUBTABS,
     AdapterSectionProjection,
     NotificationProjection,
@@ -28,7 +37,7 @@ from teleclaude.config.schema import PersonEntry
 __all__ = ["ConfigContent", "ConfigView"]
 
 
-class ConfigView(Widget, can_focus=True):
+class ConfigView(Widget, can_focus=True):  # pylint: disable=too-many-public-methods
     """Configuration tab with guided setup and inline edit behavior."""
 
     DEFAULT_CSS = """
@@ -75,14 +84,16 @@ class ConfigView(Widget, can_focus=True):
     active_adapter_tab = reactive(0)
 
     def _content_or_none(self) -> ConfigContent | None:
+        """Return the mounted content widget when available."""
         if not self.is_attached:
             return None
         try:
             return self.query_one("#config-content", ConfigContent)
-        except Exception:
+        except (NoMatches, WrongType):
             return None
 
     def _sync_from_content(self) -> None:
+        """Mirror tab state back from the content widget."""
         content = self._content_or_none()
         if content is None:
             return
@@ -90,6 +101,8 @@ class ConfigView(Widget, can_focus=True):
         self.active_adapter_tab = content.active_adapter_tab
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Limit adapter tab movement to relevant subviews."""
+        del parameters
         if action in ("next_adapter_tab", "prev_adapter_tab"):
             content = self._content_or_none()
             if content is not None and content.is_on_enum_field:
@@ -97,39 +110,48 @@ class ConfigView(Widget, can_focus=True):
             return self.active_subtab == 0
         return True
 
-    def watch_active_subtab(self, value: int) -> None:
+    def watch_active_subtab(self, _value: int) -> None:
+        """Propagate subtab changes to the inner content widget."""
         self._sync_content()
         if self.is_attached:
             self.app.refresh_bindings()
 
-    def watch_active_adapter_tab(self, value: int) -> None:
+    def watch_active_adapter_tab(self, _value: int) -> None:
+        """Propagate adapter tab changes to the inner content widget."""
         self._sync_content()
         if self.is_attached:
             self.app.refresh_bindings()
 
     def compose(self) -> ComposeResult:
+        """Compose the scrollable configuration content."""
         scroll = VerticalScroll(id="config-scroll")
         scroll.can_focus = False
         with scroll:
             yield ConfigContent(id="config-content")
 
     def on_mount(self) -> None:
+        """Load configuration data once the widget is mounted."""
         self._refresh_content()
 
     def on_focus(self) -> None:
+        """Refresh bindings and clear any focus border decoration."""
         self.styles.border = ("none", "transparent")
         self.app.refresh_bindings()
 
     def on_click(self) -> None:
+        """Focus the widget when it is clicked."""
         self.focus()
 
     def on_config_content_subtab_selected(self, msg: ConfigContent.SubtabSelected) -> None:
+        """Sync the outer subtab index from a click inside the content."""
         self.active_subtab = msg.idx
 
     def on_config_content_adapter_tab_selected(self, msg: ConfigContent.AdapterTabSelected) -> None:
+        """Sync the outer adapter tab index from a click inside the content."""
         self.active_adapter_tab = msg.idx
 
     def on_key(self, event: Key) -> None:
+        """Forward editing keystrokes to the content widget."""
         content = self._content_or_none()
         if content is None or not content.is_editing:
             return
@@ -147,35 +169,43 @@ class ConfigView(Widget, can_focus=True):
             event.stop()
 
     def _refresh_content(self) -> None:
+        """Ask the content widget to reload its underlying config data."""
         content = self.query_one("#config-content", ConfigContent)
         content.refresh_data()
 
     def _sync_content(self) -> None:
+        """Push the current tab state into the content widget."""
         content = self.query_one("#config-content", ConfigContent)
         content.active_subtab = self.active_subtab
         content.active_adapter_tab = self.active_adapter_tab
 
     def action_run_validation(self) -> None:
+        """Run config validation for the current content."""
         content = self.query_one("#config-content", ConfigContent)
         content.run_validation()
 
     def action_refresh_config(self) -> None:
+        """Reload config data from disk."""
         self._refresh_content()
 
     def action_cursor_up(self) -> None:
+        """Move the config cursor up."""
         content = self.query_one("#config-content", ConfigContent)
         content.move_cursor(-1)
 
     def action_cursor_down(self) -> None:
+        """Move the config cursor down."""
         content = self.query_one("#config-content", ConfigContent)
         content.move_cursor(1)
 
     def action_activate(self) -> None:
+        """Activate the currently selected field or row."""
         content = self.query_one("#config-content", ConfigContent)
         content.activate_current()
         self._sync_from_content()
 
     def action_cancel(self) -> None:
+        """Cancel the active edit, expansion, or guided mode step."""
         content = self.query_one("#config-content", ConfigContent)
         if content.is_editing:
             content.cancel_edit()
@@ -186,19 +216,23 @@ class ConfigView(Widget, can_focus=True):
             self._sync_from_content()
 
     def action_toggle_guided_mode(self) -> None:
+        """Toggle guided mode on the content widget."""
         content = self.query_one("#config-content", ConfigContent)
         content.toggle_guided_mode()
         self._sync_from_content()
 
     def action_next_subtab(self) -> None:
+        """Switch to the next config subtab."""
         self.active_subtab = (self.active_subtab + 1) % len(_SUBTABS)
         self._sync_content()
 
     def action_prev_subtab(self) -> None:
+        """Switch to the previous config subtab."""
         self.active_subtab = (self.active_subtab - 1) % len(_SUBTABS)
         self._sync_content()
 
     def action_next_adapter_tab(self) -> None:
+        """Advance to the next adapter tab or enum value."""
         content = self._content_or_none()
         if content is not None and content.is_on_enum_field:
             content.cycle_enum_field(1)
@@ -208,6 +242,7 @@ class ConfigView(Widget, can_focus=True):
             self._sync_content()
 
     def action_prev_adapter_tab(self) -> None:
+        """Move to the previous adapter tab or enum value."""
         content = self._content_or_none()
         if content is not None and content.is_on_enum_field:
             content.cycle_enum_field(-1)
@@ -217,7 +252,12 @@ class ConfigView(Widget, can_focus=True):
             self._sync_content()
 
 
-class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMixin, Widget):
+class ConfigContent(  # pylint: disable=too-many-instance-attributes
+    ConfigContentEditingMixin,
+    ConfigContentRenderMixin,
+    TelecMixin,
+    Widget,
+):
     """Renders guided config sections with inline env editing."""
 
     DEFAULT_CSS = """
@@ -229,11 +269,15 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
     """
 
     class SubtabSelected(Message):
+        """Posted when a config subtab is selected by mouse."""
+
         def __init__(self, idx: int) -> None:
             super().__init__()
             self.idx = idx
 
     class AdapterTabSelected(Message):
+        """Posted when an adapter card is selected by mouse."""
+
         def __init__(self, idx: int) -> None:
             super().__init__()
             self.idx = idx
@@ -269,20 +313,22 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
 
     @property
     def guided_mode(self) -> bool:
+        """Whether guided setup mode is active."""
         return self._guided_mode
 
     @property
     def is_editing(self) -> bool:
+        """Whether an env var or person field is being edited."""
         return self._editing_var_name is not None or self._editing_person_field is not None
 
     @property
     def is_person_expanded(self) -> bool:
+        """Whether a person's details are currently expanded."""
         return self._expanded_person is not None
 
     @property
     def is_on_enum_field(self) -> bool:
-        from teleclaude.cli.tui.views._config_constants import _PERSON_EDITABLE_FIELDS, _SUBTABS
-
+        """Whether the cursor is on a role field that cycles with arrows."""
         tab = _SUBTABS[self.active_subtab]
         return (
             tab == "people"
@@ -292,6 +338,7 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
         )
 
     def cycle_enum_field(self, direction: int) -> None:
+        """Cycle the current enum-backed field in the requested direction."""
         if not self.is_on_enum_field:
             return
         person = next((p for p in self._people_data if p.name == self._expanded_person), None)
@@ -299,11 +346,10 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
             self._cycle_person_role(person, direction)
 
     def refresh_data(self) -> None:
-        from teleclaude.cli.config_handlers import check_env_vars, list_people
-
+        """Reload env vars, people, and derived projections from disk."""
         try:
             self._env_data = check_env_vars()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             self._env_data = []
             self._status_message = f"Failed to load env vars: {exc}"
             self._status_is_error = True
@@ -312,7 +358,7 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
 
         try:
             self._people_data = list_people()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             self._people_data = []
             self._status_message = f"Failed to load people: {exc}"
             self._status_is_error = True
@@ -327,20 +373,20 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
         self.refresh(layout=True)
 
     def run_validation(self) -> None:
-        from teleclaude.cli.config_handlers import validate_all
-
+        """Run the full config validation suite and surface the summary."""
         try:
             self._validation_results = validate_all()
             passed = sum(1 for result in self._validation_results if result.passed)
             self._status_message = f"Validation complete: {passed}/{len(self._validation_results)} checks passed"
             self._status_is_error = passed != len(self._validation_results)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             self._validation_results = []
             self._status_message = f"Validation failed: {exc}"
             self._status_is_error = True
         self.refresh(layout=True)
 
     def _build_notification_projection(self) -> NotificationProjection:
+        """Build notification coverage details from person subscription config."""
         if not self._people_data:
             return NotificationProjection(
                 configured=False,
@@ -355,7 +401,7 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
         for person in self._people_data:
             try:
                 person_config = get_person_config(person.name)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
             count = len(person_config.subscriptions)
             if count > 0:
@@ -377,22 +423,21 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
         )
 
     def _current_context_key(self) -> str:
-        from teleclaude.cli.tui.views._config_constants import _ADAPTER_TABS, _SUBTABS
-
+        """Return the cursor context key for the active subtab."""
         tab = _SUBTABS[self.active_subtab]
         if tab == "adapters":
             return f"adapter:{_ADAPTER_TABS[self.active_adapter_tab]}"
         return tab
 
     def _get_active_adapter_section(self) -> AdapterSectionProjection | None:
+        """Return the adapter section for the active adapter tab."""
         if not self._adapter_sections:
             return None
         idx = max(0, min(self.active_adapter_tab, len(self._adapter_sections) - 1))
         return self._adapter_sections[idx]
 
     def _selectable_env_rows(self) -> list[EnvVarStatus]:
-        from teleclaude.cli.tui.views._config_constants import _SUBTABS
-
+        """Return the env rows available for the active subtab."""
         tab = _SUBTABS[self.active_subtab]
         if tab == "adapters":
             section = self._get_active_adapter_section()
@@ -404,14 +449,15 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
         return []
 
     def _current_cursor(self) -> int:
+        """Return the cursor position for the active context."""
         return self._cursor_by_context.get(self._current_context_key(), 0)
 
     def _set_current_cursor(self, index: int) -> None:
+        """Persist the cursor position for the active context."""
         self._cursor_by_context[self._current_context_key()] = index
 
     def _clamp_current_cursor(self) -> None:
-        from teleclaude.cli.tui.views._config_constants import _PERSON_EDITABLE_FIELDS, _SUBTABS
-
+        """Clamp the cursor to the available rows in the active context."""
         tab = _SUBTABS[self.active_subtab]
         if tab == "people":
             count = len(self._people_data)
@@ -429,6 +475,7 @@ class ConfigContent(ConfigContentEditingMixin, ConfigContentRenderMixin, TelecMi
         self._set_current_cursor(max(0, min(cursor, len(rows) - 1)))
 
     def _current_selected_env(self) -> EnvVarStatus | None:
+        """Return the currently selected env row, if any."""
         rows = self._selectable_env_rows()
         if not rows:
             return None

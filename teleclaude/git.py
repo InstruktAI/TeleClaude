@@ -17,10 +17,16 @@ import os
 from pathlib import Path
 
 import git as _gitpython
-from git import Repo as Repo
-from git.exc import GitCommandError as GitCommandError
-from git.exc import InvalidGitRepositoryError as InvalidGitRepositoryError
-from git.exc import NoSuchPathError as NoSuchPathError
+from git import Repo as Repo  # pylint: disable=useless-import-alias  # Re-export for public API
+from git.exc import (  # pylint: disable=useless-import-alias  # Re-export for public API
+    GitCommandError as GitCommandError,
+)
+from git.exc import (  # pylint: disable=useless-import-alias  # Re-export for public API
+    InvalidGitRepositoryError as InvalidGitRepositoryError,
+)
+from git.exc import (  # pylint: disable=useless-import-alias  # Re-export for public API
+    NoSuchPathError as NoSuchPathError,
+)
 
 __all__ = [
     "GitCommandError",

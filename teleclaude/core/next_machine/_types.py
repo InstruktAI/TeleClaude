@@ -10,13 +10,15 @@ import re
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TypedDict, cast
+from typing import TypedDict
 
 type StateScalar = str | bool | int | None
 type StateValue = StateScalar | list[StateValue] | dict[str, StateValue]
 
 
 class FinalizeState(TypedDict, total=False):
+    """Durable handoff metadata stored for finalize processing."""
+
     status: str
     branch: str
     sha: str
@@ -27,11 +29,15 @@ class FinalizeState(TypedDict, total=False):
 
 
 class PhaseName(str, Enum):
+    """Top-level machine phases stored in state.yaml."""
+
     BUILD = "build"
     REVIEW = "review"
 
 
 class PhaseStatus(str, Enum):
+    """Allowed statuses for top-level build and review phases."""
+
     PENDING = "pending"
     STARTED = "started"
     COMPLETE = "complete"
@@ -40,6 +46,8 @@ class PhaseStatus(str, Enum):
 
 
 class ItemPhase(str, Enum):
+    """Lifecycle phases for a todo item."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     DONE = "done"
@@ -89,6 +97,8 @@ DOR_READY_THRESHOLD = 8
 
 
 class WorktreeScript(str, Enum):
+    """Named repo scripts that can prepare a worktree."""
+
     PREPARE = "worktree:prepare"
 
 
@@ -126,6 +136,8 @@ REVIEW_DIFF_NOTE = (
 
 @dataclass(frozen=True)
 class WorktreePrepDecision:
+    """Whether worktree preparation should run for the current inputs."""
+
     should_prepare: bool
     reason: str
     inputs_digest: str
@@ -133,6 +145,8 @@ class WorktreePrepDecision:
 
 @dataclass(frozen=True)
 class EnsureWorktreeResult:
+    """Outcome of ensuring a worktree exists and is prepared."""
+
     created: bool
     prepared: bool
     prep_reason: str
@@ -140,6 +154,8 @@ class EnsureWorktreeResult:
 
 @dataclass
 class RoadmapEntry:
+    """Single roadmap or icebox manifest entry."""
+
     slug: str
     group: str | None = None
     after: list[str] = field(default_factory=list)
@@ -147,6 +163,8 @@ class RoadmapEntry:
 
 
 class RoadmapDict(TypedDict, total=False):
+    """Serialized roadmap entry shape stored in YAML manifests."""
+
     slug: str
     group: str
     after: list[str]
@@ -155,6 +173,8 @@ class RoadmapDict(TypedDict, total=False):
 
 @dataclass
 class DeliveredEntry:
+    """Delivered manifest entry with delivery metadata."""
+
     slug: str
     date: str
     commit: str | None = None
@@ -162,6 +182,8 @@ class DeliveredEntry:
 
 
 class DeliveredDict(TypedDict, total=False):
+    """Serialized delivered entry stored in ``delivered.yaml``."""
+
     slug: str
     date: str
     commit: str
@@ -170,6 +192,6 @@ class DeliveredDict(TypedDict, total=False):
 
 def default_state() -> dict[str, StateValue]:
     """Return a fresh default state dict from the canonical TodoState model."""
-    from teleclaude.types.todos import TodoState
+    from teleclaude.types.todos import TodoState  # pylint: disable=import-outside-toplevel
 
-    return cast(dict[str, StateValue], TodoState().model_dump(exclude_none=True))
+    return TodoState().model_dump(exclude_none=True)

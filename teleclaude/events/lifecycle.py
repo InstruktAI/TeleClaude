@@ -6,6 +6,7 @@ import shutil
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -16,14 +17,27 @@ from teleclaude.events.cartridge_manifest import CartridgeError
 logger = get_logger(__name__)
 
 
+class PromotionSpec(NamedTuple):
+    """Parameters describing a lifecycle promotion target."""
+
+    from_scope: CartridgeScope
+    to_scope: CartridgeScope
+    target_domain: str
+    source_member_id: str | None = None
+
+
 class CartridgeScope(str, Enum):
-    personal = "personal"
-    domain = "domain"
-    platform = "platform"
-    sandbox = "sandbox"
+    """Filesystem scope for installed cartridges."""
+
+    PERSONAL = "personal"
+    DOMAIN = "domain"
+    PLATFORM = "platform"
+    SANDBOX = "sandbox"
 
 
 class LifecycleManager:
+    """Install, remove, promote, and inspect cartridges across lifecycle scopes."""
+
     def __init__(
         self,
         personal_base_path: Path,
@@ -35,18 +49,19 @@ class LifecycleManager:
         self._reload_callback = reload_callback
 
     def _require_admin(self, caller_is_admin: bool, action: str) -> None:
+        """Require an administrative caller for a privileged lifecycle action."""
         if not caller_is_admin:
             raise PermissionError(f"This operation requires admin role. Action: {action}")
 
     def _resolve_target_path(self, scope: CartridgeScope, target: str) -> Path:
-        if scope == CartridgeScope.sandbox:
+        """Map a lifecycle scope and target identifier to its cartridge directory."""
+        if scope == CartridgeScope.SANDBOX:
             raise ValueError("CartridgeScope.sandbox is not a lifecycle scope and cannot be used with install/remove")
-        if scope == CartridgeScope.personal:
+        if scope == CartridgeScope.PERSONAL:
             return self._personal_base / "members" / target / "cartridges"
-        elif scope == CartridgeScope.domain:
+        if scope == CartridgeScope.DOMAIN:
             return self._domain_base / "domains" / target / "cartridges"
-        else:  # platform
-            return self._domain_base / "platform" / "cartridges"
+        return self._domain_base / "platform" / "cartridges"
 
     def install(
         self,
@@ -55,7 +70,8 @@ class LifecycleManager:
         target: str,
         caller_is_admin: bool,
     ) -> None:
-        if scope in (CartridgeScope.domain, CartridgeScope.platform):
+        """Install a cartridge into a target lifecycle scope."""
+        if scope in (CartridgeScope.DOMAIN, CartridgeScope.PLATFORM):
             self._require_admin(caller_is_admin, "install domain/platform cartridge")
 
         # Validate manifest before install
@@ -79,7 +95,8 @@ class LifecycleManager:
         target: str,
         caller_is_admin: bool,
     ) -> None:
-        if scope in (CartridgeScope.domain, CartridgeScope.platform):
+        """Remove a cartridge from a target lifecycle scope."""
+        if scope in (CartridgeScope.DOMAIN, CartridgeScope.PLATFORM):
             self._require_admin(caller_is_admin, "remove domain/platform cartridge")
 
         search_path = self._resolve_target_path(scope, target)
@@ -91,30 +108,23 @@ class LifecycleManager:
         logger.info("Removed cartridge '%s' from %s", cartridge_id, cartridge_dir)
         self.reload()
 
-    def promote(
-        self,
-        cartridge_id: str,
-        from_scope: CartridgeScope,
-        to_scope: CartridgeScope,
-        target_domain: str,
-        caller_is_admin: bool,
-        source_member_id: str | None = None,
-    ) -> None:
+    def promote(self, cartridge_id: str, spec: PromotionSpec, *, caller_is_admin: bool) -> None:
+        """Promote a cartridge from one scope to another."""
         self._require_admin(caller_is_admin, "promote cartridge")
 
         # When promoting from personal scope, the source path must use the member id,
         # not the target domain name.
-        if from_scope == CartridgeScope.personal:
-            if not source_member_id:
+        if spec.from_scope == CartridgeScope.PERSONAL:
+            if not spec.source_member_id:
                 raise ValueError("source_member_id is required when promoting from personal scope")
-            src_path = self._resolve_target_path(from_scope, source_member_id)
+            src_path = self._resolve_target_path(spec.from_scope, spec.source_member_id)
         else:
-            src_path = self._resolve_target_path(from_scope, target_domain)
+            src_path = self._resolve_target_path(spec.from_scope, spec.target_domain)
         cartridge_dir = self._find_cartridge_dir(src_path, cartridge_id)
         if cartridge_dir is None:
             raise CartridgeError(f"Cartridge '{cartridge_id}' not found in {src_path}")
 
-        dest_base = self._resolve_target_path(to_scope, target_domain)
+        dest_base = self._resolve_target_path(spec.to_scope, spec.target_domain)
         dest = dest_base / cartridge_dir.name
         dest_base.mkdir(parents=True, exist_ok=True)
 
@@ -126,12 +136,13 @@ class LifecycleManager:
         logger.info(
             "Promoted cartridge '%s' from %s to %s",
             cartridge_id,
-            from_scope,
-            to_scope,
+            spec.from_scope,
+            spec.to_scope,
         )
         self.reload()
 
     def _find_cartridge_dir(self, base: Path, cartridge_id: str) -> Path | None:
+        """Find the installed cartridge directory with the given manifest id."""
         if not base.exists():
             return None
         for subdir in base.iterdir():
@@ -145,16 +156,18 @@ class LifecycleManager:
                     raw = yaml.safe_load(f) or {}
                 if raw.get("id") == cartridge_id:
                     return subdir
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.warning("Skipping cartridge in %s: could not read manifest: %s", subdir, e)
                 continue
         return None
 
     def reload(self) -> None:
+        """Invoke the configured reload callback, if one is set."""
         if self._reload_callback is not None:
             self._reload_callback()
 
     def list_cartridges(self, scope: CartridgeScope, target: str) -> list[dict[str, str]]:
+        """Return manifest metadata for cartridges installed at a target scope."""
         path = self._resolve_target_path(scope, target)
         results: list[dict[str, str]] = []
         if not path.exists():
@@ -178,7 +191,7 @@ class LifecycleManager:
                         "target": target,
                     }
                 )
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.warning("Skipping cartridge in %s: could not read manifest: %s", subdir, e)
                 continue
         return results

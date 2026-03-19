@@ -1,4 +1,6 @@
 """Telegram adapter for TeleClaude."""
+# pylint: disable=wrong-import-position,ungrouped-imports,import-outside-toplevel,broad-exception-caught
+# pylint: disable=too-many-locals,redefined-outer-name,protected-access
 
 from __future__ import annotations
 
@@ -42,12 +44,12 @@ from .telegram.input_handlers import InputHandlersMixin
 from .telegram.lifecycle import LifecycleMixin, TelegramApp
 from .telegram.message_ops import EditContext, MessageOperationsMixin
 from .telegram.private_handlers import PrivateHandlersMixin
-from .ui_adapter import UiAdapter
+from .ui_adapter import UiAdapter, _OutputUpdateRequest
 
 logger = get_logger(__name__)
 
 
-class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
+class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
     PrivateHandlersMixin,
     LifecycleMixin,
     InputHandlersMixin,
@@ -134,7 +136,7 @@ class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # t
         self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
 
         # Register simple command handlers dynamically
-        self._register_simple_command_handlers()
+        self.register_simple_command_handlers()
 
     # --- Per-adapter output message tracking ---
     # Telegram uses adapter_metadata instead of the shared DB column
@@ -324,7 +326,7 @@ class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # t
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
-    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:
+    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:  # pylint: disable=unused-argument
         """Check if a forum topic was created by this bot.
 
         Uses the reply_to_message on the topic close event, which references
@@ -485,32 +487,20 @@ class TelegramAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # t
         Final (is_final=True) payloads are placed in the priority queue and dispatched
         in the next available scheduler slot without bypassing ordering invariants.
         """
-        from teleclaude.adapters.ui_adapter import UiAdapter
+        return await self._send_output_update_via_qos(
+            self._qos_scheduler,
+            _OutputUpdateRequest(
+                session=session,
+                output=output,
+                started_at=started_at,
+                last_output_changed_at=last_output_changed_at,
+                is_final=is_final,
+                exit_code=exit_code,
+                render_markdown=render_markdown,
+            ),
+        )
 
-        if self._qos_scheduler._policy.mode == "off":
-            return await UiAdapter.send_output_update(
-                self, session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
-            )
-
-        # Capture args for the dispatch closure (coalescing replaces old closures).
-        _self = self
-        _session = session
-        _output = output
-        _started_at = started_at
-        _last_changed = last_output_changed_at
-        _is_final = is_final
-        _exit_code = exit_code
-        _render_md = render_markdown
-
-        async def _dispatch() -> str | None:
-            return await UiAdapter.send_output_update(
-                _self, _session, _output, _started_at, _last_changed, _is_final, _exit_code, _render_md
-            )
-
-        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
-        return None  # Delivery is deferred; message_id stored asynchronously.
-
-    async def send_threaded_output(  # type: ignore[override]
+    async def send_threaded_output(  # type: ignore[override]  # pylint: disable=arguments-differ
         self,
         session: Session,
         text: str,

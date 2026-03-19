@@ -23,7 +23,7 @@ from teleclaude.adapters.discord import (
 )
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
-from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.adapters.ui_adapter import UiAdapter, _OutputUpdateRequest
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -39,19 +39,22 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class DiscordClientLike(Protocol):
+class DiscordClientLike(Protocol):  # pylint: disable=too-few-public-methods
     """Minimal discord.py client surface used by the adapter."""
 
     user: object | None
 
-    def event(self, coro: Callable[..., Awaitable[None]]) -> object: ...
+    def event(self, coro: Callable[..., Awaitable[None]]) -> object:
+        """Register an event handler."""
 
-    async def start(self, token: str) -> None: ...
+    async def start(self, token: str) -> None:
+        """Start the client with the given token."""
 
-    async def close(self) -> None: ...
+    async def close(self) -> None:
+        """Close the client connection."""
 
 
-class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,reportIncompatibleVariableOverride]  # type: ignore[misc]
+class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-attributes,line-too-long  # pyright: ignore[reportIncompatibleMethodOverride,reportIncompatibleVariableOverride]  # type: ignore[misc]
     ChannelOperationsMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
@@ -217,7 +220,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
                 session.session_id,
             )
 
-    async def send_output_update(  # type: ignore[override, unused-ignore]  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def send_output_update(  # type: ignore[override, unused-ignore]  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
         session: Session,
         output: str,
@@ -237,28 +240,18 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
         if self.THREADED_OUTPUT:
             return None
 
-        # Non-threaded: existing QoS path.
-        if self._qos_scheduler._policy.mode == "off":
-            return await UiAdapter.send_output_update(
-                self, session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
-            )
-
-        _self = self
-        _session = session
-        _output = output
-        _started_at = started_at
-        _last_changed = last_output_changed_at
-        _is_final = is_final
-        _exit_code = exit_code
-        _render_md = render_markdown
-
-        async def _dispatch() -> str | None:
-            return await UiAdapter.send_output_update(
-                _self, _session, _output, _started_at, _last_changed, _is_final, _exit_code, _render_md
-            )
-
-        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
-        return None  # Delivery is deferred.
+        return await self._send_output_update_via_qos(
+            self._qos_scheduler,
+            _OutputUpdateRequest(
+                session=session,
+                output=output,
+                started_at=started_at,
+                last_output_changed_at=last_output_changed_at,
+                is_final=is_final,
+                exit_code=exit_code,
+                render_markdown=render_markdown,
+            ),
+        )
 
     # send_threaded_output: inherited from UiAdapter base class.
     # Discord uses the base class edit-in-place model for threaded output.
@@ -290,7 +283,7 @@ class DiscordAdapter(  # pyright: ignore[reportIncompatibleMethodOverride,report
             new_id = await self.send_message(session, status_text)
             discord_meta.status_message_id = new_id
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-        except Exception as exc:
+        except (AdapterError, RuntimeError, OSError) as exc:
             logger.debug(
                 "Discord status message update failed for session %s: %s",
                 context.session_id,

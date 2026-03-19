@@ -58,7 +58,7 @@ def _load_icebox_data(
     return icebox_entries, icebox_slugs, icebox_groups
 
 
-def _read_todo_metadata(
+def _read_todo_metadata(  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
     project_path: str,
     todo_dir: Path,
 ) -> tuple[
@@ -160,7 +160,7 @@ def _derive_phase_status(raw_phase: object, build_status: str | None, dor_score:
     return "pending"
 
 
-def _append_todo(
+def _append_todo(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
     todos: list[TodoInfo],
     *,
     project_path: str,
@@ -224,7 +224,7 @@ def _infer_input_description(todo_dir: Path) -> str | None:
     return None
 
 
-def _load_active_roadmap_items(
+def _load_active_roadmap_items(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
     todos: list[TodoInfo],
     seen_slugs: set[str],
     *,
@@ -253,7 +253,7 @@ def _load_active_roadmap_items(
         )
 
 
-def _load_icebox_items(
+def _load_icebox_items(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
     todos: list[TodoInfo],
     seen_slugs: set[str],
     *,
@@ -282,7 +282,7 @@ def _load_icebox_items(
         )
 
 
-def _load_delivered_items(
+def _load_delivered_items(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
     todos: list[TodoInfo],
     seen_slugs: set[str],
     *,
@@ -309,7 +309,7 @@ def _load_delivered_items(
         todos[-1].delivered_at = entry.date
 
 
-def _append_orphan_todos(
+def _append_orphan_todos(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
     todos: list[TodoInfo],
     seen_slugs: set[str],
     *,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from teleclaude.core.next_machine.output_formatting import (
+    ToolCallRequest,
     format_finalize_handoff_complete,
     format_stash_debt,
     format_tool_call,
@@ -12,13 +13,15 @@ from teleclaude.core.next_machine.output_formatting import (
 
 def test_format_tool_call_uses_completion_args_and_preserves_spaced_next_call() -> None:
     output = format_tool_call(
-        command="next-review-build",
-        args="slug-a",
-        project="/repo",
-        guidance="guidance block",
-        subfolder="trees/slug-a",
-        next_call="telec todo work slug-a",
-        completion_args="override-slug",
+        ToolCallRequest(
+            command="next-review-build",
+            args="slug-a",
+            project="/repo",
+            guidance="guidance block",
+            subfolder="trees/slug-a",
+            next_call="telec todo work slug-a",
+            completion_args="override-slug",
+        )
     )
 
     assert 'Dispatch metadata: command="/next-review-build" args="slug-a"' in output
@@ -29,12 +32,14 @@ def test_format_tool_call_uses_completion_args_and_preserves_spaced_next_call() 
 
 def test_format_tool_call_includes_pre_dispatch_block_before_dispatch_step() -> None:
     output = format_tool_call(
-        command="next-build",
-        args="slug-b",
-        project="/repo",
-        guidance="guidance block",
-        subfolder="trees/slug-b",
-        pre_dispatch="telec todo mark-phase slug-b --phase build --status started",
+        ToolCallRequest(
+            command="next-build",
+            args="slug-b",
+            project="/repo",
+            guidance="guidance block",
+            subfolder="trees/slug-b",
+            pre_dispatch="telec todo mark-phase slug-b --phase build --status started",
+        )
     )
 
     assert "STEP 0 - BEFORE DISPATCHING:" in output
@@ -44,12 +49,14 @@ def test_format_tool_call_includes_pre_dispatch_block_before_dispatch_step() -> 
 
 def test_format_tool_call_for_prepare_discovery_stamps_requirements_before_next_call() -> None:
     output = format_tool_call(
-        command="next-prepare-discovery",
-        args="slug-c",
-        project="/repo",
-        guidance="guidance block",
-        subfolder="",
-        next_call="telec todo prepare slug-c",
+        ToolCallRequest(
+            command="next-prepare-discovery",
+            args="slug-c",
+            project="/repo",
+            guidance="guidance block",
+            subfolder="",
+            next_call="telec todo prepare slug-c",
+        )
     )
 
     assert "telec todo mark-phase slug-c --phase requirements --status complete" in output
@@ -58,12 +65,14 @@ def test_format_tool_call_for_prepare_discovery_stamps_requirements_before_next_
 
 def test_format_tool_call_for_prepare_draft_stamps_implementation_plan_before_next_call() -> None:
     output = format_tool_call(
-        command="next-prepare-draft",
-        args="slug-d",
-        project="/repo",
-        guidance="guidance block",
-        subfolder="",
-        next_call="telec todo prepare slug-d",
+        ToolCallRequest(
+            command="next-prepare-draft",
+            args="slug-d",
+            project="/repo",
+            guidance="guidance block",
+            subfolder="",
+            next_call="telec todo prepare slug-d",
+        )
     )
 
     assert "telec todo mark-phase slug-d --phase implementation_plan --status complete" in output
@@ -72,12 +81,14 @@ def test_format_tool_call_for_prepare_draft_stamps_implementation_plan_before_ne
 
 def test_format_tool_call_for_build_specs_stamps_test_specs_before_next_call() -> None:
     output = format_tool_call(
-        command="next-build-specs",
-        args="slug-e",
-        project="/repo",
-        guidance="guidance block",
-        subfolder="trees/slug-e",
-        next_call="telec todo prepare slug-e",
+        ToolCallRequest(
+            command="next-build-specs",
+            args="slug-e",
+            project="/repo",
+            guidance="guidance block",
+            subfolder="trees/slug-e",
+            next_call="telec todo prepare slug-e",
+        )
     )
 
     assert "telec todo mark-phase slug-e --phase test_specs --status complete" in output

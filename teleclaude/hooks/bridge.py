@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.event_bus import EventBus
 from teleclaude.core.events import (
     AgentActivityEvent,
     AgentEventContext,
@@ -47,8 +48,6 @@ class EventBusBridge:
         Args:
             event_bus: The EventBus instance to subscribe to.
         """
-        from teleclaude.core.event_bus import EventBus
-
         bus = event_bus
         if not isinstance(bus, EventBus):
             raise TypeError(f"Expected EventBus, got {type(bus)}")
@@ -62,6 +61,10 @@ class EventBusBridge:
             TeleClaudeEvents.ERROR,
         ):
             bus.subscribe(event_type, self._handle)
+
+    def attach(self, event_bus: object) -> None:
+        """Compatibility alias for registering bridge subscriptions."""
+        self.register(event_bus)
 
     async def _handle(self, event_type: EventType, context: EventContext) -> None:
         """Normalize internal event to HookEvent and dispatch."""
@@ -110,5 +113,5 @@ class EventBusBridge:
 
         try:
             await self._dispatcher.dispatch(event)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Bridge dispatch failed: %s", exc, exc_info=True)

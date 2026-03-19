@@ -1,3 +1,5 @@
+"""Manage the project manifest (projects.yaml) for multi-project discovery."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +13,8 @@ MANIFEST_PATH = Path("~/.teleclaude/projects.yaml")
 
 @dataclass(frozen=True)
 class ProjectManifestEntry:
+    """Single entry in the project manifest."""
+
     name: str
     description: str
     index_path: str
@@ -18,6 +22,8 @@ class ProjectManifestEntry:
 
 
 class ProjectManifestPayload(TypedDict):
+    """Wire format for a single manifest entry."""
+
     name: str
     description: str
     index_path: str
@@ -25,6 +31,8 @@ class ProjectManifestPayload(TypedDict):
 
 
 class ProjectManifestFile(TypedDict):
+    """Top-level manifest file schema."""
+
     projects: list[ProjectManifestPayload]
 
 
@@ -74,13 +82,14 @@ def _parse_manifest_data(raw_data: object) -> list[ProjectManifestEntry]:
 
 
 def load_manifest(path: Path = MANIFEST_PATH) -> list[ProjectManifestEntry]:
+    """Load and filter manifest entries to those whose index files exist."""
     manifest_path = _normalize_manifest_path(path)
     if not manifest_path.exists():
         return []
 
     try:
         raw_data: object = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (yaml.YAMLError, OSError):
         return []
 
     entries = _parse_manifest_data(raw_data)
@@ -91,13 +100,14 @@ def load_manifest(path: Path = MANIFEST_PATH) -> list[ProjectManifestEntry]:
     return live_entries
 
 
-def register_project(
+def register_project(  # pylint: disable=too-many-locals
     path: Path,
     project_root: Path,
     project_name: str,
     description: str,
     index_path: Path,
 ) -> None:
+    """Register or update a project in the manifest file."""
     manifest_path = _normalize_manifest_path(path)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
 

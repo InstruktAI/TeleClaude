@@ -92,14 +92,14 @@ class _TodoHandler(FileSystemEventHandler):
         self._handle(event)
 
 
-class TodoWatcher:
+class TodoWatcher:  # pylint: disable=too-few-public-methods  # Mixin only exposes private hooks.
     """Watches todos/ directories for all trusted projects and updates the cache."""
 
     def __init__(self, cache: DaemonCache) -> None:
         self._cache = cache
         self._observer: object | None = None
 
-    async def run(self) -> None:
+    async def run(self) -> None:  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
         """Start watching and process events until cancelled."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
@@ -154,7 +154,7 @@ class TodoWatcher:
                     try:
                         await self._cache.refresh_local_todos(computer_name, pp, hint)
                         logger.debug("TodoWatcher: refreshed %s (event=%s)", pp, hint)
-                    except Exception as exc:
+                    except Exception as exc:  # pylint: disable=broad-exception-caught
                         logger.warning("TodoWatcher: refresh failed for %s: %s", pp, exc)
 
         except asyncio.CancelledError:

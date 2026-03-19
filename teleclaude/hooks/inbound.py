@@ -31,13 +31,16 @@ class NormalizerRegistry:
         self._normalizers: dict[str, Normalizer] = {}
 
     def register(self, key: str, normalizer: Normalizer) -> None:
+        """Register a payload normalizer by key."""
         self._normalizers[key] = normalizer
         logger.debug("Registered normalizer: %s", key)
 
     def get(self, key: str) -> Normalizer | None:
+        """Return a previously registered normalizer, if present."""
         return self._normalizers.get(key)
 
 
+# pylint: disable=too-few-public-methods
 class InboundEndpointRegistry:
     """Manages dynamic inbound webhook routes on a FastAPI app."""
 
@@ -58,6 +61,7 @@ class InboundEndpointRegistry:
         normalizer_key: str,
         verify_config: dict[str, object] | None = None,  # guard: loose-dict - Verify config is dynamic JSON
     ) -> None:
+        # pylint: disable=too-many-statements
         """Register an inbound webhook endpoint.
 
         Args:
@@ -108,7 +112,7 @@ class InboundEndpointRegistry:
 
             try:
                 payload = json.loads(body)
-            except Exception as exc:
+            except json.JSONDecodeError as exc:
                 logger.error("Invalid JSON payload for inbound webhook: %s", path, exc_info=True)
                 raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
@@ -119,7 +123,7 @@ class InboundEndpointRegistry:
 
             try:
                 normalized = self._invoke_normalizer(normalizer, payload, headers)
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.error("Normalization failed: %s error=%s", normalizer_key, exc, exc_info=True)
                 raise HTTPException(status_code=400, detail="Failed to normalize payload") from exc
 
@@ -132,7 +136,7 @@ class InboundEndpointRegistry:
             try:
                 for event in events:
                     await self._dispatch(event)
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.error("Dispatch failed for inbound %s: %s", path, exc, exc_info=True)
                 # Return 502 so platforms (WhatsApp, etc.) can retry the delivery.
                 raise HTTPException(status_code=502, detail="dispatch error") from exc

@@ -27,7 +27,7 @@ _FETCH_LIMIT = 1  # Process one at a time to preserve FIFO ordering
 TypingCallback = Callable[[str, str], Awaitable[None]]
 DeliverCallback = Callable[[InboundQueueRow], Awaitable[None]]
 
-_manager: InboundQueueManager | None = None
+_manager: InboundQueueManager | None = None  # pylint: disable=invalid-name
 
 
 def init_inbound_queue_manager(
@@ -37,7 +37,7 @@ def init_inbound_queue_manager(
     force: bool = False,
 ) -> InboundQueueManager:
     """Initialize the global InboundQueueManager singleton."""
-    global _manager
+    global _manager  # pylint: disable=global-statement
     if _manager is not None and not force:
         raise RuntimeError("InboundQueueManager already initialized")
     _manager = InboundQueueManager(deliver_fn=deliver_fn, typing_callback=typing_callback)
@@ -53,7 +53,7 @@ def get_inbound_queue_manager() -> InboundQueueManager:
 
 def reset_inbound_queue_manager() -> None:
     """Reset the singleton (tests only)."""
-    global _manager
+    global _manager  # pylint: disable=global-statement
     _manager = None
 
 
@@ -75,7 +75,7 @@ class InboundQueueManager:
         self._typing_callback = typing_callback
         self._workers: dict[str, asyncio.Task[None]] = {}
 
-    async def enqueue(
+    async def enqueue(  # pylint: disable=too-many-arguments
         self,
         session_id: str,
         origin: str,
@@ -210,7 +210,7 @@ class InboundQueueManager:
             worker.cancel()
             try:
                 await worker
-            except (asyncio.CancelledError, Exception):
+            except (asyncio.CancelledError, Exception):  # pylint: disable=broad-exception-caught
                 pass
 
         count = await db.expire_inbound_for_session(session_id, datetime.now(UTC).isoformat())

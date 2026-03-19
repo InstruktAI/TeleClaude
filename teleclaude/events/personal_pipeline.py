@@ -14,15 +14,18 @@ logger = get_logger(__name__)
 
 
 class PersonalPipeline:
+    """Run personal leaf cartridges for a single configured member."""
+
     def __init__(self, member_id: str, cartridges: list[LoadedCartridge]) -> None:
         self.member_id = member_id
         self.cartridges = cartridges
 
     async def run(self, event: EventEnvelope, context: PipelineContext) -> None:
+        """Run each personal cartridge, isolating failures per cartridge."""
         for cartridge in self.cartridges:
             try:
                 await cartridge.process(event, context)
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error(
                     "Personal cartridge '%s' for member '%s' raised an exception: %s",
                     cartridge.manifest.id,
@@ -30,6 +33,10 @@ class PersonalPipeline:
                     e,
                     exc_info=True,
                 )
+
+    def has_cartridges(self) -> bool:
+        """Return whether this personal pipeline has any loadable cartridges."""
+        return bool(self.cartridges)
 
 
 def load_personal_pipeline(member_id: str, path: Path) -> PersonalPipeline:

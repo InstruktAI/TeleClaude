@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 WHATSAPP_MAX_MESSAGE_LENGTH = 4096
 
 
-async def send_whatsapp_message(
+async def send_whatsapp_message(  # pylint: disable=too-many-arguments
     phone_number: str,
     content: str,
     *,
@@ -62,7 +62,7 @@ async def send_whatsapp_message(
         try:
             body = response.json()
             detail = body.get("error", {}).get("message") or response.text[:200]
-        except Exception:
+        except (ValueError, KeyError):
             detail = response.text[:200]
         raise RuntimeError(f"WhatsApp send failed (HTTP {response.status_code}): {detail}")
 

@@ -94,7 +94,7 @@ class CommandMapper:
         )
 
     @staticmethod
-    def map_telegram_input(
+    def map_telegram_input(  # pylint: disable=too-many-return-statements
         event: str,
         args: list[str],
         metadata: MessageMetadata,
@@ -167,7 +167,7 @@ class CommandMapper:
         raise ValueError(f"Unknown telegram command: {event}")
 
     @staticmethod
-    def map_redis_input(
+    def map_redis_input(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-return-statements
         command_str: str,
         *,
         origin: str,
@@ -176,7 +176,7 @@ class CommandMapper:
         title: str | None = None,
         channel_metadata: dict[str, object] | None = None,
         launch_intent: SessionLaunchIntent | dict[str, object] | None = None,
-        initiator: str | None = None,
+        initiator: str | None = None,  # pylint: disable=unused-argument
     ) -> InternalCommand:
         """Map Redis inbound message to internal command."""
         cmd_name, args = parse_command_string(command_str)
@@ -291,7 +291,7 @@ class CommandMapper:
         raise ValueError(f"Unknown redis command: {cmd_name}")
 
     @staticmethod
-    def map_api_input(
+    def map_api_input(  # pylint: disable=too-many-locals,too-many-return-statements
         command_name: str,
         payload: dict[str, object],
         metadata: MessageMetadata,

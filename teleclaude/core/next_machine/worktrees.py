@@ -26,7 +26,7 @@ from teleclaude.core.next_machine._types import (
     EnsureWorktreeResult,
     WorktreePrepDecision,
 )
-from teleclaude.core.next_machine.file_io import file_sha256
+from teleclaude.core.next_machine.state_io import _file_sha256
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
@@ -58,7 +58,7 @@ def _compute_prep_inputs_digest(cwd: str, slug: str) -> str:
         is_executable = os.access(path, os.X_OK)
         digest.update(b"1" if is_executable else b"0")
         if path.is_file():
-            digest.update(file_sha256(path).encode("utf-8"))
+            digest.update(_file_sha256(path).encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -157,7 +157,7 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
     return True
 
 
-def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tuple[bool, str]:
+def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tuple[bool, str]:  # pylint: disable=too-many-return-statements
     """Commit bookkeeping files on main and best-effort push.
 
     Safe to call from any context — returns early if not on the main branch.

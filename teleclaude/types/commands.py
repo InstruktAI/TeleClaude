@@ -38,7 +38,7 @@ class InternalCommand:
 
 
 @dataclass(kw_only=True)
-class CreateSessionCommand(InternalCommand):
+class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instance-attributes
     """Intent to create a new session."""
 
     project_path: str
@@ -53,7 +53,7 @@ class CreateSessionCommand(InternalCommand):
     auto_command: str | None = None
     session_metadata: Optional["SessionMetadata"] = None
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         project_path: str,
@@ -96,7 +96,7 @@ class StartAgentCommand(InternalCommand):
     thinking_mode: str = "slow"
     args: list[str] = field(default_factory=list)
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -124,7 +124,7 @@ class ResumeAgentCommand(InternalCommand):
     agent_name: str | None = None
     native_session_id: str | None = None
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -147,7 +147,7 @@ class ResumeAgentCommand(InternalCommand):
 
 
 @dataclass(kw_only=True)
-class ProcessMessageCommand(InternalCommand):
+class ProcessMessageCommand(InternalCommand):  # pylint: disable=too-many-instance-attributes
     """Intent to process an incoming user message for a session."""
 
     session_id: str
@@ -159,7 +159,7 @@ class ProcessMessageCommand(InternalCommand):
     source_message_id: str | None = None  # Platform message ID for inbound dedup
     source_channel_id: str | None = None  # Platform channel ID for additional context
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -194,7 +194,7 @@ class ProcessMessageCommand(InternalCommand):
 
 
 @dataclass(kw_only=True)
-class HandleVoiceCommand(InternalCommand):
+class HandleVoiceCommand(InternalCommand):  # pylint: disable=too-many-instance-attributes
     """Intent to handle a voice input for a session."""
 
     session_id: str
@@ -207,7 +207,7 @@ class HandleVoiceCommand(InternalCommand):
     actor_name: str | None = None
     actor_avatar_url: str | None = None
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -264,7 +264,7 @@ class HandleFileCommand(InternalCommand):
     caption: str | None = None
     file_size: int = 0
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -301,7 +301,7 @@ class KeysCommand(InternalCommand):
     key: str
     args: list[str] = field(default_factory=list)
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -327,7 +327,7 @@ class RunAgentCommand(InternalCommand):
     args: str = ""
     origin: str
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -353,7 +353,7 @@ class RestartAgentCommand(InternalCommand):
     session_id: str
     agent_name: str | None = None
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -380,7 +380,7 @@ class GetSessionDataCommand(InternalCommand):
     until_timestamp: str | None = None
     tail_chars: int = 5000
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -411,7 +411,7 @@ class CloseSessionCommand(InternalCommand):
 
     session_id: str
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
@@ -433,7 +433,7 @@ class SystemCommand(InternalCommand):
     data: dict[str, object] | None = None
     session_id: str | None = None
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         command: str,

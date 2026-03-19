@@ -42,7 +42,7 @@ class TestProjectsRoutes:
             patch("teleclaude.api.projects_routes.config", config_stub),
             patch("teleclaude.api.projects_routes.command_handlers.list_projects_with_todos", new=AsyncMock()),
         ):
-            response = await projects_routes.list_projects(identity=object())
+            response = await projects_routes.list_projects(_identity=object())
 
         assert [project.model_dump() for project in response] == [
             {"computer": "local-box", "name": "local", "path": "/work/local", "description": None},
@@ -72,7 +72,7 @@ class TestProjectsRoutes:
                 new=AsyncMock(return_value=discovered),
             ),
         ):
-            response = await projects_routes.list_projects(identity=object())
+            response = await projects_routes.list_projects(_identity=object())
 
         assert [project.model_dump() for project in response] == [
             {"computer": "local-box", "name": "local", "path": "/work/local", "description": None}

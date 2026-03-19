@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import delete, update
+from sqlmodel import select
 
 from .. import db_models
 
@@ -15,6 +17,8 @@ logger = get_logger(__name__)
 
 
 class DbLinksMixin:
+    """Conversation link and membership persistence helpers."""
+
     async def create_conversation_link(
         self,
         *,
@@ -42,16 +46,12 @@ class DbLinksMixin:
 
     async def get_conversation_link(self, link_id: str) -> db_models.ConversationLinkRow | None:
         """Get a link by ID."""
-        from sqlmodel import select
-
         stmt = select(db_models.ConversationLinkRow).where(db_models.ConversationLinkRow.link_id == link_id)
         async with self._session() as db_session:
             return (await db_session.exec(stmt)).first()
 
     async def list_conversation_link_members(self, link_id: str) -> list[db_models.ConversationLinkMemberRow]:
         """List members for a link, ordered for deterministic fan-out."""
-        from sqlmodel import select
-
         stmt = (
             select(db_models.ConversationLinkMemberRow)
             .where(db_models.ConversationLinkMemberRow.link_id == link_id)
@@ -65,8 +65,6 @@ class DbLinksMixin:
 
     async def get_active_links_for_session(self, session_id: str) -> list[db_models.ConversationLinkRow]:
         """Get all active links containing the given member session."""
-        from sqlmodel import select
-
         stmt = (
             select(db_models.ConversationLinkRow)
             .join(
@@ -109,7 +107,7 @@ class DbLinksMixin:
         links = await self.get_active_links_between_sessions(session_a, session_b, mode=mode)
         return links[0] if links else None
 
-    async def upsert_conversation_link_member(
+    async def upsert_conversation_link_member(  # pylint: disable=too-many-arguments  # Membership metadata maps directly to row columns.
         self,
         *,
         link_id: str,
@@ -120,8 +118,6 @@ class DbLinksMixin:
         computer_name: str | None = None,
     ) -> None:
         """Create or update link membership metadata."""
-        from sqlmodel import select
-
         now = datetime.now(UTC).isoformat()
         stmt = select(db_models.ConversationLinkMemberRow).where(
             db_models.ConversationLinkMemberRow.link_id == link_id,
@@ -151,8 +147,6 @@ class DbLinksMixin:
 
     async def remove_conversation_link_member(self, *, link_id: str, session_id: str) -> bool:
         """Remove a member from a link."""
-        from sqlalchemy import delete
-
         stmt = delete(db_models.ConversationLinkMemberRow).where(
             db_models.ConversationLinkMemberRow.link_id == link_id,
             db_models.ConversationLinkMemberRow.session_id == session_id,
@@ -164,8 +158,6 @@ class DbLinksMixin:
 
     async def set_conversation_link_status(self, *, link_id: str, status: Literal["active", "closed"]) -> bool:
         """Update link lifecycle status."""
-        from sqlalchemy import update
-
         now = datetime.now(UTC).isoformat()
         closed_at = now if status == "closed" else None
         stmt = (
@@ -180,8 +172,6 @@ class DbLinksMixin:
 
     async def sever_conversation_link(self, link_id: str) -> bool:
         """Close link and remove all active members."""
-        from sqlalchemy import delete
-
         changed = await self.set_conversation_link_status(link_id=link_id, status="closed")
         stmt = delete(db_models.ConversationLinkMemberRow).where(db_models.ConversationLinkMemberRow.link_id == link_id)
         async with self._session() as db_session:

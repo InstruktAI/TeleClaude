@@ -1,5 +1,9 @@
 """ASCII banner widget with optional animation color overlay."""
 
+# pylint: disable=line-too-long,too-many-arguments,too-many-positional-arguments,too-many-locals
+# pylint: disable=import-outside-toplevel,too-many-return-statements
+# pylint: disable=broad-exception-caught
+
 from __future__ import annotations
 
 import webbrowser
@@ -67,7 +71,7 @@ def _dim_color(hex_color: str, factor: float) -> str:
         return hex_color
 
 
-def _entity_color(ch: str, z: int, dark_mode: bool) -> str:
+def _entity_color(_ch: str, _z: int, _dark_mode: bool) -> str:
     """Default white color for old-style (uncolored) sky entity pixels."""
     return "#FFFFFF"
 
@@ -278,6 +282,7 @@ def _append_animation_pixel(
         resolve_haze,
     )
 
+    _ = (fg_color, x)
     if not (engine and engine.has_active_animation and is_on_plate):
         return False
     color = engine.get_color(local_x, y, target=target)

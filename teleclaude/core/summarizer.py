@@ -53,7 +53,10 @@ def _build_agent_output_summary_prompt(agent_output: str, max_summary_words: int
 {agent_output}
 
 ## Output:
-1. **summary** (max {max_summary_words} words): Capture what actually happened in this turn. Use first person only when the agent performed concrete actions. For monitoring, waiting, or status reporting, use natural phrasing (e.g. "Monitoring workers", "Waiting on build results"). Omit UUIDs and opaque strings. If trivial or very short, return verbatim.
+1. **summary** (max {max_summary_words} words): Capture what actually happened in this turn.
+   Use first person only when the agent performed concrete actions. For monitoring, waiting,
+   or status reporting, use natural phrasing (e.g. "Monitoring workers", "Waiting on build
+   results"). Omit UUIDs and opaque strings. If trivial or very short, return verbatim.
 """
 
 
@@ -105,7 +108,7 @@ async def _call_summarizer(
             )
             text = response.content[0].text  # type: ignore[union-attr]
             return parser(text)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             errors.append(f"Anthropic: {e}")
 
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -120,16 +123,16 @@ async def _call_summarizer(
                     "strict": True,
                 },
             }
-            openai_response = await openai_client.chat.completions.create(
+            response = await openai_client.chat.completions.create(
                 model=SUMMARY_MODEL_OPENAI,
                 max_tokens=200,
                 messages=[{"role": "user", "content": prompt}],
                 response_format=response_format,
             )
-            response_any = cast(Any, openai_response)
+            response_any = cast(Any, response)
             text = response_any.choices[0].message.content or ""
             return parser(text)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             errors.append(f"OpenAI: {e}")
 
     if errors:

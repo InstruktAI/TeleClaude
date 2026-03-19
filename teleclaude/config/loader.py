@@ -1,3 +1,5 @@
+"""Configuration file loading and validation."""
+
 from pathlib import Path
 
 import yaml
@@ -78,9 +80,8 @@ def validate_config(path: Path, level: str) -> BaseModel:
     """Dispatcher to validate configuration at a specific level."""
     if level == "project":
         return load_project_config(path)
-    elif level == "global":
+    if level == "global":
         return load_global_config(path)
-    elif level == "person":
+    if level == "person":
         return load_person_config(path)
-    else:
-        raise ValueError(f"Invalid config level: {level}")
+    raise ValueError(f"Invalid config level: {level}")

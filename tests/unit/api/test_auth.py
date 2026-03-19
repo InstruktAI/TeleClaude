@@ -51,13 +51,6 @@ def _make_token_record(
     return record
 
 
-def _make_request() -> MagicMock:
-    req = MagicMock()
-    req.client = MagicMock()
-    req.client.host = "127.0.0.1"
-    return req
-
-
 # ---------------------------------------------------------------------------
 # verify_caller() token path
 # ---------------------------------------------------------------------------
@@ -72,7 +65,6 @@ class TestVerifyCallerTokenPath:
         """A valid token resolves to a CallerIdentity with principal fields."""
         token_record = _make_token_record(principal="system:sess-001", role="admin")
         session = _make_session_record(session_id="sess-001")
-        request = _make_request()
 
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=None),
@@ -85,7 +77,7 @@ class TestVerifyCallerTokenPath:
             mock_db.validate_session_token = AsyncMock(return_value=token_record)
             mock_db.get_session = AsyncMock(return_value=session)
 
-            identity = await verify_caller(request=request, x_session_token=token_record.token)
+            identity = await verify_caller(x_session_token=token_record.token)
 
         assert isinstance(identity, CallerIdentity)
         assert identity.session_id == "sess-001"
@@ -96,8 +88,6 @@ class TestVerifyCallerTokenPath:
     @pytest.mark.asyncio
     async def test_invalid_token_raises_401(self):
         """An unknown/expired/revoked token raises HTTP 401."""
-        request = _make_request()
-
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=None),
             patch("teleclaude.api.auth.db") as mock_db,
@@ -105,7 +95,7 @@ class TestVerifyCallerTokenPath:
             mock_db.validate_session_token = AsyncMock(return_value=None)
 
             with pytest.raises(HTTPException) as exc_info:
-                await verify_caller(request=request, x_session_token="invalid-token")
+                await verify_caller(x_session_token="invalid-token")
 
         assert exc_info.value.status_code == 401
 
@@ -114,7 +104,6 @@ class TestVerifyCallerTokenPath:
     async def test_token_with_unknown_session_raises_401(self):
         """A valid token pointing to a non-existent session raises HTTP 401."""
         token_record = _make_token_record()
-        request = _make_request()
 
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=None),
@@ -126,7 +115,7 @@ class TestVerifyCallerTokenPath:
             mock_db.get_session = AsyncMock(return_value=None)
 
             with pytest.raises(HTTPException) as exc_info:
-                await verify_caller(request=request, x_session_token=token_record.token)
+                await verify_caller(x_session_token=token_record.token)
 
         assert exc_info.value.status_code == 401
 
@@ -140,7 +129,6 @@ class TestVerifyCallerTokenPath:
             role="admin",
         )
         session = _make_session_record(session_id="sess-token")
-        request = _make_request()
 
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=None),
@@ -154,7 +142,6 @@ class TestVerifyCallerTokenPath:
             mock_db.get_session = AsyncMock(return_value=session)
 
             identity = await verify_caller(
-                request=request,
                 x_session_token=token_record.token,
                 x_caller_session_id="sess-other",
             )
@@ -168,7 +155,6 @@ class TestVerifyCallerTokenPath:
         """CallerIdentity.principal and principal_role come from the token record."""
         token_record = _make_token_record(principal="human:alice@example.com", role="admin")
         session = _make_session_record(session_id=token_record.session_id)
-        request = _make_request()
 
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=None),
@@ -181,7 +167,7 @@ class TestVerifyCallerTokenPath:
             mock_db.validate_session_token = AsyncMock(return_value=token_record)
             mock_db.get_session = AsyncMock(return_value=session)
 
-            identity = await verify_caller(request=request, x_session_token=token_record.token)
+            identity = await verify_caller(x_session_token=token_record.token)
 
         assert identity.principal == "human:alice@example.com"
         assert identity.principal_role == "admin"
@@ -192,7 +178,6 @@ class TestVerifyCallerTokenPath:
         """A token hit in the cache skips the DB validate call."""
         token_record = _make_token_record()
         session = _make_session_record(session_id=token_record.session_id)
-        request = _make_request()
 
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=token_record),
@@ -201,7 +186,7 @@ class TestVerifyCallerTokenPath:
             patch("teleclaude.api.auth._derive_session_system_role", return_value=None),
         ):
             mock_db.validate_session_token = AsyncMock()
-            await verify_caller(request=request, x_session_token=token_record.token)
+            await verify_caller(x_session_token=token_record.token)
 
         mock_db.validate_session_token.assert_not_called()
 
@@ -225,7 +210,6 @@ class TestVerifyCallerLifecycle:
         session.tmux_session_name = f"tmux-{record.session_id}"
         session.system_role = None
         session.human_email = None
-        request = _make_request()
 
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=None),
@@ -238,7 +222,7 @@ class TestVerifyCallerLifecycle:
             mock_db.validate_session_token = AsyncMock(return_value=record)
             mock_db.get_session = AsyncMock(return_value=session)
 
-            identity = await verify_caller(request=request, x_session_token=record.token)
+            identity = await verify_caller(x_session_token=record.token)
 
         assert isinstance(identity, CallerIdentity)
         assert identity.principal == "system:sess-lifecycle"
@@ -248,8 +232,6 @@ class TestVerifyCallerLifecycle:
     @pytest.mark.asyncio
     async def test_post_close_token_rejected_in_auth(self):
         """verify_caller() raises 401 after the session token is revoked."""
-        request = _make_request()
-
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=None),
             patch("teleclaude.api.auth.db") as mock_db,
@@ -257,7 +239,7 @@ class TestVerifyCallerLifecycle:
             mock_db.validate_session_token = AsyncMock(return_value=None)
 
             with pytest.raises(HTTPException) as exc_info:
-                await verify_caller(request=request, x_session_token="old-revoked-token")
+                await verify_caller(x_session_token="old-revoked-token")
 
         assert exc_info.value.status_code == 401
 
@@ -445,14 +427,11 @@ class TestSingleOwnerImplicitAdmin:
     @pytest.mark.asyncio
     async def test_tmux_caller_no_login_single_owner_gets_admin(self):
         """Tmux caller without login in single-owner mode gets admin."""
-        request = _make_request()
-
         with (
             patch("teleclaude.api.auth._resolve_terminal_role", return_value=None),
             patch("teleclaude.api.auth._requires_terminal_login", return_value=False),
         ):
             identity = await verify_caller(
-                request=request,
                 x_tmux_session="tc_tui",
             )
 
@@ -464,13 +443,11 @@ class TestSingleOwnerImplicitAdmin:
     @pytest.mark.asyncio
     async def test_non_tmux_caller_no_login_single_owner_gets_admin(self):
         """Non-tmux caller without login in single-owner mode gets admin."""
-        request = _make_request()
-
         with (
             patch("teleclaude.api.auth._resolve_terminal_role", return_value=None),
             patch("teleclaude.api.auth._requires_terminal_login", return_value=False),
         ):
-            identity = await verify_caller(request=request)
+            identity = await verify_caller()
 
         assert identity.human_role == "admin"
         assert identity.system_role is None
@@ -480,13 +457,11 @@ class TestSingleOwnerImplicitAdmin:
     @pytest.mark.asyncio
     async def test_multi_user_no_login_raises_401(self):
         """Any caller without login in multi-user mode raises 401."""
-        request = _make_request()
-
         with (
             patch("teleclaude.api.auth._resolve_terminal_role", return_value=None),
             patch("teleclaude.api.auth._requires_terminal_login", return_value=True),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await verify_caller(request=request, x_tmux_session="tc_tui")
+                await verify_caller(x_tmux_session="tc_tui")
 
             assert exc_info.value.status_code == 401

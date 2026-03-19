@@ -24,6 +24,8 @@ logger = get_logger(__name__)
 # User's shell basename, computed once at import
 # Used for shell readiness detection in is_process_running()/wait_for_shell_ready()
 _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()
+_TMUX_OPERATION_ERRORS = (OSError, ValueError, SubprocessTimeoutError)
+_TMUX_DIAGNOSTIC_ERRORS = (OSError, ValueError, TypeError, psutil.Error, SubprocessTimeoutError)
 
 
 async def get_pane_tty(session_name: str) -> str | None:
@@ -46,7 +48,7 @@ async def get_pane_tty(session_name: str) -> str | None:
         if not tty or tty in {"?", "??"}:
             return None
         return tty
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         logger.error("Exception getting pane tty for %s: %s", session_name, e)
         return None
 
@@ -71,7 +73,7 @@ async def get_pane_pid(session_name: str) -> int | None:
         if not pid_str.isdigit():
             return None
         return int(pid_str)
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         logger.error("Exception getting pane PID for %s: %s", session_name, e)
         return None
 
@@ -122,7 +124,7 @@ async def capture_pane(session_name: str, *, capture_lines: int | None = None) -
     except SubprocessTimeoutError as e:
         logger.error("Timeout capturing pane from session %s: %s", session_name, e)
         raise
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error("Exception capturing pane from session %s: %s", session_name, e)
         raise
 
@@ -143,7 +145,7 @@ async def kill_session(session_name: str) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         print(f"Error killing session: {e}")
         return False
 
@@ -167,7 +169,7 @@ async def list_tmux_sessions() -> list[str]:
             return [s for s in sessions if s]  # Filter empty strings
         return []
 
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         print(f"Error listing sessions: {e}")
         return []
 
@@ -212,7 +214,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                         procs: list[object] = [
                             {"pid": p.pid, "create_time": p.create_time()}
                             for p in psutil.process_iter(["pid", "name", "create_time"])
-                            if Path(config.computer.tmux_binary).name.lower() in p.info["name"].lower()
+                            if Path(config.computer.tmux_binary).name.lower() in (p.info.get("name") or "").lower()
                         ]
                         mem = psutil.virtual_memory()
                         cpu = psutil.cpu_percent(interval=0.1)
@@ -233,7 +235,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                             "system_cpu_percent": cpu_percent,
                         },
                     )
-                except Exception as diag_error:
+                except _TMUX_DIAGNOSTIC_ERRORS as diag_error:
                     logger.warning("Failed to capture diagnostics: %s", diag_error)
 
         return result.returncode == 0
@@ -241,7 +243,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
     except SubprocessTimeoutError as e:
         logger.error("Timeout in session_exists for %s: %s", session_name, e)
         raise
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error("Exception in session_exists for %s: %s", session_name, e)
         raise
 
@@ -277,7 +279,7 @@ async def get_current_command(session_name: str) -> str | None:
         command: str = stdout.decode().strip()
         return command
 
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         logger.error("Exception in get_current_command for %s: %s", session_name, e)
         return None
 
@@ -326,7 +328,7 @@ async def is_pane_dead(session_name: str) -> bool:
     except SubprocessTimeoutError as e:
         logger.error("Timeout checking pane_dead for %s: %s", session_name, e)
         raise
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error("Exception checking pane_dead for %s: %s", session_name, e)
         raise
 
@@ -353,7 +355,7 @@ async def get_session_pane_id(session_name: str) -> str | None:
             return pane_id if pane_id else None
         return None
 
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         print(f"Error getting pane ID: {e}")
         return None
 
@@ -375,7 +377,7 @@ async def start_pipe_pane(session_name: str, command: str) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         print(f"Error starting pipe-pane: {e}")
         return False
 
@@ -396,7 +398,7 @@ async def stop_pipe_pane(session_name: str) -> bool:
 
         return result.returncode == 0
 
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         print(f"Error stopping pipe-pane: {e}")
         return False
 
@@ -425,7 +427,7 @@ async def get_pane_title(session_name: str) -> str | None:
 
         return None
 
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         logger.error("Failed to get pane title for %s: %s", session_name, e)
         return None
 
@@ -460,6 +462,6 @@ async def get_current_directory(session_name: str) -> str | None:
         )
         return None
 
-    except Exception as e:
+    except _TMUX_OPERATION_ERRORS as e:
         logger.error("Exception in get_current_directory for %s: %s", session_name, e)
         return None

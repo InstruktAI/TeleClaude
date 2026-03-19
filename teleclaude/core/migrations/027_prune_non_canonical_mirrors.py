@@ -1,4 +1,5 @@
 """Prune non-canonical mirrors created before transcript allowlisting."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
 from __future__ import annotations
 

@@ -7,7 +7,6 @@ import json
 from typing import cast
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
-from teleclaude.hooks.payload_io import JsonObject
 
 
 class CodexAdapter:
@@ -26,7 +25,7 @@ class CodexAdapter:
     )
     supports_hook_checkpoint: bool = False
 
-    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonObject]:
+    def parse_input(self, args: argparse.Namespace) -> tuple[str, str, dict[str, object]]:  # guard: loose-dict
         """Parse JSON from positional arg; event is always agent_stop."""
         raw_input = args.event_type or ""
         if raw_input.strip():
@@ -35,11 +34,11 @@ class CodexAdapter:
             parsed = {}
         if not isinstance(parsed, dict):
             raise ValueError("Codex hook payload must be a JSON object")
-        raw_data = cast(JsonObject, parsed)
+        raw_data = cast(dict[str, object], parsed)  # guard: loose-dict
         event_type = "agent_stop"
         return raw_input, event_type, raw_data
 
-    def normalize_payload(self, data: JsonObject) -> JsonObject:
+    def normalize_payload(self, data: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
         """Map Codex kebab-case fields to canonical internal names."""
         result = dict(data)
 
@@ -63,7 +62,10 @@ class CodexAdapter:
         return result
 
     def format_checkpoint_response(self, reason: str) -> str | None:
-        return None
+        """Codex hooks do not support checkpoint responses."""
+        del reason
 
     def format_memory_injection(self, context: str) -> str:
+        """Codex hooks do not support memory injection output."""
+        del context
         return ""

@@ -17,7 +17,7 @@ from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot, T
 logger = get_logger(__name__)
 
 
-class CachedItem[T]:
+class CachedItem[T]:  # pylint: disable=too-few-public-methods
     """Wrapper for cached items with timestamp tracking."""
 
     def __init__(self, data: T, cached_at: datetime | None = None) -> None:
@@ -57,7 +57,7 @@ class TodoCacheEntry:
     todos: list[TodoInfo]
 
 
-class DaemonCache:
+class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
     """Central cache for remote data with TTL management.
 
     Data categories:
@@ -86,7 +86,7 @@ class DaemonCache:
         # Session cache: key = session_id
         self._sessions: dict[str, CachedItem[SessionSnapshot]] = {}
 
-        # Todo cache: key = f"{computer}:{project_path}"
+        # Todo cache: key = f"{computer}:{project_path}"  # pylint: disable=fixme
         self._todos: dict[str, CachedItem[list[TodoInfo]]] = {}
 
         # Snapshot fingerprints + versions (per computer)
@@ -115,7 +115,7 @@ class DaemonCache:
             return
         try:
             self._on_stale_read(resource_type, computer)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("on_stale_read callback failed: %s", e, exc_info=True)
 
     # ==================== TTL Management ====================
@@ -202,7 +202,7 @@ class DaemonCache:
         Returns:
             List of session snapshot objects
         """
-        from teleclaude.config import config
+        from teleclaude.config import config  # pylint: disable=import-outside-toplevel
 
         local_name = config.computer.name
         sessions = []
@@ -391,7 +391,7 @@ class DaemonCache:
             project_path: Project path
             event_hint: Granular event name (todo_created/todo_updated/todo_removed)
         """
-        from teleclaude.core import command_handlers
+        from teleclaude.core import command_handlers  # pylint: disable=import-outside-toplevel
 
         todos = await command_handlers.list_todos(project_path)
         self.set_todos(computer, project_path, todos, event_name=event_hint)
@@ -585,7 +585,7 @@ class DaemonCache:
         """
         if not self._subscribers:
             return
-        import asyncio
+        import asyncio  # pylint: disable=import-outside-toplevel
 
         logger.debug("Cache notification: event=%s, subscribers=%d", event, len(self._subscribers))
         try:
@@ -595,7 +595,7 @@ class DaemonCache:
             for callback in self._subscribers:
                 try:
                     callback(event, data)
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.error("Cache subscriber callback failed: %s", e, exc_info=True)
             return
 
@@ -604,7 +604,7 @@ class DaemonCache:
             def _safe_call(cb: Callable[[str, object], None] = callback) -> None:
                 try:
                     cb(event, data)
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.error("Cache subscriber callback failed: %s", e, exc_info=True)
 
             loop.call_soon(_safe_call)

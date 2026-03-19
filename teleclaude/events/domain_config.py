@@ -8,19 +8,23 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class AutonomyLevel(str, Enum):
-    manual = "manual"
-    notify = "notify"
-    auto_notify = "auto_notify"
-    autonomous = "autonomous"
+    """Execution autonomy levels for domain cartridges."""
+
+    MANUAL = "manual"
+    NOTIFY = "notify"
+    AUTO_NOTIFY = "auto_notify"
+    AUTONOMOUS = "autonomous"
 
 
 class AutonomyMatrix(BaseModel):
+    """Priority-ordered autonomy overrides for domains, cartridges, and events."""
+
     model_config = ConfigDict(extra="allow")
 
-    global_default: AutonomyLevel = AutonomyLevel.notify
-    by_domain: dict[str, AutonomyLevel] = {}
-    by_cartridge: dict[str, AutonomyLevel] = {}  # key: "{domain}/{cartridge_id}"
-    by_event_type: dict[str, AutonomyLevel] = {}  # key: "{domain}/{event_type}"
+    global_default: AutonomyLevel = AutonomyLevel.NOTIFY
+    by_domain: dict[str, AutonomyLevel] = Field(default_factory=dict)
+    by_cartridge: dict[str, AutonomyLevel] = Field(default_factory=dict)  # key: "{domain}/{cartridge_id}"
+    by_event_type: dict[str, AutonomyLevel] = Field(default_factory=dict)  # key: "{domain}/{event_type}"
 
     def resolve(self, domain: str, cartridge_id: str, event_type: str) -> AutonomyLevel:
         """Resolve autonomy level with priority: event_type > cartridge > domain > global."""
@@ -39,6 +43,8 @@ class AutonomyMatrix(BaseModel):
 
 
 class DomainGuardianConfig(BaseModel):
+    """Guardian agent settings used when a domain requires evaluation."""
+
     model_config = ConfigDict(extra="allow")
 
     agent: str = "claude"
@@ -48,6 +54,8 @@ class DomainGuardianConfig(BaseModel):
 
 
 class DomainConfig(BaseModel):
+    """Configuration for a single domain-specific event pipeline."""
+
     model_config = ConfigDict(extra="allow")
 
     name: str
@@ -58,10 +66,12 @@ class DomainConfig(BaseModel):
 
 
 class DomainsConfig(BaseModel):
+    """Top-level configuration for all domain and personal event pipelines."""
+
     model_config = ConfigDict(extra="allow")
 
     enabled: bool = True
     base_path: str = "~/.teleclaude/company"
     personal_base_path: str = "~/.teleclaude/personal"
     helpdesk_path: str = "~/.teleclaude/helpdesk"
-    domains: dict[str, DomainConfig] = {}
+    domains: dict[str, DomainConfig] = Field(default_factory=dict)

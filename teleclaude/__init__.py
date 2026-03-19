@@ -34,7 +34,7 @@ def _resolve_version() -> str:
         return pyproject_version
 
     # In source-tree runs, local pyproject version is authoritative.
-    if pyproject_version != "0.0.0" and pyproject_version != metadata_version:
+    if pyproject_version not in ("0.0.0", metadata_version):
         return pyproject_version
 
     return metadata_version

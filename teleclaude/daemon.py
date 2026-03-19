@@ -106,10 +106,12 @@ class DaemonLockError(Exception):
     """Raised when another daemon instance is already running."""
 
 
-class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _DaemonSessionMixin):  # pylint: disable=too-many-instance-attributes  # Daemon coordinator needs multiple components
+class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
+    _DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _DaemonSessionMixin
+):
     """Main TeleClaude daemon that coordinates all components."""
 
-    def __init__(self, env_path: str):
+    def __init__(self, env_path: str):  # pylint: disable=too-many-statements  # Sequential pipeline is intentionally flat.
         """Initialize daemon.
 
         Args:
@@ -289,7 +291,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         Called from the chiptunes worker thread — bridges to the async event loop
         using call_soon_threadsafe so the broadcast runs on the event loop thread.
         """
-        from teleclaude.api_models import ChiptunesTrackEventDTO
+        from teleclaude.api_models import ChiptunesTrackEventDTO  # pylint: disable=import-outside-toplevel
 
         api_server = getattr(self.lifecycle, "api_server", None)
         if api_server is None:
@@ -298,7 +300,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         payload = ChiptunesTrackEventDTO(track=track_label, sid_path=sid_path).model_dump()
         loop = getattr(self, "_loop", None)
         if loop is not None and loop.is_running():
-            loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)
+            loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)  # pylint: disable=protected-access
             loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
         else:
             logger.debug("ChipTunes: no running event loop, skipping track broadcast")
@@ -317,7 +319,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
     def _broadcast_chiptunes_state(self) -> None:
         """Broadcast the current chiptunes playback state."""
-        from teleclaude.api_models import ChiptunesStateEventDTO
+        from teleclaude.api_models import ChiptunesStateEventDTO  # pylint: disable=import-outside-toplevel
 
         api_server = getattr(self.lifecycle, "api_server", None)
         manager = getattr(self, "chiptunes_manager", None)
@@ -341,7 +343,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             pending_command_id=runtime_state.pending_command_id,
             pending_action=runtime_state.pending_action,
         ).model_dump()
-        api_server._broadcast_payload("chiptunes_state", payload)
+        api_server._broadcast_payload("chiptunes_state", payload)  # pylint: disable=protected-access
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
@@ -360,7 +362,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             # Open file for append+read (creates if doesn't exist, preserves inode)
             # This is critical: "a+" mode preserves the file's inode even if the file
             # was deleted, ensuring fcntl locks remain effective across processes
-            self.pid_file_handle = open(self.pid_file, "a+", encoding="utf-8")
+            self.pid_file_handle = open(self.pid_file, "a+", encoding="utf-8")  # pylint: disable=consider-using-with  # Kept open for PID file lock lifetime
 
             # Try to acquire exclusive lock (non-blocking)
             try:
@@ -432,9 +434,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         Returns:
             True if successful, False otherwise
         """
-        from teleclaude.core import tmux_io
-        from teleclaude.core.models import MessageMetadata
-        from teleclaude.core.session_utils import resolve_working_dir
+        from teleclaude.core import tmux_io  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.session_utils import resolve_working_dir  # pylint: disable=import-outside-toplevel
 
         # Get session
         session = await db.get_session(session_id)
@@ -470,7 +472,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         logger.info("Executed command in session %s: %s (polling=%s)", session_id, command, start_polling)
         return True
 
-    async def start(self) -> None:
+    async def start(self) -> None:  # pylint: disable=too-many-statements  # Sequential pipeline is intentionally flat.
         """Start the daemon."""
         # Safety net: enforce single-instance lock even for direct start() callers.
         # main() already acquires this lock, so _acquire_lock() is idempotent.
@@ -481,12 +483,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await self.lifecycle.startup()
 
             # Start periodic cleanup task (runs every hour)
-            self.cleanup_task = asyncio.create_task(self.maintenance_service.periodic_cleanup())
+            self.cleanup_task = asyncio.create_task(self.maintenance_service.periodic_cleanup())  # pylint: disable=attribute-defined-outside-init
             self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
             logger.info("Periodic cleanup task started (72h session lifecycle)")
 
             # Start polling watcher (keeps pollers aligned with tmux foreground state)
-            self.poller_watch_task = asyncio.create_task(self.maintenance_service.poller_watch_loop())
+            self.poller_watch_task = asyncio.create_task(self.maintenance_service.poller_watch_loop())  # pylint: disable=attribute-defined-outside-init
             self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
             logger.info("Poller watch task started")
 
@@ -520,14 +522,18 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             # Initialize webhook service subsystem
             try:
                 await self._init_webhook_service()
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
 
             # Wire Redis transport into channels API routes
             redis_adapter = self.client.adapters.get("redis")
             if redis_adapter:
-                from teleclaude.channels.api_routes import set_redis_transport
-                from teleclaude.transport.redis_transport import RedisTransport as _RT
+                from teleclaude.channels.api_routes import (  # pylint: disable=import-outside-toplevel
+                    set_redis_transport,
+                )
+                from teleclaude.transport.redis_transport import (  # pylint: disable=import-outside-toplevel
+                    RedisTransport as _RT,
+                )
 
                 if isinstance(redis_adapter, _RT):
                     set_redis_transport(redis_adapter)
@@ -535,7 +541,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
             logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
 
-            self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop())
+            self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop())  # pylint: disable=attribute-defined-outside-init
             self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
             logger.info("WAL checkpoint task started (interval=300s)")
 
@@ -733,14 +739,14 @@ async def main() -> None:
 
     try:
         # Acquire lock to prevent multiple instances (non-retryable)
-        daemon._acquire_lock()
+        daemon._acquire_lock()  # pylint: disable=protected-access
 
         # Start daemon with retry logic for transient network errors
         for attempt in range(STARTUP_MAX_RETRIES):
             try:
                 await daemon.start()
                 break  # Success - exit retry loop
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 # Non-retryable errors fail immediately
                 if not _is_retryable_startup_error(e):
                     logger.error("Daemon startup failed (non-retryable): %s", e, exc_info=True)
@@ -775,16 +781,16 @@ async def main() -> None:
         sys.exit(1)
     except KeyboardInterrupt:
         logger.info("Received interrupt signal...")
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Unexpected error: %s", e, exc_info=True)
         sys.exit(1)
     finally:
         try:
             await daemon.stop()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Error during daemon stop: %s", e)
         finally:
-            daemon._release_lock()
+            daemon._release_lock()  # pylint: disable=protected-access
 
 
 if __name__ == "__main__":

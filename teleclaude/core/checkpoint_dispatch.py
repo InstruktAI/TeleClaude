@@ -29,7 +29,7 @@ def _is_checkpoint_prompt(prompt: str) -> bool:
     return prompt_clean == CHECKPOINT_MESSAGE.strip()
 
 
-async def inject_checkpoint_if_needed(
+async def inject_checkpoint_if_needed(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-return-statements,too-many-statements
     session_id: str,
     *,
     route: str,
@@ -46,9 +46,9 @@ async def inject_checkpoint_if_needed(
         logger.debug("Checkpoint skipped (persistent clear flag) for session %s", session_id)
         return False
 
-    from teleclaude.core import tmux_bridge
-    from teleclaude.hooks import checkpoint as checkpoint_module
-    from teleclaude.utils import transcript as transcript_utils
+    from teleclaude.core import tmux_bridge  # pylint: disable=import-outside-toplevel
+    from teleclaude.hooks import checkpoint as checkpoint_module  # pylint: disable=import-outside-toplevel
+    from teleclaude.utils import transcript as transcript_utils  # pylint: disable=import-outside-toplevel
 
     get_session = get_session_cb or db.get_session
     update_session = update_session_cb or db.update_session

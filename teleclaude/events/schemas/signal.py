@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_signal(catalog: EventCatalog) -> None:
+    """Register signal-pipeline event schemas."""
     catalog.register(
         EventSchema(
             event_type="signal.ingest.received",

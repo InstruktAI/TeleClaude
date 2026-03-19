@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from hashlib import sha256
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -153,7 +152,7 @@ class TestDeliverOutputUnlocked:
         digest = sha256(text.encode()).hexdigest()
         session.last_output_digest = digest
         host._output_message_id = "existing-msg"
-        send_message = cast(AsyncMock, host.send_message)
+        send_message = host.send_message
 
         result = await host._deliver_output_unlocked(session, text, MessageMetadata())
         assert result == "existing-msg"
@@ -243,7 +242,7 @@ class TestSendFooter:
         session = _make_session()
         host._footer_message_id = "existing-footer"
         host.edit_message = AsyncMock(return_value=True)
-        send_message = cast(AsyncMock, host.send_message)
+        send_message = host.send_message
         result = await host._send_footer(session)
         assert result == "existing-footer"
         send_message.assert_not_called()

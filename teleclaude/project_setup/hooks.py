@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import cast
 
+import yaml
+
 # Marker strings used for idempotent hook block insertion.
 DOCS_CHECK_MARKER = "teleclaude-docs-check"
 STASH_PREVENTION_MARKER = "teleclaude-stash-prevention"
@@ -70,8 +72,6 @@ def install_precommit_hook(project_root: Path) -> None:
 
 def _add_precommit_framework_hook(config_path: Path) -> None:
     """Add hook to pre-commit framework config."""
-    import yaml
-
     content = config_path.read_text(encoding="utf-8")
 
     if DOCS_CHECK_MARKER in content:
@@ -80,7 +80,7 @@ def _add_precommit_framework_hook(config_path: Path) -> None:
 
     try:
         loaded_config: object = yaml.safe_load(content)
-    except Exception:
+    except yaml.YAMLError:
         print("telec init: failed to parse .pre-commit-config.yaml, skipping hook.")
         return
     config_obj = loaded_config if loaded_config is not None else {}

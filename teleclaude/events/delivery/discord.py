@@ -21,9 +21,14 @@ class DiscordDeliveryAdapter:
         send_fn: Callable[..., Coroutine[Any, Any, str]],
         min_level: int = int(EventLevel.WORKFLOW),
     ) -> None:
+        """Initialize the adapter for one Discord user."""
         self._user_id = user_id
         self._send_fn = send_fn
         self._min_level = min_level
+
+    def recipient(self) -> str:
+        """Return the Discord user id targeted by this adapter."""
+        return self._user_id
 
     async def on_notification(
         self,
@@ -31,8 +36,9 @@ class DiscordDeliveryAdapter:
         event_type: str,
         level: int,
         was_created: bool,
-        is_meaningful: bool,
-    ) -> None:
+        _is_meaningful: bool,
+    ) -> None:  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        """Deliver a notification callback to Discord when it meets the level threshold."""
         if not was_created:
             return
         if level < self._min_level:

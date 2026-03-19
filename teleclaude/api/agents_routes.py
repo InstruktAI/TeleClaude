@@ -6,11 +6,12 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
+from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.api.auth import (
-    CLEARANCE_AGENTS_AVAILABILITY,
-    CLEARANCE_AGENTS_STATUS,
     CallerIdentity,
+    clearance_agents_availability,
+    clearance_agents_status,
 )
 from teleclaude.api_models import AgentAvailabilityDTO, AgentStatusRequest
 from teleclaude.config import config
@@ -48,7 +49,7 @@ def _build_agent_dto(agent: str, info: dict[str, bool | str | None] | None) -> A
 
 @router.get("/agents/availability")
 async def get_agent_availability(
-    identity: CallerIdentity = Depends(CLEARANCE_AGENTS_AVAILABILITY),
+    _identity: CallerIdentity = Depends(clearance_agents_availability),
 ) -> dict[str, AgentAvailabilityDTO]:
     """Get agent availability."""
     result: dict[str, AgentAvailabilityDTO] = {}
@@ -66,12 +67,12 @@ async def get_agent_availability(
 
         try:
             info = await db.get_agent_availability(agent)
-        except Exception as e:
-            logger.error("Failed to get availability for agent %s: %s", agent, e)
+        except SQLAlchemyError as exc:
+            logger.error("Failed to get availability for agent %s: %s", agent, exc)
             result[agent] = AgentAvailabilityDTO(
                 agent=agent,
                 available=None,  # Unknown due to DB error
-                error=str(e),
+                error=str(exc),
             )
             continue
 
@@ -84,7 +85,7 @@ async def get_agent_availability(
 async def set_agent_status(
     agent: str,
     request: AgentStatusRequest,
-    identity: CallerIdentity = Depends(CLEARANCE_AGENTS_STATUS),
+    _identity: CallerIdentity = Depends(clearance_agents_status),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Set agent dispatch status (available/unavailable/degraded).
 
@@ -93,8 +94,8 @@ async def set_agent_status(
     """
     try:
         agent_name = normalize_agent_name(agent)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
         if request.clear:
@@ -127,8 +128,6 @@ async def set_agent_status(
 
         info = await db.get_agent_availability(agent_name)
         return _build_agent_dto(agent_name, info).model_dump()
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("set_agent_status failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to set agent status: {e}") from e
+    except SQLAlchemyError as exc:
+        logger.error("set_agent_status failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to set agent status: {exc}") from exc

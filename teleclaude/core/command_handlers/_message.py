@@ -258,7 +258,7 @@ async def deliver_inbound(
                 actor_name=row["actor_name"],
                 actor_avatar_url=row["actor_avatar_url"],
             )
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # UI reflection failures are non-fatal here.
             logger.warning("broadcast_user_input failed (non-fatal): session=%s error=%s", session_id, exc)
 
     async def _break_turn() -> None:
@@ -266,7 +266,7 @@ async def deliver_inbound(
             return
         try:
             await client.break_threaded_turn(session)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # Thread-break failures must not block delivery.
             logger.warning("break_threaded_turn failed (non-fatal): session=%s error=%s", session_id, exc)
 
     async def _tmux_inject() -> bool:
@@ -305,7 +305,9 @@ async def process_message(
     start_polling: StartPollingFunc,
 ) -> None:
     """Enqueue an incoming user message for durable delivery to the session."""
-    from teleclaude.core.inbound_queue import get_inbound_queue_manager
+    from teleclaude.core.inbound_queue import get_inbound_queue_manager  # pylint: disable=import-outside-toplevel
+
+    del client, start_polling
 
     session_id = cmd.session_id
     logger.debug("Enqueueing message for session %s: %s...", session_id, cmd.text[:50])

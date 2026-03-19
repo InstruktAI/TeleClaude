@@ -73,6 +73,10 @@ class ReadinessProjection:
         self._remote = remote
         self._reachability_checker = reachability_checker
         self._integrated_checker = integrated_checker
+        self._review_approved_slugs: set[str] = set()
+        self._finalize_by_key: dict[CandidateKey, _CandidateFinalize] = {}
+        self._branch_pushes: set[tuple[str, str, str]] = set()
+        self._readiness_by_key: dict[CandidateKey, CandidateReadiness] = {}
         self.reset()
 
     def reset(self) -> None:

@@ -1,4 +1,5 @@
 """Rename legacy 'hook' input origin to canonical 'terminal'."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
 from __future__ import annotations
 

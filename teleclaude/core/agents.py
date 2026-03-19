@@ -114,10 +114,10 @@ def _get_agent_config(agent: str) -> AgentConfig:
     return cfg
 
 
-def get_agent_command(
+def get_agent_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     agent: str,
     thinking_mode: str | None = "slow",
-    exec: bool = False,
+    exec: bool = False,  # pylint: disable=redefined-builtin
     resume: bool = False,
     native_session_id: str | None = None,
     interactive: bool = False,
@@ -134,7 +134,7 @@ def get_agent_command(
         thinking_mode: Model tier ('fast', 'med', 'slow'). Default 'slow' (most capable).
             If None, omit model flags entirely.
         exec: If True, include exec_subcommand after base command (e.g., 'exec' for Codex)
-        resume: If True and no native_session_id, uses continue_template when available (agent-specific "continue latest")
+        resume: If True and no native_session_id, uses continue_template when available (agent-specific "continue latest")  # pylint: disable=line-too-long
         native_session_id: If provided, uses resume_template with this session ID (ignores resume flag)
         interactive: If True, include interactive_flag at the end (right before prompt)
         profile: Security profile ('default', 'restricted'). Default 'default'.

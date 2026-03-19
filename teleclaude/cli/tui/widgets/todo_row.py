@@ -75,6 +75,7 @@ _INTEGRATION_DELIVERED_PHASES: frozenset[str] = frozenset(
 
 
 def _coerce_prepare_phase(phase: str | None) -> PreparePhase | None:
+    """Convert persisted prepare-phase text into an enum value when possible."""
     if not phase:
         return None
     try:
@@ -84,6 +85,7 @@ def _coerce_prepare_phase(phase: str | None) -> PreparePhase | None:
 
 
 def prepare_phase_label(phase: str | None) -> tuple[str, str, str] | None:
+    """Return the prepare-phase column tuple for a todo, if any."""
     prepared_phase = _coerce_prepare_phase(phase)
     if not prepared_phase:
         return None
@@ -95,6 +97,7 @@ def prepare_phase_label(phase: str | None) -> tuple[str, str, str] | None:
 
 
 def integration_phase_label(phase: str | None, finalize_status: str | None) -> tuple[str, str, str] | None:
+    """Return the integration-phase column tuple for a todo, if any."""
     if phase in _INTEGRATION_STARTED_PHASES:
         return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_STARTED, _ok_color()
     if phase in _INTEGRATION_DELIVERED_PHASES:
@@ -136,14 +139,17 @@ _MUTED_LIGHT = "color(102)"
 
 
 def _ok_color() -> str:
+    """Return the theme-aware success color."""
     return _OK_DARK if is_dark_mode() else _OK_LIGHT
 
 
 def _gold_color() -> str:
+    """Return the theme-aware warning color."""
     return _GOLD_DARK if is_dark_mode() else _GOLD_LIGHT
 
 
 def _muted_color() -> str:
+    """Return the theme-aware muted color."""
     return _MUTED_DARK if is_dark_mode() else _MUTED_LIGHT
 
 
@@ -173,6 +179,7 @@ class TodoRow(TelecMixin, Widget):
     }
     """
 
+    # pylint: disable=too-many-arguments,too-many-positional-arguments
     def __init__(
         self,
         todo: TodoItem,
@@ -223,6 +230,7 @@ class TodoRow(TelecMixin, Widget):
 
     @property
     def slug(self) -> str:
+        """Expose the todo slug for parent list widgets."""
         return self.todo.slug
 
     def _status_style(self) -> Style:
@@ -241,7 +249,7 @@ class TodoRow(TelecMixin, Widget):
             col.append(value, style=value_style)
         return _pad(col, width)
 
-    def _build_columns(self) -> Text:
+    def _build_columns(self) -> Text:  # pylint: disable=too-many-locals
         """Build aligned property columns. Phase-aware: P | I take priority over B/R/F/D."""
         result = Text()
         ok = _ok_color()
@@ -302,7 +310,8 @@ class TodoRow(TelecMixin, Widget):
         result.append_text(dor_text)
         return result
 
-    def render(self) -> Text:
+    def render(self) -> Text:  # pylint: disable=too-many-locals
+        """Render the tree prefix, slug, and aligned property columns."""
         line = Text(no_wrap=True)
         is_selected = self.has_class("selected")
 

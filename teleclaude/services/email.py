@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 
-async def send_email(
+async def send_email(  # pylint: disable=too-many-arguments
     to: str,
     subject: str,
     html_body: str,

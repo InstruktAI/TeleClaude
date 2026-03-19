@@ -1,4 +1,6 @@
 """Handlers for telec todo commands."""
+# pylint: disable=import-outside-toplevel,too-many-branches,too-many-locals,too-many-statements
+# pylint: disable=no-else-raise,broad-exception-caught
 
 from __future__ import annotations
 

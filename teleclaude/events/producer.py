@@ -6,22 +6,24 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 
 logger = get_logger(__name__)
 
 # Module-level singleton producer — configured by daemon on startup
-_producer: EventProducer | None = None
+_PRODUCER_STATE: dict[str, EventProducer | None] = {"producer": None}
 
 
 class EventProducer:
+    """Publish event envelopes to the configured Redis stream."""
+
     def __init__(self, redis_client: Any, stream: str = "teleclaude:events", maxlen: int = 10000) -> None:
         self._redis = redis_client
         self._stream = stream
         self._maxlen = maxlen
 
     async def emit(self, envelope: EventEnvelope) -> str:
+        """Serialize and append an event envelope to the Redis stream."""
         data = envelope.to_stream_dict()
         logger.info(
             "EventProducer.emit: event=%s entity=%s stream=%s",
@@ -38,26 +40,27 @@ class EventProducer:
         logger.info("EventProducer.emit OK: event=%s entry_id=%s", envelope.event, result)
         return result
 
+    def stream_name(self) -> str:
+        """Return the Redis stream used by this producer."""
+        return self._stream
+
 
 def configure_producer(producer: EventProducer) -> None:
-    global _producer
-    _producer = producer
+    """Install the process-wide producer used by `emit_event`."""
+    _PRODUCER_STATE["producer"] = producer
 
 
-async def emit_event(
-    event: str,
-    source: str,
-    level: EventLevel,
-    domain: str = "",
-    description: str = "",
-    payload: JsonDict | None = None,
-    visibility: EventVisibility = EventVisibility.LOCAL,
-    entity: str | None = None,
-    **kwargs: Any,
-) -> str:
-    if _producer is None:
+async def emit_event(event: str, source: str, level: EventLevel, **kwargs: Any) -> str:
+    """Build an envelope from explicit fields and publish it via the configured producer."""
+    producer = _PRODUCER_STATE["producer"]
+    if producer is None:
         logger.error("emit_event called but EventProducer not configured: event=%s", event)
         raise RuntimeError("EventProducer not configured. Call configure_producer() first.")
+    domain = str(kwargs.pop("domain", ""))
+    description = str(kwargs.pop("description", ""))
+    payload = kwargs.pop("payload", None)
+    visibility = kwargs.pop("visibility", EventVisibility.LOCAL)
+    entity = kwargs.pop("entity", None)
     envelope = EventEnvelope(
         event=event,
         source=source,
@@ -69,4 +72,4 @@ async def emit_event(
         entity=entity,
         **kwargs,
     )
-    return await _producer.emit(envelope)
+    return await producer.emit(envelope)

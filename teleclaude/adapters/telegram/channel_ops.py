@@ -3,16 +3,17 @@
 Handles forum topic creation, updating, closing, reopening, deletion,
 session-from-topic resolution, menu message management, and output streaming.
 """
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
-from telegram import ForumTopic, Message, Update
+from telegram import ForumTopic, InlineKeyboardMarkup, Message, Update
 from telegram.error import BadRequest, TelegramError
 
 from teleclaude.core.db import db
@@ -22,10 +23,25 @@ from teleclaude.utils import command_retry
 from ..base_adapter import AdapterError
 
 if TYPE_CHECKING:
-    from telegram import InlineKeyboardMarkup
+    from typing import Protocol
+
     from telegram.ext import ExtBot
 
     from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
+
+    class _ChannelOperationsHost(Protocol):  # pylint: disable=too-few-public-methods
+        user_whitelist: set[int]
+        computer_name: str
+        _qos_scheduler: OutputQoSScheduler
+        _validate_update_for_command: Callable[[Update], bool]
+        _build_heartbeat_keyboard: Callable[[str], InlineKeyboardMarkup]
+        _send_general_message_with_retry: Callable[
+            [int | None, str, str | None, object | None],
+            Awaitable[Message],
+        ]
+        edit_general_message: Callable[..., Awaitable[bool]]
+        send_general_message: Callable[..., Awaitable[str]]
+
 
 logger = get_logger(__name__)
 
@@ -52,6 +68,9 @@ class ChannelOperationsMixin:
 
     # Abstract instance variables (declared for type hints)
     supergroup_id: int
+    user_whitelist: set[int]
+    computer_name: str
+    _qos_scheduler: OutputQoSScheduler
     _topic_creation_locks: dict[str, asyncio.Lock]
     _topic_ready_events: dict[int, asyncio.Event]
     _topic_ready_cache: set[int]
@@ -72,6 +91,7 @@ class ChannelOperationsMixin:
         each call creates a new topic even with identical title.
         """
         self._ensure_started()
+        _ = metadata
         session_id = session.session_id
 
         # Get or create lock for this session_id
@@ -257,29 +277,6 @@ class ChannelOperationsMixin:
     # TYPE_CHECKING stubs for methods provided by other mixins
     # =========================================================================
 
-    if TYPE_CHECKING:
-        user_whitelist: set[int]
-        computer_name: str
-        _qos_scheduler: OutputQoSScheduler
-
-        def _validate_update_for_command(self, update: Update) -> bool: ...
-
-        def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup: ...
-
-        async def edit_general_message(
-            self, message_id: str, text: str, *, metadata: MessageMetadata | None = None
-        ) -> bool: ...
-
-        async def send_general_message(self, text: str, *, metadata: MessageMetadata | None = None) -> str: ...
-
-        async def _send_general_message_with_retry(
-            self,
-            thread_id: int | None,
-            text: str,
-            parse_mode: str | None,
-            reply_markup: object,
-        ) -> Message: ...
-
     # =========================================================================
     # Session-from-topic resolution
     # =========================================================================
@@ -291,7 +288,7 @@ class ChannelOperationsMixin:
             Session object or None if not found/not authorized
         """
         # Check preconditions
-        if not self._validate_update_for_command(update):
+        if not cast("_ChannelOperationsHost", self)._validate_update_for_command(update):
             logger.debug("_get_session_from_topic: invalid update (no user or message)")
             return None
 
@@ -366,14 +363,14 @@ class ChannelOperationsMixin:
             logger.warning("No session found for topic_id %s", thread_id)
 
         try:
-            await self._send_general_message_with_retry(
+            await cast("_ChannelOperationsHost", self)._send_general_message_with_retry(
                 thread_id,
                 error_msg,
                 None,
                 None,
             )
-        except Exception as e:
-            logger.error("Failed to send session error feedback: %s", e)
+        except (TelegramError, TimeoutError, ConnectionError) as error:
+            logger.error("Failed to send session error feedback: %s", error)
 
         return None
 
@@ -390,13 +387,14 @@ class ChannelOperationsMixin:
 
         The menu message shows a registry line with the heartbeat keyboard.
         """
-        setting_key = f"menu_message_id:{self.computer_name}"
+        host = cast("_ChannelOperationsHost", self)
+        setting_key = f"menu_message_id:{host.computer_name}"
         bot_info = await self.bot.get_me()
         bot_username = bot_info.username or "unknown"
 
         # Build menu content (parse_mode=None to avoid MarkdownV2 escaping issues)
-        reply_markup = self._build_heartbeat_keyboard(bot_username)
-        text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        reply_markup = host._build_heartbeat_keyboard(bot_username)
+        text = f"[REGISTRY] {host.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         metadata = MessageMetadata(reply_markup=reply_markup, parse_mode=None)
 
         # Check for existing message ID
@@ -404,14 +402,14 @@ class ChannelOperationsMixin:
 
         if existing_msg_id:
             # Try to edit existing message
-            success = await self.edit_general_message(existing_msg_id, text, metadata=metadata)
+            success = await host.edit_general_message(existing_msg_id, text, metadata=metadata)
             if success:
                 logger.info("Updated menu message %s in general topic", existing_msg_id)
                 return
             # Edit failed (message deleted), fall through to create new
 
         # Create new message
-        new_msg_id = await self.send_general_message(text, metadata=metadata)
+        new_msg_id = await host.send_general_message(text, metadata=metadata)
         await db.set_system_setting(setting_key, new_msg_id)
         logger.info("Created new menu message %s in general topic", new_msg_id)
 
@@ -464,16 +462,17 @@ class ChannelOperationsMixin:
         Returns:
             Message object
         """
+        host = cast("_ChannelOperationsHost", self)
         self._ensure_started()
         if topic_id is not None:
-            message = await self._send_general_message_with_retry(
+            message = await host._send_general_message_with_retry(
                 topic_id,
                 text,
                 parse_mode,
                 None,
             )
         else:
-            message = await self._send_general_message_with_retry(
+            message = await host._send_general_message_with_retry(
                 None,
                 text,
                 parse_mode,

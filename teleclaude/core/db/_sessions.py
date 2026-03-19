@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import func, or_
+from sqlalchemy.exc import SQLAlchemyError
+from sqlmodel import select
 
 from teleclaude.core.event_bus import event_bus
 
@@ -18,8 +21,10 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class DbSessionsMixin:
-    async def create_session(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Database insert requires all session fields
+class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session storage exposes the legacy DB API surface.
+    """Session persistence helpers and lifecycle state transitions."""
+
+    async def create_session(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals  # Database insert requires all session fields.
         self,
         computer_name: str,
         tmux_session_name: str,
@@ -128,7 +133,7 @@ class DbSessionsMixin:
 
         return session
 
-    async def create_headless_session(
+    async def create_headless_session(  # pylint: disable=too-many-arguments,too-many-locals  # Headless bootstrap needs the full persisted session shape.
         self,
         *,
         session_id: str,
@@ -222,8 +227,6 @@ class DbSessionsMixin:
         if column is None:
             return None
         async with self._session() as db_session:
-            from sqlmodel import select
-
             result = await db_session.exec(select(column).where(db_models.Session.session_id == session_id))
             return result.first()
 
@@ -243,8 +246,6 @@ class DbSessionsMixin:
         if column is None:
             return None
         async with self._session() as db_session:
-            from sqlmodel import select
-
             conditions = [column == value, db_models.Session.closed_at.is_(None)]
             if not include_initializing:
                 conditions.append(db_models.Session.lifecycle_status == "active")
@@ -254,7 +255,7 @@ class DbSessionsMixin:
                 return None
             return self._to_core_session(row)
 
-    async def list_sessions(
+    async def list_sessions(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Public filtering API is intentionally explicit.
         self,
         computer_name: str | None = None,
         last_input_origin: str | None = None,
@@ -275,9 +276,6 @@ class DbSessionsMixin:
         Returns:
             List of Session objects
         """
-        from sqlalchemy import or_
-        from sqlmodel import select
-
         stmt = select(db_models.Session)
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
@@ -305,7 +303,7 @@ class DbSessionsMixin:
             rows = result.all()
             return [self._to_core_session(row) for row in rows]
 
-    async def update_session(
+    async def update_session(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements  # Centralized update path preserves existing event semantics.
         self,
         session_id: str,
         **fields: object,
@@ -472,8 +470,6 @@ class DbSessionsMixin:
         Returns:
             List of message IDs to delete (empty list if none)
         """
-        from sqlmodel import select
-
         stmt = select(db_models.PendingMessageDeletion.message_id).where(
             db_models.PendingMessageDeletion.session_id == session_id,
             db_models.PendingMessageDeletion.deletion_type == deletion_type,
@@ -504,7 +500,7 @@ class DbSessionsMixin:
                     )
                 )
                 await db_session.commit()
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             logger.error(
                 "Failed to add pending deletion: session=%s message_id=%s deletion_type=%s error=%s",
                 session_id,
@@ -562,10 +558,7 @@ class DbSessionsMixin:
         Returns:
             Number of sessions
         """
-        from sqlalchemy import func
-        from sqlmodel import select
-
-        stmt = select(func.count()).select_from(db_models.Session)
+        stmt = select(func.count()).select_from(db_models.Session)  # pylint: disable=not-callable
         if computer_name:
             stmt = stmt.where(db_models.Session.computer_name == computer_name)
 
@@ -595,9 +588,6 @@ class DbSessionsMixin:
         Returns:
             List of matching sessions
         """
-        from sqlalchemy import func, or_
-        from sqlmodel import select
-
         # SQLite JSON path: $.{adapter_type}.{metadata_key}
         json_path = f"$.{adapter_type}.{metadata_key}"
         json_expr = func.json_extract(db_models.Session.adapter_metadata, json_path)
@@ -626,8 +616,6 @@ class DbSessionsMixin:
         Returns:
             List of matching sessions
         """
-        from sqlmodel import select
-
         stmt = select(db_models.Session).where(db_models.Session.title.like(f"{pattern}%"))
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
@@ -641,8 +629,6 @@ class DbSessionsMixin:
 
     async def get_all_sessions(self) -> list[Session]:
         """Get all sessions ordered by last activity."""
-        from sqlmodel import select
-
         stmt = select(db_models.Session).order_by(db_models.Session.last_activity.desc())
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
@@ -651,8 +637,6 @@ class DbSessionsMixin:
 
     async def get_active_sessions(self) -> list[Session]:
         """Get all sessions ordered by last activity."""
-        from sqlmodel import select
-
         stmt = (
             select(db_models.Session)
             .where(

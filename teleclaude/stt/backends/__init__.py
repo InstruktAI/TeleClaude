@@ -6,10 +6,12 @@ from typing import Protocol
 from teleclaude.stt.backends.openai_whisper import OpenAIWhisperBackend
 
 
-class STTBackend(Protocol):
+class STTBackend(Protocol):  # pylint: disable=too-few-public-methods
     """Common interface for all STT backends."""
 
-    async def transcribe(self, audio_file_path: str, language: str | None = None, /) -> str: ...
+    async def transcribe(self, audio_file_path: str, language: str | None = None, /) -> str:
+        """Transcribe an audio file to text."""
+        raise NotImplementedError
 
 
 BACKENDS: dict[str, STTBackend] = {
@@ -21,7 +23,7 @@ if sys.platform == "darwin":
         from teleclaude.stt.backends.mlx_parakeet import MLXParakeetBackend
 
         BACKENDS["parakeet"] = MLXParakeetBackend()
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         import logging
 
         logging.getLogger(__name__).warning("Parakeet STT backend unavailable", exc_info=True)

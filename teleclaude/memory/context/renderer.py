@@ -19,70 +19,95 @@ def render_context(entries: list[TimelineEntry]) -> str:
     parts: list[str] = ["# Memory Context\n"]
 
     if observations:
-        parts.append(f"## Recent Observations (last {len(observations)})\n")
-        parts.append("| # | Type | Title | When |")
-        parts.append("|---|------|-------|------|")
-
-        now_epoch = int(time.time())
-        for i, entry in enumerate(observations, 1):
-            obs = entry.observation
-            assert obs is not None
-            when = _relative_time(now_epoch, obs.created_at_epoch)
-            title = (obs.title or "Untitled")[:60]
-            parts.append(f"| {i} | {obs.type} | {title} | {when} |")
-
-        parts.append("")
-
-        for i, entry in enumerate(observations, 1):
-            obs = entry.observation
-            assert obs is not None
-            title = obs.title or "Untitled"
-            parts.append(f"### {i}. {title}")
-
-            concepts_str = ""
-            if obs.concepts:
-                try:
-                    concepts_list = json.loads(obs.concepts)
-                    if concepts_list:
-                        concepts_str = f" | **Concepts:** {', '.join(concepts_list)}"
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-            parts.append(f"**Type:** {obs.type}{concepts_str}")
-
-            if obs.narrative:
-                parts.append(f"> {obs.narrative}\n")
-
-            if obs.facts:
-                try:
-                    facts_list = json.loads(obs.facts)
-                    if facts_list:
-                        parts.append("**Facts:**")
-                        for fact in facts_list:
-                            parts.append(f"- {fact}")
-                        parts.append("")
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-            parts.append("---\n")
+        _render_observations(observations, parts)
 
     if summaries:
-        parts.append("## Session Summaries\n")
-        for entry in summaries:
-            summ = entry.summary
-            assert summ is not None
-            parts.append(f"### Session: {summ.project}")
-            if summ.investigated:
-                parts.append(f"- **Investigated:** {summ.investigated}")
-            if summ.learned:
-                parts.append(f"- **Learned:** {summ.learned}")
-            if summ.completed:
-                parts.append(f"- **Completed:** {summ.completed}")
-            if summ.next_steps:
-                parts.append(f"- **Next Steps:** {summ.next_steps}")
-            parts.append("")
+        _render_summaries(summaries, parts)
 
     return "\n".join(parts).strip()
+
+
+def _render_observations(observations: list[TimelineEntry], parts: list[str]) -> None:
+    """Render observation table and detail blocks."""
+    parts.append(f"## Recent Observations (last {len(observations)})\n")
+    parts.append("| # | Type | Title | When |")
+    parts.append("|---|------|-------|------|")
+
+    now_epoch = int(time.time())
+    for i, entry in enumerate(observations, 1):
+        obs = entry.observation
+        assert obs is not None
+        when = _relative_time(now_epoch, obs.created_at_epoch)
+        title = (obs.title or "Untitled")[:60]
+        parts.append(f"| {i} | {obs.type} | {title} | {when} |")
+
+    parts.append("")
+
+    for i, entry in enumerate(observations, 1):
+        obs = entry.observation
+        assert obs is not None
+        _render_observation_detail(i, obs, parts)
+
+
+def _render_observation_detail(index: int, obs: object, parts: list[str]) -> None:
+    """Render a single observation's detail block."""
+    title = obs.title or "Untitled"  # type: ignore[attr-defined]
+    parts.append(f"### {index}. {title}")
+
+    concepts_str = _format_concepts(obs.concepts)  # type: ignore[attr-defined]
+    parts.append(f"**Type:** {obs.type}{concepts_str}")  # type: ignore[attr-defined]
+
+    if obs.narrative:  # type: ignore[attr-defined]
+        parts.append(f"> {obs.narrative}\n")  # type: ignore[attr-defined]
+
+    _render_facts(obs.facts, parts)  # type: ignore[attr-defined]
+    parts.append("---\n")
+
+
+def _format_concepts(concepts: str | None) -> str:
+    """Format concepts JSON into display string."""
+    if not concepts:
+        return ""
+    try:
+        concepts_list = json.loads(concepts)
+        if concepts_list:
+            return f" | **Concepts:** {', '.join(concepts_list)}"
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return ""
+
+
+def _render_facts(facts: str | None, parts: list[str]) -> None:
+    """Render facts list if present."""
+    if not facts:
+        return
+    try:
+        facts_list = json.loads(facts)
+        if facts_list:
+            parts.append("**Facts:**")
+            for fact in facts_list:
+                parts.append(f"- {fact}")
+            parts.append("")
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+
+def _render_summaries(summaries: list[TimelineEntry], parts: list[str]) -> None:
+    """Render session summary blocks."""
+    parts.append("## Session Summaries\n")
+    for entry in summaries:
+        summ = entry.summary
+        assert summ is not None
+        parts.append(f"### Session: {summ.project}")
+        if summ.investigated:
+            parts.append(f"- **Investigated:** {summ.investigated}")
+        if summ.learned:
+            parts.append(f"- **Learned:** {summ.learned}")
+        if summ.completed:
+            parts.append(f"- **Completed:** {summ.completed}")
+        if summ.next_steps:
+            parts.append(f"- **Next Steps:** {summ.next_steps}")
+        parts.append("")
 
 
 def _relative_time(now_epoch: int, then_epoch: int) -> str:

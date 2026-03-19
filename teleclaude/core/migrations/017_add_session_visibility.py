@@ -1,4 +1,5 @@
 """Add visibility column to sessions for role-based access control."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
 from __future__ import annotations
 

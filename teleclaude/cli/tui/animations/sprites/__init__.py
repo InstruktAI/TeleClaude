@@ -1,5 +1,7 @@
 """AnimatedSprite definitions for TUI sky animations."""
 
+import sys
+
 from teleclaude.cli.tui.animations.sprites.birds import BIRD_FLOCK
 from teleclaude.cli.tui.animations.sprites.cars import CAR_SPRITE
 from teleclaude.cli.tui.animations.sprites.celestial import MOON_SPRITE, SUN_SPRITE
@@ -31,8 +33,6 @@ def get_sky_entities() -> list[CompositeSprite | AnimatedSprite]:
     file in the folder, import it here, and it automatically becomes a
     spawnable sky entity -- no changes to the sky animation code.
     """
-    import sys
-
     module = sys.modules[__name__]
     return [
         obj
@@ -43,8 +43,6 @@ def get_sky_entities() -> list[CompositeSprite | AnimatedSprite]:
 
 def get_sprite_groups() -> list[SpriteGroup]:
     """Collect all SpriteGroup instances exported from this package."""
-    import sys
-
     module = sys.modules[__name__]
     return [obj for name in __all__ if isinstance(obj := getattr(module, name, None), SpriteGroup)]
 

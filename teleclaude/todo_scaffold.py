@@ -35,7 +35,7 @@ def _write_file(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def create_todo_skeleton(
+def create_todo_skeleton(  # pylint: disable=too-many-locals
     project_root: Path,
     slug: str,
     *,
@@ -79,7 +79,8 @@ def create_todo_skeleton(
     _write_file(todo_dir / "state.yaml", state_content)
 
     if after is not None or group is not None:
-        from teleclaude.core.next_machine.core import add_to_roadmap
+        from teleclaude.core.next_machine.core import add_to_roadmap  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.next_machine.roadmap import RoadmapInsertion  # pylint: disable=import-outside-toplevel
 
         # Deduplicate and clean deps
         deduped: list[str] = []
@@ -88,12 +89,16 @@ def create_todo_skeleton(
             if cleaned and cleaned not in deduped:
                 deduped.append(cleaned)
 
-        add_to_roadmap(str(project_root), slug, after=deduped or None, group=group)
+        add_to_roadmap(
+            str(project_root),
+            slug,
+            RoadmapInsertion(after=deduped or None, group=group),
+        )
 
     return todo_dir
 
 
-def create_bug_skeleton(
+def create_bug_skeleton(  # pylint: disable=too-many-arguments
     project_root: Path,
     slug: str,
     description: str,
@@ -110,8 +115,6 @@ def create_bug_skeleton(
 
     Bug todos skip the prepare phase and start as pending build work.
     """
-    from datetime import datetime
-
     validate_slug(slug)
     slug = slug.strip()
 
@@ -139,12 +142,14 @@ def create_bug_skeleton(
 
 def _emit_prepare_event(event_type: str, payload: JsonDict) -> None:
     """Fire-and-forget prepare lifecycle event (mirrors core helper)."""
-    from teleclaude.core.next_machine.core import _emit_prepare_event as _core_emit
+    from teleclaude.core.next_machine.core import (  # pylint: disable=import-outside-toplevel
+        _emit_prepare_event as _core_emit,
+    )
 
     _core_emit(event_type, payload)  # type: ignore[arg-type]
 
 
-def _inherit_parent_phase(
+def _inherit_parent_phase(  # pylint: disable=too-many-arguments,too-many-locals
     *,
     project_root: Path,
     parent_slug: str,
@@ -158,7 +163,10 @@ def _inherit_parent_phase(
     parent_plan_path: Path,
 ) -> None:
     """Apply parent approved phase inheritance to a child todo (R10, R11)."""
-    from teleclaude.core.next_machine.core import read_phase_state, write_phase_state
+    from teleclaude.core.next_machine.core import (  # pylint: disable=import-outside-toplevel
+        read_phase_state,
+        write_phase_state,
+    )
 
     now = datetime.now(UTC).isoformat()
     child_state = read_phase_state(str(project_root), child_slug)
@@ -221,7 +229,7 @@ def _inherit_parent_phase(
         )
 
 
-def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> list[Path]:
+def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> list[Path]:  # pylint: disable=too-many-locals
     """Split a todo into child items (container transition).
 
     Scaffolds children, cleans parent builder artifacts, and sets container state.
@@ -232,7 +240,10 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
         ValueError: If parent is already a container or child slug is invalid
         FileExistsError: If any child directory already exists
     """
-    from teleclaude.core.next_machine.core import read_phase_state, write_phase_state
+    from teleclaude.core.next_machine.core import (  # pylint: disable=import-outside-toplevel
+        read_phase_state,
+        write_phase_state,
+    )
 
     validate_slug(parent_slug)
     parent_slug = parent_slug.strip()
@@ -339,7 +350,7 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
     return created
 
 
-def remove_todo(project_root: Path, slug: str) -> None:
+def remove_todo(project_root: Path, slug: str) -> None:  # pylint: disable=too-many-locals
     """Remove a todo and all its references. Best-effort: removes whatever exists.
 
     Removes:
@@ -358,7 +369,7 @@ def remove_todo(project_root: Path, slug: str) -> None:
         ValueError: If slug format is invalid
         FileNotFoundError: If slug has no artifacts anywhere (unknown slug)
     """
-    from teleclaude.core.next_machine.core import (
+    from teleclaude.core.next_machine.core import (  # pylint: disable=import-outside-toplevel
         clean_dependency_references,
         remove_from_icebox,
         remove_from_roadmap,
@@ -368,7 +379,7 @@ def remove_todo(project_root: Path, slug: str) -> None:
     slug = slug.strip()
 
     # Remove worktree if present (best-effort: non-fatal)
-    from teleclaude.git import GitCommandError, Repo
+    from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
 
     worktree_path = project_root / WORKTREE_DIR / slug
     found_worktree = worktree_path.exists()
@@ -464,7 +475,7 @@ def _transfer_files_to_worktree(
                 dst.unlink()
 
 
-def _clean_main_working_tree(
+def _clean_main_working_tree(  # pylint: disable=too-many-branches
     repo: Any,
     project_root: Path,
     modified: list[str],
@@ -475,7 +486,7 @@ def _clean_main_working_tree(
     if modified:
         try:
             repo.git.checkout("HEAD", "--", *modified)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
     # Added files don't exist at HEAD — delete from disk and unstage
@@ -509,14 +520,14 @@ def _clean_main_working_tree(
     if all_files:
         try:
             repo.git.reset("HEAD", "--", *all_files)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
 
 _scaffold_logger = logging.getLogger(__name__)
 
 
-def _collect_session_touched_files(project_path: str) -> set[str]:
+def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: disable=too-many-locals
     """Extract files touched by the current agent session from its transcript.
 
     Uses the same transcript parsing as the checkpoint system to determine
@@ -526,14 +537,14 @@ def _collect_session_touched_files(project_path: str) -> set[str]:
         ValueError: If session ID is missing, transcript is unavailable,
             or no touched files can be determined.
     """
-    from sqlmodel import Session as SqlSession
+    from sqlmodel import Session as SqlSession  # pylint: disable=import-outside-toplevel
 
-    from teleclaude.cli.tool_client import _read_caller_session_id
-    from teleclaude.core import db_models
-    from teleclaude.core.agents import AgentName, get_default_agent
-    from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals
-    from teleclaude.hooks.receiver._session import _create_sync_engine
-    from teleclaude.utils.transcript import extract_tool_calls_current_turn
+    from teleclaude.cli.tool_client import _read_caller_session_id  # pylint: disable=import-outside-toplevel
+    from teleclaude.core import db_models  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.agents import AgentName, get_default_agent  # pylint: disable=import-outside-toplevel
+    from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals  # pylint: disable=import-outside-toplevel
+    from teleclaude.hooks.receiver._session import _create_sync_engine  # pylint: disable=import-outside-toplevel
+    from teleclaude.utils.transcript import extract_tool_calls_current_turn  # pylint: disable=import-outside-toplevel
 
     session_id = _read_caller_session_id()
     if not session_id:
@@ -567,7 +578,7 @@ def _collect_session_touched_files(project_path: str) -> set[str]:
     return touched_files
 
 
-def create_from_main_skeleton(
+def create_from_main_skeleton(  # pylint: disable=too-many-locals
     cwd: str,
     slug: str,
     *,
@@ -596,15 +607,15 @@ def create_from_main_skeleton(
         ValueError: If not on main or no uncommitted changes
         RuntimeError: If scaffold push or worktree creation fails
     """
-    from teleclaude.core.next_machine.state_io import mark_phase, mark_ready
-    from teleclaude.core.next_machine.worktrees import (
+    from teleclaude.core.next_machine.state_io import mark_phase, mark_ready  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.worktrees import (  # pylint: disable=import-outside-toplevel
         _create_or_attach_worktree,
         _decide_worktree_prep,
         _ensure_todo_on_remote_main,
         _prepare_worktree,
         _write_worktree_prep_state,
     )
-    from teleclaude.git import InvalidGitRepositoryError, Repo
+    from teleclaude.git import InvalidGitRepositoryError, Repo  # pylint: disable=import-outside-toplevel
 
     # --- 5a. Validate preconditions ---
     validate_slug(slug)
@@ -693,5 +704,6 @@ def create_from_main_skeleton(
         "\n"
         "Next steps:\n"
         f'  1. git -C {WORKTREE_DIR}/{slug} add -A && git -C {WORKTREE_DIR}/{slug} commit -m "your commit message"\n'
-        f"  2. telec sessions run --command /next-work --args {slug} --agent <agent> --mode med --detach  (choose a fitting agent)"
+        f"  2. telec sessions run --command /next-work --args {slug}"
+        f" --agent <agent> --mode med --detach  (choose a fitting agent)"
     )

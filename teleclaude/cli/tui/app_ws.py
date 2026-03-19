@@ -19,6 +19,7 @@ from teleclaude.cli.models import (
     SessionUpdatedEvent,
     WsEvent,
 )
+from teleclaude.cli.tui.animation_triggers import ActivityTrigger
 from teleclaude.cli.tui.messages import (
     AgentActivity,
     SessionClosed,
@@ -49,15 +50,29 @@ class TelecAppWsMixin:
 
     def _handle_ws_event(self, event: WsEvent) -> None:
         """Process WebSocket event in the main thread."""
+        if self._handle_initial_data_event(event):
+            return
+        if self._handle_session_event(event):
+            return
+        if self._handle_status_event(event):
+            return
+        if self._handle_chiptunes_event(event):
+            return
+        self._handle_fallback_event(event)
+
+    def _handle_initial_data_event(self, event: WsEvent) -> bool:
+        """Handle websocket events that update cached view data."""
         if isinstance(event, SessionsInitialEvent):
             sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
+            computers, projects = self._get_sessions_view_data(sessions_view)
             sessions_view.update_data(
-                computers=sessions_view._computers,
-                projects=sessions_view._projects,
+                computers=computers,
+                projects=projects,
                 sessions=event.data.sessions,
             )
+            return True
 
-        elif isinstance(event, ProjectsInitialEvent):
+        if isinstance(event, ProjectsInitialEvent):
             prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
             projects_with_todos = [
                 ProjectWithTodosInfo(
@@ -70,15 +85,22 @@ class TelecAppWsMixin:
                 for p in event.data.projects
             ]
             prep_view.update_data(projects_with_todos)
+            return True
 
-        elif isinstance(event, SessionStartedEvent):
+        return False
+
+    def _handle_session_event(self, event: WsEvent) -> bool:
+        """Handle websocket events that become Textual session messages."""
+        if isinstance(event, SessionStartedEvent):
             self.post_message(SessionStarted(event.data))  # type: ignore[attr-defined]
+            return True
 
-        elif isinstance(event, SessionUpdatedEvent):
+        if isinstance(event, SessionUpdatedEvent):
             session = event.data
             self.post_message(SessionUpdated(session))  # type: ignore[attr-defined]
+            return True
 
-        elif isinstance(event, AgentActivityEvent):
+        if isinstance(event, AgentActivityEvent):
             self.post_message(  # type: ignore[attr-defined]
                 AgentActivity(
                     session_id=event.session_id,
@@ -90,23 +112,29 @@ class TelecAppWsMixin:
                     timestamp=event.timestamp,
                 )
             )
+            return True
 
-        elif isinstance(event, SessionClosedEvent):
+        if isinstance(event, SessionClosedEvent):
             self.post_message(SessionClosed(event.data.session_id))  # type: ignore[attr-defined]
+            return True
 
-        elif isinstance(event, SessionLifecycleStatusEvent):
-            # Surface error transitions as TUI notifications.
-            if event.status == "error":
-                if event.reason == "close_failed":
-                    self.notify(f"Session {event.session_id} failed to close", severity="error")  # type: ignore[attr-defined]
-                    self._refresh_data()  # type: ignore[attr-defined]
-                else:
-                    self.notify(f"Session {event.session_id}: {event.status}", severity="warning")  # type: ignore[attr-defined]
+        return False
 
-        elif isinstance(event, ErrorEvent):
+    def _handle_status_event(self, event: WsEvent) -> bool:
+        """Handle websocket status and error notifications."""
+        if isinstance(event, SessionLifecycleStatusEvent):
+            self._notify_session_lifecycle_status(event)
+            return True
+
+        if isinstance(event, ErrorEvent):
             self.notify(event.data.message, severity="error")  # type: ignore[attr-defined]
+            return True
 
-        elif isinstance(event, ChiptunesTrackEvent):
+        return False
+
+    def _handle_chiptunes_event(self, event: WsEvent) -> bool:
+        """Handle chiptunes status updates for the footer."""
+        if isinstance(event, ChiptunesTrackEvent):
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
                 loaded=True,
                 playback="playing",
@@ -119,8 +147,9 @@ class TelecAppWsMixin:
             )
             if event.track:
                 self.notify(f"♪ Now Playing: {event.track}", timeout=4)  # type: ignore[attr-defined]
+            return True
 
-        elif isinstance(event, ChiptunesStateEvent):
+        if isinstance(event, ChiptunesStateEvent):
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
                 loaded=event.loaded,
                 playback=event.playback,
@@ -131,15 +160,51 @@ class TelecAppWsMixin:
                 pending_command_id=event.pending_command_id,
                 pending_action=event.pending_action,
             )
+            return True
 
-        else:
-            if event.event == "computer_updated":
-                self._reload_computers()  # type: ignore[attr-defined]
+        return False
+
+    def _handle_fallback_event(self, event: WsEvent) -> None:
+        """Refresh app state for websocket events without explicit handlers."""
+        if event.event == "computer_updated":
+            self._reload_computers()  # type: ignore[attr-defined]
+        self._refresh_data()  # type: ignore[attr-defined]
+
+    def _notify_session_lifecycle_status(self, event: SessionLifecycleStatusEvent) -> None:
+        """Surface session lifecycle failures as TUI notifications."""
+        if event.status != "error":
+            return
+        if event.reason == "close_failed":
+            self.notify(  # type: ignore[attr-defined]
+                f"Session {event.session_id} failed to close",
+                severity="error",
+            )
             self._refresh_data()  # type: ignore[attr-defined]
+            return
+        self.notify(  # type: ignore[attr-defined]
+            f"Session {event.session_id}: {event.status}",
+            severity="warning",
+        )
+
+    @staticmethod
+    def _get_sessions_view_data(sessions_view: SessionsView) -> tuple[object, object]:
+        """Return cached computers and projects from the sessions view."""
+        return (
+            getattr(sessions_view, "_computers", []),
+            getattr(sessions_view, "_projects", []),
+        )
+
+    @staticmethod
+    def _apply_pending_session_selection(sessions_view: SessionsView) -> None:
+        """Apply pending auto-selection when the view exposes the hook."""
+        apply_selection = getattr(sessions_view, "_apply_pending_selection", None)
+        if callable(apply_selection):
+            apply_selection()
 
     # --- Message handlers for WS-generated messages ---
 
     def on_session_started(self, message: SessionStarted) -> None:
+        """Handle a newly started session broadcast from the websocket."""
         session = message.session
         if session.active_agent:
             self._session_agents[session.session_id] = session.active_agent  # type: ignore[attr-defined]
@@ -157,9 +222,10 @@ class TelecAppWsMixin:
             tabs = self.query_one("#main-tabs", TabbedContent)  # type: ignore[attr-defined]
             if tabs.active == "sessions":
                 sessions_view.request_select_session(session.session_id, request_focus=True)
-                sessions_view._apply_pending_selection()
+                self._apply_pending_session_selection(sessions_view)
 
     def on_session_updated(self, message: SessionUpdated) -> None:
+        """Handle session updates from the websocket."""
         session = message.session
         if session.active_agent:
             self._session_agents[session.session_id] = session.active_agent  # type: ignore[attr-defined]
@@ -171,9 +237,10 @@ class TelecAppWsMixin:
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
         sessions_view.update_session(session)
         # Session may now have a tmux pane — try pending auto-select
-        sessions_view._apply_pending_selection()
+        self._apply_pending_session_selection(sessions_view)
 
     def on_session_closed(self, message: SessionClosed) -> None:
+        """Handle session closure from the websocket."""
         self._session_agents.pop(message.session_id, None)  # type: ignore[attr-defined]
 
         # Update pane bridge catalog
@@ -184,6 +251,7 @@ class TelecAppWsMixin:
         sessions_view.confirm_session_closed(message.session_id)
 
     def on_agent_activity(self, message: AgentActivity) -> None:
+        """Update activity indicators for a session."""
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
         hook = message.activity_type
         logger.debug(
@@ -224,8 +292,6 @@ class TelecAppWsMixin:
             sessions_view.set_output_highlight(sid, message.summary or "")
             # Animation trigger
             if self._activity_trigger is not None:  # type: ignore[attr-defined]
-                from teleclaude.cli.tui.animation_triggers import ActivityTrigger
-
                 if isinstance(self._activity_trigger, ActivityTrigger):  # type: ignore[attr-defined]
                     agent = self._session_agents.get(sid)  # type: ignore[attr-defined]
                     if agent:

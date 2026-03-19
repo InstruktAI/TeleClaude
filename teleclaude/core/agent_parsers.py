@@ -42,7 +42,7 @@ class CodexParser(LogParser):
                         payload = data.get("payload")
                         if isinstance(payload, dict):
                             return str(payload["id"])
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         # Fallback to filename

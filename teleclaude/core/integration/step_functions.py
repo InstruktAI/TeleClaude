@@ -49,7 +49,7 @@ _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 # ---------------------------------------------------------------------------
 
 
-def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:  # pylint: disable=unused-argument
     """Run a git command via GitPython; return (returncode, stdout, stderr)."""
     try:
         repo = Repo(cwd, search_parent_directories=True)
@@ -58,7 +58,7 @@ def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, st
     except GitCommandError as exc:
         rc = exc.status if isinstance(exc.status, int) else 1
         return rc, exc.stdout or "", exc.stderr or ""
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("git %s failed: %s", " ".join(args[:2]), exc)
         return 1, "", str(exc)
 
@@ -112,7 +112,7 @@ def _get_branch_log(cwd: str, branch: str, *, base_ref: str = "main") -> str:
 def _read_file_safe(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.debug("_read_file_safe failed for %s", path, exc_info=True)
         return ""
 
@@ -137,7 +137,7 @@ def _integration_worktree_path(cwd: str) -> Path:
     return Path(cwd) / WORKTREE_DIR / "_integration"
 
 
-def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
+def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:  # pylint: disable=too-many-return-statements
     """Ensure persistent integration worktree exists and is synced to origin/main.
 
     Returns (worktree_path, error_message). Error is empty on success.
@@ -188,7 +188,7 @@ async def _bridge_emit(
 ) -> None:
     """Dispatch lifecycle event to the appropriate integration_bridge helper."""
     # Lazy import to avoid circular dependency at module load time
-    from teleclaude.core import integration_bridge as bridge
+    from teleclaude.core import integration_bridge as bridge  # pylint: disable=import-outside-toplevel
 
     try:
         if event_type == "integration.started":
@@ -211,7 +211,7 @@ async def _bridge_emit(
                 reason=payload.get("reason", ""),
             )
         # Other event types are observability-only; logged below, not wired to bridge
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.debug("_bridge_emit failed for %s", event_type, exc_info=True)
 
 
@@ -227,7 +227,7 @@ def _emit_lifecycle_event(
         return
     try:
         asyncio.run_coroutine_threadsafe(_bridge_emit(event_type, payload), loop)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.debug("_emit_lifecycle_event scheduling failed for %s", event_type, exc_info=True)
 
 
@@ -260,7 +260,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
 
     Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
     """
-    from teleclaude.core.next_machine.state_io import read_phase_state
+    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
 
     trees_dir = Path(cwd) / WORKTREE_DIR
     if not trees_dir.is_dir():
@@ -277,7 +277,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
 
         try:
             state = read_phase_state(str(entry), slug)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             continue
 
         finalize = state.get("finalize", {})
@@ -316,12 +316,12 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
     return candidates
 
 
-def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
+def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:  # pylint: disable=too-many-return-statements
     """Check if a specific slug's worktree state.yaml shows finalize-ready.
 
     Same validations as the scanner but targeted to a single slug.
     """
-    from teleclaude.core.next_machine.state_io import read_phase_state
+    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
 
     worktree_dir = Path(cwd) / WORKTREE_DIR / slug
     if not worktree_dir.is_dir():
@@ -329,7 +329,7 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
 
     try:
         state = read_phase_state(str(worktree_dir), slug)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return None
 
     finalize = state.get("finalize", {})
@@ -369,8 +369,8 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
     Returns list of swept slug names. Each step is idempotent — safe to
     call on every IDLE entry without risk of double-cleanup.
     """
-    from teleclaude.core.next_machine.core import cleanup_delivered_slug
-    from teleclaude.core.next_machine.delivery import load_delivered_slugs
+    from teleclaude.core.next_machine.core import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.delivery import load_delivered_slugs  # pylint: disable=import-outside-toplevel
 
     delivered = load_delivered_slugs(cwd)
     if not delivered:
@@ -388,7 +388,7 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
             logger.info("Sweeping stale artifact for delivered slug: %s", entry.name)
             try:
                 cleanup_delivered_slug(cwd, entry.name)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.warning("Stale artifact sweep failed for %s", entry.name, exc_info=True)
             swept.append(entry.name)
 
@@ -397,7 +397,7 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
     return swept
 
 
-def _step_idle(
+def _step_idle(  # pylint: disable=too-many-arguments,too-many-locals
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
@@ -456,7 +456,7 @@ def _step_idle(
     return True, ""  # loop into CANDIDATE_DEQUEUED → _do_merge
 
 
-def _do_merge(
+def _do_merge(  # pylint: disable=too-many-locals
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
@@ -519,7 +519,7 @@ def _do_merge(
             _write_checkpoint(checkpoint_path, checkpoint)
             return True, ""
 
-    if rc == 0:
+    if rc == 0:  # pylint: disable=no-else-return
         # Clean merge — read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
@@ -587,7 +587,7 @@ def _step_awaiting_commit(
 
     # No commit yet — re-prompt
     merge_type = (checkpoint.error_context or {}).get("merge_type", "conflicted")
-    if merge_type == "clean":
+    if merge_type == "clean":  # pylint: disable=no-else-return
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
         requirements = _read_file_safe(Path(cwd) / "todos" / key.slug / "requirements.md")
@@ -636,13 +636,13 @@ def _step_delivery_bookkeeping(
     wt = str(_integration_worktree_path(cwd))
 
     # --- Delivery bookkeeping in integration worktree ---
-    from teleclaude.core.next_machine.core import deliver_to_delivered
+    from teleclaude.core.next_machine.core import deliver_to_delivered  # pylint: disable=import-outside-toplevel
 
     if not deliver_to_delivered(wt, key.slug):
         logger.warning("deliver_to_delivered failed for %s (not in roadmap or delivered)", key.slug)
 
     # Reconcile stale entries that squash merges may re-introduce
-    from teleclaude.core.next_machine.delivery import reconcile_roadmap_after_merge
+    from teleclaude.core.next_machine.delivery import reconcile_roadmap_after_merge  # noqa: I001  # pylint: disable=import-outside-toplevel
 
     removed = reconcile_roadmap_after_merge(wt)
     if removed:
@@ -665,7 +665,7 @@ def _step_delivery_bookkeeping(
         )
 
     # --- Todo cleanup in integration worktree ---
-    from teleclaude.core.next_machine.icebox import clean_dependency_references
+    from teleclaude.core.next_machine.icebox import clean_dependency_references  # noqa: I001  # pylint: disable=import-outside-toplevel
 
     todo_dir_wt = Path(wt) / "todos" / key.slug
     if todo_dir_wt.exists():
@@ -689,7 +689,7 @@ def _step_delivery_bookkeeping(
 
     # --- Push all commits (squash + bookkeeping + cleanup) from integration worktree ---
     rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
-    if rc == 0:
+    if rc == 0:  # pylint: disable=no-else-return
         head_sha = _get_head_sha(wt)
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
@@ -802,7 +802,7 @@ def _do_cleanup(
     The worktree cleanup removes the ``state.yaml`` — that IS the
     consumption mechanism. No separate queue bookkeeping needed.
     """
-    from teleclaude.core.next_machine.core import cleanup_delivered_slug
+    from teleclaude.core.next_machine.core import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
 
     # Merge commit SHA lives in the integration worktree (where delivery was committed)
     wt = str(_integration_worktree_path(cwd))
@@ -838,7 +838,7 @@ def _try_release_lease(lease_store: IntegrationLeaseStore, session_id: str, leas
         return
     try:
         lease_store.release(key=_INTEGRATION_LEASE_KEY, owner_session_id=session_id, lease_token=lease_token)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to release integration lease for session %s", session_id, exc_info=True)
 
 
@@ -848,7 +848,7 @@ def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
     Best-effort: failures are logged but do not block the integration flow.
     """
     try:
-        from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+        from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state  # noqa: I001  # pylint: disable=import-outside-toplevel
 
         state = read_phase_state(cwd, slug)
         state["integration_phase"] = phase

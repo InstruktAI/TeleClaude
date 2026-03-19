@@ -1,9 +1,14 @@
 """Mixin: DbInboundMixin."""
 
+# pylint: disable=no-member  # SQLModel columns expose SQLAlchemy comparators dynamically.
+
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import delete, or_, update
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from .. import db_models
 from ..dates import parse_iso_datetime
@@ -16,7 +21,9 @@ logger = get_logger(__name__)
 
 
 class DbInboundMixin:
-    async def enqueue_inbound(
+    """Inbound queue persistence helpers."""
+
+    async def enqueue_inbound(  # pylint: disable=too-many-arguments  # Queue rows preserve adapter payload fields explicitly.
         self,
         session_id: str,
         origin: str,
@@ -48,11 +55,7 @@ class DbInboundMixin:
             source_channel_id=source_channel_id,
         )
         async with self._session() as db_session:
-            from sqlalchemy.exc import IntegrityError
-
             if source_message_id is not None:
-                from sqlmodel import select
-
                 existing = await db_session.exec(
                     select(db_models.InboundQueue.id)
                     .where(db_models.InboundQueue.origin == origin)
@@ -72,8 +75,6 @@ class DbInboundMixin:
 
     async def claim_inbound(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
         """CAS claim of an inbound queue row for processing. Returns True if claimed."""
-        from sqlalchemy import or_, update
-
         stmt = (
             update(db_models.InboundQueue)
             .where(
@@ -93,8 +94,6 @@ class DbInboundMixin:
 
     async def mark_inbound_delivered(self, row_id: int, now_iso: str) -> None:
         """Mark an inbound queue row as delivered."""
-        from sqlalchemy import update
-
         stmt = (
             update(db_models.InboundQueue)
             .where(db_models.InboundQueue.id == row_id)
@@ -106,8 +105,6 @@ class DbInboundMixin:
 
     async def mark_inbound_expired(self, row_id: int, error: str, now_iso: str) -> None:
         """Mark an inbound queue row as expired (permanent drop)."""
-        from sqlalchemy import update
-
         stmt = (
             update(db_models.InboundQueue)
             .where(db_models.InboundQueue.id == row_id)
@@ -130,8 +127,6 @@ class DbInboundMixin:
         backoff_seconds: float,
     ) -> None:
         """Record an inbound delivery failure and schedule a retry."""
-        from sqlalchemy import update
-
         dt = parse_iso_datetime(now_iso)
         if dt is None:
             dt = datetime.now(UTC)
@@ -160,9 +155,6 @@ class DbInboundMixin:
         lock_cutoff_iso: str,
     ) -> list[InboundQueueRow]:
         """Fetch pending/retryable inbound rows for a session, ordered by id ASC."""
-        from sqlalchemy import or_
-        from sqlmodel import select
-
         stmt = (
             select(db_models.InboundQueue)
             .where(db_models.InboundQueue.session_id == session_id)
@@ -209,8 +201,6 @@ class DbInboundMixin:
 
     async def expire_inbound_for_session(self, session_id: str, now_iso: str) -> int:
         """Mark all pending/failed inbound messages for a session as expired. Returns count."""
-        from sqlalchemy import update
-
         stmt = (
             update(db_models.InboundQueue)
             .where(db_models.InboundQueue.session_id == session_id)
@@ -224,8 +214,6 @@ class DbInboundMixin:
 
     async def fetch_sessions_with_pending_inbound(self) -> list[str]:
         """Return distinct session_ids that have pending/failed inbound rows (for startup recovery)."""
-        from sqlmodel import select
-
         stmt = (
             select(db_models.InboundQueue.session_id)
             .where(db_models.InboundQueue.status.in_(["pending", "failed"]))
@@ -237,8 +225,6 @@ class DbInboundMixin:
 
     async def cleanup_inbound(self, older_than_iso: str) -> int:
         """Delete delivered/expired inbound rows older than threshold. Returns deleted count."""
-        from sqlalchemy import delete
-
         stmt = (
             delete(db_models.InboundQueue)
             .where(db_models.InboundQueue.status.in_(["delivered", "expired"]))

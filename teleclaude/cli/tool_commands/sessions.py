@@ -3,31 +3,14 @@
 All commands call the daemon REST API via tool_api_call() and print JSON to stdout.
 Errors go to stderr with exit code 1 (handled by tool_api_call).
 """
+# pylint: disable=import-outside-toplevel,too-many-branches,too-many-statements,raise-missing-from
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
-from teleclaude.cli.session_revive import handle_revive_command
 from teleclaude.cli.tool_client import _read_caller_session_id, print_json, tool_api_call
-
-__all__ = [
-    "handle_sessions",
-    "handle_sessions_end",
-    "handle_sessions_escalate",
-    "handle_sessions_file",
-    "handle_sessions_list",
-    "handle_sessions_restart",
-    "handle_sessions_result",
-    "handle_sessions_run",
-    "handle_sessions_send",
-    "handle_sessions_start",
-    "handle_sessions_tail",
-    "handle_sessions_unsubscribe",
-    "handle_sessions_widget",
-]
 
 
 def handle_sessions(args: list[str]) -> None:
@@ -68,7 +51,9 @@ def handle_sessions(args: list[str]) -> None:
     elif sub == "revive":
         # Keep revive behavior centralized in telec CLI entrypoint since it
         # includes post-revive kick and optional tmux attach semantics.
-        handle_revive_command(rest)
+        from teleclaude.cli.telec.handlers.misc import _handle_revive
+
+        _handle_revive(rest)
     elif sub == "end":
         handle_sessions_end(rest)
     elif sub == "unsubscribe":
@@ -664,6 +649,8 @@ def handle_sessions_widget(args: list[str]) -> None:
     if "--help" in args or "-h" in args:
         print(handle_sessions_widget.__doc__ or "")
         return
+
+    import json
 
     data_str: str | None = None
 

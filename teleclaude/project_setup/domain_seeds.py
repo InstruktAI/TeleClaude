@@ -31,7 +31,7 @@ def seed_event_domains(_project_root: Path) -> None:
             raw: dict[str, Any] = (
                 yaml.safe_load(f) or {}
             )  # guard: loose-dict - YAML config is unstructured at the top level
-    except Exception as e:
+    except (OSError, yaml.YAMLError) as e:
         logger.error("Failed to read global config for domain seeding: %s", e)
         return
 
@@ -62,5 +62,5 @@ def seed_event_domains(_project_root: Path) -> None:
             "Seeded event_domains with %d default pillar configs",
             len(DEFAULT_EVENT_DOMAINS.get("domains", {})),  # type: ignore[arg-type]
         )
-    except Exception as e:
+    except (OSError, yaml.YAMLError) as e:
         logger.error("Failed to write seeded event_domains to global config: %s", e)

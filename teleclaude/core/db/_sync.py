@@ -5,6 +5,11 @@ These are standalone functions, not class methods.
 
 from typing import TYPE_CHECKING
 
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
+from sqlmodel import Session as SqlSession
+from sqlmodel import select
+
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_CUSTOMER
 
 from .. import db_models
@@ -18,11 +23,6 @@ def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | Non
 
     guard: allow-string-compare
     """
-    from sqlalchemy import create_engine, text  # guard: raw-sql
-    from sqlalchemy.exc import OperationalError
-    from sqlmodel import Session as SqlSession
-    from sqlmodel import select
-
     # Validate field against Session model attributes to fail fast on typos.
     model_fields = getattr(db_models.Session, "model_fields", None)
     if isinstance(model_fields, dict):
@@ -69,11 +69,6 @@ def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None
 
 def get_session_field_sync(db_path: str, session_id: str, field: str) -> object | None:
     """Sync helper to fetch a single field from a session by ID."""
-    from sqlalchemy import create_engine, text  # guard: raw-sql
-    from sqlalchemy.exc import OperationalError
-    from sqlmodel import Session as SqlSession
-    from sqlmodel import select
-
     # Validate field against Session model attributes
     model_fields = getattr(db_models.Session, "model_fields", None)
     if isinstance(model_fields, dict):

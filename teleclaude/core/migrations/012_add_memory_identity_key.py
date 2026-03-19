@@ -1,4 +1,5 @@
 """Add identity_key column to memory_observations for identity-scoped memory."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
 from __future__ import annotations
 

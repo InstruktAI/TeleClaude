@@ -1,4 +1,5 @@
 """Legacy no-op for retired user_role migration slot."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
 from __future__ import annotations
 

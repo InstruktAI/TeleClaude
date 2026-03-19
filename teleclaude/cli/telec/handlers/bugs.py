@@ -1,4 +1,6 @@
 """Handlers for telec bugs commands."""
+# pylint: disable=import-outside-toplevel,too-many-locals,too-many-branches,too-many-statements
+# pylint: disable=raise-missing-from,no-else-raise,broad-exception-caught
 
 from __future__ import annotations
 
@@ -224,7 +226,8 @@ def _handle_bugs_report(args: list[str]) -> None:
         print(f"Error dispatching orchestrator: {exc}")
         print(f"Bug scaffold created at {todo_dir}.")
         print(
-            f"Start orchestrator manually: telec sessions run --command /next-work --args {slug} --agent claude --mode slow --detach"
+            f"Start orchestrator manually: telec sessions run --command /next-work "
+            f"--args {slug} --agent claude --mode slow --detach"
         )
 
 

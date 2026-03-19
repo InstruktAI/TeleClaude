@@ -7,6 +7,8 @@ from teleclaude.core.agents import AgentName
 
 
 class TranscriptObservability(TypedDict):
+    """Lightweight transcript metadata used for checkpoint logging."""
+
     transcript_path: str
     transcript_exists: bool
     transcript_size_bytes: int

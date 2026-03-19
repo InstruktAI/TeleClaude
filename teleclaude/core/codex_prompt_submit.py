@@ -151,11 +151,11 @@ def seed_codex_prompt_from_message(session_id: str, prompt_text: str) -> None:
     state.has_authoritative_seed = True
 
 
-def cleanup_codex_prompt_state(session_id: str) -> None:
+def cleanup_codex_prompt_state(session_id: str) -> None:  # pylint: disable=missing-function-docstring
     _codex_input_state.pop(session_id, None)
 
 
-def _extract_prompt_block(output: str) -> tuple[str, bool]:
+def _extract_prompt_block(output: str) -> tuple[str, bool]:  # pylint: disable=too-many-branches,too-many-locals,too-many-return-statements
     """Extract the current prompt block and whether a submit boundary follows it."""
     lines = output.rstrip().split("\n")
     if not lines:
@@ -297,11 +297,11 @@ def _find_recent_tool_action(output: str) -> tuple[str, str, str] | None:
 
         def _preview_for(action: str) -> str:
             detail = ""
-            if action_word and tail.startswith(action_word):
-                detail = tail[len(action_word) :].strip()
+            if action_word and tail.startswith(action_word):  # pylint: disable=cell-var-from-loop
+                detail = tail[len(action_word) :].strip()  # pylint: disable=cell-var-from-loop
 
             if not detail:
-                for continuation_idx in range(idx + 1, min(len(lines), idx + 4)):
+                for continuation_idx in range(idx + 1, min(len(lines), idx + 4)):  # pylint: disable=cell-var-from-loop
                     continuation = _strip_ansi(lines[continuation_idx]).strip()
                     if not continuation:
                         continue
@@ -329,7 +329,7 @@ def _is_live_agent_responding(output: str) -> bool:
     return any(_is_live_agent_marker_line(line) for line in lines[-10:])
 
 
-async def maybe_emit_codex_input(
+async def maybe_emit_codex_input(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-statements
     session_id: str,
     active_agent: str | None,
     current_output: str,

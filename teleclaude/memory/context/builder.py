@@ -8,6 +8,7 @@ from sqlmodel import Session as SqlSession
 
 from teleclaude.core import db_models
 from teleclaude.core.db import db
+from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.context.compiler import compile_timeline, filter_by_recency
 from teleclaude.memory.context.renderer import render_context
 
@@ -26,7 +27,7 @@ async def generate_context(project: str, identity_key: str | None = None) -> str
         timeline = compile_timeline(observations, summaries)
         timeline = filter_by_recency(timeline)
         return render_context(timeline)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to generate memory context", project=project, exc_info=True)
         return ""
 
@@ -65,7 +66,7 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
         timeline = compile_timeline(observations, summaries)
         timeline = filter_by_recency(timeline)
         return render_context(timeline)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to generate memory context (sync)", project=project, exc_info=True)
         return ""
 
@@ -74,7 +75,7 @@ async def _get_recent_observations(
     project: str, limit: int = 50, identity_key: str | None = None
 ) -> list[db_models.MemoryObservation]:
     """Fetch recent observations for a project, optionally scoped by identity."""
-    async with db._session() as session:
+    async with db._session() as session:  # pylint: disable=protected-access
         sql = "SELECT * FROM memory_observations WHERE project = :project"
         params: dict[str, str | int] = {"project": project, "limit": limit}
         if identity_key:
@@ -88,7 +89,7 @@ async def _get_recent_observations(
 
 async def _get_recent_summaries(project: str, limit: int = 5) -> list[db_models.MemorySummary]:
     """Fetch recent summaries for a project."""
-    async with db._session() as session:
+    async with db._session() as session:  # pylint: disable=protected-access
         result = await session.exec(  # type: ignore[call-overload]
             text(
                 "SELECT * FROM memory_summaries WHERE project = :project ORDER BY created_at_epoch DESC LIMIT :limit"
@@ -98,49 +99,5 @@ async def _get_recent_summaries(project: str, limit: int = 5) -> list[db_models.
         return [_row_to_summary(row) for row in rows]
 
 
-def _row_to_observation(row: object) -> db_models.MemoryObservation:
-    """Convert a raw SQL row to MemoryObservation."""
-    if hasattr(row, "_mapping"):
-        m = row._mapping
-        return db_models.MemoryObservation(**dict(m))
-    if isinstance(row, tuple):
-        return db_models.MemoryObservation(
-            id=row[0],
-            memory_session_id=row[1],
-            project=row[2],
-            type=row[3],
-            title=row[4],
-            subtitle=row[5],
-            facts=row[6],
-            narrative=row[7],
-            concepts=row[8],
-            files_read=row[9],
-            files_modified=row[10],
-            prompt_number=row[11],
-            discovery_tokens=row[12],
-            created_at=row[13],
-            created_at_epoch=row[14],
-            identity_key=row[15] if len(row) > 15 else None,
-        )
-    return row  # type: ignore[return-value]
-
-
-def _row_to_summary(row: object) -> db_models.MemorySummary:
-    """Convert a raw SQL row to MemorySummary."""
-    if hasattr(row, "_mapping"):
-        m = row._mapping
-        return db_models.MemorySummary(**dict(m))
-    if isinstance(row, tuple):
-        return db_models.MemorySummary(
-            id=row[0],
-            memory_session_id=row[1],
-            project=row[2],
-            request=row[3],
-            investigated=row[4],
-            learned=row[5],
-            completed=row[6],
-            next_steps=row[7],
-            created_at=row[8],
-            created_at_epoch=row[9],
-        )
-    return row  # type: ignore[return-value]
+_row_to_observation = row_to_memory_observation
+_row_to_summary = row_to_memory_summary

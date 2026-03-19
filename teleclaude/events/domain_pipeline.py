@@ -26,17 +26,22 @@ logger = get_logger(__name__)
 
 @dataclass
 class DomainPipelineContext(PipelineContext):
+    """Pipeline context extended with per-domain autonomy and guardian settings."""
+
     domain_name: str = ""
     autonomy_matrix: AutonomyMatrix = field(default_factory=AutonomyMatrix)
     guardian_config: DomainGuardianConfig = field(default_factory=DomainGuardianConfig)
 
 
 class DomainPipeline:
+    """Execute a topologically sorted set of cartridges for a single domain."""
+
     def __init__(self, domain: DomainConfig, levels: list[list[LoadedCartridge]]) -> None:
         self._domain = domain
         self._levels = levels
 
     async def run(self, event: EventEnvelope, base_context: PipelineContext) -> EventEnvelope | None:
+        """Run all domain cartridges for an event using a domain-specific context copy."""
         base_fields = {f.name: getattr(base_context, f.name) for f in fields(PipelineContext)}
         ctx = DomainPipelineContext(
             **base_fields,
@@ -69,6 +74,10 @@ class DomainPipeline:
 
         return current
 
+    def domain_name(self) -> str:
+        """Return the configured domain name for this pipeline."""
+        return self._domain.name
+
     async def _run_cartridge(
         self,
         cartridge: LoadedCartridge,
@@ -78,7 +87,7 @@ class DomainPipeline:
         cartridge_id = cartridge.manifest.id
         autonomy = ctx.autonomy_matrix.resolve(ctx.domain_name, cartridge_id, event.event)
 
-        if autonomy == AutonomyLevel.manual:
+        if autonomy == AutonomyLevel.MANUAL:
             logger.debug(
                 "Cartridge '%s' in domain '%s' skipped: autonomy=manual",
                 cartridge_id,
@@ -88,7 +97,7 @@ class DomainPipeline:
 
         try:
             result = await cartridge.process(event, ctx)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(
                 "Cartridge '%s' in domain '%s' raised an exception: %s",
                 cartridge_id,
@@ -98,13 +107,13 @@ class DomainPipeline:
             )
             return None
 
-        if autonomy == AutonomyLevel.notify and result is not None:
+        if autonomy == AutonomyLevel.NOTIFY and result is not None:
             logger.info(
                 "Cartridge '%s' in domain '%s' ran (notify mode); result produced",
                 cartridge_id,
                 ctx.domain_name,
             )
-        elif autonomy == AutonomyLevel.auto_notify and result is None:
+        elif autonomy == AutonomyLevel.AUTO_NOTIFY and result is None:
             logger.debug(
                 "Cartridge '%s' in domain '%s' returned None (auto_notify, suppressing notification)",
                 cartridge_id,
@@ -115,17 +124,22 @@ class DomainPipeline:
 
 
 class DomainPipelineRunner:
+    """Coordinate system fan-out into domain and personal pipelines."""
+
     def __init__(self) -> None:
         self._pipelines: dict[str, DomainPipeline] = {}
         self._personal_pipelines: dict[str, PersonalPipeline] = {}
 
     def register_domain_pipeline(self, domain_name: str, pipeline: DomainPipeline) -> None:
+        """Register a domain pipeline by domain name."""
         self._pipelines[domain_name] = pipeline
 
     def register_personal_pipeline(self, member_id: str, pipeline: PersonalPipeline) -> None:
+        """Register a personal pipeline by member identifier."""
         self._personal_pipelines[member_id] = pipeline
 
     async def run_all(self, event: EventEnvelope, context: PipelineContext) -> dict[str, EventEnvelope | None]:
+        """Run all registered domain pipelines, then personal pipelines, for an event."""
         results: dict[str, EventEnvelope | None] = {}
         if not self._pipelines and not self._personal_pipelines:
             return results
@@ -156,14 +170,16 @@ class DomainPipelineRunner:
 
     async def _run_domain(
         self,
-        name: str,
+        _name: str,
         pipeline: DomainPipeline,
         event: EventEnvelope,
         context: PipelineContext,
     ) -> EventEnvelope | None:
+        """Run one domain pipeline wrapper for use with gather."""
         return await pipeline.run(event, context)
 
     async def run_for_domain(self, domain: str, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Run a single named domain pipeline if one is registered."""
         pipeline = self._pipelines.get(domain)
         if pipeline is None:
             return None

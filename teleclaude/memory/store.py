@@ -12,6 +12,7 @@ from sqlmodel import Session as SqlSession
 
 from teleclaude.core import db_models
 from teleclaude.core.db import db
+from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.types import ObservationInput, ObservationResult
 
 logger = get_logger(__name__)
@@ -47,7 +48,7 @@ class MemoryStore:
             identity_key=inp.identity_key,
         )
 
-        async with db._session() as session:
+        async with db._session() as session:  # pylint: disable=protected-access
             session.add(obs)
             await session.commit()
             await session.refresh(obs)
@@ -88,7 +89,7 @@ class MemoryStore:
 
     async def delete_observation(self, observation_id: int) -> bool:
         """Delete an observation by ID. Returns True if deleted, False if not found."""
-        async with db._session() as session:
+        async with db._session() as session:  # pylint: disable=protected-access
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
                     "DELETE FROM memory_observations WHERE id = :id"
@@ -109,14 +110,16 @@ class MemoryStore:
             params["project"] = project  # type: ignore[assignment]
         sql += " ORDER BY created_at_epoch DESC"
 
-        async with db._session() as session:
-            result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
+        async with db._session() as session:  # pylint: disable=protected-access
+            result = await session.exec(  # type: ignore[call-overload]
+                text(sql).bindparams(**params)  # guard: raw-sql
+            )
             rows = result.fetchall()
             return [_row_to_observation(row) for row in rows]
 
     async def get_recent(self, project: str, limit: int = 50) -> list[db_models.MemoryObservation]:
         """Get recent observations for a project."""
-        async with db._session() as session:
+        async with db._session() as session:  # pylint: disable=protected-access
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
                     "SELECT * FROM memory_observations WHERE project = :project "
@@ -128,7 +131,7 @@ class MemoryStore:
 
     async def get_recent_summaries(self, project: str, limit: int = 5) -> list[db_models.MemorySummary]:
         """Get recent summaries for a project."""
-        async with db._session() as session:
+        async with db._session() as session:  # pylint: disable=protected-access
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
                     "SELECT * FROM memory_summaries WHERE project = :project "
@@ -140,7 +143,7 @@ class MemoryStore:
 
     async def _get_or_create_manual_session(self, project: str) -> str:
         """Get or create a manual session for API-created observations."""
-        async with db._session() as session:
+        async with db._session() as session:  # pylint: disable=protected-access
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
                     "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"
@@ -188,7 +191,7 @@ class MemoryStore:
             return session_id
 
 
-def _auto_title(text: str) -> str:
+def _auto_title(text: str) -> str:  # pylint: disable=redefined-outer-name
     """Extract first sentence as title, truncated to 80 chars."""
     first_line = text.strip().split("\n")[0]
     for sep in (".", "!", "?"):
@@ -198,49 +201,5 @@ def _auto_title(text: str) -> str:
     return first_line[:80] if len(first_line) > 80 else first_line
 
 
-def _row_to_observation(row: object) -> db_models.MemoryObservation:
-    """Convert a raw SQL row to MemoryObservation."""
-    if hasattr(row, "_mapping"):
-        m = row._mapping
-        return db_models.MemoryObservation(**dict(m))
-    if isinstance(row, tuple):
-        return db_models.MemoryObservation(
-            id=row[0],
-            memory_session_id=row[1],
-            project=row[2],
-            type=row[3],
-            title=row[4],
-            subtitle=row[5],
-            facts=row[6],
-            narrative=row[7],
-            concepts=row[8],
-            files_read=row[9],
-            files_modified=row[10],
-            prompt_number=row[11],
-            discovery_tokens=row[12],
-            created_at=row[13],
-            created_at_epoch=row[14],
-            identity_key=row[15] if len(row) > 15 else None,
-        )
-    return row  # type: ignore[return-value]
-
-
-def _row_to_summary(row: object) -> db_models.MemorySummary:
-    """Convert a raw SQL row to MemorySummary."""
-    if hasattr(row, "_mapping"):
-        m = row._mapping
-        return db_models.MemorySummary(**dict(m))
-    if isinstance(row, tuple):
-        return db_models.MemorySummary(
-            id=row[0],
-            memory_session_id=row[1],
-            project=row[2],
-            request=row[3],
-            investigated=row[4],
-            learned=row[5],
-            completed=row[6],
-            next_steps=row[7],
-            created_at=row[8],
-            created_at_epoch=row[9],
-        )
-    return row  # type: ignore[return-value]
+_row_to_observation = row_to_memory_observation
+_row_to_summary = row_to_memory_summary

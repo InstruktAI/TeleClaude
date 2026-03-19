@@ -18,7 +18,7 @@ REPO_ROOT = _PACKAGE_DIR.parents[1]  # repo root (above teleclaude/)
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import TAXONOMY_TYPES  # noqa: E402
+from teleclaude.constants import TAXONOMY_TYPES  # noqa: E402  # pylint: disable=wrong-import-position
 
 __all__ = [
     "REPO_ROOT",
@@ -59,6 +59,8 @@ _ARTIFACT_REF_ORDER = TAXONOMY_TYPES.copy()
 
 
 class ValidationWarning(TypedDict):
+    """Typed dict for a validation warning entry."""
+
     code: str
     path: str
 
@@ -80,14 +82,17 @@ def _error(code: str, path: str = "", **kwargs: str) -> None:
 
 
 def get_warnings() -> list[dict[str, str]]:
+    """Return a copy of collected warnings."""
     return list(_WARNINGS)
 
 
 def get_errors() -> list[dict[str, str]]:
+    """Return a copy of collected errors."""
     return list(_ERRORS)
 
 
 def clear_warnings() -> None:
+    """Clear both warnings and errors."""
     _WARNINGS.clear()
     _ERRORS.clear()
 
@@ -98,6 +103,8 @@ def clear_warnings() -> None:
 
 
 class GlobalSchemaConfig(TypedDict, total=False):
+    """Global schema configuration options."""
+
     required_reads_title: str
     see_also_title: str
     sources_title: str
@@ -111,11 +118,15 @@ class GlobalSchemaConfig(TypedDict, total=False):
 
 
 class SectionSchema(TypedDict):
+    """Schema for a doc snippet section."""
+
     required: list[str]
     allowed: list[str]
 
 
 class SchemaConfig(TypedDict):
+    """Top-level schema configuration combining global options and section schemas."""
+
     global_: GlobalSchemaConfig
     sections: dict[str, SectionSchema]
 
@@ -126,7 +137,7 @@ def _as_str_list(value: object) -> list[str]:
     return []
 
 
-def _load_schema() -> SchemaConfig:
+def _load_schema() -> SchemaConfig:  # pylint: disable=too-many-branches
     if not _SCHEMA_PATH.exists():
         return {"global_": {}, "sections": {}}
     raw_obj = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8")) or {}

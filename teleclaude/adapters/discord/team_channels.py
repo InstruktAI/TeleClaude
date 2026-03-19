@@ -20,12 +20,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
-discord_operation_exceptions: tuple[type[Exception], ...] = (
-    AttributeError,
-    RuntimeError,
-    TypeError,
-    ValueError,
-)
+discord_operation_exceptions: tuple[type[Exception], ...] = (AttributeError, RuntimeError, TypeError, ValueError)
 
 try:
     from discord import DiscordException
@@ -52,12 +47,9 @@ class TeamChannelsMixin:
     if TYPE_CHECKING:
         _discord: ModuleType
         _client: object
-
-        def _parse_optional_int(self, value: object) -> int | None: ...
-
+        _parse_optional_int: Callable[[object], int | None]
         _require_async_callable: Callable[..., AsyncDiscordCallable]
-
-        async def _get_channel(self, channel_id: int) -> object | None: ...
+        _get_channel: Callable[[int], Awaitable[object | None]]
 
     async def ensure_team_channels(self, guild: object, category: object | None, people: list[object]) -> None:
         """Public wrapper for team-channel provisioning."""

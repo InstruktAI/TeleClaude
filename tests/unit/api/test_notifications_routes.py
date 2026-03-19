@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -27,21 +27,30 @@ def configured_event_db() -> object:
     return event_db
 
 
+def _make_request(query_params: dict[str, str] | None = None) -> MagicMock:
+    req = MagicMock()
+    req.query_params = query_params or {}
+    return req
+
+
 class TestNotificationsRoutes:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_list_notifications_forwards_filters_to_event_db(self, configured_event_db: object) -> None:
         """Notification listing passes query filters through to the event store."""
-        rows = await notifications_routes.list_notifications(
-            level=2,
-            domain="todos",
-            human_status="seen",
-            agent_status="claimed",
-            visibility="public",
-            since="2025-03-15T00:00:00Z",
-            limit=10,
-            offset=5,
+        request = _make_request(
+            {
+                "level": "2",
+                "domain": "todos",
+                "human_status": "seen",
+                "agent_status": "claimed",
+                "visibility": "public",
+                "since": "2025-03-15T00:00:00Z",
+                "limit": "10",
+                "offset": "5",
+            }
         )
+        rows = await notifications_routes.list_notifications(request)
 
         assert rows == [{"id": 1}]
         configured_event_db.list_notifications.assert_awaited_once_with(

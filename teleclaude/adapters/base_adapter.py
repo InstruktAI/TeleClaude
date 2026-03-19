@@ -25,7 +25,9 @@ logger = get_logger(__name__)
 
 
 @runtime_checkable
-class _HasSessionId(Protocol):
+class _HasSessionId(Protocol):  # pylint: disable=too-few-public-methods
+    """Protocol for objects exposing a session_id attribute."""
+
     session_id: str
 
 

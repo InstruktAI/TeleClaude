@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
 
-    class InlineKeyboardMarkup(Protocol):
+    class InlineKeyboardMarkup(Protocol):  # pylint: disable=too-few-public-methods  # Type-checking marker
         """Telegram inline keyboard marker interface for type checking."""
 
 
 @dataclass
-class BaseCommandContext:
+class BaseCommandContext:  # pylint: disable=too-few-public-methods  # Thin context container
     """Base context - all session-based commands have session_id."""
 
     session_id: str

@@ -75,14 +75,12 @@ class WebhookDeliveryWorker:
                     if not claimed:
                         continue
                     await self._deliver(row)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.error("Webhook delivery loop failure, retrying", exc_info=True)
                 await asyncio.sleep(WEBHOOK_POLL_INTERVAL_S)
         try:
             await self.close()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.warning("Error closing webhook HTTP client", exc_info=True)
 
     async def _mark_failed(self, row_id: int, reason: str, attempt: int) -> None:
@@ -133,7 +131,7 @@ class WebhookDeliveryWorker:
             attempt = (row.attempt_count or 0) + 1
             await self._mark_failed(row_id, "timeout", attempt)
             logger.warning("Webhook timeout: row=%s", row_id)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             attempt = (row.attempt_count or 0) + 1
             await self._mark_failed(row_id, str(exc), attempt)
             logger.error("Webhook delivery error: row=%s error=%s", row_id, exc, exc_info=True)

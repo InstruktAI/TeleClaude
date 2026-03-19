@@ -12,6 +12,7 @@ class AgentName(str, Enum):
 
     @classmethod
     def from_str(cls, value: str) -> "AgentName":
+        """Parse a case-insensitive agent name into an enum member."""
         normalized = value.strip().lower()
         for member in cls:
             if member.value == normalized:
@@ -20,6 +21,7 @@ class AgentName(str, Enum):
 
     @classmethod
     def choices(cls) -> tuple[str, ...]:
+        """Return the CLI choice values for supported agents."""
         return tuple(member.value for member in cls)
 
 
@@ -33,6 +35,7 @@ class ThinkingMode(str, Enum):
 
     @classmethod
     def from_str(cls, value: str) -> "ThinkingMode":
+        """Parse a case-insensitive thinking mode into an enum member."""
         normalized = value.strip().lower()
         for member in cls:
             if member.value == normalized:
@@ -41,4 +44,5 @@ class ThinkingMode(str, Enum):
 
     @classmethod
     def choices(cls) -> tuple[str, ...]:
+        """Return the CLI choice values for supported thinking modes."""
         return tuple(member.value for member in cls)

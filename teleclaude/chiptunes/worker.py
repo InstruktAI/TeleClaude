@@ -49,7 +49,7 @@ def _is_rsid(path: Path) -> bool:
         return False
 
 
-class _WorkerProcess:
+class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-public-methods
     """Chiptunes playback worker with socket-based command interface.
 
     Runs as an independent process. Manages track history, player lifecycle,
@@ -86,7 +86,7 @@ class _WorkerProcess:
 
     def run(self) -> None:
         """Main loop: accept connections and process commands."""
-        Path(PID_PATH).write_text(str(os.getpid()))
+        Path(PID_PATH).write_text(str(os.getpid()), encoding="utf-8")
 
         if os.path.exists(SOCKET_PATH):
             os.unlink(SOCKET_PATH)
@@ -160,7 +160,7 @@ class _WorkerProcess:
     # Command dispatch                                                     #
     # ------------------------------------------------------------------ #
 
-    def _process_command(self, line: str) -> None:
+    def _process_command(self, line: str) -> None:  # pylint: disable=too-many-branches
         try:
             raw = json.loads(line)
         except json.JSONDecodeError:
@@ -449,7 +449,7 @@ class _WorkerProcess:
 
 
 def _run() -> None:
-    import argparse
+    import argparse  # pylint: disable=import-outside-toplevel
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--music-dir", required=True)

@@ -13,6 +13,7 @@ import yaml
 from dotenv import load_dotenv
 
 from teleclaude.constants import (
+    AGENT_PROTOCOL,
     DATABASE_FILENAME,
     DIRECTORY_CHECK_INTERVAL,
     HELP_DESK_SUBDIR,
@@ -59,17 +60,21 @@ class TrustedDir:
 
 @dataclass
 class DatabaseConfig:
+    """Database connection configuration."""
+
     path: str
 
 
 @dataclass
 class PollingConfig:
+    """Agent output polling intervals."""
+
     directory_check_interval: int
     output_cadence_s: float = 1.0
 
 
 @dataclass
-class ComputerConfig:
+class ComputerConfig:  # pylint: disable=missing-class-docstring
     # pylint: disable=too-many-instance-attributes  # Config classes naturally have many fields
     name: str
     user: str
@@ -94,7 +99,7 @@ class ComputerConfig:
 
 
 @dataclass
-class AgentConfig:
+class AgentConfig:  # pylint: disable=too-many-instance-attributes
     """Configuration for a specific AI agent."""
 
     binary: str  # Resolved by runtime policy (not user-configurable)
@@ -124,7 +129,7 @@ class AgentConfig:
 
 
 @dataclass
-class RedisConfig:
+class RedisConfig:  # pylint: disable=too-many-instance-attributes
     """Redis configuration with user-configurable and internal settings."""
 
     enabled: bool
@@ -138,7 +143,7 @@ class RedisConfig:
 
 
 @dataclass
-class TelegramQoSConfig:
+class TelegramQoSConfig:  # pylint: disable=too-many-instance-attributes
     """QoS configuration for Telegram output pacing and coalescing."""
 
     enabled: bool = True
@@ -167,12 +172,17 @@ class WhatsAppQoSConfig:
 
 @dataclass
 class TelegramConfig:
+    """Telegram adapter configuration."""
+
     trusted_bots: list[str]
     qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig)
 
 
 @dataclass
 class DiscordConfig:
+    """Discord adapter configuration."""
+
+    # pylint: disable=too-many-instance-attributes
     enabled: bool
     token: str | None
     guild_id: int | None
@@ -188,6 +198,9 @@ class DiscordConfig:
 
 @dataclass
 class WhatsAppConfig:
+    """WhatsApp adapter configuration."""
+
+    # pylint: disable=too-many-instance-attributes
     enabled: bool = False
     phone_number_id: str | None = None
     access_token: str | None = None
@@ -290,23 +303,32 @@ class ExperimentConfig:
 
 @dataclass
 class TelegramCredsConfig:
+    """Telegram user credentials."""
+
     user_name: str
     user_id: int
 
 
 @dataclass
 class WhatsAppCredsConfig:
+    """WhatsApp phone credentials."""
+
     phone_number: str
 
 
 @dataclass
 class CredsConfig:
+    """Platform credentials container."""
+
     telegram: TelegramCredsConfig | None = None
     whatsapp: WhatsAppCredsConfig | None = None
 
 
 @dataclass
 class Config:
+    """Top-level application configuration."""
+
+    # pylint: disable=too-many-instance-attributes
     database: DatabaseConfig
     computer: ComputerConfig
     polling: PollingConfig
@@ -513,7 +535,9 @@ def _parse_categories(raw: object) -> dict[str, int] | None:
     return result or None
 
 
-def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
+def _parse_trusted_dirs(  # pylint: disable=too-many-locals,too-many-nested-blocks
+    raw_dirs: list[object],
+) -> list[TrustedDir]:
     """Parse trusted_dirs from config.
 
     Expects list[dict] entries with name/desc/path.
@@ -542,7 +566,9 @@ def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
     return trusted_dirs
 
 
-def _parse_tts_config(raw_tts: dict[str, object] | None) -> TTSConfig | None:  # guard: loose-dict
+def _parse_tts_config(
+    raw_tts: dict[str, object] | None,  # guard: loose-dict - YAML config value
+) -> TTSConfig | None:  # guard: loose-dict
     """Parse TTS config from raw dict.
 
     Args:
@@ -554,56 +580,71 @@ def _parse_tts_config(raw_tts: dict[str, object] | None) -> TTSConfig | None:  #
     if not raw_tts:
         return None
 
-    tts_enabled = bool(raw_tts.get("enabled", False))
-    service_priority_raw = raw_tts.get("service_priority", [])
-    events_raw = raw_tts.get("events", {})
-    services_raw = raw_tts.get("services", {})
+    return TTSConfig(
+        enabled=bool(raw_tts.get("enabled", False)),
+        service_priority=_parse_service_priority(raw_tts.get("service_priority", [])),
+        events=_parse_tts_events(raw_tts.get("events", {})),
+        services=_parse_tts_services(raw_tts.get("services", {})),
+    )
 
-    # Parse service priority
-    service_priority = None
-    if isinstance(service_priority_raw, list):
-        service_priority = [str(s) for s in service_priority_raw]
 
-    # Parse events
-    events = {}
-    if isinstance(events_raw, dict):
-        for event_name, event_data in events_raw.items():
-            if isinstance(event_data, dict):
-                events[event_name] = TTSEventConfig(
-                    enabled=bool(event_data.get("enabled", False)),
-                    message=str(event_data.get("message", "")) if event_data.get("message") else None,
+def _parse_service_priority(raw_value: object) -> list[str] | None:
+    if not isinstance(raw_value, list):
+        return None
+    return [str(item) for item in raw_value]
+
+
+def _parse_tts_events(raw_events: object) -> dict[str, TTSEventConfig]:
+    events: dict[str, TTSEventConfig] = {}
+    if not isinstance(raw_events, dict):
+        return events
+    for event_name, event_data in raw_events.items():
+        if isinstance(event_data, dict):
+            events[event_name] = TTSEventConfig(
+                enabled=bool(event_data.get("enabled", False)),
+                message=str(event_data.get("message", "")) if event_data.get("message") else None,
+            )
+    return events
+
+
+def _parse_tts_voices(raw_voices: object) -> list[TTSServiceVoiceConfig]:
+    voices: list[TTSServiceVoiceConfig] = []
+    if not isinstance(raw_voices, list):
+        return voices
+    for voice_data in raw_voices:
+        if isinstance(voice_data, dict):
+            voices.append(
+                TTSServiceVoiceConfig(
+                    name=str(voice_data.get("name", "")),
+                    voice_id=str(voice_data.get("voice_id", "")) if voice_data.get("voice_id") else None,
                 )
+            )
+    return voices
 
-    # Parse services
-    services = {}
-    if isinstance(services_raw, dict):
-        for service_name, service_data in services_raw.items():
-            if isinstance(service_data, dict):
-                voices_raw = service_data.get("voices", [])
-                voices = []
-                if isinstance(voices_raw, list):
-                    for voice_data in voices_raw:
-                        if isinstance(voice_data, dict):
-                            voices.append(
-                                TTSServiceVoiceConfig(
-                                    name=str(voice_data.get("name", "")),
-                                    voice_id=str(voice_data.get("voice_id", ""))
-                                    if voice_data.get("voice_id")
-                                    else None,
-                                )
-                            )
 
-                raw_params = service_data.get("params")
-                params = dict(raw_params) if isinstance(raw_params, dict) else None
+def _parse_tts_service(service_data: object) -> TTSServiceConfig | None:
+    if not isinstance(service_data, dict):
+        return None
+    voices = _parse_tts_voices(service_data.get("voices", []))
+    raw_params = service_data.get("params")
+    params = dict(raw_params) if isinstance(raw_params, dict) else None
+    return TTSServiceConfig(
+        enabled=bool(service_data.get("enabled", False)),
+        voices=voices if voices else None,
+        model=str(service_data.get("model")) if service_data.get("model") else None,
+        params=params,
+    )
 
-                services[service_name] = TTSServiceConfig(
-                    enabled=bool(service_data.get("enabled", False)),
-                    voices=voices if voices else None,
-                    model=str(service_data.get("model")) if service_data.get("model") else None,
-                    params=params,
-                )
 
-    return TTSConfig(enabled=tts_enabled, service_priority=service_priority, events=events, services=services)
+def _parse_tts_services(raw_services: object) -> dict[str, TTSServiceConfig]:
+    services: dict[str, TTSServiceConfig] = {}
+    if not isinstance(raw_services, dict):
+        return services
+    for service_name, service_data in raw_services.items():
+        parsed = _parse_tts_service(service_data)
+        if parsed is not None:
+            services[service_name] = parsed
+    return services
 
 
 def _parse_chiptunes_config(raw: dict[str, object] | None) -> ChiptunesConfig | None:  # guard: loose-dict
@@ -652,10 +693,14 @@ def _parse_optional_int(value: object) -> int | None:
     return None
 
 
-def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML deserialization input
+def _build_config(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    raw: dict[str, object],  # guard: loose-dict - YAML deserialization input
+) -> Config:
     """Build typed Config from raw dict with proper type conversion."""
     comp_raw = raw["computer"]
     redis_raw = raw["redis"]
+    if not isinstance(redis_raw, dict):
+        raise ValueError("Invalid config key `config.yml:redis`: expected a mapping.")
     tg_raw = raw["telegram"]
     discord_raw = raw.get("discord", {})
     whatsapp_raw = raw.get("whatsapp", {})
@@ -666,9 +711,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     chiptunes_raw = raw.get("chiptunes", None)
     experiments_raw = raw.get("experiments", [])
     agents_raw = dict(_require_agents_section(raw))
-
-    # Import AGENT_PROTOCOL from constants
-    from teleclaude.constants import AGENT_PROTOCOL
 
     known_agents = tuple(AGENT_PROTOCOL.keys())
 
@@ -783,15 +825,23 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             path=f"{WORKING_DIR}/{DATABASE_FILENAME}",
         ),
         computer=ComputerConfig(
-            name=str(comp_raw["name"]),  # type: ignore[index,misc]
-            user=str(comp_raw["user"]),  # type: ignore[index,misc]
-            role=str(comp_raw["role"]),  # type: ignore[index,misc]
-            timezone=str(comp_raw["timezone"]),  # type: ignore[index,misc]
-            default_working_dir=str(comp_raw["default_working_dir"]),  # type: ignore[index,misc]
+            name=str(comp_raw["name"]),  # type: ignore[index]
+            user=str(comp_raw["user"]),  # type: ignore[index]
+            role=str(comp_raw["role"]),  # type: ignore[index]
+            timezone=str(comp_raw["timezone"]),  # type: ignore[index]
+            default_working_dir=str(
+                comp_raw["default_working_dir"],  # type: ignore[index]
+            ),
             help_desk_dir=str(Path.home() / HELP_DESK_SUBDIR),
-            is_master=bool(comp_raw["is_master"]),  # type: ignore[index,misc]
-            trusted_dirs=_parse_trusted_dirs(list(comp_raw["trusted_dirs"])),  # type: ignore[index,misc]
-            host=str(comp_raw["host"]) if comp_raw["host"] else None,  # type: ignore[index,misc]
+            is_master=bool(comp_raw["is_master"]),  # type: ignore[index]
+            trusted_dirs=_parse_trusted_dirs(
+                list(comp_raw["trusted_dirs"]),  # type: ignore[index]
+            ),
+            host=(
+                str(comp_raw["host"])  # type: ignore[index]
+                if comp_raw["host"]  # type: ignore[index]
+                else None
+            ),
             tmux_binary=resolve_tmux_binary(),
         ),
         polling=PollingConfig(
@@ -799,14 +849,14 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             output_cadence_s=OUTPUT_CADENCE_S,
         ),
         redis=RedisConfig(
-            enabled=bool(redis_raw["enabled"]),  # type: ignore[index,misc]
-            url=str(redis_raw["url"]),  # type: ignore[index,misc]
-            password=str(redis_raw["password"]) if redis_raw["password"] else None,  # type: ignore[index,misc]
-            max_connections=int(redis_raw.get("max_connections", REDIS_MAX_CONNECTIONS)),  # type: ignore[attr-defined, index, misc]
-            socket_timeout=int(redis_raw.get("socket_timeout", REDIS_SOCKET_TIMEOUT)),  # type: ignore[attr-defined, index, misc]
-            message_stream_maxlen=int(redis_raw.get("message_stream_maxlen", REDIS_MESSAGE_STREAM_MAXLEN)),  # type: ignore[attr-defined, index, misc]
-            output_stream_maxlen=int(redis_raw.get("output_stream_maxlen", REDIS_OUTPUT_STREAM_MAXLEN)),  # type: ignore[attr-defined, index, misc]
-            output_stream_ttl=int(redis_raw.get("output_stream_ttl", REDIS_OUTPUT_STREAM_TTL)),  # type: ignore[attr-defined, index, misc]
+            enabled=bool(redis_raw["enabled"]),
+            url=str(redis_raw["url"]),
+            password=str(redis_raw["password"]) if redis_raw["password"] else None,
+            max_connections=int(redis_raw.get("max_connections", REDIS_MAX_CONNECTIONS)),
+            socket_timeout=int(redis_raw.get("socket_timeout", REDIS_SOCKET_TIMEOUT)),
+            message_stream_maxlen=int(redis_raw.get("message_stream_maxlen", REDIS_MESSAGE_STREAM_MAXLEN)),
+            output_stream_maxlen=int(redis_raw.get("output_stream_maxlen", REDIS_OUTPUT_STREAM_MAXLEN)),
+            output_stream_ttl=int(redis_raw.get("output_stream_ttl", REDIS_OUTPUT_STREAM_TTL)),
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
@@ -878,7 +928,8 @@ if not _config_path.is_absolute():
 if not _config_path.exists():
     raise FileNotFoundError(
         f"Config file not found: {_config_path}. "
-        "Set TELECLAUDE_CONFIG_PATH to a valid config (e.g., tests/integration/config.yml) or run 'make init' to create it."
+        "Set TELECLAUDE_CONFIG_PATH to a valid config "
+        "(e.g., tests/integration/config.yml) or run 'make init' to create it."
     )
 
 with open(_config_path, encoding="utf-8") as f:

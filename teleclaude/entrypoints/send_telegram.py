@@ -32,6 +32,8 @@ DEFAULT_CHAT_ID_ENV = "TELEGRAM_SUPERGROUP_ID"
 
 
 class ApiResponse(TypedDict, total=False):
+    """Subset of Telegram Bot API response fields used by this entrypoint."""
+
     ok: bool
     description: str
     result: object
@@ -57,6 +59,7 @@ def _normalize_username(value: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse CLI options and send a Telegram Bot API message."""
     parser = argparse.ArgumentParser(description="Send an ops Telegram message (Bot API sendMessage).")
     parser.add_argument("--token-env", default=DEFAULT_TOKEN_ENV, help="Env var containing bot token.")
     parser.add_argument(

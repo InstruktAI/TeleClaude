@@ -31,9 +31,12 @@ def _handle_history(args: list[str]) -> None:
         raise SystemExit(1)
 
 
-def _handle_history_search(args: list[str]) -> None:
+def _handle_history_search(args: list[str]) -> None:  # pylint: disable=too-many-branches
     """Handle telec history search."""
-    from teleclaude.history.search import display_combined_history, parse_agents
+    from teleclaude.history.search import (  # pylint: disable=import-outside-toplevel
+        display_combined_history,
+        parse_agents,
+    )
 
     agent_arg = "all"
     limit = 20
@@ -46,7 +49,7 @@ def _handle_history_search(args: list[str]) -> None:
         if arg in ("-h", "--help"):
             print(_usage("history", "search"))
             return
-        elif arg in ("--agent", "-a") and i + 1 < len(args):
+        if arg in ("--agent", "-a") and i + 1 < len(args):
             agent_arg = args[i + 1]
             i += 2
         elif arg in ("--agent", "-a"):
@@ -56,9 +59,9 @@ def _handle_history_search(args: list[str]) -> None:
         elif arg in ("--limit", "-l") and i + 1 < len(args):
             try:
                 limit = int(args[i + 1])
-            except ValueError:
+            except ValueError as exc:
                 print(f"Invalid value for --limit: {args[i + 1]}")
-                raise SystemExit(1)
+                raise SystemExit(1) from exc
             i += 2
         elif arg in ("--limit", "-l"):
             print("Missing value for --limit.")
@@ -90,9 +93,12 @@ def _handle_history_search(args: list[str]) -> None:
     display_combined_history(agents, search_term=" ".join(terms), limit=limit, computers=computers or None)
 
 
-def _handle_history_show(args: list[str]) -> None:
+def _handle_history_show(args: list[str]) -> None:  # pylint: disable=too-many-branches,too-many-statements
     """Handle telec history show."""
-    from teleclaude.history.search import parse_agents, show_transcript
+    from teleclaude.history.search import (  # pylint: disable=import-outside-toplevel
+        parse_agents,
+        show_transcript,
+    )
 
     agent_arg = "all"
     thinking = False
@@ -107,7 +113,7 @@ def _handle_history_show(args: list[str]) -> None:
         if arg in ("-h", "--help"):
             print(_usage("history", "show"))
             return
-        elif arg in ("--agent", "-a") and i + 1 < len(args):
+        if arg in ("--agent", "-a") and i + 1 < len(args):
             agent_arg = args[i + 1]
             i += 2
         elif arg in ("--agent", "-a"):
@@ -123,9 +129,9 @@ def _handle_history_show(args: list[str]) -> None:
         elif arg == "--tail" and i + 1 < len(args):
             try:
                 tail = int(args[i + 1])
-            except ValueError:
+            except ValueError as exc:
                 print(f"Invalid value for --tail: {args[i + 1]}")
-                raise SystemExit(1)
+                raise SystemExit(1) from exc
             i += 2
         elif arg == "--tail":
             print("Missing value for --tail.")

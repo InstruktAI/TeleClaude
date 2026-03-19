@@ -1,26 +1,20 @@
 """Miscellaneous handlers: version, sync, watch, revive, computers, projects, tmux helpers."""
+# pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import subprocess
-import sys
 from pathlib import Path
+from typing import Any
 
-import teleclaude.git as git
-import teleclaude.sync as sync_module
-from teleclaude import __version__
-from teleclaude.cli import session_revive
-from teleclaude.cli.api_client import APIError
+from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.models import CreateSessionResult
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.tool_commands.infra import handle_computers, handle_projects
-from teleclaude.cli.watch import run_watch
-from teleclaude.config.loader import load_project_config
 from teleclaude.constants import ENV_ENABLE
-from teleclaude.utils import resolve_project_config_path
 
 __all__ = [
     "_attach_tmux_session",
@@ -40,13 +34,46 @@ __all__ = [
 ]
 
 
+def _load_project_config() -> Any:
+    return importlib.import_module("teleclaude.config.loader").load_project_config
+
+
+def _resolve_project_config_path(project_root: Path) -> Path:
+    result: Path = importlib.import_module("teleclaude.utils").resolve_project_config_path(project_root)
+    return result
+
+
+def _teleclaude_version() -> str:
+    result: str = importlib.import_module("teleclaude").__version__
+    return result
+
+
+def _run_sync(project_root: Path, *, validate_only: bool, warn_only: bool) -> bool:
+    result: bool = importlib.import_module("teleclaude.sync").sync(
+        project_root,
+        validate_only=validate_only,
+        warn_only=warn_only,
+    )
+    return result
+
+
+def _run_watch(project_root: Path) -> None:
+    importlib.import_module("teleclaude.cli.watch").run_watch(project_root)
+
+
+def _handle_tool_command(name: str, args: list[str]) -> None:
+    importlib.import_module("teleclaude.cli.tool_commands").__dict__[name](args)
+
+
 def _git_short_commit_hash() -> str:
     """Return HEAD short hash, or 'unknown' when unavailable."""
+    from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
+
     try:
-        repo = git.Repo(Path.cwd(), search_parent_directories=True)
+        repo = Repo(Path.cwd(), search_parent_directories=True)
         short_hash = repo.head.commit.hexsha[:7]
         return short_hash if short_hash else "unknown"
-    except (git.InvalidGitRepositoryError, git.NoSuchPathError, ValueError, OSError):
+    except (InvalidGitRepositoryError, NoSuchPathError, ValueError, OSError):
         return "unknown"
 
 
@@ -55,16 +82,16 @@ def _handle_version() -> None:
     commit_hash = _git_short_commit_hash()
     project_root = Path(__file__).resolve().parents[4]
     try:
-        project_cfg_path = resolve_project_config_path(project_root)
-        project_config = load_project_config(project_cfg_path)
+        project_cfg_path = _resolve_project_config_path(project_root)
+        project_config = _load_project_config()(project_cfg_path)
         channel = project_config.deployment.channel
         pinned_minor = project_config.deployment.pinned_minor
-    except Exception:
+    except (AttributeError, OSError, TypeError, ValueError):
         channel = "alpha"
         pinned_minor = ""
 
     channel_str = f"{channel} ({pinned_minor})" if channel == "stable" and pinned_minor else channel
-    print(f"TeleClaude v{__version__} (channel: {channel_str}, commit: {commit_hash})")
+    print(f"TeleClaude v{_teleclaude_version()} (channel: {channel_str}, commit: {commit_hash})")
 
 
 def _handle_sync(args: list[str]) -> None:
@@ -84,14 +111,18 @@ def _handle_sync(args: list[str]) -> None:
         else:
             i += 1
 
-    active_sync_module = sys.modules.get("teleclaude.sync", sync_module)
-    ok = active_sync_module.sync(project_root, validate_only=validate_only, warn_only=warn_only)
+    ok = _run_sync(project_root, validate_only=validate_only, warn_only=warn_only)
     if not ok:
         raise SystemExit(1)
 
 
+def _handle_watch(_args: list[str]) -> None:
+    """Handle telec watch command."""
+    _run_watch(Path.cwd())
+
+
 def _handle_revive(args: list[str]) -> None:
-    """Handle `telec sessions revive` while preserving local patch points."""
+    """Handle telec sessions revive command."""
     if not args:
         print(_usage("sessions", "revive"))
         return
@@ -136,41 +167,57 @@ def _revive_session(session_id: str, attach: bool, *, agent: str | None = None) 
     """Revive a session by TeleClaude or native session ID."""
     try:
         result = asyncio.run(_revive_session_via_api(session_id, agent=agent))
-    except APIError as exc:
-        print(f"Error: {exc}")
+    except APIError as e:
+        print(f"Error: {e}")
         return
 
-    if getattr(result, "status", None) != "success":
-        print(getattr(result, "error", None) or "Revive failed")
+    if result.status != "success":
+        print(result.error or "Revive failed")
         return
 
     print(f"Revived session {result.session_id}")
     try:
         asyncio.run(_send_revive_enter_via_api(result.session_id))
-    except APIError as exc:
-        print(f"Warning: revive kick failed: {exc}")
-    if attach and getattr(result, "tmux_session_name", None):
+    except APIError as e:
+        print(f"Warning: revive kick failed: {e}")
+    if attach and result.tmux_session_name:
         _attach_tmux_session(result.tmux_session_name)
 
 
 async def _revive_session_via_api(session_id: str, *, agent: str | None = None) -> CreateSessionResult:
-    """Delegate revive API call through the extracted session-revive module."""
-    return await session_revive.revive_session_via_api(session_id, agent=agent)
+    """Revive a session via API and return the response."""
+    api = TelecAPIClient()
+    await api.connect()
+    try:
+        project = os.getcwd() if agent else None
+        return await api.revive_session(session_id, agent=agent, project=project)
+    finally:
+        await api.close()
 
 
 async def _send_revive_enter_via_api(session_id: str) -> bool:
-    """Delegate revive-enter API call through the extracted session-revive module."""
-    return await session_revive.send_revive_enter_via_api(session_id)
+    """Send an enter key after revive so headless activity resumes immediately."""
+    api = TelecAPIClient()
+    await api.connect()
+    try:
+        return await api.send_keys(
+            session_id=session_id,
+            computer=config.computer.name,
+            key="enter",
+            count=1,
+        )
+    finally:
+        await api.close()
 
 
 def _attach_tmux_session(tmux_session_name: str) -> None:
     """Attach or switch to a tmux session."""
-    session_revive.attach_tmux_session(tmux_session_name)
+    tmux = config.computer.tmux_binary
+    if os.environ.get("TMUX"):
+        subprocess.run([tmux, "switch-client", "-t", tmux_session_name], check=False)
+        return
 
-
-def _handle_watch(args: list[str]) -> None:
-    """Handle telec watch command."""
-    run_watch(Path.cwd())
+    os.execlp(tmux, tmux, "attach-session", "-t", tmux_session_name)
 
 
 def _handle_computers(args: list[str]) -> None:
@@ -184,11 +231,11 @@ def _handle_computers(args: list[str]) -> None:
 
     subcommand = args[0]
     if subcommand == "list":
-        handle_computers(args[1:])
-    else:
-        print(f"Unknown computers subcommand: {subcommand}")
-        print(_usage("computers"))
-        raise SystemExit(1)
+        _handle_tool_command("handle_computers", args[1:])
+        return
+    print(f"Unknown computers subcommand: {subcommand}")
+    print(_usage("computers"))
+    raise SystemExit(1)
 
 
 def _handle_projects(args: list[str]) -> None:
@@ -202,11 +249,11 @@ def _handle_projects(args: list[str]) -> None:
 
     subcommand = args[0]
     if subcommand == "list":
-        handle_projects(args[1:])
-    else:
-        print(f"Unknown projects subcommand: {subcommand}")
-        print(_usage("projects"))
-        raise SystemExit(1)
+        _handle_tool_command("handle_projects", args[1:])
+        return
+    print(f"Unknown projects subcommand: {subcommand}")
+    print(_usage("projects"))
+    raise SystemExit(1)
 
 
 def _maybe_kill_tui_session() -> None:

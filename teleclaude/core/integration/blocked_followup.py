@@ -21,6 +21,7 @@ class BlockedFollowUpError(RuntimeError):
 
 
 @dataclass(frozen=True)
+# pylint: disable=too-many-instance-attributes
 class BlockedFollowUpLink:
     """Durable mapping between one blocked candidate and one follow-up todo."""
 

@@ -11,9 +11,16 @@ logger = get_logger(__name__)
 
 
 class DeduplicationCartridge:
+    """Reject events whose configured idempotency key already exists."""
+
     name = "dedup"
 
+    def describe(self) -> str:
+        """Return cartridge name."""
+        return self.name
+
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+        """Stamp and enforce idempotency keys before projection work begins."""
         schema = context.catalog.get(event.event)
         if schema is None:
             return event
@@ -36,3 +43,7 @@ class DeduplicationCartridge:
             return None
 
         return event
+
+    def identifier(self) -> str:
+        """Return the stable cartridge identifier."""
+        return self.name

@@ -77,7 +77,7 @@ class CompositeSprite:
             theme=self.theme,
         )
 
-    def tick(self, frame: int) -> CompositeSprite:
+    def tick(self, _frame: int) -> CompositeSprite:
         """Static sprite -- returns self every frame."""
         return self
 
@@ -109,6 +109,7 @@ class AnimatedSprite:
             raise ValueError("speed_fixed and non-default speed_weights are mutually exclusive")
 
     def tick(self, frame: int) -> list[str] | CompositeSprite:
+        """Return the renderable for the current animation frame."""
         return self.frames[frame % len(self.frames)]
 
 

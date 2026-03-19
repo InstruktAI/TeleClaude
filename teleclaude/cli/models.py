@@ -147,22 +147,30 @@ type WsEvent = (
 # Subscribe/Unsubscribe requests (not DTOs, strictly for CLI -> Server)
 
 
-class SubscribeData:
+class SubscribeData:  # pylint: disable=too-few-public-methods
+    """Data payload for a channel subscription request."""
+
     def __init__(self, computer: str, types: list[str]):
         self.computer = computer
         self.types = types
 
 
-class UnsubscribeData:
+class UnsubscribeData:  # pylint: disable=too-few-public-methods
+    """Data payload for a channel unsubscription request."""
+
     def __init__(self, computer: str):
         self.computer = computer
 
 
-class SubscribeRequest:
+class SubscribeRequest:  # pylint: disable=too-few-public-methods
+    """WebSocket subscribe request envelope."""
+
     def __init__(self, subscribe: SubscribeData):
         self.subscribe = subscribe
 
 
-class UnsubscribeRequest:
+class UnsubscribeRequest:  # pylint: disable=too-few-public-methods
+    """WebSocket unsubscribe request envelope."""
+
     def __init__(self, unsubscribe: UnsubscribeData):
         self.unsubscribe = unsubscribe

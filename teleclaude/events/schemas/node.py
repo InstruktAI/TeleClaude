@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_node(catalog: EventCatalog) -> None:
+    """Register cluster node lifecycle event schemas."""
     catalog.register(
         EventSchema(
             event_type="node.alive",

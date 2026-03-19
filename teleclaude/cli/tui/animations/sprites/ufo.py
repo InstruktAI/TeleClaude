@@ -6,7 +6,19 @@ from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite, Spr
 UFO_SPRITE_1 = CompositeSprite(
     z_weights=[(30, 10), (40, 50), (51, 10), (61, 10), (79, 10), (81, 10)],
     y_weights=[(0, 7, 100)],
-    speed_weights=[(0, 5), (0.3, 10), (0.7, 10), (1.2, 10), (1.5, 10), (2, 10), (-0.3, 10), (-0.7, 10), (-1.2, 10), (-1.5, 10), (-2, 5)],
+    speed_weights=[
+        (0, 5),
+        (0.3, 10),
+        (0.7, 10),
+        (1.2, 10),
+        (1.5, 10),
+        (2, 10),
+        (-0.3, 10),
+        (-0.7, 10),
+        (-1.2, 10),
+        (-1.5, 10),
+        (-2, 5),
+    ],
     layers=[
         SpriteLayer(
             positive=[

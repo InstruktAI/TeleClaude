@@ -34,7 +34,7 @@ _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
 _PEOPLE_DIR = Path("~/.teleclaude/people").expanduser()
 
 
-class IdentityResolver:
+class IdentityResolver:  # pylint: disable=too-few-public-methods
     """Resolves human identity from channel metadata."""
 
     def __init__(self) -> None:
@@ -91,7 +91,7 @@ class IdentityResolver:
 
         try:
             global_config = load_global_config()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Failed to load global config for identity resolution: %s", e)
             return
 
@@ -113,7 +113,7 @@ class IdentityResolver:
                 continue
             try:
                 person_conf = load_person_config(person_config_path)
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.warning("Failed to load person config for %s: %s", person.name, e)
                 continue
 
@@ -131,7 +131,7 @@ class IdentityResolver:
                 if normalized_phone:
                     self._by_whatsapp_phone[normalized_phone] = person
 
-    def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> IdentityContext:
+    def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> IdentityContext:  # pylint: disable=too-many-branches,too-many-return-statements
         """Resolve identity from origin and metadata.
 
         Args:
@@ -221,23 +221,23 @@ def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
     Returns None if no identity can be determined.
     """
     ui = adapter_metadata.get_ui()
-    if ui._discord and ui._discord.user_id:
-        return f"discord:{ui._discord.user_id}"
-    if ui._telegram and getattr(ui._telegram, "user_id", None):
-        return f"telegram:{ui._telegram.user_id}"
-    if ui._whatsapp and ui._whatsapp.phone_number:
-        return f"whatsapp:{ui._whatsapp.phone_number}"
-    # TODO: Add web platform when WebAdapterMetadata is implemented:
+    if ui._discord and ui._discord.user_id:  # pylint: disable=protected-access
+        return f"discord:{ui._discord.user_id}"  # pylint: disable=protected-access
+    if ui._telegram and getattr(ui._telegram, "user_id", None):  # pylint: disable=protected-access
+        return f"telegram:{ui._telegram.user_id}"  # pylint: disable=protected-access
+    if ui._whatsapp and ui._whatsapp.phone_number:  # pylint: disable=protected-access
+        return f"whatsapp:{ui._whatsapp.phone_number}"  # pylint: disable=protected-access
+    # TODO: Add web platform when WebAdapterMetadata is implemented:  # pylint: disable=fixme
     #   if ui._web and ui._web.email: return f"web:{ui._web.email}"
     return None
 
 
-_resolver_instance: IdentityResolver | None = None
+_resolver_instance: IdentityResolver | None = None  # pylint: disable=invalid-name
 
 
 def get_identity_resolver() -> IdentityResolver:
     """Get the singleton IdentityResolver instance."""
-    global _resolver_instance
+    global _resolver_instance  # pylint: disable=global-statement
     if _resolver_instance is None:
         _resolver_instance = IdentityResolver()
     return _resolver_instance

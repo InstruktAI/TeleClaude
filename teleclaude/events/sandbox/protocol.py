@@ -25,6 +25,8 @@ class FrameTooLargeError(Exception):
 
 @dataclass
 class SandboxRequest:
+    """Request frame sent to the sandbox runner for one cartridge execution."""
+
     cartridge_name: str
     envelope: JsonDict
     catalog_snapshot: list[JsonDict] = field(default_factory=list)
@@ -32,6 +34,8 @@ class SandboxRequest:
 
 @dataclass
 class SandboxResponse:
+    """Response frame returned by the sandbox runner for one cartridge execution."""
+
     envelope: JsonDict | None
     error: str | None
     duration_ms: float
@@ -71,6 +75,7 @@ async def write_frame(writer: asyncio.StreamWriter, obj: JsonDict) -> None:
 
 
 def request_to_dict(req: SandboxRequest) -> JsonDict:
+    """Serialize a sandbox request dataclass into a JSON-compatible dict."""
     return {
         "cartridge_name": req.cartridge_name,
         "envelope": req.envelope,
@@ -79,6 +84,7 @@ def request_to_dict(req: SandboxRequest) -> JsonDict:
 
 
 def request_from_dict(d: JsonDict) -> SandboxRequest:
+    """Deserialize a sandbox request from a JSON-compatible dict."""
     return SandboxRequest(
         cartridge_name=d["cartridge_name"],  # type: ignore[arg-type]
         envelope=d["envelope"],  # type: ignore[arg-type]
@@ -87,6 +93,7 @@ def request_from_dict(d: JsonDict) -> SandboxRequest:
 
 
 def response_to_dict(resp: SandboxResponse) -> JsonDict:
+    """Serialize a sandbox response dataclass into a JSON-compatible dict."""
     return cast(
         JsonDict,
         {
@@ -98,6 +105,7 @@ def response_to_dict(resp: SandboxResponse) -> JsonDict:
 
 
 def response_from_dict(d: JsonDict) -> SandboxResponse:
+    """Deserialize a sandbox response from a JSON-compatible dict."""
     return SandboxResponse(
         envelope=d.get("envelope"),  # type: ignore[arg-type]
         error=d.get("error"),  # type: ignore[arg-type]

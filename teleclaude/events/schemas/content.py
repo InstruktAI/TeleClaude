@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_content(catalog: EventCatalog) -> None:
+    """Register content-domain event schemas."""
     catalog.register(
         EventSchema(
             event_type="content.dumped",

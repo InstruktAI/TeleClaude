@@ -10,7 +10,6 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
 
 from aiohttp import ClientSession
 from instrukt_ai_logging import get_logger
@@ -24,30 +23,17 @@ from teleclaude.helpers.youtube_helper import (
     _safe_get_list,
     _safe_get_str,
 )
+from teleclaude.tagging.youtube_shared import (
+    KNOWLEDGE_TAGGING_RULES as NORMAL_TAGGING_RULES,
+)
+from teleclaude.tagging.youtube_shared import (
+    WEB_RESEARCH_RULES,
+    build_batch_response_schema,
+    round_robin,
+    validate_tags,
+)
 
 logger = get_logger(__name__)
-
-# --- Prompts ---
-
-NORMAL_TAGGING_RULES = (
-    "You are a YouTube channel classifier.\n"
-    "You may ONLY return tags from the allowed list.\n"
-    "IMPORTANT: Use your knowledge! If you recognize the channel or creator, USE that knowledge confidently.\n"
-    "Many channels are run by famous people, journalists, educators, or well-known creators - you likely know them.\n"
-    "Trust your training data for well-known channels. Only return n/a for truly obscure channels you don't recognize.\n"
-    'If you return ["n/a"], it must be the ONLY tag.\n'
-)
-
-WEB_RESEARCH_RULES = (
-    "You are a YouTube channel classifier doing research.\n"
-    "You may ONLY return tags from the allowed list.\n"
-    "DO NOT use prior knowledge or memory. Only use evidence from web search results.\n"
-    "Use the web_search tool to find information about each channel.\n"
-    "Be conservative: only tag based on clear evidence from search results.\n"
-    "If web search finds no useful information, return n/a - do not guess.\n"
-    'If you return ["n/a"], it must be the ONLY tag.\n'
-)
-
 
 # --- Data Classes ---
 
@@ -63,6 +49,7 @@ class ChannelRow:
     description: str = ""  # Enriched from about page
 
     def to_dict(self) -> dict[str, str]:
+        """Serialize to dict for CSV output."""
         return {
             "channel_id": self.channel_id,
             "channel_name": self.channel_name,
@@ -72,6 +59,7 @@ class ChannelRow:
 
     @classmethod
     def from_dict(cls, row: dict[str, str]) -> ChannelRow:
+        """Deserialize from CSV row dict."""
         return cls(
             channel_id=row.get("channel_id", ""),
             channel_name=row.get("channel_name", ""),
@@ -91,7 +79,7 @@ class SyncResult:
 
 
 @dataclass
-class TaggingConfig:
+class TaggingConfig:  # pylint: disable=too-many-instance-attributes
     """Configuration for tagging operations."""
 
     mode: str = "normal+web"  # normal, web, normal+web
@@ -200,90 +188,24 @@ def build_batch_prompt(
             f"Channels (JSON): {json.dumps(items, ensure_ascii=True)}\n\n"
             'Return JSON: {"items": [{"channel_id": "...", "tags": ["tag1"], "evidence": "what you found"}]}'
         )
-    else:
-        return (
-            f"{retry_note}{rules}"
-            "Tag each YouTube channel using ONLY the allowed tags.\n"
-            "Use BOTH the description AND your prior knowledge about each channel/creator.\n"
-            "If you recognize a person or channel from your training, confidently apply relevant tags.\n"
-            'Only use ["n/a"] if the channel is truly obscure AND the description gives no clues.\n\n'
-            f"Allowed tags: {tags}\n\n"
-            f"Channels (JSON): {json.dumps(items, ensure_ascii=True)}\n\n"
-            'Return JSON: {"items": [{"channel_id": "...", "tags": ["tag1"], "evidence": "brief reason"}]}'
-        )
+    return (
+        f"{retry_note}{rules}"
+        "Tag each YouTube channel using ONLY the allowed tags.\n"
+        "Use BOTH the description AND your prior knowledge about each channel/creator.\n"
+        "If you recognize a person or channel from your training, confidently apply relevant tags.\n"
+        'Only use ["n/a"] if the channel is truly obscure AND the description gives no clues.\n\n'
+        f"Allowed tags: {tags}\n\n"
+        f"Channels (JSON): {json.dumps(items, ensure_ascii=True)}\n\n"
+        'Return JSON: {"items": [{"channel_id": "...", "tags": ["tag1"], "evidence": "brief reason"}]}'
+    )
 
 
 def build_schema(tags: list[str]) -> JsonDict:
     """Build JSON schema for batch response."""
-    tag_enum = sorted(set(tags + ["n/a"]))
-    # Cast needed because pyright can't verify recursive JsonValue matches
-    return cast(
-        JsonDict,
-        {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "channel_id": {"type": "string"},
-                            "tags": {"type": "array", "items": {"type": "string", "enum": tag_enum}},
-                        },
-                        "required": ["channel_id", "tags"],
-                        "additionalProperties": False,
-                    },
-                }
-            },
-            "required": ["items"],
-            "additionalProperties": False,
-        },
-    )
-
-
-# --- Tag Validation ---
-
-
-def validate_tags(raw_tags: object, allowed: set[str], evidence: str | None) -> list[str] | None:
-    """Validate and clean tags from AI response."""
-    if not isinstance(raw_tags, list):
-        return None
-
-    cleaned: list[str] = []
-    saw_na = False
-
-    for tag in raw_tags:
-        val = str(tag).strip()
-        if not val:
-            continue
-        if val == "n/a":
-            saw_na = True
-            cleaned.append("n/a")
-            continue
-        if val not in allowed:
-            return None
-        cleaned.append(val)
-
-    if not cleaned:
-        return None
-    if saw_na and len(cleaned) > 1:
-        return None
-    if cleaned != ["n/a"]:
-        if evidence is None or not str(evidence).strip() or str(evidence).strip() == "n/a":
-            return None
-
-    return cleaned
+    return build_batch_response_schema(tags)
 
 
 # --- Agent Interaction ---
-
-
-def round_robin(agents: list[str]) -> Iterator[str]:
-    """Infinite round-robin iterator over agents."""
-    idx = 0
-    while True:
-        yield agents[idx % len(agents)]
-        idx += 1
 
 
 def call_agent(
@@ -307,7 +229,7 @@ def call_agent(
         )
         result = payload.get("result", {})
         return result if isinstance(result, dict) else None
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("agent call failed", agent=agent, error=str(e))
         return None
 
@@ -315,7 +237,7 @@ def call_agent(
 # --- Batch Processing ---
 
 
-def process_batch(
+def process_batch(  # pylint: disable=too-many-arguments,too-many-locals
     rows: list[ChannelRow],
     config: TaggingConfig,
     tags: list[str],
@@ -323,7 +245,7 @@ def process_batch(
     agent_iter: Iterator[str],
     *,
     use_web: bool = False,
-    merge_mode: bool = False,
+    merge_mode: bool = False,  # pylint: disable=unused-argument
 ) -> dict[str, str]:
     """Process a batch of rows and return {channel_id: tags_str}."""
     schema = build_schema(tags)
@@ -391,7 +313,7 @@ def process_batch(
 # --- Main Sync Function ---
 
 
-def sync_youtube_subscriptions(
+def sync_youtube_subscriptions(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
     subscriber: Subscriber,
     *,
     mode: str = "normal+web",

@@ -370,7 +370,7 @@ def validate_artifact(post: frontmatter.Post, path: str, *, kind: str, project_r
 # ---------------------------------------------------------------------------
 
 
-def validate_all_artifacts(project_root: Path) -> list[str]:
+def validate_all_artifacts(project_root: Path) -> list[str]:  # pylint: disable=too-many-locals
     """Validate all agent artifact source files. Returns list of errors."""
     teleclaude_root = REPO_ROOT
     is_mother_project = Path(project_root).resolve() == teleclaude_root.resolve()
@@ -417,10 +417,10 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
                     if not os.path.exists(item_path):
                         continue
                     try:
-                        with open(item_path) as f:
+                        with open(item_path, encoding="utf-8") as f:
                             post = frontmatter.load(f)
                         validate_artifact(post, item_path, kind=kind, project_root=project_root)
-                    except Exception as e:
+                    except Exception as e:  # pylint: disable=broad-exception-caught
                         errors.append(str(e))
     return errors
 
@@ -447,7 +447,8 @@ def _validate_job_when_or_schedule(
                 JobWhenConfig.model_validate(when_raw)
                 has_valid_when = True
             except ValidationError as exc:
-                first = exc.errors()[0] if exc.errors() else {"msg": "invalid when config"}  # type: ignore[typeddict-item]
+                err_list = exc.errors()
+                first = err_list[0] if err_list else {"msg": "invalid when config"}  # type: ignore[typeddict-item]
                 errors.append(f"{config_path}: jobs.{name}.when {first['msg']}")
     if has_valid_when:
         return errors
@@ -460,15 +461,15 @@ def _validate_job_when_or_schedule(
 def _validate_job_preferences(job_cfg: dict[object, object], *, name: object, config_path: Path) -> list[str]:
     errors: list[str] = []
     preferred_hour = job_cfg.get("preferred_hour", 6)
-    if not isinstance(preferred_hour, int) or not (0 <= preferred_hour <= 23):
+    if not isinstance(preferred_hour, int) or not 0 <= preferred_hour <= 23:
         errors.append(f"{config_path}: jobs.{name}.preferred_hour must be int 0..23")
 
     preferred_weekday = job_cfg.get("preferred_weekday", 0)
-    if not isinstance(preferred_weekday, int) or not (0 <= preferred_weekday <= 6):
+    if not isinstance(preferred_weekday, int) or not 0 <= preferred_weekday <= 6:
         errors.append(f"{config_path}: jobs.{name}.preferred_weekday must be int 0..6")
 
     preferred_day = job_cfg.get("preferred_day", 1)
-    if not isinstance(preferred_day, int) or not (1 <= preferred_day <= 31):
+    if not isinstance(preferred_day, int) or not 1 <= preferred_day <= 31:
         errors.append(f"{config_path}: jobs.{name}.preferred_day must be int 1..31")
     return errors
 
@@ -531,7 +532,7 @@ def validate_jobs_config(project_root: Path) -> list[str]:
 
     try:
         config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except Exception as exc:
+    except (yaml.YAMLError, OSError) as exc:
         return [f"{config_path}: invalid YAML ({exc})"]
 
     if not isinstance(config, dict):
@@ -582,7 +583,7 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
             content = state_path.read_text(encoding="utf-8")
             data = yaml.safe_load(content)
             TodoState.model_validate(data)
-        except Exception as exc:
+        except (yaml.YAMLError, OSError, ValueError) as exc:
             errors.append(f"{slug}: state file schema violation: {exc}")
 
     # 2. Required files for Ready state
@@ -597,7 +598,7 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
                     errors.append(
                         f"{slug}: marked as Ready (score {state.dor.score}) but missing implementation-plan.md"
                     )
-        except Exception:
+        except (yaml.YAMLError, OSError, ValueError):
             pass  # already reported in schema check
 
     return errors

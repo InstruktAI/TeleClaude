@@ -76,7 +76,7 @@ async def emit_branch_pushed(
     )
 
 
-async def emit_deployment_started(
+async def emit_deployment_started(  # pylint: disable=too-many-arguments
     slug: str,
     branch: str,
     sha: str,
@@ -132,7 +132,7 @@ async def emit_deployment_completed(
     )
 
 
-async def emit_deployment_failed(
+async def emit_deployment_failed(  # pylint: disable=too-many-arguments
     slug: str,
     branch: str,
     sha: str,
@@ -155,8 +155,8 @@ async def emit_deployment_failed(
             "slug": slug,
             "branch": branch,
             "sha": sha,
-            "conflict_evidence": conflict_evidence or [],  # type: ignore[dict-item]
-            "diagnostics": diagnostics or [],  # type: ignore[dict-item]
+            "conflict_evidence": conflict_evidence or [],
+            "diagnostics": diagnostics or [],
             "next_action": next_action,
             "blocked_at": ts,
         },
@@ -267,11 +267,11 @@ async def spawn_integrator_session(
 
     Returns session info dict on spawn, or None if integrator was notified.
     """
-    from teleclaude.constants import JobRole, SlashCommand
-    from teleclaude.core.command_registry import get_command_service
-    from teleclaude.core.db import db
-    from teleclaude.core.origins import InputOrigin
-    from teleclaude.types.commands import ProcessMessageCommand
+    from teleclaude.constants import JobRole, SlashCommand  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.command_registry import get_command_service  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
+    from teleclaude.types.commands import ProcessMessageCommand  # pylint: disable=import-outside-toplevel
 
     # If an integrator session is already active, wake it with a message instead of
     # spawning a duplicate. This handles both the mid-work case and zombie sessions
@@ -298,14 +298,14 @@ async def spawn_integrator_session(
                     origin=InputOrigin.API.value,
                 )
                 await get_command_service().process_message(cmd)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.exception(
                     "Failed to notify integrator session %s of candidate %s; candidate is queued",
                     integrator_session.session_id[:8],
                     slug,
                 )
             return None
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Could not check for running integrator sessions; proceeding to spawn")
 
     project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
@@ -317,6 +317,6 @@ async def spawn_integrator_session(
         )
         logger.info("Spawned integrator session for %s", slug)
         return _SpawnResult(status="spawned", slug=slug)
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.error("Integrator spawn failed: %s", exc)
         return None

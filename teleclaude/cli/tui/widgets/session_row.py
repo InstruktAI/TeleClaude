@@ -1,5 +1,7 @@
 """Session display row with expand/collapse, agent colors, activity indicators."""
 
+# pylint: disable=missing-function-docstring
+
 from __future__ import annotations
 
 from rich.style import Style
@@ -191,13 +193,13 @@ class SessionRow(TelecMixin, Widget):
         title = (self.session.title or "(untitled)").splitlines()[0]
         content_w = self._content_width
         avail = content_w - line.cell_len - 4  # 4 = '  "' prefix + '"' suffix
-        if avail > 0 and len(title) > avail:
+        if 0 < avail < len(title):
             title = title[: max(1, avail - 1)] + "\u2026"
         line.append(f'  "{title}"', style=style)
 
         return line
 
-    def _build_detail_lines(self) -> list[Text]:
+    def _build_detail_lines(self) -> list[Text]:  # pylint: disable=too-many-locals,too-many-statements
         """Build expanded detail lines with \u2502 tree connectors."""
         lines: list[Text] = []
         connector_pad = " " * self._connector_col

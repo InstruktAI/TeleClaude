@@ -26,7 +26,12 @@ from teleclaude.core.next_machine._types import (
     PreparePhase,
     StateValue,
 )
-from teleclaude.core.next_machine.build_gates import format_build_gate_failure, run_build_gates, verify_artifacts
+from teleclaude.core.next_machine.build_gates import (
+    check_file_has_content,
+    format_build_gate_failure,
+    run_build_gates,
+    verify_artifacts,
+)
 from teleclaude.core.next_machine.delivery import sweep_completed_groups
 from teleclaude.core.next_machine.git_ops import (
     _has_meaningful_diff,
@@ -36,13 +41,13 @@ from teleclaude.core.next_machine.git_ops import (
     has_uncommitted_changes,
 )
 from teleclaude.core.next_machine.output_formatting import (
+    ToolCallRequest,
     format_error,
     format_finalize_handoff_complete,
     format_stash_debt,
     format_tool_call,
     format_uncommitted_changes,
 )
-from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     add_to_roadmap,
     check_dependencies_satisfied,
@@ -72,7 +77,6 @@ from teleclaude.core.next_machine.worktrees import (
     _ensure_todo_on_remote_main,
     ensure_worktree_with_policy_async,
 )
-from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
@@ -116,8 +120,10 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         elapsed_ms,
     )
     try:
+        from teleclaude.core.operations import emit_operation_progress  # pylint: disable=import-outside-toplevel
+
         emit_operation_progress(phase, decision, reason)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.debug("Operation progress emission skipped", exc_info=True)
 
 
@@ -241,7 +247,7 @@ async def _resolve_holder_slug(
     slug_resolution_started: float,
 ) -> tuple[str, str | None]:
     """Resolve runnable child work for holder todos."""
-    holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)  # type: ignore[arg-type]
+    holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)  # type: ignore[arg-type]  # pylint: disable=line-too-long
     if holder_child:
         return holder_child, None
     if holder_reason == "complete":
@@ -271,7 +277,7 @@ async def _resolve_holder_slug(
     return slug, None
 
 
-async def _validate_explicit_slug_readiness(
+async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     cwd: str,
     slug: str,
     phase: str,
@@ -453,7 +459,7 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
             str(exc),
             next_call="Add tools/worktree-prepare.sh or fix its execution, then retry.",
         )
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.error(
             "next_work worktree setup failed for slug=%s cwd=%s worktree_path=%s: %s",
             resolved_slug,
@@ -527,7 +533,7 @@ async def _prepare_dispatch_state(
     return _DispatchState(state, build_status, review_status, finalize_state), None
 
 
-async def _repair_stale_review_approval(
+async def _repair_stale_review_approval(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     worktree_cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -554,7 +560,7 @@ async def _repair_stale_review_approval(
     return PhaseStatus.PENDING.value
 
 
-async def _dispatch_pre_review(
+async def _dispatch_pre_review(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
     cwd: str,
     worktree_cwd: str,
@@ -588,24 +594,26 @@ async def _dispatch_fix_review(
         return format_error("NO_AGENTS", str(exc))
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_fix_review")
     return format_tool_call(
-        command=SlashCommand.NEXT_FIX_REVIEW,
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
-        note=(
-            "PEER CONVERSATION NOTE: If you still have the reviewer session alive from the "
-            "previous review dispatch, prefer the direct conversation pattern from "
-            "POST_COMPLETION[next-review-build] instead of a fresh fix-review dispatch: "
-            "send fixer and reviewer session IDs to each other with --direct to let them "
-            "iterate without context-destroying churn. This fallback path is for when the "
-            "reviewer session has already ended."
-        ),
+        ToolCallRequest(
+            command=SlashCommand.NEXT_FIX_REVIEW,
+            args=resolved_slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
+            next_call=f"telec todo work {resolved_slug}",
+            note=(
+                "PEER CONVERSATION NOTE: If you still have the reviewer session alive from the "
+                "previous review dispatch, prefer the direct conversation pattern from "
+                "POST_COMPLETION[next-review-build] instead of a fresh fix-review dispatch: "
+                "send fixer and reviewer session IDs to each other with --direct to let them "
+                "iterate without context-destroying churn. This fallback path is for when the "
+                "reviewer session has already ended."
+            ),
+        )
     )
 
 
-async def _dispatch_build_phase(
+async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
     cwd: str,
     worktree_cwd: str,
@@ -630,7 +638,21 @@ async def _dispatch_build_phase(
     if is_bug:
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
         return format_tool_call(
-            command=SlashCommand.NEXT_BUGS_FIX,
+            ToolCallRequest(
+                command=SlashCommand.NEXT_BUGS_FIX,
+                args=resolved_slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
+                next_call=f"telec todo work {resolved_slug}",
+                pre_dispatch=pre_dispatch,
+            )
+        )
+
+    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
+    return format_tool_call(
+        ToolCallRequest(
+            command=SlashCommand.NEXT_BUILD,
             args=resolved_slug,
             project=cwd,
             guidance=guidance,
@@ -638,20 +660,10 @@ async def _dispatch_build_phase(
             next_call=f"telec todo work {resolved_slug}",
             pre_dispatch=pre_dispatch,
         )
-
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
-    return format_tool_call(
-        command=SlashCommand.NEXT_BUILD,
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
-        pre_dispatch=pre_dispatch,
     )
 
 
-async def _dispatch_review_phase(
+async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
     cwd: str,
     worktree_cwd: str,
@@ -691,13 +703,15 @@ async def _dispatch_review_phase(
         return format_error("NO_AGENTS", str(exc))
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_review")
     return format_tool_call(
-        command=SlashCommand.NEXT_REVIEW_BUILD,
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
-        note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
+        ToolCallRequest(
+            command=SlashCommand.NEXT_REVIEW_BUILD,
+            args=resolved_slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
+            next_call=f"telec todo work {resolved_slug}",
+            note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
+        )
     )
 
 
@@ -743,7 +757,7 @@ async def _run_review_gates(
     )
 
 
-async def _handle_gate_failure(
+async def _handle_gate_failure(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     worktree_cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -761,7 +775,7 @@ async def _handle_gate_failure(
     return format_build_gate_failure(resolved_slug, gate_output, f"telec todo work {resolved_slug}")
 
 
-async def _dispatch_review_approved(
+async def _dispatch_review_approved(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
     cwd: str,
     worktree_cwd: str,
@@ -825,7 +839,7 @@ async def _dispatch_finalize_handoff(
             ready_at=finalize_state.get("ready_at"),
         )
         await asyncio.to_thread(_mark_finalize_handed_off, worktree_cwd, resolved_slug, handoff_session_id=session_id)
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "error", "finalize_handoff_failed")
         return format_error(
             "FINALIZE_HANDOFF_FAILED",
@@ -845,7 +859,7 @@ async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
     try:
         child_sessions = await db.list_sessions(initiator_session_id=session_id)
         return [session.session_id for session in child_sessions]
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to query child sessions for cleanup", session_id=session_id)
         return []
 
@@ -865,16 +879,18 @@ async def _dispatch_deferrals(
         return format_error("NO_AGENTS", str(exc))
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_defer")
     return format_tool_call(
-        command="next-defer",
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
+        ToolCallRequest(
+            command="next-defer",
+            args=resolved_slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
+            next_call=f"telec todo work {resolved_slug}",
+        )
     )
 
 
-async def _dispatch_finalize_prepare(
+async def _dispatch_finalize_prepare(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
     cwd: str,
     resolved_slug: str,
@@ -897,20 +913,22 @@ async def _dispatch_finalize_prepare(
     session_id = get_session_id() or "unknown"
     try:
         await emit_review_approved(slug=resolved_slug, reviewer_session_id=session_id, review_round=review_round)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
 
     is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
     note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
     return format_tool_call(
-        command=SlashCommand.NEXT_FINALIZE,
-        args=resolved_slug,
-        project=cwd,
-        guidance=guidance,
-        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call=f"telec todo work {resolved_slug}",
-        note=note,
+        ToolCallRequest(
+            command=SlashCommand.NEXT_FINALIZE,
+            args=resolved_slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
+            next_call=f"telec todo work {resolved_slug}",
+            note=note,
+        )
     )
 
 

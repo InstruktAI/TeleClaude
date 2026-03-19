@@ -99,7 +99,7 @@ class SmartWatcher(FileSystemEventHandler):
             logger.trace(f"Ignoring change: {rel_path} (matched .gitignore/exclude)")
             return
 
-        logger.info(f"Change detected: {rel_path}")
+        logger.info("Change detected: %s", rel_path)
         self._trigger_sync()
 
     @classmethod
@@ -145,20 +145,20 @@ class SmartWatcher(FileSystemEventHandler):
 
         try:
             subprocess.run(cmd, cwd=self.project_root, check=False)
-        except Exception as e:
-            logger.error(f"Sync failed: {e}")
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.error("Sync failed: %s", e)
 
 
 def run_watch(project_root: Path) -> None:
     """Run the watcher loop."""
     setup_logging()
-    logger = get_logger(__name__)
+    logger = get_logger(__name__)  # pylint: disable=redefined-outer-name
     handler = SmartWatcher(project_root)
     observer = Observer()
     observer.schedule(handler, str(project_root), recursive=True)
     observer.start()
 
-    logger.info(f"Watching {project_root} for changes (smart mode)...")
+    logger.info("Watching %s for changes (smart mode)...", project_root)
     try:
         while True:
             time.sleep(1)

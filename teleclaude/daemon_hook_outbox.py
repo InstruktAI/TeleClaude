@@ -6,7 +6,7 @@ import asyncio
 import json
 import os
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, cast
@@ -49,8 +49,8 @@ HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S"
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
 HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))
 HOOK_OUTBOX_SESSION_MAX_PENDING: int = int(os.getenv("HOOK_OUTBOX_SESSION_MAX_PENDING", "32"))
-HOOK_OUTBOX_SESSION_CRITICAL_RESERVE: int = int(os.getenv("HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", "8"))
-HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK: int = int(
+HOOK_OUTBOX_SESSION_CRITICAL_RESERVE: int = int(os.getenv("HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", "8"))  # pylint: disable=invalid-name
+HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK: int = int(  # pylint: disable=invalid-name
     os.getenv(
         "HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK",
         str(max(1, HOOK_OUTBOX_SESSION_MAX_PENDING - 8)),
@@ -78,14 +78,22 @@ HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
     }
 )
 
-if HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK > HOOK_OUTBOX_SESSION_MAX_PENDING:
-    HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK = HOOK_OUTBOX_SESSION_MAX_PENDING  # pyright: ignore[reportConstantRedefinition]
+HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK = min(  # pyright: ignore[reportConstantRedefinition]  # pylint: disable=invalid-name
+    HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK,
+    HOOK_OUTBOX_SESSION_MAX_PENDING,
+)
 if HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK >= HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK:
-    HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK = max(0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK - 1)  # pyright: ignore[reportConstantRedefinition]
-if HOOK_OUTBOX_SESSION_CRITICAL_RESERVE < 0:
-    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = 0  # pyright: ignore[reportConstantRedefinition]
-if HOOK_OUTBOX_SESSION_CRITICAL_RESERVE > HOOK_OUTBOX_SESSION_MAX_PENDING:
-    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = HOOK_OUTBOX_SESSION_MAX_PENDING  # pyright: ignore[reportConstantRedefinition]
+    HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK = max(  # pyright: ignore[reportConstantRedefinition]
+        0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK - 1
+    )
+HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = max(  # pyright: ignore[reportConstantRedefinition]  # pylint: disable=invalid-name
+    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE,
+    0,
+)
+HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = min(  # pyright: ignore[reportConstantRedefinition]  # pylint: disable=invalid-name
+    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE,
+    HOOK_OUTBOX_SESSION_MAX_PENDING,
+)
 
 HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
     {
@@ -123,7 +131,7 @@ class _HookOutboxSessionQueue:
     notify: asyncio.Event = field(default_factory=asyncio.Event)
 
 
-class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
+class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Mixin only exposes private hooks.
     """Hook outbox processing methods extracted from TeleClaudeDaemon."""
 
     if TYPE_CHECKING:
@@ -141,9 +149,9 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         _hook_outbox_stale_dropped_count: int
         cache: DaemonCache
 
-        def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None: ...
-        async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None: ...
-        async def _ensure_output_polling(self, session: Session) -> None: ...
+        def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None: ...  # pylint: disable=unused-argument
+        async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None: ...  # pylint: disable=unused-argument
+        async def _ensure_output_polling(self, session: Session) -> None: ...  # pylint: disable=unused-argument
 
     @staticmethod
     def _make_stale_read_callback(
@@ -347,12 +355,12 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         for state in self._session_outbox_queues.values():
             queue_depth += len(state.pending)
 
-        stale_dropped = self._hook_outbox_stale_dropped_count
+        stale_dropped = self._hook_outbox_stale_dropped_count  # pylint: disable=no-member
 
         if (
             not force
-            and self._hook_outbox_processed_count == 0
-            and self._hook_outbox_coalesced_count == 0
+            and self._hook_outbox_processed_count == 0  # pylint: disable=no-member
+            and self._hook_outbox_coalesced_count == 0  # pylint: disable=no-member
             and stale_dropped == 0
             and queue_depth == 0
         ):
@@ -363,8 +371,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         p99_lag = self._percentile(self._hook_outbox_lag_samples_s, 0.99)
         logger.info(
             "Hook outbox summary",
-            processed=self._hook_outbox_processed_count,
-            coalesced=self._hook_outbox_coalesced_count,
+            processed=self._hook_outbox_processed_count,  # pylint: disable=no-member
+            coalesced=self._hook_outbox_coalesced_count,  # pylint: disable=no-member
             stale_dropped=stale_dropped,
             queue_depth=queue_depth,
             lag_sample_count=len(self._hook_outbox_lag_samples_s),
@@ -459,7 +467,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         raw_native_session_id = data.get("native_session_id")
         return isinstance(raw_native_session_id, str) and bool(raw_native_session_id.strip())
 
-    async def _dispatch_hook_event(
+    async def _dispatch_hook_event(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         self,
         session_id: str,
         event_type: str,
@@ -547,11 +555,12 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             severity = data.get("severity")
             retryable = data.get("retryable")
             code = data.get("code")
+            details = data.get("details")
             context = ErrorEventContext(
                 session_id=session_id,
                 message=str(data.get("message", "")),
                 source=str(data.get("source")) if "source" in data else None,
-                details=data.get("details") if isinstance(data.get("details"), dict) else None,  # type: ignore[arg-type]
+                details=cast(Mapping[str, object] | None, details if isinstance(details, dict) else None),
                 severity=severity if isinstance(severity, str) else "error",  # type: ignore[arg-type]
                 retryable=retryable if isinstance(retryable, bool) else False,
                 code=code if isinstance(code, str) else None,
@@ -575,10 +584,10 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 break
             try:
                 await db.wal_checkpoint()
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("WAL checkpoint failed: %s", exc)
 
-    async def _hook_outbox_worker(self) -> None:
+    async def _hook_outbox_worker(self) -> None:  # pylint: disable=too-many-branches,too-many-locals
         """Drain hook outbox for durable, restart-safe delivery.
 
         Dispatch model:
@@ -625,7 +634,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                             session_id=str(stale_row.get("session_id") or ""),
                         )
                         await db.mark_hook_outbox_delivered(stale_id, error=f"stale:{event_type}")
-                    self._hook_outbox_stale_dropped_count += len(stale_row_ids)
+                    self._hook_outbox_stale_dropped_count += len(stale_row_ids)  # pylint: disable=no-member
 
                 # Defense-in-depth: re-check pause state for rows that passed the DB
                 # filter (catches snapshot-to-fetch races).
@@ -691,7 +700,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         if row_id:
             claimed_row_ids.add(row_id)
 
-    def _enqueue_bursty_item(
+    def _enqueue_bursty_item(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Parameters are explicit for clarity. Parameters are explicit for clarity.
         self,
         pending: list[_HookOutboxQueueItem],
         claimed_row_ids: set[int],
@@ -735,7 +744,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         self._append_queue_item(pending, claimed_row_ids, queue_item, row_id)
         return True
 
-    def _enqueue_critical_item(
+    def _enqueue_critical_item(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Parameters are explicit for clarity. Parameters are explicit for clarity.
         self,
         pending: list[_HookOutboxQueueItem],
         claimed_row_ids: set[int],
@@ -761,7 +770,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         """Mark coalesced rows as delivered in durable storage."""
         if not dropped_rows:
             return
-        self._hook_outbox_coalesced_count += len(dropped_rows)
+        self._hook_outbox_coalesced_count += len(dropped_rows)  # pylint: disable=no-member
         for dropped in dropped_rows:
             await db.mark_hook_outbox_delivered(
                 dropped["id"],
@@ -860,7 +869,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         self._maybe_warn_hook_backlog(session_id, queue_depth)
         self._ensure_session_outbox_worker(session_id)
 
-    async def _run_session_outbox_worker(self, session_id: str) -> None:
+    async def _run_session_outbox_worker(self, session_id: str) -> None:  # pylint: disable=too-many-branches  # Multi-case routing is intentionally flat.
         """Process claimed outbox rows serially for a single session."""
         queue_state = self._session_outbox_queues.get(session_id)
         if queue_state is None:
@@ -919,14 +928,14 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         except json.JSONDecodeError as exc:
             logger.error("Hook outbox payload invalid", row_id=row_id, error=str(exc))
             await db.mark_hook_outbox_delivered(row_id, error=str(exc))
-            self._hook_outbox_processed_count += 1
+            self._hook_outbox_processed_count += 1  # pylint: disable=no-member
             self._record_hook_lag_sample(row)
             return
 
         try:
             await self._dispatch_hook_event(str(row["session_id"]), str(row["event_type"]), payload)
             await db.mark_hook_outbox_delivered(row_id)
-            self._hook_outbox_processed_count += 1
+            self._hook_outbox_processed_count += 1  # pylint: disable=no-member
             self._record_hook_lag_sample(row)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             attempt = int(row.get("attempt_count", 0)) + 1
@@ -939,7 +948,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                     error=error_str,
                 )
                 await db.mark_hook_outbox_delivered(row_id, error=error_str)
-                self._hook_outbox_processed_count += 1
+                self._hook_outbox_processed_count += 1  # pylint: disable=no-member
                 self._record_hook_lag_sample(row)
                 return
 

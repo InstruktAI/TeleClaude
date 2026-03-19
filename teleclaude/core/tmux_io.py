@@ -24,6 +24,7 @@ _BRACKETED_PASTE_END = "\x1b[201~"
 
 
 def wrap_bracketed_paste(text: str, active_agent: str | None = None) -> str:
+    """Wrap text in bracketed paste sequences when it contains special characters."""
     if not text:
         return text
     text = normalize_codex_next_command(active_agent, text)
@@ -50,7 +51,7 @@ async def _revive_headless_and_send(
     session: Session,
     text: str,
     *,
-    send_enter: bool,
+    send_enter: bool,  # pylint: disable=redefined-outer-name  # Matches tmux_bridge API signature
     active_agent: str | None,
     working_dir: str,
 ) -> bool:
@@ -113,7 +114,7 @@ async def _send_to_tmux(
     session: Session,
     text: str,
     *,
-    send_enter: bool,
+    send_enter: bool,  # pylint: disable=redefined-outer-name  # Matches tmux_bridge API signature
     active_agent: str | None = None,
     working_dir: str,
 ) -> bool:
@@ -142,10 +143,11 @@ async def process_text(
     session: Session,
     text: str,
     *,
-    send_enter: bool = True,
+    send_enter: bool = True,  # pylint: disable=redefined-outer-name  # Matches tmux_bridge API signature
     active_agent: str | None = None,
     working_dir: str,
 ) -> bool:
+    """Process and route text input to the appropriate tmux session."""
     return await _send_to_tmux(
         session,
         text,
@@ -156,18 +158,22 @@ async def process_text(
 
 
 async def send_escape(session: Session) -> bool:
+    """Send an escape key to the session's tmux pane."""
     return await tmux_bridge.send_escape(session.tmux_session_name)
 
 
 async def send_ctrl_key(session: Session, key: str) -> bool:
+    """Send a Ctrl+key combination to the session's tmux pane."""
     return await tmux_bridge.send_ctrl_key(session.tmux_session_name, key)
 
 
 async def send_tab(session: Session) -> bool:
+    """Send a tab key to the session's tmux pane."""
     return await tmux_bridge.send_tab(session.tmux_session_name)
 
 
 async def send_shift_tab(session: Session, count: int = 1) -> bool:
+    """Send shift-tab key(s) to the session's tmux pane."""
     if count < 1:
         logger.warning("Invalid shift-tab count %d for session %s", count, session.session_id)
         return False
@@ -175,6 +181,7 @@ async def send_shift_tab(session: Session, count: int = 1) -> bool:
 
 
 async def send_backspace(session: Session, count: int = 1) -> bool:
+    """Send backspace key(s) to the session's tmux pane."""
     if count < 1:
         logger.warning("Invalid backspace count %d for session %s", count, session.session_id)
         return False
@@ -182,10 +189,12 @@ async def send_backspace(session: Session, count: int = 1) -> bool:
 
 
 async def send_enter(session: Session) -> bool:
+    """Send an enter key to the session's tmux pane."""
     return await tmux_bridge.send_enter(session.tmux_session_name)
 
 
 async def send_arrow_key(session: Session, direction: str, count: int = 1) -> bool:
+    """Send arrow key(s) to the session's tmux pane."""
     if count < 1:
         logger.warning("Invalid arrow count %d for session %s", count, session.session_id)
         return False
@@ -194,6 +203,7 @@ async def send_arrow_key(session: Session, direction: str, count: int = 1) -> bo
 
 
 async def send_signal(session: Session, signal: Signals | str) -> bool:
+    """Send a POSIX signal to the session's tmux pane process."""
     if isinstance(signal, str):
         try:
             signal = Signals[signal]
@@ -204,8 +214,10 @@ async def send_signal(session: Session, signal: Signals | str) -> bool:
 
 
 async def is_process_running(session: Session) -> bool:
+    """Check if the session's tmux pane has a running process."""
     return await tmux_bridge.is_process_running(session.tmux_session_name)
 
 
 async def wait_for_shell_ready(session: Session) -> bool:
+    """Wait until the session's tmux pane has a ready shell."""
     return await tmux_bridge.wait_for_shell_ready(session.tmux_session_name)

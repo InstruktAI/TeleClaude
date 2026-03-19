@@ -27,7 +27,9 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         message_stream_maxlen: int
         output_stream_maxlen: int
 
-        async def _get_redis(self) -> Redis: ...
+        async def _get_redis(self) -> Redis:
+            """Return an active Redis client."""
+            raise NotImplementedError
 
     # === Session Observation (Interest Window) ===
 
@@ -89,7 +91,6 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         command: str,
         metadata: MessageMetadata,
         session_id: str | None = None,
-        args: list[str] | None = None,
     ) -> str:
         """Send request to remote computer's message stream.
 
@@ -100,8 +101,6 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             command: Command to send
             session_id: Optional TeleClaude session ID (for session commands)
             metadata: Optional metadata (title, project_path for session creation)
-            args: Optional command arguments (e.g., project_path for list_todos)
-
         Returns:
             Redis stream entry ID (used for response correlation)
         """
@@ -119,10 +118,6 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         if session_id:
             data[b"session_id"] = session_id.encode("utf-8")
 
-        # Add command arguments if provided
-        if args:
-            data[b"args"] = json.dumps(args).encode("utf-8")
-
         # Add optional session creation metadata
         if metadata.title:
             data[b"title"] = metadata.title.encode("utf-8")
@@ -138,7 +133,11 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{computer}:{message_id})
         redis_client = await self._get_redis()
-        message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
+        message_id_bytes: bytes = await redis_client.xadd(  # pyright: ignore[reportArgumentType]
+            message_stream,
+            data,
+            maxlen=self.message_stream_maxlen,
+        )
         message_id = message_id_bytes.decode("utf-8")
 
         logger.trace("Redis request enqueued", stream=message_stream, message_id=message_id)
@@ -190,7 +189,12 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         )
         return response_id_bytes.decode("utf-8")
 
-    async def read_response(self, message_id: str, timeout: float = 3.0, target_computer: str | None = None) -> str:
+    async def read_response(
+        self,
+        message_id: str,
+        timeout: float = 3.0,
+        target_computer: str | None = None,
+    ) -> str:
         """Read response from ephemeral request (non-streaming).
 
         Used for one-shot request/response like list_projects, get_computer_info.
@@ -207,10 +211,7 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             TimeoutError: If no response received within timeout
         """
 
-        if target_computer:
-            output_stream = f"output:{target_computer}:{message_id}"
-        else:
-            output_stream = f"output:{message_id}"
+        output_stream = self._response_stream_name(message_id, target_computer)
         start_time = time.time()
         logger.trace("Redis response wait", stream=output_stream, timeout_s=timeout)
 
@@ -239,20 +240,15 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
                 redis_client = await self._get_redis()
                 messages = await redis_client.xread({output_stream.encode("utf-8"): b"0"}, block=100, count=1)
 
-                if messages:
-                    # Got response - extract and return
-                    for _stream_name, stream_messages in messages:
-                        for _entry_id, data in stream_messages:
-                            chunk_bytes: bytes = data.get(b"chunk", b"")
-                            chunk: str = chunk_bytes.decode("utf-8")
-                            if chunk:
-                                logger.debug(
-                                    "Redis response received",
-                                    request_id=message_id,
-                                    polls=poll_count,
-                                    length=len(chunk),
-                                )
-                                return chunk
+                chunk = self._extract_response_chunk(messages)
+                if chunk:
+                    logger.debug(
+                        "Redis response received",
+                        request_id=message_id,
+                        polls=poll_count,
+                        length=len(chunk),
+                    )
+                    return chunk
 
                 # No message yet, continue polling
                 await asyncio.sleep(0.1)
@@ -260,6 +256,24 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         except asyncio.CancelledError:
             logger.debug("read_response cancelled for message %s", message_id)
             raise
+
+    def _response_stream_name(self, message_id: str, target_computer: str | None) -> str:
+        """Build the Redis output stream name for a response."""
+        if target_computer:
+            return f"output:{target_computer}:{message_id}"
+        return f"output:{message_id}"
+
+    def _extract_response_chunk(
+        self,
+        messages: list[tuple[bytes, list[tuple[bytes, dict[bytes, bytes]]]]],
+    ) -> str | None:
+        """Extract the first non-empty response chunk from Redis xread output."""
+        for _stream_name, stream_messages in messages:
+            for _entry_id, data in stream_messages:
+                chunk = data.get(b"chunk", b"").decode("utf-8")
+                if chunk:
+                    return chunk
+        return None
 
     async def send_system_command(self, computer_name: str, command: str, args: JsonDict | None = None) -> str:
         """Send system command to remote computer (not session-specific).
@@ -294,7 +308,11 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         # Send to Redis stream
         logger.debug("Sending system command to %s: %s", computer_name, command)
         redis_client = await self._get_redis()
-        message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
+        message_id_bytes: bytes = await redis_client.xadd(  # pyright: ignore[reportArgumentType]
+            message_stream,
+            data,
+            maxlen=self.message_stream_maxlen,
+        )
 
         logger.info("Sent system command to %s: %s", computer_name, command)
         return message_id_bytes.decode("utf-8")

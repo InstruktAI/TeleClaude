@@ -289,7 +289,11 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 self._stop_event.wait(wait_s)
         return False
 
-    def _emulation_loop(self, header: SIDHeader, start_position_seconds: float = 0.0) -> None:
+    def _emulation_loop(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        self,
+        header: SIDHeader,
+        start_position_seconds: float = 0.0,
+    ) -> None:
         """Background thread: emulate CPU + SID and push PCM chunks to the queue."""
         pal = is_pal(header)
         frame_rate = 50.0 if pal else 60.0

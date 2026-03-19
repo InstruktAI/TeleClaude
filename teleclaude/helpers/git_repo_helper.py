@@ -114,6 +114,7 @@ def _build_url(host: str, owner: str, repo: str) -> str:
 
 
 def main() -> None:
+    """Parse CLI arguments and emit clone/update results as JSON."""
     parser = argparse.ArgumentParser(description="Clone or update Git repo.")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--url", help="Full repo URL")

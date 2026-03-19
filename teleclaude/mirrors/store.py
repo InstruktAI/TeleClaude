@@ -19,7 +19,9 @@ JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 
 @dataclass(frozen=True)
-class MirrorSearchResult:
+class MirrorSearchResult:  # pylint: disable=too-many-instance-attributes
+    """A single FTS5 search hit from the mirrors table."""
+
     session_id: str
     computer: str
     agent: str
@@ -33,7 +35,9 @@ class MirrorSearchResult:
 
 
 @dataclass(frozen=True)
-class MirrorRecord:
+class MirrorRecord:  # pylint: disable=too-many-instance-attributes
+    """Full mirror row for a session transcript."""
+
     session_id: str
     computer: str
     agent: str
@@ -51,6 +55,8 @@ class MirrorRecord:
 
 @dataclass(frozen=True)
 class MirrorTombstoneRecord:
+    """Tombstone record for empty/deleted transcripts."""
+
     source_identity: str
     agent: str
     transcript_path: str
@@ -61,6 +67,8 @@ class MirrorTombstoneRecord:
 
 @dataclass(frozen=True)
 class SessionMirrorContext:
+    """Lightweight session context looked up for mirror reconciliation."""
+
     session_id: str
     computer: str
     agent: str | None
@@ -136,7 +144,7 @@ def _topic_for_row(row: sqlite3.Row) -> str:
     return ""
 
 
-def search_mirrors(
+def search_mirrors(  # pylint: disable=too-many-locals
     query: str,
     agents: Sequence[AgentName | str],
     *,

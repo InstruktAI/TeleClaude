@@ -83,7 +83,7 @@ BootstrapSessionFunc = Callable[[str, str | None], Awaitable[None]]
 class CommandService:
     """Explicit command executor with typed command methods."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         client: AdapterClient,
@@ -101,14 +101,14 @@ class CommandService:
         self._bootstrap_session = bootstrap_session
 
         # Initialize the inbound queue manager singleton with delivery wired to this service's deps.
-        from teleclaude.core.inbound_queue import init_inbound_queue_manager
+        from teleclaude.core.inbound_queue import init_inbound_queue_manager  # pylint: disable=import-outside-toplevel
 
         init_inbound_queue_manager(
             functools.partial(deliver_inbound, client=client, start_polling=start_polling),
             force=True,
         )
 
-    async def create_session(self, cmd: CreateSessionCommand) -> dict[str, str]:
+    async def create_session(self, cmd: CreateSessionCommand) -> dict[str, str]:  # pylint: disable=missing-function-docstring
         return await create_session(
             cmd,
             self.client,
@@ -117,45 +117,45 @@ class CommandService:
             self._bootstrap_session,  # type: ignore[arg-type]
         )
 
-    async def process_message(self, cmd: ProcessMessageCommand) -> None:
+    async def process_message(self, cmd: ProcessMessageCommand) -> None:  # pylint: disable=missing-function-docstring
         await process_message(cmd, self.client, self._start_polling)
 
-    async def handle_voice(self, cmd: HandleVoiceCommand) -> None:
+    async def handle_voice(self, cmd: HandleVoiceCommand) -> None:  # pylint: disable=missing-function-docstring
         await handle_voice(cmd, self.client, self._start_polling)
 
-    async def handle_file(self, cmd: HandleFileCommand) -> None:
+    async def handle_file(self, cmd: HandleFileCommand) -> None:  # pylint: disable=missing-function-docstring
         await handle_file(cmd, self.client)
 
-    async def keys(self, cmd: KeysCommand) -> None:
+    async def keys(self, cmd: KeysCommand) -> None:  # pylint: disable=missing-function-docstring
         await keys(cmd, self.client, self._start_polling)
 
-    async def start_agent(self, cmd: StartAgentCommand) -> None:
+    async def start_agent(self, cmd: StartAgentCommand) -> None:  # pylint: disable=missing-function-docstring
         args = list(cmd.args)
         valid_modes = {mode.value for mode in ThinkingMode}
         if cmd.thinking_mode and (not args or args[0] not in valid_modes):
             args.insert(0, cmd.thinking_mode)
         cmd.args = args
-        await start_agent(cmd, self.client, self._execute_terminal_command)
+        await start_agent(cmd, self.client, self._execute_terminal_command)  # pylint: disable=no-value-for-parameter
 
-    async def resume_agent(self, cmd: ResumeAgentCommand) -> None:
-        await resume_agent(cmd, self.client, self._execute_terminal_command)
+    async def resume_agent(self, cmd: ResumeAgentCommand) -> None:  # pylint: disable=missing-function-docstring
+        await resume_agent(cmd, self.client, self._execute_terminal_command)  # pylint: disable=no-value-for-parameter
 
-    async def restart_agent(self, cmd: RestartAgentCommand) -> tuple[bool, str | None]:
-        return await agent_restart(cmd, self.client, self._execute_terminal_command)
+    async def restart_agent(self, cmd: RestartAgentCommand) -> tuple[bool, str | None]:  # pylint: disable=missing-function-docstring
+        return await agent_restart(cmd, self.client, self._execute_terminal_command)  # pylint: disable=no-value-for-parameter
 
-    async def run_agent_command(self, cmd: RunAgentCommand) -> None:
-        await run_agent_command(cmd, self.client, self._execute_terminal_command)
+    async def run_agent_command(self, cmd: RunAgentCommand) -> None:  # pylint: disable=missing-function-docstring
+        await run_agent_command(cmd, self.client, self._execute_terminal_command)  # pylint: disable=no-value-for-parameter
 
-    async def get_session_data(self, cmd: GetSessionDataCommand) -> SessionDataPayload:
+    async def get_session_data(self, cmd: GetSessionDataCommand) -> SessionDataPayload:  # pylint: disable=missing-function-docstring
         return await get_session_data(cmd)
 
-    async def close_session(self, cmd: CloseSessionCommand) -> None:
-        await close_session(cmd, self.client)
+    async def close_session(self, cmd: CloseSessionCommand) -> None:  # pylint: disable=missing-function-docstring
+        await close_session(cmd, self.client)  # pylint: disable=no-value-for-parameter
 
-    async def end_session(self, cmd: CloseSessionCommand) -> EndSessionHandlerResult:
+    async def end_session(self, cmd: CloseSessionCommand) -> EndSessionHandlerResult:  # pylint: disable=missing-function-docstring
         return await end_session(cmd, self.client)
 
-    async def run_slash_command(
+    async def run_slash_command(  # pylint: disable=too-many-arguments,too-many-locals
         self,
         command: SlashCommand,
         project_path: str,
@@ -170,9 +170,9 @@ class CommandService:
         human caller session is available.  The session_metadata is derived from
         COMMAND_ROLE_MAP so auth can identify system_role and job.
         """
-        from teleclaude.core.command_mapper import CommandMapper
-        from teleclaude.core.models import MessageMetadata, SessionMetadata
-        from teleclaude.core.origins import InputOrigin
+        from teleclaude.core.command_mapper import CommandMapper  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.models import MessageMetadata, SessionMetadata  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
 
         role_info = COMMAND_ROLE_MAP.get(command)
         session_meta = SessionMetadata(system_role=role_info[0], job=role_info[1].value) if role_info else None

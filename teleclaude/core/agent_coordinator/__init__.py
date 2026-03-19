@@ -7,7 +7,7 @@ Handles agent lifecycle events (start, stop) and routes them to:
 """
 
 from teleclaude.core.agent_coordinator._coordinator import AgentCoordinator
-from teleclaude.core.agent_coordinator._helpers import SESSION_START_MESSAGES
+from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 
 __all__ = [
     "SESSION_START_MESSAGES",

@@ -10,6 +10,7 @@ import pytest
 from fastapi import HTTPException
 
 from teleclaude.api import sessions_routes
+from teleclaude.api.sessions_routes import ListSessionsQuery
 from teleclaude.api_models import CreateSessionRequest, SendMessageRequest
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import SessionSnapshot
@@ -80,11 +81,13 @@ class TestSessionsRoutes:
         ):
             response = await sessions_routes.list_sessions(
                 request,
-                computer=None,
-                include_closed=False,
-                all_sessions=False,
-                job=None,
-                identity=object(),
+                query=ListSessionsQuery(
+                    computer=None,
+                    include_closed=False,
+                    all_sessions=False,
+                    job=None,
+                ),
+                _identity=object(),
             )
 
         assert [session.session_id for session in response] == ["owned", "shared"]
@@ -133,7 +136,7 @@ class TestSessionsRoutes:
             db.get_session = AsyncMock(return_value=session)
             db.update_session = AsyncMock()
 
-            response = await sessions_routes.end_session(request, "sess-closed", computer="local", identity=object())
+            response = await sessions_routes.end_session(request, "sess-closed", _computer="local", _identity=object())
 
         assert response["status"] == "success"
         emit.assert_called_once()

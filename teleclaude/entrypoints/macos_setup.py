@@ -30,6 +30,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Run the selected macOS setup action against the requested project root."""
     parser = _build_parser()
     args = parser.parse_args()
 

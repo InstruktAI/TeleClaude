@@ -35,6 +35,8 @@ class ObservationConcept(str, Enum):
 
 @dataclass
 class ObservationInput:
+    """Input payload for creating a memory observation."""
+
     text: str
     title: str | None = None
     project: str | None = None
@@ -46,13 +48,17 @@ class ObservationInput:
 
 @dataclass
 class ObservationResult:
+    """Result after saving an observation."""
+
     id: int
     title: str
     project: str
 
 
 @dataclass
-class SearchResult:
+class SearchResult:  # pylint: disable=too-many-instance-attributes
+    """Search result from memory observation queries."""
+
     id: int
     title: str | None
     subtitle: str | None

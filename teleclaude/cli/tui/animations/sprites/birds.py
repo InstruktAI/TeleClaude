@@ -62,7 +62,7 @@ BIRD_LARGE_FRONT = replace(BIRD_LARGE,
     z_weights=[(69, 50), (82, 50)],
     y_weights=[(6, 6, 100)],
 )
-    
+
 BIRD_FLOCK = SpriteGroup(
     entries=[
         (BIRD_SMALL,  0.8, (9, 26)),

@@ -69,7 +69,7 @@ async def create_agent_session_with_auto_command(
     )
 
 
-def _intent_to_auto_command(intent: SessionLaunchIntent) -> str | None:
+def _intent_to_auto_command(intent: SessionLaunchIntent) -> str | None:  # pylint: disable=too-many-return-statements  # Early-return routing is intentionally branchy.
     if intent.kind == SessionLaunchKind.EMPTY:
         return None
     if intent.kind == SessionLaunchKind.AGENT:

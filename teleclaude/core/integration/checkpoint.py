@@ -45,6 +45,7 @@ class IntegrationPhase(str, Enum):
 
 
 @dataclass
+# pylint: disable=too-many-instance-attributes
 class IntegrationCheckpoint:
     """Durable checkpoint for crash recovery and idempotent re-entry."""
 
@@ -123,7 +124,7 @@ def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
             error_context=data.get("error_context"),
             pre_merge_head=data.get("pre_merge_head"),
         )
-    except Exception:
+    except (OSError, TypeError, ValueError):
         logger.warning("Failed to read integration checkpoint at %s; starting fresh", path)
         return default
 

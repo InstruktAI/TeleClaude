@@ -7,7 +7,7 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 
-class MacOSSayBackend:
+class MacOSSayBackend:  # pylint: disable=too-few-public-methods
     """macOS native TTS using say command."""
 
     def speak(self, text: str, voice_name: str | None = None) -> bool:
@@ -28,7 +28,7 @@ class MacOSSayBackend:
             cmd.append(text)
 
             subprocess.run(cmd, check=True, capture_output=True, timeout=300)
-            logger.debug(f"macOS say: spoke {len(text)} chars", extra={"voice": voice_name})
+            logger.debug(f"macOS say: spoke {len(text)} chars", extra={"voice": voice_name})  # pylint: disable=logging-fstring-interpolation
             return True
         except subprocess.TimeoutExpired:
             logger.error("macOS say: timeout", extra={"voice": voice_name})
@@ -36,6 +36,6 @@ class MacOSSayBackend:
         except FileNotFoundError:
             logger.error("macOS say: command not found (not on macOS?)")
             return False
-        except Exception as e:
-            logger.debug(f"macOS say failed: {e}", extra={"voice": voice_name})
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.debug(f"macOS say failed: {e}", extra={"voice": voice_name})  # pylint: disable=logging-fstring-interpolation
             return False

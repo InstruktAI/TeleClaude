@@ -1,4 +1,5 @@
 """Add notification_outbox table for durable role-based notifications."""
+# pylint: disable=invalid-name  # Migration filenames are versioned on purpose.
 
 from __future__ import annotations
 

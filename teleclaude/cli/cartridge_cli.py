@@ -7,6 +7,7 @@ Handles:
   telec config cartridges promote --from sandbox --to domain --domain <name> --id <name>
   telec config cartridges list [--scope sandbox] [--domain <name>] [--member <id>]
 """
+# pylint: disable=import-outside-toplevel,broad-exception-caught
 
 from __future__ import annotations
 
@@ -269,13 +270,18 @@ def _handle_promote_action(
     if not parsed.target_domain:
         print("Error: --domain is required when promoting between lifecycle scopes", file=sys.stderr)
         sys.exit(1)
-    manager.promote(
-        cartridge_id=parsed.cartridge_id,
+    from teleclaude.events.lifecycle import PromotionSpec
+
+    spec = PromotionSpec(
         from_scope=cartridge_scope(parsed.from_scope),
         to_scope=cartridge_scope(parsed.to_scope),
         target_domain=parsed.target_domain,
-        caller_is_admin=is_admin,
         source_member_id=getattr(parsed, "source_member_id", None),
+    )
+    manager.promote(
+        cartridge_id=parsed.cartridge_id,
+        spec=spec,
+        caller_is_admin=is_admin,
     )
     _emit_cartridge_result(
         use_json,
@@ -333,6 +339,7 @@ def _handle_list_action(
 
 
 def handle_cartridge_cli(args: list[str]) -> None:
+    """Dispatch cartridge subcommands from parsed CLI args."""
     parser = _build_cartridge_parser()
     parsed = parser.parse_args(args)
 

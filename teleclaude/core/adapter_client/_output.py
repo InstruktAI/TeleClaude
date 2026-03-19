@@ -26,7 +26,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         def _ui_adapters(self) -> list[tuple[str, UiAdapter]]: ...
 
-        async def _broadcast_to_ui_adapters(
+        async def _broadcast_to_ui_adapters(  # pylint: disable=unused-argument
             self,
             session: "Session",
             operation: str,
@@ -34,7 +34,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             include_adapters: set[str] | None = None,
         ) -> list[tuple[str, object]]: ...
 
-        async def _route_to_ui(
+        async def _route_to_ui(  # pylint: disable=unused-argument
             self,
             session: "Session",
             method: str,
@@ -45,7 +45,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
         """Send error feedback to all UI adapters, surfacing failures."""
-        ui_adapters = self._ui_adapters()
+        ui_adapters = [
+            (adapter_type, adapter) for adapter_type, adapter in self.adapters.items() if isinstance(adapter, UiAdapter)
+        ]
         if not ui_adapters:
             logger.warning("No UI adapters available for error feedback (session %s)", session_id)
             return
@@ -68,7 +70,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         if first_error is not None:
             raise first_error
 
-    async def send_message(
+    async def send_message(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
         self,
         session: "Session",
         text: str,
@@ -129,7 +131,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         deleted += 1
                     else:
                         failed += 1
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught  # Deletion failures are best-effort.
                     logger.debug("Best-effort feedback deletion failed: %s", e)
                     failed += 1
             if pending:
@@ -234,7 +236,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         session,
                         msg_id,
                     )
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught  # Deletion failures are best-effort.
                     logger.debug("Best-effort feedback deletion failed: %s", e)
             await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
@@ -344,7 +346,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         session,
                         msg_id,
                     )
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught  # Deletion failures are best-effort.
                     logger.debug("Best-effort feedback deletion failed: %s", e)
             await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
@@ -362,7 +364,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         )
         return str(result) if result else None
 
-    async def broadcast_user_input(
+    async def broadcast_user_input(  # pylint: disable=too-many-arguments  # Reflection payload is adapter-facing API.
         self,
         session: "Session",
         text: str,

@@ -17,6 +17,7 @@ from typing import Any
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.hooks.receiver._repo_root import resolve_main_repo_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
 WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
@@ -210,7 +211,7 @@ def _filter_receiver_handled_events(
     }
 
 
-def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
+def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:  # pylint: disable=unused-argument
     """Return TeleClaude hook definitions for Claude Code."""
     return _build_hook_map(
         receiver_invocation,
@@ -219,7 +220,7 @@ def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
     )
 
 
-def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
+def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:  # pylint: disable=unused-argument
     """Return TeleClaude hook definitions for Gemini CLI."""
     # Installer contract:
     # - Tool lane comes only from BeforeTool/AfterTool.
@@ -236,7 +237,9 @@ def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
     )
 
 
-def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str]) -> dict[str, Any]:
+def _prune_agent_hooks(  # pylint: disable=too-many-branches
+    existing_hooks: dict[str, Any], allowed_events: set[str]
+) -> dict[str, Any]:
     """Remove TeleClaude receiver hooks from unused events.
 
     Keep TeleClaude hooks only for allowed_events.
@@ -287,7 +290,7 @@ def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str])
     return pruned
 
 
-def _configure_json_agent_hooks(
+def _configure_json_agent_hooks(  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
     repo_root: Path,
     agent: str,
     settings_path: Path,
@@ -345,7 +348,7 @@ def _configure_json_agent_hooks(
     if overrides:
         settings = _deep_merge(settings, overrides)
 
-    with open(settings_path, "w") as f:
+    with open(settings_path, "w") as f:  # pylint: disable=unspecified-encoding
         json.dump(settings, f, indent=2)
 
     print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
@@ -385,7 +388,7 @@ def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, di
 
     if changed:
         settings["mcpServers"] = mcp_servers
-        with open(settings_path, "w") as f:
+        with open(settings_path, "w") as f:  # pylint: disable=unspecified-encoding
             json.dump(settings, f, indent=2)
         print(f"{label} MCP servers updated in {settings_path}")
     else:
@@ -419,7 +422,9 @@ def configure_gemini(repo_root: Path) -> None:
     _ensure_json_mcp_servers(Path.home() / ".gemini" / "settings.json", managed_mcp_servers, "Gemini")
 
 
-def configure_codex(repo_root: Path) -> None:
+def configure_codex(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+    repo_root: Path,
+) -> None:
     """Configure Codex CLI notify hook.
 
     Codex uses TOML config at ~/.codex/config.toml with a simple `notify` key
@@ -625,37 +630,6 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
     print(f"{wrapper_name} wrapper linked at {target_path} -> {source_path}")
 
 
-def resolve_main_repo_root(start: Path | None = None) -> Path:
-    """Resolve the main git repository root, even from a worktree.
-
-    In a worktree, .git is a file containing 'gitdir: <path>' pointing to
-    main_repo/.git/worktrees/<name>. This reads that file to find the main repo.
-    Pure filesystem — no subprocess, no external deps.
-    """
-    if start is None:
-        start = Path(__file__).resolve().parents[2]
-    current = start
-    while current != current.parent:
-        git_path = current / ".git"
-        if git_path.is_dir():
-            return current
-        if git_path.is_file():
-            try:
-                content = git_path.read_text().strip()
-            except OSError:
-                return current
-            if content.startswith("gitdir:"):
-                gitdir = Path(content.split(":", 1)[1].strip())
-                if not gitdir.is_absolute():
-                    gitdir = (current / gitdir).resolve()
-                for parent in gitdir.parents:
-                    if parent.name == ".git":
-                        return parent.parent
-            return current
-        current = current.parent
-    return start
-
-
 def install_env_symlink(repo_root: Path) -> None:
     """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
     project_env = repo_root / ".env"
@@ -680,7 +654,8 @@ def install_env_symlink(repo_root: Path) -> None:
 
 
 def main() -> None:
-    repo_root = resolve_main_repo_root()
+    """CLI entrypoint for installing agent hooks and wrappers."""
+    repo_root = resolve_main_repo_root(Path(__file__).resolve().parents[2])
     print(f"Configuring hooks from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")

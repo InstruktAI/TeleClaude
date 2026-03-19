@@ -1,4 +1,6 @@
 """TelecAppMediaMixin — animation, TTS, and ChipTunes management."""
+# pylint: disable=import-outside-toplevel,broad-exception-caught,protected-access
+# pylint: disable=too-many-arguments,too-many-positional-arguments
 
 from __future__ import annotations
 
@@ -70,7 +72,9 @@ class TelecAppMediaMixin:
 
         new_val = not self.query_one("#telec-footer", TelecFooter).tts_enabled  # type: ignore[attr-defined]
         try:
-            await self.api.patch_settings(SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=new_val)))  # type: ignore[attr-defined]
+            await self.api.patch_settings(  # type: ignore[attr-defined]
+                SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=new_val)),
+            )
             status_bar = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
             status_bar.tts_enabled = new_val
         except Exception as e:
@@ -307,7 +311,11 @@ class TelecAppMediaMixin:
             duration_seconds=3600,
             show_extra_motion=show_extra_motion,
         )
-        self._animation_engine.play(sky, priority=AnimationPriority.PERIODIC, target="header")  # type: ignore[attr-defined]
+        self._animation_engine.play(  # type: ignore[attr-defined]
+            sky,
+            priority=AnimationPriority.PERIODIC,
+            target="header",
+        )
         self._animation_engine.set_looping("header", True)  # type: ignore[attr-defined]
 
     def _stop_banner_animation(self) -> None:

@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
+class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods,too-many-instance-attributes  # Mixin only exposes private hooks. Attributes are explicit for runtime state.
     """Event platform and webhook service methods extracted from TeleClaudeDaemon."""
 
     if TYPE_CHECKING:
@@ -79,7 +79,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         webhook_delivery_task: asyncio.Task[object] | None
         channel_subscription_worker_task: asyncio.Task[object] | None
 
-        def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]: ...
+        def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]: ...  # pylint: disable=unused-argument
 
     async def _init_event_db_storage(self) -> None:
         """Initialize event storage."""
@@ -92,7 +92,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         redis_adapter = self.client.adapters.get("redis")
         if not isinstance(redis_adapter, RedisTransport):
             return None
-        return await redis_adapter._get_redis()
+        return await redis_adapter._get_redis()  # pylint: disable=protected-access
 
     def _configure_event_producer(self, redis_client: object) -> EventProducer:
         """Build and register the event producer."""
@@ -103,7 +103,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _iter_admin_people_configs(self) -> list[tuple[str, PersonConfig]]:
         """Load admin person configs from the global people directory."""
-        from teleclaude.config.loader import load_global_config, load_person_config
+        from teleclaude.config.loader import (  # pylint: disable=import-outside-toplevel
+            load_global_config,
+            load_person_config,
+        )
 
         people_dir = Path("~/.teleclaude/people").expanduser()
         global_cfg = load_global_config()
@@ -117,7 +120,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 continue
             try:
                 person_cfg = load_person_config(person_cfg_path)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
             admin_configs.append((person.name, person_cfg))
         return admin_configs
@@ -136,15 +139,15 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         api_server = getattr(self.lifecycle, "api_server", None)
         if api_server is None:
             return
-        api_server._event_db = self._event_db
-        push_callbacks.append(api_server._notification_push)
+        api_server._event_db = self._event_db  # pylint: disable=protected-access
+        push_callbacks.append(api_server._notification_push)  # pylint: disable=protected-access
 
     def _register_telegram_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
         """Register Telegram notification delivery for admins."""
         if not config.telegram:
             return
 
-        from teleclaude.services.telegram import send_telegram_dm
+        from teleclaude.services.telegram import send_telegram_dm  # pylint: disable=import-outside-toplevel
 
         try:
             for person_name, person_cfg in self._iter_admin_people_configs():
@@ -154,7 +157,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 adapter = TelegramDeliveryAdapter(chat_id=chat_id, send_fn=send_telegram_dm)
                 push_callbacks.append(adapter.on_notification)
                 logger.info("TelegramDeliveryAdapter registered for admin %s", person_name)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.warning("Could not load people config for Telegram delivery adapter")
 
     def _register_discord_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
@@ -162,8 +165,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         if not config.discord.enabled:
             return
 
-        from teleclaude.events.delivery.discord import DiscordDeliveryAdapter
-        from teleclaude.services.discord import send_discord_dm
+        from teleclaude.events.delivery.discord import DiscordDeliveryAdapter  # pylint: disable=import-outside-toplevel
+        from teleclaude.services.discord import send_discord_dm  # pylint: disable=import-outside-toplevel
 
         try:
             for person_name, person_cfg in self._iter_admin_people_configs():
@@ -173,7 +176,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 adapter = DiscordDeliveryAdapter(user_id=user_id, send_fn=send_discord_dm)
                 push_callbacks.append(adapter.on_notification)
                 logger.info("DiscordDeliveryAdapter registered for admin %s", person_name)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.warning("Could not load people config for Discord delivery adapter")
 
     def _register_whatsapp_delivery_callbacks(self, push_callbacks: list[Callable[..., object]]) -> None:
@@ -181,10 +184,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         if not config.whatsapp.enabled:
             return
 
-        from functools import partial
+        from functools import partial  # pylint: disable=import-outside-toplevel
 
-        from teleclaude.events.delivery.whatsapp import WhatsAppDeliveryAdapter
-        from teleclaude.services.whatsapp import send_whatsapp_message
+        from teleclaude.events.delivery.whatsapp import (  # pylint: disable=import-outside-toplevel
+            WhatsAppDeliveryAdapter,
+        )
+        from teleclaude.services.whatsapp import send_whatsapp_message  # pylint: disable=import-outside-toplevel
 
         try:
             for person_name, person_cfg in self._iter_admin_people_configs():
@@ -200,13 +205,17 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 adapter = WhatsAppDeliveryAdapter(phone_number=phone_number, send_fn=bound_send_fn)
                 push_callbacks.append(adapter.on_notification)
                 logger.info("WhatsAppDeliveryAdapter registered for admin %s", person_name)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.warning("Could not load people config for WhatsApp delivery adapter")
 
     def _build_integration_trigger(self) -> IntegrationTriggerCartridge:
         """Create the integration trigger cartridge."""
-        from teleclaude.core.integration.service import IntegrationEventService
-        from teleclaude.core.integration_bridge import spawn_integrator_session
+        from teleclaude.core.integration.service import (  # pylint: disable=import-outside-toplevel
+            IntegrationEventService,
+        )
+        from teleclaude.core.integration_bridge import (  # pylint: disable=import-outside-toplevel
+            spawn_integrator_session,
+        )
 
         integration_service = IntegrationEventService.create(
             reachability_checker=lambda _b, _s, _r: True,
@@ -214,7 +223,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
 
         def _ingest_callback(canonical_type: str, payload: object) -> list[tuple[str, str, str]]:
-            from collections.abc import Mapping
+            from collections.abc import Mapping  # pylint: disable=import-outside-toplevel
 
             if not isinstance(payload, Mapping):
                 return []
@@ -253,12 +262,14 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         if event_domains_cfg is None:
             return None
         try:
-            from teleclaude.events.startup import build_domain_pipeline_runner
+            from teleclaude.events.startup import (  # pylint: disable=import-outside-toplevel
+                build_domain_pipeline_runner,
+            )
 
             domain_runner = build_domain_pipeline_runner(event_domains_cfg)
             logger.info("Domain pipeline runner built successfully")
             return domain_runner
-        except Exception as domain_err:
+        except Exception as domain_err:  # pylint: disable=broad-exception-caught
             logger.error(
                 "Failed to build domain pipeline runner: %s — domain pipeline disabled",
                 domain_err,
@@ -288,7 +299,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _start_sandbox_watch_task(self, coro: object, task_name: str) -> None:
         """Start and monitor a sandbox background task."""
-        asyncio.create_task(coro, name=task_name).add_done_callback(self._log_background_task_exception(task_name))  # type: ignore[arg-type]
+        task: asyncio.Task[None] = asyncio.create_task(coro, name=task_name)  # type: ignore[arg-type]
+        task.add_done_callback(self._log_background_task_exception(task_name))
 
     def _register_sandbox_bridge(self, pipeline: Pipeline, event_producer: EventProducer) -> None:
         """Register the optional sandbox bridge."""
@@ -320,7 +332,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             )
             self._sandbox_manager = sandbox_manager
             logger.info("Sandbox bridge cartridge registered (socket=%s, dir=%s)", sandbox_socket, sandbox_dir)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Sandbox subsystem init failed — skipping: %s", exc, exc_info=True)
 
     def _start_event_processor(self, redis_client: object, pipeline: Pipeline) -> str:
@@ -366,7 +378,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         context.ai_client = signal_ai
         context.emit = event_producer.emit
 
-    def _start_signal_pipeline(
+    def _start_signal_pipeline(  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
         self,
         pipeline: Pipeline,
         context: PipelineContext,
@@ -380,12 +392,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         try:
             import anthropic  # pylint: disable=import-outside-toplevel
 
-            from company.cartridges.signal import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.cartridges.signal import (  # pylint: disable=import-outside-toplevel
                 SignalClusterCartridge,
                 SignalIngestCartridge,
                 SignalSynthesizeCartridge,
             )
-            from company.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel
                 SynthesizeConfig,
             )
             from teleclaude.events.signal.ai import (  # pylint: disable=import-outside-toplevel
@@ -459,10 +471,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             computer_label = self._start_event_processor(redis_client, pipeline)
             await self._emit_daemon_restarted_event(event_producer, computer_label)
             self._start_signal_pipeline(pipeline, context, event_producer)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Event platform startup failed; continuing without event platform")
 
-    async def _init_webhook_service(self) -> None:
+    async def _init_webhook_service(self) -> None:  # pylint: disable=too-many-locals,too-many-statements
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
 
         contract_registry = ContractRegistry()
@@ -490,7 +502,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
         # Built-in deployment channel handler.
         redis_transport = self.client.adapters.get("redis")
-        _get_redis_fn = redis_transport._get_redis if isinstance(redis_transport, RedisTransport) else None
+        _get_redis_fn = redis_transport._get_redis if isinstance(redis_transport, RedisTransport) else None  # pylint: disable=protected-access
         configure_deployment_handler(_get_redis_fn)
         handler_registry.register("deployment_update", handle_deployment_event)
         await contract_registry.register(
@@ -540,8 +552,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             redis_adapter = self.client.adapters.get("redis")
             if isinstance(redis_adapter, RedisTransport):
                 try:
-                    redis_client = await redis_adapter._get_redis()
-                except Exception as exc:
+                    redis_client = await redis_adapter._get_redis()  # pylint: disable=protected-access
+                except Exception as exc:  # pylint: disable=broad-exception-caught
                     logger.error(
                         "Failed to start channel subscription worker due to redis error",
                         error=str(exc),
@@ -577,7 +589,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._contract_sweep_task = asyncio.create_task(self._contract_sweep_loop())
         self._contract_sweep_task.add_done_callback(self._log_background_task_exception("contract_sweep"))
 
-        logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
+        logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))  # pylint: disable=protected-access
 
     async def _deployment_fanout_consumer(self, dispatcher: HookDispatcher, redis_transport: RedisTransport) -> None:
         """Consume deployment version_available events from Redis Stream and dispatch locally.
@@ -587,13 +599,13 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         triggered directly (github-source path calls execute_update before publishing).
         Remote daemons have different daemon_id values and will process the message normally.
         """
-        from teleclaude.hooks.webhook_models import HookEvent as _HookEvent
+        from teleclaude.hooks.webhook_models import HookEvent as _HookEvent  # pylint: disable=import-outside-toplevel
 
         last_id = "$"  # only new messages after startup
         logger.info("Deployment fanout consumer started (channel=%s)", DEPLOYMENT_FANOUT_CHANNEL)
-        while not self.shutdown_event.is_set():
+        while not self.shutdown_event.is_set():  # pylint: disable=too-many-nested-blocks  # Nested error handling is intentional.
             try:
-                redis = await redis_transport._get_redis()
+                redis = await redis_transport._get_redis()  # pylint: disable=protected-access
                 results = await redis.xread({DEPLOYMENT_FANOUT_CHANNEL: last_id}, count=10, block=5000)
                 if not results:
                     continue
@@ -611,11 +623,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                                 logger.debug("Deployment fanout: skipping self-originated message")
                                 continue
                             await dispatcher.dispatch(event)
-                        except Exception as exc:
+                        except Exception as exc:  # pylint: disable=broad-exception-caught
                             logger.warning("Deployment fanout: dispatch failed: %s", exc)
             except asyncio.CancelledError:
                 break
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("Deployment fanout consumer error: %s", exc)
                 await asyncio.sleep(5)
         logger.info("Deployment fanout consumer stopped")
@@ -627,7 +639,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
                 await asyncio.sleep(60)
                 if hasattr(self, "_contract_registry") and self._contract_registry:
                     await self._contract_registry.sweep_expired()
-            except asyncio.CancelledError:
+            except asyncio.CancelledError:  # pylint: disable=try-except-raise
                 raise
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.error("Contract sweep failed", exc_info=True)

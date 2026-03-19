@@ -5,6 +5,7 @@ from enum import Enum
 from typing import cast
 
 from teleclaude.core.feedback import get_last_output_summary
+from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
 from teleclaude.types import SystemStats
 
 from ._session import Session, SessionMetadata
@@ -21,7 +22,7 @@ class ThinkingMode(str, Enum):
 
 
 @dataclass
-class StartSessionArgs:
+class StartSessionArgs:  # pylint: disable=too-many-instance-attributes  # Command payload shape
     """Typed arguments for starting a session."""
 
     computer: str
@@ -35,7 +36,7 @@ class StartSessionArgs:
 
 
 @dataclass
-class RunAgentCommandArgs:
+class RunAgentCommandArgs:  # pylint: disable=too-many-instance-attributes  # Command payload shape
     """Typed arguments for run-agent command execution."""
 
     computer: str
@@ -49,7 +50,7 @@ class RunAgentCommandArgs:
 
 
 @dataclass
-class RedisInboundMessage:
+class RedisInboundMessage:  # pylint: disable=too-many-instance-attributes  # Redis payload shape
     """Typed Redis message parsed from raw stream entry."""
 
     msg_type: str
@@ -65,7 +66,10 @@ class RedisInboundMessage:
 
 
 @dataclass
-class SessionSnapshot:
+class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Session list payload shape
+    SessionSnapshotTimestampFields,
+    SessionSnapshotIdentityFields,
+):
     """Typed session snapshot for list_sessions output."""
 
     session_id: str
@@ -76,24 +80,11 @@ class SessionSnapshot:
     status: str
     project_path: str | None = None
     subdir: str | None = None
-    created_at: str | None = None
-    last_activity: str | None = None
-    closed_at: str | None = None
-    last_input: str | None = None
-    last_input_at: str | None = None
-    last_output_summary: str | None = None
-    last_output_summary_at: str | None = None
-    last_output_digest: str | None = None
-    native_session_id: str | None = None
-    tmux_session_name: str | None = None
-    initiator_session_id: str | None = None
-    computer: str | None = None
-    human_email: str | None = None
-    human_role: str | None = None
     visibility: str | None = "private"
     session_metadata: SessionMetadata | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
+        """Convert snapshot to a JSON-compatible dictionary."""
         return {
             "session_id": self.session_id,
             "last_input_origin": self.last_input_origin,
@@ -220,8 +211,6 @@ class AgentResumeArgs:
 class KillArgs:
     """Typed arguments for kill command."""
 
-    pass
-
 
 @dataclass
 class SystemCommandArgs:
@@ -241,7 +230,7 @@ class MessagePayload:
 
 
 @dataclass
-class ComputerInfo:
+class ComputerInfo:  # pylint: disable=too-many-instance-attributes  # Computer summary payload
     """Information about a computer (local or remote)."""
 
     name: str
@@ -254,11 +243,12 @@ class ComputerInfo:
     tmux_binary: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict
-        return cast(dict[str, object], asdict(self))
+        """Convert computer info to a JSON-compatible dictionary."""
+        return cast(dict[str, object], asdict(self))  # guard: loose-dict - serialization output
 
 
 @dataclass
-class TodoInfo:
+class TodoInfo:  # pylint: disable=too-many-instance-attributes  # Todo summary payload
     """Information about a work item todo."""
 
     slug: str
@@ -333,7 +323,9 @@ class ProjectInfo:
             path=str(data.get("path", "")),
             description=str(data.get("description") or data.get("desc") or ""),
             computer=cast(str | None, data.get("computer")),
-            todos=[TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))],  # guard: loose-dict
+            todos=[
+                TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))  # guard: loose-dict - JSON deserialization  # pylint: disable=line-too-long
+            ],
         )
         # fmt: on
 

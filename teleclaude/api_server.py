@@ -3,6 +3,8 @@
 This server provides HTTP endpoints for local clients (telec CLI, etc.)
 and routes write requests through AdapterClient.
 """
+# pylint: disable=import-outside-toplevel,too-many-instance-attributes,too-many-locals,too-many-statements
+# pylint: disable=too-many-arguments,too-many-positional-arguments,broad-exception-caught,protected-access
 
 from __future__ import annotations
 
@@ -364,16 +366,16 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     def _setup_routes(self) -> None:
         """Set up core HTTP endpoints (middleware, health, auth, todos, WebSocket)."""
 
-        _IDENTITY_HEADERS = {"x-web-user-email", "x-web-user-name", "x-web-user-role"}
-        _TRUSTED_HOSTS = {"127.0.0.1", "::1", "localhost"}
+        identity_headers = {"x-web-user-email", "x-web-user-name", "x-web-user-role"}
+        trusted_hosts = {"127.0.0.1", "::1", "localhost"}
 
         @self.app.middleware("http")
         async def _validate_identity_headers(request, call_next):  # type: ignore[no-untyped-def]
             """Reject identity headers from non-trusted sources."""
-            has_identity = any(h in _IDENTITY_HEADERS for h in request.headers)
+            has_identity = any(h in identity_headers for h in request.headers)
             if has_identity:
                 client_host = request.client.host if request.client else None
-                is_trusted = client_host in _TRUSTED_HOSTS or client_host is None or client_host == ""
+                is_trusted = client_host in trusted_hosts or client_host is None or client_host == ""
                 if not is_trusted:
                     logger.warning(
                         "Rejected identity headers from untrusted source: %s",
@@ -430,25 +432,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                     if project and (computer in (None, "local")):
                         raw_todos = await command_handlers.list_todos(project)
                         return [
-                            TodoDTO(
-                                slug=t.slug,
-                                status=t.status,
-                                description=t.description,
+                            TodoDTO.from_core(
+                                t,
                                 computer=config.computer.name,
                                 project_path=project,
-                                has_requirements=t.has_requirements,
-                                has_impl_plan=t.has_impl_plan,
-                                build_status=t.build_status,
-                                review_status=t.review_status,
-                                dor_score=t.dor_score,
-                                deferrals_status=t.deferrals_status,
-                                findings_count=t.findings_count,
-                                files=t.files,
-                                after=t.after,
-                                group=t.group,
-                                prepare_phase=t.prepare_phase,
-                                integration_phase=t.integration_phase,
-                                finalize_status=t.finalize_status,
                             )
                             for t in raw_todos
                         ]
@@ -462,25 +449,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 for entry in entries:
                     for todo in entry.todos:
                         result.append(
-                            TodoDTO(
-                                slug=todo.slug,
-                                status=todo.status,
-                                description=todo.description,
+                            TodoDTO.from_core(
+                                todo,
                                 computer=entry.computer,
                                 project_path=entry.project_path,
-                                has_requirements=todo.has_requirements,
-                                has_impl_plan=todo.has_impl_plan,
-                                build_status=todo.build_status,
-                                review_status=todo.review_status,
-                                dor_score=todo.dor_score,
-                                deferrals_status=todo.deferrals_status,
-                                findings_count=todo.findings_count,
-                                files=todo.files,
-                                after=todo.after,
-                                group=todo.group,
-                                prepare_phase=todo.prepare_phase,
-                                integration_phase=todo.integration_phase,
-                                finalize_status=todo.finalize_status,
                             )
                         )
                 return result
@@ -598,7 +570,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         self._cleanup_socket("start_server")
 
-        config = uvicorn.Config(
+        config = uvicorn.Config(  # pylint: disable=redefined-outer-name
             self.app,
             uds=self.socket_path,
             log_level="warning",

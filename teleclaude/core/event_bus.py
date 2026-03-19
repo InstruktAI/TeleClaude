@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 EventHandler = Callable[[EventType, EventContext], Awaitable[object]]
 
 
-class DispatchEnvelope(TypedDict, total=False):
+class DispatchEnvelope(TypedDict, total=False):  # pylint: disable=missing-class-docstring
     status: Literal["success", "error"]
     data: object | None
     error: str

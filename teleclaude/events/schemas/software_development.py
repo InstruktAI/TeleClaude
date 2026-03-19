@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def register_software_development(catalog: EventCatalog) -> None:
+    """Register software-development domain event schemas."""
     catalog.register(
         EventSchema(
             event_type="domain.software-development.planning.todo_created",

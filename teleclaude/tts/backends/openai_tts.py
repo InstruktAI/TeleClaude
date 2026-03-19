@@ -9,7 +9,7 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 
-class OpenAITTSBackend:
+class OpenAITTSBackend:  # pylint: disable=too-few-public-methods
     """OpenAI TTS using gpt-4o-mini-tts model."""
 
     def speak(self, text: str, voice_name: str | None = None) -> bool:
@@ -24,7 +24,7 @@ class OpenAITTSBackend:
             True if successful, False otherwise
         """
         try:
-            from openai import OpenAI
+            from openai import OpenAI  # pylint: disable=import-outside-toplevel
 
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
@@ -47,7 +47,7 @@ class OpenAITTSBackend:
             try:
                 response.write_to_file(tmp_path)
                 subprocess.run(["afplay", tmp_path], check=True, capture_output=True, timeout=300)
-                logger.debug(f"OpenAI: spoke {len(text)} chars with voice {voice}")
+                logger.debug(f"OpenAI: spoke {len(text)} chars with voice {voice}")  # pylint: disable=logging-fstring-interpolation
                 return True
             finally:
                 # Clean up temp file
@@ -60,6 +60,6 @@ class OpenAITTSBackend:
         except FileNotFoundError:
             logger.debug("afplay command not found (not on macOS?)")
             return False
-        except Exception as e:
-            logger.debug(f"OpenAI TTS failed: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.debug(f"OpenAI TTS failed: {e}")  # pylint: disable=logging-fstring-interpolation
             return False

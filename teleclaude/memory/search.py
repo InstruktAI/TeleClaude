@@ -15,10 +15,10 @@ from teleclaude.memory.types import ObservationType, SearchResult
 logger = get_logger(__name__)
 
 
-def _row_to_search_result(row: Any) -> SearchResult:
+def _row_to_search_result(row: Any) -> SearchResult:  # pylint: disable=too-many-return-statements
     """Convert a raw SQL row to SearchResult."""
     if hasattr(row, "_mapping"):
-        m = row._mapping
+        m = row._mapping  # pylint: disable=protected-access
         facts_raw = m.get("facts")
     elif isinstance(row, tuple):
         # Tuple index layout: id, title, subtitle, type, project, narrative, facts, created_at, created_at_epoch
@@ -57,7 +57,7 @@ _SEARCH_COLUMNS = "id, title, subtitle, type, project, narrative, facts, created
 class MemorySearch:
     """Search memory observations via FTS5 or LIKE fallback."""
 
-    async def search(
+    async def search(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         query: str,
         project: str | None = None,
@@ -76,7 +76,7 @@ class MemorySearch:
         """
         type_value = obs_type.value if obs_type else None
 
-        async with db._session() as session:
+        async with db._session() as session:  # pylint: disable=protected-access
             # Try FTS5 first
             try:
                 sql = (
@@ -94,10 +94,12 @@ class MemorySearch:
                     sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                     params["identity_key"] = identity_key
                 sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-                result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
+                result = await session.exec(  # type: ignore[call-overload]
+                    text(sql).bindparams(**params)  # guard: raw-sql
+                )
                 rows = result.fetchall()
                 return [_row_to_search_result(row) for row in rows]
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.debug("FTS5 search failed, falling back to LIKE", query=query)
 
             # LIKE fallback
@@ -117,11 +119,13 @@ class MemorySearch:
                 sql += " AND (identity_key IS NULL OR identity_key = :identity_key)"
                 params["identity_key"] = identity_key
             sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-            result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
+            result = await session.exec(  # type: ignore[call-overload]
+                text(sql).bindparams(**params)  # guard: raw-sql
+            )
             rows = result.fetchall()
             return [_row_to_search_result(row) for row in rows]
 
-    async def timeline(
+    async def timeline(  # pylint: disable=too-many-locals
         self,
         anchor_id: int,
         depth_before: int = 3,
@@ -129,7 +133,7 @@ class MemorySearch:
         project: str | None = None,
     ) -> list[SearchResult]:
         """Get observations around an anchor by created_at_epoch."""
-        async with db._session() as session:
+        async with db._session() as session:  # pylint: disable=protected-access
             # Get anchor epoch
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
@@ -146,17 +150,27 @@ class MemorySearch:
                 f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
                 "WHERE created_at_epoch <= :epoch AND id != :id"
             )
-            params_before: dict[str, str | int] = {"epoch": anchor_epoch, "id": anchor_id, "limit": depth_before}
+            params_before: dict[str, str | int] = {
+                "epoch": anchor_epoch,
+                "id": anchor_id,
+                "limit": depth_before,
+            }
             if project:
                 before_sql += " AND project = :project"
                 params_before["project"] = project
             before_sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-            result = await session.exec(text(before_sql).bindparams(**params_before))  # type: ignore[call-overload]    # guard: raw-sql
+            result = await session.exec(  # type: ignore[call-overload]
+                text(before_sql).bindparams(**params_before)  # guard: raw-sql
+            )
             before_rows = list(reversed(result.fetchall()))
 
             # Anchor itself
-            anchor_sql = f"SELECT {_SEARCH_COLUMNS} FROM memory_observations WHERE id = :id"  # guard: raw-sql
-            result = await session.exec(text(anchor_sql).bindparams(id=anchor_id))  # type: ignore[call-overload]    # guard: raw-sql
+            anchor_sql = (  # guard: raw-sql
+                f"SELECT {_SEARCH_COLUMNS} FROM memory_observations WHERE id = :id"
+            )
+            result = await session.exec(  # type: ignore[call-overload]
+                text(anchor_sql).bindparams(id=anchor_id)  # guard: raw-sql
+            )
             anchor_rows = result.fetchall()
 
             # After anchor
@@ -164,12 +178,18 @@ class MemorySearch:
                 f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
                 "WHERE created_at_epoch >= :epoch AND id != :id"
             )
-            params_after: dict[str, str | int] = {"epoch": anchor_epoch, "id": anchor_id, "limit": depth_after}
+            params_after: dict[str, str | int] = {
+                "epoch": anchor_epoch,
+                "id": anchor_id,
+                "limit": depth_after,
+            }
             if project:
                 after_sql += " AND project = :project"
                 params_after["project"] = project
             after_sql += " ORDER BY created_at_epoch ASC LIMIT :limit"
-            result = await session.exec(text(after_sql).bindparams(**params_after))  # type: ignore[call-overload]    # guard: raw-sql
+            result = await session.exec(  # type: ignore[call-overload]
+                text(after_sql).bindparams(**params_after)  # guard: raw-sql
+            )
             after_rows = result.fetchall()
 
             all_rows = before_rows + list(anchor_rows) + list(after_rows)
@@ -191,8 +211,10 @@ class MemorySearch:
             params["project"] = project
         sql += " ORDER BY created_at_epoch DESC"
 
-        async with db._session() as session:
-            result = await session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
+        async with db._session() as session:  # pylint: disable=protected-access
+            result = await session.exec(  # type: ignore[call-overload]
+                text(sql).bindparams(**params)  # guard: raw-sql
+            )
             rows = result.fetchall()
             return [_row_to_search_result(row) for row in rows]
 
@@ -223,7 +245,7 @@ class MemorySearch:
                 result = session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
                 rows = result.fetchall()
                 return [_row_to_search_result(row) for row in rows]
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
             # LIKE fallback
@@ -237,6 +259,8 @@ class MemorySearch:
                 sql += " AND project = :project"
                 params["project"] = project
             sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-            result = session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
+            result = session.exec(  # type: ignore[call-overload]
+                text(sql).bindparams(**params)  # guard: raw-sql
+            )
             rows = result.fetchall()
             return [_row_to_search_result(row) for row in rows]

@@ -16,7 +16,7 @@ from teleclaude.config.schema import (
 logger = get_logger(__name__)
 
 
-def discover_job_recipients(
+def discover_job_recipients(  # pylint: disable=too-many-branches,too-many-locals  # Multi-case routing is intentionally flat. Flat data assembly is intentionally verbose.
     job_name: str,
     job_category: str,
     *,
@@ -65,7 +65,7 @@ def discover_job_recipients(
 
         try:
             person_cfg = load_person_config(person_cfg_path)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("skipping bad person config", path=str(person_cfg_path), error=str(exc))
             continue
 

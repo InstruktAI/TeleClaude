@@ -8,6 +8,8 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import copy
+import hashlib
+import importlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -27,11 +29,33 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
-from teleclaude.core.next_machine.file_io import file_sha256, read_text_sync, write_text_sync
-from teleclaude.core.next_machine.git_ops import has_uncommitted_changes
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# File helpers
+# ---------------------------------------------------------------------------
+
+
+def read_text_sync(path: Path) -> str:
+    """Read text from a file in a typed sync wrapper."""
+    return path.read_text(encoding="utf-8")
+
+
+def write_text_sync(path: Path, content: str) -> None:
+    """Write text to a file in a typed sync wrapper."""
+    path.write_text(content, encoding="utf-8")
+
+
+def _file_sha256(path: Path) -> str:
+    """Return sha256 digest for a file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 
 # ---------------------------------------------------------------------------
 # Git primitives (needed by mark operations below)
@@ -44,7 +68,7 @@ def _get_head_commit(cwd: str) -> str:
         repo = Repo(cwd)
         result: str = repo.git.rev_parse("HEAD").strip()
         return result
-    except (GitCommandError, Exception):
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
         return ""
 
 
@@ -54,7 +78,7 @@ def _get_ref_commit(cwd: str, ref: str) -> str:
         repo = Repo(cwd)
         result: str = repo.git.rev_parse(ref).strip()
         return result
-    except (GitCommandError, Exception):
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
         return ""
 
 
@@ -63,7 +87,7 @@ def _get_remote_branch_head(cwd: str, branch: str) -> str:
     try:
         repo = Repo(cwd)
         output = repo.git.ls_remote("origin", f"refs/heads/{branch}").strip()
-    except (GitCommandError, Exception):
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
         return ""
     parts = output.split()
     return parts[0] if parts else ""
@@ -141,7 +165,7 @@ def _deep_merge_state(defaults: dict[str, StateValue], persisted: dict[str, Stat
                 merged_nested: dict[str, StateValue] = copy.deepcopy(default_val)
                 for nested_key, nested_val in value.items():
                     if isinstance(merged_nested.get(nested_key), dict) and isinstance(nested_val, dict):
-                        inner: dict[str, StateValue] = copy.deepcopy(merged_nested[nested_key])  # type: ignore[arg-type]
+                        inner: dict[str, StateValue] = copy.deepcopy(merged_nested[nested_key])  # type: ignore[arg-type]  # pylint: disable=line-too-long
                         inner.update(nested_val)
                         merged_nested[nested_key] = inner
                     else:
@@ -316,13 +340,13 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
 
     if status == PreparePhase.PREPARED.value:
         grounding = state.get("grounding", {})
-        grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore
+        grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
         rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
         if rc == 0 and current_sha.strip():
             grounding_dict["base_sha"] = current_sha.strip()
         input_path = Path(cwd) / "todos" / slug / "input.md"
         if input_path.exists():
-            grounding_dict["input_digest"] = file_sha256(input_path)
+            grounding_dict["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
         grounding_dict["valid"] = True
         grounding_dict["last_grounded_at"] = datetime.now(UTC).isoformat()
         grounding_dict["invalidation_reason"] = ""
@@ -340,6 +364,7 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
     FINALIZE_READY. The record becomes the single source of truth consumed by
     the subsequent slug-specific `telec todo work {slug}` handoff step.
     """
+    has_uncommitted_changes = importlib.import_module("teleclaude.core.next_machine.git_ops").has_uncommitted_changes
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not Path(worktree_cwd).exists():
         raise ValueError(f"worktree not found at {worktree_cwd}")
@@ -651,7 +676,7 @@ def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
     if rc == 0 and current_sha.strip():
         grounding["base_sha"] = current_sha.strip()
     if input_path.exists():
-        grounding["input_digest"] = file_sha256(input_path)
+        grounding["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
     state["grounding"] = grounding
 
     write_phase_state(cwd, slug, state)
@@ -686,20 +711,9 @@ def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, S
 
     artifact_file = _PREPARE_ARTIFACT_FILES.get(artifact_key)
     if artifact_file is not None:
-        state = read_phase_state(cwd, slug)
-        artifacts = state.get("artifacts", {})
-        if not isinstance(artifacts, dict):
-            artifacts = {}
-        entry = artifacts.get(artifact_key, {})
-        if not isinstance(entry, dict):
-            entry = {}
-        artifact_path = Path(cwd) / "todos" / slug / artifact_file
-        entry["digest"] = file_sha256(artifact_path) if artifact_path.exists() else ""
-        entry["produced_at"] = datetime.now(UTC).isoformat()
-        entry["stale"] = False
-        artifacts[artifact_key] = entry
-        state["artifacts"] = artifacts
-        write_phase_state(cwd, slug, state)
+        from teleclaude.core.next_machine.prepare_helpers import record_artifact_produced  # noqa: I001  # pylint: disable=import-outside-toplevel
+
+        record_artifact_produced(cwd, slug, artifact_file)
         return read_phase_state(cwd, slug)
 
     state = read_phase_state(cwd, slug)
@@ -727,11 +741,11 @@ def _has_content(path: Path) -> bool:
 
 
 __all__ = [
+    "_file_sha256",
     "_is_review_round_limit_reached",
     "_mark_finalize_handed_off",
     "_review_scope_note",
     "check_review_status",
-    "file_sha256",
     "get_state_path",
     "has_pending_deferrals",
     "is_bug_todo",

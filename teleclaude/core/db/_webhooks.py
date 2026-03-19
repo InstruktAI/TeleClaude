@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import update
+from sqlmodel import select
 
 from .. import db_models
 
@@ -14,6 +16,8 @@ logger = get_logger(__name__)
 
 
 class DbWebhooksMixin:
+    """Webhook contract and delivery outbox persistence helpers."""
+
     async def upsert_webhook_contract(self, contract_id: str, contract_json: str, source: str = "api") -> None:
         """Insert or update a webhook contract."""
         now = datetime.now(UTC).isoformat()
@@ -39,8 +43,6 @@ class DbWebhooksMixin:
 
     async def deactivate_webhook_contract(self, contract_id: str) -> bool:
         """Deactivate a webhook contract. Returns True if found."""
-        from sqlalchemy import update
-
         now = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.WebhookContract)
@@ -54,8 +56,6 @@ class DbWebhooksMixin:
 
     async def list_webhook_contracts(self, active_only: bool = True) -> list[db_models.WebhookContract]:
         """List webhook contracts."""
-        from sqlmodel import select
-
         stmt = select(db_models.WebhookContract)
         if active_only:
             stmt = stmt.where(db_models.WebhookContract.active == 1)
@@ -90,8 +90,6 @@ class DbWebhooksMixin:
 
     async def fetch_webhook_batch(self, limit: int, now_iso: str) -> list[db_models.WebhookOutbox]:
         """Fetch a batch of due webhook deliveries."""
-        from sqlmodel import select
-
         stmt = (
             select(db_models.WebhookOutbox)
             .where(db_models.WebhookOutbox.status == "pending")
@@ -106,8 +104,6 @@ class DbWebhooksMixin:
 
     async def claim_webhook(self, row_id: int, now_iso: str) -> bool:
         """Claim a webhook outbox row for delivery."""
-        from sqlalchemy import update
-
         stmt = (
             update(db_models.WebhookOutbox)
             .where(
@@ -124,8 +120,6 @@ class DbWebhooksMixin:
 
     async def mark_webhook_delivered(self, row_id: int) -> None:
         """Mark a webhook delivery as successful."""
-        from sqlalchemy import update
-
         now = datetime.now(UTC).isoformat()
         stmt = (
             update(db_models.WebhookOutbox)
@@ -136,7 +130,7 @@ class DbWebhooksMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def mark_webhook_failed(
+    async def mark_webhook_failed(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Retry bookkeeping is persisted as discrete columns.
         self,
         row_id: int,
         error: str,
@@ -145,8 +139,6 @@ class DbWebhooksMixin:
         status: str = "pending",
     ) -> None:
         """Record a webhook delivery failure and schedule retry."""
-        from sqlalchemy import update
-
         stmt = (
             update(db_models.WebhookOutbox)
             .where(db_models.WebhookOutbox.id == row_id)

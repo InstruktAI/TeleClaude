@@ -28,12 +28,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from instrukt_ai_logging import get_logger
+from instrukt_ai_logging import get_logger  # pylint: disable=wrong-import-position
 
-from teleclaude.config import config as app_config
-from teleclaude.core.agents import get_enabled_agents, is_agent_enabled
-from teleclaude.helpers.agent_types import AgentName, ThinkingMode
-from teleclaude.runtime.binaries import resolve_agent_binary
+from teleclaude.config import config as app_config  # pylint: disable=wrong-import-position
+from teleclaude.constants import AGENT_PROTOCOL  # pylint: disable=wrong-import-position
+from teleclaude.core.agents import get_enabled_agents, is_agent_enabled  # pylint: disable=wrong-import-position
+from teleclaude.helpers.agent_types import AgentName, ThinkingMode  # pylint: disable=wrong-import-position
+from teleclaude.runtime.binaries import resolve_agent_binary  # pylint: disable=wrong-import-position
 
 logger = get_logger(__name__)
 _APP_CONFIG_COMPAT = app_config
@@ -60,39 +61,9 @@ class _OneshotSpec(TypedDict, total=False):
 
 
 _AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
-    "claude": {
-        "fast": "--model haiku",
-        "med": "--model 'sonnet[1m]['",
-        "slow": "--model 'opus[1m]'",
-    },
-    "gemini": {
-        "fast": "-m gemini-2.5-flash-lite",
-        "med": "-m gemini-3-flash-preview",
-        "slow": "-m gemini-3-pro-preview",
-    },
-    "codex": {
-        "fast": (
-            "-m gpt-5.4"
-            " --config model_reasoning_effort='medium'"
-            " --config model_supports_reasoning_summaries=true"
-            " --config show_raw_agent_reasoning=true"
-            " --config hide_agent_reasoning=false"
-        ),
-        "med": (
-            "-m gpt-5.4"
-            " --config model_reasoning_effort='high'"
-            " --config model_supports_reasoning_summaries=true"
-            " --config show_raw_agent_reasoning=true"
-            " --config hide_agent_reasoning=false"
-        ),
-        "slow": (
-            "-m gpt-5.4"
-            " --config model_reasoning_effort='xhigh'"
-            " --config model_supports_reasoning_summaries=true"
-            " --config show_raw_agent_reasoning=true"
-            " --config hide_agent_reasoning=false"
-        ),
-    },
+    agent: model_flags
+    for agent, protocol in AGENT_PROTOCOL.items()
+    if isinstance((model_flags := protocol.get("model_flags")), dict)
 }
 
 
@@ -195,7 +166,7 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
             return path.exists() and path.is_file() and os.access(path, os.X_OK)
         return shutil.which(binary) is not None
 
-    def db_available(agent: AgentName) -> bool:
+    def db_available(agent: AgentName) -> bool:  # pylint: disable=too-many-return-statements  # Early-return routing is intentionally branchy.
         """Read agent availability from teleclaude.db.
 
         Missing DB/table/row is treated as available to preserve standalone behavior.
@@ -288,7 +259,7 @@ def _cli_env() -> dict[str, str]:
     }
 
 
-def _run_agent(
+def _run_agent(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-statements
     agent: AgentName,
     thinking_mode: ThinkingMode,
     prompt: str,
@@ -305,8 +276,8 @@ def _run_agent(
 
     binary = resolve_agent_binary(agent.value)
     flags = str(spec.get("flags", ""))
-    model_flags = spec.get("model_flags", {})
-    model_flag = model_flags.get(thinking_mode.value)
+    agent_model_flags = spec.get("model_flags", {})
+    model_flag = agent_model_flags.get(thinking_mode.value)
     if model_flag is None:
         raise RuntimeError(f"Invalid thinking_mode '{thinking_mode.value}' for agent '{agent.value}'")
 
@@ -329,7 +300,7 @@ def _run_agent(
 
     if schema_arg:
         if schema_file.lower() == "true":
-            import tempfile
+            import tempfile  # pylint: disable=import-outside-toplevel
 
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 json.dump(schema, f)
@@ -419,7 +390,7 @@ _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
 }
 
 
-def run_job(
+def run_job(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
     *,
     agent: str | None,
     thinking_mode: str,
@@ -447,8 +418,8 @@ def run_job(
     binary = resolve_agent_binary(agent_enum.value)
     flags = str(spec.get("flags", ""))
     model_flags_raw = spec.get("model_flags", {})
-    model_flags: dict[str, str] = model_flags_raw if isinstance(model_flags_raw, dict) else {}
-    model_flag = model_flags.get(mode_enum.value)
+    agent_model_flags: dict[str, str] = model_flags_raw if isinstance(model_flags_raw, dict) else {}
+    model_flag = agent_model_flags.get(mode_enum.value)
     if model_flag is None:
         raise RuntimeError(f"Invalid thinking_mode '{mode_enum.value}' for agent '{agent_enum.value}'")
 
@@ -481,7 +452,7 @@ def run_job(
     return result.returncode
 
 
-def run_once(
+def run_once(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals
     *,
     agent: str | None,
     thinking_mode: str,
@@ -493,6 +464,7 @@ def run_once(
     debug_raw: bool = False,
     timeout_s: int | None = None,
 ) -> dict[str, object]:  # guard: loose-dict - Agent response with embedded result
+    """Run a single agent invocation and return the structured response."""
     agent_enum = _pick_agent(AgentName.from_str(agent) if agent else None)
     mode_enum = ThinkingMode.from_str(thinking_mode or ThinkingMode.FAST.value)
 
@@ -567,6 +539,7 @@ def run_once(
 
 
 def main() -> int:
+    """CLI entrypoint for one-shot agent invocations."""
     parser = argparse.ArgumentParser(description="One-shot agent runner (JSON output required).")
     parser.add_argument("--agent", choices=AgentName.choices(), help="Agent name (optional)")
     parser.add_argument("--thinking-mode", choices=ThinkingMode.choices(), default="fast")
@@ -604,7 +577,7 @@ def main() -> int:
         )
         print(json.dumps(payload))
         return 0
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         payload = {
             "status": "error",
             "agent": args.agent if args.agent else None,

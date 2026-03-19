@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -26,6 +27,27 @@ if TYPE_CHECKING:
     from teleclaude.cli.models import SessionInfo
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class _PaneLayoutState:
+    """Mutable layout state shared across pane-manager mixins."""
+
+    sticky_specs: list[SessionPaneSpec] = field(default_factory=list)
+    active_spec: SessionPaneSpec | None = None
+    selected_session_id: str | None = None
+    tree_node_has_focus: bool = False
+    layout_signature: tuple[object, ...] | None = None
+    bg_signature: tuple[object, ...] | None = None
+
+
+@dataclass
+class _ReloadPaneState:
+    """Pane ids discovered during a tmux reload."""
+
+    session_panes: dict[str, str] = field(default_factory=dict)
+    command_panes: list[str] = field(default_factory=list)
+
 
 __all__ = [
     "LAYOUT_SPECS",
@@ -61,17 +83,9 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         """
         self.state = PaneState()
         self._in_tmux = bool(os.environ.get("TMUX"))
-        self._sticky_specs: list[SessionPaneSpec] = []
-        self._active_spec: SessionPaneSpec | None = None
-        self._selected_session_id: str | None = None
-        self._tree_node_has_focus: bool = False
-        self._layout_signature: tuple[object, ...] | None = None
-        self._bg_signature: tuple[object, ...] | None = None
+        self._layout_state = _PaneLayoutState()
         self._session_catalog: dict[str, SessionInfo] = {}
-        # tmux_session_name → pane_id mapping discovered during reload
-        self._reload_session_panes: dict[str, str] = {}
-        # Non-session panes (doc preview commands) discovered during reload
-        self._reload_command_panes: list[str] = []
+        self._reload_state = _ReloadPaneState()
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
@@ -86,6 +100,66 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             # Enable focus event forwarding so embedded apps (editor) receive
             # AppBlur/AppFocus for autosave-on-focus-loss.
             self._run_tmux("set", "-g", "focus-events", "on")
+
+    @property
+    def _sticky_specs(self) -> list[SessionPaneSpec]:
+        return self._layout_state.sticky_specs
+
+    @_sticky_specs.setter
+    def _sticky_specs(self, value: list[SessionPaneSpec]) -> None:
+        self._layout_state.sticky_specs = value
+
+    @property
+    def _active_spec(self) -> SessionPaneSpec | None:
+        return self._layout_state.active_spec
+
+    @_active_spec.setter
+    def _active_spec(self, value: SessionPaneSpec | None) -> None:
+        self._layout_state.active_spec = value
+
+    @property
+    def _selected_session_id(self) -> str | None:
+        return self._layout_state.selected_session_id
+
+    @_selected_session_id.setter
+    def _selected_session_id(self, value: str | None) -> None:
+        self._layout_state.selected_session_id = value
+
+    @property
+    def _tree_node_has_focus(self) -> bool:
+        return self._layout_state.tree_node_has_focus
+
+    @_tree_node_has_focus.setter
+    def _tree_node_has_focus(self, value: bool) -> None:
+        self._layout_state.tree_node_has_focus = value
+
+    @property
+    def _layout_signature(self) -> tuple[object, ...] | None:
+        return self._layout_state.layout_signature
+
+    @_layout_signature.setter
+    def _layout_signature(self, value: tuple[object, ...] | None) -> None:
+        self._layout_state.layout_signature = value
+
+    @property
+    def _bg_signature(self) -> tuple[object, ...] | None:
+        return self._layout_state.bg_signature
+
+    @_bg_signature.setter
+    def _bg_signature(self, value: tuple[object, ...] | None) -> None:
+        self._layout_state.bg_signature = value
+
+    @property
+    def _reload_session_panes(self) -> dict[str, str]:
+        return self._reload_state.session_panes
+
+    @property
+    def _reload_command_panes(self) -> list[str]:
+        return self._reload_state.command_panes
+
+    def has_reload_panes(self) -> bool:
+        """Return whether reload-discovered panes are waiting to be adopted."""
+        return bool(self._reload_session_panes or self._reload_command_panes)
 
     @property
     def is_available(self) -> bool:
@@ -250,12 +324,12 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             pane_id = reload_map.get(session.tmux_session_name)
             if pane_id:
                 self.state.session_to_pane[session_id] = pane_id
-        self._sticky_specs = sticky_specs
+        self._layout_state.sticky_specs = sticky_specs
 
         if active_session_id:
             session = self._session_catalog.get(active_session_id)
             if session and session.tmux_session_name:
-                self._active_spec = SessionPaneSpec(
+                self._layout_state.active_spec = SessionPaneSpec(
                     session_id=session.session_id,
                     tmux_session_name=session.tmux_session_name,
                     computer_info=get_computer_info(session.computer or "local"),
@@ -273,9 +347,13 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         for tmux_name, pane_id in reload_map.items():
             if pane_id not in mapped_panes and self._get_pane_exists(pane_id):
                 self._run_tmux("kill-pane", "-t", pane_id)
-                logger.debug("seed_for_reload: killed unmapped session pane %s (tmux=%s)", pane_id, tmux_name)
+                logger.debug(
+                    "seed_for_reload: killed unmapped session pane %s (tmux=%s)",
+                    pane_id,
+                    tmux_name,
+                )
 
-        self._layout_signature = self._compute_layout_signature()
+        self._layout_state.layout_signature = self._compute_layout_signature()
         self._reload_session_panes.clear()
 
     def _run_tmux(self, *args: str) -> str:
@@ -330,7 +408,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         )
         if session_name and not session_name.startswith(self.TUI_SESSION_PREFIX):
             logger.error(
-                "TUI pane %s belongs to session '%s', not '%s' — disabling pane management to prevent orphan splits",
+                ("TUI pane %s belongs to session '%s', not '%s' — disabling pane management to prevent orphan splits"),
                 self._tui_pane_id,
                 session_name,
                 self.TUI_SESSION_PREFIX,
@@ -379,6 +457,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 [appearance_bin, "get-mode"],
                 capture_output=True,
                 text=True,
+                check=False,
                 timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
@@ -392,6 +471,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 [appearance_bin, "get-terminal-bg"],
                 capture_output=True,
                 text=True,
+                check=False,
                 timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
@@ -487,7 +567,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         )
 
         spec_session_id = session_id or tmux_session_name
-        self._active_spec = SessionPaneSpec(
+        self._layout_state.active_spec = SessionPaneSpec(
             session_id=spec_session_id,
             tmux_session_name=tmux_session_name,
             computer_info=computer_info,
@@ -501,7 +581,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
     def hide_sessions(self) -> None:
         """Hide active/preview session pane (preserve sticky panes)."""
-        self._active_spec = None
+        self._layout_state.active_spec = None
         self.state.active_session_id = None
         self._render_layout()
         logger.debug("hide_sessions: cleared active pane")
@@ -609,7 +689,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 )
             )
 
-        self._sticky_specs = sticky_specs
+        self._layout_state.sticky_specs = sticky_specs
         if self._layout_is_unchanged():
             return
         self._render_layout()
