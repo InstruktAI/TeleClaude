@@ -17,6 +17,7 @@ from typing import Any
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.hooks.receiver._repo_root import resolve_main_repo_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
 WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
@@ -629,37 +630,6 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
     print(f"{wrapper_name} wrapper linked at {target_path} -> {source_path}")
 
 
-def resolve_main_repo_root(start: Path | None = None) -> Path:
-    """Resolve the main git repository root, even from a worktree.
-
-    In a worktree, .git is a file containing 'gitdir: <path>' pointing to
-    main_repo/.git/worktrees/<name>. This reads that file to find the main repo.
-    Pure filesystem — no subprocess, no external deps.
-    """
-    if start is None:
-        start = Path(__file__).resolve().parents[2]
-    current = start
-    while current != current.parent:
-        git_path = current / ".git"
-        if git_path.is_dir():
-            return current
-        if git_path.is_file():
-            try:
-                content = git_path.read_text().strip()
-            except OSError:
-                return current
-            if content.startswith("gitdir:"):
-                gitdir = Path(content.split(":", 1)[1].strip())
-                if not gitdir.is_absolute():
-                    gitdir = (current / gitdir).resolve()
-                for parent in gitdir.parents:
-                    if parent.name == ".git":
-                        return parent.parent
-            return current
-        current = current.parent
-    return start
-
-
 def install_env_symlink(repo_root: Path) -> None:
     """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
     project_env = repo_root / ".env"
@@ -685,7 +655,7 @@ def install_env_symlink(repo_root: Path) -> None:
 
 def main() -> None:
     """CLI entrypoint for installing agent hooks and wrappers."""
-    repo_root = resolve_main_repo_root()
+    repo_root = resolve_main_repo_root(Path(__file__).resolve().parents[2])
     print(f"Configuring hooks from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")

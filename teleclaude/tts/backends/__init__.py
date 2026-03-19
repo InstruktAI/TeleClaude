@@ -17,7 +17,7 @@ class TTSBackend(Protocol):  # pylint: disable=too-few-public-methods
 
     def speak(self, text: str, voice: str | None = None, /) -> bool:
         """Synthesize and play speech. Returns True on success."""
-        ...
+        raise NotImplementedError
 
 
 BACKENDS: dict[str, TTSBackend] = {

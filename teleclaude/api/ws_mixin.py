@@ -288,25 +288,10 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
                                     description=proj.description,
                                     has_roadmap=roadmap_exists,
                                     todos=[
-                                        TodoDTO(
-                                            slug=t.slug,
-                                            status=t.status,
-                                            description=t.description,
+                                        TodoDTO.from_core(
+                                            t,
                                             computer=comp or config.computer.name,
                                             project_path=proj.path,
-                                            has_requirements=t.has_requirements,
-                                            has_impl_plan=t.has_impl_plan,
-                                            build_status=t.build_status,
-                                            review_status=t.review_status,
-                                            dor_score=t.dor_score,
-                                            deferrals_status=t.deferrals_status,
-                                            findings_count=t.findings_count,
-                                            files=t.files,
-                                            after=t.after,
-                                            group=t.group,
-                                            prepare_phase=t.prepare_phase,
-                                            integration_phase=t.integration_phase,
-                                            finalize_status=t.finalize_status,
                                         )
                                         for t in todos
                                     ],

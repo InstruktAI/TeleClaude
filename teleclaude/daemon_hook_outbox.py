@@ -6,7 +6,7 @@ import asyncio
 import json
 import os
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, cast
@@ -555,13 +555,12 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
             severity = data.get("severity")
             retryable = data.get("retryable")
             code = data.get("code")
+            details = data.get("details")
             context = ErrorEventContext(
                 session_id=session_id,
                 message=str(data.get("message", "")),
                 source=str(data.get("source")) if "source" in data else None,
-                details=(  # type: ignore[arg-type]
-                    data.get("details") if isinstance(data.get("details"), dict) else None
-                ),
+                details=cast(Mapping[str, object] | None, details if isinstance(details, dict) else None),
                 severity=severity if isinstance(severity, str) else "error",  # type: ignore[arg-type]
                 retryable=retryable if isinstance(retryable, bool) else False,
                 code=code if isinstance(code, str) else None,

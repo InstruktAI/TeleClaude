@@ -5,6 +5,7 @@ from enum import Enum
 from typing import cast
 
 from teleclaude.core.feedback import get_last_output_summary
+from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
 from teleclaude.types import SystemStats
 
 from ._session import Session, SessionMetadata
@@ -65,7 +66,10 @@ class RedisInboundMessage:  # pylint: disable=too-many-instance-attributes  # Re
 
 
 @dataclass
-class SessionSnapshot:  # pylint: disable=too-many-instance-attributes  # Session list payload shape
+class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Session list payload shape
+    SessionSnapshotTimestampFields,
+    SessionSnapshotIdentityFields,
+):
     """Typed session snapshot for list_sessions output."""
 
     session_id: str
@@ -76,20 +80,6 @@ class SessionSnapshot:  # pylint: disable=too-many-instance-attributes  # Sessio
     status: str
     project_path: str | None = None
     subdir: str | None = None
-    created_at: str | None = None
-    last_activity: str | None = None
-    closed_at: str | None = None
-    last_input: str | None = None
-    last_input_at: str | None = None
-    last_output_summary: str | None = None
-    last_output_summary_at: str | None = None
-    last_output_digest: str | None = None
-    native_session_id: str | None = None
-    tmux_session_name: str | None = None
-    initiator_session_id: str | None = None
-    computer: str | None = None
-    human_email: str | None = None
-    human_role: str | None = None
     visibility: str | None = "private"
     session_metadata: SessionMetadata | None = None
 

@@ -27,6 +27,24 @@ except ImportError:  # pragma: no cover - platform-dependent.
 
 logger = get_logger("teleclaude.hooks.receiver")
 
+_SESSION_EXPORTS = [
+    "_create_sync_engine",
+    "_find_session_id_by_native",
+    "_get_cached_session_id",
+    "_get_memory_context",
+    "_get_session_map_path",
+    "_get_tmux_contract_session_id",
+    "_get_tmux_contract_tmpdir",
+    "_is_headless_route",
+    "_is_tmux_contract_session_compatible",
+    "_load_session_map",
+    "_persist_session_map",
+    "_resolve_hook_session_id",
+    "_resolve_or_refresh_session_id",
+    "_session_map_key",
+    "_write_session_map_atomic",
+]
+
 __all__ = [
     "_create_sync_engine",
     "_find_session_id_by_native",
@@ -393,3 +411,6 @@ def _resolve_hook_session_id(
         _persist_session_map(agent, native_session_id, resolved_session_id)
 
     return resolved_session_id, cached_session_id, existing_session_id
+
+
+_EXPORTED_SESSION_BINDINGS = (_get_memory_context, _is_headless_route, _resolve_hook_session_id)

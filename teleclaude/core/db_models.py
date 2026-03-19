@@ -10,9 +10,10 @@ from datetime import datetime
 from sqlmodel import Field, SQLModel
 
 from teleclaude.core.origins import InputOrigin
+from teleclaude.session_fields import SessionRecentOutputColumns, SessionRecentToolColumns
 
 
-class Session(SQLModel, table=True):
+class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, table=True):
     """sessions table."""
 
     __tablename__ = "sessions"
@@ -42,17 +43,6 @@ class Session(SQLModel, table=True):
     thinking_mode: str | None = None
     tui_log_file: str | None = None
     tui_capture_started: int | None = 0
-    last_message_sent: str | None = None
-    last_message_sent_at: datetime | None = None
-    last_output_raw: str | None = None
-    last_output_at: datetime | None = None
-    last_output_summary: str | None = None
-    last_output_digest: str | None = None
-    last_tool_done_at: datetime | None = None
-    last_tool_use_at: datetime | None = None
-    last_checkpoint_at: datetime | None = None
-    turn_triggered_by_linked_output: bool = False
-    working_slug: str | None = None
     lifecycle_status: str | None = "active"
     human_email: str | None = None
     human_role: str | None = None

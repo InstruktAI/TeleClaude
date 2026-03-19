@@ -24,6 +24,7 @@ from teleclaude.core.session_listeners import (
     get_peer_members,
     notify_stop,
 )
+from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.summarizer import generate_session_title, summarize_agent_output
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
@@ -36,7 +37,6 @@ from teleclaude.utils.transcript import (
 
 from ._helpers import (
     _MAX_FORWARDED_LINK_OUTPUT_CHARS,
-    SESSION_START_MESSAGES,
     _is_checkpoint_prompt,
     _to_utc,
 )

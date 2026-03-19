@@ -426,9 +426,9 @@ def _parse_html_video(html: str) -> HtmlVideoInfo:
     end = html.index("};", start) + 1
     json_str = html[start:end]
     data = json.loads(json_str)
-    obj = munchify(data)
+    obj: Any = munchify(data)
     try:
-        result["long_desc"] = obj.contents.twoColumnWatchNextResults.results.results.contents[  # type: ignore[reportAttributeAccessIssue]
+        result["long_desc"] = obj.contents.twoColumnWatchNextResults.results.results.contents[
             1
         ].videoSecondaryInfoRenderer.attributedDescription.content
     except (AttributeError, KeyError, IndexError, TypeError):

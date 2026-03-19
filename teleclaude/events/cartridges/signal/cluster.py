@@ -16,7 +16,7 @@ from teleclaude.events.signal.clustering import (
     group_by_tags,
     refine_by_embeddings,
 )
-from teleclaude.events.signal.db import SignalDB
+from teleclaude.events.signal.db import SignalDB, SignalItemPayload
 
 if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
@@ -58,20 +58,22 @@ class SignalClusterCartridge:
         tag_groups = group_by_tags(items, min_overlap=self._config.tag_overlap_min)
 
         # Refine each group by embeddings
-        refined: list[list[dict[str, object]]] = []  # guard: loose-dict - refined cluster groups
+        refined: list[list[SignalItemPayload]] = []
         for group in tag_groups:
-            refined.extend(  # type: ignore[arg-type]
-                refine_by_embeddings(group, self._config.embedding_similarity_threshold)
-            )
+            refined.extend(refine_by_embeddings(group, self._config.embedding_similarity_threshold))
 
         recent_tags = await self._signal_db.get_recent_cluster_tags(hours=self._config.novelty_overlap_hours)
         clusters_formed = 0
 
-        for group in refined:  # type: ignore[assignment]
+        for group in refined:
             if len(group) < self._config.min_cluster_size:
                 continue
 
-            member_ids = [int(item["id"]) for item in group if item.get("id")]
+            member_ids: list[int] = []
+            for item in group:
+                item_id = item.get("id")
+                if isinstance(item_id, int):
+                    member_ids.append(item_id)
             ikeys = [str(item.get("idempotency_key", "")) for item in group]
             cluster_key = build_cluster_key(ikeys)
 

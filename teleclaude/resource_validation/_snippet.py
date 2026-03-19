@@ -25,6 +25,7 @@ from teleclaude.resource_validation._models import (
     _error,
     _warn,
 )
+from teleclaude.snippet_roots import iter_snippet_roots
 from teleclaude.snippet_validation import (
     expected_snippet_id_for_path,
     load_domains,
@@ -203,14 +204,15 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
         _warn("snippet_invalid_path", path=str(path), reason=path_error)
 
     parsed_id = None
-    if isinstance(meta.get("id"), str):
-        parsed_id, id_error = validate_snippet_id_format(meta["id"], domains=domains)  # type: ignore[arg-type]
+    snippet_id = meta.get("id")
+    if isinstance(snippet_id, str):
+        parsed_id, id_error = validate_snippet_id_format(snippet_id, domains=domains)
         if id_error:
-            _warn(  # type: ignore[arg-type]
+            _warn(
                 "snippet_invalid_id_format",
                 path=str(path),
                 reason=id_error,
-                snippet_id=meta["id"],
+                snippet_id=snippet_id,
             )
     if expected_id and parsed_id and parsed_id.value() != expected_id:
         _warn(
@@ -527,26 +529,7 @@ def validate_third_party_docs(project_root: Path) -> None:
 
 def _iter_snippet_roots(project_root: Path) -> list[Path]:
     """Find all snippet root directories under the project."""
-    roots: list[Path] = []
-    candidates = [
-        project_root / "docs" / "global",
-        project_root / "docs" / "project",
-        project_root / "agents" / "docs",
-    ]
-    for candidate in candidates:
-        if not candidate.exists():
-            continue
-        try:
-            rel_path = candidate.relative_to(project_root)
-            include_baseline = str(rel_path) in ("docs/global", "agents/docs")
-        except ValueError:
-            include_baseline = False
-        files = [p for p in candidate.rglob("*.md") if p.name != "index.yaml"]
-        if not include_baseline:
-            files = [p for p in files if "baseline" not in str(p)]
-        if files:
-            roots.append(candidate)
-    return roots
+    return iter_snippet_roots(project_root)
 
 
 def validate_all_snippets(project_root: Path) -> None:

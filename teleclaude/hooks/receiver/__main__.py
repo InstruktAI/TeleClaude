@@ -4,45 +4,26 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import os
 import sys
 from pathlib import Path
 
-
-def _resolve_main_repo_root(start: Path) -> Path:
-    """Resolve the main git repository root, even when invoked from a worktree.
-
-    In a worktree, .git is a file containing 'gitdir: <path>' pointing to
-    main_repo/.git/worktrees/<name>. This reads that file to find the main repo.
-    Pure filesystem — no subprocess, no external deps.
-    """
-    current = start
-    while current != current.parent:
-        git_path = current / ".git"
-        if git_path.is_dir():
-            return current
-        if git_path.is_file():
-            try:
-                content = git_path.read_text().strip()
-            except OSError:
-                return current
-            if content.startswith("gitdir:"):
-                gitdir = Path(content.split(":", 1)[1].strip())
-                if not gitdir.is_absolute():
-                    gitdir = (current / gitdir).resolve()
-                # gitdir = main_repo/.git/worktrees/<name> — find the .git ancestor
-                for parent in gitdir.parents:
-                    if parent.name == ".git":
-                        return parent.parent
-            return current
-        current = current.parent
-    return start
-
+if __package__:
+    from ._repo_root import resolve_main_repo_root
+else:
+    _repo_root_path = Path(__file__).with_name("_repo_root.py")
+    _repo_root_spec = importlib.util.spec_from_file_location("_repo_root", _repo_root_path)
+    if _repo_root_spec is None or _repo_root_spec.loader is None:
+        raise RuntimeError(f"Unable to load repo-root helper from {_repo_root_path}")
+    _repo_root_module = importlib.util.module_from_spec(_repo_root_spec)
+    _repo_root_spec.loader.exec_module(_repo_root_module)
+    resolve_main_repo_root = _repo_root_module.resolve_main_repo_root
 
 # Bootstrap: resolve main repo root (worktree-safe), then re-exec under the
 # project venv when needed. Agent CLIs call this hook from arbitrary directories
 # where PATH may resolve python3 to system Python (missing project deps).
-_REPO_ROOT = _resolve_main_repo_root(Path(__file__).resolve().parents[3])
+_REPO_ROOT = resolve_main_repo_root(Path(__file__).resolve().parents[3])
 _VENV_PYTHON = _REPO_ROOT / ".venv" / "bin" / "python3"
 if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])

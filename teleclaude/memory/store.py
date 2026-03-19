@@ -12,6 +12,7 @@ from sqlmodel import Session as SqlSession
 
 from teleclaude.core import db_models
 from teleclaude.core.db import db
+from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.types import ObservationInput, ObservationResult
 
 logger = get_logger(__name__)
@@ -200,49 +201,5 @@ def _auto_title(text: str) -> str:  # pylint: disable=redefined-outer-name
     return first_line[:80] if len(first_line) > 80 else first_line
 
 
-def _row_to_observation(row: object) -> db_models.MemoryObservation:
-    """Convert a raw SQL row to MemoryObservation."""
-    if hasattr(row, "_mapping"):
-        m = row._mapping  # pylint: disable=protected-access
-        return db_models.MemoryObservation(**dict(m))
-    if isinstance(row, tuple):
-        return db_models.MemoryObservation(
-            id=row[0],
-            memory_session_id=row[1],
-            project=row[2],
-            type=row[3],
-            title=row[4],
-            subtitle=row[5],
-            facts=row[6],
-            narrative=row[7],
-            concepts=row[8],
-            files_read=row[9],
-            files_modified=row[10],
-            prompt_number=row[11],
-            discovery_tokens=row[12],
-            created_at=row[13],
-            created_at_epoch=row[14],
-            identity_key=row[15] if len(row) > 15 else None,
-        )
-    return row  # type: ignore[return-value]
-
-
-def _row_to_summary(row: object) -> db_models.MemorySummary:
-    """Convert a raw SQL row to MemorySummary."""
-    if hasattr(row, "_mapping"):
-        m = row._mapping  # pylint: disable=protected-access
-        return db_models.MemorySummary(**dict(m))
-    if isinstance(row, tuple):
-        return db_models.MemorySummary(
-            id=row[0],
-            memory_session_id=row[1],
-            project=row[2],
-            request=row[3],
-            investigated=row[4],
-            learned=row[5],
-            completed=row[6],
-            next_steps=row[7],
-            created_at=row[8],
-            created_at_epoch=row[9],
-        )
-    return row  # type: ignore[return-value]
+_row_to_observation = row_to_memory_observation
+_row_to_summary = row_to_memory_summary

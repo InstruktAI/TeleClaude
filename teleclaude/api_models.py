@@ -1,12 +1,13 @@
 """API request/response models for API server."""
 
-import dataclasses
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
+
 if TYPE_CHECKING:
-    from teleclaude.core.models import SessionSnapshot
+    from teleclaude.core.models import SessionSnapshot, TodoInfo
 
 
 class CreateSessionRequest(BaseModel):
@@ -105,7 +106,7 @@ class FileUploadRequest(BaseModel):
     file_size: int = 0
 
 
-class SessionDTO(BaseModel):
+class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
     """DTO for session data in API responses."""
 
     model_config = ConfigDict(frozen=True)
@@ -118,52 +119,16 @@ class SessionDTO(BaseModel):
     thinking_mode: str | None = None
     active_agent: str | None = None
     status: str
-    created_at: str | None = None
-    last_activity: str | None = None
-    closed_at: str | None = None
-    last_input: str | None = None
-    last_input_at: str | None = None
-    last_output_summary: str | None = None
-    last_output_summary_at: str | None = None
-    last_output_digest: str | None = None
-    native_session_id: str | None = None
-    tmux_session_name: str | None = None
-    initiator_session_id: str | None = None
-    computer: str | None = None
-    human_email: str | None = None
-    human_role: str | None = None
     visibility: str = "private"
     session_metadata: dict[str, object] | None = None  # guard: loose-dict
 
     @classmethod
     def from_core(cls, session: "SessionSnapshot", computer: str | None = None) -> "SessionDTO":
         """Map from core SessionSnapshot dataclass."""
-        return cls(
-            session_id=session.session_id,
-            last_input_origin=session.last_input_origin,
-            title=session.title,
-            project_path=session.project_path,
-            subdir=session.subdir,
-            thinking_mode=session.thinking_mode,
-            active_agent=session.active_agent,
-            status=session.status,
-            created_at=session.created_at,
-            last_activity=session.last_activity,
-            closed_at=session.closed_at,
-            last_input=session.last_input,
-            last_input_at=session.last_input_at,
-            last_output_summary=session.last_output_summary,
-            last_output_summary_at=session.last_output_summary_at,
-            last_output_digest=session.last_output_digest,
-            native_session_id=session.native_session_id,
-            tmux_session_name=session.tmux_session_name,
-            initiator_session_id=session.initiator_session_id,
-            computer=computer,
-            human_email=session.human_email,
-            human_role=session.human_role,
-            visibility=session.visibility or "private",
-            session_metadata=dataclasses.asdict(session.session_metadata) if session.session_metadata else None,
-        )
+        payload = session.to_dict()
+        payload["visibility"] = session.visibility or "private"
+        payload["computer"] = computer
+        return cls.model_validate(payload)
 
 
 class PersonDTO(BaseModel):
@@ -226,6 +191,36 @@ class TodoDTO(BaseModel):
     prepare_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None
+
+    @classmethod
+    def from_core(
+        cls,
+        todo: "TodoInfo",
+        *,
+        computer: str | None,
+        project_path: str | None,
+    ) -> "TodoDTO":
+        """Build a DTO from a core todo object."""
+        return cls(
+            slug=todo.slug,
+            status=todo.status,
+            description=todo.description,
+            computer=computer,
+            project_path=project_path,
+            has_requirements=todo.has_requirements,
+            has_impl_plan=todo.has_impl_plan,
+            build_status=todo.build_status,
+            review_status=todo.review_status,
+            dor_score=todo.dor_score,
+            deferrals_status=todo.deferrals_status,
+            findings_count=todo.findings_count,
+            files=todo.files,
+            after=todo.after,
+            group=todo.group,
+            prepare_phase=todo.prepare_phase,
+            integration_phase=todo.integration_phase,
+            finalize_status=todo.finalize_status,
+        )
 
 
 class OperationStatusDTO(BaseModel):

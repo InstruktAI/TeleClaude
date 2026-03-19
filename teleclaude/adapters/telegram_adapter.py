@@ -44,7 +44,7 @@ from .telegram.input_handlers import InputHandlersMixin
 from .telegram.lifecycle import LifecycleMixin, TelegramApp
 from .telegram.message_ops import EditContext, MessageOperationsMixin
 from .telegram.private_handlers import PrivateHandlersMixin
-from .ui_adapter import UiAdapter
+from .ui_adapter import UiAdapter, _OutputUpdateRequest
 
 logger = get_logger(__name__)
 
@@ -487,30 +487,18 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         Final (is_final=True) payloads are placed in the priority queue and dispatched
         in the next available scheduler slot without bypassing ordering invariants.
         """
-        from teleclaude.adapters.ui_adapter import UiAdapter
-
-        if self._qos_scheduler._policy.mode == "off":
-            return await UiAdapter.send_output_update(
-                self, session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
-            )
-
-        # Capture args for the dispatch closure (coalescing replaces old closures).
-        _self = self
-        _session = session
-        _output = output
-        _started_at = started_at
-        _last_changed = last_output_changed_at
-        _is_final = is_final
-        _exit_code = exit_code
-        _render_md = render_markdown
-
-        async def _dispatch() -> str | None:
-            return await UiAdapter.send_output_update(
-                _self, _session, _output, _started_at, _last_changed, _is_final, _exit_code, _render_md
-            )
-
-        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
-        return None  # Delivery is deferred; message_id stored asynchronously.
+        return await self._send_output_update_via_qos(
+            self._qos_scheduler,
+            _OutputUpdateRequest(
+                session=session,
+                output=output,
+                started_at=started_at,
+                last_output_changed_at=last_output_changed_at,
+                is_final=is_final,
+                exit_code=exit_code,
+                render_markdown=render_markdown,
+            ),
+        )
 
     async def send_threaded_output(  # type: ignore[override]  # pylint: disable=arguments-differ
         self,

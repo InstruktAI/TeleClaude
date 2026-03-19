@@ -432,25 +432,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                     if project and (computer in (None, "local")):
                         raw_todos = await command_handlers.list_todos(project)
                         return [
-                            TodoDTO(
-                                slug=t.slug,
-                                status=t.status,
-                                description=t.description,
+                            TodoDTO.from_core(
+                                t,
                                 computer=config.computer.name,
                                 project_path=project,
-                                has_requirements=t.has_requirements,
-                                has_impl_plan=t.has_impl_plan,
-                                build_status=t.build_status,
-                                review_status=t.review_status,
-                                dor_score=t.dor_score,
-                                deferrals_status=t.deferrals_status,
-                                findings_count=t.findings_count,
-                                files=t.files,
-                                after=t.after,
-                                group=t.group,
-                                prepare_phase=t.prepare_phase,
-                                integration_phase=t.integration_phase,
-                                finalize_status=t.finalize_status,
                             )
                             for t in raw_todos
                         ]
@@ -464,25 +449,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 for entry in entries:
                     for todo in entry.todos:
                         result.append(
-                            TodoDTO(
-                                slug=todo.slug,
-                                status=todo.status,
-                                description=todo.description,
+                            TodoDTO.from_core(
+                                todo,
                                 computer=entry.computer,
                                 project_path=entry.project_path,
-                                has_requirements=todo.has_requirements,
-                                has_impl_plan=todo.has_impl_plan,
-                                build_status=todo.build_status,
-                                review_status=todo.review_status,
-                                dor_score=todo.dor_score,
-                                deferrals_status=todo.deferrals_status,
-                                findings_count=todo.findings_count,
-                                files=todo.files,
-                                after=todo.after,
-                                group=todo.group,
-                                prepare_phase=todo.prepare_phase,
-                                integration_phase=todo.integration_phase,
-                                finalize_status=todo.finalize_status,
                             )
                         )
                 return result

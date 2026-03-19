@@ -31,6 +31,7 @@ if str(_REPO_ROOT) not in sys.path:
 from instrukt_ai_logging import get_logger  # pylint: disable=wrong-import-position
 
 from teleclaude.config import config as app_config  # pylint: disable=wrong-import-position
+from teleclaude.constants import AGENT_PROTOCOL  # pylint: disable=wrong-import-position
 from teleclaude.core.agents import get_enabled_agents, is_agent_enabled  # pylint: disable=wrong-import-position
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode  # pylint: disable=wrong-import-position
 from teleclaude.runtime.binaries import resolve_agent_binary  # pylint: disable=wrong-import-position
@@ -60,39 +61,9 @@ class _OneshotSpec(TypedDict, total=False):
 
 
 _AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
-    "claude": {
-        "fast": "--model haiku",
-        "med": "--model 'sonnet[1m]['",
-        "slow": "--model 'opus[1m]'",
-    },
-    "gemini": {
-        "fast": "-m gemini-2.5-flash-lite",
-        "med": "-m gemini-3-flash-preview",
-        "slow": "-m gemini-3-pro-preview",
-    },
-    "codex": {
-        "fast": (
-            "-m gpt-5.4"
-            " --config model_reasoning_effort='medium'"
-            " --config model_supports_reasoning_summaries=true"
-            " --config show_raw_agent_reasoning=true"
-            " --config hide_agent_reasoning=false"
-        ),
-        "med": (
-            "-m gpt-5.4"
-            " --config model_reasoning_effort='high'"
-            " --config model_supports_reasoning_summaries=true"
-            " --config show_raw_agent_reasoning=true"
-            " --config hide_agent_reasoning=false"
-        ),
-        "slow": (
-            "-m gpt-5.4"
-            " --config model_reasoning_effort='xhigh'"
-            " --config model_supports_reasoning_summaries=true"
-            " --config show_raw_agent_reasoning=true"
-            " --config hide_agent_reasoning=false"
-        ),
-    },
+    agent: model_flags
+    for agent, protocol in AGENT_PROTOCOL.items()
+    if isinstance((model_flags := protocol.get("model_flags")), dict)
 }
 
 
@@ -305,8 +276,8 @@ def _run_agent(  # pylint: disable=too-many-arguments,too-many-branches,too-many
 
     binary = resolve_agent_binary(agent.value)
     flags = str(spec.get("flags", ""))
-    model_flags = spec.get("model_flags", {})
-    model_flag = model_flags.get(thinking_mode.value)
+    agent_model_flags = spec.get("model_flags", {})
+    model_flag = agent_model_flags.get(thinking_mode.value)
     if model_flag is None:
         raise RuntimeError(f"Invalid thinking_mode '{thinking_mode.value}' for agent '{agent.value}'")
 
@@ -447,8 +418,8 @@ def run_job(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters
     binary = resolve_agent_binary(agent_enum.value)
     flags = str(spec.get("flags", ""))
     model_flags_raw = spec.get("model_flags", {})
-    model_flags: dict[str, str] = model_flags_raw if isinstance(model_flags_raw, dict) else {}
-    model_flag = model_flags.get(mode_enum.value)
+    agent_model_flags: dict[str, str] = model_flags_raw if isinstance(model_flags_raw, dict) else {}
+    model_flag = agent_model_flags.get(mode_enum.value)
     if model_flag is None:
         raise RuntimeError(f"Invalid thinking_mode '{mode_enum.value}' for agent '{agent_enum.value}'")
 

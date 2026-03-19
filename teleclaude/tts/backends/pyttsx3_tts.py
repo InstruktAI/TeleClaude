@@ -1,5 +1,7 @@
 """pyttsx3 backend - offline TTS fallback."""
 
+import importlib
+
 from instrukt_ai_logging import get_logger
 
 logger = get_logger(__name__)
@@ -20,8 +22,7 @@ class Pyttsx3Backend:  # pylint: disable=too-few-public-methods
             True if successful, False otherwise
         """
         try:
-            import pyttsx3  # pylint: disable=import-outside-toplevel  # type: ignore[import-not-found]
-
+            pyttsx3 = importlib.import_module("pyttsx3")
             engine = pyttsx3.init()
             engine.setProperty("rate", 180)  # Words per minute
             engine.setProperty("volume", 0.8)  # Volume 0.0-1.0

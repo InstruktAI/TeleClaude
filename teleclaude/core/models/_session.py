@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional, cast
 
 from teleclaude.constants import FIELD_ADAPTER_METADATA, HUMAN_ROLE_ADMIN
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
+from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
 from ._adapter import SessionAdapterMetadata
 from ._types import JsonDict
@@ -136,7 +137,7 @@ class TranscriptFormat(str, Enum):
 
 
 @dataclass
-class Session:  # pylint: disable=too-many-instance-attributes
+class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: disable=too-many-instance-attributes
     """Represents a tmux session."""
 
     session_id: str
@@ -162,17 +163,6 @@ class Session:  # pylint: disable=too-many-instance-attributes
     thinking_mode: str | None = None
     tui_log_file: str | None = None
     tui_capture_started: bool = False
-    last_message_sent: str | None = None
-    last_message_sent_at: datetime | None = None
-    last_output_raw: str | None = None
-    last_output_at: datetime | None = None
-    last_output_summary: str | None = None
-    last_output_digest: str | None = None
-    last_tool_done_at: datetime | None = None
-    last_tool_use_at: datetime | None = None
-    last_checkpoint_at: datetime | None = None
-    turn_triggered_by_linked_output: bool = False
-    working_slug: str | None = None
     human_email: str | None = None
     human_role: str | None = HUMAN_ROLE_ADMIN
     principal: str | None = None

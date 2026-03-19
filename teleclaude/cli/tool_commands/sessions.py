@@ -12,22 +12,6 @@ from pathlib import Path
 
 from teleclaude.cli.tool_client import _read_caller_session_id, print_json, tool_api_call
 
-__all__ = [
-    "handle_sessions",
-    "handle_sessions_end",
-    "handle_sessions_escalate",
-    "handle_sessions_file",
-    "handle_sessions_list",
-    "handle_sessions_restart",
-    "handle_sessions_result",
-    "handle_sessions_run",
-    "handle_sessions_send",
-    "handle_sessions_start",
-    "handle_sessions_tail",
-    "handle_sessions_unsubscribe",
-    "handle_sessions_widget",
-]
-
 
 def handle_sessions(args: list[str]) -> None:
     """Handle telec sessions <subcommand> [args].

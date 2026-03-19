@@ -74,9 +74,9 @@ class SignalIngestCartridge:
                     new_items.append((ikey, item))
 
             # Enrich new items concurrently
-            async def enrich_and_emit(  # type: ignore[type-arg]
+            async def enrich_and_emit(
                 ikey: str,
-                item: dict[str, object],  # guard: loose-dict - RSS item
+                item: dict[str, str],
                 *,
                 source_id: str = source_id,
             ) -> None:

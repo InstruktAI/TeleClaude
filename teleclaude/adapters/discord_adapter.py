@@ -23,7 +23,7 @@ from teleclaude.adapters.discord import (
 )
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
-from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.adapters.ui_adapter import UiAdapter, _OutputUpdateRequest
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -240,28 +240,18 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
         if self.THREADED_OUTPUT:
             return None
 
-        # Non-threaded: existing QoS path.
-        if self._qos_scheduler._policy.mode == "off":  # pylint: disable=protected-access
-            return await UiAdapter.send_output_update(
-                self, session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
-            )
-
-        _self = self
-        _session = session
-        _output = output
-        _started_at = started_at
-        _last_changed = last_output_changed_at
-        _is_final = is_final
-        _exit_code = exit_code
-        _render_md = render_markdown
-
-        async def _dispatch() -> str | None:
-            return await UiAdapter.send_output_update(
-                _self, _session, _output, _started_at, _last_changed, _is_final, _exit_code, _render_md
-            )
-
-        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
-        return None  # Delivery is deferred.
+        return await self._send_output_update_via_qos(
+            self._qos_scheduler,
+            _OutputUpdateRequest(
+                session=session,
+                output=output,
+                started_at=started_at,
+                last_output_changed_at=last_output_changed_at,
+                is_final=is_final,
+                exit_code=exit_code,
+                render_markdown=render_markdown,
+            ),
+        )
 
     # send_threaded_output: inherited from UiAdapter base class.
     # Discord uses the base class edit-in-place model for threaded output.

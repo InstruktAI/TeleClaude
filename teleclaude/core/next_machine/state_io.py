@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -363,10 +364,7 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
     FINALIZE_READY. The record becomes the single source of truth consumed by
     the subsequent slug-specific `telec todo work {slug}` handoff step.
     """
-    from teleclaude.core.next_machine.git_ops import (
-        has_uncommitted_changes,
-    )  # lazy: avoids circular dep  # pylint: disable=import-outside-toplevel
-
+    has_uncommitted_changes = importlib.import_module("teleclaude.core.next_machine.git_ops").has_uncommitted_changes
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not Path(worktree_cwd).exists():
         raise ValueError(f"worktree not found at {worktree_cwd}")

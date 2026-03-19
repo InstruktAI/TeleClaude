@@ -158,7 +158,7 @@ def run_watch(project_root: Path) -> None:
     observer.schedule(handler, str(project_root), recursive=True)
     observer.start()
 
-    logger.info(f"Watching {project_root} for changes (smart mode)...")
+    logger.info("Watching %s for changes (smart mode)...", project_root)
     try:
         while True:
             time.sleep(1)
