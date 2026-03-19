@@ -55,7 +55,7 @@ class TestApiRoutes:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         registry = _RegistryStub(registered=[])
-        monkeypatch.setattr(api_routes, "_contract_registry", registry)
+        monkeypatch.setitem(api_routes._REGISTRY_STATE, "registry", registry)
 
         transport = httpx.ASGITransport(app=_build_app())
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -92,7 +92,7 @@ class TestApiRoutes:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(api_routes, "_contract_registry", _RegistryStub())
+        monkeypatch.setitem(api_routes._REGISTRY_STATE, "registry", _RegistryStub())
 
         transport = httpx.ASGITransport(app=_build_app())
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -115,7 +115,9 @@ class TestApiRoutes:
         async def _list_properties() -> dict[str, set[str]]:
             return {"repo": {"zeta", "alpha"}, "source": {"github"}}
 
-        monkeypatch.setattr(api_routes, "_contract_registry", _RegistryStub(list_properties_impl=_list_properties))
+        monkeypatch.setitem(
+            api_routes._REGISTRY_STATE, "registry", _RegistryStub(list_properties_impl=_list_properties)
+        )
 
         transport = httpx.ASGITransport(app=_build_app())
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -130,7 +132,7 @@ class TestApiRoutes:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(api_routes, "_contract_registry", None)
+        monkeypatch.setitem(api_routes._REGISTRY_STATE, "registry", None)
 
         transport = httpx.ASGITransport(app=_build_app())
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:

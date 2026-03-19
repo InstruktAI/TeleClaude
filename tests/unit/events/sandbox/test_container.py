@@ -45,4 +45,4 @@ async def test_restart_increments_counter_and_sets_permanently_failed():
         for _ in range(3):
             await manager.restart()
 
-    assert manager._permanently_failed
+    assert manager.permanently_failed

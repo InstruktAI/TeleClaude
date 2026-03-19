@@ -93,7 +93,7 @@ class TestDomainPipeline:
         domain_cfg = DomainConfig(
             name="eng",
             autonomy=AutonomyMatrix(
-                by_cartridge={"eng/c1": AutonomyLevel.manual},
+                by_cartridge={"eng/c1": AutonomyLevel.MANUAL},
             ),
         )
         mock_process = AsyncMock(return_value=event)

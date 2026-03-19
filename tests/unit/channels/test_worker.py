@@ -160,16 +160,14 @@ class TestRunSubscriptionWorker:
                 call(
                     redis,
                     "channel:demo:events",
-                    worker._WORKER_GROUP,
-                    worker._WORKER_CONSUMER,
+                    worker._WORKER_CONSUMER_GROUP,
                     count=10,
                     block_ms=0,
                 ),
                 call(
                     redis,
                     "channel:demo:commands",
-                    worker._WORKER_GROUP,
-                    worker._WORKER_CONSUMER,
+                    worker._WORKER_CONSUMER_GROUP,
                     count=10,
                     block_ms=0,
                 ),

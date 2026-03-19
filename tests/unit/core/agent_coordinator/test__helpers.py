@@ -11,7 +11,6 @@ from teleclaude.constants import CHECKPOINT_MESSAGE, CHECKPOINT_PREFIX
 from teleclaude.core.agent_coordinator._helpers import (
     _MAX_FORWARDED_LINK_OUTPUT_CHARS,
     _NOOP_LOG_INTERVAL_SECONDS,
-    SESSION_START_MESSAGES,
     _coerce_nonempty_str,
     _discord_identity_meta,
     _fallback_hook_actor_name,
@@ -34,6 +33,7 @@ from teleclaude.core.models._adapter import (
     WhatsAppAdapterMetadata,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 
 
 def _make_session(**kwargs: object) -> Session:
@@ -58,7 +58,7 @@ class TestConstants:
 
     @pytest.mark.unit
     def test_session_start_messages_is_non_empty_list(self):
-        assert isinstance(SESSION_START_MESSAGES, list)
+        assert isinstance(SESSION_START_MESSAGES, (list, tuple))
         assert len(SESSION_START_MESSAGES) > 0
 
     @pytest.mark.unit

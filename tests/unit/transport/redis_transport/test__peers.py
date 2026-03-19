@@ -25,7 +25,7 @@ class TestGetOnlineComputers:
         mock_redis = AsyncMock()
         transport._get_redis = AsyncMock(return_value=mock_redis)
         with patch("teleclaude.transport.redis_transport._peers.scan_keys", AsyncMock(return_value=[])):
-            result = await transport._get_online_computers()
+            result = await transport.get_online_computers()
         assert result == []
 
     @pytest.mark.unit
@@ -38,7 +38,7 @@ class TestGetOnlineComputers:
             "teleclaude.transport.redis_transport._peers.scan_keys",
             AsyncMock(return_value=[b"computer:local-computer:heartbeat"]),
         ):
-            result = await transport._get_online_computers()
+            result = await transport.get_online_computers()
         assert result == []
 
     @pytest.mark.unit
@@ -54,7 +54,7 @@ class TestGetOnlineComputers:
             "teleclaude.transport.redis_transport._peers.scan_keys",
             AsyncMock(return_value=[b"computer:zebra:heartbeat", b"computer:alpha:heartbeat"]),
         ):
-            result = await transport._get_online_computers()
+            result = await transport.get_online_computers()
         assert result == ["alpha", "zebra"]
 
     @pytest.mark.unit
@@ -65,7 +65,7 @@ class TestGetOnlineComputers:
             "teleclaude.transport.redis_transport._peers.scan_keys",
             AsyncMock(side_effect=ConnectionError("redis down")),
         ):
-            result = await transport._get_online_computers()
+            result = await transport.get_online_computers()
         assert result == []
         transport._schedule_reconnect.assert_called_once()
 

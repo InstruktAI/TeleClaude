@@ -61,6 +61,8 @@ def _install_sqlmodel_stub(
     module.select = lambda _model: _SelectStub()
     monkeypatch.setitem(sys.modules, "sqlmodel", module)
     monkeypatch.setattr(session_module, "_create_sync_engine", lambda: object())
+    # Patch the directly-imported SqlSession binding in the module
+    monkeypatch.setattr(session_module, "SqlSession", lambda _engine: session_stub)
     return session_stub
 
 
@@ -70,18 +72,22 @@ class TestMemoryAndSessionMap:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        memory_context = types.ModuleType("teleclaude.memory.context")
-        memory_context.generate_context_sync = lambda project_name, db_path, identity_key=None: (
-            f"{project_name}|{db_path}|{identity_key}"
+        monkeypatch.setattr(
+            session_module,
+            "generate_context_sync",
+            lambda project_name, db_path, identity_key=None: f"{project_name}|{db_path}|{identity_key}",
         )
-        monkeypatch.setitem(sys.modules, "teleclaude.memory.context", memory_context)
         monkeypatch.setattr(
             session_module, "config", SimpleNamespace(database=SimpleNamespace(path=Path("/tmp/db.sqlite")))
         )
 
         assert session_module._get_memory_context("teleclaude", "user-1") == "teleclaude|/tmp/db.sqlite|user-1"
 
-        memory_context.generate_context_sync = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
+        monkeypatch.setattr(
+            session_module,
+            "generate_context_sync",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
 
         assert session_module._get_memory_context("teleclaude", "user-1") == ""
 

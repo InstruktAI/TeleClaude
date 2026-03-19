@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from redis.exceptions import ResponseError
 
-from teleclaude.channels.consumer import consume, ensure_consumer_group
+from teleclaude.channels.consumer import ConsumerGroupSpec, consume, ensure_consumer_group
 
 
 class TestEnsureConsumerGroup:
@@ -47,7 +47,9 @@ class TestConsume:
         redis = AsyncMock()
         redis.xreadgroup = AsyncMock(return_value=[])
 
-        messages = await consume(redis, "channel:demo:events", "workers", "consumer-1", count=5, block_ms=0)
+        messages = await consume(
+            redis, "channel:demo:events", ConsumerGroupSpec(group="workers", consumer="consumer-1"), count=5, block_ms=0
+        )
 
         assert messages == []
         redis.xreadgroup.assert_awaited_once_with(
@@ -77,7 +79,9 @@ class TestConsume:
         )
         redis.xack = AsyncMock()
 
-        messages = await consume(redis, "channel:demo:events", "workers", "consumer-1", block_ms=25)
+        messages = await consume(
+            redis, "channel:demo:events", ConsumerGroupSpec(group="workers", consumer="consumer-1"), block_ms=25
+        )
 
         assert messages == [
             {"id": "1-0", "payload": {"kind": "deploy"}},
