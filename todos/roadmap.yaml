@@ -54,3 +54,4 @@
 - slug: refactor-agent-readiness
 - slug: fix-api-command-receipt
 - slug: chip-tunes-regression
+- slug: session-memory-extraction
