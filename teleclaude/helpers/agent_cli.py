@@ -265,6 +265,14 @@ def _cli_env() -> dict[str, str]:
     }
 
 
+def _resolve_flags(spec: _OneshotSpec) -> str:
+    """Resolve agent flags, stripping OAuth force in CI."""
+    flags = str(spec.get("flags", ""))
+    if os.environ.get("CI") == "true":
+        flags = flags.replace('"forceLoginMethod": "claudeai", ', "")
+    return flags
+
+
 def _run_agent(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-statements
     agent: AgentName,
     thinking_mode: ThinkingMode,
@@ -281,10 +289,7 @@ def _run_agent(  # pylint: disable=too-many-arguments,too-many-branches,too-many
         raise RuntimeError(f"Unknown agent '{agent.value}'")
 
     binary = resolve_agent_binary(agent.value)
-    flags = str(spec.get("flags", ""))
-    # In CI, strip forceLoginMethod so Claude uses ANTHROPIC_API_KEY instead of OAuth
-    if os.environ.get("CI") == "true":
-        flags = flags.replace('"forceLoginMethod": "claudeai", ', "")
+    flags = _resolve_flags(spec)
     agent_model_flags = spec.get("model_flags", {})
     model_flag = agent_model_flags.get(thinking_mode.value)
     if model_flag is None:
