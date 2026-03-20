@@ -3,12 +3,12 @@
 #
 # Three-tier permission model:
 #   DESTRUCTIVE  — blocked for all roles, no override
-#   PROTECTED    — integrator only (stash), integrator+system (checkout, commit/push on main)
+#   PROTECTED    — integrator only (stash), integrator+system (commit/push on main)
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
 # Roles (TELECLAUDE_SYSTEM_ROLE, default: worker):
 #   worker       — can commit on worktree branches
-#   system       — worker + file-scoped checkout + commit/push on main (job runners, human-supervised)
+#   system       — worker + commit/push on main (job runners, human-supervised)
 #   orchestrator — no commits anywhere (machine commands only)
 #   integrator   — full protected access (merge workflow)
 #
@@ -183,10 +183,10 @@ if [ "$_subcmd" = "checkout" ]; then
     for _carg in "$@"; do
         [ "$_carg" = "--" ] && _has_separator=1
     done
-    if [ "$_has_separator" -eq 1 ] && { [ "$_role" = "integrator" ] || [ "$_role" = "system" ]; }; then
-        : # allowed — file-scoped checkout for integrator and system (job runners)
+    if [ "$_has_separator" -eq 1 ]; then
+        : # allowed — file-scoped checkout is local to the working tree (pre-commit needs this)
     else
-        echo "ERROR: 'git checkout' is a protected operation. Only the integrator role (or system for file-scoped) may use it." >&2
+        echo "ERROR: 'git checkout' (branch switch) is a protected operation. Only file-scoped checkout (with --) is allowed." >&2
         exit 1
     fi
 fi

@@ -154,8 +154,8 @@ class TestProtectedStash:
 
 
 @pytest.mark.timeout(10, method="thread")
-class TestProtectedCheckout:
-    """Checkout: bare blocked for all, file-scoped allowed for integrator+system."""
+class TestCheckoutPermissions:
+    """Branch checkout blocked for all. File-scoped checkout allowed for all (pre-commit needs it)."""
 
     @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator", "integrator"])
     def test_bare_checkout_blocked_for_all(self, role: str | None) -> None:
@@ -163,22 +163,9 @@ class TestProtectedCheckout:
         assert result.returncode != 0
         assert "protected" in result.stderr.lower()
 
-    def test_file_scoped_blocked_for_worker(self) -> None:
-        result = _run_wrapper(["checkout", "origin/main", "--", "file.txt"])
-        assert result.returncode != 0
-        assert "protected" in result.stderr.lower()
-
-    def test_file_scoped_blocked_for_orchestrator(self) -> None:
-        result = _run_wrapper(["checkout", "origin/main", "--", "file.txt"], role="orchestrator")
-        assert result.returncode != 0
-        assert "protected" in result.stderr.lower()
-
-    def test_file_scoped_allowed_for_integrator(self) -> None:
-        result = _run_wrapper(["checkout", "HEAD", "--", "f.txt"], role="integrator")
-        assert "protected" not in result.stderr.lower()
-
-    def test_file_scoped_allowed_for_system(self) -> None:
-        result = _run_wrapper(["checkout", "HEAD", "--", "f.txt"], role="system")
+    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator", "integrator"])
+    def test_file_scoped_checkout_allowed_for_all(self, role: str | None) -> None:
+        result = _run_wrapper(["checkout", "HEAD", "--", "f.txt"], role=role)
         assert "protected" not in result.stderr.lower()
 
 
