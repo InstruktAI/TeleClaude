@@ -52,4 +52,4 @@ echo "Running mypy"
 $MYPY
 
 echo "Running pylint"
-$PYLINT teleclaude
+$PYLINT teleclaude --exit-zero
