@@ -160,6 +160,7 @@ class CommandService:
         command: SlashCommand,
         project_path: str,
         *,
+        args: str = "",
         detach: bool = True,
         thinking_mode: str = "slow",
         agent: str = "claude",
@@ -176,7 +177,7 @@ class CommandService:
 
         role_info = COMMAND_ROLE_MAP.get(command)
         session_meta = SessionMetadata(system_role=role_info[0], job=role_info[1].value) if role_info else None
-        full_command = f"/{command.value}"
+        full_command = f"/{command.value} {args}".rstrip() if args else f"/{command.value}"
         auto_command = f"agent_then_message {agent} {thinking_mode} {shlex.quote(full_command)}"
         metadata = MessageMetadata(
             origin=InputOrigin.API.value,

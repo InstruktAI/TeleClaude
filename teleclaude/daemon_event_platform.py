@@ -38,7 +38,7 @@ from teleclaude.events.cartridges import (
     EnrichmentCartridge,
     IntegrationTriggerCartridge,
     NotificationProjectorCartridge,
-    PrepareQualityCartridge,
+    PrepareCartridge,
     TrustCartridge,
 )
 from teleclaude.events.cartridges.correlation import CorrelationConfig
@@ -291,7 +291,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
                 CorrelationCartridge(),
                 ClassificationCartridge(),
                 NotificationProjectorCartridge(),
-                PrepareQualityCartridge(),
+                PrepareCartridge(),
             ],
             context,
             domain_runner=self._build_domain_runner(),  # type: ignore[arg-type]

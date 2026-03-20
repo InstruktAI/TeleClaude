@@ -1,4 +1,4 @@
-"""Characterization tests for teleclaude.events.cartridges.prepare_quality."""
+"""Characterization tests for teleclaude.events.cartridges.prepare."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
-from teleclaude.events.cartridges.prepare_quality import (
-    PrepareQualityCartridge,
+from teleclaude.events.cartridges.prepare import (
+    PrepareCartridge,
     _build_dependency_section,
     _fill_plan_gaps,
     _fill_requirements_gaps,
@@ -75,16 +75,16 @@ def _full_plan_content() -> str:
 
 ## Task 1.1 (FR1)
 
-- [ ] Inspect `teleclaude/events/cartridges/prepare_quality.py`
-- [ ] Update `tests/unit/events/cartridges/test_prepare_quality.py`
+- [ ] Inspect `teleclaude/events/cartridges/prepare.py`
+- [ ] Update `tests/unit/events/cartridges/test_prepare.py`
 
-**Verification:** run `pytest tests/unit/events/cartridges/test_prepare_quality.py`
+**Verification:** run `pytest tests/unit/events/cartridges/test_prepare.py`
 
 ## Task 1.2 (FR2)
 
 - [ ] Write `todos/my-slug/dor-report.md`
 
-**Verification:** run `pytest tests/unit/events/cartridges/test_prepare_quality.py -k process`
+**Verification:** run `pytest tests/unit/events/cartridges/test_prepare.py -k process`
 
 ## Risks
 
@@ -333,13 +333,13 @@ def test_is_slug_frozen_returns_true_when_in_icebox_yaml(tmp_path: Path) -> None
     assert result is True
 
 
-# ── PrepareQualityCartridge.process ───────────────────────────────────────────
+# ── PrepareCartridge.process ───────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_non_planning_event_passes_through():
     """Events outside _PLANNING_PREFIX pass through without assessment."""
-    cartridge = PrepareQualityCartridge()
+    cartridge = PrepareCartridge()
     event = _make_event("system.worker.started")
     ctx = MagicMock()
 
@@ -351,7 +351,7 @@ async def test_non_planning_event_passes_through():
 @pytest.mark.asyncio
 async def test_planning_event_not_in_trigger_set_passes_through():
     """Planning events not in _TRIGGER_EVENTS pass through without assessment."""
-    cartridge = PrepareQualityCartridge()
+    cartridge = PrepareCartridge()
     event = _make_event("domain.software-development.planning.other_event")
     ctx = MagicMock()
 
@@ -363,7 +363,7 @@ async def test_planning_event_not_in_trigger_set_passes_through():
 @pytest.mark.asyncio
 async def test_event_without_slug_passes_through():
     """Trigger events missing slug field pass through unchanged."""
-    cartridge = PrepareQualityCartridge()
+    cartridge = PrepareCartridge()
     event = EventEnvelope(
         event="domain.software-development.planning.artifact_changed",
         source="test",
@@ -382,7 +382,7 @@ async def test_event_without_slug_passes_through():
 @pytest.mark.asyncio
 async def test_assessment_failure_does_not_propagate():
     """Exceptions during _assess are swallowed — event is still returned."""
-    cartridge = PrepareQualityCartridge()
+    cartridge = PrepareCartridge()
     event = _make_event(slug="my-slug")
     ctx = MagicMock()
 
@@ -392,7 +392,7 @@ async def test_assessment_failure_does_not_propagate():
     assert result is event
 
 
-# ── PrepareQualityCartridge._assess public behavior ───────────────────────────
+# ── PrepareCartridge._assess public behavior ───────────────────────────
 
 
 @pytest.mark.asyncio
@@ -409,13 +409,13 @@ async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> No
     ctx.db.update_agent_status = AsyncMock()
     ctx.db.resolve_notification = AsyncMock()
 
-    cartridge = PrepareQualityCartridge()
+    cartridge = PrepareCartridge()
     event = _make_event()
 
     with (
-        patch("teleclaude.events.cartridges.prepare_quality._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.prepare_quality._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.prepare_quality.emit_event", new_callable=AsyncMock) as emit_event,
+        patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.prepare.emit_event", new_callable=AsyncMock) as emit_event,
     ):
         result = await cartridge.process(event, ctx)
 
@@ -426,7 +426,7 @@ async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> No
     assert state["dor"]["status"] == "pass"
     assert state["dor"]["score"] == 10
     assert state["dor"]["assessed_commit"] == "abc123"
-    ctx.db.update_agent_status.assert_awaited_once_with(17, "claimed", "prepare-quality-runner")
+    ctx.db.update_agent_status.assert_awaited_once_with(17, "claimed", "prepare-runner")
     ctx.db.resolve_notification.assert_awaited_once()
     assert ctx.db.resolve_notification.await_args.args[0] == 17
     resolve_payload = ctx.db.resolve_notification.await_args.args[1]
@@ -452,18 +452,18 @@ async def test_process_claims_and_resolves_notification(tmp_path: Path) -> None:
     ctx.db.update_agent_status = AsyncMock()
     ctx.db.resolve_notification = AsyncMock()
 
-    cartridge = PrepareQualityCartridge()
+    cartridge = PrepareCartridge()
     event = _make_event()
 
     with (
-        patch("teleclaude.events.cartridges.prepare_quality._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.prepare_quality._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.prepare_quality.emit_event", new_callable=AsyncMock),
+        patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.prepare.emit_event", new_callable=AsyncMock),
     ):
         result = await cartridge.process(event, ctx)
 
     assert result is event
-    ctx.db.update_agent_status.assert_called_once_with(42, "claimed", "prepare-quality-runner")
+    ctx.db.update_agent_status.assert_called_once_with(42, "claimed", "prepare-runner")
     ctx.db.resolve_notification.assert_called_once()
     assert ctx.db.resolve_notification.call_args[0][0] == 42
 
@@ -478,14 +478,14 @@ async def test_process_emits_dor_assessed_event(tmp_path: Path) -> None:
     ctx = MagicMock()
     ctx.db.find_by_group_key = AsyncMock(return_value=None)
 
-    cartridge = PrepareQualityCartridge()
+    cartridge = PrepareCartridge()
     event = _make_event()
 
     emit_mock = AsyncMock()
     with (
-        patch("teleclaude.events.cartridges.prepare_quality._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.prepare_quality._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.prepare_quality.emit_event", emit_mock),
+        patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.prepare.emit_event", emit_mock),
     ):
         result = await cartridge.process(event, ctx)
 

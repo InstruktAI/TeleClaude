@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import time
 from datetime import UTC, datetime
@@ -12,6 +13,8 @@ from typing import TypedDict, cast
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import SlashCommand
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.models import JsonDict
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -25,6 +28,7 @@ _PLANNING_PREFIX = "domain.software-development.planning."
 _TRIGGER_EVENTS = {
     "domain.software-development.planning.artifact_changed",
     "domain.software-development.planning.todo_created",
+    "domain.software-development.planning.todo_dumped",
     "domain.software-development.planning.todo_activated",
     "domain.software-development.planning.dependency_resolved",
 }
@@ -306,7 +310,7 @@ def _get_todo_commit(slug: str, project_root: Path) -> str:
         result = repo.git.log("-1", "--format=%h", "--", todo_path)
         return result.strip() or "unknown"
     except Exception:  # pylint: disable=broad-exception-caught
-        logger.warning("prepare-quality: git log failed for todo", slug=slug)
+        logger.warning("prepare: git log failed for todo", slug=slug)
         return "unknown"
 
 
@@ -316,7 +320,7 @@ def _read_state_yaml(state_path: Path) -> dict[str, StateValue]:
     try:
         return cast(dict[str, StateValue], yaml.safe_load(state_path.read_text()) or {})
     except (yaml.YAMLError, OSError):
-        logger.error("prepare-quality: corrupt state.yaml, cannot read", path=str(state_path))
+        logger.error("prepare: corrupt state.yaml, cannot read", path=str(state_path))
         raise
 
 
@@ -384,14 +388,14 @@ def _find_project_root() -> Path:
     for candidate in [here, *here.parents]:
         if (candidate / "todos").is_dir():
             return candidate
-    logger.warning("prepare-quality: no todos/ directory found, falling back to cwd", cwd=str(here))
+    logger.warning("prepare: no todos/ directory found, falling back to cwd", cwd=str(here))
     return here
 
 
-class PrepareQualityCartridge:
-    """Cartridge that assesses prepare-phase artifact quality (DOR scoring)."""
+class PrepareCartridge:
+    """Cartridge that handles prepare-phase events — DOR scoring and agent dispatch."""
 
-    name = "prepare-quality"
+    name = "prepare"
 
     def describe(self) -> str:
         """Return cartridge name."""
@@ -407,19 +411,38 @@ class PrepareQualityCartridge:
 
         slug = event.payload.get("slug")
         if not slug:
-            logger.warning("prepare-quality: event missing slug, skipping", event=event.event)
+            logger.warning("prepare: event missing slug, skipping", event=event.event)
+            return event
+
+        # todo_dumped → dispatch a prepare agent instead of inline assessment
+        if event.event == f"{_PLANNING_PREFIX}todo_dumped":
+            await self._dispatch_prepare_agent(slug)
             return event
 
         start = time.monotonic()
         try:
             await self._assess(slug, event, context)
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception("prepare-quality: assessment failed", slug=slug, event=event.event)
+            logger.exception("prepare: assessment failed", slug=slug, event=event.event)
         elapsed = time.monotonic() - start
         if elapsed > 2.0:
-            logger.warning("prepare-quality: assessment took >2s", slug=slug, elapsed_s=round(elapsed, 2))
+            logger.warning("prepare: assessment took >2s", slug=slug, elapsed_s=round(elapsed, 2))
 
         return event
+
+    async def _dispatch_prepare_agent(self, slug: str) -> None:
+        """Spawn an agent session to run /next-prepare for the dumped todo."""
+        project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
+        try:
+            await get_command_service().run_slash_command(
+                SlashCommand.NEXT_PREPARE,
+                project_path,
+                args=slug,
+                detach=True,
+            )
+            logger.info("prepare: dispatched prepare agent for %s", slug)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("prepare: failed to dispatch prepare agent", slug=slug)
 
     async def _assess(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         self, slug: str, _event: EventEnvelope, context: PipelineContext
@@ -429,7 +452,7 @@ class PrepareQualityCartridge:
 
         # Skip delivered/icebox slugs
         if _is_slug_delivered_or_frozen(slug, project_root):
-            logger.debug("prepare-quality: slug is delivered/frozen, skipping", slug=slug)
+            logger.debug("prepare: slug is delivered/frozen, skipping", slug=slug)
             return
 
         state_path = todo_dir / "state.yaml"
@@ -444,7 +467,7 @@ class PrepareQualityCartridge:
             and dor_state.get("status") == "pass"
         ):
             logger.debug(
-                "prepare-quality: already assessed at commit, skipping",
+                "prepare: already assessed at commit, skipping",
                 slug=slug,
                 commit=current_commit,
             )
@@ -459,14 +482,14 @@ class PrepareQualityCartridge:
         plan_content = plan_path.read_text() if plan_path.exists() else ""
 
         if not req_content and not plan_content:
-            logger.info("prepare-quality: no artifacts to assess", slug=slug)
+            logger.info("prepare: no artifacts to assess", slug=slug)
             return
 
         # Claim notification only when there is actual work to do
         notification = await context.db.find_by_group_key("slug", slug)
         notification_id: int | None = notification["id"] if notification else None
         if notification_id is not None:
-            await context.db.update_agent_status(notification_id, "claimed", "prepare-quality-runner")
+            await context.db.update_agent_status(notification_id, "claimed", "prepare-runner")
 
         # Score
         req_result = score_requirements(req_content)
@@ -534,7 +557,7 @@ class PrepareQualityCartridge:
         _write_state_yaml(state_path, state)
 
         logger.info(
-            "prepare-quality: assessment complete",
+            "prepare: assessment complete",
             slug=slug,
             score=score,
             verdict=verdict,
@@ -548,13 +571,13 @@ class PrepareQualityCartridge:
                     notification_id,
                     cast(
                         JsonDict,
-                        {"verdict": verdict, "score": score, "assessed_by": "prepare-quality-runner"},
+                        {"verdict": verdict, "score": score, "assessed_by": "prepare-runner"},
                     ),
                 )
             else:
                 # needs_decision — leave unresolved, log blockers
                 logger.info(
-                    "prepare-quality: needs_decision — leaving notification unresolved",
+                    "prepare: needs_decision — leaving notification unresolved",
                     slug=slug,
                     blockers=all_gaps[:5],
                 )
@@ -563,7 +586,7 @@ class PrepareQualityCartridge:
         try:
             await emit_event(
                 event="domain.software-development.planning.dor_assessed",
-                source="prepare-quality-runner",
+                source="prepare-runner",
                 level=EventLevel.WORKFLOW,
                 domain="software-development",
                 visibility=EventVisibility.LOCAL,
@@ -576,7 +599,7 @@ class PrepareQualityCartridge:
             )
         except RuntimeError:
             # Producer not configured (e.g., in tests) — acceptable
-            logger.debug("prepare-quality: producer not configured, skipping dor_assessed emit", slug=slug)
+            logger.debug("prepare: producer not configured, skipping dor_assessed emit", slug=slug)
 
 
 def _is_slug_delivered_or_frozen(slug: str, project_root: Path) -> bool:
@@ -587,7 +610,7 @@ def _is_slug_delivered_or_frozen(slug: str, project_root: Path) -> bool:
             if any(item.get("slug") == slug for item in items if isinstance(item, dict)):
                 return True
         except (yaml.YAMLError, OSError):
-            logger.warning("prepare-quality: cannot read delivered.yaml", path=str(delivered_path))
+            logger.warning("prepare: cannot read delivered.yaml", path=str(delivered_path))
 
     icebox_path = project_root / "todos" / "_icebox" / "icebox.yaml"
     if icebox_path.exists():
@@ -596,15 +619,6 @@ def _is_slug_delivered_or_frozen(slug: str, project_root: Path) -> bool:
             if any(item.get("slug") == slug for item in items if isinstance(item, dict)):
                 return True
         except (yaml.YAMLError, OSError):
-            logger.warning("prepare-quality: cannot read icebox.yaml", path=str(icebox_path))
-
-    icebox_md = project_root / "todos" / "icebox.md"
-    if icebox_md.exists():
-        try:
-            content = icebox_md.read_text()
-            if re.search(rf"\b{re.escape(slug)}\b", content):
-                return True
-        except OSError:
-            logger.warning("prepare-quality: cannot read icebox.md", path=str(icebox_md))
+            logger.warning("prepare: cannot read icebox.yaml", path=str(icebox_path))
 
     return False
