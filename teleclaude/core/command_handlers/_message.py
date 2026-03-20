@@ -78,11 +78,16 @@ async def handle_voice(
         )
 
     async def _delete_feedback(session_id: str, message_id: str) -> None:
+        normalized_message_id = str(message_id).strip() if message_id else ""
+        if not normalized_message_id or normalized_message_id.lower() == "none":
+            logger.debug("Skipping voice message cleanup for session %s because message_id is empty", session_id)
+            return
+
         session = await db.get_session(session_id)
         if not session:
             logger.warning("Session %s not found for voice delete", session_id)
             return
-        await client.delete_message(session, str(message_id))
+        await client.delete_message(session, normalized_message_id)
 
     context = VoiceEventContext(
         session_id=cmd.session_id,
@@ -103,10 +108,7 @@ async def handle_voice(
     if not transcribed:
         return
 
-    if cmd.message_id:
-        session = await db.get_session(cmd.session_id)
-        if session:
-            await client.delete_message(session, str(cmd.message_id))
+    await _delete_feedback(cmd.session_id, cmd.message_id or "")
 
     logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
 

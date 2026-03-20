@@ -24,6 +24,7 @@ from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import MessageMetadata, Session, SessionMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
+from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, KeysCommand
 
 logger = get_logger(__name__)
@@ -157,6 +158,26 @@ class InputHandlersMixin:
         if context.forum_type == "help_desk":
             session_meta = SessionMetadata(human_role="customer")
             return context.project_path or teleclaude_config.config.computer.help_desk_dir, session_meta
+        if context.forum_type == "team":
+            user_id = str(getattr(getattr(message, "author", None), "id", ""))
+            identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
+
+            human_role = identity.person_role
+            session_meta = SessionMetadata(human_role=human_role) if human_role else None
+
+            project_path = context.project_path
+            if not project_path:
+                project_path = teleclaude_config.config.computer.help_desk_dir
+
+            if identity.person_name:
+                project_path = str(scaffold_personal_workspace(identity.person_name))
+            else:
+                # Ensure a deterministic workspace path exists for legacy team channels.
+                if project_path:
+                    workspace_path = Path(project_path)
+                    if not workspace_path.exists():
+                        workspace_path.mkdir(parents=True, exist_ok=True)
+            return project_path, session_meta
 
         forum_id, _ = self._extract_channel_ids(message)
         forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None

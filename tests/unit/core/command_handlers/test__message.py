@@ -117,6 +117,86 @@ class TestHandleVoice:
         assert forwarded.origin == "discord"
         assert forwarded.actor_id == "actor-1"
 
+    @pytest.mark.unit
+    async def test_transcribed_voice_skip_delete_when_message_id_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        session = make_session(active_agent="codex")
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+        )
+        client = SimpleNamespace(
+            pre_handle_command=AsyncMock(),
+            send_message=AsyncMock(return_value="feedback-1"),
+            delete_message=AsyncMock(),
+            break_threaded_turn=AsyncMock(),
+        )
+        voice_message_handler = SimpleNamespace(handle_voice=AsyncMock(return_value="hello there"))
+        process_message = AsyncMock()
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "voice_message_handler", voice_message_handler)
+        monkeypatch.setattr(_message, "process_message", process_message)
+
+        cmd = HandleVoiceCommand(
+            session_id=session.session_id,
+            file_path="/tmp/voice.wav",
+            message_id="",
+            origin="discord",
+            actor_id="actor-1",
+            actor_name="Bob",
+            actor_avatar_url="https://avatar.example/bob.png",
+        )
+
+        with caplog.at_level("DEBUG"):
+            await _message.handle_voice(cmd, client, AsyncMock())
+
+        client.delete_message.assert_not_awaited()
+        assert any("Skipping voice message cleanup for session" in record.message for record in caplog.records)
+
+    @pytest.mark.unit
+    async def test_transcribed_voice_logs_when_session_missing_for_cleanup(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        session = make_session(active_agent="codex")
+        db = SimpleNamespace(
+            get_session=AsyncMock(side_effect=[session, None, session]),
+            update_session=AsyncMock(),
+        )
+        client = SimpleNamespace(
+            pre_handle_command=AsyncMock(),
+            send_message=AsyncMock(return_value="feedback-1"),
+            delete_message=AsyncMock(),
+            break_threaded_turn=AsyncMock(),
+        )
+        voice_message_handler = SimpleNamespace(handle_voice=AsyncMock(return_value="hello there"))
+        process_message = AsyncMock()
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "voice_message_handler", voice_message_handler)
+        monkeypatch.setattr(_message, "process_message", process_message)
+
+        cmd = HandleVoiceCommand(
+            session_id=session.session_id,
+            file_path="/tmp/voice.wav",
+            message_id="voice-msg-1",
+            origin="discord",
+            actor_id="actor-1",
+            actor_name="Bob",
+            actor_avatar_url="https://avatar.example/bob.png",
+        )
+
+        with caplog.at_level("WARNING"):
+            await _message.handle_voice(cmd, client, AsyncMock())
+
+        client.delete_message.assert_not_awaited()
+        assert any("Session sess-001 not found for voice delete" in record.message for record in caplog.records)
+
 
 class TestHandleFile:
     @pytest.mark.unit

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
+from typing import TypedDict
 
 import pytest
 
-from teleclaude.adapters.discord.input_handlers import InputHandlersMixin
+from teleclaude.adapters.discord.input_handlers import InputHandlersMixin, _SessionCreationContext
+from teleclaude.core.models import SessionMetadata
 
 pytestmark = pytest.mark.unit
 
@@ -28,6 +31,10 @@ class DummyInputHandlers(InputHandlersMixin):
         self._parse_optional_int = lambda value: (
             int(str(value).strip()) if value is not None and str(value).strip().isdigit() else None
         )
+
+
+class _Metadata(TypedDict):
+    user_id: str
 
 
 def test_extract_audio_attachment_returns_first_audio_content_type() -> None:
@@ -72,3 +79,38 @@ def test_extract_channel_ids_uses_parent_for_threads_and_self_for_plain_channels
     assert adapter._extract_channel_ids(SimpleNamespace(channel=ThreadChannel("500", "100"))) == (100, 500)
     assert adapter._extract_channel_ids(SimpleNamespace(channel=ThreadChannel("700", None))) == (700, 700)
     assert adapter._extract_channel_ids(SimpleNamespace(channel=PlainChannel("600"))) == (600, None)
+
+
+def test_resolve_team_session_target_uses_discord_identity_and_scaffolded_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Identity:
+        person_role = "member"
+        person_name = "Alice"
+
+    class Resolver:
+        def resolve(self, origin: str, metadata: _Metadata) -> Identity:
+            assert origin == "discord"
+            assert metadata["user_id"] == "900"
+            return Identity()
+
+    def fake_scaffold(person_name: str) -> Path:
+        assert person_name == "Alice"
+        return Path("/tmp/alice-workspace")
+
+    monkeypatch.setattr(
+        "teleclaude.adapters.discord.input_handlers.get_identity_resolver",
+        lambda: Resolver(),
+    )
+    monkeypatch.setattr("teleclaude.invite.scaffold_personal_workspace", fake_scaffold)
+
+    adapter = DummyInputHandlers()
+    message = SimpleNamespace(author=SimpleNamespace(id="900"))
+    path, session_meta = adapter._resolve_session_creation_target(
+        message,
+        _SessionCreationContext(forum_type="team", project_path="/tmp/legacy-folder"),
+    )
+
+    assert path == "/tmp/alice-workspace"
+    assert isinstance(session_meta, SessionMetadata)
+    assert session_meta.human_role == "member"
