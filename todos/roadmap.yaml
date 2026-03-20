@@ -55,3 +55,4 @@
   after:
   - mirror-timestamp-fix
 - slug: mirror-timestamp-fix
+- slug: fix-mirror-conversation-text-drops-per-messa
