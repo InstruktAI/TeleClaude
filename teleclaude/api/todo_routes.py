@@ -229,10 +229,11 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
     from teleclaude.git import Repo  # pylint: disable=import-outside-toplevel
 
     repo = Repo(effective_cwd)
-    repo.git.add("--", f"todos/{slug}/state.yaml")
-    repo.git.commit(
-        "-m", f"chore(todo): {slug} {phase}={status}", "--no-verify", "--only", "--", f"todos/{slug}/state.yaml"
-    )
+    if repo.git.diff("--", f"todos/{slug}/state.yaml").strip():
+        repo.git.add("--", f"todos/{slug}/state.yaml")
+        repo.git.commit(
+            "-m", f"chore(todo): {slug} {phase}={status}", "--no-verify", "--only", "--", f"todos/{slug}/state.yaml"
+        )
 
     return {"result": f"OK: {slug} state updated - {phase}: {status}", "state": str(updated_state)}
 
