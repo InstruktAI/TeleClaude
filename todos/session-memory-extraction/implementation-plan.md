@@ -20,6 +20,9 @@
 
 ---
 
+
+**Verification:** TBD
+
 ## Phase 2: Validation
 
 ### Task 2.1: Tests
@@ -34,8 +37,15 @@
 
 ---
 
+
+**Verification:** TBD
+
 ## Phase 3: Review Readiness
 
 - [ ] Confirm requirements are reflected in code changes
 - [ ] Confirm implementation tasks are all marked `[x]`
 - [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+
+## Risks
+
+<!-- TODO: identify risks -->

@@ -93,10 +93,18 @@ audit:
     started_at: ''
     completed_at: ''
 dor:
-  score: 0
+  last_assessed_at: '2026-03-20T02:25:07.432401+00:00'
+  score: 7
   status: needs_work
   schema_version: 1
-  blockers: []
+  blockers:
+  - 'requirements: fewer than 2 functional requirements (FR) sections'
+  - 'requirements: no Acceptance Criteria section'
+  - 'requirements: missing Dependency / Prerequisites section'
+  - 'plan: fewer than 3 explicit file references with extensions'
+  - 'plan: no recognisable directory path references'
+  - 'plan: fewer than 2 explicit FR references'
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
+  assessed_commit: 8b49ea9b2
