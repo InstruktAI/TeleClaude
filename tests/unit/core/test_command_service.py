@@ -2,10 +2,27 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from teleclaude.constants import JobRole, SlashCommand
-from teleclaude.core.command_service import COMMAND_ROLE_MAP
+from teleclaude.core.command_service import COMMAND_ROLE_MAP, CommandService, _build_widget_summary
+from teleclaude.core.models import MessageMetadata
+from teleclaude.types.commands import SystemCommand
+
+
+def _make_service(*, client: object | None = None) -> CommandService:
+    """Build a CommandService with mock dependencies for isolated testing."""
+    return CommandService(
+        client=client or SimpleNamespace(send_message=AsyncMock(), adapters={}),
+        start_polling=AsyncMock(),
+        execute_terminal_command=AsyncMock(),
+        execute_auto_command=AsyncMock(),
+        queue_background_task=MagicMock(),
+        bootstrap_session=AsyncMock(),
+    )
 
 
 class TestCommandRoleMap:
@@ -41,3 +58,126 @@ class TestCommandRoleMap:
     @pytest.mark.unit
     def test_map_is_not_empty(self):
         assert len(COMMAND_ROLE_MAP) > 0
+
+
+class TestBuildWidgetSummary:
+    @pytest.mark.unit
+    def test_builds_summary_with_all_section_types(self) -> None:
+        """Widget summary includes title, text, table, code, divider, and footer."""
+        data = {
+            "title": "Release status",
+            "sections": [
+                {"type": "text", "label": "Summary", "content": "Everything shipped."},
+                {"type": "table", "headers": ["Area", "State"], "rows": [["api", "green"]]},
+                {"type": "code", "language": "python", "content": "print('ok')"},
+                {"type": "divider"},
+            ],
+            "footer": "See logs for details.",
+        }
+        summary = _build_widget_summary(data)
+        assert "Release status" in summary
+        assert "_Summary_" in summary
+        assert "Everything shipped." in summary
+        assert "Table: 2 columns, 1 rows" in summary
+        assert "Code (python):" in summary
+        assert "See logs for details." in summary
+
+
+class TestSystemCommandHandlers:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_deliver_result_retries_with_plain_text_on_formatting_failure(self) -> None:
+        """deliver_result falls back to plain text when formatted send raises."""
+        session = SimpleNamespace(session_id="sess-result")
+        client = SimpleNamespace(
+            send_message=AsyncMock(side_effect=[RuntimeError("formatting failed"), "msg-2"]),
+            adapters={},
+        )
+        service = _make_service(client=client)
+        cmd = SystemCommand(
+            command="deliver_result",
+            session_id="sess-result",
+            data={"content": "**ship it**"},
+        )
+
+        with patch("teleclaude.core.db.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session)
+            result = await service.deliver_result(cmd)
+
+        assert isinstance(result, dict)
+        assert result["status"] == "success"
+        assert result["message_id"] == "msg-2"
+        assert "warning" in result
+        assert client.send_message.await_count == 2
+
+        first_call, second_call = client.send_message.await_args_list
+        assert first_call.kwargs["session"] is session
+        assert isinstance(first_call.kwargs["metadata"], MessageMetadata)
+        assert first_call.kwargs["metadata"].parse_mode == "MarkdownV2"
+        assert first_call.kwargs["ephemeral"] is False
+
+        assert second_call.kwargs["session"] is session
+        assert second_call.kwargs["text"] == "**ship it**"
+        assert isinstance(second_call.kwargs["metadata"], MessageMetadata)
+        assert second_call.kwargs["metadata"].parse_mode is None
+        assert second_call.kwargs["ephemeral"] is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_render_widget_sends_markdownified_summary(self) -> None:
+        """render_widget builds summary, markdownifies, and sends via adapter."""
+        session = SimpleNamespace(session_id="sess-widget")
+        client = SimpleNamespace(
+            send_message=AsyncMock(),
+            adapters={},
+        )
+        service = _make_service(client=client)
+        cmd = SystemCommand(
+            command="render_widget",
+            session_id="sess-widget",
+            data={
+                "widget_data": {
+                    "title": "Status",
+                    "sections": [{"type": "text", "content": "All good."}],
+                },
+            },
+        )
+
+        with (
+            patch("teleclaude.core.db.db") as mock_db,
+            patch(
+                "teleclaude.utils.markdown.telegramify_markdown",
+                return_value="formatted-widget",
+            ),
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            result = await service.render_widget(cmd)
+
+        assert isinstance(result, dict)
+        assert result["status"] == "success"
+        assert isinstance(result["summary"], str)
+        client.send_message.assert_awaited_once()
+        call = client.send_message.await_args
+        assert call.kwargs["text"] == "formatted-widget"
+        assert call.kwargs["metadata"].parse_mode == "MarkdownV2"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_escalate_session_raises_without_discord_adapter(self) -> None:
+        """Escalation raises ValueError when no DiscordAdapter is present."""
+        session = SimpleNamespace(session_id="sess-esc", human_role="customer")
+        client = SimpleNamespace(
+            send_message=AsyncMock(),
+            adapters={"telegram": object()},
+        )
+        service = _make_service(client=client)
+        cmd = SystemCommand(
+            command="escalate_session",
+            session_id="sess-esc",
+            data={"customer_name": "Taylor", "reason": "handoff", "context_summary": ""},
+        )
+
+        with patch("teleclaude.core.db.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session)
+            with pytest.raises(ValueError, match="Discord adapter not available"):
+                await service.escalate_session(cmd)

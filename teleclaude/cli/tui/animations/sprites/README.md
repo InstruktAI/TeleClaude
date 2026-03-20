@@ -39,13 +39,13 @@
 
 ## What Lives in the Sky
 
-| File | What it draws | Theme |
-|:-----|:-------------|:-----:|
-| `celestial.py` | **Sun** and **Moon** — full-disc quarter-celestials anchored top-right | `*` |
-| `clouds.py` | Wisps, puffs, medium clouds, cumulus — **4 weather patterns** | `*` |
-| `birds.py` | Small `v`/`^` flocks, large composite birds with body detail | light |
-| `ufo.py` | Multi-layer flying saucer with hull, cockpit, and port lights | `*` |
-| `cars.py` | Left-facing and right-facing cars with body, head, wheels, tyres | `*` |
+| File           | What it draws                                                          | Theme |
+| :------------- | :--------------------------------------------------------------------- | :---: |
+| `celestial.py` | **Sun** and **Moon** — full-disc quarter-celestials anchored top-right |  `*`  |
+| `clouds.py`    | Wisps, puffs, medium clouds, cumulus — **4 weather patterns**          |  `*`  |
+| `birds.py`     | Small `v`/`^` flocks, large composite birds with body detail           | light |
+| `ufo.py`       | Multi-layer flying saucer with hull, cockpit, and port lights          |  `*`  |
+| `cars.py`      | Left-facing and right-facing cars with body, head, wheels, tyres       |  `*`  |
 
 <br>
 
@@ -85,12 +85,12 @@ from teleclaude.cli.tui.animations.sprites.composite import (
 
 <br>
 
-| Type | What it does |
-|:-----|:------------|
-| **`SpriteLayer`** | One color layer. `positive` chars render as foreground, `negative` chars render inverted, spaces are transparent. |
-| **`CompositeSprite`** | Stack of layers rendered back-to-front. Layer 0 first, last layer on top. |
-| **`AnimatedSprite`** | Cycles through frames. Each frame is a `CompositeSprite` or plain `list[str]`. |
-| **`SpriteGroup`** | Population container: how many of each sprite to spawn, with weighted randomness. |
+| Type                  | What it does                                                                                                      |
+| :-------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| **`SpriteLayer`**     | One color layer. `positive` chars render as foreground, `negative` chars render inverted, spaces are transparent. |
+| **`CompositeSprite`** | Stack of layers rendered back-to-front. Layer 0 first, last layer on top.                                         |
+| **`AnimatedSprite`**  | Cycles through frames. Each frame is a `CompositeSprite` or plain `list[str]`.                                    |
+| **`SpriteGroup`**     | Population container: how many of each sprite to spawn, with weighted randomness.                                 |
 
 <br>
 

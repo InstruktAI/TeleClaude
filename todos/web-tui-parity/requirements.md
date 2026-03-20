@@ -32,6 +32,7 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 **Global keyboard shortcuts:** Single `useAdminKeyboard` hook, mounted at the left panel root, guards against `input`/`textarea` focus before firing. No external hotkey library.
 
 **shadcn components to install** (`npx shadcn add <name>`):
+
 - `dialog` — replace manual overlay in `NewSessionDialog` and all future modals
 - `tabs` — tab bar for the 4 main views
 - `collapsible` — base primitive for `TreeNode` expand/collapse
@@ -49,6 +50,7 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 #### 3. Sessions tab — full parity
 
 **Layout:**
+
 - Left panel shows hierarchical tree: Computer → Project → Session, AI-to-AI child sessions nest one level deeper.
 - Computer header: icon, name, online/offline status badge, total session count. Thick separator below.
 - Project header: icon, project name, truncated path, session count. Thin separator.
@@ -57,6 +59,7 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 - Orphaned sessions (no project path) grouped under synthetic "—" project per computer.
 
 **Activity highlighting — full row, not just dot:**
+
 - User sends message → entire session row highlights yellow/orange. Persists until agent responds.
 - Agent turn complete (`agent_output_stop`) → row highlights green/blue. Persists until user selects the session.
 - Tool executing (`agent_output_update`) → row highlights blue for duration of tool.
@@ -64,6 +67,7 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 - Event source: `agent_activity` WebSocket event; discriminate by `event.type` field (`user_prompt_submit`, `agent_output_update`, `agent_output_stop`).
 
 **Keyboard navigation (active when tree panel has focus):**
+
 - `↑/↓` — move cursor, auto-scroll to keep cursor visible
 - `Enter` — on session: open in right panel + focus chat input; on project header: open new session modal pre-filled with that project
 - `←/→` — collapse/expand session row detail lines
@@ -73,12 +77,14 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 - `k` — kill selected session (confirm modal → toast: "Session ended")
 
 **Session actions — right panel header:**
+
 - Existing "End" button remains.
 - Add "Restart" button (calls `/api/sessions/:id/agent-restart`).
 
 #### 4. Preparation tab — full parity
 
 **Layout:**
+
 - Hierarchical tree: Computer → Project → Todo → Files (nested, expandable).
 - Computer headers (from configured trusted dirs / computers).
 - Project headers per computer.
@@ -91,6 +97,7 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 - File rows nested under expanded todos (all non-hidden files under `todos/{slug}/`, alphabetically).
 
 **Keyboard navigation:**
+
 - `↑/↓` — cursor
 - `←/→` — collapse/expand todo (shows/hides file list)
 - `Enter` — toggle expand/collapse on todo; open file viewer on file row
@@ -110,11 +117,13 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 #### 5. Jobs tab — full parity
 
 **Layout:**
+
 - Two sections: "Scheduled Jobs" and "One-shot Jobs".
 - Each job row: name, schedule expression or "one-shot", script/command.
 - Cursor-navigable list.
 
 **Keyboard navigation:**
+
 - `↑/↓` — cursor
 - `Enter` — run selected job (POST to `/api/jobs/:name/run`, toast: "Job dispatched")
 
@@ -123,6 +132,7 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 #### 6. Config tab — full parity
 
 **Subtabs (horizontal tab bar within left panel):**
+
 1. **Adapters** — enable/disable and edit per-adapter fields (Telegram, Discord, WhatsApp, etc.)
 2. **People** — list people, add/edit (name, email, role)
 3. **Notifications** — notification preferences
@@ -130,6 +140,7 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 5. **Validate** — run config validation, show status per env var
 
 **Keyboard navigation:**
+
 - `↑/↓` — navigate within subtab
 - `Tab/Shift+Tab` — cycle through subtabs
 - `←/→` — cycle enum values on enum fields
@@ -146,6 +157,7 @@ Port the full TUI admin experience to the web frontend. The web interface must b
 Migrate `NewSessionDialog` from custom overlay to shadcn `Dialog`. All new modals also use `Dialog`.
 
 **New Session Modal** (trigger: `n` in Sessions tab, Enter on project header):
+
 - Computer (select, pre-filled when triggered from project context)
 - Project (select, pre-filled when triggered from project context)
 - Agent (radio: claude / gemini / codex, with availability indicator ✔ / ✘ / ~)
@@ -155,16 +167,20 @@ Migrate `NewSessionDialog` from custom overlay to shadcn `Dialog`. All new modal
 - Session ID (text input, optional, for revive/resume)
 
 **New Todo Modal** (trigger: `n` in Preparation tab):
+
 - Slug (text input, validated: lowercase, numbers, hyphens only)
 
 **New Bug Modal** (trigger: `b` in Preparation tab):
+
 - Slug (text input, same validation)
 
 **Confirm Modal** (trigger: `k`, `R`, `f` destructive actions):
+
 - Title + message
 - Yes / No / Esc
 
 **New Project Modal** (trigger: `n` on computer header in Sessions/Preparation):
+
 - Name (text input)
 - Description (text input, optional)
 - Path (text input, validated: must be an existing directory)

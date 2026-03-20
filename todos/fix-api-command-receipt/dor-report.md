@@ -5,14 +5,17 @@
 - Status: `needs_work`
 - Score: `7/10`
 - Ready Decision: **Not Ready**
+- Assessed commit: `374c0d30bc559c549be44452a722fb1308fff3f4`
 
-This gate was grounded against the current preparation policies and the live
-architecture specs for the API server, operation receipts, Redis transport,
-and command classification. The artifact set is close, but it is not yet
-coherent enough to dispatch a builder safely: the executable test-spec
-artifact is still missing, the dependency story is inconsistent with the
-roadmap, and the requirements, plan, and demo do not yet present one stable
-response-mode contract.
+This gate was grounded against the current preparation policies plus the live
+API server, operation-receipts, Redis transport, command-surface,
+layer-ownership, and session-lifecycle specs. It was assessed from the
+worktree `trees/fix-api-command-receipt`, because that is where the
+expected-failure spec tests for this todo live. The artifact set is still not
+coherent enough to dispatch a builder safely: the xfail specs exist but are
+not review-ready, the lifecycle record still does not fully reflect that spec
+phase, FR-2 is still contradicted by the plan, and the dependency/demo
+artifacts do not yet present one stable response-mode contract.
 
 ## Cross-Artifact Validation
 
@@ -38,15 +41,21 @@ response-mode contract.
   dispatcher refactor, receipt-backed `todo_create` / `todo_prepare`,
   missing domain events, typed command wrapping, DELETE remote routing,
   and the four architecture-doc updates.
+- The worktree contains expected-failure spec tests for FR-1 through FR-6
+  under `tests/unit/core/`.
 - `state.yaml.grounding.referenced_paths` matches the implementation surface
   named in the plan, so the artifact set is grounded in real code paths.
 
 ### Verification chain: FAIL
 
-- The plan contains concrete verification intent, but the required executable
-  test-spec artifact does not exist:
-  - `state.yaml.artifacts.test_specs.produced_at` is empty.
-  - `state.yaml.test_spec_review.verdict` is empty.
+- Expected-failure specs now exist in the worktree, but they are not gate-ready:
+  - `test_spec_review.verdict` is `needs_work`.
+  - `spec-review-findings.md` records four critical gaps across FR-2 through FR-5.
+  - `artifacts.test_specs.produced_at` is still empty, so the lifecycle record
+    does not yet confirm spec delivery.
+- `implementation-plan.md` still references generic behavioral checks rather than
+  the concrete xfail test files it is supposed to make GREEN, so builder
+  verification remains underspecified.
 - `telec todo demo validate fix-api-command-receipt` passes structurally with
   8 executable blocks, but `demo.md` is semantically stale on command
   classification, so it is not yet trustworthy review evidence.
@@ -71,18 +80,28 @@ reducing meaningful discovery risk.
 ### 3. Verification: FAIL
 
 Definition of Ready requires executable expected-failure test specifications
-for all behavioral requirements. The plan references a future specs phase, but
-the gate evaluates current readiness, not planned readiness. Until the
-test-spec artifact exists and is reviewed, this gate fails.
+for all behavioral requirements. Those specs now exist in the worktree, but
+the test-spec review verdict is still `needs_work`, the lifecycle stamp for
+`artifacts.test_specs.produced_at` is missing, and the current plan is not
+yet tied to the concrete xfail files. Until the spec artifact is both
+recorded and approved, this gate fails.
 
 ### 4. Approach known: PASS
 
 The technical path is concrete and grounded in the current code:
 
-- `todo_create()` and `todo_prepare()` are still synchronous in
-  `teleclaude/api/todo_routes.py`.
-- `agent_restart()`, `jobs/{name}/run`, and `DELETE /sessions/{id}` show the
-  current async acceptance paths in the API layer.
+- `POST /sessions/{id}/message`, `/keys`, `/voice`, and `/sessions/self/file`
+  still await `CommandService` methods and return synchronous 200 responses,
+  which matches the requirements' "already correct" bucket.
+- `POST /sessions/{id}/agent-restart` currently uses `asyncio.create_task()`
+  and returns `{"status": "accepted"}`, `POST /jobs/{name}/run` uses
+  `BackgroundTasks`, and `DELETE /sessions/{id}` already performs an accepted
+  lifecycle handoff. Those are the real fire-and-forget surfaces the plan is
+  trying to formalize.
+- `POST /todos/work` and `/todos/integrate` already use `OperationsService`
+  receipts, while `todo_create()` and `todo_prepare()` are still synchronous in
+  `teleclaude/api/todo_routes.py`, so the receipt-extension path is grounded in
+  an existing pattern.
 - `OperationStatusDTO` currently lacks `completion_event`, and
   `teleclaude/core/events.py` does not yet define the new domain payloads,
   matching the gaps the plan intends to close.
@@ -119,8 +138,11 @@ scope. This gate is automatically satisfied.
 
 ## Review-Readiness Preview
 
-- Test lane: not ready. Missing `test_specs` artifact and missing
-  `test_spec_review` verdict would draw an immediate review finding.
+- Test lane: not ready. The xfail specs exist, but `test_spec_review` is still
+  `needs_work`; the recorded findings say FR-2 does not pin the real dispatcher
+  boundary, FR-3 asserts receipt structure instead of the receipt contract,
+  FR-4 mostly checks payload existence instead of emission, and FR-5 still uses
+  AST/method-presence proxies instead of route-boundary assertions.
 - API-contract lane: not ready. Requirements, plan, and demo disagree on the
   command classification for at least `ProcessMessageCommand`, and FR-2's
   "no dispatcher changes" language is not satisfied by the planned handler
@@ -129,15 +151,15 @@ scope. This gate is automatically satisfied.
   corrected either in `requirements.md` or in `todos/roadmap.yaml`.
 - Demo lane: partially ready. Structural validation passes, but the demo needs
   semantic correction before it can be trusted as a review artifact.
-- Builder guidance: close, but not yet safe. A builder should not have to
-  resolve which response-mode classification is canonical or whether Task 2
-  actually satisfies FR-2.
+- Builder guidance: not yet safe. A builder should not have to resolve which
+  response-mode classification is canonical, whether Task 2 actually satisfies
+  FR-2, or which concrete xfail spec file each task is expected to make GREEN.
 
 ## Unresolved Blockers
 
-- Deliver executable expected-failure test specs and record them in
-  `state.yaml.artifacts.test_specs` with a corresponding `test_spec_review`
-  verdict.
+- Resolve the test-spec review findings, stamp the spec artifact in
+  `state.yaml.artifacts.test_specs`, and rerun test-spec review until the
+  verdict is `approve`.
 - Reconcile FR-2 with Task 2: either relax the requirement wording or revise
   the plan so the dispatcher truly does not need per-command updates for new
   subclasses.

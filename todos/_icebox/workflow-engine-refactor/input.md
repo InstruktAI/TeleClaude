@@ -50,14 +50,14 @@ steps:
         - software-development/procedure/maintenance/next-prepare-discovery
         - software-development/policy/preparation-artifact-quality
       artifacts:
-        - "todos/{slug}/requirements.md"
+        - 'todos/{slug}/requirements.md'
       thinking_mode: slow
     reviewer:
       required_reads:
         - software-development/procedure/lifecycle/review-requirements
         - software-development/policy/preparation-artifact-quality
       artifacts:
-        - "todos/{slug}/requirements-review-findings.md"
+        - 'todos/{slug}/requirements-review-findings.md'
       thinking_mode: slow
     max_rounds: 3
     human_gate: true
@@ -74,11 +74,11 @@ steps:
         - software-development/policy/testing
         - software-development/policy/test-structure
       artifacts:
-        - "{test.spec_pattern}"
+        - '{test.spec_pattern}'
       inputs:
         - step: requirements
           artifacts:
-            - "todos/{slug}/requirements.md"
+            - 'todos/{slug}/requirements.md'
       thinking_mode: slow
       validator: spec_check
     reviewer:
@@ -86,7 +86,7 @@ steps:
         - software-development/policy/testing
         - software-development/policy/test-structure
       artifacts:
-        - "todos/{slug}/spec-review-findings.md"
+        - 'todos/{slug}/spec-review-findings.md'
       thinking_mode: slow
     max_rounds: 3
     state_key: spec_review
@@ -100,22 +100,22 @@ steps:
         - software-development/procedure/maintenance/next-prepare-draft
         - software-development/policy/preparation-artifact-quality
       artifacts:
-        - "todos/{slug}/implementation-plan.md"
-        - "todos/{slug}/demo.md"
+        - 'todos/{slug}/implementation-plan.md'
+        - 'todos/{slug}/demo.md'
       inputs:
         - step: requirements
           artifacts:
-            - "todos/{slug}/requirements.md"
+            - 'todos/{slug}/requirements.md'
         - step: test-specs
           artifacts:
-            - "{test.spec_pattern}"
+            - '{test.spec_pattern}'
       thinking_mode: slow
     reviewer:
       required_reads:
         - software-development/procedure/lifecycle/review-plan
         - software-development/policy/preparation-artifact-quality
       artifacts:
-        - "todos/{slug}/plan-review-findings.md"
+        - 'todos/{slug}/plan-review-findings.md'
       thinking_mode: slow
     max_rounds: 3
     state_key: plan_review
@@ -128,7 +128,7 @@ steps:
       required_reads:
         - software-development/policy/definition-of-ready
       artifacts:
-        - "todos/{slug}/dor-report.md"
+        - 'todos/{slug}/dor-report.md'
       thinking_mode: slow
     state_key: dor_gate
     events:
@@ -138,6 +138,7 @@ steps:
 ### Step schema details
 
 Each step has:
+
 - producer.required_reads: doc snippet IDs loaded as context for the worker
 - producer.artifacts: glob patterns — engine checks existence as default validation
 - producer.inputs: artifacts from prior steps passed to the worker
@@ -161,6 +162,7 @@ Language-agnostic engine. Language-specific details come from baseline files:
 When a step has produces_code: true, the engine detects the project language (from teleclaude.yml config, bootstrapped by telec init) and loads the appropriate language baseline required reads in addition to the step own required reads.
 
 Detection stored in project config:
+
 ```yaml
 # teleclaude.yml (project)
 language: python
@@ -171,9 +173,10 @@ languages:
 ```
 
 For Python: pytest, xfail markers, pytest.mark.xfail(strict=True)
-For TypeScript: vitest, test.fails(), *.spec.ts patterns
+For TypeScript: vitest, test.fails(), \*.spec.ts patterns
 
 The language baseline provides:
+
 - Test framework conventions
 - RED marker syntax (xfail equivalent)
 - Spec file patterns
@@ -186,6 +189,7 @@ Registry of validation functions. Steps reference by name. Engine calls after pr
 Default validation (no validator field): artifacts matching glob exist.
 
 Named validators for steps that need more:
+
 - spec_check: valid syntax, contains RED markers, tests actually fail
 - build_gates: make test passes, make lint passes, all plan tasks checked
 - demo_validate: existing telec todo demo validate

@@ -25,17 +25,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata, RedisInboundMessage, SessionLaunchIntent
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import (
-    CloseSessionCommand,
-    CreateSessionCommand,
-    GetSessionDataCommand,
-    KeysCommand,
-    ProcessMessageCommand,
-    RestartAgentCommand,
-    ResumeAgentCommand,
-    RunAgentCommand,
-    StartAgentCommand,
-)
+from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
 
 logger = get_logger(__name__)
 
@@ -336,33 +326,40 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
             return {"status": "error", "error": str(exc)}
         return {"status": "success", "data": data}
 
-    async def _dispatch_command(self, command: object) -> JsonValue | None:
-        """Dispatch one mapped command to the command service."""
+    async def _dispatch_command(self, command: InternalCommand) -> JsonValue | None:
+        """Dispatch a command via handler table and response_mode execution layer."""
         cmds = get_command_service()
-        result: JsonValue | None = None
 
-        if isinstance(command, CreateSessionCommand):
-            result = cast(JsonValue, await cmds.create_session(command))
-        elif isinstance(command, ProcessMessageCommand):
-            await cmds.process_message(command)
-        elif isinstance(command, KeysCommand):
-            await cmds.keys(command)
-        elif isinstance(command, StartAgentCommand):
-            await cmds.start_agent(command)
-        elif isinstance(command, ResumeAgentCommand):
-            await cmds.resume_agent(command)
-        elif isinstance(command, RestartAgentCommand):
-            result = list(await cmds.restart_agent(command))
-        elif isinstance(command, RunAgentCommand):
-            await cmds.run_agent_command(command)
-        elif isinstance(command, GetSessionDataCommand):
-            result = cast(JsonValue, await cmds.get_session_data(command))
-        elif isinstance(command, CloseSessionCommand):
-            await cmds.close_session(command)
-        else:
-            raise ValueError(f"Unsupported command type: {type(command).__name__}")
+        handler_table: dict[CommandType, Any] = {
+            CommandType.CREATE_SESSION: cmds.create_session,
+            CommandType.PROCESS_MESSAGE: cmds.process_message,
+            CommandType.KEYS: cmds.keys,
+            CommandType.START_AGENT: cmds.start_agent,
+            CommandType.RESUME_AGENT: cmds.resume_agent,
+            CommandType.RESTART_AGENT: cmds.restart_agent,
+            CommandType.RUN_AGENT_COMMAND: cmds.run_agent_command,
+            CommandType.GET_SESSION_DATA: cmds.get_session_data,
+            CommandType.CLOSE_SESSION: cmds.close_session,
+            CommandType.SYSTEM: cmds.system_command,
+        }
 
-        return result
+        handler = handler_table.get(command.command_type)
+        if handler is None:
+            raise ValueError(f"No handler registered for command type: {command.command_type.value}")
+
+        if command.response_mode == ResponseMode.RECEIPT:
+            raise ValueError(
+                f"RECEIPT commands must go through OperationsService, "
+                f"not the redis dispatcher: {command.command_type.value}"
+            )
+
+        if command.response_mode == ResponseMode.FIRE_AND_FORGET:
+            await handler(command)
+            return None
+
+        # IMMEDIATE: await handler and return its result
+        result = await handler(command)
+        return cast(JsonValue, result)
 
     def _parse_redis_message(self, data: dict[bytes, bytes]) -> RedisInboundMessage:
         """Decode raw Redis stream entry into typed RedisInboundMessage."""

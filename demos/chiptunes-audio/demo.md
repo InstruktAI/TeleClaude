@@ -41,6 +41,7 @@ assert len(sids) > 1000
 ### Step 1: Show the TUI footer icons
 
 Open the TUI (`telec`). Observe the bottom status bar:
+
 - The **speaker icon** (🔊/🔇) now represents **ChipTunes** — not TTS.
 - TTS has a new **speech icon** (🗣️) next to it.
 - Both icons reflect their enabled/disabled state independently.
@@ -48,6 +49,7 @@ Open the TUI (`telec`). Observe the bottom status bar:
 ### Step 2: Toggle chiptunes with keyboard
 
 Press `m` in the TUI. Observe:
+
 - The speaker icon lights up (🔊 bold).
 - A random C64 SID track begins playing through your speakers.
 - The track name is not displayed (shuffle mode — no UI for track info in v1).
@@ -60,6 +62,7 @@ A new random track should start automatically without user intervention.
 ### Step 4: Toggle off
 
 Press `m` again. Observe:
+
 - Audio stops immediately.
 - The speaker icon dims (🔇).
 
@@ -71,6 +74,7 @@ Click the speaker icon in the footer. Same behavior as pressing `m`.
 
 Enable both chiptunes (`m`) and TTS (`v`). Trigger a TTS event
 (e.g., start a new agent session). Observe:
+
 - Chiptunes audio pauses when TTS speaks.
 - Chiptunes resume after TTS completes.
 

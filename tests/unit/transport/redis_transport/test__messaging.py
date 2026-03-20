@@ -167,7 +167,7 @@ class TestExecuteCommand:
     async def test_exception_in_command_returns_error_envelope(self, transport: RedisTransport) -> None:
         from teleclaude.types.commands import ProcessMessageCommand
 
-        cmd = MagicMock(spec=ProcessMessageCommand)
+        cmd = ProcessMessageCommand(session_id="s1", text="hi", origin="test")
         with patch("teleclaude.transport.redis_transport._messaging.get_command_service") as mock_svc:
             mock_svc.return_value.process_message = AsyncMock(side_effect=RuntimeError("boom"))
             result = await transport._execute_command(cmd)

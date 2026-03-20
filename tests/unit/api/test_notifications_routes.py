@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -87,3 +87,49 @@ class TestNotificationsRoutes:
             await notifications_routes.resolve_notification(9, body={"note": "done"})
 
         assert exc_info.value.status_code == 404
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_claim_notification_emits_claimed_event(self, configured_event_db: object) -> None:
+        """claim_notification emits NotificationClaimedPayload with the right IDs.
+
+        A regression removing the emit call would not break the HTTP-shape tests above.
+        """
+        from teleclaude.core.event_bus import event_bus
+        from teleclaude.core.events import NotificationClaimedPayload
+
+        emitted: list[tuple[str, object]] = []
+
+        def capture_emit(event: str, context: object) -> None:
+            emitted.append((event, context))
+
+        with patch.object(event_bus, "emit", side_effect=capture_emit):
+            await notifications_routes.claim_notification(42, body={"agent_id": "agent-1"})
+
+        claim_events = [(e, p) for e, p in emitted if e == "notification.claimed"]
+        assert len(claim_events) == 1, f"Expected notification.claimed, got: {[e[0] for e in emitted]}"
+        payload = claim_events[0][1]
+        assert isinstance(payload, NotificationClaimedPayload)
+        assert payload.notification_id == 42
+        assert payload.agent_id == "agent-1"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_resolve_notification_emits_resolved_event(self, configured_event_db: object) -> None:
+        """resolve_notification emits NotificationResolvedPayload with the notification ID."""
+        from teleclaude.core.event_bus import event_bus
+        from teleclaude.core.events import NotificationResolvedPayload
+
+        emitted: list[tuple[str, object]] = []
+
+        def capture_emit(event: str, context: object) -> None:
+            emitted.append((event, context))
+
+        with patch.object(event_bus, "emit", side_effect=capture_emit):
+            await notifications_routes.resolve_notification(99, body={"note": "done"})
+
+        resolve_events = [(e, p) for e, p in emitted if e == "notification.resolved"]
+        assert len(resolve_events) == 1, f"Expected notification.resolved, got: {[e[0] for e in emitted]}"
+        payload = resolve_events[0][1]
+        assert isinstance(payload, NotificationResolvedPayload)
+        assert payload.notification_id == 99

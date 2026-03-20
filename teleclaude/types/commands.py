@@ -25,12 +25,29 @@ class CommandType(str, Enum):
     SYSTEM = "system_command"
 
 
+class ResponseMode(str, Enum):
+    """Declares how the API/dispatch layer handles a command's response."""
+
+    IMMEDIATE = "immediate"
+    FIRE_AND_FORGET = "fire_and_forget"
+    RECEIPT = "receipt"
+
+
 @dataclass(kw_only=True)
 class InternalCommand:
     """Base class for all internal commands."""
 
     command_type: CommandType
     request_id: str | None = None
+    response_mode: ResponseMode = ResponseMode.IMMEDIATE
+    completion_event: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.response_mode == ResponseMode.FIRE_AND_FORGET and self.completion_event is None:
+            raise ValueError(
+                f"FIRE_AND_FORGET commands must declare a completion_event, "
+                f"but {type(self).__name__} has completion_event=None"
+            )
 
     def to_payload(self) -> dict[str, object]:
         """Return payload dict for adapter event dispatch."""
@@ -360,7 +377,12 @@ class RestartAgentCommand(InternalCommand):
         agent_name: str | None = None,
         request_id: str | None = None,
     ):
-        super().__init__(command_type=CommandType.RESTART_AGENT, request_id=request_id)
+        super().__init__(
+            command_type=CommandType.RESTART_AGENT,
+            request_id=request_id,
+            response_mode=ResponseMode.FIRE_AND_FORGET,
+            completion_event="agent.restart_dispatched",
+        )
         self.session_id = session_id
         self.agent_name = agent_name
 
@@ -417,7 +439,12 @@ class CloseSessionCommand(InternalCommand):
         session_id: str,
         request_id: str | None = None,
     ):
-        super().__init__(command_type=CommandType.CLOSE_SESSION, request_id=request_id)
+        super().__init__(
+            command_type=CommandType.CLOSE_SESSION,
+            request_id=request_id,
+            response_mode=ResponseMode.FIRE_AND_FORGET,
+            completion_event="session.close_completed",
+        )
         self.session_id = session_id
 
     def to_payload(self) -> dict[str, object]:
@@ -441,8 +468,15 @@ class SystemCommand(InternalCommand):
         data: dict[str, object] | None = None,
         session_id: str | None = None,
         request_id: str | None = None,
+        response_mode: ResponseMode = ResponseMode.IMMEDIATE,
+        completion_event: str | None = None,
     ):
-        super().__init__(command_type=CommandType.SYSTEM, request_id=request_id)
+        super().__init__(
+            command_type=CommandType.SYSTEM,
+            request_id=request_id,
+            response_mode=response_mode,
+            completion_event=completion_event,
+        )
         self.command = command
         self.args = args or []
         self.data = data

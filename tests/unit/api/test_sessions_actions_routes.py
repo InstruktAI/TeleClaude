@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import shlex
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -465,124 +465,66 @@ class TestSessionsActionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_send_result_retries_with_plain_text_after_formatted_send_failure(self) -> None:
-        """Result delivery falls back to plain text when formatted output send fails."""
+    async def test_send_result_delegates_to_command_service(self) -> None:
+        """Result endpoint constructs SystemCommand and delegates to CommandService."""
         identity = _identity("sess-result")
         request = SendResultRequest(content="**ship it**")
-        session = SimpleNamespace(session_id="sess-result")
-        client = SimpleNamespace(send_message=AsyncMock(side_effect=[RuntimeError("formatting failed"), "msg-2"]))
-        fake_markdown = ModuleType("teleclaude.utils.markdown")
-        fake_markdown.telegramify_markdown = MagicMock(return_value="formatted-body")
+        expected = {"status": "success", "message_id": "msg-1"}
 
-        with (
-            patch.object(sessions_actions_routes._STATE, "client", client),
-            patch.object(
-                sessions_actions_routes,
-                "telegramify_markdown",
-                fake_markdown.telegramify_markdown,
-            ),
-            patch.object(sessions_actions_routes, "db") as db,
-        ):
-            db.get_session = AsyncMock(return_value=session)
+        mock_service = MagicMock()
+        mock_service.deliver_result = AsyncMock(return_value=expected)
 
+        with patch("teleclaude.api.sessions_actions_routes.get_command_service", return_value=mock_service):
             response = await sessions_actions_routes.send_result_endpoint(request, identity=identity)
 
-        assert response["status"] == "success"
-        assert response["message_id"] == "msg-2"
-        assert set(response) == {"status", "message_id", "warning"}
-        db.get_session.assert_awaited_once_with("sess-result")
-        fake_markdown.telegramify_markdown.assert_called_once_with(request.content)
-        assert client.send_message.await_count == 2
-
-        first_call, second_call = client.send_message.await_args_list
-        assert first_call.kwargs["session"] is session
-        assert first_call.kwargs["text"] == fake_markdown.telegramify_markdown.return_value
-        assert isinstance(first_call.kwargs["metadata"], MessageMetadata)
-        assert first_call.kwargs["metadata"].parse_mode == "MarkdownV2"
-        assert first_call.kwargs["ephemeral"] is False
-
-        assert second_call.kwargs["session"] is session
-        assert second_call.kwargs["text"] == request.content
-        assert isinstance(second_call.kwargs["metadata"], MessageMetadata)
-        assert second_call.kwargs["metadata"].parse_mode is None
-        assert second_call.kwargs["ephemeral"] is False
+        assert response == expected
+        mock_service.deliver_result.assert_awaited_once()
+        cmd = mock_service.deliver_result.await_args[0][0]
+        assert cmd.command == "deliver_result"
+        assert cmd.session_id == "sess-result"
+        assert cmd.data["content"] == "**ship it**"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_render_widget_endpoint_summarizes_sections_before_delivery(self) -> None:
-        """Widget rendering returns the generated summary and sends its markdownified form."""
+    async def test_render_widget_delegates_to_command_service(self) -> None:
+        """Widget endpoint constructs SystemCommand and delegates to CommandService."""
         request = RenderWidgetRequest(
             data={
                 "title": "Release status",
-                "sections": [
-                    {"type": "text", "label": "Summary", "content": "Everything shipped."},
-                    {"type": "table", "headers": ["Area", "State"], "rows": [["api", "green"]]},
-                    {"type": "code", "language": "python", "content": "print('ok')"},
-                    {"type": "divider"},
-                ],
-                "footer": "See logs for details.",
+                "sections": [{"type": "text", "label": "Summary", "content": "Everything shipped."}],
             }
         )
         identity = _identity("sess-widget")
-        session = SimpleNamespace(session_id="sess-widget")
-        client = SimpleNamespace(send_message=AsyncMock())
-        fake_markdown = ModuleType("teleclaude.utils.markdown")
-        fake_markdown.telegramify_markdown = MagicMock(return_value="widget-body")
+        expected = {"status": "success", "summary": "**Release status**\n_Summary_\nEverything shipped."}
 
-        with (
-            patch.object(sessions_actions_routes._STATE, "client", client),
-            patch.object(
-                sessions_actions_routes,
-                "telegramify_markdown",
-                fake_markdown.telegramify_markdown,
-            ),
-            patch.object(sessions_actions_routes, "db") as db,
-        ):
-            db.get_session = AsyncMock(return_value=session)
+        mock_service = MagicMock()
+        mock_service.render_widget = AsyncMock(return_value=expected)
 
+        with patch("teleclaude.api.sessions_actions_routes.get_command_service", return_value=mock_service):
             response = await sessions_actions_routes.render_widget_endpoint(request, identity=identity)
 
-        summary = response["summary"]
-        assert response["status"] == "success"
-        assert isinstance(summary, str)
-        assert "Release status" in summary
-        assert "_Summary_" in summary
-        assert "Everything shipped." in summary
-        assert "Table: 2 columns, 1 rows" in summary
-        assert "Code (python):" in summary
-        assert "See logs for details." in summary
-        db.get_session.assert_awaited_once_with("sess-widget")
-        fake_markdown.telegramify_markdown.assert_called_once_with(summary)
-        client.send_message.assert_awaited_once()
-
-        send_call = client.send_message.await_args
-        assert send_call.kwargs["session"] is session
-        assert send_call.kwargs["text"] == "widget-body"
-        assert send_call.kwargs["ephemeral"] is False
-        assert isinstance(send_call.kwargs["metadata"], MessageMetadata)
-        assert send_call.kwargs["metadata"].parse_mode == "MarkdownV2"
+        assert response == expected
+        mock_service.render_widget.assert_awaited_once()
+        cmd = mock_service.render_widget.await_args[0][0]
+        assert cmd.command == "render_widget"
+        assert cmd.session_id == "sess-widget"
+        assert cmd.data["widget_data"] == request.data
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_escalate_session_returns_503_without_discord_adapter(self) -> None:
-        """Escalation requires a Discord adapter even when the session is otherwise eligible."""
+        """Escalation returns 503 when CommandService raises ValueError (no Discord adapter)."""
         request = EscalateRequest(customer_name="Taylor", reason="handoff")
         identity = _identity("sess-escalate", human_role="customer")
-        fake_discord_module = ModuleType("teleclaude.adapters.discord_adapter")
-        fake_discord_module.DiscordAdapter = type("DiscordAdapter", (), {})
-        client = SimpleNamespace(adapters={"telegram": object()})
 
-        with (
-            patch.object(sessions_actions_routes._STATE, "client", client),
-            patch.object(sessions_actions_routes, "db") as db,
-            patch.dict("sys.modules", {"teleclaude.adapters.discord_adapter": fake_discord_module}),
-        ):
-            db.get_session = AsyncMock(return_value=SimpleNamespace(human_role="customer"))
-            db.update_session = AsyncMock()
+        mock_service = MagicMock()
+        mock_service.escalate_session = AsyncMock(
+            side_effect=ValueError("Discord adapter not available"),
+        )
 
+        with patch("teleclaude.api.sessions_actions_routes.get_command_service", return_value=mock_service):
             with pytest.raises(HTTPException) as exc_info:
                 await sessions_actions_routes.escalate_session(request, identity=identity)
 
         assert exc_info.value.status_code == 503
-        db.get_session.assert_awaited_once_with("sess-escalate")
-        db.update_session.assert_not_awaited()
+        mock_service.escalate_session.assert_awaited_once()

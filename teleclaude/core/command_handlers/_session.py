@@ -17,6 +17,7 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
+    SessionCloseCompletedPayload,
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
@@ -39,6 +40,7 @@ from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
     GetSessionDataCommand,
+    InternalCommand,
 )
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import (
@@ -50,6 +52,25 @@ from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+
+
+async def forward_command(
+    cmd: InternalCommand,
+    *,
+    target_computer: str,
+    client: "AdapterClient",
+) -> None:
+    """Forward a command to a remote computer via redis transport."""
+    session_id = getattr(cmd, "session_id", "unknown")
+    transport = client.adapters.get("redis")
+    if transport is None or not hasattr(transport, "send_system_command"):
+        raise ValueError(f"Redis transport not available — cannot forward to {target_computer}")
+    await transport.send_system_command(  # type: ignore[attr-defined]
+        target_computer,
+        "close_session",
+        {"session_id": session_id},
+    )
+
 
 logger = get_logger(__name__)
 
@@ -610,16 +631,40 @@ async def close_session(
 ) -> None:
     """Close session - kill tmux, delete DB record, clean up resources.
 
-    Args:
-        session: Session object (injected by @with_session)
-        context: Command context with session_id
-        client: AdapterClient for channel operations
+    If the session's computer_name differs from the local computer, the command
+    is forwarded via the remote transport mechanism instead of handling locally.
     """
+    local_computer = config.computer.name
+    if session.computer_name and session.computer_name != local_computer:
+        logger.info(
+            "Forwarding close_session to remote computer %s for session %s",
+            session.computer_name,
+            session.session_id,
+        )
+        await forward_command(
+            _cmd,
+            target_computer=session.computer_name,
+            client=client,
+        )
+        return
+
+    if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+        logger.info("Session %s already terminal; replaying close_completed", session.session_id)
+        event_bus.emit(
+            _cmd.completion_event,  # type: ignore[arg-type]
+            SessionCloseCompletedPayload(session_id=session.session_id),
+        )
+        return
+
     await terminate_session(
         session.session_id,
         client,
         reason="close_session",
         session=session,
+    )
+    event_bus.emit(
+        _cmd.completion_event,  # type: ignore[arg-type]
+        SessionCloseCompletedPayload(session_id=session.session_id),
     )
 
 

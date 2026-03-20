@@ -84,6 +84,7 @@ dedicated handler in the dispatch loop.
 ### Step 2: State Machine in Action -- Fresh Todo
 
 Set up a fresh todo with only input.md:
+
 ```
 mkdir -p /tmp/demo-psm/todos/demo-item
 echo "# Build a widget" > /tmp/demo-psm/todos/demo-item/input.md
@@ -100,6 +101,7 @@ instructions.
 ### Step 3: State Machine Phase Progression
 
 Write a requirements.md and set the review verdict in state.yaml:
+
 ```
 echo "# Requirements" > /tmp/demo-psm/todos/demo-item/requirements.md
 # Simulate reviewer writing verdict
@@ -124,6 +126,7 @@ each transition.
 ### Step 4: Invalidation Check
 
 Set up grounding with referenced paths:
+
 ```
 python -c "
 import yaml

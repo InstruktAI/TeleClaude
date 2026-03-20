@@ -31,12 +31,14 @@ of `session_row.py`. This replaces the original `split("\n")[0]`, adding
 coverage for `\r\n` (Windows), `\r` (old Mac), and Unicode line breaks.
 
 Before the fix, a session title like:
+
 ```
 /next-build rlf-peripherals
 
 ADDITIONAL CONTEXT:
 B…
 ```
+
 would bleed across multiple lines in the collapsed row. The fix cuts at the
 first line break regardless of origin.
 
@@ -45,12 +47,14 @@ first line break regardless of origin.
 Run the second validation block. You should see `resolve_selection_bg_hex`,
 `resolve_preview_bg_hex`, and `get_selection_fg_hex` all referenced within
 `_build_title_line()`. This confirms the worktree slug is now:
+
 - Always highlighted (agent-themed `highlight` tier in normal state)
 - Inverted (fg/bg swap) when the row is selected or previewed
 
 **3. Reproduction tests**
 
 Run the third and fourth validation blocks. All 3 tests should pass:
+
 - `test_title_with_unix_newline_renders_first_line_only` — primary reproduction
 - `test_title_with_crlf_newline_renders_first_line_only` — regression guard
 - `test_title_that_is_only_newline_renders_empty_first_line` — edge case documentation

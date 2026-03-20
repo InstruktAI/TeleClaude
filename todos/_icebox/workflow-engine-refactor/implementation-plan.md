@@ -42,6 +42,7 @@ behavioral equivalence is the acceptance criterion.
   the existing hook invocation path.
 
 **Approach**: TDD-compliant refactoring.
+
 1. Capture current behavior in characterization tests (safety net).
 2. Build the engine alongside the current code (RED-GREEN for engine tests).
 3. Swap the engine into `next_prepare()` and `next_work()`.
@@ -206,7 +207,7 @@ invent workarounds during implementation.
     core.py:4050-4063). Empty dict when no variants exist.
   - `pre_dispatch: str | None` — action template executed before worker
     dispatch (e.g. `"telec todo mark-phase {slug} --phase build --status
-    started"` matching core.py:4048). `{slug}` is substituted at runtime.
+started"` matching core.py:4048). `{slug}` is substituted at runtime.
     `None` when no pre-dispatch action is needed.
 - [ ] Define `ReviewerConfig` dataclass: `required_reads: list[str]`,
       `artifacts: list[str]`, `thinking_mode: str`, `command: str`
@@ -244,6 +245,7 @@ invent workarounds during implementation.
 
 **Verification**: Write unit tests in
 `tests/unit/core/next_machine/test_workflow_engine.py`:
+
 - Valid YAML loads without error and produces correct dataclass instances
 - Missing required field raises `ValueError` naming the field
 - Invalid field type raises `ValueError`
@@ -293,7 +295,7 @@ engine has nothing to interpret.
 - [ ] Step `build`: producer command = `SlashCommand.NEXT_BUILD`,
       alt_commands = `{"bug": "next-bugs-fix"}` (matching core.py:4050-4063),
       pre_dispatch = `"telec todo mark-phase {slug} --phase build --status
-      started"` (matching core.py:4048), needs_worktree = true,
+started"` (matching core.py:4048), needs_worktree = true,
       produces_code = true
 - [ ] Step `gates`: no producer (mechanical validation),
       validators = `["build_gates", "artifact_verification"]`
@@ -357,6 +359,7 @@ Python code. The config key provides a stable detection mechanism that
       merge the result into the dispatch instruction's required_reads
 
 **Verification**: Unit tests:
+
 - `load_language_baseline("python")` returns non-empty content from baseline file
 - `load_language_baseline("unknown")` returns empty list without error
 - Dispatch emission for a `produces_code: true` step includes language baseline
@@ -381,6 +384,7 @@ hand-coded conditionals. The engine makes routing data-driven so new workflows
 can be added without modifying Python.
 
 **For prepare workflow**:
+
 - [ ] Implement `resolve_prepare_step(workflow, state, slug, cwd)` that:
   - Reads `state.prepare_phase` to determine current phase
   - Falls back to `_derive_prepare_phase()` for legacy todos without
@@ -401,6 +405,7 @@ can be added without modifying Python.
       verify score meets threshold (e.g. DOR score >= 8 at core.py:3243-3251)
 
 **For work workflow**:
+
 - [ ] Implement `resolve_work_step(workflow, state, slug, worktree_cwd, cwd)`
       that:
   - Reads `build` and `review` status from state
@@ -490,7 +495,7 @@ wrappers.
       `(passed, output)`. This uniform signature accommodates both
       `run_build_gates(worktree_cwd, slug)` (which ignores `phase` and
       `is_bug`) and `verify_artifacts(worktree_cwd, slug, phase, *,
-      is_bug=False)` (which uses all four).
+is_bug=False)` (which uses all four).
 - [ ] Create adapter wrappers for existing functions:
   - `_build_gates_adapter(worktree_cwd, slug, phase, is_bug)` →
     calls `run_build_gates(worktree_cwd, slug)`, ignores `phase`/`is_bug`
@@ -501,7 +506,7 @@ wrappers.
   - `"build_gates"` → `_build_gates_adapter`
   - `"artifact_verification"` → `_artifact_verification_adapter`
 - [ ] Implement `run_step_validators(step, worktree_cwd, slug, phase, is_bug)
-      -> tuple[bool, str]` that:
+-> tuple[bool, str]` that:
   - Iterates `step.validators` in order
   - Looks up each name in `VALIDATOR_REGISTRY` (raises `KeyError` with
     descriptive message for unknown names)
@@ -511,9 +516,10 @@ wrappers.
 - [ ] Keep `run_build_gates()` and `verify_artifacts()` functions in `core.py`
       — the adapters import and delegate to them. Import paths:
       `from teleclaude.core.next_machine.core import run_build_gates,
-      verify_artifacts`
+verify_artifacts`
 
 **Verification**: Unit tests:
+
 - Registry lookup for `"build_gates"` returns a callable
 - Registry lookup for `"artifact_verification"` returns a callable
 - Unknown validator name raises `KeyError` with descriptive message
@@ -673,6 +679,7 @@ also creates false dependencies and makes refactoring harder.
 ## Referenced Files
 
 ### Modified
+
 - `teleclaude/core/next_machine/core.py` — Replace step handlers with engine
   calls, remove dead handler code (~430 lines removed)
 - `teleclaude/core/next_machine/__init__.py` — Update exports if needed
@@ -680,6 +687,7 @@ also creates false dependencies and makes refactoring harder.
 - `teleclaude.yml` — Add `language: python` key
 
 ### Created
+
 - `teleclaude/core/next_machine/engine.py` — Workflow engine: types, loader,
   step resolution, dispatch emission, language baseline loading
 - `teleclaude/core/next_machine/validators.py` — Named validator registry
@@ -696,6 +704,7 @@ also creates false dependencies and makes refactoring harder.
 - `tests/unit/core/next_machine/test_workflow_engine.py` — Engine unit tests
 
 ### Unchanged (used by engine, not modified)
+
 - `teleclaude/core/next_machine/prepare.py` — Thin wrapper, re-exports
   `next_prepare`
 - `teleclaude/core/next_machine/work.py` — Thin wrapper, re-exports `next_work`
@@ -705,6 +714,7 @@ also creates false dependencies and makes refactoring harder.
 - `teleclaude/constants.py` — `SlashCommand` enum (unchanged, no new entries)
 
 ### Documentation updates
+
 - `docs/project/spec/teleclaude-config.md` — Add `language` key to config
   surface
 

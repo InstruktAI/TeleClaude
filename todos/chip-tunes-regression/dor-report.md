@@ -1,11 +1,12 @@
 # DOR Assessment: chip-tunes-regression
 
-**Score:** 7/10  **Verdict:** `needs_work`
-**Assessed at:** 2026-03-20T01:32:23.029550+00:00  **Commit:** `438ab0195`
+**Score:** 7/10 **Verdict:** `needs_work`
+**Assessed at:** 2026-03-20T01:32:23.029550+00:00 **Commit:** `438ab0195`
 
 ## Per-dimension scores
 
 ### Requirements
+
 - intent_clarity: 2
 - scope_atomicity: 2
 - success_criteria: 0
@@ -13,6 +14,7 @@
 - constraint_specificity: 1
 
 ### Implementation Plan
+
 - concrete_file_targets: 0
 - verification_steps: 2
 - risk_identification: 1

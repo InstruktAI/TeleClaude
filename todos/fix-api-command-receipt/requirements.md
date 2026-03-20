@@ -37,6 +37,7 @@ not at dispatch time. [inferred: construction-time enforcement preferred over di
 to fail fast]
 
 **Success criteria:**
+
 - All existing command subclasses declare their response mode
 - FIRE_AND_FORGET commands without a completion event fail at instantiation
 - No command defaults to a mode that contradicts the command-classification design doc [inferred]
@@ -48,6 +49,7 @@ behavior (sync return vs. fire-and-forget vs. receipt) instead of using type-bas
 isinstance chains.
 
 **Success criteria:**
+
 - Dispatch logic branches on response_mode, not on command class identity
 - Adding a new command subclass requires no changes to the dispatcher — mode is
   inherited from the command declaration
@@ -61,6 +63,7 @@ synchronously. They must be migrated to the receipt-backed operation pattern
 emit completion event on terminal transition).
 
 **Success criteria:**
+
 - POST /todos/create returns an operation receipt (202) instead of blocking
 - POST /todos/prepare returns an operation receipt (202) instead of blocking
 - Both operations support polling via the existing operations endpoint
@@ -84,6 +87,7 @@ All new events must follow the existing domain event pattern (typed payload
 dataclasses, emitted via the event bus).
 
 **Success criteria:**
+
 - Each listed endpoint emits its declared completion event
 - Events carry enough context for consumers to correlate (session ID, job name, etc.)
 - Events follow the existing payload pattern (typed dataclasses, not ad-hoc dicts)
@@ -103,6 +107,7 @@ forwarded via the existing remote transport mechanism rather than handled locall
 identified in the input audit]
 
 **Success criteria:**
+
 - Identified inline mutations flow through typed commands
 - The command type and response mode are declared, not implicit
 - `DELETE /sessions/{id}` routes through the command system with remote-routing support
@@ -128,6 +133,7 @@ pre-implementation design.
 [inferred: four documentation deliverables explicitly listed in input.md]
 
 **Success criteria:**
+
 - All four documents exist and reflect the implemented architecture
 - Classification errors in existing docs are corrected
 - Operation receipts doc covers all operation kinds, not just todo-specific ones

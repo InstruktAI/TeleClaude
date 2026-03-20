@@ -81,7 +81,9 @@ sequenceDiagram
     Route->>Client: 200 OK + result
 ```
 
-Commands in this mode: `CreateSessionCommand`, `RestartAgentCommand`, `GetSessionDataCommand`.
+Commands in this mode: `CreateSessionCommand`, `GetSessionDataCommand`, `SystemCommand` (default),
+`ProcessMessageCommand`, `KeysCommand`, `HandleVoiceCommand`, `HandleFileCommand`,
+`StartAgentCommand`, `ResumeAgentCommand`, `RunAgentCommand`.
 
 ### 2. FIRE_AND_FORGET command
 
@@ -102,8 +104,8 @@ sequenceDiagram
     EventBus-->>Client: WS push: session.close_completed
 ```
 
-Commands in this mode: `CloseSessionCommand`, `ProcessMessageCommand`, `StartAgentCommand`,
-`ResumeAgentCommand`, `RunAgentCommand`, `KeysCommand`, `HandleVoiceCommand`, `HandleFileCommand`.
+Commands in this mode: `RestartAgentCommand` (`completion_event="agent.restart_dispatched"`),
+`CloseSessionCommand` (`completion_event="session.close_completed"`).
 
 ### 3. RECEIPT command
 
@@ -131,6 +133,27 @@ sequenceDiagram
 Commands in this mode: `TodoWorkCommand`, `TodoIntegrateCommand`, `TodoCreateCommand`,
 `TodoPrepareCommand`.
 
+## Full command-to-mode mapping
+
+| Command               | Mode                                        | completion_event           |
+| --------------------- | ------------------------------------------- | -------------------------- |
+| CreateSessionCommand  | IMMEDIATE                                   | None                       |
+| GetSessionDataCommand | IMMEDIATE                                   | None                       |
+| SystemCommand         | IMMEDIATE (default; instances may override) | None                       |
+| ProcessMessageCommand | IMMEDIATE                                   | None                       |
+| KeysCommand           | IMMEDIATE                                   | None                       |
+| HandleVoiceCommand    | IMMEDIATE                                   | None                       |
+| HandleFileCommand     | IMMEDIATE                                   | None                       |
+| StartAgentCommand     | IMMEDIATE                                   | None                       |
+| ResumeAgentCommand    | IMMEDIATE                                   | None                       |
+| RunAgentCommand       | IMMEDIATE                                   | None                       |
+| RestartAgentCommand   | FIRE_AND_FORGET                             | "agent.restart_dispatched" |
+| CloseSessionCommand   | FIRE_AND_FORGET                             | "session.close_completed"  |
+| TodoWorkCommand       | RECEIPT                                     | (per operation kind)       |
+| TodoIntegrateCommand  | RECEIPT                                     | (per operation kind)       |
+| TodoCreateCommand     | RECEIPT                                     | (per operation kind)       |
+| TodoPrepareCommand    | RECEIPT                                     | (per operation kind)       |
+
 ## Inputs/Outputs
 
 ### `ResponseMode` enum
@@ -151,7 +174,18 @@ class InternalCommand:
     request_id:       str | None      = None
     response_mode:    ResponseMode    = ResponseMode.IMMEDIATE
     completion_event: str | None      = None  # required when response_mode != IMMEDIATE
+
+    def __post_init__(self) -> None:
+        # Construction-time validation: FIRE_AND_FORGET requires a completion_event
+        if self.response_mode == ResponseMode.FIRE_AND_FORGET and self.completion_event is None:
+            raise ValueError(
+                f"{type(self).__name__}: FIRE_AND_FORGET requires non-null completion_event"
+            )
 ```
+
+Construction-time validation enforces the invariant that every FIRE_AND_FORGET command
+declares a `completion_event` at instantiation. A missing `completion_event` raises
+`ValueError` immediately — the invalid command never reaches the dispatcher.
 
 ### `OperationReceipt` fields (RECEIPT mode response)
 

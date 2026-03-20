@@ -33,6 +33,7 @@ Rich personal ecosystem — per-channel credentials, notification preferences,
 subscriptions, interests. The person's own space.
 
 Example (already live for Maurice):
+
 ```yaml
 # ~/.teleclaude/people/Maurice Faber/teleclaude.yml
 creds:

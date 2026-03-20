@@ -18,7 +18,7 @@ references the behavioral assertions those tests encode.
 
 ---
 
-## Task 1: Add ResponseMode enum, base command fields, and subclass declarations
+## [x] Task 1: Add ResponseMode enum, base command fields, and subclass declarations
 
 **What:** Add `ResponseMode` enum (`IMMEDIATE`, `FIRE_AND_FORGET`, `RECEIPT`) to
 `teleclaude/types/commands.py`. Add `response_mode` and `completion_event` fields to
@@ -39,20 +39,20 @@ behavior). The governing rule: endpoints the input marks "already correct" retai
 current response codes and shapes, so their commands are classified to match the existing
 API contract.
 
-| Command | Mode | completion_event |
-|---------|------|-----------------|
-| `CreateSessionCommand` | `IMMEDIATE` | `None` |
-| `GetSessionDataCommand` | `IMMEDIATE` | `None` |
-| `SystemCommand` | `IMMEDIATE` | `None` (default; instances may override) |
-| `ProcessMessageCommand` | `IMMEDIATE` | `None` |
-| `KeysCommand` | `IMMEDIATE` | `None` |
-| `HandleVoiceCommand` | `IMMEDIATE` | `None` |
-| `HandleFileCommand` | `IMMEDIATE` | `None` |
-| `StartAgentCommand` | `IMMEDIATE` | `None` |
-| `ResumeAgentCommand` | `IMMEDIATE` | `None` |
-| `RunAgentCommand` | `IMMEDIATE` | `None` |
-| `RestartAgentCommand` | `FIRE_AND_FORGET` | `"agent.restart_dispatched"` |
-| `CloseSessionCommand` | `FIRE_AND_FORGET` | `"session.close_completed"` |
+| Command                 | Mode              | completion_event                         |
+| ----------------------- | ----------------- | ---------------------------------------- |
+| `CreateSessionCommand`  | `IMMEDIATE`       | `None`                                   |
+| `GetSessionDataCommand` | `IMMEDIATE`       | `None`                                   |
+| `SystemCommand`         | `IMMEDIATE`       | `None` (default; instances may override) |
+| `ProcessMessageCommand` | `IMMEDIATE`       | `None`                                   |
+| `KeysCommand`           | `IMMEDIATE`       | `None`                                   |
+| `HandleVoiceCommand`    | `IMMEDIATE`       | `None`                                   |
+| `HandleFileCommand`     | `IMMEDIATE`       | `None`                                   |
+| `StartAgentCommand`     | `IMMEDIATE`       | `None`                                   |
+| `ResumeAgentCommand`    | `IMMEDIATE`       | `None`                                   |
+| `RunAgentCommand`       | `IMMEDIATE`       | `None`                                   |
+| `RestartAgentCommand`   | `FIRE_AND_FORGET` | `"agent.restart_dispatched"`             |
+| `CloseSessionCommand`   | `FIRE_AND_FORGET` | `"session.close_completed"`              |
 
 Note: `ProcessMessageCommand`, `KeysCommand`, `HandleVoiceCommand`, and
 `HandleFileCommand` are classified `IMMEDIATE` because their API routes
@@ -71,11 +71,13 @@ lists it under IMMEDIATE, which contradicts both the current behavior and FR-4. 
 design doc will be corrected in Task 7.
 
 **Files:**
+
 - `teleclaude/types/commands.py` — add `ResponseMode` enum, add `response_mode` and
   `completion_event` parameters to `InternalCommand.__init__` with validation, pass
   defaults through `super().__init__()` in each subclass
 
 **Verification:**
+
 - Constructing a `FIRE_AND_FORGET` command with `completion_event=None` raises `ValueError`
 - Each command subclass's `.response_mode` matches the classification table
 - `IMMEDIATE` commands accept `completion_event=None` without error
@@ -86,7 +88,7 @@ design doc will be corrected in Task 7.
 
 ---
 
-## Task 2: Metadata-driven command dispatch (FR-2)
+## [x] Task 2: Metadata-driven command dispatch (FR-2)
 
 **What:** Refactor dispatch in `teleclaude/transport/redis_transport/_messaging.py`
 `_dispatch_command()` (lines 339–365) into a two-layer architecture:
@@ -115,6 +117,7 @@ the adapter still needs to route these two types specially for its UX.
 **Why:** FR-2 requires that "adding a new command subclass requires no changes to the
 dispatcher." The current isinstance chains violate this — every new command type requires
 a new branch. The two-layer design satisfies FR-2 because:
+
 - Adding a new command with an existing response_mode requires only a handler table entry.
 - The execution behavior (await vs. ack) derives automatically from `response_mode`.
 - The dispatcher never inspects the command class — it reads declared metadata.
@@ -124,12 +127,14 @@ require dispatcher edits when a new command type changes execution semantics.
 The response_mode layer makes execution behavior declarative.
 
 **Files:**
+
 - `teleclaude/transport/redis_transport/_messaging.py` — replace `_dispatch_command`
   isinstance chain with handler table + response_mode execution branches
 - `teleclaude/adapters/telegram/private_handlers.py` — replace isinstance checks with
   `command_type` comparisons
 
 **Verification:**
+
 - Redis transport dispatch resolves handler via `command_type` lookup, not isinstance
 - Redis transport execution branches on `command.response_mode`, not command class
 - `IMMEDIATE` dispatch awaits handler and returns its result
@@ -142,7 +147,7 @@ The response_mode layer makes execution behavior declarative.
 
 ---
 
-## Task 3: Receipt-backed operations for todo create and prepare (FR-3)
+## [x] Task 3: Receipt-backed operations for todo create and prepare (FR-3)
 
 **What:** Three changes:
 
@@ -156,6 +161,7 @@ that call `next_create()` and `next_prepare()` respectively. Extend
 
 **3b. completion_event on receipt DTOs and terminal transition.** Add
 `completion_event: str | None` field to:
+
 - `OperationStatusDTO` in `teleclaude/api_models.py`
 - `OperationStatusPayload` TypedDict in `teleclaude/api_models.py`
 - `SerializedOperation` TypedDict in `teleclaude/core/operations/service.py`
@@ -187,6 +193,7 @@ the receipt contract is structurally incomplete — consumers have no way to sub
 for operation completion.
 
 **Files:**
+
 - `teleclaude/core/operations/service.py` — add kind constants, submit methods,
   background runners, extend `_ensure_operation_task` kind routing, add
   `completion_event` to `SerializedOperation` and `_serialize_operation()`, add
@@ -197,6 +204,7 @@ for operation completion.
   to return 202 receipts via OperationsService
 
 **Verification:**
+
 - `submit_todo_create()` persists an operation row and returns a receipt with `operation_id`
   and `completion_event`
 - `submit_todo_prepare()` persists an operation row and returns a receipt with `completion_event`
@@ -213,7 +221,7 @@ for operation completion.
 
 ---
 
-## Task 4: Domain events for fire-and-forget mutations (FR-4) and missing notification events
+## [x] Task 4: Domain events for fire-and-forget mutations (FR-4) and missing notification events
 
 **What:** Add frozen domain event payload dataclasses to `teleclaude/core/events.py`
 following the existing pattern (`SessionLifecycleContext`, `AgentActivityEvent`):
@@ -243,6 +251,7 @@ is never published. The notification events (req-002) close the gap between inpu
 event list and the requirements.
 
 **Files:**
+
 - `teleclaude/core/events.py` — add new frozen event payload dataclasses, extend
   `EventType` literal if needed
 - `teleclaude/core/command_handlers/_agent.py` — emit `AgentRestartDispatchedEvent`
@@ -256,6 +265,7 @@ event list and the requirements.
   `resolve_notification` endpoint
 
 **Verification:**
+
 - `agent_restart` handler emits `AgentRestartDispatchedEvent` after successful dispatch
 - `close_session` handler emits `SessionCloseCompletedEvent` when processing completes
 - `run_job` background wrapper emits started event on entry and completed/failed on exit
@@ -266,7 +276,7 @@ event list and the requirements.
 
 ---
 
-## Task 5: Typed command wrapping for inline mutations and DELETE /sessions coverage (FR-5 + req-001)
+## [x] Task 5: Typed command wrapping for inline mutations and DELETE /sessions coverage (FR-5 + req-001)
 
 **What:** Two changes: wrap inline mutations in the SystemCommand pattern, and resolve
 the SystemCommand dispatch seam.
@@ -277,6 +287,7 @@ on `cmd.command` field value. The current `SystemCommandContext` event path
 (`teleclaude/core/events.py:437`) is daemon-level (cross-computer system commands),
 not session mutation delivery. The new `CommandService.system_command()` method handles
 session-scoped SystemCommand operations:
+
 - `"deliver_result"` → calls the adapter's `send_message()` (moves inline code from
   the route into the command handler)
 - `"render_widget"` → calls the adapter's widget rendering (moves inline code)
@@ -295,7 +306,7 @@ encapsulates the logic currently inline in the API route.
    `SystemCommand(command="render_widget", response_mode=IMMEDIATE, ...)`.
 3. `POST /sessions/self/escalate` (line 719) — construct
    `SystemCommand(command="escalate_session", response_mode=FIRE_AND_FORGET,
-   completion_event="session.escalation_started", ...)`.
+completion_event="session.escalation_started", ...)`.
 
 Result and widget stay `IMMEDIATE` because they are synchronous adapter calls that
 return data (message_id, summary). Escalation becomes `FIRE_AND_FORGET` because it
@@ -323,6 +334,7 @@ The DELETE /sessions gap (req-001) means the route currently handles close inlin
 This leaves remote sessions unhandled — the `_computer` parameter exists but is ignored.
 
 **Files:**
+
 - `teleclaude/core/command_service.py` — add `system_command()` method with
   `match cmd.command:` dispatch for deliver_result, render_widget, escalate_session
 - `teleclaude/api/sessions_actions_routes.py` — wrap result/widget/escalate inline
@@ -333,6 +345,7 @@ This leaves remote sessions unhandled — the `_computer` parameter exists but i
   entry to the handler dispatch table (Task 2) pointing to `CommandService.system_command()`
 
 **Verification:**
+
 - `CommandService.system_command()` exists and routes on `cmd.command` field
 - `/sessions/self/result` dispatches through `CommandService.system_command()` and
   returns same observable response
@@ -348,13 +361,14 @@ This leaves remote sessions unhandled — the `_computer` parameter exists but i
 
 ---
 
-## Task 6: Route response code alignment
+## [x] Task 6: Route response code alignment
 
 **What:** Update the small set of fire-and-forget API routes that are not "already
 correct" to return `202 Accepted` with `{"status": "accepted", "completion_event": "<event>"}`
 instead of their current response:
 
 Routes changing to 202 with `completion_event`:
+
 - `POST /sessions/{id}/agent-restart` (sessions_actions_routes.py:411) — currently
   returns 200 with `{"status": "accepted"}`; change to 202 and add `completion_event`
 - `POST /jobs/{name}/run` (jobs_routes.py:80) — currently returns 200 with
@@ -363,9 +377,11 @@ Routes changing to 202 with `completion_event`:
   `completion_event` (new endpoint behavior from FIRE_AND_FORGET SystemCommand)
 
 Routes adding `completion_event` to existing 202 response:
+
 - `DELETE /sessions/{id}` — already 202, add `completion_event` to response body
 
 Routes explicitly NOT changing (already correct per input audit):
+
 - `POST /sessions` (create session) — IMMEDIATE, stays 200
 - `POST /sessions/run` — IMMEDIATE, stays 200
 - `POST /sessions/{id}/message` — IMMEDIATE, stays 200
@@ -388,12 +404,14 @@ endpoints in the input audit retain their current 200 responses — their comman
 are classified `IMMEDIATE` in Task 1 precisely to preserve this contract.
 
 **Files:**
+
 - `teleclaude/api/sessions_actions_routes.py` — update agent-restart route to 202 +
   completion_event
 - `teleclaude/api/sessions_routes.py` — add `completion_event` to DELETE response body
 - `teleclaude/api/jobs_routes.py` — update job run response to 202 + `completion_event`
 
 **Verification:**
+
 - `POST /sessions/{id}/agent-restart` returns HTTP 202 with `completion_event`
 - `POST /jobs/{name}/run` returns HTTP 202 with `completion_event`
 - `DELETE /sessions/{id}` returns HTTP 202 with `completion_event` in response body
@@ -406,7 +424,7 @@ are classified `IMMEDIATE` in Task 1 precisely to preserve this contract.
 
 ---
 
-## Task 7: Documentation deliverables (FR-6 / req-003)
+## [x] Task 7: Documentation deliverables (FR-6 / req-003)
 
 **What:** Update four architecture design docs to reflect the implemented changes:
 
@@ -435,12 +453,14 @@ not the pre-implementation design. The `RestartAgentCommand` correction prevents
 builders from implementing the wrong classification.
 
 **Files:**
+
 - `docs/project/design/architecture/command-classification.md`
 - `docs/project/design/architecture/operation-receipts.md`
 - `docs/project/design/architecture/api-server.md` (create or update)
 - `docs/project/design/architecture/redis-transport.md` (update)
 
 **Verification:**
+
 - All four docs exist and reflect the implemented architecture
 - `command-classification.md` lists `RestartAgentCommand` under FIRE_AND_FORGET
 - `operation-receipts.md` covers all four operation kinds and documents `completion_event`
@@ -453,6 +473,7 @@ builders from implementing the wrong classification.
 ## Cross-cutting verification
 
 After all tasks:
+
 - Pre-commit hooks pass (lint, typecheck, tests — the primary verification path per testing policy)
 - No isinstance chains for command type routing remain in dispatch code
 - All FIRE_AND_FORGET commands have non-null `completion_event` (construction-time enforced)

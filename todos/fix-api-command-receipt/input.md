@@ -1,6 +1,7 @@
 # fix-api-command-receipt — Input
 
 ## Goal
+
 Bring all mutating API endpoints into alignment with the command/receipt architecture. Synchronous fast mutations (IMMEDIATE_DATA reads and lightweight writes) are fine as-is — no receipt needed. The targets are:
 
 1. **Fire-and-forget mutations with no tracking** → add receipt mechanism (OperationsService or event-backed)
@@ -12,6 +13,7 @@ Bring all mutating API endpoints into alignment with the command/receipt archite
 ## Audit findings (43 endpoints total)
 
 ### Already correct — no changes needed (10)
+
 - POST /sessions — CreateSessionCommand
 - POST /sessions/{id}/message — ProcessMessageCommand
 - POST /sessions/{id}/keys — KeysCommand
@@ -24,6 +26,7 @@ Bring all mutating API endpoints into alignment with the command/receipt archite
 - POST /sessions/{id}/unsubscribe — inline listener removal (appropriate)
 
 ### Synchronous fast mutations — leave as-is (no receipt needed)
+
 - POST /agents/{agent}/status
 - PATCH /settings
 - POST /todos/mark-phase
@@ -36,22 +39,26 @@ Bring all mutating API endpoints into alignment with the command/receipt archite
 - GET/PATCH /settings
 
 ### Priority: Fire-and-forget mutations that need receipt tracking
+
 - POST /sessions/{id}/agent-restart — dispatches async restart, returns 202 with no receipt; needs operation receipt OR agent_restart_started event
 - POST /sessions/self/escalate — creates Discord thread + DB update inline, no receipt, no event; needs escalation_started event
 - POST /jobs/{name}/run — BackgroundTasks wrapper, no receipt; needs operation receipt or job_started event
-- DELETE /sessions/{id} — lifecycle handoff works correctly for local; needs remote routing via _computer → session.computer_name
+- DELETE /sessions/{id} — lifecycle handoff works correctly for local; needs remote routing via \_computer → session.computer_name
 
 ### Priority: Heavy synchronous endpoints to offload
+
 - POST /todos/create — runs full creative state machine synchronously; should return receipt like /todos/work
 - POST /todos/prepare — runs full prepare state machine synchronously; should return receipt like /todos/work
 
 ### Command coverage gaps (inline work that should use typed commands)
+
 - DELETE /sessions/{id} — should use CloseSessionCommand fully (currently emits event inline)
 - POST /sessions/self/result — adapter call inline; could use SystemCommand
 - POST /sessions/self/widget — adapter call inline; could use SystemCommand
 - POST /sessions/self/escalate — Discord + DB inline; could use SystemCommand
 
 ### Read-only endpoints — no changes (all IMMEDIATE_READ, correct)
+
 All GET endpoints are appropriate as-is.
 
 ---
@@ -83,10 +90,9 @@ All new events must be domain-scoped following the existing rich eventing patter
 
 1. Write documentation first (command-classification spec, update api-server and operation-receipts docs)
 2. Add ResponseMode enum + field to InternalCommand base class
-3. Migrate _dispatch_command() from isinstance chains to metadata-driven dispatch
+3. Migrate \_dispatch_command() from isinstance chains to metadata-driven dispatch
 4. Wrap DELETE /sessions/{id} fully in CloseSessionCommand with remote routing via session.computer_name
 5. Add receipts to /todos/create and /todos/prepare (offload to OperationsService)
 6. Add receipts to /sessions/{id}/agent-restart
 7. Introduce missing domain events
 8. Update /jobs/{name}/run with receipt or event
-

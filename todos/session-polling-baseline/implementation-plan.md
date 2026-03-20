@@ -39,6 +39,7 @@ future refactor touches this function.
 **Files:** `teleclaude/constants.py`, `teleclaude/core/tmux_bridge.py`
 
 1. **`teleclaude/constants.py`** (after line 30, in the "Internal configuration" block):
+
    ```python
    CAPTURE_PANE_LOOKBACK_LINES = 500  # Default tmux scrollback line count for capture_pane()
    ```
@@ -69,6 +70,7 @@ inflates every capture subprocess call with unnecessary scrollback data.
 ```
 test_cleanup_session_resources_removes_tmp_dir
 ```
+
 - Build a mock session with a known `session_id`.
 - Patch `tmux_bridge.get_session_tmp_basedir` → returns a tmp_path-based Path.
 - Patch `tmux_bridge.safe_path_component` → returns `"safe_id"`.
@@ -79,6 +81,7 @@ test_cleanup_session_resources_removes_tmp_dir
 ```
 test_cleanup_orphan_tmp_dirs_removes_unknown_dirs_and_returns_count
 ```
+
 - Create `tmp_base` with two dirs: one matching a known session's safe component, one unknown.
 - Patch `tmux_bridge.get_session_tmp_basedir` → `tmp_base`.
 - Patch `tmux_bridge.safe_path_component` identity.
@@ -91,6 +94,7 @@ test_cleanup_orphan_tmp_dirs_removes_unknown_dirs_and_returns_count
 ```
 test_public_helpers_are_accessible_on_module
 ```
+
 - `from teleclaude.core.tmux_bridge import get_session_tmp_basedir, safe_path_component`
 - Assert both are callable. Fails before T4.
 
@@ -217,6 +221,7 @@ Add two new tests (fail because current code calls `session_exists` every tick):
 ```
 test_process_exited_on_empty_capture_and_session_exists_never_called
 ```
+
 - `capture_pane` returns: `["hello", "hello world", ""]`.
 - `session_exists` patched as `AsyncMock` — assert call count is 0 after run.
 - `is_pane_dead` returns `False`.
@@ -227,6 +232,7 @@ test_process_exited_on_empty_capture_and_session_exists_never_called
 ```
 test_is_pane_dead_called_at_most_every_5_iterations
 ```
+
 - `capture_pane` returns 12 non-empty strings then `""`.
 - `is_pane_dead` patched as `AsyncMock(return_value=False)`.
 - `session_exists` must not be called.
@@ -244,6 +250,7 @@ on every iteration.
 **File:** `teleclaude/core/output_poller.py`
 
 **Remove:**
+
 - Line 94: `session_existed_last_poll = True` initialization (verify unused after changes).
 - Line 138: `session_exists_now = await tmux_bridge.session_exists(...)`.
 - Lines 141–173: the watchdog block (`if session_existed_last_poll and not session_exists_now:`).
@@ -317,6 +324,7 @@ The watchdog logic is preserved — triggered by empty capture instead. `is_pane
 at 1/5 cadence is sufficient since the primary exit path handles most cases.
 
 **Verification:**
+
 - T7 tests pass.
 - All existing `test_output_poller.py` tests remain green (update assertions that were coupled to `session_exists` mock call counts).
 - `grep -n "session_exists" teleclaude/core/output_poller.py` returns no results.
@@ -328,6 +336,7 @@ at 1/5 cadence is sufficient since the primary exit path handles most cases.
 **Directory:** `tests/fixtures/codex_pane_snapshots/`
 
 Create directory and 8 fixture files. ANSI sequences used:
+
 - `\x1b[2m` = dim (SGR 2) — used for agent marker prefix
 - `\x1b[1m` / `\x1b[0;1m` = bold (SGR 1) — required by `_ANSI_BOLD_TOKEN_RE`
 - `\x1b[0m` = reset
@@ -341,6 +350,7 @@ The `_ANSI_BOLD_TOKEN_RE` pattern is:
 **Fixture contents:**
 
 `startup_prompt.txt` — fresh session, prompt at bottom, no history:
+
 ```
 Welcome to Codex
 Type your message below.
@@ -349,6 +359,7 @@ Type your message below.
 ```
 
 `typing_partial.txt` — prompt with partial input text:
+
 ```
 Welcome to Codex
 
@@ -356,6 +367,7 @@ Welcome to Codex
 ```
 
 `spinner_active.txt` — agent spinner active, no prompt:
+
 ```
 › fix the auth bug
 
@@ -363,6 +375,7 @@ Welcome to Codex
 ```
 
 `tool_action_read.txt` — Read tool in progress, no prompt:
+
 ```
 › show me the config file
 
@@ -370,6 +383,7 @@ Welcome to Codex
 ```
 
 `tool_done_prompt.txt` — tool done, live prompt returned:
+
 ```
 › show me the config file
 
@@ -380,6 +394,7 @@ Here is the content of the file...
 ```
 
 `compact_fast_turn.txt` — compact dimmed agent boundary (fast turn):
+
 ```
 › what is 2+2?
 
@@ -387,6 +402,7 @@ Here is the content of the file...
 ```
 
 `stale_scrollback.txt` — old spinner markers in scrollback, live prompt at bottom:
+
 ```
 \x1b[1m›\x1b[0m previous question
 
@@ -395,9 +411,11 @@ Here is the content of the file...
 
 \x1b[1m›\x1b[0m current question
 ```
+
 (Spinner words "working" / "planning" are NOT in `_CODEX_TOOL_ACTION_WORDS`, no bold ANSI token → `_find_recent_tool_action` returns None.)
 
 `seeded_prompt.txt` — prompt with pre-seeded long input:
+
 ```
 \x1b[1m›\x1b[0m implement the full authentication flow with JWT tokens and refresh token rotation
 ```
@@ -406,6 +424,7 @@ Here is the content of the file...
 parser branch conditions each test must exercise.
 
 **Verification:**
+
 - `ls tests/fixtures/codex_pane_snapshots/ | wc -l` = 8.
 - Each file non-empty, parses as UTF-8, contains at least one `\x1b[` sequence.
 
@@ -478,6 +497,7 @@ def _load(name: str) -> str:
 parser helpers that breaks semantic behaviour will surface immediately here.
 
 **Verification:**
+
 - `pytest tests/unit/test_codex_replay.py -v` passes with 8 functions, < 1s.
 - No mocking, no tmux/DB I/O.
 
@@ -507,16 +527,16 @@ the implementation updates are complete.
 
 ## Review lane coverage
 
-| Requirement | Test coverage | File |
-|-------------|---------------|------|
-| R1 constant | `test_capture_pane_default_uses_lookback_constant` | `test_tmux_bridge.py` |
-| R2 helpers  | `test_public_helpers_are_accessible_on_module` | `test_tmux_bridge_tmpdir.py` |
-| R2 cleanup  | `test_cleanup_session_resources_removes_tmp_dir` | `test_session_cleanup.py` |
-| R2 orphan   | `test_cleanup_orphan_tmp_dirs_removes_unknown_dirs_and_returns_count` | `test_session_cleanup.py` |
-| R3 no-exists | `test_process_exited_on_empty_capture_and_session_exists_never_called` | `test_output_poller.py` |
-| R3 throttle | `test_is_pane_dead_called_at_most_every_5_iterations` | `test_output_poller.py` |
-| R4 corpus   | loaded by replay tests | `tests/fixtures/codex_pane_snapshots/` |
-| R5 replay   | 8 functions, one per fixture state | `test_codex_replay.py` |
+| Requirement  | Test coverage                                                          | File                                   |
+| ------------ | ---------------------------------------------------------------------- | -------------------------------------- |
+| R1 constant  | `test_capture_pane_default_uses_lookback_constant`                     | `test_tmux_bridge.py`                  |
+| R2 helpers   | `test_public_helpers_are_accessible_on_module`                         | `test_tmux_bridge_tmpdir.py`           |
+| R2 cleanup   | `test_cleanup_session_resources_removes_tmp_dir`                       | `test_session_cleanup.py`              |
+| R2 orphan    | `test_cleanup_orphan_tmp_dirs_removes_unknown_dirs_and_returns_count`  | `test_session_cleanup.py`              |
+| R3 no-exists | `test_process_exited_on_empty_capture_and_session_exists_never_called` | `test_output_poller.py`                |
+| R3 throttle  | `test_is_pane_dead_called_at_most_every_5_iterations`                  | `test_output_poller.py`                |
+| R4 corpus    | loaded by replay tests                                                 | `tests/fixtures/codex_pane_snapshots/` |
+| R5 replay    | 8 functions, one per fixture state                                     | `test_codex_replay.py`                 |
 
 Demo artifact coverage: T11 keeps `todos/session-polling-baseline/demo.md` executable
 and in sync with the implementation.

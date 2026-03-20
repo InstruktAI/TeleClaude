@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import NotificationClaimedPayload, NotificationResolvedPayload
+
 if TYPE_CHECKING:
     from teleclaude.events.db import EventDB
 
@@ -101,6 +104,10 @@ async def claim_notification(
     ok = await _require_event_db().update_agent_status(notification_id, "claimed", agent_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Notification not found")
+    event_bus.emit(
+        "notification.claimed",  # type: ignore[arg-type]
+        NotificationClaimedPayload(notification_id=notification_id, agent_id=agent_id),
+    )
     return {"ok": True}
 
 
@@ -131,4 +138,8 @@ async def resolve_notification(
     ok = await _require_event_db().resolve_notification(notification_id, dict(body))
     if not ok:
         raise HTTPException(status_code=404, detail="Notification not found")
+    event_bus.emit(
+        "notification.resolved",  # type: ignore[arg-type]
+        NotificationResolvedPayload(notification_id=notification_id),
+    )
     return {"ok": True}

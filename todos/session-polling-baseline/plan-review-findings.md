@@ -1,6 +1,7 @@
 # Plan Review Findings: session-polling-baseline
 
 Critical:
+
 - ~~Scope split required.~~ **OVERRIDDEN by architect.** The split finding is incorrect:
   (1) Total scope is ~400 lines including tests — well within one builder session.
   (2) R4-R5 are the regression guard FOR R1-R3 — the fixtures prove the corrections
@@ -10,12 +11,15 @@ Critical:
   (4) Coordination cost of splitting exceeds the session-size benefit for this amount of work.
 
 Important:
+
 - None.
 
 Suggestion:
+
 - None.
 
 Resolved during review:
+
 - Tightened the R3 `is_pane_dead()` cadence verification so the test proves a 5-iteration throttle instead of allowing weaker call counts.
 - Corrected the fixture corpus specification so every planned snapshot includes ANSI escapes, matching the stated parser-fixture requirement.
 - Added explicit `demo.md` coverage and grounding metadata so the plan anticipates the mandatory demo review lane.

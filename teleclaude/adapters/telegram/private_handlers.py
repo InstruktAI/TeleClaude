@@ -26,7 +26,7 @@ from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
 from teleclaude.core.models import Session, SessionMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, KeysCommand, ProcessMessageCommand
+from teleclaude.types.commands import CommandType, CreateSessionCommand, ProcessMessageCommand
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -276,29 +276,29 @@ class PrivateHandlersMixin:
             session_id=session.session_id,
         )
         cmd.request_id = str(update.effective_message.message_id)
-        if isinstance(cmd, KeysCommand):
+        if cmd.command_type == CommandType.KEYS:
             await host._dispatch_command(
                 session,
                 str(update.effective_message.message_id),
                 metadata,
-                cmd.key,
+                cmd.key,  # type: ignore[attr-defined]
                 cmd.to_payload(),
-                lambda: cmds.keys(cmd),
+                lambda: cmds.keys(cmd),  # type: ignore[arg-type]
             )
             return
 
-        if isinstance(cmd, CloseSessionCommand):
+        if cmd.command_type == CommandType.CLOSE_SESSION:
             await host._dispatch_command(
                 session,
                 str(update.effective_message.message_id),
                 metadata,
                 "close_session",
                 cmd.to_payload(),
-                lambda: cmds.close_session(cmd),
+                lambda: cmds.close_session(cmd),  # type: ignore[arg-type]
             )
             return
 
-        raise ValueError(f"Unsupported simple command type: {type(cmd).__name__}")
+        raise ValueError(f"Unsupported simple command type: {cmd.command_type.value}")
 
     async def _find_private_session(self, user_id: str) -> Session | None:
         """Return the active private-chat session for a Telegram user, if one exists."""

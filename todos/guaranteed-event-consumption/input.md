@@ -24,33 +24,40 @@ fails to process disappears without trace.
 ## Design Direction
 
 ### Consumer groups per cartridge
+
 Each cartridge gets its own consumer group on the Redis Stream. Redis tracks what each
 group has and hasn't acknowledged independently.
 
 ### Explicit XACK after successful processing
+
 The pipeline framework (not individual cartridges) calls XACK only after the cartridge
 callback returns successfully. If the callback throws, no ACK — the event stays pending.
 
 ### PEL sweep for unacknowledged events
+
 A periodic sweep (and on daemon restart) uses XAUTOCLAIM/XCLAIM to reclaim pending
 entries older than a configurable threshold and redeliver them to the cartridge.
 
 ### Dead-letter after N retries
+
 If an event fails repeatedly (configurable, e.g. 3 attempts), move it to a dead-letter
 stream and emit an observable signal (log, metric, notification). The event is never
 silently lost.
 
 ### Idempotent consumer contract
+
 All cartridges must handle redelivery safely. This becomes a formal contract of the
 cartridge interface — process successfully or throw, the framework handles retry and
 dead-letter. Cartridges that aren't idempotent today must be made so.
 
 ### Observability
+
 - Count of pending (unacked) events per consumer group
 - Count of dead-lettered events
 - Alert/signal when dead-letter queue grows
 
 ## Key Files
+
 - `teleclaude/daemon_event_platform.py` — pipeline dispatch, cartridge wiring
 - `teleclaude/events/pipeline.py` — pipeline framework
 - `teleclaude/events/cartridges/` — all cartridge implementations

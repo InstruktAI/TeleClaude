@@ -127,31 +127,58 @@ sequenceDiagram
 Response mode is declared on the command, not the route. Routes derive HTTP status from it:
 `IMMEDIATE` → 200/201, `FIRE_AND_FORGET` → 202 + `completion_event`, `RECEIPT` → 202 + `OperationReceipt`.
 
-| Method | Endpoint                    | Mode              | Action                              |
-| ------ | --------------------------- | ----------------- | ----------------------------------- |
-| GET    | /health                     | READ              | Health check                        |
-| GET    | /sessions                   | READ              | List sessions (cache)               |
-| POST   | /sessions                   | IMMEDIATE         | Create session → session_id         |
-| POST   | /sessions/{id}/message      | FIRE_AND_FORGET   | Send message to session             |
-| POST   | /sessions/{id}/keys         | FIRE_AND_FORGET   | Inject key input                    |
-| POST   | /sessions/{id}/voice        | FIRE_AND_FORGET   | Handle voice input                  |
-| POST   | /sessions/self/file         | FIRE_AND_FORGET   | Handle file upload                  |
-| POST   | /sessions/{id}/agent-restart| FIRE_AND_FORGET   | Restart agent                       |
-| POST   | /sessions/run               | IMMEDIATE         | Create session + run slash command  |
-| DELETE | /sessions/{id}              | FIRE_AND_FORGET   | Request async session close         |
-| GET    | /computers                  | READ              | List computers (cache + remote)     |
-| GET    | /projects                   | READ              | List projects (cache)               |
-| GET    | /todos                      | READ              | List todos (cache)                  |
-| POST   | /todos/work                 | RECEIPT           | Run next-work state machine         |
-| POST   | /todos/integrate            | RECEIPT           | Run integration state machine       |
-| POST   | /todos/create               | RECEIPT           | Run creative state machine          |
-| POST   | /todos/prepare              | RECEIPT           | Run prepare state machine           |
-| GET    | /operations/{id}            | READ              | Poll operation receipt              |
-| POST   | /api/memory/save            | IMMEDIATE         | Save observation                    |
-| GET    | /api/memory/search          | READ              | Search observations                 |
-| GET    | /api/memory/timeline        | READ              | Timeline around anchor              |
-| POST   | /api/memory/batch           | READ              | Bulk fetch observations             |
-| GET    | /api/memory/inject          | READ              | Generate memory context markdown    |
+| Method | Endpoint                        | Mode            | Action                             |
+| ------ | ------------------------------- | --------------- | ---------------------------------- |
+| GET    | /health                         | READ            | Health check                       |
+| GET    | /sessions                       | READ            | List sessions (cache)              |
+| POST   | /sessions                       | IMMEDIATE       | Create session → session_id        |
+| POST   | /sessions/{id}/message          | IMMEDIATE       | Send message to session            |
+| POST   | /sessions/{id}/keys             | IMMEDIATE       | Inject key input                   |
+| POST   | /sessions/{id}/voice            | IMMEDIATE       | Handle voice input                 |
+| POST   | /sessions/self/file             | IMMEDIATE       | Handle file upload                 |
+| POST   | /sessions/self/result           | IMMEDIATE       | Send formatted result to user      |
+| POST   | /sessions/self/widget           | IMMEDIATE       | Render widget and send summary     |
+| POST   | /sessions/{id}/agent-restart    | FIRE_AND_FORGET | Restart agent                      |
+| POST   | /sessions/self/escalate         | FIRE_AND_FORGET | Escalate customer session          |
+| POST   | /sessions/run                   | IMMEDIATE       | Create session + run slash command |
+| DELETE | /sessions/{id}                  | FIRE_AND_FORGET | Request async session close        |
+| POST   | /jobs/{name}/run                | FIRE_AND_FORGET | Run background job                 |
+| GET    | /computers                      | READ            | List computers (cache + remote)    |
+| GET    | /projects                       | READ            | List projects (cache)              |
+| GET    | /todos                          | READ            | List todos (cache)                 |
+| POST   | /todos/work                     | RECEIPT         | Run next-work state machine        |
+| POST   | /todos/integrate                | RECEIPT         | Run integration state machine      |
+| POST   | /todos/create                   | RECEIPT         | Run creative state machine         |
+| POST   | /todos/prepare                  | RECEIPT         | Run prepare state machine          |
+| GET    | /operations/{id}                | READ            | Poll operation receipt             |
+| POST   | /api/notifications/{id}/claim   | IMMEDIATE       | Claim notification                 |
+| POST   | /api/notifications/{id}/resolve | IMMEDIATE       | Resolve notification               |
+| POST   | /api/memory/save                | IMMEDIATE       | Save observation                   |
+| GET    | /api/memory/search              | READ            | Search observations                |
+| GET    | /api/memory/timeline            | READ            | Timeline around anchor             |
+| POST   | /api/memory/batch               | READ            | Bulk fetch observations            |
+| GET    | /api/memory/inject              | READ            | Generate memory context markdown   |
+
+## Command classification by response mode
+
+Endpoints grouped by the `response_mode` declared on their backing command:
+
+**IMMEDIATE** (200 OK with result in body):
+`POST /sessions`, `POST /sessions/{id}/message`, `POST /sessions/{id}/keys`,
+`POST /sessions/{id}/voice`, `POST /sessions/self/file`, `POST /sessions/run`,
+`POST /sessions/self/result`, `POST /sessions/self/widget`,
+`POST /api/notifications/{id}/claim`, `POST /api/notifications/{id}/resolve`,
+`POST /api/memory/save`.
+
+**FIRE_AND_FORGET + EVENT** (202 Accepted with `completion_event`):
+`POST /sessions/{id}/agent-restart` (`agent.restart_dispatched`),
+`DELETE /sessions/{id}` (`session.close_completed`),
+`POST /sessions/self/escalate` (`session.escalation_started`),
+`POST /jobs/{name}/run` (`job.completed`).
+
+**RECEIPT** (202 Accepted with `OperationReceipt`):
+`POST /todos/work`, `POST /todos/integrate`, `POST /todos/create`,
+`POST /todos/prepare`.
 
 ## Failure modes
 

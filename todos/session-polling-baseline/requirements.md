@@ -143,6 +143,7 @@ by `session_cleanup`.
 ### Problem
 
 `OutputPoller.poll()` calls three subprocess operations each tick:
+
 1. `tmux_bridge.session_exists()` — line 138
 2. `tmux_bridge.capture_pane()` — line 199
 3. `tmux_bridge.is_pane_dead()` — line 280
@@ -201,16 +202,16 @@ regression guard that proves semantic parity before and after extraction.
 - Create directory `tests/fixtures/codex_pane_snapshots/`.
 - Create 8 fixture files, one per semantic state, named `{state}.txt`:
 
-  | Filename              | Semantic state                                            |
-  |-----------------------|-----------------------------------------------------------|
-  | `startup_prompt.txt`  | Fresh session: Codex prompt marker at bottom, no history  |
-  | `typing_partial.txt`  | User is typing: prompt marker present, partial input text |
-  | `spinner_active.txt`  | Agent working: live spinner/status line (no prompt)       |
-  | `tool_action_read.txt`| Tool in progress: agent marker with "Read" action visible |
-  | `tool_done_prompt.txt`| Tool complete, prompt returned: prompt visible in bottom  |
-  | `compact_fast_turn.txt`| Fast turn: dimmed agent marker (compact boundary line)   |
-  | `stale_scrollback.txt`| Old tool markers in scrollback, live prompt at bottom     |
-  | `seeded_prompt.txt`   | Prompt with pre-seeded input text from prior dispatch     |
+  | Filename                | Semantic state                                            |
+  | ----------------------- | --------------------------------------------------------- |
+  | `startup_prompt.txt`    | Fresh session: Codex prompt marker at bottom, no history  |
+  | `typing_partial.txt`    | User is typing: prompt marker present, partial input text |
+  | `spinner_active.txt`    | Agent working: live spinner/status line (no prompt)       |
+  | `tool_action_read.txt`  | Tool in progress: agent marker with "Read" action visible |
+  | `tool_done_prompt.txt`  | Tool complete, prompt returned: prompt visible in bottom  |
+  | `compact_fast_turn.txt` | Fast turn: dimmed agent marker (compact boundary line)    |
+  | `stale_scrollback.txt`  | Old tool markers in scrollback, live prompt at bottom     |
+  | `seeded_prompt.txt`     | Prompt with pre-seeded input text from prior dispatch     |
 
 - Each file must contain **ANSI escape codes** representative of real Codex terminal
   output, not just plain text. Specifically:
@@ -244,16 +245,16 @@ regression guard that proves semantic parity before and after extraction.
 - For each fixture, call the relevant pure parser functions from
   `teleclaude.core.polling_coordinator` and assert the expected semantic output.
 
-  | Fixture              | Parser assertions                                                            |
-  |----------------------|------------------------------------------------------------------------------|
-  | `startup_prompt`     | `_has_live_prompt_marker` → True; `_find_recent_tool_action` → None          |
-  | `typing_partial`     | `_has_live_prompt_marker` → True; `_extract_prompt_block` text is non-empty  |
-  | `spinner_active`     | `_has_live_prompt_marker` → False; `_is_live_agent_marker_line` on last agent line → True |
-  | `tool_action_read`   | `_find_recent_tool_action` → non-None, action word is "Read"; `_has_live_prompt_marker` → False |
-  | `tool_done_prompt`   | `_has_live_prompt_marker` → True; `_find_recent_tool_action` may return stale match (OK) |
-  | `compact_fast_turn`  | `_is_compact_dimmed_agent_boundary_line` on the boundary line → True         |
-  | `stale_scrollback`   | `_has_live_prompt_marker` → True; `_find_recent_tool_action` → None because the visible tool markers are stale |
-  | `seeded_prompt`      | `_extract_prompt_block` → returns the seeded text; `_has_live_prompt_marker` → True |
+  | Fixture             | Parser assertions                                                                                              |
+  | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+  | `startup_prompt`    | `_has_live_prompt_marker` → True; `_find_recent_tool_action` → None                                            |
+  | `typing_partial`    | `_has_live_prompt_marker` → True; `_extract_prompt_block` text is non-empty                                    |
+  | `spinner_active`    | `_has_live_prompt_marker` → False; `_is_live_agent_marker_line` on last agent line → True                      |
+  | `tool_action_read`  | `_find_recent_tool_action` → non-None, action word is "Read"; `_has_live_prompt_marker` → False                |
+  | `tool_done_prompt`  | `_has_live_prompt_marker` → True; `_find_recent_tool_action` may return stale match (OK)                       |
+  | `compact_fast_turn` | `_is_compact_dimmed_agent_boundary_line` on the boundary line → True                                           |
+  | `stale_scrollback`  | `_has_live_prompt_marker` → True; `_find_recent_tool_action` → None because the visible tool markers are stale |
+  | `seeded_prompt`     | `_extract_prompt_block` → returns the seeded text; `_has_live_prompt_marker` → True                            |
 
 - Tests must pass against the **current** `polling_coordinator.py` code before any
   refactor.

@@ -15,7 +15,7 @@ from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_co
 from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import ErrorEventContext, TeleClaudeEvents
+from teleclaude.core.events import AgentRestartDispatchedPayload, ErrorEventContext, TeleClaudeEvents
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, Session, ThinkingMode
 from teleclaude.types.commands import (
     RestartAgentCommand,
@@ -328,6 +328,11 @@ async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements 
         )
 
     asyncio.create_task(_inject_checkpoint_after_restart())
+
+    event_bus.emit(
+        cmd.completion_event,  # type: ignore[arg-type]
+        AgentRestartDispatchedPayload(session_id=session.session_id),
+    )
 
     return True, None
 

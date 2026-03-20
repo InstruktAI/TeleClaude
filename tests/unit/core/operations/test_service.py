@@ -330,7 +330,11 @@ async def test_run_todo_integrate_operation_uses_stored_caller_session_id() -> N
     service = _service(db=db, heartbeat_interval_s=0.01)
 
     with patch.object(service_module, "next_integrate", new=AsyncMock(return_value="integrated")) as next_integrate:
-        await service._run_todo_integrate_operation("integrate-op")
+
+        async def factory(op: Operation) -> str:
+            return await service_module.next_integrate(db, op.slug, op.cwd, op.caller_session_id)
+
+        await service._run_operation("integrate-op", "todo_integrate", factory)
 
     next_integrate.assert_awaited_once_with(
         db,

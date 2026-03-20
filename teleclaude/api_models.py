@@ -266,6 +266,7 @@ class OperationStatusDTO(BaseModel):
     status_path: str
     recovery_command: str
     slug: str | None = None
+    completion_event: str | None = None
     progress_phase: str | None = None
     progress_decision: str | None = None
     progress_reason: str | None = None
@@ -284,6 +285,7 @@ class OperationStatusPayload(TypedDict):
     status_path: str
     recovery_command: str
     slug: NotRequired[str]
+    completion_event: NotRequired[str]
     progress_phase: NotRequired[str]
     progress_decision: NotRequired[str]
     progress_reason: NotRequired[str]

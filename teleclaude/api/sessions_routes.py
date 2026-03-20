@@ -33,12 +33,7 @@ from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import (
-    SessionLifecycleContext,
-    TeleClaudeEvents,
-    parse_command_string,
-)
+from teleclaude.core.events import parse_command_string
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import (
     JsonDict,
@@ -573,14 +568,14 @@ async def create_session(
         raise HTTPException(status_code=500, detail=f"Failed to create session: {e}") from e
 
 
-@router.delete("/sessions/{session_id}")
+@router.delete("/sessions/{session_id}", status_code=202)
 async def end_session(
     request: Request,
     session_id: str,
-    _computer: str | None = Query(None),
     _identity: CallerIdentity = Depends(clearance_sessions_end),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """End session - local sessions only (remote management uses RPC transport)."""
+    """End session via CloseSessionCommand through the command system."""
+    from teleclaude.types.commands import CloseSessionCommand  # pylint: disable=import-outside-toplevel
 
     user_agent = request.headers.get("user-agent", "no-ua")
     identity_email = request.headers.get("x-web-email", "none")
@@ -593,27 +588,16 @@ async def end_session(
 
     await check_session_access(request, session_id, require_owner=True)
     try:
-        session = await db.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        cmd = CloseSessionCommand(session_id=session_id)
+        service = get_command_service()
+        await service.close_session(cmd)
 
-        close_context = SessionLifecycleContext(session_id=session_id)
-        if session.closed_at or session.lifecycle_status == "closed":
-            event_bus.emit(TeleClaudeEvents.SESSION_CLOSED, close_context)
-            return {
-                "status": "success",
-                "message": f"Session {session_id} already closed",
-            }
-
-        if session.lifecycle_status != "closing":
-            await db.update_session(session_id, lifecycle_status="closing")
-
-        event_bus.emit(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, close_context)
         return JSONResponse(  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
             status_code=202,
             content={
                 "status": "accepted",
                 "message": f"Session {session_id} closing",
+                "completion_event": cmd.completion_event,
             },
         )
     except HTTPException as exc:

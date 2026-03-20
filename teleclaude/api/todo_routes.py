@@ -26,8 +26,6 @@ from teleclaude.api.auth import (
 from teleclaude.api_models import OperationStatusDTO
 from teleclaude.config import config
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.db import db
-from teleclaude.core.next_machine import next_create, next_prepare
 from teleclaude.core.next_machine.core import (
     _PREPARE_ARTIFACT_PHASES,
     _PREPARE_PHASE_VALUES,
@@ -57,38 +55,48 @@ def _default_cwd() -> str:
     return str(config.computer.default_working_dir)
 
 
-@router.post("/create")
+@router.post("/create", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
 async def todo_create(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
     _identity: CallerIdentity = Depends(clearance_todos_create),
-) -> dict[str, str]:
+) -> SerializedOperation:
     """Run the creative lifecycle state machine.
 
-    Checks creative state for the given slug and returns instructions for
-    the next action (design discovery, art generation, visual drafting,
-    or human gates). Requires clearance to invoke the creative workflow.
+    Submits a durable receipt-backed operation for the creative workflow.
+    Returns immediately with a receipt for polling.
     """
     effective_cwd = cwd or _default_cwd()
-    result = await next_create(db, slug, effective_cwd)
-    return {"result": result}
+    operations = get_operations_service()
+    return await operations.submit_todo_create(
+        slug=slug,
+        cwd=effective_cwd,
+        caller_session_id=_identity.session_id,
+        client_request_id=client_request_id,
+    )
 
 
-@router.post("/prepare")
+@router.post("/prepare", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
 async def todo_prepare(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
     _identity: CallerIdentity = Depends(clearance_todos_prepare),
-) -> dict[str, str]:
+) -> SerializedOperation:
     """Run the Phase A (prepare) state machine.
 
-    Checks preparation state for the given slug and returns instructions for
-    the next action (draft, gate, or already prepared). Requires clearance to
-    invoke the prepare workflow.
+    Submits a durable receipt-backed operation for the prepare workflow.
+    Returns immediately with a receipt for polling.
     """
     effective_cwd = cwd or _default_cwd()
-    result = await next_prepare(db, slug, effective_cwd)
-    return {"result": result}
+    operations = get_operations_service()
+    return await operations.submit_todo_prepare(
+        slug=slug,
+        cwd=effective_cwd,
+        caller_session_id=_identity.session_id,
+        client_request_id=client_request_id,
+    )
 
 
 @router.post("/work", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)

@@ -87,14 +87,14 @@ All external import paths remain backward-compatible.
 
 ### What changed
 
-| Original file | Was | Now | Submodules created |
-|---|---|---|---|
-| `animations/general.py` | ~1100 lines | 505 lines | `sky.py`, `particles.py` |
-| `views/config.py` | ~1086 lines | 439 lines | `config_editing.py`, `config_render.py` |
-| `views/preparation.py` | ~993 lines | 579 lines | `preparation_actions.py` |
-| `views/sessions.py` | ~1256 lines | 623 lines | `sessions_actions.py`, `sessions_highlights.py` |
-| `pane_manager.py` | ~1286 lines | 656 lines | `_pane_specs.py`, `pane_layout.py`, `pane_theming.py` |
-| `app.py` | 1467 lines | 658 lines | `app_ws.py`, `app_actions.py`, `app_media.py` |
+| Original file           | Was         | Now       | Submodules created                                    |
+| ----------------------- | ----------- | --------- | ----------------------------------------------------- |
+| `animations/general.py` | ~1100 lines | 505 lines | `sky.py`, `particles.py`                              |
+| `views/config.py`       | ~1086 lines | 439 lines | `config_editing.py`, `config_render.py`               |
+| `views/preparation.py`  | ~993 lines  | 579 lines | `preparation_actions.py`                              |
+| `views/sessions.py`     | ~1256 lines | 623 lines | `sessions_actions.py`, `sessions_highlights.py`       |
+| `pane_manager.py`       | ~1286 lines | 656 lines | `_pane_specs.py`, `pane_layout.py`, `pane_theming.py` |
+| `app.py`                | 1467 lines  | 658 lines | `app_ws.py`, `app_actions.py`, `app_media.py`         |
 
 ### Verification
 

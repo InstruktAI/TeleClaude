@@ -65,6 +65,7 @@ make test
 ### Step 1: The CommandAuth model
 
 Open `teleclaude/cli/telec.py` and show the new `CommandAuth` dataclass. Point out:
+
 - `system` field: allowed system roles (worker/orchestrator).
 - `human` field: allowed human roles (admin is always implicit except for escalate).
 - The `exclude_human` field: explicitly excludes a role (used for admin on escalate).
@@ -72,6 +73,7 @@ Open `teleclaude/cli/telec.py` and show the new `CommandAuth` dataclass. Point o
 ### Step 2: Auth metadata on CLI_SURFACE
 
 Show a few representative `CommandDef` entries with their `auth` field:
+
 - `sessions start`: orchestrator-only, admin + member.
 - `sessions escalate`: all system roles, all non-admins, admin excluded.
 - `docs index`: universal access.
@@ -83,6 +85,7 @@ deny-list file. No scattered constants. The command describes its own access.
 ### Step 3: `is_command_allowed()` function
 
 Show the function. Walk through the composition rule:
+
 1. Resolve command path to its `CommandAuth`.
 2. Check system role: is the caller's system role in `auth.system`?
 3. Check human role: is the caller admin (and not excluded)? Or is the caller's role in `auth.human`?
@@ -96,6 +99,7 @@ future regressions when new commands are added without thinking about authorizat
 ### Step 5: What comes next
 
 Explain that this is the foundation. Follow-on workstreams will:
+
 - Wire the API to use `is_command_allowed()` instead of legacy deny-lists (WS8).
 - Delete `tool_access.py` and `CLEARANCE_*` constants (WS2).
 - Filter `telec -h` output by caller role (WS3).

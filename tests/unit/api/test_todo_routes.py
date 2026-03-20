@@ -41,15 +41,32 @@ class TestTodoRoutes:
     async def test_todo_create_uses_default_cwd_when_request_omits_it(self) -> None:
         """Todo creation falls back to the configured default working directory."""
         config_stub = SimpleNamespace(computer=SimpleNamespace(default_working_dir="/repo"))
+        mock_ops = MagicMock()
+        mock_ops.submit_todo_create = AsyncMock(
+            return_value={
+                "operation_id": "op-1",
+                "kind": "todo_create",
+                "state": "queued",
+                "poll_after_ms": 250,
+                "status_path": "/operations/op-1",
+            }
+        )
 
         with (
             patch("teleclaude.api.todo_routes.config", config_stub),
-            patch("teleclaude.api.todo_routes.next_create", new=AsyncMock(return_value="create-next")) as next_create,
+            patch("teleclaude.api.todo_routes.get_operations_service", return_value=mock_ops),
         ):
-            response = await todo_routes.todo_create(slug="chartest-api-routes", cwd=None, _identity=_identity())
+            response = await todo_routes.todo_create(
+                slug="chartest-api-routes",
+                cwd=None,
+                client_request_id=None,
+                _identity=_identity(),
+            )
 
-        assert response == {"result": "create-next"}
-        next_create.assert_awaited_once_with(todo_routes.db, "chartest-api-routes", "/repo")
+        assert response["operation_id"] == "op-1"
+        mock_ops.submit_todo_create.assert_awaited_once()
+        call_kwargs = mock_ops.submit_todo_create.call_args.kwargs
+        assert call_kwargs["cwd"] == "/repo"
 
     @pytest.mark.unit
     @pytest.mark.asyncio

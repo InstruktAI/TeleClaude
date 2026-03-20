@@ -7,15 +7,13 @@ import json
 import shlex
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.base_adapter import AdapterError
-from teleclaude.adapters.discord_adapter import DiscordAdapter
 from teleclaude.api.auth import (
     CallerIdentity,
     clearance_sessions_agent_restart,
@@ -63,7 +61,6 @@ from teleclaude.output_projection import conversation_projector as conversation_
 from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import VisibilityPolicy
 from teleclaude.types.commands import GetSessionDataCommand
-from teleclaude.utils.markdown import telegramify_markdown
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -281,49 +278,6 @@ def _prepare_run_session(
     )
 
 
-def _build_widget_summary(data: dict[str, object]) -> str:  # guard: loose-dict - dynamic payload
-    """Build the text summary sent for a rich widget payload."""
-    title = str(data.get("title", ""))
-    sections = data.get("sections", [])
-    footer = str(data.get("footer", ""))
-    if not isinstance(sections, list):
-        raise HTTPException(status_code=400, detail="sections must be an array")
-
-    summary_parts: list[str] = [f"**{title}**\n"] if title else []
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        label = section.get("label")
-        if label:
-            summary_parts.append(f"_{label}_")
-
-        section_type = str(section.get("type", ""))
-        if section_type == "text":
-            content = str(section.get("content", ""))
-            if content:
-                summary_parts.append(content)
-            continue
-        if section_type == "table":
-            headers = section.get("headers", [])
-            rows = section.get("rows", [])
-            if isinstance(headers, list) and isinstance(rows, list):
-                summary_parts.append(f"Table: {len(headers)} columns, {len(rows)} rows")
-            continue
-        if section_type == "code":
-            lang = str(section.get("language", ""))
-            content = str(section.get("content", ""))
-            lang_label = f" ({lang})" if lang else ""
-            preview = content[:100] + "..." if len(content) > 100 else content
-            summary_parts.append(f"Code{lang_label}:\n```\n{preview}\n```")
-            continue
-        if section_type == "divider":
-            summary_parts.append("---")
-
-    if footer:
-        summary_parts.append(f"\n{footer}")
-    return "\n".join(summary_parts)
-
-
 @router.post("/sessions/{session_id}/keys")
 async def send_keys_endpoint(
     http_request: Request,
@@ -408,7 +362,7 @@ async def send_file_endpoint(
         raise HTTPException(status_code=500, detail=f"Failed to send file: {e}") from e
 
 
-@router.post("/sessions/{session_id}/agent-restart")
+@router.post("/sessions/{session_id}/agent-restart", status_code=202)
 async def agent_restart(
     http_request: Request,
     session_id: str,
@@ -436,7 +390,7 @@ async def agent_restart(
             metadata,
         )
         asyncio.create_task(get_command_service().restart_agent(cmd))
-        return {"status": "accepted"}
+        return {"status": "accepted", "completion_event": cmd.completion_event or "agent.restart_dispatched"}
     except HTTPException:
         raise
     except Exception as e:
@@ -633,52 +587,20 @@ async def send_result_endpoint(
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send a formatted result to the session's user as a separate message.
 
-    Sends the content through the session's adapter (Telegram, Discord, etc.)
-    as a persistent (non-ephemeral) message. Supports markdown and HTML formats.
-    Requires dual-factor caller identity.
+    Dispatches through CommandService.deliver_result() which handles adapter
+    delivery with formatting fallback. Requires dual-factor caller identity.
     """
-    if _STATE.client is None:
-        raise HTTPException(status_code=503, detail="Adapter client not available")
+    from teleclaude.types.commands import SystemCommand  # pylint: disable=import-outside-toplevel
 
-    session = await db.get_session(identity.session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    if request.output_format == "html":
-        formatted_content = request.content
-        parse_mode = "HTML"
-    else:
-        formatted_content = telegramify_markdown(request.content)
-        parse_mode = "MarkdownV2"
-
-    if len(formatted_content) > 4096:
-        formatted_content = formatted_content[:4090] + "\n..."
-
-    meta = MessageMetadata(parse_mode=parse_mode)
+    cmd = SystemCommand(
+        command="deliver_result",
+        session_id=identity.session_id,
+        data={"content": request.content, "output_format": request.output_format},
+    )
     try:
-        message_id = await _STATE.client.send_message(
-            session=session,
-            text=formatted_content,
-            metadata=meta,
-            ephemeral=False,
-        )
-        return {"status": "success", "message_id": message_id}
-    except (AdapterError, RuntimeError, ValueError, TypeError) as e:
-        logger.warning("send_result formatted send failed, retrying as plain text: %s", e)
-        try:
-            message_id = await _STATE.client.send_message(
-                session=session,
-                text=request.content[:4096],
-                metadata=MessageMetadata(),
-                ephemeral=False,
-            )
-            return {
-                "status": "success",
-                "message_id": message_id,
-                "warning": "Sent as plain text due to formatting error",
-            }
-        except (AdapterError, RuntimeError, ValueError, TypeError) as fallback_error:
-            raise HTTPException(status_code=500, detail=f"Failed to send result: {fallback_error}") from fallback_error
+        return await get_command_service().deliver_result(cmd)  # type: ignore[return-value]
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/sessions/self/widget")
@@ -688,31 +610,20 @@ async def render_widget_endpoint(
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Render a rich widget expression and send text summary to the session's user.
 
-    Generates a text summary from the widget sections, sends it through the
-    session's adapter, and stores named widgets for retrieval. Requires
-    dual-factor caller identity.
+    Dispatches through CommandService.render_widget() which builds the summary
+    and sends through the adapter. Requires dual-factor caller identity.
     """
-    if _STATE.client is None:
-        raise HTTPException(status_code=503, detail="Adapter client not available")
+    from teleclaude.types.commands import SystemCommand  # pylint: disable=import-outside-toplevel
 
-    session = await db.get_session(identity.session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    text_summary = _build_widget_summary(request.data)
-    meta = MessageMetadata(parse_mode="MarkdownV2")
+    cmd = SystemCommand(
+        command="render_widget",
+        session_id=identity.session_id,
+        data={"widget_data": request.data},
+    )
     try:
-        await _STATE.client.send_message(
-            session=session,
-            text=telegramify_markdown(text_summary),
-            metadata=meta,
-            ephemeral=False,
-        )
-    except Exception as e:
-        logger.error("render_widget send failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to send widget: {e}") from e
-
-    return {"status": "success", "summary": text_summary}
+        return await get_command_service().render_widget(cmd)  # type: ignore[return-value]
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/sessions/self/escalate")
@@ -722,43 +633,32 @@ async def escalate_session(
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Escalate a customer session to an admin via Discord.
 
-    Creates a Discord thread in the escalation forum, notifies admins,
-    and activates relay mode on the session. Only available for customer
-    sessions. Requires dual-factor caller identity.
+    Dispatches through CommandService.escalate_session() as a FIRE_AND_FORGET
+    SystemCommand. Returns 202 with completion_event. Requires dual-factor
+    caller identity.
     """
-    if _STATE.client is None:
-        raise HTTPException(status_code=503, detail="Adapter client not available")
+    from teleclaude.types.commands import ResponseMode, SystemCommand  # pylint: disable=import-outside-toplevel
 
-    session_id = identity.session_id
-    session = await db.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if session.human_role != "customer":
-        raise HTTPException(status_code=403, detail="Escalation is only available in customer sessions")
-
-    discord_adapter: DiscordAdapter | None = None
-    for adapter in _STATE.client.adapters.values():
-        if isinstance(adapter, DiscordAdapter):
-            discord_adapter = adapter
-            break
-    if not discord_adapter:
-        raise HTTPException(status_code=503, detail="Discord adapter not available")
-
+    cmd = SystemCommand(
+        command="escalate_session",
+        session_id=identity.session_id,
+        data={
+            "customer_name": request.customer_name,
+            "reason": request.reason,
+            "context_summary": request.context_summary,
+        },
+        response_mode=ResponseMode.FIRE_AND_FORGET,
+        completion_event="session.escalation_started",
+    )
     try:
-        thread_id = await discord_adapter.create_escalation_thread(
-            customer_name=request.customer_name,
-            reason=request.reason,
-            context_summary=request.context_summary,
-            session_id=session_id,
+        result = await get_command_service().escalate_session(cmd)
+        return JSONResponse(  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+            status_code=202,
+            content={
+                "status": "accepted",
+                "thread_id": result.get("thread_id") if isinstance(result, dict) else None,  # type: ignore[union-attr]
+                "completion_event": cmd.completion_event,
+            },
         )
-        now = datetime.now(UTC)
-        await db.update_session(
-            session_id,
-            relay_status="active",
-            relay_discord_channel_id=str(thread_id),
-            relay_started_at=now.isoformat(),
-        )
-        return {"status": "success", "thread_id": thread_id}
-    except Exception as e:
-        logger.error("escalate_session failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Escalation failed: {e}") from e
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e

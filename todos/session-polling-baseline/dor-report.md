@@ -62,6 +62,7 @@ the Codex semantic replay baseline required by downstream runtime work.
 This todo is atomic and appropriate for one builder session.
 
 Evidence:
+
 - The work stays within one coherent behavior slice: baseline runtime corrections
   plus the regression guard that protects those corrections.
 - The artifacts are highly detailed at the file/function/test level, which reduces
@@ -76,6 +77,7 @@ Evidence:
 ### 3. Verification: PASS
 
 Each change has a clear proof path:
+
 - command-shape assertion for `capture_pane()`,
 - tmp cleanup and orphan sweep tests,
 - poller exit/cadence tests,
@@ -91,6 +93,7 @@ the empty-capture exit path in the poller.
 The technical path is concrete and already grounded in the current codebase.
 
 Evidence:
+
 - The relevant helpers and seams exist exactly where the plan says they do.
 - The parser helpers for replay coverage already exist in
   `teleclaude/core/polling_coordinator.py`.
@@ -102,6 +105,7 @@ Evidence:
 The third-party tmux research gate is satisfied.
 
 Evidence:
+
 - `docs/third-party/tmux/session-output-observation.md` exists and is indexed in
   `docs/third-party/index.yaml`.
 - That research directly covers the behaviors this todo depends on: `capture-pane`
@@ -113,6 +117,7 @@ Evidence:
 Dependencies and preconditions are now explicit and consistent.
 
 Evidence:
+
 - The todo’s grounded file list matches the implementation scope.
 - `todos/session-adaptive-runtime/input.md` explicitly depends on this baseline todo.
 - The roadmap previously contained stale inverse sequencing
@@ -126,6 +131,7 @@ Evidence:
 The work is safe to merge incrementally.
 
 Evidence:
+
 - R1-R3 are localized corrections with bounded behavioral impact.
 - R4-R5 add regression artifacts rather than production-surface complexity.
 - The plan keeps all public contracts stable while adding targeted verification.

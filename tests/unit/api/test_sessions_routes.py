@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -12,7 +12,6 @@ from fastapi import HTTPException
 from teleclaude.api import sessions_routes
 from teleclaude.api.sessions_routes import ListSessionsQuery
 from teleclaude.api_models import CreateSessionRequest, SendMessageRequest
-from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import SessionSnapshot
 
 
@@ -123,22 +122,18 @@ class TestSessionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_end_session_emits_closed_event_for_already_closed_sessions(self) -> None:
-        """Already-closed sessions emit the closed event without changing lifecycle state."""
+    async def test_end_session_dispatches_close_via_command_service(self) -> None:
+        """DELETE /sessions dispatches through CommandService.close_session."""
         request = _make_request({"user-agent": "pytest"})
-        session = SimpleNamespace(session_id="sess-closed", closed_at="2025-03-15T00:00:00Z", lifecycle_status="closed")
+
+        mock_service = MagicMock()
+        mock_service.close_session = AsyncMock()
 
         with (
             patch("teleclaude.api.session_access.check_session_access", new=AsyncMock()),
-            patch.object(sessions_routes, "db") as db,
-            patch.object(sessions_routes.event_bus, "emit") as emit,
+            patch("teleclaude.api.sessions_routes.get_command_service", return_value=mock_service),
         ):
-            db.get_session = AsyncMock(return_value=session)
-            db.update_session = AsyncMock()
+            response = await sessions_routes.end_session(request, "sess-1", _identity=object())
 
-            response = await sessions_routes.end_session(request, "sess-closed", _computer="local", _identity=object())
-
-        assert response["status"] == "success"
-        emit.assert_called_once()
-        assert emit.call_args.args[0] == TeleClaudeEvents.SESSION_CLOSED
-        db.update_session.assert_not_awaited()
+        mock_service.close_session.assert_awaited_once()
+        assert response.status_code == 202

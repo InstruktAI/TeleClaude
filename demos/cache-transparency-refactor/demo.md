@@ -74,6 +74,7 @@ python -m pytest tests/unit/test_cache.py tests/unit/test_api_server.py -x -q
 **What changed:** `get_projects()` now has no `include_stale` parameter. The signature change makes the existing call at line 2428 correct by default: all reads serve stale data immediately. The daemon callback (new) requests refresh asynchronously in the background.
 
 **Manual verification:**
+
 ```bash
 # Start the TUI
 make dev
@@ -91,6 +92,7 @@ make dev
 The `include_stale` parameter no longer exists on any cache read method. This means no caller can accidentally opt out of seeing cached data. The cache contract — "always serve immediately" — is now enforced by the API shape itself.
 
 **Code inspection:**
+
 ```bash
 # Verify signatures
 grep -n "def get_projects\|def get_todos\|def get_todo_entries\|def get_computers" teleclaude/core/cache.py
@@ -104,6 +106,7 @@ grep -n "def get_projects\|def get_todos\|def get_todo_entries\|def get_computer
 Instead of callers collecting stale computers and triggering refreshes, the cache itself signals stale reads via an `on_stale_read` callback. The daemon wires this to `RedisTransport.request_refresh()` at construction time.
 
 **Code inspection:**
+
 ```bash
 # Verify daemon wiring
 grep -A 10 "def _on_stale_read" teleclaude/daemon.py
@@ -115,6 +118,7 @@ grep "_refresh_stale" teleclaude/api_server.py
 ```
 
 **What to observe:**
+
 - In daemon startup logs, `DaemonCache initialized` followed by callback wiring (log message or silent success).
 - In daemon operation logs, when a remote cache entry ages past TTL and is read, `request_refresh` is called automatically.
 - API server code is simpler: no `_refresh_stale_projects()` or `_refresh_stale_todos()` methods exist.
@@ -124,6 +128,7 @@ grep "_refresh_stale" teleclaude/api_server.py
 The callback is wrapped in try/except at the cache layer. A broken callback will log an error but never prevent the caller from receiving cached data.
 
 **Code inspection:**
+
 ```bash
 # Verify exception suppression
 grep -A 5 "_signal_stale_read" teleclaude/core/cache.py | grep -E "try|except|logger"

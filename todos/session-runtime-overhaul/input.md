@@ -67,8 +67,8 @@ Evidence gathered on 2026-03-08:
    - visible action-word lines with signature suppression,
    - stale scrollback rejection,
    - authoritative prompt seeding from durable message dispatch.
-   `agent_stop` remains hook-authoritative, while transcript extraction in
-   `handle_agent_stop()` backfills missing Codex submit context only as a safety net.
+     `agent_stop` remains hook-authoritative, while transcript extraction in
+     `handle_agent_stop()` backfills missing Codex submit context only as a safety net.
 
 2. Existing test coverage protects many parser invariants already.
    `tests/unit/test_polling_coordinator.py` covers partial prompt typing, stale bullet
@@ -111,9 +111,9 @@ Evidence gathered on 2026-03-08:
    - database lifecycle rows: `15` active, `12` closing, `2` initializing
    - active-agent split among non-closed rows: `10` active Claude, `5` active Codex
    - `1932` temp-session directories under `~/.teleclaude/tmp/sessions`
-   Recent logs also show active Codex pollers commonly running near ~1.06-1.50s
-   output cadence with large fanout volumes, and monitoring snapshots show fd/task
-   spikes during activity.
+     Recent logs also show active Codex pollers commonly running near ~1.06-1.50s
+     output cadence with large fanout volumes, and monitoring snapshots show fd/task
+     spikes during activity.
 
 7. Documentation and tests currently overfit the old poller shape.
    `docs/project/design/architecture/output-polling.md` still describes a simpler

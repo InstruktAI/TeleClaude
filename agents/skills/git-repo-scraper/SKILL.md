@@ -53,4 +53,3 @@ Ingest a Git repository and produce durable artifacts that answer the current ob
 9. Formulate an answer that satisfies the objective, grounded in repo evidence.
 10. Append that answer to `history.md` using the required history entry format.
 11. Respond with the formulated answer.
-

@@ -18,11 +18,11 @@ project keys are valid at global level — but not the reverse. `ProjectConfig`
 explicitly rejects global-only keys (`people`, `ops`, `creds`, `notifications`,
 `timezone`). See `teleclaude/config/schema.py` for the Pydantic models.
 
-| File | Location | Model | Owns |
-|------|----------|-------|------|
-| **Global config** | `~/.teleclaude/teleclaude.yml` | `GlobalConfig` | All project keys + `people`, `subscriptions`, `interests`, `event_domains` |
-| **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_name`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
-| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `invite_token` |
+| File                  | Location                                     | Model           | Owns                                                                                                    |
+| --------------------- | -------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
+| **Global config**     | `~/.teleclaude/teleclaude.yml`               | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                              |
+| **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_name`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
+| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`                                                   |
 
 **The project config is a regular file committed to the repository.** It is never a
 symlink. Replacing it with a symlink to the global config breaks validation because
@@ -38,7 +38,7 @@ Valid in both project and global configs.
 project_name: string
 description: string
 business:
-  domains: mapping[string, string]  # domain-name → "docs" (enables doc scope filtering)
+  domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)
 jobs: mapping[string, JobScheduleConfig]
 hooks:
   inbound: mapping[string, InboundSourceConfig]
@@ -51,8 +51,8 @@ integrator:
     parity_evidence_accepted: boolean
     rollback_on_incomplete_parity: boolean
 deployment:
-  channel: string  # alpha | beta | stable (default: alpha)
-  pinned_minor: string  # required when channel=stable
+  channel: string # alpha | beta | stable (default: alpha)
+  pinned_minor: string # required when channel=stable
 channel_subscriptions: list[ChannelSubscription]
 ```
 
@@ -61,7 +61,7 @@ channel_subscriptions: list[ChannelSubscription]
 Valid **only** in `~/.teleclaude/teleclaude.yml`. Rejected by `ProjectConfig`.
 
 ```yaml
-people: list[PersonEntry]  # REJECTED at project level
+people: list[PersonEntry] # REJECTED at project level
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
 event_domains:

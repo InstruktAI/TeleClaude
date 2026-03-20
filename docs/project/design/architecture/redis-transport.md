@@ -116,6 +116,30 @@ sequenceDiagram
 - Response streams: Auto-expire after 1 hour (TTL)
 - Heartbeat entries: Redis key expiry after 60s
 
+## Response mode and caller dispatch
+
+The `response_mode` field on each `InternalCommand` determines how the transport layer
+handles the caller's wait behavior. This creates a two-layer dispatch model:
+
+1. **Handler table** (`CommandType` → handler): Selects which handler function executes
+   the command logic. This is a static mapping from the command's `command_type` enum
+   value to the handler callable.
+
+2. **Execution mode layer** (`response_mode`): Determines whether the caller awaits a
+   synchronous result or fires-and-forgets:
+   - `IMMEDIATE`: The dispatcher awaits the handler's return value and passes it back
+     to the caller. The response stream carries the result payload.
+   - `FIRE_AND_FORGET`: The dispatcher schedules the handler but does not await a
+     return value for the caller. The caller receives a 202 acknowledgment with the
+     `completion_event` name. The actual completion is signaled asynchronously via the
+     event bus.
+   - `RECEIPT`: The dispatcher delegates to `OperationsService`, which persists the
+     operation row before scheduling background execution. The caller receives the
+     `OperationReceipt` immediately.
+
+The handler table and the execution mode layer are orthogonal: any handler can operate
+under any response mode. The mode is a property of the command, not of the handler.
+
 ## Failure modes
 
 - **Redis Unavailable**: Daemon starts without Redis transport. Cross-computer commands fail. Local and Telegram operations unaffected.

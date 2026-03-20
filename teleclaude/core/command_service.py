@@ -11,6 +11,8 @@ import shlex
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.constants import (
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
@@ -48,10 +50,13 @@ from teleclaude.types.commands import (
     ResumeAgentCommand,
     RunAgentCommand,
     StartAgentCommand,
+    SystemCommand,
 )
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+
+logger = get_logger(__name__)
 
 
 # Maps slash commands to (system_role, job_role) pairs.
@@ -78,6 +83,49 @@ ExecuteTerminalCommandFunc = Callable[[str, str, str | None, bool], Awaitable[bo
 ExecuteAutoCommandFunc = Callable[[str, str], Awaitable[dict[str, str]]]
 QueueBackgroundTaskFunc = Callable[[Awaitable[object], str], None]
 BootstrapSessionFunc = Callable[[str, str | None], Awaitable[None]]
+
+
+def _build_widget_summary(data: dict[str, object]) -> str:  # guard: loose-dict - dynamic payload
+    """Build the text summary sent for a rich widget payload."""
+    title = str(data.get("title", ""))
+    sections = data.get("sections", [])
+    footer = str(data.get("footer", ""))
+    if not isinstance(sections, list):
+        raise ValueError("sections must be an array")
+
+    summary_parts: list[str] = [f"**{title}**\n"] if title else []
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        label = section.get("label")
+        if label:
+            summary_parts.append(f"_{label}_")
+
+        section_type = str(section.get("type", ""))
+        if section_type == "text":
+            content = str(section.get("content", ""))
+            if content:
+                summary_parts.append(content)
+            continue
+        if section_type == "table":
+            headers = section.get("headers", [])
+            rows = section.get("rows", [])
+            if isinstance(headers, list) and isinstance(rows, list):
+                summary_parts.append(f"Table: {len(headers)} columns, {len(rows)} rows")
+            continue
+        if section_type == "code":
+            lang = str(section.get("language", ""))
+            content = str(section.get("content", ""))
+            lang_label = f" ({lang})" if lang else ""
+            preview = content[:100] + "..." if len(content) > 100 else content
+            summary_parts.append(f"Code{lang_label}:\n```\n{preview}\n```")
+            continue
+        if section_type == "divider":
+            summary_parts.append("---")
+
+    if footer:
+        summary_parts.append(f"\n{footer}")
+    return "\n".join(summary_parts)
 
 
 class CommandService:
@@ -154,6 +202,154 @@ class CommandService:
 
     async def end_session(self, cmd: CloseSessionCommand) -> EndSessionHandlerResult:  # pylint: disable=missing-function-docstring
         return await end_session(cmd, self.client)
+
+    async def deliver_result(self, cmd: SystemCommand) -> object:  # pylint: disable=missing-function-docstring
+        """Deliver a formatted result to a session's user via the adapter."""
+        return await self._dispatch_system_command(cmd)
+
+    async def render_widget(self, cmd: SystemCommand) -> object:  # pylint: disable=missing-function-docstring
+        """Render a widget expression and send summary to the session's user."""
+        return await self._dispatch_system_command(cmd)
+
+    async def escalate_session(self, cmd: SystemCommand) -> object:  # pylint: disable=missing-function-docstring
+        """Escalate a customer session to admin via Discord."""
+        return await self._dispatch_system_command(cmd)
+
+    async def system_command(self, cmd: SystemCommand) -> object:
+        """Route a SystemCommand to its handler based on cmd.command field."""
+        return await self._dispatch_system_command(cmd)
+
+    async def _dispatch_system_command(self, cmd: SystemCommand) -> object:
+        """Internal dispatch for system commands based on cmd.command value."""
+        match cmd.command:
+            case "deliver_result":
+                return await self._handle_deliver_result(cmd)
+            case "render_widget":
+                return await self._handle_render_widget(cmd)
+            case "escalate_session":
+                return await self._handle_escalate_session(cmd)
+            case _:
+                raise ValueError(f"Unknown system command: {cmd.command}")
+
+    async def _handle_deliver_result(self, cmd: SystemCommand) -> object:
+        """Send a formatted result message to a session's user via the adapter."""
+        from teleclaude.adapters.base_adapter import AdapterError  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
+        from teleclaude.utils.markdown import telegramify_markdown  # pylint: disable=import-outside-toplevel
+
+        content = str((cmd.data or {}).get("content", ""))
+
+        session = await db.get_session(cmd.session_id)
+        if not session:
+            raise ValueError(f"Session {cmd.session_id} not found")
+
+        if str((cmd.data or {}).get("output_format", "markdown")) == "html":
+            formatted = content
+            parse_mode = "HTML"
+        else:
+            formatted = telegramify_markdown(content)
+            parse_mode = "MarkdownV2"
+
+        if len(formatted) > 4096:
+            formatted = formatted[:4090] + "\n..."
+
+        try:
+            message_id = await self.client.send_message(
+                session=session,
+                text=formatted,
+                metadata=MessageMetadata(parse_mode=parse_mode),
+                ephemeral=False,
+            )
+            return {"status": "success", "message_id": message_id}
+        except (AdapterError, RuntimeError, ValueError, TypeError) as e:
+            logger.warning("deliver_result formatted send failed, retrying as plain text: %s", e)
+            try:
+                message_id = await self.client.send_message(
+                    session=session,
+                    text=content[:4096],
+                    metadata=MessageMetadata(),
+                    ephemeral=False,
+                )
+                return {
+                    "status": "success",
+                    "message_id": message_id,
+                    "warning": "Sent as plain text due to formatting error",
+                }
+            except (AdapterError, RuntimeError, ValueError, TypeError) as fallback_error:
+                raise ValueError(f"Failed to send result: {fallback_error}") from fallback_error
+
+    async def _handle_render_widget(self, cmd: SystemCommand) -> object:
+        """Render a rich widget and send text summary to the session's user."""
+        from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
+        from teleclaude.utils.markdown import telegramify_markdown  # pylint: disable=import-outside-toplevel
+
+        raw_widget = (cmd.data or {}).get("widget_data")
+        if not isinstance(raw_widget, dict):
+            raise ValueError("widget_data must be a dict")
+
+        session = await db.get_session(cmd.session_id)
+        if not session:
+            raise ValueError(f"Session {cmd.session_id} not found")
+
+        text_summary = _build_widget_summary(raw_widget)
+        try:
+            await self.client.send_message(
+                session=session,
+                text=telegramify_markdown(text_summary),
+                metadata=MessageMetadata(parse_mode="MarkdownV2"),
+                ephemeral=False,
+            )
+        except Exception as e:
+            logger.error("render_widget send failed: %s", e, exc_info=True)
+            raise ValueError(f"Failed to send widget: {e}") from e
+
+        return {"status": "success", "summary": text_summary}
+
+    async def _handle_escalate_session(self, cmd: SystemCommand) -> object:
+        """Escalate a customer session to an admin via Discord."""
+        from datetime import UTC, datetime  # pylint: disable=import-outside-toplevel
+
+        from teleclaude.adapters.discord_adapter import DiscordAdapter  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.event_bus import event_bus  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.events import SessionEscalatedPayload  # pylint: disable=import-outside-toplevel
+
+        session = await db.get_session(cmd.session_id)
+        if not session:
+            raise ValueError(f"Session {cmd.session_id} not found")
+        if session.human_role != "customer":
+            raise ValueError("Escalation is only available in customer sessions")
+
+        discord_adapter: DiscordAdapter | None = None
+        for adapter in self.client.adapters.values():
+            if isinstance(adapter, DiscordAdapter):
+                discord_adapter = adapter
+                break
+        if not discord_adapter:
+            raise ValueError("Discord adapter not available")
+
+        data = cmd.data or {}
+        session_id = cmd.session_id or ""
+        thread_id = await discord_adapter.create_escalation_thread(
+            customer_name=str(data.get("customer_name", "")),
+            reason=str(data.get("reason", "")),
+            context_summary=str(data.get("context_summary", "")),
+            session_id=session_id,
+        )
+        await db.update_session(
+            session_id,
+            relay_status="active",
+            relay_discord_channel_id=str(thread_id),
+            relay_started_at=datetime.now(UTC).isoformat(),
+        )
+        event_bus.emit(
+            "session.escalation_started",  # type: ignore[arg-type]
+            SessionEscalatedPayload(session_id=session_id),
+        )
+
+        return {"status": "accepted", "thread_id": thread_id}
 
     async def run_slash_command(  # pylint: disable=too-many-arguments,too-many-locals
         self,

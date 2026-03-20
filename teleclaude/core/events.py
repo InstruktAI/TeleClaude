@@ -532,6 +532,67 @@ class ErrorEventContext:
     code: str | None = None
 
 
+# Domain event payloads for fire-and-forget mutation completion signals
+
+
+@dataclass(frozen=True)
+class AgentRestartDispatchedPayload:
+    """Emitted after successful agent restart dispatch."""
+
+    session_id: str
+
+
+@dataclass(frozen=True)
+class SessionCloseCompletedPayload:
+    """Emitted when close processing finishes for a session."""
+
+    session_id: str
+
+
+@dataclass(frozen=True)
+class SessionEscalatedPayload:
+    """Emitted when session escalation is initiated."""
+
+    session_id: str
+
+
+@dataclass(frozen=True)
+class JobStartedPayload:
+    """Emitted when a background job starts execution."""
+
+    job_name: str
+
+
+@dataclass(frozen=True)
+class JobCompletedPayload:
+    """Emitted when a background job completes successfully."""
+
+    job_name: str
+
+
+@dataclass(frozen=True)
+class JobFailedPayload:
+    """Emitted when a background job fails."""
+
+    job_name: str
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class NotificationClaimedPayload:
+    """Emitted when a notification is claimed by an agent."""
+
+    notification_id: int
+    agent_id: str
+
+
+@dataclass(frozen=True)
+class NotificationResolvedPayload:
+    """Emitted when a notification is resolved."""
+
+    notification_id: int
+
+
 # Union of all event context types (for adapter_client handler signatures)
 EventContext = (
     MessageEventContext
@@ -542,4 +603,12 @@ EventContext = (
     | SessionUpdatedContext
     | SessionStatusContext
     | AgentActivityEvent
+    | AgentRestartDispatchedPayload
+    | SessionCloseCompletedPayload
+    | SessionEscalatedPayload
+    | JobStartedPayload
+    | JobCompletedPayload
+    | JobFailedPayload
+    | NotificationClaimedPayload
+    | NotificationResolvedPayload
 )

@@ -78,12 +78,14 @@ This delivery decomposes two critically oversized service-layer files:
 - `teleclaude/daemon.py`: 2718 lines → 859 lines
 
 **api_server.py decomposition:**
+
 - Inline route handlers moved to 10 focused `APIRouter` modules under `teleclaude/api/`
 - WebSocket support extracted to `ws_mixin.py` + `ws_constants.py`
 - Sessions split into two modules: CRUD (`sessions_routes.py`) and actions (`sessions_actions_routes.py`)
 - Stateful modules use module-level singleton state with `configure()` setter pattern
 
 **daemon.py decomposition:**
+
 - Hook outbox processing (24 methods + constants) → `daemon_hook_outbox.py`
 - Session lifecycle handlers + output-wait helpers (18 methods) → `daemon_session.py`
 - Event platform + webhook service (4 methods) → `daemon_event_platform.py`

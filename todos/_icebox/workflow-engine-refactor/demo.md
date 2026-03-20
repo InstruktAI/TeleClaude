@@ -86,6 +86,7 @@ print(f'unknown language: {len(missing)} reads (graceful degradation)')
 ### Step 1: The problem — hand-coded state machines
 
 Open `teleclaude/core/next_machine/core.py`. Observe:
+
 - 10 individual `_prepare_step_*` handler functions (lines 3004-3425), each
   hard-coding dispatch instructions
 - `_prepare_dispatch()` (line 3433) routing by PreparePhase enum

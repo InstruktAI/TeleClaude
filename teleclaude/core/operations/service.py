@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextvars import Token
 from datetime import UTC, datetime, timedelta
 from typing import TypedDict
@@ -16,7 +16,9 @@ from sqlalchemy.exc import IntegrityError
 
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
+from teleclaude.core.event_bus import event_bus
 from teleclaude.core.integration.state_machine import next_integrate
+from teleclaude.core.next_machine import next_create, next_prepare
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_progress import (
     reset_progress_callback,
@@ -35,6 +37,7 @@ class SerializedOperation(TypedDict, total=False):  # pylint: disable=missing-cl
     status_path: str
     recovery_command: str
     slug: str
+    completion_event: str
     progress_phase: str
     progress_decision: str
     progress_reason: str
@@ -45,6 +48,14 @@ class SerializedOperation(TypedDict, total=False):  # pylint: disable=missing-cl
 
 OPERATION_KIND_TODO_WORK = "todo_work"
 OPERATION_KIND_TODO_INTEGRATE = "todo_integrate"
+OPERATION_KIND_TODO_CREATE = "todo_create"
+OPERATION_KIND_TODO_PREPARE = "todo_prepare"
+_COMPLETION_EVENTS: dict[str, str] = {
+    OPERATION_KIND_TODO_WORK: "operation.todo_work.completed",
+    OPERATION_KIND_TODO_INTEGRATE: "operation.todo_integrate.completed",
+    OPERATION_KIND_TODO_CREATE: "operation.todo_create.completed",
+    OPERATION_KIND_TODO_PREPARE: "operation.todo_prepare.completed",
+}
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 
@@ -244,6 +255,140 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_INTEGRATE)
             return self._serialize_operation(created)
 
+    async def submit_todo_create(
+        self,
+        *,
+        slug: str | None,
+        cwd: str,
+        caller_session_id: str,
+        client_request_id: str | None,
+    ) -> SerializedOperation:
+        """Create or reattach a receipt-backed todo-create operation."""
+        lock = await self._get_submit_lock(
+            kind=OPERATION_KIND_TODO_CREATE,
+            caller_session_id=caller_session_id,
+            cwd=cwd,
+            slug=slug,
+        )
+        async with lock:
+            if client_request_id:
+                existing = await self._db.get_operation_by_request(
+                    kind=OPERATION_KIND_TODO_CREATE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                )
+                if existing is not None:
+                    return self._serialize_operation(existing)
+
+            existing = await self._db.find_matching_nonterminal_operation(
+                kind=OPERATION_KIND_TODO_CREATE,
+                caller_session_id=caller_session_id,
+                cwd=cwd,
+                slug=slug,
+            )
+            if existing is not None:
+                if existing.state == "queued":
+                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_CREATE)
+                return self._serialize_operation(existing)
+
+            payload_json = json.dumps(
+                {"kind": OPERATION_KIND_TODO_CREATE, "slug": slug, "cwd": cwd},
+                sort_keys=True,
+            )
+            operation_id = str(uuid.uuid4())
+            try:
+                created = await self._db.create_operation(
+                    operation_id=operation_id,
+                    kind=OPERATION_KIND_TODO_CREATE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                    cwd=cwd,
+                    slug=slug,
+                    payload_json=payload_json,
+                    state="queued",
+                )
+            except IntegrityError:
+                if not client_request_id:
+                    raise
+                existing = await self._db.get_operation_by_request(
+                    kind=OPERATION_KIND_TODO_CREATE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                )
+                if existing is None:
+                    raise
+                return self._serialize_operation(existing)
+
+            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_CREATE)
+            return self._serialize_operation(created)
+
+    async def submit_todo_prepare(
+        self,
+        *,
+        slug: str | None,
+        cwd: str,
+        caller_session_id: str,
+        client_request_id: str | None,
+    ) -> SerializedOperation:
+        """Create or reattach a receipt-backed todo-prepare operation."""
+        lock = await self._get_submit_lock(
+            kind=OPERATION_KIND_TODO_PREPARE,
+            caller_session_id=caller_session_id,
+            cwd=cwd,
+            slug=slug,
+        )
+        async with lock:
+            if client_request_id:
+                existing = await self._db.get_operation_by_request(
+                    kind=OPERATION_KIND_TODO_PREPARE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                )
+                if existing is not None:
+                    return self._serialize_operation(existing)
+
+            existing = await self._db.find_matching_nonterminal_operation(
+                kind=OPERATION_KIND_TODO_PREPARE,
+                caller_session_id=caller_session_id,
+                cwd=cwd,
+                slug=slug,
+            )
+            if existing is not None:
+                if existing.state == "queued":
+                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_PREPARE)
+                return self._serialize_operation(existing)
+
+            payload_json = json.dumps(
+                {"kind": OPERATION_KIND_TODO_PREPARE, "slug": slug, "cwd": cwd},
+                sort_keys=True,
+            )
+            operation_id = str(uuid.uuid4())
+            try:
+                created = await self._db.create_operation(
+                    operation_id=operation_id,
+                    kind=OPERATION_KIND_TODO_PREPARE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                    cwd=cwd,
+                    slug=slug,
+                    payload_json=payload_json,
+                    state="queued",
+                )
+            except IntegrityError:
+                if not client_request_id:
+                    raise
+                existing = await self._db.get_operation_by_request(
+                    kind=OPERATION_KIND_TODO_PREPARE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                )
+                if existing is None:
+                    raise
+                return self._serialize_operation(existing)
+
+            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_PREPARE)
+            return self._serialize_operation(created)
+
     async def get_operation_for_caller(
         self,
         *,
@@ -276,12 +421,21 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             return lock
 
     async def _ensure_operation_task(self, operation_id: str, *, kind: str = OPERATION_KIND_TODO_WORK) -> None:
-        if kind == OPERATION_KIND_TODO_WORK:
-            operation_coro = self._run_todo_work_operation(operation_id)
-        elif kind == OPERATION_KIND_TODO_INTEGRATE:
-            operation_coro = self._run_todo_integrate_operation(operation_id)
-        else:
+        factories: dict[str, Callable[[Operation], Awaitable[str]]] = {
+            OPERATION_KIND_TODO_WORK: lambda op: next_work(self._db, op.slug, op.cwd),
+            OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(
+                self._db,
+                op.slug,
+                op.cwd,
+                op.caller_session_id,
+            ),
+            OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
+            OPERATION_KIND_TODO_PREPARE: lambda op: next_prepare(self._db, op.slug, op.cwd),
+        }
+        factory = factories.get(kind)
+        if factory is None:
             raise ValueError(f"unsupported operation kind: {kind}")
+        operation_coro = self._run_operation(operation_id, kind, factory)
         async with self._live_guard:
             live = self._live_tasks.get(operation_id)
             if live is not None and not live.done():
@@ -292,12 +446,19 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             )
             self._live_tasks[operation_id] = task
 
-    async def _run_todo_work_operation(self, operation_id: str) -> None:  # pylint: disable=too-many-locals
+    async def _run_operation(  # pylint: disable=too-many-locals
+        self,
+        operation_id: str,
+        kind: str,
+        coro_factory: Callable[[Operation], Awaitable[str]],
+    ) -> None:
+        """Generic operation runner shared by all operation kinds."""
         heartbeat_task: asyncio.Task[None] | None = None
         stop_heartbeat = asyncio.Event()
         token: Token[Callable[[str, str, str], None] | None] | None = None
         latest_progress: tuple[str, str, str] | None = None
         progress_tasks: set[asyncio.Task[None]] = set()
+        completion_event = _COMPLETION_EVENTS.get(kind)
         try:
             now_iso = datetime.now(UTC).isoformat()
             claimed = await self._db.claim_operation(operation_id, now_iso)
@@ -321,11 +482,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
                 task.add_done_callback(progress_tasks.discard)
 
             token = set_progress_callback(_capture_progress)
-            result = await next_work(
-                self._db,
-                operation.slug,
-                operation.cwd,
-            )
+            result = await coro_factory(operation)
             if latest_progress is not None:
                 phase, decision, reason = latest_progress
                 await self._record_progress(operation_id, phase, decision, reason)
@@ -334,6 +491,11 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
                 result,
                 datetime.now(UTC).isoformat(),
             )
+            if completion_event:
+                event_bus.emit(
+                    completion_event,  # type: ignore[arg-type]
+                    {"operation_id": operation_id},  # type: ignore[arg-type]
+                )
         except asyncio.CancelledError:
             await self._db.fail_operation(
                 operation_id,
@@ -348,79 +510,11 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
                 f"{type(exc).__name__}: {exc}",
                 datetime.now(UTC).isoformat(),
             )
-            logger.exception("Background operation failed for %s", operation_id)
-        finally:
-            if token is not None:
-                reset_progress_callback(token)
-            if progress_tasks:
-                await asyncio.gather(*progress_tasks, return_exceptions=True)
-            if heartbeat_task is not None:
-                stop_heartbeat.set()
-                heartbeat_task.cancel()
-                try:
-                    await heartbeat_task
-                except asyncio.CancelledError:
-                    pass
-            async with self._live_guard:
-                self._live_tasks.pop(operation_id, None)
-
-    async def _run_todo_integrate_operation(self, operation_id: str) -> None:  # pylint: disable=too-many-locals
-        heartbeat_task: asyncio.Task[None] | None = None
-        stop_heartbeat = asyncio.Event()
-        token: Token[Callable[[str, str, str], None] | None] | None = None
-        latest_progress: tuple[str, str, str] | None = None
-        progress_tasks: set[asyncio.Task[None]] = set()
-        try:
-            now_iso = datetime.now(UTC).isoformat()
-            claimed = await self._db.claim_operation(operation_id, now_iso)
-            if not claimed:
-                return
-
-            operation = await self._db.get_operation(operation_id)
-            if operation is None:
-                return
-
-            heartbeat_task = asyncio.create_task(
-                self._heartbeat_loop(operation_id, stop_heartbeat),
-                name=f"operation-heartbeat-{operation_id}",
-            )
-
-            def _capture_progress(phase: str, decision: str, reason: str) -> None:
-                nonlocal latest_progress
-                latest_progress = (phase, decision, reason)
-                task = asyncio.create_task(self._record_progress(operation_id, phase, decision, reason))
-                progress_tasks.add(task)
-                task.add_done_callback(progress_tasks.discard)
-
-            token = set_progress_callback(_capture_progress)
-            result = await next_integrate(
-                self._db,
-                operation.slug,
-                operation.cwd,
-                operation.caller_session_id,
-            )
-            if latest_progress is not None:
-                phase, decision, reason = latest_progress
-                await self._record_progress(operation_id, phase, decision, reason)
-            await self._db.complete_operation(
-                operation_id,
-                result,
-                datetime.now(UTC).isoformat(),
-            )
-        except asyncio.CancelledError:
-            await self._db.fail_operation(
-                operation_id,
-                "operation cancelled before completion",
-                datetime.now(UTC).isoformat(),
-                state="stale",
-            )
-            raise
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            await self._db.fail_operation(
-                operation_id,
-                f"{type(exc).__name__}: {exc}",
-                datetime.now(UTC).isoformat(),
-            )
+            if completion_event:
+                event_bus.emit(
+                    completion_event,  # type: ignore[arg-type]
+                    {"operation_id": operation_id, "error": str(exc)},  # type: ignore[arg-type]
+                )
             logger.exception("Background operation failed for %s", operation_id)
         finally:
             if token is not None:
@@ -462,6 +556,9 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             "status_path": f"/operations/{operation.operation_id}",
             "recovery_command": f"telec operations get {operation.operation_id}",
         }
+        completion_event = _COMPLETION_EVENTS.get(operation.kind)
+        if completion_event is not None:
+            payload["completion_event"] = completion_event
         if operation.slug is not None:
             payload["slug"] = operation.slug
         if operation.progress_phase:

@@ -3,6 +3,7 @@
 ## Overview
 
 Three large adapter files decomposed into focused mixin submodules:
+
 - `ui_adapter.py` (1,048 lines) → `ui/` package with 2 mixins
 - `discord_adapter.py` (2,951 lines) → `discord/` package with 8 mixins
 - `telegram_adapter.py` (1,368 lines) + 2 new telegram/ mixins

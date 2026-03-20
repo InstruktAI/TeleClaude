@@ -25,12 +25,21 @@ This pattern applies to any operation that is too long to hold a request open fo
 state machines, multi-step orchestration, heavy I/O. It is not appropriate for fast
 mutations — those use `IMMEDIATE` or `FIRE_AND_FORGET`.
 
+### Operation kinds inventory
+
+| Kind constant                 | String value     | Endpoint                |
+| ----------------------------- | ---------------- | ----------------------- |
+| OPERATION_KIND_TODO_WORK      | `todo_work`      | `POST /todos/work`      |
+| OPERATION_KIND_TODO_INTEGRATE | `todo_integrate` | `POST /todos/integrate` |
+| OPERATION_KIND_TODO_CREATE    | `todo_create`    | `POST /todos/create`    |
+| OPERATION_KIND_TODO_PREPARE   | `todo_prepare`   | `POST /todos/prepare`   |
+
 ## Inputs/Outputs
 
 - **Input:** Any route backed by a RECEIPT command, e.g. `POST /todos/work` with
   `{slug, cwd, client_request_id}`.
 - **Output (immediate):** `OperationReceipt` — `{operation_id, kind, state: "queued",
-  status_path, poll_after_ms, completion_event, recovery_command}`.
+status_path, poll_after_ms, completion_event, recovery_command}`.
 - **Output (terminal):** `GET /operations/{operation_id}` returns the full receipt with
   `state: "completed"|"failed"|"stale"` and `result` or `error`.
 - Operation rows are keyed to the caller session; non-admins may only inspect their own.
@@ -65,6 +74,21 @@ mutations — those use `IMMEDIATE` or `FIRE_AND_FORGET`.
 5. Clients either poll `GET /operations/{operation_id}` or listen for the WebSocket
    event — both lead to the same terminal payload.
 
+## completion_event on receipt DTOs
+
+Every `OperationReceipt` includes a `completion_event` field — the domain event name
+that will be emitted when the operation reaches a terminal state (`completed`, `failed`,
+or `stale`). Callers may subscribe to this event via WebSocket to avoid polling.
+
+### Terminal emission contract
+
+When a background task transitions an operation to a terminal state, the
+`OperationsService` emits the `completion_event` atomically as the final step of
+marking the row terminal. The event and the DB row transition happen in the same
+logical unit — they are never split across separate code paths. If the task crashes
+before the terminal write, no event is emitted; callers detect the stale state via
+polling.
+
 ## Failure modes
 
 - **Daemon restart:** Leftover `queued` or `running` operations are marked `stale`
@@ -77,4 +101,3 @@ mutations — those use `IMMEDIATE` or `FIRE_AND_FORGET`.
   receive a 404 (not a 403) to avoid session ID enumeration.
 - **Event fires, row not yet terminal:** Trust the row. The event is a convenience
   signal; the DB row is authoritative.
-
