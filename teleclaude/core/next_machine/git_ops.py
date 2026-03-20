@@ -166,9 +166,9 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
     try:
         status = repo.git.status("--porcelain")
         if status.strip():
-            repo.git.add("--", f"todos/{slug}")
-            repo.git.commit("-m", f"chore(todo): pre-merge state sync for {slug}", "--no-verify")
-            logger.info("Committed pending state changes before merge for %s", slug)
+            repo.git.add("-A")
+            repo.git.commit("-m", f"chore(todo): pre-merge worktree sync for {slug}", "--no-verify")
+            logger.info("Committed pending changes before merge for %s", slug)
     except GitCommandError as exc:
         logger.debug("Pre-merge state commit skipped for %s: %s", slug, exc)
 
