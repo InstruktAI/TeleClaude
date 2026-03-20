@@ -109,14 +109,11 @@ jobs:
       - name: Claude Release Lane
         # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
-        env:
-          ANTHROPIC_API_KEY: ""
         run: |
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent claude --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > claude-report.json 2>claude-stderr.txt || true
-          echo "=== Claude stderr:"; cat claude-stderr.txt 2>/dev/null || true
+            --schema-file docs/project/spec/release-report-schema.md > claude-report.json || true
 
       - name: Codex Release Lane
         # 2-of-3 quorum by design — individual lane failures are expected
@@ -125,8 +122,7 @@ jobs:
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > codex-report.json 2>codex-stderr.txt || true
-          echo "=== Codex stderr:"; cat codex-stderr.txt 2>/dev/null || true
+            --schema-file docs/project/spec/release-report-schema.md > codex-report.json || true
 
       - name: Gemini Release Lane
         # 2-of-3 quorum by design — individual lane failures are expected
@@ -135,8 +131,7 @@ jobs:
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json 2>gemini-stderr.txt || true
-          echo "=== Gemini stderr:"; cat gemini-stderr.txt 2>/dev/null || true
+            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json || true
 
       - name: Verify quorum (2 of 3 lanes)
         run: |
@@ -164,9 +159,6 @@ jobs:
             claude-report.json
             codex-report.json
             gemini-report.json
-            claude-stderr.txt
-            codex-stderr.txt
-            gemini-stderr.txt
           if-no-files-found: warn
 
   release-arbitration:
