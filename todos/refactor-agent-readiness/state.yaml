@@ -1,17 +1,17 @@
 schema_version: 1
-phase: pending
+phase: in_progress
 kind: todo
-build: pending
-review: pending
+build: complete
+review: approved
 deferrals_processed: false
 finalize:
   status: pending
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 1
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: 06c98c26c7abe77c1641baa1c37cc9919d134b27
 unresolved_findings: []
 resolved_findings:
 - plan-01
@@ -43,11 +43,11 @@ test_spec_review:
   verdict: approve
   reviewed_at: '2026-03-20T04:15:00Z'
   findings_count: 0
-  rounds: 1
+  rounds: 3
 plan_review:
   verdict: approve
   reviewed_at: '2026-03-19T22:45:00Z'
-  findings_count: 0
+  findings_count: 1
   rounds: 1
   baseline_commit: 641eb62ce3e5bfc344b0a5c1451057d89c5ff090
   findings: []
@@ -104,7 +104,9 @@ dor:
   score: 10
   status: pass
   schema_version: 1
-  blockers: []
+  blockers:
+  - 'resolved: spec-delivered tests now use agent_name.prompt_marker directly and
+    are parametrized for all 3 agents (claude, gemini, codex)'
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false

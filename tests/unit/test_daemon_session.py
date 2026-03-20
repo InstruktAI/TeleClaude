@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -24,7 +24,7 @@ class _TestDaemon(daemon_session._DaemonSessionMixin):
         self._hook_outbox_claim_paused_sessions: set[str] = set()
         self.client = SimpleNamespace(send_message=AsyncMock())
         self.agent_coordinator = SimpleNamespace(handle_event=AsyncMock())
-        self.command_service = SimpleNamespace()
+        self.command_service = SimpleNamespace(start_agent=AsyncMock())
         self.headless_snapshot_service = SimpleNamespace(send_snapshot=AsyncMock())
         self.output_poller = SimpleNamespace()
         self.tracked: list[tuple[asyncio.Task[object], str]] = []
@@ -208,92 +208,87 @@ async def test_bootstrap_skips_token_for_human_principal(monkeypatch: pytest.Mon
 
 
 @pytest.mark.unit
-async def test_wait_for_agent_prompt_ready_uses_marker_when_found(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When the agent has a known prompt marker and it appears in output, returns True immediately."""
+@pytest.mark.asyncio
+async def test_handle_agent_then_message_passes_session_and_constants_to_detector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     daemon_inst = _TestDaemon()
-    session = SimpleNamespace(tmux_session_name="tc_test")
-
-    marker = daemon_session.AGENT_PROMPT_READY_MARKERS["gemini"]
-    pane_with_marker = f"some startup text\n{marker}\nmore text"
-
-    monkeypatch.setattr(
-        daemon_inst,
-        "_wait_for_output_contains",
-        AsyncMock(return_value=(True, pane_with_marker)),
+    session = MagicMock(
+        session_id="sess-1",
+        tmux_session_name="tc_sess-1",
+        project_path="/tmp",
+        subdir="",
+        active_agent="claude",
     )
-    stable_mock = AsyncMock(return_value=(True, pane_with_marker))
-    monkeypatch.setattr(daemon_inst, "_wait_for_output_stable", stable_mock)
-
-    found, _tail = await daemon_inst._wait_for_agent_prompt_ready(session, "gemini", 15.0, 1.0)
-
-    assert found is True
-    assert marker in _tail
-    stable_mock.assert_not_awaited()
-
-
-@pytest.mark.unit
-async def test_wait_for_agent_prompt_ready_falls_back_to_inactivity_when_marker_not_found(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When the agent marker is not found within timeout, falls back to inactivity detection."""
-    daemon_inst = _TestDaemon()
-    session = SimpleNamespace(tmux_session_name="tc_test")
-
-    monkeypatch.setattr(
-        daemon_inst,
-        "_wait_for_output_contains",
-        AsyncMock(return_value=(False, "startup text without marker")),
+    db_stub = SimpleNamespace(
+        update_session=AsyncMock(),
+        get_session=AsyncMock(return_value=session),
+        update_last_activity=AsyncMock(),
     )
-    stable_mock = AsyncMock(return_value=(True, "stabilized output"))
-    monkeypatch.setattr(daemon_inst, "_wait_for_output_stable", stable_mock)
+    ready_mock = AsyncMock(return_value=(True, "prompt > "))
+    emit_mock = MagicMock()
+    monkeypatch.setattr(daemon_session, "db", db_stub)
+    monkeypatch.setattr(daemon_session, "wait_for_agent_ready", ready_mock, raising=False)
+    monkeypatch.setattr(daemon_session.event_bus, "emit", emit_mock)
+    monkeypatch.setattr(daemon_session.tmux_io, "is_process_running", AsyncMock(return_value=True))
+    monkeypatch.setattr(daemon_session.tmux_io, "process_text", AsyncMock(return_value=True))
+    monkeypatch.setattr(daemon_session.tmux_io, "wrap_bracketed_paste", lambda text, active_agent: text)
+    monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda project_path, subdir: project_path)
+    monkeypatch.setattr(daemon_inst, "_poll_and_send_output", AsyncMock())
+    monkeypatch.setattr(daemon_inst, "_confirm_command_acceptance", AsyncMock(return_value=True))
 
-    found, _tail = await daemon_inst._wait_for_agent_prompt_ready(session, "gemini", 15.0, 1.0)
+    result = await daemon_inst._handle_agent_then_message("sess-1", ["claude", "slow", "hello"])
 
-    assert found is True
-    stable_mock.assert_awaited_once()
-
-
-@pytest.mark.unit
-async def test_wait_for_agent_prompt_ready_uses_inactivity_for_unknown_agent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When agent has no known marker, uses inactivity detection directly."""
-    daemon_inst = _TestDaemon()
-    session = SimpleNamespace(tmux_session_name="tc_test")
-
-    contains_mock = AsyncMock(return_value=(True, "output"))
-    monkeypatch.setattr(daemon_inst, "_wait_for_output_contains", contains_mock)
-    stable_mock = AsyncMock(return_value=(False, "timeout output"))
-    monkeypatch.setattr(daemon_inst, "_wait_for_output_stable", stable_mock)
-
-    found, _tail = await daemon_inst._wait_for_agent_prompt_ready(session, "unknown_agent", 10.0, 1.0)
-
-    assert found is False
-    contains_mock.assert_not_awaited()
-    stable_mock.assert_awaited_once()
+    assert result["status"] == "success"
+    ready_mock.assert_awaited_once_with(
+        "claude",
+        session,
+        daemon_session.AGENT_PROMPT_READY_TIMEOUT_S,
+        daemon_session.AGENT_START_STABILIZE_QUIET_S,
+    )
+    assert emit_mock.call_args_list[0].args[0] == TeleClaudeEvents.AGENT_READY
+    assert emit_mock.call_args_list[0].args[1].session_id == "sess-1"
 
 
 @pytest.mark.unit
-async def test_wait_for_agent_prompt_ready_passes_correct_marker_to_contains(
+@pytest.mark.asyncio
+async def test_handle_agent_then_message_returns_error_when_readiness_times_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Each agent's known marker is passed verbatim to _wait_for_output_contains."""
     daemon_inst = _TestDaemon()
-    session = SimpleNamespace(tmux_session_name="tc_test")
+    session = MagicMock(session_id="sess-1", tmux_session_name="tc_sess-1")
+    db_stub = SimpleNamespace(
+        update_session=AsyncMock(),
+        get_session=AsyncMock(return_value=session),
+        update_last_activity=AsyncMock(),
+    )
+    ready_mock = AsyncMock(return_value=(False, "still loading"))
+    emit_mock = MagicMock()
+    terminate_mock = AsyncMock()
+    process_text_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(daemon_session, "db", db_stub)
+    monkeypatch.setattr(daemon_session, "wait_for_agent_ready", ready_mock, raising=False)
+    monkeypatch.setattr(daemon_session.event_bus, "emit", emit_mock)
+    monkeypatch.setattr(
+        daemon_session.session_cleanup,
+        "terminate_session",
+        terminate_mock,
+    )
+    monkeypatch.setattr(daemon_session.tmux_io, "process_text", process_text_mock)
 
-    captured_needles: list[str] = []
+    result = await daemon_inst._handle_agent_then_message("sess-1", ["claude", "slow", "hello"])
 
-    async def fake_contains(s: object, needle: str, timeout: float) -> tuple[bool, str]:
-        captured_needles.append(needle)
-        return True, f"output with {needle}"
-
-    monkeypatch.setattr(daemon_inst, "_wait_for_output_contains", fake_contains)
-    monkeypatch.setattr(daemon_inst, "_wait_for_output_stable", AsyncMock())
-
-    for agent_name, expected_marker in daemon_session.AGENT_PROMPT_READY_MARKERS.items():
-        captured_needles.clear()
-        await daemon_inst._wait_for_agent_prompt_ready(session, agent_name, 15.0, 1.0)
-        assert captured_needles == [expected_marker], f"Wrong marker for {agent_name}"
+    assert result["status"] == "error"
+    assert emit_mock.call_args_list[0].args[0] == TeleClaudeEvents.AGENT_READINESS_TIMEOUT
+    assert emit_mock.call_args_list[0].args[1].session_id == "sess-1"
+    terminate_mock.assert_awaited_once_with(
+        "sess-1",
+        daemon_inst.client,
+        reason="agent_readiness_timeout",
+        session=session,
+    )
+    daemon_inst.client.send_message.assert_awaited_once()
+    process_text_mock.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -327,3 +322,112 @@ async def test_handle_session_close_requested_restores_active_status_after_failu
     assert emitted[0][0] == TeleClaudeEvents.SESSION_STATUS
     assert emitted[0][1].status == "error"
     assert emitted[0][1].reason == "close_failed"
+
+
+class TestDaemonSessionReadinessSpec:
+    """Test that _handle_agent_then_message uses the new detector and emits events."""
+
+    @pytest.mark.asyncio
+    async def test_handle_agent_then_message_emits_ready_event(self, monkeypatch):
+        """Test that _handle_agent_then_message calls detector and emits AGENT_READY."""
+        daemon = _TestDaemon()
+        session_id = "sess-1"
+
+        # Mock database and session
+        mock_db = AsyncMock()
+        monkeypatch.setattr("teleclaude.daemon_session.db", mock_db)
+
+        # Mock wait_for_agent_ready from the new module
+        mock_ready = AsyncMock(return_value=(True, "prompt > "))
+        # We'll need to patch wherever wait_for_agent_ready is imported in daemon_session
+        # Using raising=False since it's not yet imported there
+        monkeypatch.setattr("teleclaude.daemon_session.wait_for_agent_ready", mock_ready, raising=False)
+
+        mock_emit = MagicMock()
+        monkeypatch.setattr("teleclaude.daemon_session.event_bus.emit", mock_emit)
+
+        mock_tmux = SimpleNamespace(
+            is_process_running=AsyncMock(return_value=True),
+            process_text=AsyncMock(return_value=True),
+            wrap_bracketed_paste=lambda text, active_agent: text,
+        )
+        monkeypatch.setattr("teleclaude.daemon_session.tmux_io", mock_tmux)
+        monkeypatch.setattr(daemon, "_poll_and_send_output", AsyncMock())
+        monkeypatch.setattr(daemon, "_confirm_command_acceptance", AsyncMock(return_value=True))
+
+        # SC-3: Mock tmux_bridge to verify it's NOT called directly for polling by daemon_session
+        # (It should be called by the agent_readiness module, which is mocked above)
+        mock_bridge = AsyncMock()
+        monkeypatch.setattr("teleclaude.daemon_session.tmux_bridge", mock_bridge)
+
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(session_id=session_id, project_path="/tmp", subdir="", active_agent="claude")
+        )
+
+        # Call the method
+        await daemon._handle_agent_then_message(session_id, ["claude", "slow", "hello"])
+
+        # SC-2/SC-3: Verify readiness module was called
+        mock_ready.assert_awaited_once()
+
+        # SC-3: Verify daemon_session did NOT call tmux_bridge directly for capture (proving it used the result)
+        # This tests the PUBLIC behavior/contract: use the module, don't poll directly.
+        assert mock_bridge.capture_pane.call_count == 0, (
+            "daemon_session should not call tmux_bridge.capture_pane directly"
+        )
+
+        # SC-4: Verify event was emitted with session_id
+        found_ready = False
+        for call in mock_emit.call_args_list:
+            if call.args[0] == TeleClaudeEvents.AGENT_READY:
+                ctx = call.args[1]
+                assert ctx.session_id == session_id
+                found_ready = True
+                break
+        assert found_ready, "AGENT_READY event not emitted"
+
+    @pytest.mark.asyncio
+    async def test_handle_agent_then_message_emits_timeout_event(self, monkeypatch):
+        """Test that _handle_agent_then_message emits AGENT_READINESS_TIMEOUT on failure."""
+        daemon = _TestDaemon()
+        session_id = "sess-1"
+
+        mock_db = AsyncMock()
+        monkeypatch.setattr("teleclaude.daemon_session.db", mock_db)
+
+        mock_ready = AsyncMock(return_value=(False, "still loading"))
+        monkeypatch.setattr("teleclaude.daemon_session.wait_for_agent_ready", mock_ready, raising=False)
+
+        mock_emit = MagicMock()
+        monkeypatch.setattr("teleclaude.daemon_session.event_bus.emit", mock_emit)
+
+        mock_terminate = AsyncMock()
+        monkeypatch.setattr(
+            "teleclaude.daemon_session.session_cleanup", SimpleNamespace(terminate_session=mock_terminate)
+        )
+
+        session_mock = MagicMock(session_id=session_id)
+        mock_db.get_session = AsyncMock(return_value=session_mock)
+
+        # Call the method
+        await daemon._handle_agent_then_message(session_id, ["claude", "slow", "hello"])
+
+        # SC-5: Verify event was emitted with session_id
+        found_timeout = False
+        for call in mock_emit.call_args_list:
+            if call.args[0] == TeleClaudeEvents.AGENT_READINESS_TIMEOUT:
+                ctx = call.args[1]
+                assert ctx.session_id == session_id
+                found_timeout = True
+                break
+        assert found_timeout, "AGENT_READINESS_TIMEOUT event not emitted"
+
+        # SC-5: Verify session was closed/terminated
+        mock_terminate.assert_awaited_once()
+
+        # SC-5: Verify user was notified via client.send_message
+        # Fix SC-5: Assert on structure/session, not human-facing prose
+        daemon.client.send_message.assert_awaited_once()
+        sent_session = daemon.client.send_message.call_args.args[0]
+        assert sent_session.session_id == session_id
+        # We don't assert on text content to avoid prose-lock

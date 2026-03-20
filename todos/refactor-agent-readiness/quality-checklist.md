@@ -10,15 +10,22 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate refactor-agent-readiness` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate refactor-agent-readiness` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+### Build Notes
+
+- Targeted verification: `pytest tests/unit/core/test_agent_readiness.py tests/unit/core/test_agents.py tests/unit/core/test_events.py tests/unit/test_daemon_session.py -q`
+- Full gates: `make lint`, `make test`, and `telec todo demo validate refactor-agent-readiness` all passed.
+- Boundary checks: verified `teleclaude/daemon_session.py` imports `wait_for_agent_ready`, no longer defines `AGENT_PROMPT_READY_MARKERS`, and no longer defines `_wait_for_agent_prompt_ready`.
+- Manual verification gap: this was an internal daemon/core refactor, so observability was validated via automated tests and demo blocks rather than a separate live UI walkthrough.
 
 ## Review Gates (Reviewer)
 

@@ -17,6 +17,11 @@ class AgentName(str, Enum):
     CODEX = "codex"
     GEMINI = "gemini"
 
+    @property
+    def prompt_marker(self) -> str:
+        """Return the TUI prompt marker used for readiness detection."""
+        return _PROMPT_MARKERS_BY_AGENT[self.value]
+
     @classmethod
     def from_str(cls, value: str) -> AgentName:
         """Convert a string to AgentName, raising ValueError on unknown values."""
@@ -33,6 +38,12 @@ class AgentName(str, Enum):
 
 
 KNOWN_AGENT_IDS: tuple[str, ...] = AgentName.choices()
+
+_PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
+    AgentName.CLAUDE.value: "\u276f ",
+    AgentName.GEMINI.value: "Type your message or @path/to/file",
+    AgentName.CODEX.value: "? for shortcuts",
+}
 
 
 def resolve_parser_agent(active_agent: str | None) -> AgentName:

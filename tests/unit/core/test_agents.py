@@ -112,3 +112,30 @@ class TestIsAgentTitle:
     @pytest.mark.unit
     def test_empty_title_returns_false(self):
         assert is_agent_title("") is False
+
+
+class TestAgentNameMetadataSpec:
+    """Test that AgentName enum carries the correct readiness markers."""
+
+    def test_agent_name_has_prompt_marker_property(self):
+        """SC-1: Each agent name must have a prompt_marker property."""
+        for agent in AgentName:
+            marker = getattr(agent, "prompt_marker", None)
+            assert isinstance(marker, str)
+            assert len(marker) > 0
+
+    @pytest.mark.parametrize(
+        "agent_name, expected_marker",
+        [
+            (AgentName.GEMINI, "Type your message or @path/to/file"),
+            (AgentName.CLAUDE, "\u276f "),
+            (AgentName.CODEX, "? for shortcuts"),
+        ],
+    )
+    def test_agent_name_returns_correct_marker(self, agent_name, expected_marker):
+        """SC-1: Each agent must return its specific TUI marker.
+
+        Note: Exact string assertions are permitted here per testing policy
+        as markers are execution-significant (runtime behavior depends on match).
+        """
+        assert getattr(agent_name, "prompt_marker", None) == expected_marker

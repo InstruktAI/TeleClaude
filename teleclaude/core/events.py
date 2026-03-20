@@ -16,6 +16,8 @@ EventType = Literal[
     "session_close_requested",
     "session_updated",
     "session_status",
+    "agent_ready",
+    "agent_readiness_timeout",
     "agent_event",
     "agent_activity",
     "error",
@@ -339,6 +341,10 @@ class TeleClaudeEvents:  # pylint: disable=too-few-public-methods
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Fact: session is now closed. Observer-only.
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
     SESSION_STATUS: Literal["session_status"] = "session_status"  # Canonical lifecycle status transition
+    AGENT_READY: Literal["agent_ready"] = "agent_ready"  # Fact: agent TUI is stable at input prompt.
+    AGENT_READINESS_TIMEOUT: Literal["agent_readiness_timeout"] = (
+        "agent_readiness_timeout"  # Fact: agent TUI did not reach ready prompt within timeout.
+    )
     AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
     AGENT_ACTIVITY: Literal["agent_activity"] = "agent_activity"  # Agent activity events (tool_use, tool_done, etc.)
     ERROR: Literal["error"] = "error"

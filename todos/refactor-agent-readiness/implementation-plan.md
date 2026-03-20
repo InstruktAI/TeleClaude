@@ -18,9 +18,9 @@ independently shippable.
 
 **File(s):** `teleclaude/core/agents.py`
 
-- [ ] Add a `prompt_marker` property to `AgentName` that returns the agent-specific
-  TUI readiness marker string. Use a private class-level mapping dict keyed by enum
-  value, following the same pattern as `AgentConfig` model flags.
+- [x] Add a `prompt_marker` property to `AgentName` that returns the agent-specific
+      TUI readiness marker string. Use a private class-level mapping dict keyed by enum
+      value, following the same pattern as `AgentConfig` model flags.
   - `CLAUDE` → `"❯ "` (U+276F + space)
   - `GEMINI` → `"Type your message or @path/to/file"`
   - `CODEX` → `"? for shortcuts"`
@@ -41,10 +41,10 @@ Both must pass GREEN.
 
 **File(s):** `teleclaude/core/events.py`
 
-- [ ] Add `"agent_ready"` and `"agent_readiness_timeout"` to the `EventType` Literal
-  union.
-- [ ] Add `AGENT_READY` and `AGENT_READINESS_TIMEOUT` class attributes to
-  `TeleClaudeEvents` with the corresponding string values.
+- [x] Add `"agent_ready"` and `"agent_readiness_timeout"` to the `EventType` Literal
+      union.
+- [x] Add `AGENT_READY` and `AGENT_READINESS_TIMEOUT` class attributes to
+      `TeleClaudeEvents` with the corresponding string values.
 
 **Why:** SC-4 and SC-5 require the daemon to emit typed events on readiness success
 and failure. These events must be in `EventType` for type-safety (the `event_bus.emit`
@@ -61,8 +61,8 @@ and `test_event_type_includes_readiness_types`. Both must pass GREEN.
 
 **File(s):** `teleclaude/core/agent_readiness.py` (NEW)
 
-- [ ] Create the module with a single public async function:
-  ```
+- [x] Create the module with a single public async function:
+  ```python
   async def wait_for_agent_ready(
       agent_name: str,
       session: Session,
@@ -71,7 +71,7 @@ and `test_event_type_includes_readiness_types`. Both must pass GREEN.
       poll_interval_s: float = 0.2,
   ) -> tuple[bool, str]
   ```
-- [ ] The function implements the settle-then-marker AND logic:
+- [x] The function implements the settle-then-marker AND logic:
   1. Resolve the marker from `AgentName.from_str(agent_name).prompt_marker`.
   2. Poll tmux pane output via `tmux_bridge.capture_pane(session.tmux_session_name)`.
   3. Wait for output to change from initial state (has_changed gate).
@@ -83,10 +83,10 @@ and `test_event_type_includes_readiness_types`. Both must pass GREEN.
      settle window, re-run the stability check to confirm the pane is stable with
      the marker present before returning ready.
   9. If timeout expires without both conditions met → return `(False, last_tail)`.
-- [ ] Move `_pane_output_snapshot` logic inline (capture + tail + digest). This is
-  a private implementation detail of the detector, not shared infrastructure.
-- [ ] The function is stateless — no side effects, no event emission, no DB access.
-  It receives a `Session` object and returns a result tuple.
+- [x] Move `_pane_output_snapshot` logic inline (capture + tail + digest). This is
+      a private implementation detail of the detector, not shared infrastructure.
+- [x] The function is stateless — no side effects, no event emission, no DB access.
+      It receives a `Session` object and returns a result tuple.
 
 **Why:** SC-2 requires readiness detection to live in dedicated code. Making it a
 standalone async function (not a class) keeps it simple — there's no state to manage.
@@ -96,6 +96,7 @@ to make the function testable with fast intervals.
 
 **Verification:** Remove xfail markers from all tests in
 `tests/unit/core/test_agent_readiness.py`. All four tests must pass GREEN:
+
 - `test_wait_for_agent_ready_settle_then_marker_success`
 - `test_wait_for_agent_ready_late_marker_re_settle`
 - `test_wait_for_agent_ready_timeout`
@@ -107,12 +108,12 @@ to make the function testable with fast intervals.
 
 **File(s):** `teleclaude/daemon_session.py`
 
-- [ ] Import `wait_for_agent_ready` from `teleclaude.core.agent_readiness`.
-- [ ] Remove `AGENT_PROMPT_READY_MARKERS` dict from `daemon_session.py`.
-- [ ] Remove `_wait_for_agent_prompt_ready` method from `_DaemonSessionMixin`.
-- [ ] Remove `_pane_output_snapshot`, `_wait_for_output_stable`, and
-  `_wait_for_output_contains` methods from `_DaemonSessionMixin`. These are readiness
-  detection internals that move to the new module.
+- [x] Import `wait_for_agent_ready` from `teleclaude.core.agent_readiness`.
+- [x] Remove `AGENT_PROMPT_READY_MARKERS` dict from `daemon_session.py`.
+- [x] Remove `_wait_for_agent_prompt_ready` method from `_DaemonSessionMixin`.
+- [x] Remove `_wait_for_output_stable` and `_wait_for_output_contains` from
+      `_DaemonSessionMixin`. Keep `_pane_output_snapshot` because command acceptance
+      still depends on it; only readiness-owned polling moved to the new module.
   - **Caveat:** `_pane_output_snapshot`, `_wait_for_output_change`, and
     `_confirm_command_acceptance` also use pane snapshots for command acceptance
     confirmation (post-injection). Verify whether `_confirm_command_acceptance` and
@@ -120,7 +121,7 @@ to make the function testable with fast intervals.
     helpers in daemon_session (they serve command acceptance, not readiness) or
     extract snapshot logic to a shared utility. The builder must trace actual usage
     before removing anything.
-- [ ] Rewrite `_handle_agent_then_message` to:
+- [x] Rewrite `_handle_agent_then_message` to:
   1. Call `wait_for_agent_ready(agent_name, session, AGENT_PROMPT_READY_TIMEOUT_S, AGENT_START_STABILIZE_QUIET_S)`.
   2. On success (`ready=True`): emit `AGENT_READY` event via `event_bus.emit()`
      with a context containing the `session_id`, then proceed with message injection.
@@ -128,9 +129,9 @@ to make the function testable with fast intervals.
      the session via `session_cleanup.terminate_session()`, notify the user via
      `self.client.send_message()`, and return an error result. The current behavior
      logs a warning and proceeds anyway — the new behavior fails closed per SC-5.
-- [ ] Keep `_summarize_output_change`, `_wait_for_output_change`, and
-  `_confirm_command_acceptance` in daemon_session — they serve command acceptance
-  confirmation, not readiness detection.
+- [x] Keep `_summarize_output_change`, `_wait_for_output_change`, and
+      `_confirm_command_acceptance` in daemon_session — they serve command acceptance
+      confirmation, not readiness detection.
 
 **Why:** SC-3 requires the daemon's message-injection path to contain no direct
 polling or marker knowledge. SC-4 and SC-5 require event emission on success and
@@ -141,6 +142,7 @@ with a user notification is safer.
 **Verification:** Remove xfail markers from
 `tests/unit/test_daemon_session.py::TestDaemonSessionReadinessSpec`. Both tests must
 pass GREEN:
+
 - `test_handle_agent_then_message_emits_ready_event`
 - `test_handle_agent_then_message_emits_timeout_event`
 
@@ -150,11 +152,11 @@ pass GREEN:
 
 **File(s):** `tests/unit/test_daemon_session.py`
 
-- [ ] Update any existing tests that mock the removed methods
-  (`_wait_for_agent_prompt_ready`, `_wait_for_output_stable`, etc.) to mock
-  `wait_for_agent_ready` from the new module instead.
-- [ ] Verify all existing daemon_session tests still pass — no regressions from
-  the method removal.
+- [x] Update any existing tests that mock the removed methods
+      (`_wait_for_agent_prompt_ready`, `_wait_for_output_stable`, etc.) to mock
+      `wait_for_agent_ready` from the new module instead.
+- [x] Verify all existing daemon_session tests still pass — no regressions from
+      the method removal.
 
 **Why:** SC-7 requires existing tests to be updated rather than deleted. The mock
 targets change because the methods moved, but the behavioral contracts they test
@@ -169,13 +171,13 @@ no xfail markers remain for readiness-related specs.
 
 **File(s):** All modified files
 
-- [ ] Run `make lint` — no lint violations, no type errors.
-- [ ] Run `make test` — full suite passes.
-- [ ] Verify no `AGENT_PROMPT_READY_MARKERS` references remain in daemon_session.py.
-- [ ] Verify `_wait_for_agent_prompt_ready` is removed from daemon_session.py.
-- [ ] Verify `wait_for_agent_ready` import exists in daemon_session.py.
-- [ ] Verify all xfail markers from spec-delivered tests are removed.
-- [ ] Validate `todos/refactor-agent-readiness/demo.md` against the delivered behavior.
+- [x] Run `make lint` — no lint violations, no type errors.
+- [x] Run `make test` — full suite passes.
+- [x] Verify no `AGENT_PROMPT_READY_MARKERS` references remain in daemon_session.py.
+- [x] Verify `_wait_for_agent_prompt_ready` is removed from daemon_session.py.
+- [x] Verify `wait_for_agent_ready` import exists in daemon_session.py.
+- [x] Verify all xfail markers from spec-delivered tests are removed.
+- [x] Validate `todos/refactor-agent-readiness/demo.md` against the delivered behavior.
 
 **Why:** SC-8 and DoD gates. Pre-commit hooks enforce this, but explicit verification
 catches issues before the commit attempt.
