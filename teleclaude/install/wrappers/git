@@ -29,13 +29,15 @@ _real_git() {
     for dir in "${path_parts[@]}"; do
         [ "$dir" = "$SCRIPT_DIR" ] && continue
         if [ -x "$dir/git" ]; then
-            # Disable rebase.autoStash for every git invocation through the wrapper.
-            # Git's pull --rebase auto-stashes dirty files internally (not via git stash).
+            # Disable all auto-stash for every git invocation through the wrapper.
+            # Both rebase and merge can auto-stash dirty files internally.
             # Stash is repo-wide — auto-stash from one worktree corrupts another.
             _count="${GIT_CONFIG_COUNT:-0}"
-            export GIT_CONFIG_COUNT=$((_count + 1))
+            export GIT_CONFIG_COUNT=$((_count + 2))
             export "GIT_CONFIG_KEY_${_count}=rebase.autoStash"
             export "GIT_CONFIG_VALUE_${_count}=false"
+            export "GIT_CONFIG_KEY_$((_count + 1))=merge.autoStash"
+            export "GIT_CONFIG_VALUE_$((_count + 1))=false"
             "$dir/git" "$@"
             return $?
         fi

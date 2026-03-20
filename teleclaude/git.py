@@ -53,15 +53,17 @@ _gitpython.refresh(_find_real_git())
 
 
 def no_autostash_env() -> dict[str, str]:
-    """Return an env dict that disables rebase.autoStash for a single git subprocess.
+    """Return an env dict that disables all auto-stash mechanisms for a single git subprocess.
 
-    Git's pull --rebase auto-stashes dirty files. In multi-worktree environments,
+    Both rebase and merge can auto-stash dirty files. In multi-worktree environments,
     stash is repo-wide — auto-stash from one worktree corrupts another. Pass this
     to GitPython's env parameter to prevent stash creation without polluting os.environ.
     """
     env = os.environ.copy()
-    count = int(env.get("GIT_CONFIG_COUNT", "0")) + 1
-    env["GIT_CONFIG_COUNT"] = str(count)
-    env[f"GIT_CONFIG_KEY_{count - 1}"] = "rebase.autoStash"
-    env[f"GIT_CONFIG_VALUE_{count - 1}"] = "false"
+    count = int(env.get("GIT_CONFIG_COUNT", "0"))
+    env[f"GIT_CONFIG_KEY_{count}"] = "rebase.autoStash"
+    env[f"GIT_CONFIG_VALUE_{count}"] = "false"
+    env[f"GIT_CONFIG_KEY_{count + 1}"] = "merge.autoStash"
+    env[f"GIT_CONFIG_VALUE_{count + 1}"] = "false"
+    env["GIT_CONFIG_COUNT"] = str(count + 2)
     return env

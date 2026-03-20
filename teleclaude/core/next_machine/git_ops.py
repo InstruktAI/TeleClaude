@@ -18,7 +18,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
-from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, no_autostash_env
 
 logger = get_logger(__name__)
 
@@ -168,7 +168,7 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
         return ""
 
     try:
-        repo.git.merge("origin/main", "--no-edit")
+        repo.git.merge("origin/main", "--no-edit", "--no-autostash", env=no_autostash_env())
     except GitCommandError as exc:
         # Abort the failed merge so the worktree stays clean
         try:
