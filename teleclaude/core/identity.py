@@ -142,6 +142,12 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods
             IdentityContext with person_role always set. Unknown identity defaults to customer.
         """
         self._reload_if_stale()
+
+        # API-origin sessions are already authenticated by verify_caller().
+        # Identity comes from the auth layer, not from channel metadata.
+        if origin == "api":
+            return IdentityContext()
+
         if origin == "telegram":
             user_id = channel_metadata.get("user_id")
             if user_id:
