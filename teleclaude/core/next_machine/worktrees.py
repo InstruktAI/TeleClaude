@@ -27,7 +27,7 @@ from teleclaude.core.next_machine._types import (
     WorktreePrepDecision,
 )
 from teleclaude.core.next_machine.state_io import _file_sha256
-from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, no_autostash_env
 
 logger = get_logger(__name__)
 
@@ -217,7 +217,7 @@ def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tupl
         logger.debug("First push attempt failed: %s", push_exc)
 
     try:
-        repo.git.pull("--rebase", "--no-autostash", "origin", "main")
+        repo.git.pull("--rebase", "--no-autostash", "origin", "main", env=no_autostash_env())
         repo.git.push("origin", "main")
         logger.info("Bookkeeping rebased and pushed: %s", subject_clean)
         return True, "rebased_and_pushed"

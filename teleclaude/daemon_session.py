@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
-    PRE_COMMIT_NO_STASH,
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
@@ -311,14 +310,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
         if principal.startswith("system:"):
             session_token = await db.issue_session_token(session_id, principal, role)
             env_vars[TELEC_SESSION_TOKEN] = session_token
-
-        # Prevent pre-commit from auto-stashing unstaged files for non-system roles.
-        # Stash is repo-wide and corrupts multi-worktree flows. Worktrees are
-        # task-scoped — builders should stage everything before committing.
-        # System role retains full git capability including pre-commit stash.
-        _effective_role = env_vars.get(TELECLAUDE_SYSTEM_ROLE, ROLE_WORKER)
-        if _effective_role != ROLE_SYSTEM:
-            env_vars[PRE_COMMIT_NO_STASH] = "1"
 
         # Expose system_role to the git wrapper for permission decisions
         if session.session_metadata and session.session_metadata.system_role:
