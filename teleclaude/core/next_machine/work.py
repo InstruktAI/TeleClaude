@@ -396,13 +396,20 @@ async def _validate_preparation_freshness(
     current_val = str(prep_state.get("current", "")).strip()
     grounding = prep_state.get("grounding", {})
     grounding_valid = isinstance(grounding, dict) and grounding.get("valid") is True
-    if current_val and current_val != PreparePhase.PREPARED.value:
-        _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_preparation")
-        return format_error(
-            "STALE",
-            f"{resolved_slug} preparation is not complete (current: {current_val}).",
-            next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
-        )
+    # Accept "prepared" and any work-phase state (build_started, build_complete,
+    # review_*, finalize_*). Only reject prepare-phase states that haven't
+    # reached "prepared" — those mean preparation is genuinely incomplete.
+    try:
+        phase = PreparePhase(current_val)
+        if phase != PreparePhase.PREPARED:
+            _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_preparation")
+            return format_error(
+                "STALE",
+                f"{resolved_slug} preparation is not complete (current: {current_val}).",
+                next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
+            )
+    except ValueError:
+        pass  # current is a work-phase state — prepare is done, proceed
     if current_val == PreparePhase.PREPARED.value and not grounding_valid:
         _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_grounding")
         return format_error(
