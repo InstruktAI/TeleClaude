@@ -55,3 +55,7 @@
 - slug: chip-tunes-regression
 - slug: session-memory-extraction
 - slug: state-machine-versioning
+- slug: state-machine-core
+  group: state-machine-versioning
+- slug: state-machine-adoption
+  group: state-machine-versioning
