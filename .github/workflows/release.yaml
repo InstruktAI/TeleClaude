@@ -113,7 +113,7 @@ jobs:
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent claude --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > claude-report.json
+            --schema-file docs/project/spec/release-report-schema.md > claude-report.json || true
 
       - name: Codex Release Lane
         # 2-of-3 quorum by design — individual lane failures are expected
@@ -122,7 +122,7 @@ jobs:
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > codex-report.json
+            --schema-file docs/project/spec/release-report-schema.md > codex-report.json || true
 
       - name: Gemini Release Lane
         # 2-of-3 quorum by design — individual lane failures are expected
@@ -131,7 +131,7 @@ jobs:
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json
+            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json || true
 
       - name: Verify quorum (2 of 3 lanes)
         run: |
