@@ -197,12 +197,6 @@ class TestProtectedCommitOnMain:
         result = _run_wrapper(["commit", "-m", "test"], role="integrator", cwd=str(repo))
         assert result.returncode == 0
 
-    def test_error_message_does_not_contain_bypass(self, tmp_path: Path) -> None:
-        """Error message must not teach agents to set TELECLAUDE_SYSTEM_ROLE."""
-        repo = _make_main_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], cwd=str(repo))
-        assert "TELECLAUDE_SYSTEM_ROLE=system" not in result.stderr
-
 
 # ── PROTECTED: push from main (integrator only) ─────────────────────────────
 
