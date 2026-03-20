@@ -11,7 +11,7 @@ description: 'Authoritative surface for TeleClaude YAML configuration and enviro
 
 The Teleclaude Config surface defines how the daemon and CLI are initialized and validated.
 
-## Two config files, three levels
+### Two config files, three levels
 
 Configuration lives in two files. `GlobalConfig` extends `ProjectConfig`, so all
 project keys are valid at global level — but not the reverse. `ProjectConfig`
