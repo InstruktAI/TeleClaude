@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, cast
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.core.integration.events import (
     BranchPushedPayload,
     FinalizeReadyPayload,
@@ -60,6 +62,9 @@ class _CandidateFinalize:
         return (self.ready_at, self.key.branch, self.key.sha)
 
 
+logger = get_logger(__name__)
+
+
 class ReadinessProjection:
     """Compute integration readiness for `(slug, branch, sha)` candidates."""
 
@@ -96,6 +101,10 @@ class ReadinessProjection:
 
     def apply(self, event: IntegrationEvent) -> ProjectionUpdate:
         """Apply one canonical event and recompute readiness."""
+        logger.info(
+            "readiness-projection: applying event_type=%s event_id=%s candidates_tracked=%d",
+            event.event_type, event.event_id[:8], len(self._readiness_by_key),
+        )
         previous_status = {key: readiness.status for key, readiness in self._readiness_by_key.items()}
         if event.event_type == "review_approved":
             payload = cast(ReviewApprovedPayload, event.payload)

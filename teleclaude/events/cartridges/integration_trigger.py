@@ -127,11 +127,18 @@ class IntegrationTriggerCartridge:
     async def _spawn_first_ready_candidate(self, ready_candidates: Sequence[tuple[str, str, str]]) -> None:
         """Spawn the integrator for the first READY candidate, if configured."""
         if not ready_candidates or self._spawn_callback is None:
+            if not ready_candidates:
+                logger.debug("Integration trigger: no READY candidates to spawn")
             return
         first_slug, first_branch, first_sha = ready_candidates[0]
+        logger.info(
+            "Integration trigger: spawning integrator for READY candidate slug=%s branch=%s sha=%s",
+            first_slug, first_branch, first_sha[:8] if first_sha else "",
+        )
         try:
             result = self._spawn_callback(first_slug, first_branch, first_sha)
             if asyncio.iscoroutine(result):
                 await result
+            logger.info("Integration trigger: spawn callback completed for %s", first_slug)
         except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Integration trigger spawn callback failed for %s", first_slug)
