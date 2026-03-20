@@ -317,6 +317,3 @@ class SessionToken(SQLModel, table=True):
     session_id: str
     principal: str  # "human:<email>" or "system:<stable-id>"
     role: str  # authorization role (e.g. "admin", "worker")
-    issued_at: str
-    expires_at: str
-    revoked_at: str | None = None

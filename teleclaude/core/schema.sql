@@ -323,10 +323,6 @@ CREATE TABLE IF NOT EXISTS session_tokens (
     session_id TEXT NOT NULL,
     principal TEXT NOT NULL,       -- "human:<email>" or "system:<stable-id>"
     role TEXT NOT NULL,            -- authorization role (e.g. "admin", "worker")
-    issued_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    revoked_at TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_session_tokens_session ON session_tokens(session_id);
-CREATE INDEX IF NOT EXISTS idx_session_tokens_expires ON session_tokens(expires_at);

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -36,8 +35,6 @@ def _make_token_record(
     session_id: str = "sess-001",
     principal: str = "system:sess-001",
     role: str = "admin",
-    expires_at: str | None = None,
-    revoked_at: str | None = None,
 ) -> MagicMock:
     from teleclaude.core import db_models
 
@@ -46,8 +43,6 @@ def _make_token_record(
     record.session_id = session_id
     record.principal = principal
     record.role = role
-    record.expires_at = expires_at or (datetime.now(UTC) + timedelta(hours=24)).isoformat()
-    record.revoked_at = revoked_at
     return record
 
 
