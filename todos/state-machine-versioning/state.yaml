@@ -7,10 +7,8 @@ deferrals_processed: false
 finalize:
   status: pending
 breakdown:
-  assessed: true
-  todos:
-  - state-machine-core
-  - state-machine-adoption
+  assessed: false
+  todos: []
 review_round: 0
 max_review_rounds: 3
 review_baseline_commit: ''
@@ -33,10 +31,10 @@ requirements_review:
   baseline_commit: ''
   findings: []
 test_spec_review:
-  verdict: approve
+  verdict: ''
   reviewed_at: ''
   findings_count: 0
-  rounds: 1
+  rounds: 0
 plan_review:
   verdict: ''
   reviewed_at: ''
@@ -50,16 +48,16 @@ artifacts:
     produced_at: ''
     stale: false
   requirements:
-    digest: 37a359e1687aedcb634737d204037438a653b8f6d2eafad676f24ac2028b7037
-    produced_at: '2026-03-20T05:58:19.065036+00:00'
+    digest: ''
+    produced_at: ''
     stale: false
   test_specs:
     digest: ''
-    produced_at: '2026-03-20T06:36:16.601596+00:00'
+    produced_at: ''
     stale: false
   implementation_plan:
     digest: ''
-    produced_at: '2026-03-20T07:29:07.105060+00:00'
+    produced_at: ''
     stale: false
 audit:
   input_assessment:
@@ -69,19 +67,19 @@ audit:
     started_at: ''
     completed_at: ''
   requirements_review:
-    started_at: '2026-03-20T05:33:03.098666+00:00'
-    completed_at: '2026-03-20T05:53:13Z'
-    baseline_commit: 0958562478a0d9341680d00be3f9bb692cfc4de2
-    verdict: approve
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
+    verdict: ''
     rounds: 0
     findings: []
   plan_drafting:
-    started_at: '2026-03-20T06:54:12.294689+00:00'
-    completed_at: '2026-03-20T06:54:12.295236+00:00'
-  plan_review:
-    started_at: '2026-03-20T06:54:12.304636+00:00'
+    started_at: ''
     completed_at: ''
-    baseline_commit: 1484cc620fbb5a724a339b56c03dee62a6a03e19
+  plan_review:
+    started_at: ''
+    completed_at: ''
+    baseline_commit: ''
     verdict: ''
     rounds: 0
     findings: []
@@ -89,13 +87,13 @@ audit:
     started_at: ''
     completed_at: ''
   test_spec_review:
-    started_at: '2026-03-20T06:36:34.770695+00:00'
-    completed_at: '2026-03-20T06:36:34.770699+00:00'
-    verdict: approve
-    rounds: 1
+    started_at: ''
+    completed_at: ''
+    verdict: ''
+    rounds: 0
   test_spec_build:
-    started_at: '2026-03-20T06:36:34.737619+00:00'
-    completed_at: '2026-03-20T06:36:34.761694+00:00'
+    started_at: ''
+    completed_at: ''
 dor:
   score: 0
   status: needs_work
