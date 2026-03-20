@@ -43,6 +43,7 @@ from teleclaude.core.next_machine.core import (
     mark_prepare_verdict,
     save_roadmap,
 )
+from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 
@@ -196,8 +197,10 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
             detail=f"invalid status '{status}': must be one of {', '.join(valid_statuses)}",
         )
 
-    # R1: Flexible cwd resolution — worktree if exists, cwd fallback with --force, 404 otherwise
-    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    # R1: Resolve project root canonically (works from repo root or worktree),
+    # then check for worktree. This prevents double-nesting when cwd is already a worktree.
+    project_root = resolve_canonical_project_root(cwd)
+    worktree_path = Path(project_root) / WORKTREE_DIR / slug
     if worktree_path.exists():
         effective_cwd = str(worktree_path)
     elif force:
