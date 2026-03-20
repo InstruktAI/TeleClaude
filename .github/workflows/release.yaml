@@ -142,6 +142,7 @@ jobs:
               echo "✓ $f valid (classification: $(jq -r '.classification' "$f"))"
             else
               echo "✗ $f missing, empty, or invalid JSON"
+              echo "  Content: $(cat "$f" 2>/dev/null || echo '<file not found>')"
             fi
           done
           echo "Quorum: $count/3 reports"
