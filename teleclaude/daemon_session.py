@@ -23,6 +23,7 @@ from teleclaude.constants import (
     UI_MESSAGE_MAX_CHARS,
 )
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
+from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.db import db, resolve_session_principal
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
@@ -71,16 +72,6 @@ AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stab
 AGENT_START_POST_STABILIZE_DELAY_S = 0.5  # Safety buffer after stabilization
 GEMINI_START_EXTRA_DELAY_S = float(os.getenv("GEMINI_START_EXTRA_DELAY_S", "3"))
 
-# Agent-specific terminal output markers that indicate the TUI is at the input prompt.
-# Each marker is a substring of the plain-text (ANSI-stripped) capture-pane output that
-# only appears once the agent has finished loading and is ready to receive keystrokes.
-AGENT_PROMPT_READY_MARKERS: dict[str, str] = {
-    "gemini": "Type your message or @path/to/file",
-    "claude": "\u276f ",  # U+276F HEAVY RIGHT-POINTING ANGLE QUOTATION MARK ORNAMENT (Claude input prompt)
-    "codex": "? for shortcuts",
-}
-# Extended timeout for marker-based readiness: we know exactly what to look for,
-# so we can afford to wait longer than the inactivity fallback.
 AGENT_PROMPT_READY_TIMEOUT_S = 20.0
 
 
@@ -371,39 +362,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
             auto_command_result.get("status") if auto_command_result else "n/a",
         )
 
-    async def _wait_for_agent_prompt_ready(
-        self,
-        session: Session,
-        agent_name: str,
-        timeout_s: float,
-        quiet_s: float,
-    ) -> tuple[bool, str]:
-        """Wait for the agent's TUI to show the input-prompt marker.
-
-        Uses agent-specific output markers for precise, event-driven readiness
-        detection instead of relying solely on inactivity timeouts.
-
-        Falls back to inactivity-based detection (`_wait_for_output_stable`) when
-        no marker is defined for the agent or the marker is not found in time.
-        """
-        marker = AGENT_PROMPT_READY_MARKERS.get(agent_name.lower())
-        if marker:
-            found, tail = await self._wait_for_output_contains(session, marker, timeout_s)
-            if found:
-                logger.debug(
-                    "agent_then_message: prompt marker found for agent=%s (timeout_s=%.1f)",
-                    agent_name,
-                    timeout_s,
-                )
-                return True, tail
-            logger.warning(
-                "agent_then_message: prompt marker not found for agent=%s within %.1fs, "
-                "falling back to inactivity detection",
-                agent_name,
-                timeout_s,
-            )
-        return await self._wait_for_output_stable(session, timeout_s, quiet_s)
-
     async def _handle_agent_then_message(  # pylint: disable=too-many-locals,too-many-return-statements
         self, session_id: str, args: list[str]
     ) -> dict[str, str]:
@@ -444,27 +402,50 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
         if not session:
             return {"status": "error", "message": "Session not found after creation"}
 
-        # Step 1: Wait for the agent's TUI to reach its input prompt.
-        # Primary: look for the agent-specific prompt marker in the pane output — this is
-        # an event-driven check that fires the moment the TUI is ready for keystrokes.
-        # Fallback (marker not defined or not found): inactivity-based detection.
+        # Step 1: Wait for the readiness detector to confirm the TUI is stable at the prompt.
         logger.debug("agent_then_message: waiting for agent prompt ready (session=%s)", session_id)
 
         t1 = time.time()
-        stabilized, _stable_tail = await self._wait_for_agent_prompt_ready(
-            session,
+        ready, readiness_tail = await wait_for_agent_ready(
             agent_name,
+            session,
             AGENT_PROMPT_READY_TIMEOUT_S,
             AGENT_START_STABILIZE_QUIET_S,
         )
         logger.debug("agent_then_message: prompt ready check took %.3fs", time.time() - t1)
 
-        if not stabilized:
+        if not ready:
             logger.warning(
-                "agent_then_message: prompt ready timed out after %.1fs, proceeding anyway (session=%s)",
-                AGENT_PROMPT_READY_TIMEOUT_S,
+                "agent_then_message readiness timeout: session=%s timeout_s=%.1f",
                 session_id,
+                AGENT_PROMPT_READY_TIMEOUT_S,
             )
+            event_bus.emit(
+                TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
+                SessionLifecycleContext(session_id=session_id),
+            )
+            await session_cleanup.terminate_session(
+                session_id,
+                self.client,
+                reason="agent_readiness_timeout",
+                session=session,
+            )
+            await self.client.send_message(
+                session,
+                "❌ Agent failed to reach a ready prompt before message injection.",
+                metadata=MessageMetadata(),
+            )
+            logger.debug(
+                "agent_then_message readiness timeout tail: session=%s tail=%r",
+                session_id,
+                readiness_tail[-160:],
+            )
+            return {"status": "error", "message": "Agent readiness timed out before message injection"}
+
+        event_bus.emit(
+            TeleClaudeEvents.AGENT_READY,
+            SessionLifecycleContext(session_id=session_id),
+        )
 
         # Verify agent is actually running before injecting message
         if not await tmux_io.is_process_running(session):
@@ -509,50 +490,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
         digest = hashlib.sha256(tail.encode("utf-8", errors="replace")).hexdigest()
         return tail, digest
 
-    async def _wait_for_output_stable(
-        self,
-        session: Session,
-        timeout_s: float,
-        quiet_s: float,
-    ) -> tuple[bool, str]:
-        """Wait for output to stop changing (stabilize).
-
-        Polls tmux output and waits until:
-        1. Output has changed from the initial state (indicating process started)
-        2. Output hasn't changed for `quiet_s` seconds (indicating TUI loaded)
-
-        Args:
-            session: The session to monitor
-            timeout_s: Maximum time to wait for stabilization
-            quiet_s: How long output must be unchanged to be considered stable
-
-        Returns:
-            Tuple of (stabilized, last_output_tail)
-        """
-        deadline = time.monotonic() + timeout_s
-        initial_tail, initial_digest = await self._pane_output_snapshot(session)
-        last_tail, last_digest = initial_tail, initial_digest
-
-        has_changed = False
-        quiet_since = time.monotonic()
-
-        while time.monotonic() < deadline:
-            await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
-            current_tail, current_digest = await self._pane_output_snapshot(session)
-
-            if current_digest != last_digest:
-                # Output changed
-                has_changed = True
-                last_tail, last_digest = current_tail, current_digest
-                quiet_since = time.monotonic()
-            elif has_changed and (time.monotonic() - quiet_since >= quiet_s):
-                # Output changed at least once AND has been stable for quiet_s seconds
-                logger.debug("Output stabilized after %.1fs quiet", quiet_s)
-                return True, current_tail
-
-        logger.debug("Output stabilization timed out after %.1fs (has_changed=%s)", timeout_s, has_changed)
-        return False, last_tail
-
     @staticmethod
     def _summarize_output_change(before: str, after: str) -> OutputChangeSummary:
         if before == after:
@@ -593,22 +530,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
             current_tail, current_digest = await self._pane_output_snapshot(session)
             last_tail = current_tail
             if current_digest != before_digest:
-                return True, current_tail
-            await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
-        return False, last_tail
-
-    async def _wait_for_output_contains(
-        self,
-        session: Session,
-        needle: str,
-        timeout_s: float,
-    ) -> tuple[bool, str]:
-        deadline = time.monotonic() + timeout_s
-        last_tail = ""
-        while time.monotonic() < deadline:
-            current_tail, _ = await self._pane_output_snapshot(session)
-            last_tail = current_tail
-            if needle and needle in current_tail:
                 return True, current_tail
             await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
         return False, last_tail

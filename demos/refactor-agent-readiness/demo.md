@@ -29,7 +29,7 @@ grep -q 'from teleclaude.core.agent_readiness import wait_for_agent_ready' telec
 
 ```bash
 # All readiness spec tests pass (no xfail)
-pytest tests/unit/core/test_agent_readiness.py tests/unit/core/test_agents.py::TestAgentName::test_agent_name_has_prompt_marker_property tests/unit/core/test_agents.py::TestAgentName::test_agent_name_returns_correct_marker tests/unit/core/test_events.py::TestEventsReadinessSpec tests/unit/test_daemon_session.py::TestDaemonSessionReadinessSpec -v
+pytest tests/unit/core/test_agent_readiness.py tests/unit/core/test_agents.py::TestAgentNameMetadataSpec tests/unit/core/test_events.py::TestEventsReadinessSpec tests/unit/test_daemon_session.py::TestDaemonSessionReadinessSpec -v
 ```
 
 ```bash
@@ -62,12 +62,14 @@ receives a session and returns `(ready: bool, tail: str)`.
 
 Open `teleclaude/daemon_session.py`. The `_handle_agent_then_message` method now calls
 `wait_for_agent_ready()` and acts on the result:
+
 - Success → emits `AGENT_READY` event, proceeds with message injection.
 - Failure → emits `AGENT_READINESS_TIMEOUT` event, terminates session, notifies user.
 
-The removed methods (`_wait_for_agent_prompt_ready`, `_pane_output_snapshot`,
-`_wait_for_output_stable`, `_wait_for_output_contains`) no longer exist here — they
-moved to the readiness module.
+The removed methods (`_wait_for_agent_prompt_ready`, `_wait_for_output_stable`,
+`_wait_for_output_contains`) no longer exist here. `_pane_output_snapshot` stays in
+daemon_session because command-acceptance confirmation still needs it; the detector
+only owns readiness polling.
 
 ### Step 4: Event-driven lifecycle
 
