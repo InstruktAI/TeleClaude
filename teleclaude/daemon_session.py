@@ -416,7 +416,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
 
         if not ready:
             logger.warning(
-                "agent_then_message readiness timeout: session=%s timeout_s=%.1f",
+                "agent_then_message readiness timeout: session=%s timeout_s=%.1f — session kept alive",
                 session_id,
                 AGENT_PROMPT_READY_TIMEOUT_S,
             )
@@ -424,23 +424,16 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
                 TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
                 SessionLifecycleContext(session_id=session_id),
             )
-            await session_cleanup.terminate_session(
-                session_id,
-                self.client,
-                reason="agent_readiness_timeout",
-                session=session,
-            )
-            await self.client.send_message(
-                session,
-                "❌ Agent failed to reach a ready prompt before message injection.",
-                metadata=MessageMetadata(),
-            )
             logger.debug(
                 "agent_then_message readiness timeout tail: session=%s tail=%r",
                 session_id,
                 readiness_tail[-160:],
             )
-            return {"status": "error", "message": "Agent readiness timed out before message injection"}
+            # Do NOT terminate — the agent may still be starting up. Leave the
+            # session alive so the agent can eventually reach the prompt. The
+            # caller receives an error status but the session persists for
+            # manual inspection or retry.
+            return {"status": "error", "message": "Agent readiness timed out — session kept alive for inspection"}
 
         event_bus.emit(
             TeleClaudeEvents.AGENT_READY,
