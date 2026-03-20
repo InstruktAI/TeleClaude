@@ -6,11 +6,16 @@
 #   PROTECTED    — integrator only (stash, push on main), integrator+system (commit on main)
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
-# Roles (TELECLAUDE_SYSTEM_ROLE, default: worker):
-#   worker       — can commit on worktree branches
-#   system       — worker + commit/push on main (job runners, human-supervised)
+# Roles (TELECLAUDE_SYSTEM_ROLE, set by daemon bootstrap only):
+#   (unset)      — human-interactive session, defaults to worker permissions internally
+#   worker       — can commit on worktree branches, blocked on main
+#   system       — worker + commit on main (job runners, human-supervised)
 #   orchestrator — no commits anywhere (machine commands only)
 #   integrator   — full protected access (merge workflow)
+#
+# When TELECLAUDE_SYSTEM_ROLE is unset (human sessions), the wrapper applies
+# worker-equivalent restrictions. The variable is never exported — it stays
+# local to this script and does not affect the session environment.
 #
 # Daemon Python code bypasses this wrapper via teleclaude/git.py.
 # Installed via `telec init` into ~/.teleclaude/bin/git.
