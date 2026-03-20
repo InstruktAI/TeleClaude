@@ -14,7 +14,7 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: prepared
+prepare_phase: test_spec_build
 grounding:
   valid: true
   base_sha: bf0fbbd7a28eaa8fc704bcb937bc960074b7a0f0
@@ -44,7 +44,7 @@ grounding:
   invalidation_reason: ''
 requirements_review:
   verdict: approve
-  reviewed_at: '2026-03-20T00:07:18Z'
+  reviewed_at: '2026-03-20T02:30:40.220271+00:00'
   findings_count: 0
   rounds: 2
   baseline_commit: 627afaf3fbe437f29190186500078689ec3612c9
@@ -103,21 +103,24 @@ audit:
     rounds: 5
     findings: []
   gate:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-20T02:10:06Z'
+    completed_at: '2026-03-20T02:10:06Z'
 dor:
-  last_assessed_at: '2026-03-19T19:22:07.481252+00:00'
+  last_assessed_at: '2026-03-20T02:10:06Z'
   score: 7
   status: needs_work
   schema_version: 1
   blockers:
-  - 'requirements: fewer than 2 functional requirements (FR) sections'
-  - 'requirements: no Acceptance Criteria section'
-  - 'requirements: missing Dependency / Prerequisites section'
-  - 'plan: fewer than 3 explicit file references with extensions'
-  - 'plan: no recognisable directory path references'
-  - 'plan: fewer than 2 explicit FR references'
+  - 'verification: expected-failure test specs are missing (`artifacts.test_specs.produced_at`
+    and `test_spec_review.verdict` are empty)'
+  - 'cross-artifact: FR-2 says new command subclasses require no dispatcher changes,
+    but Task 2 still requires per-command handler-table edits in `_dispatch_command()`'
+  - 'dependency: `requirements.md` claims `web-tui-parity` must land first, but `todos/roadmap.yaml`
+    has no `after:` edge for `fix-api-command-receipt`'
+  - 'demo: `demo.md` still classifies `ProcessMessageCommand` as `FIRE_AND_FORGET`,
+    conflicting with the plan and acceptance criteria that preserve the current 200
+    message endpoint contract'
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-  assessed_commit: 9316cbbe2
+  assessed_commit: 440c8886a
