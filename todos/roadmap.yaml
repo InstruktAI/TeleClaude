@@ -52,7 +52,4 @@
     nav, activity highlights, footer, toasts
 - slug: chip-tunes-regression
 - slug: session-memory-extraction
-  after:
-  - mirror-timestamp-fix
-- slug: mirror-timestamp-fix
 - slug: fix-mirror-conversation-text-drops-per-messa

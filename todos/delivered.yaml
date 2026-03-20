@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: mirror-timestamp-fix
+  date: '2026-03-20'
+  commit: 4d5bf8d4474b
 - slug: fix-api-command-receipt
   date: '2026-03-20'
   commit: c995935ee806
