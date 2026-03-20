@@ -1,3 +1,4 @@
+# guard: no-companion
 """Tests for integration queue — transition rules and recovery behavior.
 
 Guards against the infinite loop where recovery re-queued an in_progress item

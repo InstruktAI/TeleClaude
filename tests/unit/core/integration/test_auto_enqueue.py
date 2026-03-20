@@ -1,3 +1,4 @@
+# guard: no-companion
 """Tests for state-driven candidate scanner and verifier.
 
 Replaces the queue-based _try_auto_enqueue tests. The integration state machine

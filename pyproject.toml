@@ -309,42 +309,7 @@ exclude = [
     "teleclaude/core/metadata.py",       # Pure Pydantic model, no logic
     "teleclaude/logging_config.py",       # Delegates to instrukt_ai_logging
 ]
-# guard: ratchet-down — orphaned tests to rename/restructure; each entry needs a source companion or removal
-orphan-exclude = [
-    "tests/unit/cli/tui/test_animation_modes.py",             # Tests animation mode switching across TUI animation files
-    "tests/unit/cli/tui/test_session_row.py",                 # Tests session row rendering in TUI views
-    "tests/unit/core/integration/test_auto_enqueue.py",       # Tests auto-enqueue in state_machine.py
-    "tests/unit/core/integration/test_queue_transitions.py",  # Tests queue transitions in state_machine.py
-    "tests/unit/core/integration/test_step_delivery_bookkeeping.py", # Tests step_functions.py delivery flow
-    "tests/unit/core/integration/test_worktree_guards.py",    # Tests worktree guards in step_functions.py
-    "tests/unit/core/next_machine/test_bug_route.py",         # Tests bug routing logic in core.py
-    "tests/unit/core/next_machine/test_format_tool_call.py",  # Tests tool call formatting in core.py
-    "tests/unit/core/next_machine/test_ghost_artifact.py",    # Tests ghost artifact detection in core.py
-    "tests/unit/core/next_machine/test_prepare_staleness.py", # Tests prepare staleness in prepare.py
-    "tests/unit/core/next_machine/test_referenced_paths.py",  # Tests referenced paths in core.py
-    "tests/unit/core/next_machine/test_review_findings.py",   # Tests review findings in core.py
-    "tests/unit/core/next_machine/test_split_inheritance.py",  # Tests split inheritance in core.py
-    "tests/unit/core/next_machine/test_stale_review_guard.py", # Tests stale review detection in core.py
-    "tests/unit/core/test_agent_coordinator.py",              # Tests agent_coordinator/ package
-    "tests/unit/core/test_command_handlers.py",               # Tests command_handlers/ package
-    "tests/unit/core/test_db.py",                             # Tests core/db/ package
-    "tests/unit/events/test_new_prepare_events.py",           # Tests prepare event flow across event modules
-    "tests/unit/test_api_auth.py",                            # Tests teleclaude/api/auth.py (path mismatch)
-    "tests/unit/test_principal_inheritance.py",               # Cross-module principal inheritance behavior
-    "tests/unit/test_session_token_lifecycle.py",             # Cross-module session token lifecycle
-    "tests/unit/test_session_tokens.py",                      # Cross-module session token behavior
-    "tests/unit/test_dependency_upgrade.py",                   # Tests jobs/dependency_upgrade.py (path mismatch)
-    "tests/unit/test_youtube_scraper.py",                     # Tests youtube scraper helpers
-    "tests/unit/cli/telec/test_surface_export.py",            # Tests export_surface_markdown() in surface.py
-    "tests/unit/scripts/test_release_consolidator.py",        # Tests scripts/release_consolidator.py (path mismatch)
-    "tests/unit/test_todo_from_main.py",                     # Tests create_from_main_skeleton() in todo_scaffold.py
-    "tests/unit/core/agent_coordinator/test_headless_pull.py", # Tests headless pull scheduling in _coordinator.py
-    "tests/unit/adapters/discord/test_headless_title.py",     # Tests headless title prefix in channel_ops.py
-    "tests/unit/adapters/telegram/test_send_message_topic_guard.py", # Tests topic_id guard in message_ops.py
-    "tests/unit/tools/lint/test_guardrails.py",                  # Tests tools/lint/guardrails.py (outside teleclaude/ package)
-    "tests/unit/cli/tui/test_resource_cleanup.py",             # Tests resource cleanup across app.py, app_media.py, sessions.py
-    "tests/unit/install/test_git_wrapper_permissions.py",       # Tests shell wrapper at teleclaude/install/wrappers/git
-]
+orphan-exclude = []
 
 [tool.coverage.run]
 source = ["teleclaude"]

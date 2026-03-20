@@ -1,3 +1,4 @@
+# guard: no-companion
 """Behavioral tests for the git wrapper permission model.
 
 Tests that the wrapper blocks/allows git subcommands based on TELECLAUDE_SYSTEM_ROLE.

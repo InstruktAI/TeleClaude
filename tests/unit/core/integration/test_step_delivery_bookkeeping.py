@@ -1,3 +1,4 @@
+# guard: no-companion
 """Tests for delivery bookkeeping in the integration state machine.
 
 Covers:

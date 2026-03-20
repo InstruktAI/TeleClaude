@@ -1,3 +1,4 @@
+# guard: no-companion
 """Characterization tests for the release consensus arbiter.
 
 OBSERVE-ASSERT-VERIFY: These tests pin the observed behavior of

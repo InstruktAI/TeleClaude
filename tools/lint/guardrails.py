@@ -258,7 +258,7 @@ def _check_test_companions(repo_root: Path) -> None:
     Convention: tests/unit/foo/test_bar.py must have teleclaude/foo/bar.py.
     Orphaned tests (testing deleted/renamed modules) are caught here.
 
-    Exclusions are configured in pyproject.toml [tool.test-mapping].orphan-exclude.
+    Exclusions: add ``# guard: no-companion`` to the test file.
     """
     tests_root = repo_root / "tests" / "unit"
     source_root = repo_root / "teleclaude"
@@ -271,6 +271,8 @@ def _check_test_companions(repo_root: Path) -> None:
     for test_path in sorted(tests_root.rglob("test_*.py")):
         rel_test = test_path.relative_to(repo_root).as_posix()
         if rel_test in orphan_exclusions:
+            continue
+        if _has_no_companion_marker(test_path):
             continue
 
         expected_source = _test_to_source_path(test_path, tests_root)
@@ -288,7 +290,7 @@ def _check_test_companions(repo_root: Path) -> None:
     _fail(
         f"orphaned test files detected ({len(orphans)} tests without source companions).\n"
         "Each test file must mirror a source module. If the test intentionally covers\n"
-        "cross-module behavior, add it to [tool.test-mapping].orphan-exclude in pyproject.toml.\n"
+        "cross-module behavior, add '# guard: no-companion' to the file.\n"
         f"{formatted}\n"
     )
 
@@ -307,6 +309,20 @@ def _test_to_source_path(test_path: Path, tests_root: Path) -> str | None:
     source_filename = filename.removeprefix("test_")
     parts[-1] = source_filename
     return "/".join(parts)
+
+
+def _has_no_companion_marker(test_path: Path) -> bool:
+    """Check if a test file contains a ``# guard: no-companion`` marker."""
+    try:
+        with open(test_path, encoding="utf-8") as f:
+            for line in f:
+                if "# guard: no-companion" in line:
+                    return True
+                if not line.startswith(("#", "\n", '"', "'")) and "import" not in line and "from" not in line:
+                    break
+    except OSError:
+        pass
+    return False
 
 
 def _load_orphan_exclusions(repo_root: Path) -> set[str]:
@@ -414,6 +430,15 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
             "for session ID, DB lookup for principal/role"
         ),
     ),
+    PatternRule(
+        name="hardcoded-home-path",
+        pattern=re.compile(re.escape(str(Path.home()))),
+        scan_dirs=["teleclaude", "templates", "bin", "scripts", "tools", "agents", ".agents"],
+        glob="*",
+        exclude_prefixes=("tools/lint/guardrails", "__pycache__/"),
+        exception_marker="guard: allow-home-path",
+        message=("hardcoded home path — use Path.home(), $HOME, os.path.expanduser('~'), or {{MARKER}} in templates"),
+    ),
 ]
 
 
@@ -431,7 +456,7 @@ def _check_source_patterns(repo_root: Path) -> None:
                     continue
                 try:
                     lines = path.read_text(encoding="utf-8").splitlines()
-                except OSError:
+                except (OSError, UnicodeDecodeError):
                     continue
                 for lineno, line in enumerate(lines, start=1):
                     if rule.exception_marker and rule.exception_marker in line:

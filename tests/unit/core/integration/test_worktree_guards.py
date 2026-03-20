@@ -1,3 +1,4 @@
+# guard: no-companion
 """Tests for _ensure_integration_worktree merge state guards.
 
 Verifies that git reset --hard is skipped when MERGE_HEAD or SQUASH_MSG

@@ -1,3 +1,4 @@
+# guard: no-companion
 """Tests for event-driven headless output pull scheduling."""
 
 from __future__ import annotations

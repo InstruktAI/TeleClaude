@@ -1,3 +1,4 @@
+# guard: no-companion
 """TDD tests for CLI surface markdown exporter."""
 
 from __future__ import annotations

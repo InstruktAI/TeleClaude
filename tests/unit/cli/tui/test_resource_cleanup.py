@@ -1,3 +1,4 @@
+# guard: no-companion
 """Tests for TUI resource leak fixes — timer and task lifecycle management.
 
 Covers the debounce-and-cancel patterns introduced to prevent untracked

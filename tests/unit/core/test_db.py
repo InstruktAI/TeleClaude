@@ -1,3 +1,4 @@
+# guard: no-companion
 """Tests for teleclaude.core.db — principal resolution."""
 
 from __future__ import annotations

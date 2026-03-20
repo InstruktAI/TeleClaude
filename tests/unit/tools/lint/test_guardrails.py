@@ -1,3 +1,4 @@
+# guard: no-companion
 """Tests for the table-driven pattern scanner in tools/lint/guardrails.py.
 
 Covers the _check_source_patterns function and SOURCE_PATTERN_RULES,

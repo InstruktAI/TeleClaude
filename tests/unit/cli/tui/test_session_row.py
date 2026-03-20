@@ -1,3 +1,4 @@
+# guard: no-companion
 """Reproduction tests for newline stripping in SessionRow._build_title_line."""
 
 from __future__ import annotations
