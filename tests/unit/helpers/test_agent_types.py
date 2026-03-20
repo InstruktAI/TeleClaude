@@ -26,7 +26,7 @@ def test_agent_name_from_str_rejects_unknown_values() -> None:
 
 
 def test_thinking_mode_choices_match_declared_enum_order() -> None:
-    assert ThinkingMode.choices() == ("fast", "med", "slow", "deep")
+    assert ThinkingMode.choices() == ("fast", "med", "slow", "deep", "default")
 
 
 def test_thinking_mode_from_str_normalizes_whitespace_and_case() -> None:
