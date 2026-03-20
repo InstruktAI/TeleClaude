@@ -14,25 +14,26 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: ''
+prepare_phase: plan_drafting
 grounding:
   valid: true
-  base_sha: 0958562478a0d9341680d00be3f9bb692cfc4de2
+  base_sha: de862eeea0c873603cad6cd6f771d70967708a23
   input_digest: 1ae046f81fda1e5508c6f13b4bd753df
   referenced_paths:
   - jobs/session_memory_extraction.py
-  - docs/project/design/architecture/jobs-runner.md
-  - docs/project/design/architecture/memory-system.md
-  - docs/project/design/architecture/redis-transport.md
   - teleclaude/core/summarizer.py
-  - teleclaude/mirrors/generator.py
   - teleclaude/mirrors/store.py
+  - teleclaude/mirrors/generator.py
   - teleclaude/memory/store.py
   - teleclaude/memory/types.py
   - teleclaude/channels/publisher.py
-  - teleclaude/utils/transcript/_extraction.py
+  - teleclaude/transport/redis_transport/_transport.py
+  - teleclaude/core/models/_session.py
+  - teleclaude/core/db_models.py
+  - teleclaude/core/db.py
   - teleclaude/services/maintenance_service.py
-  last_grounded_at: '2026-03-20T05:38:04Z'
+  - tests/jobs/test_session_memory_extraction.py
+  last_grounded_at: '2026-03-20T12:00:00Z'
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
@@ -43,10 +44,10 @@ requirements_review:
   baseline_commit: 0958562478a0d9341680d00be3f9bb692cfc4de2
   findings: []
 test_spec_review:
-  verdict: ''
+  verdict: approve
   reviewed_at: ''
   findings_count: 0
-  rounds: 0
+  rounds: 1
 plan_review:
   verdict: ''
   reviewed_at: ''
@@ -65,11 +66,11 @@ artifacts:
     stale: false
   test_specs:
     digest: ''
-    produced_at: ''
+    produced_at: '2026-03-20T06:18:00.835897+00:00'
     stale: false
   implementation_plan:
-    digest: ''
-    produced_at: ''
+    digest: 9adf32b7906932b4653b3c24921bdae3a61caf4c
+    produced_at: '2026-03-20T06:23:48.651110+00:00'
     stale: false
 audit:
   input_assessment:
@@ -86,8 +87,8 @@ audit:
     rounds: 1
     findings: []
   plan_drafting:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-20T12:15:00Z'
+    completed_at: '2026-03-20T12:30:00Z'
   plan_review:
     started_at: ''
     completed_at: ''
@@ -98,6 +99,14 @@ audit:
   gate:
     started_at: ''
     completed_at: ''
+  test_spec_review:
+    started_at: '2026-03-20T06:18:26.003927+00:00'
+    completed_at: '2026-03-20T06:18:26.003931+00:00'
+    verdict: approve
+    rounds: 1
+  test_spec_build:
+    started_at: '2026-03-20T06:18:25.973086+00:00'
+    completed_at: '2026-03-20T06:18:25.996077+00:00'
 dor:
   last_assessed_at: '2026-03-20T02:25:07.432401+00:00'
   score: 7
