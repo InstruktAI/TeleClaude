@@ -110,28 +110,38 @@ jobs:
         # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
+          echo "=== Claude lane: binary=$(which claude 2>/dev/null || echo 'not in PATH'), launcher=$HOME/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher exists=$(test -f $HOME/Applications/ClaudeLauncher.app/Contents/MacOS/claude-launcher && echo yes || echo no)"
+          echo "=== ANTHROPIC_API_KEY set: $(test -n "$ANTHROPIC_API_KEY" && echo yes || echo no), CI=$CI"
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent claude --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > claude-report.json || true
+            --schema-file docs/project/spec/release-report-schema.md > claude-report.json 2>claude-stderr.txt || true
+          echo "=== Claude exit=$?, stderr:"
+          cat claude-stderr.txt || true
 
       - name: Codex Release Lane
         # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
+          echo "=== Codex lane: binary=$(which codex 2>/dev/null || echo 'not in PATH'), auth=$HOME/.codex/auth.json exists=$(test -f $HOME/.codex/auth.json && echo yes || echo no)"
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > codex-report.json || true
+            --schema-file docs/project/spec/release-report-schema.md > codex-report.json 2>codex-stderr.txt || true
+          echo "=== Codex exit=$?, stderr:"
+          cat codex-stderr.txt || true
 
       - name: Gemini Release Lane
         # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
+          echo "=== Gemini lane: binary=$(which gemini 2>/dev/null || echo 'not in PATH'), auth=$HOME/.gemini/oauth_creds.json exists=$(test -f $HOME/.gemini/oauth_creds.json && echo yes || echo no)"
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json || true
+            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json 2>gemini-stderr.txt || true
+          echo "=== Gemini exit=$?, stderr:"
+          cat gemini-stderr.txt || true
 
       - name: Verify quorum (2 of 3 lanes)
         run: |
@@ -159,6 +169,9 @@ jobs:
             claude-report.json
             codex-report.json
             gemini-report.json
+            claude-stderr.txt
+            codex-stderr.txt
+            gemini-stderr.txt
           if-no-files-found: warn
 
   release-arbitration:
