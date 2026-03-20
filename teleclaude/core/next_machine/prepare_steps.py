@@ -65,6 +65,10 @@ async def _prepare_step_input_assessment(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """INPUT_ASSESSMENT: choose requirements strategy and produce requirements."""
+    # Ensure worktree exists from the very first prepare step so all phases
+    # write state to the worktree, not repo root main.
+    await ensure_worktree_with_policy_async(cwd, slug)
+
     _now = datetime.now(UTC).isoformat()
     stamp_audit(state, "input_assessment", "started_at", _now)
 
@@ -84,7 +88,7 @@ async def _prepare_step_input_assessment(
             args=slug,
             project=cwd,
             guidance=guidance,
-            subfolder="",
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
                 f"Assess todos/{slug}/input.md and produce todos/{slug}/requirements.md. "
                 "Work solo if the input is already concrete enough. If important intent, "
@@ -119,7 +123,7 @@ async def _prepare_step_triangulation(
             args=slug,
             project=cwd,
             guidance=guidance,
-            subfolder="",
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
                 f"Produce todos/{slug}/requirements.md. Use solo discovery if you already have "
                 "enough grounding; otherwise triangulate with a complementary partner before writing."
@@ -225,7 +229,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
                 args=slug,
                 project=cwd,
                 guidance=guidance,
-                subfolder="",
+                subfolder=f"{WORKTREE_DIR}/{slug}",
                 note=findings_note,
                 next_call=f"telec todo prepare {slug}",
                 additional_context=additional_context,
@@ -249,7 +253,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
             args=slug,
             project=cwd,
             guidance=guidance,
-            subfolder="",
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             note=f"Review todos/{slug}/requirements.md and write verdict to state.yaml requirements_review.verdict.",
             next_call=f"telec todo prepare {slug}",
         )
@@ -272,9 +276,6 @@ async def _prepare_step_test_spec_build(
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_drafted", {"slug": slug})
         return True, ""  # loop
-
-    # First prepare step that needs a worktree — ensure it exists
-    await ensure_worktree_with_policy_async(cwd, slug)
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
@@ -397,7 +398,7 @@ async def _prepare_step_plan_drafting(
                     args=slug,
                     project=cwd,
                     guidance=guidance,
-                    subfolder="",
+                    subfolder=f"{WORKTREE_DIR}/{slug}",
                     note=(
                         f"FIX MODE: todos/{slug}/implementation-plan.md references {len(missing_paths)} "
                         f"path(s) that do not exist in the codebase. Correct the paths or remove "
@@ -421,7 +422,7 @@ async def _prepare_step_plan_drafting(
             args=slug,
             project=cwd,
             guidance=guidance,
-            subfolder="",
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
                 f"Ground the approved requirements for todos/{slug}. If the work is atomic, "
                 f"write todos/{slug}/implementation-plan.md and demo.md. If planning shows the "
@@ -528,7 +529,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
                 args=slug,
                 project=cwd,
                 guidance=guidance,
-                subfolder="",
+                subfolder=f"{WORKTREE_DIR}/{slug}",
                 note=findings_note,
                 next_call=f"telec todo prepare {slug}",
                 additional_context=additional_context,
@@ -552,7 +553,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
             args=slug,
             project=cwd,
             guidance=guidance,
-            subfolder="",
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             note=f"Review todos/{slug}/implementation-plan.md and write verdict to state.yaml plan_review.verdict.",
             next_call=f"telec todo prepare {slug}",
         )
@@ -735,7 +736,7 @@ async def _prepare_step_re_grounding(
             args=slug,
             project=cwd,
             guidance=guidance,
-            subfolder="",
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             note=f"Update todos/{slug}/implementation-plan.md against current codebase. {changed_note}",
             next_call=f"telec todo prepare {slug}",
         )
