@@ -55,5 +55,4 @@
 - slug: session-memory-extraction
   after:
   - mirror-timestamp-fix
-- slug: state-machine-versioning
 - slug: mirror-timestamp-fix
