@@ -535,8 +535,22 @@ install_launchd_cron() {
         return 0
     fi
 
+    # Resolve uv binary path
+    local uv_path
+    uv_path="$(command -v uv 2>/dev/null || echo "/opt/homebrew/bin/uv")"
+
+    # Build PATH (same logic as install_launchd_service)
+    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    [ -d "/opt/homebrew/bin" ] && launchd_path="/opt/homebrew/bin:$launchd_path"
+    [ -d "/usr/local/bin" ] && launchd_path="/usr/local/bin:$launchd_path"
+    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
+
     mkdir -p "$HOME/Library/LaunchAgents"
-    cp "$source_file" "$plist_file"
+    sed -e "s|{{UV_PATH}}|$uv_path|g" \
+        -e "s|{{WORKING_DIR}}|$INSTALL_DIR|g" \
+        -e "s|{{PATH}}|$launchd_path|g" \
+        -e "s|{{HOME}}|$HOME|g" \
+        "$source_file" > "$plist_file"
 
     local domain="gui/$(id -u)"
     launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true

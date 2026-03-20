@@ -14,33 +14,54 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: ''
+prepare_phase: gate
 grounding:
   valid: false
-  base_sha: ''
+  base_sha: 6eacaad5700635dd3de29b4a16c40c6709ebb276
   input_digest: ''
-  referenced_paths: []
+  referenced_paths:
+  - teleclaude/core/next_machine/state_machine.py
+  - teleclaude/core/next_machine/state_io.py
+  - teleclaude/core/next_machine/_types.py
+  - teleclaude/core/next_machine/prepare.py
+  - teleclaude/core/next_machine/prepare_events.py
+  - teleclaude/core/next_machine/prepare_steps.py
+  - teleclaude/core/next_machine/slug_resolution.py
+  - teleclaude/core/next_machine/work.py
+  - teleclaude/types/todos.py
+  - teleclaude/core/roadmap.py
+  - teleclaude/core/models/_snapshot.py
+  - teleclaude/api_models.py
+  - teleclaude/core/cache.py
+  - teleclaude/cli/tui/widgets/todo_row.py
+  - teleclaude/resource_validation/__init__.py
+  - teleclaude/core/next_machine/output_formatting.py
+  - teleclaude/cli/tool_commands/todo.py
+  - teleclaude/cli/telec/surface.py
+  - teleclaude/cli/telec/handlers/todo.py
+  - teleclaude/api/todo_routes.py
+  - teleclaude/todo_scaffold.py
   last_grounded_at: ''
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-20T05:53:13Z'
   findings_count: 0
-  rounds: 0
+  rounds: 1
   baseline_commit: ''
   findings: []
 test_spec_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-20T06:36:34Z'
   findings_count: 0
-  rounds: 0
+  rounds: 1
 plan_review:
-  verdict: ''
-  reviewed_at: ''
-  findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  verdict: approve
+  reviewed_at: '2026-03-20T15:12:00Z'
+  findings_count: 4
+  rounds: 2
+  baseline_commit: 5b1816ce5282eca5822ee95f46f62243a320da0c
   findings: []
 artifacts:
   input:
@@ -49,15 +70,15 @@ artifacts:
     stale: false
   requirements:
     digest: ''
-    produced_at: ''
+    produced_at: '2026-03-20T05:58:19.065036+00:00'
     stale: false
   test_specs:
     digest: ''
-    produced_at: ''
+    produced_at: '2026-03-20T06:36:16.601596+00:00'
     stale: false
   implementation_plan:
-    digest: ''
-    produced_at: ''
+    digest: 5390f0a7a865a9fa08a82ee2e23ac27367b70d8994c9994d55aeca526faa3fa3
+    produced_at: '2026-03-20T13:53:28.570586+00:00'
     stale: false
 audit:
   input_assessment:
@@ -67,33 +88,37 @@ audit:
     started_at: ''
     completed_at: ''
   requirements_review:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-20T05:33:03.098666+00:00'
+    completed_at: '2026-03-20T05:53:13Z'
     baseline_commit: ''
-    verdict: ''
-    rounds: 0
+    verdict: approve
+    rounds: 1
     findings: []
   plan_drafting:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-20T13:38:00.000000+00:00'
+    completed_at: '2026-03-20T13:53:28.000000+00:00'
   plan_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
-    findings: []
+    started_at: '2026-03-20T14:20:19.508121+00:00'
+    completed_at: '2026-03-20T14:20:19.508185+00:00'
+    baseline_commit: 5b1816ce5282eca5822ee95f46f62243a320da0c
+    verdict: approve
+    rounds: 2
+    findings:
+    - 'I1: Task 7 missing DTO pipeline files (auto-remediated)'
+    - 'I2: Task 4c missing prepare_events.py:170 write (auto-remediated)'
+    - 'I3: Missing referenced_paths in state.yaml (auto-remediated)'
+    - 'I4: Task 7 verification acknowledges test gap (auto-remediated)'
   gate:
     started_at: ''
     completed_at: ''
   test_spec_review:
-    started_at: ''
-    completed_at: ''
-    verdict: ''
-    rounds: 0
+    started_at: '2026-03-20T06:36:34.770695+00:00'
+    completed_at: '2026-03-20T06:36:34.770699+00:00'
+    verdict: approve
+    rounds: 1
   test_spec_build:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-20T06:36:34.737619+00:00'
+    completed_at: '2026-03-20T06:36:34.761694+00:00'
 dor:
   score: 0
   status: needs_work

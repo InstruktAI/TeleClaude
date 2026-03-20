@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 # Git wrapper for TeleClaude agent sessions.
-# Blocks destructive git operations in agent sessions.
-# Push-to-main protection is handled by the pre-push hook (.githooks/pre-push).
-# Installed via `telec init` into ~/.teleclaude/bin/git.
 #
-# Permissions are derived from TELECLAUDE_SYSTEM_ROLE (set by the daemon from
-# session_metadata.system_role). Roles: worker (default), orchestrator, integrator, system.
+# Three-tier permission model:
+#   DESTRUCTIVE  — blocked for all roles, no override
+#   PROTECTED    — integrator only (stash, checkout, commit-on-main, push-from-main)
+#   RESTRICTED   — orchestrator cannot commit on any branch
+#
+# Roles (TELECLAUDE_SYSTEM_ROLE, default: worker):
+#   worker       — can commit on worktree branches
+#   system       — same as worker but file-scoped checkout allowed (job runners)
+#   orchestrator — no commits anywhere (machine commands only)
+#   integrator   — full protected access (merge workflow)
+#
+# Daemon Python code bypasses this wrapper via teleclaude/git.py.
+# Installed via `telec init` into ~/.teleclaude/bin/git.
 
 set -euo pipefail
 
@@ -64,38 +72,18 @@ done
 
 _role="${TELECLAUDE_SYSTEM_ROLE:-worker}"
 
-# Blocked subcommands (version-control-safety policy)
+# ── DESTRUCTIVE: blocked for all roles, no override ──────────────────────────
 case "$_subcmd" in
-    stash)
-        if [ "$_role" != "integrator" ] && [ "$_role" != "system" ]; then
-            echo "ERROR: 'git stash' is prohibited in agent sessions. Use commits instead." >&2
-            exit 1
-        fi
-        ;;
-    checkout)
-        # File-scoped checkout (contains '--' separator) is allowed for integrator and system roles.
-        # Branch/bare checkout is always blocked.
-        _has_separator=0
-        for _carg in "$@"; do
-            [ "$_carg" = "--" ] && _has_separator=1
-        done
-        if [ "$_has_separator" -eq 1 ] && { [ "$_role" = "integrator" ] || [ "$_role" = "system" ]; }; then
-            : # allowed — file-scoped checkout
-        else
-            echo "ERROR: 'git checkout' is prohibited in agent sessions." >&2
-            exit 1
-        fi
-        ;;
-    switch)
-        echo "ERROR: 'git switch' is prohibited in agent sessions. Branch switching on repo root is not allowed." >&2
-        exit 1
-        ;;
     restore)
-        echo "ERROR: 'git restore' is prohibited in agent sessions. Commit or discard intentionally." >&2
+        echo "ERROR: 'git restore' is a destructive operation and is prohibited." >&2
         exit 1
         ;;
     clean)
-        echo "ERROR: 'git clean' is prohibited in agent sessions. Do not delete untracked files." >&2
+        echo "ERROR: 'git clean' is a destructive operation and is prohibited." >&2
+        exit 1
+        ;;
+    switch)
+        echo "ERROR: 'git switch' is a destructive operation and is prohibited." >&2
         exit 1
         ;;
     revert)
@@ -128,7 +116,8 @@ MSG
         ;;
 esac
 
-# Block reset variants that move HEAD (version-control-safety policy)
+# Destructive reset variants (--hard, --merge, --keep) blocked for all roles.
+# Pathspec reset (git reset HEAD <file>, git reset -- <file>) is allowed.
 if [ "$_subcmd" = "reset" ]; then
     _has_separator=0
     _non_flag_args=0

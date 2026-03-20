@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${TELECLAUDE_HEARTBEAT_REPO:-/Users/Morriz/Workspace/InstruktAI/TeleClaude}"
-LOG_FILE="${TELECLAUDE_HEARTBEAT_LOG:-/Users/Morriz/teleclaude-heartbeat.log}"
+REPO="${TELECLAUDE_HEARTBEAT_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
+LOG_FILE="${TELECLAUDE_HEARTBEAT_LOG:-$HOME/teleclaude-heartbeat.log}"
 INTERVAL_SECONDS="${TELECLAUDE_HEARTBEAT_INTERVAL_SECONDS:-60}"
 LOG_SINCE="${TELECLAUDE_HEARTBEAT_LOG_SINCE:-1m}"
 ALERT_PATTERNS="${TELECLAUDE_HEARTBEAT_PATTERNS:-Received SIGTERM|Received SIGINT|Received SIGHUP|Wrapper request failed|Connection refused|MCP socket NOT responding|MCP socket health check failed|API connect failed|CRASH|killed|Wrapper request failed}"

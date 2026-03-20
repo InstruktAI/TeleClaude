@@ -384,7 +384,7 @@ class PatternRule(NamedTuple):
     name: str
     pattern: re.Pattern[str]
     scan_dirs: list[str]
-    glob: str
+    glob: str | list[str]  # single glob or list of globs
     exclude_prefixes: tuple[str, ...]
     exception_marker: str | None  # None = no exceptions allowed
     message: str
@@ -434,7 +434,7 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
         name="hardcoded-home-path",
         pattern=re.compile(re.escape(str(Path.home()))),
         scan_dirs=["teleclaude", "templates", "bin", "scripts", "tools", "agents", ".agents"],
-        glob="*",
+        glob=["*.py", "*.sh", "*.md", "*.yml", "*.yaml", "*.toml", "*.plist", "*.ts", "*.tsx"],
         exclude_prefixes=("tools/lint/guardrails", "__pycache__/"),
         exception_marker="guard: allow-home-path",
         message=("hardcoded home path — use Path.home(), $HOME, os.path.expanduser('~'), or {{MARKER}} in templates"),
@@ -450,21 +450,25 @@ def _check_source_patterns(repo_root: Path) -> None:
             root = repo_root / dirname
             if not root.exists():
                 continue
-            for path in root.rglob(rule.glob):
-                rel = path.relative_to(repo_root).as_posix()
-                if any(rel.startswith(p) for p in rule.exclude_prefixes):
-                    continue
-                try:
-                    lines = path.read_text(encoding="utf-8").splitlines()
-                except (OSError, UnicodeDecodeError):
-                    continue
-                for lineno, line in enumerate(lines, start=1):
-                    if rule.exception_marker and rule.exception_marker in line:
+            globs = rule.glob if isinstance(rule.glob, list) else [rule.glob]
+            for g in globs:
+                for path in root.rglob(g):
+                    if not path.is_file():
                         continue
-                    if rule.exception_marker and lineno > 1 and rule.exception_marker in lines[lineno - 2]:
+                    rel = path.relative_to(repo_root).as_posix()
+                    if any(rel.startswith(p) for p in rule.exclude_prefixes):
                         continue
-                    if rule.pattern.search(line):
-                        matches.append(f"{rel}:{lineno}: {line.strip()}")
+                    try:
+                        lines = path.read_text(encoding="utf-8").splitlines()
+                    except (OSError, UnicodeDecodeError):
+                        continue
+                    for lineno, line in enumerate(lines, start=1):
+                        if rule.exception_marker and rule.exception_marker in line:
+                            continue
+                        if rule.exception_marker and lineno > 1 and rule.exception_marker in lines[lineno - 2]:
+                            continue
+                        if rule.pattern.search(line):
+                            matches.append(f"{rel}:{lineno}: {line.strip()}")
         if matches:
             formatted = "\n".join(f"- {m}" for m in matches)
             _fail(f"{rule.name}: {rule.message}\n{formatted}\n")

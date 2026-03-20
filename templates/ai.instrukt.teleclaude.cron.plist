@@ -6,19 +6,19 @@
     <string>ai.instrukt.teleclaude.cron</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/Morriz/.local/bin/uv</string>
+        <string>{{UV_PATH}}</string>
         <string>run</string>
         <string>--quiet</string>
-        <string>/Users/Morriz/Workspace/InstruktAI/TeleClaude/scripts/cron_runner.py</string>
+        <string>{{WORKING_DIR}}/scripts/cron_runner.py</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/Morriz/Workspace/InstruktAI/TeleClaude</string>
+    <string>{{WORKING_DIR}}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/Users/Morriz/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>{{PATH}}</string>
         <key>HOME</key>
-        <string>/Users/Morriz</string>
+        <string>{{HOME}}</string>
     </dict>
     <key>StartInterval</key>
     <integer>300</integer>

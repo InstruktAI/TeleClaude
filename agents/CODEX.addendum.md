@@ -69,5 +69,3 @@ This file defines Codex-specific operating rules for this repository.
 Use this trailer in commits made by Codex:
 
 `Co-Authored-By: Codex <noreply@openai.com>`
-
-Commit behavior is governed by `@/Users/Morriz/.teleclaude/docs/software-development/policy/commits.md`.
