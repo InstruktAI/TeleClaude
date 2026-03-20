@@ -13,12 +13,13 @@ from ._types import JsonDict
 
 
 class ThinkingMode(str, Enum):
-    """Model tier: fast/med/slow."""
+    """Model tier: fast/med/slow/default."""
 
     FAST = "fast"
     MED = "med"
     SLOW = "slow"
     DEEP = "deep"
+    DEFAULT = "default"
 
 
 @dataclass
