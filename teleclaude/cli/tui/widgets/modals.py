@@ -233,8 +233,9 @@ class ModeSelector(TelecMixin, Widget, can_focus=True):
         self.refresh()
 
     @property
-    def selected_mode(self) -> str:
-        return self._MODES[self.selected][0]
+    def selected_mode(self) -> str | None:
+        mode = self._MODES[self.selected][0]
+        return None if mode == "default" else mode
 
 
 class SessionIdTypeSelector(TelecMixin, Widget, can_focus=True):
