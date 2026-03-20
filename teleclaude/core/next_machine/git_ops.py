@@ -160,6 +160,18 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
         logger.warning("Invalid git repository at %s", worktree_cwd)
         return ""
 
+    # Commit any pending state changes before merging. mark-phase writes
+    # state.yaml without committing — if we merge on a dirty worktree, git
+    # would auto-stash (repo-wide, corrupts other worktrees) or refuse.
+    try:
+        status = repo.git.status("--porcelain")
+        if status.strip():
+            repo.git.add("--", f"todos/{slug}")
+            repo.git.commit("-m", f"chore(todo): pre-merge state sync for {slug}", "--no-verify")
+            logger.info("Committed pending state changes before merge for %s", slug)
+    except GitCommandError as exc:
+        logger.debug("Pre-merge state commit skipped for %s: %s", slug, exc)
+
     try:
         repo.git.fetch("origin", "main")
     except GitCommandError as exc:
