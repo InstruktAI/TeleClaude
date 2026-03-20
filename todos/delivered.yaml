@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-mirror-conversation-text-drops-per-messa
+  date: '2026-03-20'
+  commit: 2b1bf259061b
 - slug: refactor-agent-readiness
   date: '2026-03-20'
   commit: 7466e1412d10
