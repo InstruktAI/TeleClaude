@@ -64,6 +64,7 @@ class _WsApp(app_ws.TelecAppWsMixin):
         self._tabs = tabs or _Tabs()
         self._post_messages: list[object] = []
         self._session_agents = {"session-1": "codex"}
+        self._tui_initiated_sessions: set[str] = set()
         self._activity_trigger = None
         self.notify = Mock()
         self._refresh_data = Mock()
@@ -184,11 +185,11 @@ def test_on_session_updated_updates_bridge_catalog() -> None:
 
 @pytest.mark.unit
 def test_on_session_started_daemon_spawned_session_does_not_auto_focus() -> None:
-    """Daemon-spawned sessions (with session_metadata.job) must not steal focus."""
+    """Sessions not created by the TUI must not steal focus."""
     sessions_view = _SessionsView()
     pane_bridge = _PaneBridge()
     app = _WsApp(sessions_view, pane_bridge, tabs=_Tabs(active="sessions"))
-    # Integrator session: no initiator_session_id, but has session_metadata with job
+    # Daemon-spawned integrator: not in _tui_initiated_sessions
     session = SessionDTO(
         session_id="integrator-1",
         title="/next-integrate",
@@ -202,7 +203,6 @@ def test_on_session_started_daemon_spawned_session_does_not_auto_focus() -> None
 
     app.on_session_started(SessionStarted(session))
 
-    # Session should be updated in views but NOT auto-selected/focused
     assert len(sessions_view.updated) == 1
     assert sessions_view.select_requests == []
     assert sessions_view.pending_applied == 0
@@ -210,11 +210,12 @@ def test_on_session_started_daemon_spawned_session_does_not_auto_focus() -> None
 
 @pytest.mark.unit
 def test_on_session_started_user_initiated_session_auto_focuses() -> None:
-    """User-initiated sessions (no initiator, no job metadata) should auto-focus."""
+    """Sessions created by the TUI should auto-focus."""
     sessions_view = _SessionsView()
     pane_bridge = _PaneBridge()
     app = _WsApp(sessions_view, pane_bridge, tabs=_Tabs(active="sessions"))
-    # User-initiated session: no initiator_session_id, no session_metadata
+    # TUI-created session: registered in _tui_initiated_sessions
+    app._tui_initiated_sessions.add("user-session-1")
     session = SessionDTO(
         session_id="user-session-1",
         title="my session",
@@ -228,4 +229,32 @@ def test_on_session_started_user_initiated_session_auto_focuses() -> None:
     app.on_session_started(SessionStarted(session))
 
     assert sessions_view.select_requests == [("user-session-1", True)]
+    assert sessions_view.pending_applied == 1
+    # Session ID should be removed from tracking set after focus
+    assert "user-session-1" not in app._tui_initiated_sessions
+
+
+@pytest.mark.unit
+def test_on_session_started_user_run_session_with_job_auto_focuses() -> None:
+    """User-initiated run-session (with job metadata) should auto-focus when TUI-tracked."""
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge, tabs=_Tabs(active="sessions"))
+    # Simulate: user started a run-session via TUI that has a job role
+    app._tui_initiated_sessions.add("run-session-1")
+    session = SessionDTO(
+        session_id="run-session-1",
+        title="/next-integrate",
+        status="idle",
+        computer="c1",
+        active_agent="claude",
+        session_metadata={"system_role": "integrator", "job": "integrator"},
+    )
+
+    from teleclaude.cli.tui.messages import SessionStarted
+
+    app.on_session_started(SessionStarted(session))
+
+    # Should auto-focus because the TUI initiated it, despite having job metadata
+    assert sessions_view.select_requests == [("run-session-1", True)]
     assert sessions_view.pending_applied == 1

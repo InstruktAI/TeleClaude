@@ -217,12 +217,12 @@ class TelecAppWsMixin:
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
         sessions_view.update_session(session)
 
-        # Auto-select new user-initiated sessions only while Sessions tab is active.
-        # Daemon-spawned sessions (with a job role in session_metadata) must not
-        # steal focus — they have no initiator_session_id but are not user-initiated.
-        meta = session.session_metadata
-        is_daemon_spawned = bool(meta and meta.get("job"))
-        if not session.initiator_session_id and not is_daemon_spawned:
+        # Auto-select only sessions that this TUI instance created.
+        # The set is populated by on_create_session_request when the user
+        # starts a session via the TUI modal.  Daemon-spawned and agent-spawned
+        # sessions never appear in the set, so they never steal focus.
+        if session.session_id in self._tui_initiated_sessions:  # type: ignore[attr-defined]
+            self._tui_initiated_sessions.discard(session.session_id)  # type: ignore[attr-defined]
             tabs = self.query_one("#main-tabs", TabbedContent)  # type: ignore[attr-defined]
             if tabs.active == "sessions":
                 sessions_view.request_select_session(session.session_id, request_focus=True)

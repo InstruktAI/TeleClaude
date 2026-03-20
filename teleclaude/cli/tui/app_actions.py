@@ -103,6 +103,7 @@ class TelecAppActionsMixin:
             try:
                 result = await self.api.revive_session(message.revive_session_id)  # type: ignore[attr-defined]
                 if result.status == "success":
+                    self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
                     self.notify(f"Revived session {message.revive_session_id}...")  # type: ignore[attr-defined]
                 else:
                     self.notify(result.error or "Revive failed", severity="error")  # type: ignore[attr-defined]
@@ -118,13 +119,14 @@ class TelecAppActionsMixin:
         if message.native_session_id:
             auto_command = f"agent_resume {message.agent} {message.native_session_id}"
             try:
-                await self.api.create_session(  # type: ignore[attr-defined]
+                result = await self.api.create_session(  # type: ignore[attr-defined]
                     computer=message.computer,
                     project_path=message.project_path,
                     agent=message.agent,
                     thinking_mode=message.thinking_mode or "slow",
                     auto_command=auto_command,
                 )
+                self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
                 self.notify("Resuming session...")  # type: ignore[attr-defined]
             except APP_ACTION_ERRORS as error:
                 self.notify(f"Failed to resume session: {error}", severity="error")  # type: ignore[attr-defined]
@@ -132,7 +134,7 @@ class TelecAppActionsMixin:
 
         # Normal new session
         try:
-            await self.api.create_session(  # type: ignore[attr-defined]
+            result = await self.api.create_session(  # type: ignore[attr-defined]
                 computer=message.computer,
                 project_path=message.project_path,
                 agent=message.agent,
@@ -140,6 +142,7 @@ class TelecAppActionsMixin:
                 title=message.title,
                 message=message.message,
             )
+            self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
             self.notify(f"Failed to create session: {error}", severity="error")  # type: ignore[attr-defined]
 
