@@ -202,8 +202,10 @@ jobs:
           set -euo pipefail
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
-            echo "No previous tags found — this is the first release"
-            LAST_TAG="v0.0.0"
+            # No tags — read current version from pyproject.toml as baseline
+            CURRENT_VER=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+            echo "No previous tags — using pyproject.toml version ${CURRENT_VER} as baseline"
+            LAST_TAG="v${CURRENT_VER}"
           fi
           echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
           CLEAN_VER="${LAST_TAG#v}"
