@@ -24,6 +24,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+_WRAPPER_LOG="${TELECLAUDE_GIT_WRAPPER_LOG:-}"
+
+_log_wrapper() {
+    [ -n "$_WRAPPER_LOG" ] && echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [git-wrapper] role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$_WRAPPER_LOG" || true
+}
+
 _real_git() {
     IFS=: read -ra path_parts <<< "$PATH"
     for dir in "${path_parts[@]}"; do
@@ -38,6 +44,7 @@ _real_git() {
             export "GIT_CONFIG_VALUE_${_count}=false"
             export "GIT_CONFIG_KEY_$((_count + 1))=merge.autoStash"
             export "GIT_CONFIG_VALUE_$((_count + 1))=false"
+            _log_wrapper "$@"
             "$dir/git" "$@"
             return $?
         fi

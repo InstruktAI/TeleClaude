@@ -311,6 +311,9 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
             session_token = await db.issue_session_token(session_id, principal, role)
             env_vars[TELEC_SESSION_TOKEN] = session_token
 
+        # Git wrapper observability — log all git calls from agent sessions
+        env_vars["TELECLAUDE_GIT_WRAPPER_LOG"] = "/var/log/instrukt-ai/teleclaude/git-wrapper.log"
+
         # Expose system_role to the git wrapper for permission decisions
         if session.session_metadata and session.session_metadata.system_role:
             role = session.session_metadata.system_role.strip().lower()
