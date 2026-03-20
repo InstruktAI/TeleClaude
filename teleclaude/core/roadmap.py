@@ -112,7 +112,7 @@ def _read_todo_metadata(  # pylint: disable=too-many-locals  # Flat data assembl
             prepare_phase = _non_empty_str(state.get("prepare_phase"))
             integration_phase = _non_empty_str(state.get("integration_phase"))
             finalize_status = _finalize_status(state.get("finalize"))
-            phase_status = _derive_phase_status(state.get("phase"), build_status, dor_score)
+            phase_status = _derive_phase_status(state.get("phase"), build_status, dor_score, prepare_phase)
         except (yaml.YAMLError, OSError):
             pass
 
@@ -150,11 +150,15 @@ def _finalize_status(value: object) -> str | None:
     return None
 
 
-def _derive_phase_status(raw_phase: object, build_status: str | None, dor_score: int | None) -> str:
+def _derive_phase_status(
+    raw_phase: object, build_status: str | None, dor_score: int | None, prepare_phase: str | None = None
+) -> str:
     if raw_phase in ("in_progress", "done"):
         return "in_progress"
     if build_status != "pending":
         return "in_progress"
+    if prepare_phase == "prepared":
+        return "ready"
     if isinstance(dor_score, int) and dor_score >= 8:
         return "ready"
     return "pending"
