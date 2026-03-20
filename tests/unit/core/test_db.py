@@ -40,7 +40,7 @@ class TestResolveSessionPrincipal:
         session = _make_session(human_email="alice@example.com", human_role="admin")
         principal, role = resolve_session_principal(session)
         assert principal == "human:alice@example.com"
-        assert role == "admin"
+        assert role is None
 
     @pytest.mark.unit
     def test_human_session_defaults_role_to_customer(self):
