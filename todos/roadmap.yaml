@@ -2,41 +2,36 @@
 
 - slug: mesh-trust-model
   after:
-    - mesh-architecture
-  description:
-    Per-event trust evaluation, immune system model, trust rings, sovereignty
+  - mesh-architecture
+  description: Per-event trust evaluation, immune system model, trust rings, sovereignty
     handles
 - slug: community-governance
   after:
-    - mesh-architecture
-  description:
-    'PR-based governance: two-round attention, time-boxed voting, AI+human
+  - mesh-architecture
+  description: 'PR-based governance: two-round attention, time-boxed voting, AI+human
     democracy'
 - slug: community-manager-agent
   after:
-    - community-governance
+  - community-governance
   description: 'GitHub event handlers: voting threshold, todo creation, feedback summarization'
 - slug: service-publication
   after:
-    - mesh-architecture
-    - mesh-trust-model
+  - mesh-architecture
+  - mesh-trust-model
   description: 'Services as events: local contracts, mesh publish, transactional capabilities'
 - slug: event-mesh-distribution
   group: event-platform
   after:
-    - mesh-architecture
-  description:
-    'Cross-node event distribution: local/cluster/public visibility, cartridge
+  - mesh-architecture
+  description: 'Cross-node event distribution: local/cluster/public visibility, cartridge
     publishing via mesh'
 - slug: public-website-blog
   description: Public website with landing page and blog for InstruktAI/TeleClaude
 - slug: mesh-architecture
-  description:
-    'P2P mesh: DNS bootstrap, gossip discovery, HTTPS transport, burst
+  description: 'P2P mesh: DNS bootstrap, gossip discovery, HTTPS transport, burst
     mitigation'
 - slug: session-runtime-overhaul
-  description:
-    'Render-aware session runtime: wake-driven capture, adaptive cadence,
+  description: 'Render-aware session runtime: wake-driven capture, adaptive cadence,
     and reduced idle tmux overhead for all session types'
 - slug: session-polling-baseline
   group: session-runtime-overhaul
@@ -44,18 +39,18 @@
 - slug: session-adaptive-runtime
   group: session-runtime-overhaul
   after:
-    - session-polling-baseline
+  - session-polling-baseline
 - slug: session-async-control-lane
   group: session-runtime-overhaul
   after:
-    - session-adaptive-runtime
+  - session-adaptive-runtime
 - slug: telec-message-primitive
 - slug: ts-migration
   description: Migrate Python daemon and CLI to TypeScript/Bun
 - slug: web-tui-parity
-  description:
-    Full TUI parity in web frontend — all 4 tabs, hierarchical trees, keyboard
+  description: Full TUI parity in web frontend — all 4 tabs, hierarchical trees, keyboard
     nav, activity highlights, footer, toasts
 - slug: ts-migration-requirements
 - slug: refactor-agent-readiness
 - slug: fix-api-command-receipt
+- slug: chip-tunes-regression
