@@ -37,7 +37,7 @@ def _run_wrapper(args: list[str], role: str | None = None, cwd: str | None = Non
     )
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(10, method="thread")
 class TestStashPermissions:
     def test_worker_blocked(self) -> None:
         result = _run_wrapper(["stash"])
@@ -65,7 +65,7 @@ class TestStashPermissions:
         assert "prohibited" not in result.stderr
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(10, method="thread")
 class TestCheckoutPermissions:
     def test_bare_checkout_blocked_for_all(self) -> None:
         for role in [None, "worker", "integrator", "system", "orchestrator"]:
@@ -100,7 +100,7 @@ class TestCheckoutPermissions:
         assert "prohibited" not in result.stderr
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(10, method="thread")
 class TestCommitOnMainPermissions:
     """Commit-on-main requires the branch to actually be 'main'."""
 
@@ -135,7 +135,7 @@ class TestCommitOnMainPermissions:
         assert result.returncode != 0
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(10, method="thread")
 class TestPushFromMainPermissions:
     """Push-from-main requires the branch to actually be 'main' and the 'system' role."""
 
@@ -178,7 +178,7 @@ class TestPushFromMainPermissions:
         assert "blocked" in result.stderr.lower()
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(10, method="thread")
 class TestResetPermissions:
     def test_bare_reset_blocked(self, tmp_path: Path) -> None:
         """git reset (bare) should be blocked."""
