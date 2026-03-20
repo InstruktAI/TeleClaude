@@ -39,7 +39,6 @@ class TestLoadSchema:
 
 class TestCliEnv:
     def test_strips_api_key_and_claude_code_prefixed_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("CI", raising=False)
         monkeypatch.setenv("OPENAI_API_KEY", "secret")
         monkeypatch.setenv("CLAUDE_CODE_TOKEN", "secret")
         monkeypatch.setenv("SAFE_VALUE", "kept")

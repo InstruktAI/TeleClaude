@@ -251,13 +251,7 @@ _CLI_STRIP_EXACT = {
 
 
 def _cli_env() -> dict[str, str]:
-    """Build a clean environment for CLI agent subprocesses.
-
-    In CI, API keys are the only auth path (runner is sandboxed from
-    host OAuth credential stores), so stripping is skipped.
-    """
-    if os.environ.get("CI") == "true":
-        return dict(os.environ)
+    """Build a clean environment for CLI agent subprocesses."""
     return {
         k: v
         for k, v in os.environ.items()
@@ -266,11 +260,8 @@ def _cli_env() -> dict[str, str]:
 
 
 def _resolve_flags(spec: _OneshotSpec) -> str:
-    """Resolve agent flags, stripping OAuth force in CI."""
-    flags = str(spec.get("flags", ""))
-    if os.environ.get("CI") == "true":
-        flags = flags.replace('"forceLoginMethod": "claudeai", ', "")
-    return flags
+    """Resolve agent flags from spec."""
+    return str(spec.get("flags", ""))
 
 
 def _run_agent(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-statements
