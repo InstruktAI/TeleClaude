@@ -217,7 +217,7 @@ def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tupl
         logger.debug("First push attempt failed: %s", push_exc)
 
     try:
-        repo.git.pull("--rebase", "origin", "main")
+        repo.git.pull("--rebase", "--no-autostash", "origin", "main")
         repo.git.push("origin", "main")
         logger.info("Bookkeeping rebased and pushed: %s", subject_clean)
         return True, "rebased_and_pushed"
