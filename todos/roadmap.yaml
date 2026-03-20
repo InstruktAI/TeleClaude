@@ -54,3 +54,4 @@
 - slug: fix-api-command-receipt
 - slug: chip-tunes-regression
 - slug: session-memory-extraction
+- slug: state-machine-versioning
