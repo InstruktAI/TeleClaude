@@ -532,8 +532,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         # has correct IDs before _apply() has been called.  After the first load,
         # layout state is owned exclusively by StickyChanged/PreviewChanged messages;
         # writing directly here would bypass _apply() and diverge pane_manager state.
+        # Exception: on reload, sync once so seed_for_reload() can map panes to sessions.
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
-        if not self._initial_layout_applied:
+        if not self._initial_layout_applied or pane_bridge.pane_manager.has_reload_panes():
             pane_bridge.sync_layout_state(
                 preview_session_id=sessions_view.preview_session_id,
                 sticky_session_ids=list(getattr(sessions_view, "_sticky_session_ids", [])),
