@@ -6,12 +6,6 @@ review: pending
 deferrals_processed: false
 finalize:
   status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
@@ -22,19 +16,31 @@ unresolved_findings: []
 resolved_findings: []
 prepare_phase: ''
 grounding:
-  valid: false
-  base_sha: ''
-  input_digest: ''
-  referenced_paths: []
-  last_grounded_at: ''
+  valid: true
+  base_sha: 0958562478a0d9341680d00be3f9bb692cfc4de2
+  input_digest: 1ae046f81fda1e5508c6f13b4bd753df
+  referenced_paths:
+  - jobs/session_memory_extraction.py
+  - docs/project/design/architecture/jobs-runner.md
+  - docs/project/design/architecture/memory-system.md
+  - docs/project/design/architecture/redis-transport.md
+  - teleclaude/core/summarizer.py
+  - teleclaude/mirrors/generator.py
+  - teleclaude/mirrors/store.py
+  - teleclaude/memory/store.py
+  - teleclaude/memory/types.py
+  - teleclaude/channels/publisher.py
+  - teleclaude/utils/transcript/_extraction.py
+  - teleclaude/services/maintenance_service.py
+  last_grounded_at: '2026-03-20T05:38:04Z'
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-20T05:38:04Z'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  rounds: 1
+  baseline_commit: 0958562478a0d9341680d00be3f9bb692cfc4de2
   findings: []
 test_spec_review:
   verdict: ''
@@ -54,8 +60,8 @@ artifacts:
     produced_at: ''
     stale: false
   requirements:
-    digest: ''
-    produced_at: ''
+    digest: 8b03d1177e7375e95296933ec0e0bb2def5db8f4ad89c607bf64e677d7b68549
+    produced_at: '2026-03-20T05:38:04Z'
     stale: false
   test_specs:
     digest: ''
@@ -73,11 +79,11 @@ audit:
     started_at: ''
     completed_at: ''
   requirements_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
+    started_at: '2026-03-20T05:30:27.995886+00:00'
+    completed_at: '2026-03-20T05:38:04Z'
+    baseline_commit: 0958562478a0d9341680d00be3f9bb692cfc4de2
+    verdict: approve
+    rounds: 1
     findings: []
   plan_drafting:
     started_at: ''
