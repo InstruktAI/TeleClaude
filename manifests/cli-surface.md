@@ -773,6 +773,16 @@ Show full transcript for a session
 
 Search and manage memory observations
 
+### `telec memories list`
+
+List memory observations
+
+**Flags:**
+
+- `--limit`: Max results (default: 50)
+- `--type`: Filter by type: preference, decision, discovery, gotcha, pattern, friction, context
+- `--project`: Filter by project name
+
 ### `telec memories search`
 
 Search memory observations
