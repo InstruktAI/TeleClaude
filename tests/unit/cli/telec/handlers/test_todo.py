@@ -25,19 +25,6 @@ def mock_commit_bookkeeping():
         yield mock
 
 
-def test_handle_todo_create_pushes_to_remote(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_commit_bookkeeping: MagicMock
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        todo_handler, "create_todo_skeleton", lambda *args, **kwargs: tmp_path / "todos" / "sample-todo"
-    )
-
-    todo_handler._handle_todo_create(["sample-todo"])
-
-    mock_commit_bookkeeping.assert_called_once()
-
-
 def test_handle_todo_dump_pushes_to_remote(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_ensure_pushed: MagicMock
 ) -> None:
@@ -66,16 +53,6 @@ def test_handle_todo_split_pushes_parent_and_children(
     mock_ensure_pushed.assert_any_call(str(tmp_path), "parent")
     mock_ensure_pushed.assert_any_call(str(tmp_path), "child-a")
     mock_ensure_pushed.assert_any_call(str(tmp_path), "child-b")
-
-
-def test_handle_todo_routes_scaffold_create(monkeypatch: pytest.MonkeyPatch) -> None:
-    received: list[list[str]] = []
-
-    monkeypatch.setattr(todo_handler, "_handle_todo_create", lambda args: received.append(args))
-
-    todo_handler._handle_todo(["scaffold", "sample"])
-
-    assert received == [["sample"]]
 
 
 def test_handle_todo_validate_calls_single_slug_validator(

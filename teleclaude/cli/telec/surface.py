@@ -388,15 +388,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
-            "scaffold": CommandDef(
-                desc="Scaffold todo files for a slug",
-                args="<slug>",
-                flags=[
-                    Flag("--after", desc="Comma-separated dependency slugs"),
-                ],
-                notes=["Also registers the entry in roadmap.yaml when --after is provided."],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),
-            ),
             "remove": CommandDef(
                 desc="Remove a todo and its roadmap entry",
                 args="<slug>",

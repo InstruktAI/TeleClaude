@@ -15,7 +15,6 @@ from teleclaude.todo_scaffold import create_todo_skeleton
 
 __all__ = [
     "_handle_todo",
-    "_handle_todo_create",
     "_handle_todo_dump",
     "_handle_todo_from_main",
     "_handle_todo_mark_ready",
@@ -76,8 +75,6 @@ def _handle_todo(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "co-create":
         handle_todo_create(args[1:])
-    elif subcommand == "scaffold":
-        _handle_todo_create(args[1:])
     elif subcommand == "remove":
         _handle_todo_remove(args[1:])
     elif subcommand == "validate":
@@ -359,61 +356,6 @@ def _handle_todo_split(args: list[str]) -> None:
         str(project_root),
         commit_paths,
         f"chore(todos): split {slug}",
-    )
-    if not _ok and _reason in ("commit_failed", "not_a_repo"):
-        print(f"Warning: bookkeeping commit skipped ({_reason})")
-
-
-def _handle_todo_create(args: list[str]) -> None:
-    """Handle telec todo create."""
-    if not args:
-        print(_usage("todo", "create"))
-        return
-
-    slug: str | None = None
-    project_root = Path.cwd()
-    after: list[str] | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--after" and i + 1 < len(args):
-            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "create"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if not slug:
-        print("Missing required slug.")
-        print(_usage("todo", "create"))
-        raise SystemExit(1)
-
-    try:
-        todo_dir = create_todo_skeleton(project_root, slug, after=after)
-    except ValueError as exc:
-        print(f"Error: {exc}")
-        raise SystemExit(1) from exc
-
-    print(f"Created todo skeleton: {todo_dir}")
-    if after:
-        print(f"Updated dependencies for {todo_dir.name}: {', '.join(after)}")
-
-    # Auto-commit bookkeeping on main
-    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
-
-    _ok, _reason = commit_bookkeeping_to_main(
-        str(project_root),
-        [f"todos/{todo_dir.name}", "todos/roadmap.yaml"],
-        f"chore(todos): scaffold {todo_dir.name}",
     )
     if not _ok and _reason in ("commit_failed", "not_a_repo"):
         print(f"Warning: bookkeeping commit skipped ({_reason})")

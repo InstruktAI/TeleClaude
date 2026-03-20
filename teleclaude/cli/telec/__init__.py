@@ -105,7 +105,6 @@ from teleclaude.cli.telec.handlers.roadmap import (
 )
 from teleclaude.cli.telec.handlers.todo import (
     _handle_todo,
-    _handle_todo_create,
     _handle_todo_dump,
     _handle_todo_remove,
     _handle_todo_split,
@@ -228,7 +227,6 @@ __all__ = [
     "_handle_signals_status",
     "_handle_sync",
     "_handle_todo",
-    "_handle_todo_create",
     "_handle_todo_demo",
     "_handle_todo_dump",
     "_handle_todo_remove",
