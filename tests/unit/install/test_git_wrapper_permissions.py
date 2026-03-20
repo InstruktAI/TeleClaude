@@ -75,20 +75,12 @@ class TestCheckoutPermissions:
         assert result.returncode != 0
         assert "prohibited" in result.stderr
 
-    def test_file_scoped_checkout_allowed_for_integrator(self, tmp_path: Path) -> None:
-        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-        (tmp_path / "f.txt").write_text("x")
-        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
-        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
-        result = _run_wrapper(["checkout", "HEAD", "--", "f.txt"], role="integrator", cwd=str(tmp_path))
+    def test_file_scoped_checkout_allowed_for_integrator(self) -> None:
+        result = _run_wrapper(["checkout", "HEAD", "--", "f.txt"], role="integrator")
         assert "prohibited" not in result.stderr
 
-    def test_file_scoped_checkout_allowed_for_system(self, tmp_path: Path) -> None:
-        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-        (tmp_path / "f.txt").write_text("x")
-        subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
-        subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
-        result = _run_wrapper(["checkout", "HEAD", "--", "f.txt"], role="system", cwd=str(tmp_path))
+    def test_file_scoped_checkout_allowed_for_system(self) -> None:
+        result = _run_wrapper(["checkout", "HEAD", "--", "f.txt"], role="system")
         assert "prohibited" not in result.stderr
 
 
