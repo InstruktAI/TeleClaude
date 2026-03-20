@@ -228,15 +228,13 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         name="telec setup",
         include_patterns=[
             "teleclaude/project_setup/**",
-            "templates/ai.instrukt.teleclaude.docs-watch.plist",
-            "templates/teleclaude-docs-watch.service",
-            "templates/teleclaude-docs-watch.path",
+            "templates/**",
             ".pre-commit-config.yaml",
             ".gitattributes",
             ".husky/pre-commit",
         ],
-        instruction="Run `telec init` (setup changed: watchers, hook installers, or git filters)",
-        evidence_substrings=["telec init"],
+        instruction="Run `make install` (setup changed: templates, hook installers, or git filters)",
+        evidence_substrings=["make install", "telec init"],
         precedence=10,
     ),
     FileCategory(
