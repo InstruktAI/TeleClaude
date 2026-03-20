@@ -1,25 +1,15 @@
 """Session snapshot, args, and info models for TeleClaude."""
 
 from dataclasses import asdict, dataclass, field
-from enum import Enum
 from typing import cast
 
 from teleclaude.core.feedback import get_last_output_summary
+from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
 from teleclaude.types import SystemStats
 
 from ._session import Session, SessionMetadata
 from ._types import JsonDict
-
-
-class ThinkingMode(str, Enum):
-    """Model tier: fast/med/slow/default."""
-
-    FAST = "fast"
-    MED = "med"
-    SLOW = "slow"
-    DEEP = "deep"
-    DEFAULT = "default"
 
 
 @dataclass
