@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Consensus arbiter for multi-lane release reports.
 
-Consumes three AI lane reports (Claude, Codex, Gemini), resolves
-classification conflicts via majority vote, and emits an authoritative
-release decision as JSON.
+Consumes AI lane reports, resolves classification conflicts via majority
+vote, and emits an authoritative release decision as JSON.
+
+Enabled agents are read from config.yml (same resolution as `telec config get`).
+Quorum scales dynamically: 1 agent → 1/1, 2 → 2/2, 3 → 2/3.
+Arbiter preference for rationale: Claude > Codex > Gemini.
 
 Exit codes:
   0 — valid decision written (release authorized or not)
-  1 — quorum failure (fewer than 2 valid reports)
+  1 — quorum failure (fewer than required valid reports)
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from operator import itemgetter
 from pathlib import Path
 from typing import Literal, cast
 
+import yaml
 from typing_extensions import TypedDict
 
 
@@ -50,7 +54,47 @@ Classification = Literal["patch", "minor", "none"]
 
 VALID_CLASSIFICATIONS: set[str] = {"patch", "minor", "none"}
 
-LANE_NAMES = ("claude", "codex", "gemini")
+# All known lane names in arbiter preference order (most trusted first).
+ARBITER_PREFERENCE = ("claude", "codex", "gemini")
+
+
+def get_enabled_agents(config_path: Path | None = None) -> list[str]:
+    """Read enabled agents from config.yml in arbiter preference order."""
+    if config_path is None:
+        config_path = Path.cwd() / "config.yml"
+    if not config_path.exists():
+        print(f"WARNING: config not found at {config_path}, defaulting to all agents", file=sys.stderr)
+        return list(ARBITER_PREFERENCE)
+
+    with open(config_path, encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    agents_raw = raw.get("agents", {})
+    if not isinstance(agents_raw, dict):
+        print("WARNING: agents section invalid, defaulting to all agents", file=sys.stderr)
+        return list(ARBITER_PREFERENCE)
+
+    enabled = []
+    for name in ARBITER_PREFERENCE:
+        agent_cfg = agents_raw.get(name)
+        if isinstance(agent_cfg, dict) and agent_cfg.get("enabled", True):
+            enabled.append(name)
+        elif agent_cfg is None:
+            # Agent not mentioned in config — skip
+            pass
+
+    if not enabled:
+        print("WARNING: no enabled agents found, defaulting to all agents", file=sys.stderr)
+        return list(ARBITER_PREFERENCE)
+
+    return enabled
+
+
+def _required_quorum(n_enabled: int) -> int:
+    """Dynamic quorum: 1→1, 2→2, 3→2."""
+    if n_enabled <= 2:
+        return n_enabled
+    return n_enabled - 1
 
 
 def load_report(path: Path) -> LaneReport | None:
@@ -69,7 +113,7 @@ def load_report(path: Path) -> LaneReport | None:
         print(f"WARNING: {path} payload is not an object", file=sys.stderr)
         return None
 
-    data = cast(dict[str, object], data_obj)  # guard: loose-dict - TOML parsed data — release config
+    data = cast(dict[str, object], data_obj)  # guard: loose-dict - JSON parsed data — release report
 
     classification = data.get("classification")
     if classification not in VALID_CLASSIFICATIONS:
@@ -93,13 +137,14 @@ def load_report(path: Path) -> LaneReport | None:
 
 def resolve_consensus(
     reports: dict[str, LaneReport | None],
+    enabled_agents: list[str],
 ) -> ArbiterDecision:
     """Apply consensus rules and return the arbiter decision payload."""
     lane_summary: dict[str, str | None] = {}
     valid_reports: dict[str, LaneReport] = {}
     evidence: list[str] = []
 
-    for lane in LANE_NAMES:
+    for lane in enabled_agents:
         report = reports.get(lane)
         if report is not None:
             lane_summary[lane] = report["classification"]
@@ -108,14 +153,16 @@ def resolve_consensus(
         else:
             lane_summary[lane] = None
 
-    # Quorum: need at least 2 of 3 reports for consensus
+    n_enabled = len(enabled_agents)
     n_valid = len(valid_reports)
-    if n_valid < 2:
+    quorum = _required_quorum(n_enabled)
+
+    if n_valid < quorum:
         return _decision(
             authorized=False,
             quorum_met=False,
             version="none",
-            rationale=f"Only {n_valid}/3 valid reports — need at least 2 for quorum.",
+            rationale=f"Only {n_valid}/{n_enabled} valid reports — need at least {quorum} for quorum.",
             lane_summary=lane_summary,
             evidence=evidence,
         )
@@ -125,8 +172,8 @@ def resolve_consensus(
     counts = Counter(classifications)
     most_common, most_count = counts.most_common(1)[0]
 
-    # Majority consensus (2+ agree)
-    if most_count >= 2:
+    # Majority consensus (2+ agree, or unanimous for 1-agent)
+    if most_count >= quorum:
         # Conservative override: majority says "none" but minority found contract changes.
         # Trust the minority — they detected real changes the majority missed.
         if most_common == "none":
@@ -155,17 +202,16 @@ def resolve_consensus(
             evidence=evidence,
         )
 
-    # With 2 reports: disagreement means pick the more detailed one
-    # With 3 reports: three-way split — same logic
-    best_lane = _pick_most_detailed(valid_reports)
-    if best_lane:
-        chosen = valid_reports[best_lane]["classification"]
+    # Disagreement — pick by arbiter preference order (Claude > Codex > Gemini)
+    arbiter_lane = _pick_arbiter(valid_reports, enabled_agents)
+    if arbiter_lane:
+        chosen = valid_reports[arbiter_lane]["classification"]
         authorized = chosen in ("patch", "minor")
         return _decision(
             authorized=authorized,
             quorum_met=True,
             version=chosen,
-            rationale=f"{n_valid}-way split — {best_lane} has most detailed contract_changes, choosing {chosen}.",
+            rationale=f"Disagreement — {arbiter_lane} (arbiter preference) decides: {chosen}.",
             lane_summary=lane_summary,
             evidence=evidence,
         )
@@ -175,22 +221,34 @@ def resolve_consensus(
         authorized=False,
         quorum_met=True,
         version="none",
-        rationale="Three-way disagreement with no clear detail winner — defaulting to no release.",
+        rationale="Disagreement with no arbiter available — defaulting to no release.",
         lane_summary=lane_summary,
         evidence=evidence,
     )
 
 
-def _pick_most_detailed(reports: dict[str, LaneReport]) -> str | None:
-    """Return the lane with the most contract_changes entries, or None if tied."""
+def _pick_arbiter(reports: dict[str, LaneReport], enabled_agents: list[str]) -> str | None:
+    """Pick the arbiter by preference order. Falls back to most-detailed if preferred has no detail."""
+    enabled_set = set(enabled_agents)
+
+    # First: prefer by arbiter order if the report has contract_changes
+    for lane in ARBITER_PREFERENCE:
+        if lane in enabled_set and lane in reports and reports[lane]["contract_changes"]:
+            return lane
+
+    # Fallback: most detailed report by contract_changes count
     scored: list[tuple[str, int]] = []
     for lane, report in reports.items():
-        changes = report["contract_changes"]
-        scored.append((lane, len(changes)))
+        scored.append((lane, len(report["contract_changes"])))
 
     scored.sort(key=itemgetter(1), reverse=True)
     if len(scored) >= 2 and scored[0][1] > scored[1][1] and scored[0][1] > 0:
         return scored[0][0]
+
+    # Last resort: first enabled agent in arbiter preference order
+    for lane in ARBITER_PREFERENCE:
+        if lane in enabled_set and lane in reports:
+            return lane
     return None
 
 
@@ -227,13 +285,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    enabled_agents = get_enabled_agents()
+    print(f"Enabled agents: {', '.join(enabled_agents)}", file=sys.stderr)
+    print(f"Quorum required: {_required_quorum(len(enabled_agents))}/{len(enabled_agents)}", file=sys.stderr)
+
+    report_paths: dict[str, Path] = {
+        "claude": args.claude_report,
+        "codex": args.codex_report,
+        "gemini": args.gemini_report,
+    }
     reports: dict[str, LaneReport | None] = {
-        "claude": load_report(args.claude_report),
-        "codex": load_report(args.codex_report),
-        "gemini": load_report(args.gemini_report),
+        name: load_report(report_paths[name]) if name in enabled_agents else None for name in report_paths
     }
 
-    decision = resolve_consensus(reports)
+    decision = resolve_consensus(reports, enabled_agents)
     args.output.write_text(json.dumps(decision, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(decision, indent=2))
 

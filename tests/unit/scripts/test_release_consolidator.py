@@ -30,22 +30,22 @@ class TestUnanimousScenario:
 
     def test_release_authorized(self) -> None:
         reports = _load_scenario("unanimous")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["release_authorized"] is True
 
     def test_target_version(self) -> None:
         reports = _load_scenario("unanimous")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["target_version"] == "patch"
 
     def test_rationale_mentions_consensus(self) -> None:
         reports = _load_scenario("unanimous")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert "3/3 lanes agree" in decision["authoritative_rationale"]
 
     def test_lane_summary_all_patch(self) -> None:
         reports = _load_scenario("unanimous")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         for lane in ("claude", "codex", "gemini"):
             assert decision["lane_summary"][lane] == "patch"
 
@@ -55,17 +55,17 @@ class TestSplitScenario:
 
     def test_release_authorized(self) -> None:
         reports = _load_scenario("split")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["release_authorized"] is True
 
     def test_target_version(self) -> None:
         reports = _load_scenario("split")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["target_version"] == "patch"
 
     def test_rationale_mentions_majority(self) -> None:
         reports = _load_scenario("split")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert "2/3 lanes agree" in decision["authoritative_rationale"]
 
 
@@ -74,17 +74,17 @@ class TestOverrideScenario:
 
     def test_release_authorized(self) -> None:
         reports = _load_scenario("override")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["release_authorized"] is True
 
     def test_target_version(self) -> None:
         reports = _load_scenario("override")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["target_version"] == "patch"
 
     def test_rationale_mentions_contract_changes(self) -> None:
         reports = _load_scenario("override")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert "contract changes" in decision["authoritative_rationale"]
 
 
@@ -98,7 +98,7 @@ class TestEdgeCases:
             "codex": _load_scenario("unanimous")["codex"],
             "gemini": None,
         }
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["release_authorized"] is True
         assert "2/" in decision["authoritative_rationale"]
 
@@ -109,7 +109,7 @@ class TestEdgeCases:
             "codex": None,
             "gemini": None,
         }
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["release_authorized"] is False
         assert "quorum" in decision["authoritative_rationale"].lower()
 
@@ -125,7 +125,7 @@ class TestEdgeCases:
             "codex": none_report,
             "gemini": none_report,
         }
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["release_authorized"] is False
         assert decision["target_version"] == "none"
 
@@ -140,7 +140,7 @@ class TestQuorumMetField:
             "codex": None,
             "gemini": None,
         }
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["quorum_met"] is False
 
     def test_unanimous_none_sets_quorum_met_true(self) -> None:
@@ -156,14 +156,14 @@ class TestQuorumMetField:
             "codex": none_report,
             "gemini": none_report,
         }
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["quorum_met"] is True
         assert decision["release_authorized"] is False
 
     def test_authorized_release_sets_quorum_met_true(self) -> None:
         """Unanimous patch → quorum_met=True, release_authorized=True."""
         reports = _load_scenario("unanimous")
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["quorum_met"] is True
         assert decision["release_authorized"] is True
 
@@ -174,7 +174,7 @@ class TestQuorumMetField:
             "codex": None,
             "gemini": None,
         }
-        decision = resolve_consensus(reports)
+        decision = resolve_consensus(reports, ["claude", "codex", "gemini"])
         assert decision["quorum_met"] is False
 
 

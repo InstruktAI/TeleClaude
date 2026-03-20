@@ -29,7 +29,6 @@ env/
 # Environment & Config
 .env
 !tests/integration/.env
-config.yml
 !tests/integration/config.yml
 
 # Runtime

@@ -12,8 +12,6 @@ jobs:
     name: AI Release Analysis
     runs-on: [self-hosted, macOS, ARM64]
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    env:
-      TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
 
     steps:
       - uses: actions/checkout@v4
@@ -83,119 +81,103 @@ jobs:
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           echo "LAST_TAG=$LAST_TAG" >> $GITHUB_ENV
+
+          # 1. Generate current manifests
+          ./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())" > manifests/cli-surface.md
+          ./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())" > manifests/events.md
+          ./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())" > manifests/config.md
+
+          # 2. Build manifest diff against baseline from last tag
           if [ -n "$LAST_TAG" ]; then
-            git diff "$LAST_TAG"..HEAD > release-diff.txt
+            manifest_diff=""
+            for name in cli-surface events config; do
+              baseline=$(git show "$LAST_TAG:manifests/${name}.md" 2>/dev/null || echo "")
+              if [ -z "$baseline" ]; then
+                manifest_diff="${manifest_diff}### ${name}.md\nNo baseline at ${LAST_TAG} — treating all items as new.\n\n"
+              else
+                section_diff=$(diff -u <(echo "$baseline") "manifests/${name}.md" || true)
+                if [ -z "$section_diff" ]; then
+                  manifest_diff="${manifest_diff}### ${name}.md\nNo changes.\n\n"
+                else
+                  manifest_diff="${manifest_diff}### ${name}.md\n\`\`\`diff\n${section_diff}\n\`\`\`\n\n"
+                fi
+              fi
+            done
           else
-            git ls-files > release-diff.txt
+            manifest_diff="First release — all manifest items are new additions.\n"
           fi
 
-          # Build the full prompt to a file so it doesn't blow the arg limit
+          # 3. Commit log (commitizen format carries classification intent)
+          if [ -n "$LAST_TAG" ]; then
+            commit_log=$(git log --oneline "$LAST_TAG"..HEAD)
+          else
+            commit_log=$(git log --oneline -100)
+          fi
+
+          # 4. Diffstat (file names + line counts, not content)
+          if [ -n "$LAST_TAG" ]; then
+            diffstat=$(git diff --stat "$LAST_TAG"..HEAD)
+          else
+            diffstat="First release — diffstat not applicable."
+          fi
+
+          # 5. Assemble prompt
           {
             cat docs/project/spec/release-inspector-prompt.md
             echo ""
-            echo "MANIFESTS:"
-            echo "CLI:"
-            ./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())"
-            echo "Events:"
-            ./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())"
-            echo "Config:"
-            ./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())"
+            echo "# MANIFEST DIFF"
+            echo -e "$manifest_diff"
+            echo "# CURRENT MANIFESTS"
+            echo "## CLI Surface"
+            cat manifests/cli-surface.md
             echo ""
-            echo "DIFF:"
-            cat release-diff.txt
+            echo "## Events"
+            cat manifests/events.md
+            echo ""
+            echo "## Config"
+            cat manifests/config.md
+            echo ""
+            echo "# COMMIT LOG"
+            echo "$commit_log"
+            echo ""
+            echo "# DIFFSTAT"
+            echo "$diffstat"
           } > release-prompt.txt
           echo "Prompt size: $(wc -c < release-prompt.txt) bytes"
 
-      - name: Claude Release Lane
-        # 2-of-3 quorum by design — individual lane failures are expected
-        continue-on-error: true
+      - name: Run Release Lanes and Consolidate
         run: |
-          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
-            --agent claude --thinking-mode slow \
+          ./.venv/bin/python scripts/release_lanes.py \
             --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > claude-report.json || true
-
-      - name: Codex Release Lane
-        # 2-of-3 quorum by design — individual lane failures are expected
-        continue-on-error: true
-        run: |
-          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
-            --agent codex --thinking-mode slow \
-            --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > codex-report.json || true
-
-      - name: Gemini Release Lane
-        # 2-of-3 quorum by design — individual lane failures are expected
-        continue-on-error: true
-        run: |
-          ./.venv/bin/python -m teleclaude.helpers.agent_cli \
-            --agent gemini --thinking-mode slow \
-            --prompt-file release-prompt.txt \
-            --schema-file docs/project/spec/release-report-schema.md > gemini-report.json || true
-
-      - name: Verify quorum (2 of 3 lanes)
-        run: |
-          count=0
-          for f in claude-report.json codex-report.json gemini-report.json; do
-            if jq -e '.classification' "$f" >/dev/null 2>&1; then
-              count=$((count + 1))
-              echo "✓ $f valid (classification: $(jq -r '.classification' "$f"))"
-            else
-              echo "✗ $f missing, empty, or invalid JSON"
-              echo "  Content: $(cat "$f" 2>/dev/null || echo '<file not found>')"
-            fi
-          done
-          echo "Quorum: $count/3 reports"
-          if [ "$count" -lt 2 ]; then
-            echo "::error::Release quorum not met — need at least 2 of 3 lane reports"
-            exit 1
-          fi
+            --schema-file docs/project/spec/release-report-schema.md
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
           name: ai-release-reports
           path: |
-            claude-report.json
-            codex-report.json
-            gemini-report.json
+            *-report.json
+            arbiter-decision.json
           if-no-files-found: warn
 
   release-arbitration:
-    name: Consensus Arbiter
+    name: Read Arbiter Decision
     needs: [release-analysis]
     runs-on: [self-hosted, macOS, ARM64]
     outputs:
       release_authorized: ${{ steps.arbiter.outputs.release_authorized }}
       target_version: ${{ steps.arbiter.outputs.target_version }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Bootstrap Environment
-        run: make bootstrap-ci
       - name: Download Reports
         uses: actions/download-artifact@v4
         with:
           name: ai-release-reports
-      - name: Run Consensus Arbiter
+      - name: Extract Decision
         id: arbiter
         run: |
-          echo "Reports collected for arbitration:"
-          ls -la *.json
-          echo "---"
-          ./.venv/bin/python scripts/release_consolidator.py \
-            --claude-report claude-report.json \
-            --codex-report codex-report.json \
-            --gemini-report gemini-report.json \
-            -o arbiter-decision.json
+          cat arbiter-decision.json
           echo "release_authorized=$(jq -r '.release_authorized' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
           echo "target_version=$(jq -r '.target_version' arbiter-decision.json)" >> "$GITHUB_OUTPUT"
-      - name: Upload Decision
-        uses: actions/upload-artifact@v4
-        with:
-          name: arbiter-decision
-          path: arbiter-decision.json
 
   authorized-tag:
     name: Create Release Tag
@@ -213,7 +195,7 @@ jobs:
       - name: Download Arbiter Decision
         uses: actions/download-artifact@v4
         with:
-          name: arbiter-decision
+          name: ai-release-reports
       - name: Compute Next Version
         id: version
         run: |
@@ -237,6 +219,24 @@ jobs:
           NEXT_TAG="v${major}.${minor}.${patch}"
           echo "next_tag=$NEXT_TAG" >> "$GITHUB_OUTPUT"
           echo "Computed next version: $NEXT_TAG (bump=$BUMP from $LAST_TAG)"
+      - name: Generate manifests for tag baseline
+        run: |
+          mkdir -p manifests
+          ./.venv/bin/python -c "from teleclaude.cli.telec.surface import export_surface_markdown; print(export_surface_markdown())" > manifests/cli-surface.md
+          ./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())" > manifests/events.md
+          ./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())" > manifests/config.md
+
+      - name: Commit version bump and manifests
+        run: |
+          set -euo pipefail
+          NEXT_VER="${{ steps.version.outputs.next_tag }}"
+          CLEAN_VER="${NEXT_VER#v}"
+          sed -i '' "s/^version = \".*\"/version = \"${CLEAN_VER}\"/" pyproject.toml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml manifests/cli-surface.md manifests/events.md manifests/config.md
+          git commit -m "chore: bump version to ${CLEAN_VER} [skip ci]"
+
       - name: Create Tag and Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -248,19 +248,5 @@ jobs:
             '"## AI Consensus Release\n\n**Version:** " + $ver + "\n**Classification:** " + $cls + "\n**Rationale:** " + .authoritative_rationale + "\n\n### Lane Summary\n" + (.lane_summary | to_entries | map("\(.key): \(.value)") | join(", ")) + "\n\n---\n*Release authorized by AI consensus arbiter.*"' \
             arbiter-decision.json > release-notes.md
           git tag "$NEXT_TAG"
-          git push origin "$NEXT_TAG"
+          git push origin HEAD:main "$NEXT_TAG"
           gh release create "$NEXT_TAG" --title "$NEXT_TAG" --notes-file release-notes.md
-
-      - name: Update pyproject.toml version on main
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          NEXT_VER="${{ steps.version.outputs.next_tag }}"
-          CLEAN_VER="${NEXT_VER#v}"
-          sed -i '' "s/^version = \".*\"/version = \"${CLEAN_VER}\"/" pyproject.toml
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml
-          git commit -m "chore: bump version to ${CLEAN_VER} [skip ci]"
-          git push origin HEAD:main
