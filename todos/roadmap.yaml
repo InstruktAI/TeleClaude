@@ -57,6 +57,4 @@
   after:
   - mirror-timestamp-fix
 - slug: state-machine-versioning
-- slug: state-machine-adoption
-  group: state-machine-versioning
 - slug: mirror-timestamp-fix
