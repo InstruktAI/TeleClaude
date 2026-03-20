@@ -11,6 +11,7 @@ import asyncio
 from pathlib import Path
 
 from teleclaude.core.next_machine._types import ItemPhase
+from teleclaude.core.next_machine.delivery import load_delivered_slugs
 from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     check_dependencies_satisfied,
@@ -220,16 +221,42 @@ def resolve_canonical_project_root(cwd: str) -> str:
 def get_item_phase(cwd: str, slug: str) -> str:
     """Get current phase for a work item from state.yaml.
 
+    When state.yaml has no phase (e.g. cleaned up after delivery), checks
+    delivered.yaml and roadmap.yaml to determine the real status. A slug
+    present in both is a data integrity error that requires human intervention.
+
     Args:
         cwd: Project root directory
         slug: Work item slug to query
 
     Returns:
         One of "pending", "in_progress", "done"
+
+    Raises:
+        ValueError: If slug exists in both delivered.yaml and roadmap.yaml,
+            or if slug cannot be resolved from any source.
     """
     state = read_phase_state(cwd, slug)
     phase = state.get("phase")
-    return phase if isinstance(phase, str) else ItemPhase.PENDING.value
+    if isinstance(phase, str):
+        return phase
+    is_delivered = slug in load_delivered_slugs(cwd)
+    is_in_roadmap = slug_in_roadmap(cwd, slug)
+    if is_delivered and is_in_roadmap:
+        msg = (
+            f"Slug '{slug}' found in both delivered.yaml and roadmap.yaml. "
+            f"This is a data integrity issue — escalate to the user to resolve."
+        )
+        raise ValueError(msg)
+    if is_delivered:
+        return ItemPhase.DONE.value
+    if is_in_roadmap:
+        return ItemPhase.PENDING.value
+    msg = (
+        f"Slug '{slug}' has no phase in state.yaml, is not in delivered.yaml, "
+        f"and is not in roadmap.yaml. Cannot determine phase."
+    )
+    raise ValueError(msg)
 
 
 def is_ready_for_work(cwd: str, slug: str) -> bool:
