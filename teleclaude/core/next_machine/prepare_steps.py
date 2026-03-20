@@ -38,7 +38,9 @@ from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_a
 logger = get_logger(__name__)
 
 
-def _restamp_artifact_digest(state: dict[str, StateValue], cwd: str, slug: str, artifact_key: str, filename: str) -> None:
+def _restamp_artifact_digest(
+    state: dict[str, StateValue], cwd: str, slug: str, artifact_key: str, filename: str
+) -> None:
     """Re-stamp an artifact's digest after a reviewer may have modified it.
 
     Prevents the staleness check from looping when the reviewed artifact
@@ -756,8 +758,14 @@ async def _prepare_step_re_grounding(
     return False, result
 
 
-def _prepare_step_prepared(slug: str) -> tuple[bool, str]:
-    """PREPARED: terminal success state."""
+def _prepare_step_prepared(slug: str, cwd: str, state: dict[str, StateValue]) -> tuple[bool, str]:
+    """PREPARED: terminal success state. Guards against invalid DOR score."""
+    dor = state.get("dor", {})
+    dor_score = dor.get("score") if isinstance(dor, dict) else None
+    if not (isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD):
+        state["prepare_phase"] = PreparePhase.GATE.value
+        write_phase_state(cwd, slug, state)
+        return True, ""  # loop back to gate
     return False, format_prepared(slug)
 
 
@@ -811,7 +819,7 @@ async def _prepare_dispatch(  # pylint: disable=too-many-return-statements
     if phase == PreparePhase.RE_GROUNDING:
         return await _prepare_step_re_grounding(db, slug, cwd, state)
     if phase == PreparePhase.PREPARED:
-        return _prepare_step_prepared(slug)
+        return _prepare_step_prepared(slug, cwd, state)
     if phase == PreparePhase.BLOCKED:
         return _prepare_step_blocked(slug, state)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"
