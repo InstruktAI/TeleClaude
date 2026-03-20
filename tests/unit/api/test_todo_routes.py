@@ -175,10 +175,13 @@ class TestTodoRoutes:
         """Force flag bypasses uncommitted-changes guard for build:complete."""
         worktree = tmp_path / "trees" / "test-slug"
         worktree.mkdir(parents=True)
+        mock_repo = MagicMock()
+        mock_repo.git.diff.return_value = ""
         with (
             patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
             patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=True),
             patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "complete"}) as mock_mark,
+            patch("teleclaude.git.Repo", return_value=mock_repo),
         ):
             response = await todo_routes.todo_mark_phase(
                 slug="test-slug",
@@ -197,10 +200,13 @@ class TestTodoRoutes:
         """Review:approved no longer checks for uncommitted changes."""
         worktree = tmp_path / "trees" / "test-slug"
         worktree.mkdir(parents=True)
+        mock_repo = MagicMock()
+        mock_repo.git.diff.return_value = ""
         with (
             patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
             patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=True) as mock_uc,
             patch("teleclaude.api.todo_routes.mark_phase", return_value={"review": "approved"}) as mock_mark,
+            patch("teleclaude.git.Repo", return_value=mock_repo),
         ):
             response = await todo_routes.todo_mark_phase(
                 slug="test-slug",
@@ -219,10 +225,13 @@ class TestTodoRoutes:
         """Stash entries no longer block any phase transition."""
         worktree = tmp_path / "trees" / "test-slug"
         worktree.mkdir(parents=True)
+        mock_repo = MagicMock()
+        mock_repo.git.diff.return_value = ""
         with (
             patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
             patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=False),
             patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "complete"}) as mock_mark,
+            patch("teleclaude.git.Repo", return_value=mock_repo),
         ):
             response = await todo_routes.todo_mark_phase(
                 slug="test-slug",
@@ -238,9 +247,12 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_mark_phase_force_falls_back_to_cwd_when_no_worktree(self, tmp_path: Path) -> None:
         """Force flag uses cwd when worktree directory does not exist."""
+        mock_repo = MagicMock()
+        mock_repo.git.diff.return_value = ""
         with (
             patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
             patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "pending"}) as mock_mark,
+            patch("teleclaude.git.Repo", return_value=mock_repo),
         ):
             response = await todo_routes.todo_mark_phase(
                 slug="test-slug",

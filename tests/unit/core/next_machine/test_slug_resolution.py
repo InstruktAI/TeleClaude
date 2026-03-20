@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import yaml
 
-from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, RoadmapEntry
+from teleclaude.core.next_machine._types import RoadmapEntry
 from teleclaude.core.next_machine.roadmap import save_roadmap
 from teleclaude.core.next_machine.slug_resolution import (
     is_ready_for_work,
@@ -20,14 +20,9 @@ from teleclaude.core.next_machine.slug_resolution import (
 )
 
 
-class _DorState(TypedDict):
-    score: int
-
-
-class _ReadyState(TypedDict):
-    phase: str
-    build: str
-    dor: _DorState
+class _ReadyStateV2(TypedDict):
+    schema_version: int
+    current: str
 
 
 def _write_state(todo_dir: Path, state: dict[object, object]) -> None:
@@ -35,8 +30,8 @@ def _write_state(todo_dir: Path, state: dict[object, object]) -> None:
     (todo_dir / "state.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
 
 
-def _ready_state() -> _ReadyState:
-    return {"phase": "pending", "build": "pending", "dor": {"score": DOR_READY_THRESHOLD}}
+def _ready_state() -> _ReadyStateV2:
+    return {"schema_version": 2, "current": "prepared"}
 
 
 def test_resolve_holder_children_prefers_roadmap_order_and_appends_breakdown_only_children(tmp_path: Path) -> None:
@@ -91,7 +86,7 @@ def test_resolve_slug_ready_only_skips_ready_items_with_unsatisfied_dependencies
     )
     _write_state(tmp_path / "todos" / "blocked", _ready_state())
     _write_state(tmp_path / "todos" / "runnable", _ready_state())
-    _write_state(tmp_path / "todos" / "dep", {"phase": "pending", "build": "pending", "dor": {"score": 0}})
+    _write_state(tmp_path / "todos" / "dep", {"schema_version": 2, "current": "input_assessment"})
 
     resolved = resolve_slug(str(tmp_path), None, True, {"blocked": ["dep"]})
 
@@ -99,7 +94,7 @@ def test_resolve_slug_ready_only_skips_ready_items_with_unsatisfied_dependencies
 
 
 def test_is_ready_for_work_accepts_pending_item_with_completed_build(tmp_path: Path) -> None:
-    _write_state(tmp_path / "todos" / "from-main-slug", {"phase": "pending", "build": "complete"})
+    _write_state(tmp_path / "todos" / "from-main-slug", {"schema_version": 2, "current": "prepared"})
 
     assert is_ready_for_work(str(tmp_path), "from-main-slug") is True
 

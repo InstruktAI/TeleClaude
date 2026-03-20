@@ -25,7 +25,7 @@ def test_format_tool_call_uses_completion_args_and_preserves_spaced_next_call() 
     )
 
     assert 'Dispatch metadata: command="/next-review-build" args="slug-a"' in output
-    assert "telec todo mark-phase override-slug --phase review --status approved" in output
+    assert "telec todo state override-slug approve_review" in output
     assert "Call telec todo work slug-a" in output
     assert "telec todo work slug-a()" not in output
 

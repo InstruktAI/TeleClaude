@@ -279,15 +279,11 @@ async def test_handle_agent_then_message_returns_error_when_readiness_times_out(
     result = await daemon_inst._handle_agent_then_message("sess-1", ["claude", "slow", "hello"])
 
     assert result["status"] == "error"
+    assert "kept alive" in result["message"]
     assert emit_mock.call_args_list[0].args[0] == TeleClaudeEvents.AGENT_READINESS_TIMEOUT
     assert emit_mock.call_args_list[0].args[1].session_id == "sess-1"
-    terminate_mock.assert_awaited_once_with(
-        "sess-1",
-        daemon_inst.client,
-        reason="agent_readiness_timeout",
-        session=session,
-    )
-    daemon_inst.client.send_message.assert_awaited_once()
+    # Session is kept alive on timeout — no terminate, no message injection
+    terminate_mock.assert_not_awaited()
     process_text_mock.assert_not_awaited()
 
 
@@ -422,12 +418,5 @@ class TestDaemonSessionReadinessSpec:
                 break
         assert found_timeout, "AGENT_READINESS_TIMEOUT event not emitted"
 
-        # SC-5: Verify session was closed/terminated
-        mock_terminate.assert_awaited_once()
-
-        # SC-5: Verify user was notified via client.send_message
-        # Fix SC-5: Assert on structure/session, not human-facing prose
-        daemon.client.send_message.assert_awaited_once()
-        sent_session = daemon.client.send_message.call_args.args[0]
-        assert sent_session.session_id == session_id
-        # We don't assert on text content to avoid prose-lock
+        # Session is kept alive on timeout — no terminate, no message injection
+        mock_terminate.assert_not_awaited()

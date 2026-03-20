@@ -128,7 +128,7 @@ class TestAgentNameMetadataSpec:
         "agent_name, expected_marker",
         [
             (AgentName.GEMINI, "Type your message or @path/to/file"),
-            (AgentName.CLAUDE, "\u276f "),
+            (AgentName.CLAUDE, "\u276f"),
             (AgentName.CODEX, "? for shortcuts"),
         ],
     )

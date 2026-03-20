@@ -1,4 +1,4 @@
-"""Characterization tests for prepare phase derivation and invalidation events."""
+"""Characterization tests for prepare events and invalidation."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import yaml
 
 from teleclaude.core.next_machine._types import PreparePhase, RoadmapEntry
 from teleclaude.core.next_machine.prepare_events import (
-    _derive_prepare_phase,
     _has_test_spec_artifacts,
     invalidate_stale_preparations,
 )
@@ -27,61 +26,6 @@ def test_has_test_spec_artifacts_detects_xfail_marked_tests_in_worktree(tmp_path
     (worktree / "test_example.py").write_text("import pytest\n\npytestmark = pytest.mark.xfail\n", encoding="utf-8")
 
     assert _has_test_spec_artifacts(str(tmp_path), "slug-a") is True
-
-
-def test_derive_prepare_phase_routes_to_plan_drafting_after_specs_are_approved(tmp_path: Path) -> None:
-    todo_dir = tmp_path / "todos" / "slug-b"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "input.md").write_text("input", encoding="utf-8")
-    (todo_dir / "requirements.md").write_text(
-        "These requirements are long enough to count as authored content for the gate checks.\n",
-        encoding="utf-8",
-    )
-    worktree = tmp_path / "trees" / "slug-b" / "tests"
-    worktree.mkdir(parents=True)
-    (worktree / "test_specs.py").write_text("pytestmark = pytest.mark.xfail\n", encoding="utf-8")
-    state = {
-        "schema_version": 2,
-        "artifacts": {
-            "requirements": {"digest": "a", "produced_at": "2025-01-01", "stale": False},
-            "test_specs": {"digest": "", "produced_at": "2025-01-01", "stale": False},
-            "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
-        },
-        "requirements_review": {"verdict": "approve"},
-        "test_spec_review": {"verdict": "approve"},
-    }
-
-    phase = _derive_prepare_phase("slug-b", str(tmp_path), state)
-
-    assert phase == PreparePhase.PLAN_DRAFTING
-
-
-def test_ghost_test_specs_not_treated_as_produced_in_derive_phase_v2(tmp_path: Path) -> None:
-    """v2: xfail test files in worktree but no test_specs.produced_at → TEST_SPEC_BUILD, not PLAN_DRAFTING."""
-    todo_dir = tmp_path / "todos" / "slug-spec2"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "input.md").write_text("input", encoding="utf-8")
-    (todo_dir / "requirements.md").write_text(
-        "These requirements are long enough to count as authored content.\n",
-        encoding="utf-8",
-    )
-    worktree = tmp_path / "trees" / "slug-spec2" / "tests"
-    worktree.mkdir(parents=True)
-    (worktree / "test_specs.py").write_text("pytestmark = pytest.mark.xfail\n", encoding="utf-8")
-    state = {
-        "schema_version": 2,
-        "artifacts": {
-            "requirements": {"digest": "a", "produced_at": "2025-01-01", "stale": False},
-            "test_specs": {"digest": "", "produced_at": "", "stale": False},
-            "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
-        },
-        "requirements_review": {"verdict": "approve"},
-        "test_spec_review": {"verdict": "approve"},
-    }
-
-    phase = _derive_prepare_phase("slug-spec2", str(tmp_path), state)
-
-    assert phase == PreparePhase.TEST_SPEC_BUILD
 
 
 def test_invalidate_stale_preparations_marks_only_overlapping_grounding_as_invalid(tmp_path: Path) -> None:
@@ -108,6 +52,6 @@ def test_invalidate_stale_preparations_marks_only_overlapping_grounding_as_inval
     untouched_state = yaml.safe_load((tmp_path / "todos" / "slug-d" / "state.yaml").read_text(encoding="utf-8"))
     assert result == {"invalidated": ["slug-c"]}
     assert invalidated_state["grounding"]["valid"] is False
-    assert invalidated_state["prepare_phase"] == PreparePhase.GROUNDING_CHECK.value
+    assert invalidated_state["current"] == PreparePhase.GROUNDING_CHECK.value
     assert untouched_state["grounding"]["valid"] is True
     assert emit_event.call_args.args[0] == "domain.software-development.prepare.grounding_invalidated"

@@ -86,6 +86,15 @@ logger = get_logger(__name__)
 _SINGLE_FLIGHT_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 
 
+def _derive_work_statuses(current: str) -> tuple[str, str]:
+    """Derive build and review status from the authoritative current state value."""
+    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
+        CURRENT_TO_BUILD_REVIEW,
+    )
+
+    return CURRENT_TO_BUILD_REVIEW.get(current, ("pending", "pending"))
+
+
 @dataclass(frozen=True)
 class _DispatchState:
     state: dict[str, StateValue]
@@ -131,7 +140,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     """Phase B state machine for deterministic builder work.
 
     Executes the build/review/fix/finalize cycle on prepared work items.
-    Only considers items with phase "ready" and satisfied dependencies.
+    Only considers items with current "prepared" and satisfied dependencies.
 
     Args:
         db: Database instance
@@ -384,17 +393,17 @@ async def _validate_preparation_freshness(
     if is_bug:
         return None
     prep_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
-    prepare_phase_val = str(prep_state.get("prepare_phase", "")).strip()
+    current_val = str(prep_state.get("current", "")).strip()
     grounding = prep_state.get("grounding", {})
     grounding_valid = isinstance(grounding, dict) and grounding.get("valid") is True
-    if prepare_phase_val and prepare_phase_val != PreparePhase.PREPARED.value:
+    if current_val and current_val != PreparePhase.PREPARED.value:
         _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_preparation")
         return format_error(
             "STALE",
-            f"{resolved_slug} preparation is not complete (phase: {prepare_phase_val}).",
+            f"{resolved_slug} preparation is not complete (current: {current_val}).",
             next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
         )
-    if prepare_phase_val == PreparePhase.PREPARED.value and not grounding_valid:
+    if current_val == PreparePhase.PREPARED.value and not grounding_valid:
         _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_grounding")
         return format_error(
             "STALE",
@@ -511,20 +520,10 @@ async def _prepare_dispatch_state(
         await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
     state = await asyncio.to_thread(read_phase_state, worktree_cwd, resolved_slug)
-    build_value = state.get(PhaseName.BUILD.value)
-    build_status = build_value if isinstance(build_value, str) else PhaseStatus.PENDING.value
-    review_value = state.get(PhaseName.REVIEW.value)
-    review_status = review_value if isinstance(review_value, str) else PhaseStatus.PENDING.value
+    current = str(state.get("current", ""))
 
-    if review_status == PhaseStatus.APPROVED.value and build_status != PhaseStatus.COMPLETE.value:
-        repair_started = perf_counter()
-        await asyncio.to_thread(
-            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.COMPLETE.value
-        )
-        build_status = PhaseStatus.COMPLETE.value
-        _log_next_work_phase(
-            phase_slug, "state_repair", repair_started, "run", "approved_review_implies_build_complete"
-        )
+    # Derive build/review status from authoritative current value
+    build_status, review_status = _derive_work_statuses(current)
 
     finalize_state = _get_finalize_state(state)
     review_status = await _repair_stale_review_approval(

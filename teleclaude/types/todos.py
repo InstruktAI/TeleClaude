@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from typing import NotRequired, TypedDict
+
 from pydantic import BaseModel, ConfigDict, Field
+
+from teleclaude.core.next_machine._types import StateValue
 
 
 class DorActions(BaseModel):
@@ -75,6 +79,17 @@ class TestSpecReviewState(BaseModel):
     rounds: int = 0
 
 
+class HistoryEntry(TypedDict):
+    """A single state transition history entry."""
+
+    source: str
+    target: str
+    transition: str
+    at: str
+    by: str
+    metadata: NotRequired[dict[str, StateValue]]
+
+
 class ArtifactEntry(BaseModel):
     """Lifecycle stamp for a single artifact."""
 
@@ -122,13 +137,13 @@ class AuditState(BaseModel):
 
 
 class TodoState(BaseModel):
-    """Canonical state for a TeleClaude work item."""
+    """Canonical state for a TeleClaude work item (v2 schema)."""
 
-    schema_version: int = 1
+    schema_version: int = 2
     phase: str = "pending"
     kind: str = "todo"  # "todo" | "bug"
-    build: str = "pending"
-    review: str = "pending"
+    current: str = "input_assessment"
+    history: list[HistoryEntry] = Field(default_factory=list)
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
@@ -137,7 +152,6 @@ class TodoState(BaseModel):
     review_baseline_commit: str = ""
     unresolved_findings: list[str] = Field(default_factory=list)
     resolved_findings: list[str] = Field(default_factory=list)
-    prepare_phase: str = ""
     grounding: GroundingState = Field(default_factory=GroundingState)
     requirements_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     test_spec_review: TestSpecReviewState = Field(default_factory=TestSpecReviewState)

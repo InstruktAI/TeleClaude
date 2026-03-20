@@ -268,6 +268,7 @@ class TodoInfo:  # pylint: disable=too-many-instance-attributes  # Todo summary 
     prepare_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None
+    current: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "TodoInfo":  # guard: loose-dict
@@ -297,6 +298,7 @@ class TodoInfo:  # pylint: disable=too-many-instance-attributes  # Todo summary 
             prepare_phase=cast(str | None, data.get("prepare_phase")),
             integration_phase=cast(str | None, data.get("integration_phase")),
             finalize_status=cast(str | None, data.get("finalize_status")),
+            current=cast(str | None, data.get("current")),
         )
 
     def to_dict(self) -> JsonDict:  # guard: loose-dict

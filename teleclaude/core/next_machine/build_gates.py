@@ -11,11 +11,10 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli import demo_validation
-from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName, PhaseStatus, StateValue
+from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName, StateValue
 from teleclaude.core.next_machine.path_checks import (
     _has_from_main_marker,
 )
@@ -216,13 +215,11 @@ def _verify_state_yaml(todo_base: Path, phase: str, results: list[str]) -> bool:
         return False
 
     try:
-        state_content = state_path.read_text(encoding="utf-8")
-        raw_state = yaml.safe_load(state_content)
-        if raw_state is None:
-            raw_state = {}
-        if not isinstance(raw_state, dict):
-            raise ValueError("state.yaml content is not a mapping")
-        state: dict[str, StateValue] = raw_state
+        from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
+
+        cwd = str(todo_base.parent.parent)
+        slug = todo_base.name
+        state = read_phase_state(cwd, slug)
     except Exception as exc:  # pylint: disable=broad-exception-caught
         results.append(f"FAIL: state.yaml is not parseable: {exc}")
         return False
@@ -233,20 +230,31 @@ def _verify_state_yaml(todo_base: Path, phase: str, results: list[str]) -> bool:
 
 def _verify_phase_consistency(state: dict[str, StateValue], phase: str, results: list[str]) -> bool:
     """Verify the current state.yaml phase marker matches the requested gate."""
+    current = str(state.get("current", ""))
+
     if phase == PhaseName.BUILD.value:
-        build_val = state.get(PhaseName.BUILD.value)
-        if build_val == PhaseStatus.PENDING.value:
-            results.append(f"FAIL: state.yaml build={build_val!r} — still pending, expected 'complete' or later")
+        build_states = {
+            "build_started",
+            "build_complete",
+            "review_pending",
+            "review_changes_requested",
+            "review_approved",
+            "finalize_ready",
+            "finalize_handed_off",
+        }
+        if current not in build_states:
+            results.append(f"FAIL: state.yaml current={current!r} — not in build phase")
             return False
-        results.append(f"PASS: state.yaml build={build_val!r}")
+        results.append(f"PASS: state.yaml current={current!r}")
         return True
 
     if phase == PhaseName.REVIEW.value:
-        review_val = state.get(PhaseName.REVIEW.value)
-        if review_val not in (PhaseStatus.APPROVED.value, PhaseStatus.CHANGES_REQUESTED.value):
-            results.append(f"FAIL: state.yaml review={review_val!r} (expected 'approved' or 'changes_requested')")
+        if current not in ("review_approved", "review_changes_requested"):
+            results.append(
+                f"FAIL: state.yaml current={current!r} (expected review_approved or review_changes_requested)"
+            )
             return False
-        results.append(f"PASS: state.yaml review={review_val!r}")
+        results.append(f"PASS: state.yaml current={current!r}")
         return True
 
     return True

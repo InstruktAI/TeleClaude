@@ -14,7 +14,7 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, PreparePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
-from teleclaude.core.next_machine.prepare_events import _derive_prepare_phase, _emit_prepare_event
+from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness
 from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
 from teleclaude.core.next_machine.roadmap import add_to_roadmap, slug_in_roadmap
@@ -41,7 +41,7 @@ async def _apply_stale_artifact_reroute(
         "implementation_plan": PreparePhase.PLAN_REVIEW,
     }
     stale_phase = phase_map.get(earliest, PreparePhase.INPUT_ASSESSMENT)
-    state["prepare_phase"] = stale_phase.value
+    state["current"] = stale_phase.value
     await asyncio.to_thread(write_phase_state, cwd, slug, state)
     _emit_prepare_event(
         "domain.software-development.prepare.artifact_invalidated",
@@ -106,13 +106,13 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         if stale_artifacts:
             await _apply_stale_artifact_reroute(cwd, resolved_slug, state, stale_artifacts)
 
-        # Resolve current phase
-        raw_phase = str(state.get("prepare_phase", "")).strip()
+        # Resolve current phase from authoritative state value
+        raw_current = str(state.get("current", "")).strip()
         try:
-            phase = PreparePhase(raw_phase)
+            phase = PreparePhase(raw_current)
         except ValueError:
-            # Derive phase from artifact existence for legacy todos
-            phase = await asyncio.to_thread(_derive_prepare_phase, resolved_slug, cwd, state)
+            # current is a work-phase state (build_started, etc.) — prepare is done
+            return f"PREPARED: {resolved_slug} is past the prepare lifecycle (current={raw_current})."
 
         logger.info(
             "NEXT_PREPARE_PHASE slug=%s phase=%s iter=%d",
@@ -128,7 +128,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     return (
         f"LOOP_LIMIT: prepare state machine for {resolved_slug} exceeded "
         f"{_PREPARE_LOOP_LIMIT} internal transitions. "
-        f"Inspect todos/{resolved_slug}/state.yaml prepare_phase for stuck state."
+        f"Inspect todos/{resolved_slug}/state.yaml current for stuck state."
     )
 
 

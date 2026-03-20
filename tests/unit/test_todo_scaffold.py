@@ -59,8 +59,8 @@ def test_split_no_approval_children_start_at_discovery(
         split_todo(project_root, parent_slug, ["child-a"])
 
     child_state = _read_child_state(tmp_path, "child-a")
-    assert child_state.get("prepare_phase", "") == "", (
-        f"expected empty prepare_phase, got {child_state.get('prepare_phase')!r}"
+    assert child_state.get("current", "input_assessment") == "input_assessment", (
+        f"expected input_assessment, got {child_state.get('current')!r}"
     )
 
 
@@ -71,7 +71,7 @@ def test_split_req_approved_children_inherit_plan_drafting(
     mock_core_emit: MagicMock,
     tmp_path: Path,
 ) -> None:
-    """Parent with approved requirements → children inherit prepare_phase=plan_drafting."""
+    """Parent with approved requirements → children inherit current=plan_drafting."""
     from teleclaude.todo_scaffold import split_todo
 
     project_root, parent_slug = _make_parent(tmp_path)
@@ -97,9 +97,7 @@ def test_split_req_approved_children_inherit_plan_drafting(
         split_todo(project_root, parent_slug, ["child-b"])
 
     child_state = _read_child_state(tmp_path, "child-b")
-    assert child_state.get("prepare_phase") == "plan_drafting", (
-        f"expected plan_drafting, got {child_state.get('prepare_phase')!r}"
-    )
+    assert child_state.get("current") == "plan_drafting", f"expected plan_drafting, got {child_state.get('current')!r}"
     req_review = child_state.get("requirements_review", {})
     assert isinstance(req_review, dict)
     assert req_review.get("verdict") == "approve", f"expected verdict=approve in child, got {req_review!r}"
@@ -117,7 +115,7 @@ def test_split_plan_approved_children_inherit_prepared(
     mock_core_emit: MagicMock,
     tmp_path: Path,
 ) -> None:
-    """Parent with approved plan → children inherit prepare_phase=prepared with all verdicts."""
+    """Parent with approved plan → children inherit current=prepared with all verdicts."""
     from teleclaude.todo_scaffold import split_todo
 
     project_root, parent_slug = _make_parent(tmp_path)
@@ -154,9 +152,7 @@ def test_split_plan_approved_children_inherit_prepared(
         split_todo(project_root, parent_slug, ["child-c"])
 
     child_state = _read_child_state(tmp_path, "child-c")
-    assert child_state.get("prepare_phase") == "prepared", (
-        f"expected prepared, got {child_state.get('prepare_phase')!r}"
-    )
+    assert child_state.get("current") == "prepared", f"expected prepared, got {child_state.get('current')!r}"
     req_review = child_state.get("requirements_review", {})
     plan_review = child_state.get("plan_review", {})
     assert isinstance(req_review, dict) and req_review.get("verdict") == "approve"

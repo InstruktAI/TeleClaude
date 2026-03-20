@@ -204,7 +204,7 @@ def _inherit_parent_phase(  # pylint: disable=too-many-arguments,too-many-locals
         child_state["plan_review"] = dict(parent_plan_review)
 
     # Set phase
-    child_state["prepare_phase"] = inherited_phase
+    child_state["current"] = inherited_phase
 
     # Record skipped audit entries
     audit = child_state.get("audit")
@@ -344,7 +344,7 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
         "invalidated_at": "",
         "invalidation_reason": "",
     }
-    state["prepare_phase"] = ""
+    state["current"] = "input_assessment"
     write_phase_state(str(project_root), parent_slug, state)
 
     return created

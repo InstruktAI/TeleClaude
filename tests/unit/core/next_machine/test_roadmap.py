@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.core.next_machine._types import PhaseStatus, RoadmapEntry
+from teleclaude.core.next_machine._types import RoadmapEntry
 from teleclaude.core.next_machine.roadmap import (
     RoadmapInsertion,
     add_to_roadmap,
@@ -89,7 +89,7 @@ def test_check_dependencies_satisfied_accepts_approved_and_removed_deps(tmp_path
     )
     _write_state(
         tmp_path / "todos" / "dep-a",
-        {"phase": "pending", "review": PhaseStatus.APPROVED.value},
+        {"schema_version": 2, "current": "review_approved"},
     )
 
     assert check_dependencies_satisfied(

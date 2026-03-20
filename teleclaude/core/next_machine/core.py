@@ -247,18 +247,12 @@ from teleclaude.core.next_machine.path_checks import (
 )
 from teleclaude.core.next_machine.prepare import next_prepare as next_prepare
 
-# ── prepare events & phase derivation ─────────────────────────────────────────
-from teleclaude.core.next_machine.prepare_events import (
-    _derive_prepare_phase as _derive_prepare_phase,
-)
+# ── prepare events ────────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event as _emit_prepare_event,
 )
 from teleclaude.core.next_machine.prepare_events import (
     _has_test_spec_artifacts as _has_test_spec_artifacts,
-)
-from teleclaude.core.next_machine.prepare_events import (
-    _is_artifact_produced as _is_artifact_produced,
 )
 from teleclaude.core.next_machine.prepare_events import (
     invalidate_stale_preparations as invalidate_stale_preparations,

@@ -13,8 +13,6 @@ from pathlib import Path
 
 from teleclaude.core.next_machine._types import (
     ItemPhase,
-    PhaseName,
-    PhaseStatus,
     RoadmapEntry,
 )
 from teleclaude.core.next_machine.manifest_io import load_manifest_entries, save_manifest_entries
@@ -183,16 +181,9 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
         if dep_phase == ItemPhase.DONE.value:
             continue
 
-        dep_review = dep_state.get(PhaseName.REVIEW.value)
-        if dep_review == PhaseStatus.APPROVED.value:
-            continue
-
-        # Backward compatibility with older state where only build/review fields
-        # were used and "phase" was derived later.
-        if (
-            dep_state.get(PhaseName.BUILD.value) == PhaseStatus.COMPLETE.value
-            and dep_state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value
-        ):
+        # Check if dependency is approved or past review via current
+        dep_current = str(dep_state.get("current", ""))
+        if dep_current in ("review_approved", "finalize_ready", "finalize_handed_off"):
             continue
 
         return False

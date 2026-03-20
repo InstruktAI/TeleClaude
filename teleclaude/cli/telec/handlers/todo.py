@@ -65,6 +65,7 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_mark_phase,
         handle_todo_prepare,
         handle_todo_set_deps,
+        handle_todo_state,
         handle_todo_work,
     )
 
@@ -91,6 +92,8 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_mark_phase(args[1:])
     elif subcommand == "mark-finalize-ready":
         handle_todo_mark_finalize_ready(args[1:])
+    elif subcommand == "state":
+        handle_todo_state(args[1:])
     elif subcommand == "set-deps":
         handle_todo_set_deps(args[1:])
     elif subcommand == "verify-artifacts":

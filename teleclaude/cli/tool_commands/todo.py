@@ -483,3 +483,28 @@ def handle_todo_set_deps(args: list[str]) -> None:
     body: dict[str, object] = {"slug": slug, "after": after, "cwd": cwd}  # guard: loose-dict - JSON request body
     data = tool_api_call("POST", "/todos/set-deps", json_body=body)
     print_json(data)
+
+
+def handle_todo_state(args: list[str]) -> None:
+    """Inspect state, fire a transition, or rewind.
+
+    Usage: telec todo state <slug> [<transition>] [--rewind]
+    """
+    cwd = os.getcwd()
+    rewind = "--rewind" in args
+    positional = [a for a in args if not a.startswith("--")]
+
+    if not positional:
+        print("Error: slug is required", file=sys.stderr)
+        raise SystemExit(1)
+
+    slug = positional[0]
+    body: dict[str, object] = {"slug": slug, "cwd": cwd}  # guard: loose-dict - JSON request body
+
+    if rewind:
+        body["rewind"] = True
+    elif len(positional) > 1:
+        body["transition"] = positional[1]
+
+    data = tool_api_call("POST", "/todos/state", json_body=body)
+    print_json(data)

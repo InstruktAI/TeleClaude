@@ -164,7 +164,7 @@ Replace all `state["prepare_phase"] = PreparePhase.X.value` with
 `state["current"] = PreparePhase.X.value` throughout prepare_steps.py.
 These are mechanical substitutions — the step function logic is unchanged.
 
-### 4c: Remove \_derive_prepare_phase from runtime
+### 4c: Remove \_derive_prepare_phase from runtime and update remaining writes
 
 In `prepare_events.py`, `_derive_prepare_phase()` (lines 85–139) is no longer called
 from the runtime path. Keep it only if the migration needs it (it doesn't — migration
@@ -172,6 +172,11 @@ maps from `prepare_phase` field value, not re-derivation). Also remove
 `_is_artifact_produced()` (lines 57–66) — ghost artifact protection is no longer needed
 since `current` is authoritative. The staleness check (`check_artifact_staleness`) using
 digests remains — it's about content freshness, not lifecycle state.
+
+Additionally, update `prepare_events.py` line 170 in `check_changed_paths_invalidation`:
+replace `state["prepare_phase"] = PreparePhase.GROUNDING_CHECK.value` with
+`state["current"] = PreparePhase.GROUNDING_CHECK.value`. This write is in the grounding
+invalidation path, separate from `_derive_prepare_phase`, and must also switch to `current`.
 
 **Why:** The prepare machine is the primary consumer of lifecycle state and the site of
 most inference bugs (staleness loops, ghost artifact protection). Routing from `current`
@@ -330,6 +335,25 @@ Replace `state.get("build")` and `state.get("review")` with derivation from `cur
 
 - Map `current` to build/review status for display purposes
 - Or read `current` directly and render a unified status column
+- Update `_derive_phase_status()` (line 154) which takes `build_status` as parameter
+- Update `TodoInfo` construction (lines 127–128, 183–184, 201–202) to derive
+  `build_status` and `review_status` from `current` instead of raw state fields
+
+### core/models/\_snapshot.py (TodoInfo dataclass)
+
+`TodoInfo` (line 251) carries `build_status` and `review_status` attrs that flow
+through the DTO pipeline. These fields must either be derived from `current` at
+construction time (in `roadmap.py`) or replaced with a `current` field. The downstream
+chain:
+
+- `api_models.py:201–244`: `TodoDTO.from_info()` maps `TodoInfo.build_status` →
+  `TodoDTO.build_status`
+- `core/cache.py:493–494`: reads `todo.build_status` and `todo.review_status`
+
+The simplest approach: keep `build_status`/`review_status` as derived display fields
+on `TodoInfo` (backward-compatible for TUI/API consumers) but source them from
+`current` during construction in `roadmap.py`. No changes needed in `api_models.py`
+or `cache.py` if the `TodoInfo` contract stays stable.
 
 ### todo_row.py (lines 223–319)
 
@@ -356,15 +380,22 @@ Update any guidance strings that reference `mark-phase` or `mark-ready` to refer
 
 **Why:** Display and validation consumers must read v2 format after migration is active.
 Without these updates, roadmap listing, TUI display, and resource validation would fail
-on missing `build`/`review` keys.
+on missing `build`/`review` keys. The DTO pipeline (`TodoInfo` → `TodoDTO` → TUI/API)
+must source `build_status`/`review_status` from `current` rather than from removed
+legacy fields.
 
 **Verification:** Run `telec roadmap list` and verify display renders correctly. TUI
 todo rows should show lifecycle state from `current`. Resource validation should not
-reject valid states.
+reject valid states. No test specs were delivered for display consumer behavior — the
+test spec phase approved coverage for engine, migration, routing, readiness, and CLI.
+Display consumers are verified manually and through existing characterization tests
+for `roadmap.py` and `todo_row.py` if they exist. The code reviewer should evaluate
+whether additional characterization tests are warranted.
 
 **Files:**
 
 - Modified: `teleclaude/core/roadmap.py`
+- Modified: `teleclaude/core/models/_snapshot.py` (if `TodoInfo` needs `current` field)
 - Modified: `teleclaude/cli/tui/widgets/todo_row.py`
 - Modified: `teleclaude/resource_validation/__init__.py`
 - Modified: `teleclaude/core/next_machine/output_formatting.py`

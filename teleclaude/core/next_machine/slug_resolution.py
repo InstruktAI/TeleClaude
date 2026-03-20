@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, ItemPhase, PhaseName, PhaseStatus
+from teleclaude.core.next_machine._types import ItemPhase
 from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     check_dependencies_satisfied,
@@ -233,22 +233,10 @@ def get_item_phase(cwd: str, slug: str) -> str:
 
 
 def is_ready_for_work(cwd: str, slug: str) -> bool:
-    """Check if item is ready for work: pending phase + (build complete OR DOR score >= threshold)."""
+    """Check if item is ready for work: current == 'prepared' means all gates passed."""
     state = read_phase_state(cwd, slug)
-    phase = state.get("phase")
-    if phase != ItemPhase.PENDING.value:
-        return False
-    build = state.get(PhaseName.BUILD.value)
-    # Build already complete (e.g. from-main items) — ready for review cycle
-    if build == PhaseStatus.COMPLETE.value:
-        return True
-    if build != PhaseStatus.PENDING.value:
-        return False
-    dor = state.get("dor")
-    if not isinstance(dor, dict):
-        return False
-    score = dor.get("score")
-    return isinstance(score, int) and score >= DOR_READY_THRESHOLD
+    current = state.get("current", "")
+    return current == "prepared"
 
 
 def set_item_phase(cwd: str, slug: str, phase: str) -> None:

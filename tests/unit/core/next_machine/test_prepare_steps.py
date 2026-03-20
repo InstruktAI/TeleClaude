@@ -41,7 +41,7 @@ def test_prepare_step_grounding_check_first_pass_captures_baseline_and_marks_pre
     ):
         keep_going, instruction = _prepare_step_grounding_check("slug-a", str(tmp_path), state)
 
-    prepare_phase = state.get("prepare_phase")
+    prepare_phase = state.get("current")
     grounding = state.get("grounding")
     assert isinstance(grounding, dict)
     assert keep_going is True
@@ -70,7 +70,7 @@ def test_prepare_step_grounding_check_invalidates_when_input_digest_changes(tmp_
     ):
         keep_going, instruction = _prepare_step_grounding_check("slug-b", str(tmp_path), state)
 
-    prepare_phase = state.get("prepare_phase")
+    prepare_phase = state.get("current")
     grounding = state.get("grounding")
     assert isinstance(grounding, dict)
     assert keep_going is True
@@ -96,7 +96,7 @@ async def test_prepare_step_re_grounding_resets_plan_review_and_dispatches_redra
     ):
         keep_going, instruction = await _prepare_step_re_grounding(db, "slug-c", str(tmp_path), state)
 
-    prepare_phase = state.get("prepare_phase")
+    prepare_phase = state.get("current")
     plan_review = state.get("plan_review")
     assert isinstance(plan_review, dict)
     assert keep_going is False
@@ -141,8 +141,8 @@ async def test_prepare_dispatch_advances_approved_spec_review_to_plan_drafting(t
     persisted = yaml.safe_load((todo_dir / "state.yaml").read_text(encoding="utf-8"))
     assert keep_going is True
     assert instruction == ""
-    assert state["prepare_phase"] == PreparePhase.PLAN_DRAFTING.value
-    assert persisted["prepare_phase"] == PreparePhase.PLAN_DRAFTING.value
+    assert state["current"] == PreparePhase.PLAN_DRAFTING.value
+    assert persisted["current"] == PreparePhase.PLAN_DRAFTING.value
 
 
 @pytest.mark.asyncio
@@ -163,8 +163,8 @@ async def test_prepare_dispatch_advances_approved_plan_review_to_gate(tmp_path: 
     persisted = yaml.safe_load((todo_dir / "state.yaml").read_text(encoding="utf-8"))
     assert keep_going is True
     assert instruction == ""
-    assert state["prepare_phase"] == PreparePhase.GATE.value
-    assert persisted["prepare_phase"] == PreparePhase.GATE.value
+    assert state["current"] == PreparePhase.GATE.value
+    assert persisted["current"] == PreparePhase.GATE.value
 
 
 @pytest.mark.asyncio
@@ -211,8 +211,8 @@ async def test_prepare_dispatch_advances_gate_to_grounding_check_when_dor_is_rea
     persisted = yaml.safe_load((todo_dir / "state.yaml").read_text(encoding="utf-8"))
     assert keep_going is True
     assert instruction == ""
-    assert state["prepare_phase"] == PreparePhase.GROUNDING_CHECK.value
-    assert persisted["prepare_phase"] == PreparePhase.GROUNDING_CHECK.value
+    assert state["current"] == PreparePhase.GROUNDING_CHECK.value
+    assert persisted["current"] == PreparePhase.GROUNDING_CHECK.value
 
 
 @pytest.mark.asyncio
@@ -234,8 +234,8 @@ async def test_prepare_dispatch_requests_gate_worker_when_dor_is_below_threshold
 
 
 @pytest.mark.asyncio
-async def test_ghost_requirements_not_loop_in_input_assessment_step_v2(tmp_path: Path) -> None:
-    """v2: requirements.md on disk but no produced_at → dispatches discovery worker, not loop."""
+async def test_requirements_on_disk_advances_input_assessment_v2(tmp_path: Path) -> None:
+    """v2: current is authoritative — file existence is sufficient to advance past input_assessment."""
     todo_dir = tmp_path / "todos" / "slug-req1"
     todo_dir.mkdir(parents=True)
     (todo_dir / "input.md").write_text("input content here", encoding="utf-8")
@@ -246,21 +246,22 @@ async def test_ghost_requirements_not_loop_in_input_assessment_step_v2(tmp_path:
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {
         "schema_version": 2,
+        "current": "input_assessment",
         "artifacts": {
             "requirements": {"digest": "", "produced_at": "", "stale": False},
         },
     }
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"):
-        keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), "slug-req1", str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), "slug-req1", str(tmp_path), state)
 
-    assert keep_going is False
-    assert 'telec sessions run --command "/next-prepare-discovery"' in instruction
+    assert keep_going is True
+    assert instruction == ""
+    assert state["current"] == PreparePhase.REQUIREMENTS_REVIEW.value
 
 
 @pytest.mark.asyncio
-async def test_ghost_requirements_not_loop_in_triangulation_step_v2(tmp_path: Path) -> None:
-    """v2: requirements.md on disk but no produced_at → dispatches discovery worker, not loop."""
+async def test_requirements_on_disk_advances_triangulation_v2(tmp_path: Path) -> None:
+    """v2: current is authoritative — file existence is sufficient to advance past triangulation."""
     todo_dir = tmp_path / "todos" / "slug-req2"
     todo_dir.mkdir(parents=True)
     (todo_dir / "requirements.md").write_text(
@@ -270,21 +271,22 @@ async def test_ghost_requirements_not_loop_in_triangulation_step_v2(tmp_path: Pa
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {
         "schema_version": 2,
+        "current": "triangulation",
         "artifacts": {
             "requirements": {"digest": "", "produced_at": "", "stale": False},
         },
     }
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"):
-        keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), "slug-req2", str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), "slug-req2", str(tmp_path), state)
 
-    assert keep_going is False
-    assert 'telec sessions run --command "/next-prepare-discovery"' in instruction
+    assert keep_going is True
+    assert instruction == ""
+    assert state["current"] == PreparePhase.REQUIREMENTS_REVIEW.value
 
 
 @pytest.mark.asyncio
-async def test_ghost_test_specs_not_treated_as_produced_in_step_v2(tmp_path: Path) -> None:
-    """v2: xfail test files exist in worktree but test_specs.produced_at is empty → dispatches spec build worker."""
+async def test_test_specs_on_disk_advances_test_spec_build_v2(tmp_path: Path) -> None:
+    """v2: current is authoritative — xfail test file existence is sufficient to advance."""
     todo_dir = tmp_path / "todos" / "slug-spec1"
     _write_state(todo_dir, {})
     worktree = tmp_path / "trees" / "slug-spec1" / "tests"
@@ -292,24 +294,22 @@ async def test_ghost_test_specs_not_treated_as_produced_in_step_v2(tmp_path: Pat
     (worktree / "test_example.py").write_text("pytestmark = pytest.mark.xfail\n", encoding="utf-8")
     state: dict[str, StateValue] = {
         "schema_version": 2,
+        "current": "test_spec_build",
         "artifacts": {
             "test_specs": {"digest": "", "produced_at": "", "stale": False},
         },
     }
 
-    with (
-        patch("teleclaude.core.next_machine.prepare_steps.ensure_worktree_with_policy_async"),
-        patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"),
-    ):
-        keep_going, instruction = await _prepare_step_test_spec_build(AsyncMock(), "slug-spec1", str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_test_spec_build(AsyncMock(), "slug-spec1", str(tmp_path), state)
 
-    assert keep_going is False
-    assert 'telec sessions run --command "/next-build-specs"' in instruction
+    assert keep_going is True
+    assert instruction == ""
+    assert state["current"] == PreparePhase.TEST_SPEC_REVIEW.value
 
 
 @pytest.mark.asyncio
-async def test_ghost_plan_not_loop_in_plan_drafting_step_v2(tmp_path: Path) -> None:
-    """v2: implementation-plan.md on disk but no produced_at → dispatches draft worker, not loop."""
+async def test_plan_on_disk_advances_plan_drafting_v2(tmp_path: Path) -> None:
+    """v2: current is authoritative — file existence is sufficient to advance past plan_drafting."""
     todo_dir = tmp_path / "todos" / "slug-plan1"
     todo_dir.mkdir(parents=True)
     (todo_dir / "implementation-plan.md").write_text(
@@ -319,16 +319,17 @@ async def test_ghost_plan_not_loop_in_plan_drafting_step_v2(tmp_path: Path) -> N
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {
         "schema_version": 2,
+        "current": "plan_drafting",
         "artifacts": {
             "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
         },
     }
 
-    with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"):
-        keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), "slug-plan1", str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), "slug-plan1", str(tmp_path), state)
 
-    assert keep_going is False
-    assert 'telec sessions run --command "/next-prepare-draft"' in instruction
+    assert keep_going is True
+    assert instruction == ""
+    assert state["current"] == PreparePhase.PLAN_REVIEW.value
 
 
 def test_restamp_artifact_digest_updates_when_file_changed(tmp_path: Path) -> None:
@@ -393,7 +394,7 @@ async def test_requirements_review_approve_restamps_digest_when_reviewer_modifie
 
     assert keep_going is True
     assert instruction == ""
-    assert state["prepare_phase"] == PreparePhase.TEST_SPEC_BUILD.value
+    assert state["current"] == PreparePhase.TEST_SPEC_BUILD.value
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
     req = artifacts["requirements"]
@@ -420,7 +421,7 @@ async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifa
 
     assert keep_going is True
     assert instruction == ""
-    assert state["prepare_phase"] == PreparePhase.GATE.value
+    assert state["current"] == PreparePhase.GATE.value
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
     plan = artifacts["implementation_plan"]

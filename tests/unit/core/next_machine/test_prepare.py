@@ -49,15 +49,13 @@ async def test_next_prepare_uses_derived_phase_and_returns_dispatch_instruction(
             resolve_holder_children=DEFAULT,
             slug_in_roadmap=DEFAULT,
             read_phase_state=DEFAULT,
-            _derive_prepare_phase=DEFAULT,
             _prepare_dispatch=DEFAULT,
         ) as prepare_mocks,
         patch("teleclaude.core.next_machine.prepare_helpers.check_artifact_staleness", return_value=[]),
     ):
         prepare_mocks["resolve_holder_children"].return_value = []
         prepare_mocks["slug_in_roadmap"].return_value = True
-        prepare_mocks["read_phase_state"].return_value = {}
-        prepare_mocks["_derive_prepare_phase"].return_value = PreparePhase.GATE
+        prepare_mocks["read_phase_state"].return_value = {"current": PreparePhase.GATE.value}
         prepare_mocks["_prepare_dispatch"].return_value = (False, "dispatch")
         result = await next_prepare(db, "slug-a", "/repo")
 

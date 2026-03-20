@@ -32,11 +32,11 @@ They are independent layers.
 
 Three tiers, applied in order:
 
-| Tier        | Operations                                            | Behavior                |
-| ----------- | ----------------------------------------------------- | ----------------------- |
-| DESTRUCTIVE | restore, clean, switch, reset (bare), revert (bare)   | Blocked for all roles   |
-| PROTECTED   | stash, commit on main, push on main (integrator only) | Role-gated              |
-| RESTRICTED  | commit (orchestrator)                                 | Blocked on all branches |
+| Tier        | Operations                                           | Behavior                |
+| ----------- | ---------------------------------------------------- | ----------------------- |
+| DESTRUCTIVE | restore, clean, switch, reset (bare), revert (bare)  | Blocked for all roles   |
+| PROTECTED   | stash (integrator), commit/push on main (integrator) | Role-gated              |
+| RESTRICTED  | commit (orchestrator)                                | Blocked on all branches |
 
 ### Roles
 

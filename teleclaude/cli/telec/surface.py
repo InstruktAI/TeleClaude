@@ -490,6 +490,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "state": CommandDef(
+                desc="Inspect state, fire transition, or rewind",
+                args="<slug> [<transition>]",
+                flags=[
+                    _H,
+                    Flag("--rewind", desc="Rewind to previous state"),
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "set-deps": CommandDef(
                 desc="Set dependencies for a work item in the roadmap",
                 args="<slug>",

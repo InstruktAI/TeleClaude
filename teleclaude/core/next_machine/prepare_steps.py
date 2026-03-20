@@ -1,7 +1,6 @@
 """Prepare state machine — phase step handlers and dispatcher.
 
 No imports from core.py (circular-import guard).
-Note: _has_test_spec_artifacts lives in prepare_events.py (co-located with _derive_prepare_phase).
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event,
     _has_test_spec_artifacts,
-    _is_artifact_produced,
 )
 from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
 from teleclaude.core.next_machine.state_io import _run_git_prepare, write_phase_state
@@ -71,14 +69,11 @@ async def _prepare_step_input_assessment(
     stamp_audit(state, "input_assessment", "started_at", _now)
 
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
-    # Ghost artifact protection: requires produced_at stamp, not just file presence
-    if has_requirements and not _is_artifact_produced(state, "requirements"):
-        has_requirements = False
     if has_requirements:
         # Emit input_consumed event before transitioning (R13)
         await asyncio.to_thread(record_input_consumed, cwd, slug)
         stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())
-        state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
+        state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return True, ""  # loop
 
@@ -109,12 +104,9 @@ async def _prepare_step_triangulation(
 ) -> tuple[bool, str]:
     """TRIANGULATION: requirements.md still needs discovery or revision."""
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
-    # Ghost artifact protection: requires produced_at stamp, not just file presence
-    if has_requirements and not _is_artifact_produced(state, "requirements"):
-        has_requirements = False
     if has_requirements:
         # Transition to REQUIREMENTS_REVIEW
-        state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
+        state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_drafted", {"slug": slug})
         return True, ""  # loop
@@ -156,7 +148,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
     if verdict == "approve":
         stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "requirements_review", "verdict", "approve")
-        state["prepare_phase"] = PreparePhase.TEST_SPEC_BUILD.value
+        state["current"] = PreparePhase.TEST_SPEC_BUILD.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
         return True, ""  # loop
@@ -166,7 +158,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        state["prepare_phase"] = PreparePhase.BLOCKED.value
+        state["current"] = PreparePhase.BLOCKED.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return False, (
             f"BLOCKED: {slug} requirements have {open_count} unresolved architectural finding(s) "
@@ -186,7 +178,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["requirements_review"] = req_review
-            state["prepare_phase"] = PreparePhase.BLOCKED.value
+            state["current"] = PreparePhase.BLOCKED.value
             await asyncio.to_thread(write_phase_state, cwd, slug, state)
             return False, (
                 f"BLOCKED: {slug} requirements review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
@@ -207,7 +199,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         stamp_audit(state, "requirements_review", "verdict", "needs_work")
         stamp_audit(state, "requirements_review", "rounds", rounds)
         state["requirements_review"] = req_review
-        state["prepare_phase"] = PreparePhase.TRIANGULATION.value
+        state["current"] = PreparePhase.TRIANGULATION.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         # Compute diff context for re-dispatch (I-2)
         base_sha = (isinstance(req_review, dict) and req_review.get("baseline_commit")) or ""
@@ -274,12 +266,9 @@ async def _prepare_step_test_spec_build(
     stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())
 
     has_test_specs = await asyncio.to_thread(_has_test_spec_artifacts, cwd, slug)
-    # Ghost artifact protection: requires produced_at stamp, not just file presence
-    if has_test_specs and not _is_artifact_produced(state, "test_specs"):
-        has_test_specs = False
     if has_test_specs:
         stamp_audit(state, "test_spec_build", "completed_at", datetime.now(UTC).isoformat())
-        state["prepare_phase"] = PreparePhase.TEST_SPEC_REVIEW.value
+        state["current"] = PreparePhase.TEST_SPEC_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_drafted", {"slug": slug})
         return True, ""  # loop
@@ -320,7 +309,7 @@ async def _prepare_step_test_spec_review(
     if verdict == "approve":
         stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "test_spec_review", "verdict", "approve")
-        state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
+        state["current"] = PreparePhase.PLAN_DRAFTING.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
         return True, ""  # loop
@@ -335,7 +324,7 @@ async def _prepare_step_test_spec_review(
         # Block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["test_spec_review"] = spec_review
-            state["prepare_phase"] = PreparePhase.BLOCKED.value
+            state["current"] = PreparePhase.BLOCKED.value
             await asyncio.to_thread(write_phase_state, cwd, slug, state)
             return False, (
                 f"BLOCKED: {slug} test spec review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
@@ -348,7 +337,7 @@ async def _prepare_step_test_spec_review(
         stamp_audit(state, "test_spec_review", "verdict", "needs_work")
         stamp_audit(state, "test_spec_review", "rounds", rounds)
         state["test_spec_review"] = spec_review
-        state["prepare_phase"] = PreparePhase.TEST_SPEC_BUILD.value
+        state["current"] = PreparePhase.TEST_SPEC_BUILD.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
@@ -391,9 +380,6 @@ async def _prepare_step_plan_drafting(
     stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
     has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
-    # Ghost artifact protection: requires produced_at stamp, not just file presence
-    if has_plan and not _is_artifact_produced(state, "implementation_plan"):
-        has_plan = False
     if has_plan:
         # R16: check that all referenced_paths exist before advancing to plan review
         grounding = state.get("grounding", {})
@@ -423,7 +409,7 @@ async def _prepare_step_plan_drafting(
             )
 
         stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
-        state["prepare_phase"] = PreparePhase.PLAN_REVIEW.value
+        state["current"] = PreparePhase.PLAN_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
         return True, ""  # loop
@@ -465,7 +451,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
     if verdict == "approve":
         stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "plan_review", "verdict", "approve")
-        state["prepare_phase"] = PreparePhase.GATE.value
+        state["current"] = PreparePhase.GATE.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
         return True, ""  # loop
@@ -475,7 +461,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        state["prepare_phase"] = PreparePhase.BLOCKED.value
+        state["current"] = PreparePhase.BLOCKED.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return False, (
             f"BLOCKED: {slug} plan has {open_count} unresolved architectural finding(s) "
@@ -495,7 +481,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["plan_review"] = plan_review
-            state["prepare_phase"] = PreparePhase.BLOCKED.value
+            state["current"] = PreparePhase.BLOCKED.value
             await asyncio.to_thread(write_phase_state, cwd, slug, state)
             return False, (
                 f"BLOCKED: {slug} plan review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
@@ -516,7 +502,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         stamp_audit(state, "plan_review", "verdict", "needs_work")
         stamp_audit(state, "plan_review", "rounds", rounds)
         state["plan_review"] = plan_review
-        state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
+        state["current"] = PreparePhase.PLAN_DRAFTING.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         # Compute diff context for re-dispatch (I-2)
         base_sha = (isinstance(plan_review, dict) and plan_review.get("baseline_commit")) or ""
@@ -584,7 +570,7 @@ async def _prepare_step_gate(
     dor_score = dor.get("score") if isinstance(dor, dict) else None
 
     if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
-        state["prepare_phase"] = PreparePhase.GROUNDING_CHECK.value
+        state["current"] = PreparePhase.GROUNDING_CHECK.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return True, ""  # loop
 
@@ -640,7 +626,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
         grounding_dict["last_grounded_at"] = now
         grounding_dict["valid"] = True
         state["grounding"] = grounding_dict
-        state["prepare_phase"] = PreparePhase.PREPARED.value
+        state["current"] = PreparePhase.PREPARED.value
         write_phase_state(cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
         return True, ""  # loop to PREPARED terminal
@@ -654,7 +640,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
         grounding_dict["invalidation_reason"] = reason
         grounding_dict["changed_paths"] = []
         state["grounding"] = grounding_dict
-        state["prepare_phase"] = PreparePhase.RE_GROUNDING.value
+        state["current"] = PreparePhase.RE_GROUNDING.value
         write_phase_state(cwd, slug, state)
         _emit_prepare_event(
             "domain.software-development.prepare.grounding_invalidated",
@@ -697,7 +683,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
         grounding_dict["invalidation_reason"] = reason
         grounding_dict["changed_paths"] = changed_paths  # type: ignore[assignment]  # I1: persist actual changed paths
         state["grounding"] = grounding_dict
-        state["prepare_phase"] = PreparePhase.RE_GROUNDING.value
+        state["current"] = PreparePhase.RE_GROUNDING.value
         write_phase_state(cwd, slug, state)
         _emit_prepare_event(
             "domain.software-development.prepare.grounding_invalidated",
@@ -711,7 +697,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
     grounding_dict["last_grounded_at"] = now
     grounding_dict["valid"] = True
     state["grounding"] = grounding_dict
-    state["prepare_phase"] = PreparePhase.PREPARED.value
+    state["current"] = PreparePhase.PREPARED.value
     write_phase_state(cwd, slug, state)
     _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
     return True, ""  # loop to PREPARED terminal
@@ -733,7 +719,7 @@ async def _prepare_step_re_grounding(
         changed_paths = [path for path in changed_paths if isinstance(path, str)]
 
     # Set next phase to PLAN_REVIEW so re-grounded plan gets reviewed
-    state["prepare_phase"] = PreparePhase.PLAN_REVIEW.value
+    state["current"] = PreparePhase.PLAN_REVIEW.value
     # Reset plan review verdict so fresh review runs
     plan_review = state.get("plan_review", {})
     if isinstance(plan_review, dict):
@@ -763,7 +749,7 @@ def _prepare_step_prepared(slug: str, cwd: str, state: dict[str, StateValue]) ->
     dor = state.get("dor", {})
     dor_score = dor.get("score") if isinstance(dor, dict) else None
     if not (isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD):
-        state["prepare_phase"] = PreparePhase.GATE.value
+        state["current"] = PreparePhase.GATE.value
         write_phase_state(cwd, slug, state)
         return True, ""  # loop back to gate
     return False, format_prepared(slug)

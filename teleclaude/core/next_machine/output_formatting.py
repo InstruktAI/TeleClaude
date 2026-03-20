@@ -49,10 +49,12 @@ POST_COMPLETION: dict[str, str] = {
 1. Read worker output via get_session_data to extract verdict
 2. If verdict is APPROVE:
    a. telec sessions end <session_id>
-   b. telec todo mark-phase {args} --phase review --status approved   c. Call {next_call}
+   b. telec todo state {args} approve_review
+   c. Call {next_call}
 3. If verdict is REQUEST CHANGES — PEER CONVERSATION PROTOCOL (keep reviewer alive):
    a. DO NOT end the reviewer session — keep it alive throughout peer iteration
-   b. telec todo mark-phase {args} --phase review --status changes_requested   c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
+   b. telec todo state {args} request_changes
+   c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
         --project <project-root> --subfolder trees/{args}
    d. Save <reviewer_session_id> and <fixer_session_id>
    e. Tell the reviewer to start a direct conversation with the fixer:
@@ -64,7 +66,7 @@ POST_COMPLETION: dict[str, str] = {
    g. When fixer reports FIX COMPLETE:
       - Read review-findings.md verdict
       - If APPROVE: telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>,
-          telec todo mark-phase {args} --phase review --status approved,
+          telec todo state {args} approve_review,
           call {next_call}
       - If still REQUEST CHANGES: telec sessions end <fixer_session_id>,
           telec sessions end <reviewer_session_id>,
@@ -77,7 +79,8 @@ POST_COMPLETION: dict[str, str] = {
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
 2. telec sessions end <session_id>
-3. telec todo mark-phase {args} --phase review --status pending4. Call {next_call}
+3. telec todo state {args} request_review
+4. Call {next_call}
 5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention

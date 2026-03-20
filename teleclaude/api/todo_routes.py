@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from teleclaude.api.auth import (
     CallerIdentity,
@@ -323,3 +324,62 @@ async def todo_set_deps(  # pyright: ignore
 
     msg = f"dependencies set for '{slug}': {', '.join(after)}" if after else f"dependencies cleared for '{slug}'"
     return {"result": f"OK: {msg}"}
+
+
+@router.post("/state")
+async def todo_state(  # pylint: disable=too-many-locals
+    slug: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    transition: Annotated[str | None, Body()] = None,
+    rewind: Annotated[bool, Body()] = False,
+    _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
+) -> JSONResponse:
+    """Inspect state, fire a transition, or rewind."""
+    if not cwd:
+        raise HTTPException(status_code=400, detail="cwd required")
+
+    from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
+        read_phase_state,
+        write_phase_state,
+    )
+    from teleclaude.core.next_machine.state_machine import (  # pylint: disable=import-outside-toplevel
+        RewindRejected,
+        TransitionRejected,
+    )
+    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
+        build_lifecycle_machine,
+    )
+
+    state = read_phase_state(cwd, slug)
+    machine = build_lifecycle_machine()
+
+    if rewind:
+        try:
+            state = machine.rewind(state)
+        except RewindRejected as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        write_phase_state(cwd, slug, state)
+        return JSONResponse(content=dict(state))
+
+    if transition:
+        from datetime import UTC, datetime  # pylint: disable=import-outside-toplevel
+
+        from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
+
+        actor_id = get_session_id() or _identity.principal or "api"
+        try:
+            state = machine.fire(
+                state,
+                transition,
+                actor_id=actor_id,
+                at=datetime.now(UTC).isoformat(),
+            )
+        except TransitionRejected as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        write_phase_state(cwd, slug, state)
+        return JSONResponse(content=dict(state))
+
+    # Inspection: return current snapshot
+    return JSONResponse(content=dict(state))

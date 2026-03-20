@@ -9,7 +9,6 @@ import pytest
 import yaml
 
 from teleclaude.core.next_machine._types import StateValue
-from teleclaude.core.next_machine.core import PreparePhase
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest
 
 # ---------------------------------------------------------------------------
@@ -29,79 +28,6 @@ def _write_file(base: Path, name: str, content: str = _LONG) -> Path:
     p = base / name
     p.write_text(content)
     return p
-
-
-# ---------------------------------------------------------------------------
-# _derive_prepare_phase — ghost artifact protection
-# ---------------------------------------------------------------------------
-
-
-def _v2_state(extra: dict[str, StateValue] | None = None) -> dict[str, StateValue]:
-    """Build a minimal v2 state dict with artifacts section."""
-    s: dict[str, StateValue] = {
-        "schema_version": 2,
-        "artifacts": {
-            "input": {"digest": "", "produced_at": "", "stale": False},
-            "requirements": {"digest": "", "produced_at": "", "stale": False},
-            "implementation_plan": {"digest": "", "produced_at": "", "stale": False},
-        },
-        "requirements_review": {"verdict": "", "findings": [], "baseline_commit": "", "rounds": 0, "findings_count": 0},
-        "plan_review": {"verdict": "", "findings": [], "baseline_commit": "", "rounds": 0, "findings_count": 0},
-    }
-    if extra:
-        s.update(extra)
-    return s
-
-
-def test_ghost_requirements_not_treated_as_produced_v2(tmp_path: Path) -> None:
-    """v2 state: requirements.md on disk but no produced_at → INPUT_ASSESSMENT."""
-    from teleclaude.core.next_machine.core import _derive_prepare_phase
-
-    cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md")
-    _write_file(tmp_path / "todos" / slug, "requirements.md")
-
-    state = _v2_state()
-    phase = _derive_prepare_phase(slug, cwd, state)
-    assert phase == PreparePhase.INPUT_ASSESSMENT
-
-
-def test_requirements_with_produced_at_treated_as_produced_v2(tmp_path: Path) -> None:
-    """v2 state: requirements.md on disk WITH produced_at → REQUIREMENTS_REVIEW."""
-    from teleclaude.core.next_machine.core import _derive_prepare_phase
-
-    cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md")
-    _write_file(tmp_path / "todos" / slug, "requirements.md")
-
-    state = _v2_state()
-    state["artifacts"]["requirements"]["produced_at"] = "2025-01-01T00:00:00+00:00"  # type: ignore[index]
-
-    phase = _derive_prepare_phase(slug, cwd, state)
-    assert phase == PreparePhase.REQUIREMENTS_REVIEW
-
-
-def test_ghost_plan_not_treated_as_produced_v2(tmp_path: Path) -> None:
-    """v2 state: plan on disk but no produced_at → TEST_SPEC_BUILD (no test specs yet)."""
-    from teleclaude.core.next_machine.core import _derive_prepare_phase
-
-    cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md")
-    _write_file(tmp_path / "todos" / slug, "requirements.md")
-    _write_file(tmp_path / "todos" / slug, "implementation-plan.md")
-
-    state = _v2_state()
-    state["artifacts"]["requirements"]["produced_at"] = "2025-01-01T00:00:00+00:00"  # type: ignore[index]
-    state["requirements_review"] = {
-        "verdict": "approve",
-        "findings": [],
-        "baseline_commit": "",
-        "rounds": 0,
-        "findings_count": 0,
-    }
-
-    phase = _derive_prepare_phase(slug, cwd, state)
-    assert phase == PreparePhase.TEST_SPEC_BUILD
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +366,7 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
     _write_file(tmp_path / "todos" / slug, "implementation-plan.md")
 
     state = read_phase_state(cwd, slug)
-    state["prepare_phase"] = "plan_drafting"
+    state["current"] = "plan_drafting"
     state["requirements_review"] = {
         "verdict": "approve",
         "reviewed_at": "",

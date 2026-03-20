@@ -44,6 +44,7 @@ handle_todo_mark_finalize_ready = _todo.handle_todo_mark_finalize_ready
 handle_todo_mark_phase = _todo.handle_todo_mark_phase
 handle_todo_prepare = _todo.handle_todo_prepare
 handle_todo_set_deps = _todo.handle_todo_set_deps
+handle_todo_state = _todo.handle_todo_state
 handle_todo_work = _todo.handle_todo_work
 
 __all__ = [
@@ -76,5 +77,6 @@ __all__ = [
     "handle_todo_mark_phase",
     "handle_todo_prepare",
     "handle_todo_set_deps",
+    "handle_todo_state",
     "handle_todo_work",
 ]

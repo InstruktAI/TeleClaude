@@ -99,8 +99,13 @@ def _read_todo_metadata(  # pylint: disable=too-many-locals  # Flat data assembl
     if state_path.exists():
         try:
             state = yaml.safe_load(state_path.read_text())
-            build_status = state.get("build") if isinstance(state.get("build"), str) else "pending"
-            review_status = state.get("review") if isinstance(state.get("review"), str) else "pending"
+            current = _non_empty_str(state.get("current"))
+            # Derive build/review status from v2 current field
+            build_status, review_status = _derive_build_review_from_current(current)
+            # Fall back to legacy fields for v1 state files
+            if current is None:
+                build_status = state.get("build") if isinstance(state.get("build"), str) else "pending"
+                review_status = state.get("review") if isinstance(state.get("review"), str) else "pending"
             dor = state.get("dor")
             if isinstance(dor, dict) and isinstance(dor.get("score"), int):
                 dor_score = dor["score"]
@@ -109,7 +114,7 @@ def _read_todo_metadata(  # pylint: disable=too-many-locals  # Flat data assembl
             unresolved = state.get("unresolved_findings")
             if isinstance(unresolved, list):
                 findings_count = len(unresolved)
-            prepare_phase = _non_empty_str(state.get("prepare_phase"))
+            prepare_phase = _derive_prepare_phase_from_current(current) or _non_empty_str(state.get("prepare_phase"))
             integration_phase = _non_empty_str(state.get("integration_phase"))
             finalize_status = _finalize_status(state.get("finalize"))
             phase_status = _derive_phase_status(state.get("phase"), build_status, dor_score, prepare_phase)
@@ -139,6 +144,41 @@ def _read_todo_metadata(  # pylint: disable=too-many-locals  # Flat data assembl
 
 def _non_empty_str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+# v2 current values that indicate prepare-phase territory
+_PREPARE_CURRENT_VALUES: dict[str, str] = {
+    "input_assessment": "input_assessment",
+    "triangulation": "triangulation",
+    "requirements_review": "requirements_review",
+    "test_spec_build": "test_spec_build",
+    "test_spec_review": "test_spec_review",
+    "plan_drafting": "plan_drafting",
+    "plan_review": "plan_review",
+    "gate": "gate",
+    "grounding_check": "grounding_check",
+    "re_grounding": "re_grounding",
+    "prepared": "prepared",
+    "blocked": "blocked",
+}
+
+
+def _derive_build_review_from_current(current: str | None) -> tuple[str | None, str | None]:
+    """Derive legacy build_status and review_status from v2 current field."""
+    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
+        CURRENT_TO_BUILD_REVIEW,
+    )
+
+    if not current:
+        return "pending", "pending"
+    return CURRENT_TO_BUILD_REVIEW.get(current, ("pending", "pending"))
+
+
+def _derive_prepare_phase_from_current(current: str | None) -> str | None:
+    """Derive prepare_phase from v2 current field for display."""
+    if not current:
+        return None
+    return _PREPARE_CURRENT_VALUES.get(current)
 
 
 def _finalize_status(value: object) -> str | None:

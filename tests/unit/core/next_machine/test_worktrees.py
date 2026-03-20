@@ -236,7 +236,9 @@ class TestBookkeepingPushRecovery:
 
         assert result == (True, "rebased_and_pushed")
         # Verify exact rebase recovery sequence
-        repo.git.pull.assert_called_once_with("--rebase", "origin", "main")
+        pull_args = repo.git.pull.call_args
+        assert pull_args[0][:2] == ("--rebase", "--no-autostash")
+        assert pull_args[0][-2:] == ("origin", "main")
         assert repo.git.push.call_count == 2
         assert repo.git.push.call_args_list[1] == call("origin", "main")
 

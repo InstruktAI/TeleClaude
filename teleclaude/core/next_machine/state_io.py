@@ -198,12 +198,58 @@ def _get_finalize_state(state: dict[str, StateValue]) -> FinalizeState:
     return _normalize_finalize_state(state.get("finalize"))
 
 
+def _migrate_v1_to_v2(state: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Migrate a v1 bag-of-fields state dict to v2 format.
+
+    Derives ``current`` from the legacy field combination using precedence:
+    finalize → review → build → prepare_phase → fallback.
+    Removes legacy top-level fields (build, review, prepare_phase).
+    """
+    result = dict(state)
+
+    # Derive current from legacy fields (furthest-progressed wins)
+    finalize = result.get("finalize")
+    finalize_status = finalize.get("status") if isinstance(finalize, dict) else None
+    review = result.get("review", "")
+    build = result.get("build", "")
+    prepare_phase = str(result.get("prepare_phase", "")).strip()
+
+    if finalize_status == "handed_off":
+        current = "finalize_handed_off"
+    elif finalize_status == "ready":
+        current = "finalize_ready"
+    elif review == PhaseStatus.APPROVED.value:
+        current = "review_approved"
+    elif review == PhaseStatus.CHANGES_REQUESTED.value:
+        current = "review_changes_requested"
+    elif review in (PhaseStatus.PENDING.value, "started") and build == PhaseStatus.COMPLETE.value:
+        current = "review_pending"
+    elif build == PhaseStatus.COMPLETE.value:
+        current = "build_complete"
+    elif build == "started":
+        current = "build_started"
+    elif prepare_phase and prepare_phase in _PREPARE_PHASE_VALUES:
+        current = prepare_phase
+    else:
+        current = "input_assessment"
+
+    result["current"] = current
+    result["schema_version"] = 2
+    result["history"] = result.get("history", [])
+
+    # Remove legacy fields
+    for key in ("build", "review", "prepare_phase"):
+        result.pop(key, None)
+
+    return result
+
+
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state.yaml for a work item, preferring worktree when it exists.
 
     Returns default state if file doesn't exist.
-    Migrates missing 'phase' field from existing build/dor state.
-    Performs deep-merge for nested dict keys so sub-key defaults are always present.
+    V2 blobs are returned directly (self-contained).
+    V1 blobs are deep-merged with defaults and migrated to v2.
     """
     effective_cwd = _resolve_state_cwd(cwd, slug)
     state_path = get_state_path(effective_cwd, slug)
@@ -220,11 +266,18 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     else:
         logger.warning("Ignoring non-mapping phase state for %s/%s", cwd, slug)
         state = {}
-    # Deep-merge: preserves nested sub-key defaults that are absent in older persisted state
+
+    # V2: self-contained, skip deep-merge
+    if state.get("schema_version") == 2:
+        if "finalize" in state:
+            state["finalize"] = _normalize_finalize_state(state.get("finalize"))  # type: ignore[assignment]
+        return state
+
+    # V1: deep-merge with defaults, then migrate
     merged = _deep_merge_state(default_state(), state)
     merged["finalize"] = _normalize_finalize_state(state.get("finalize"))  # type: ignore[assignment]
 
-    # Migration: derive phase from existing fields when missing from persisted state
+    # Legacy phase migration (coarse-grained pending/in_progress/done)
     if "phase" not in state:
         build = state.get(PhaseName.BUILD.value)
         if isinstance(build, str) and build != PhaseStatus.PENDING.value:
@@ -232,10 +285,9 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
         else:
             merged["phase"] = ItemPhase.PENDING.value
     elif state.get("phase") == "ready":
-        # Migration: normalize persisted "ready" phase to "pending" (readiness is now derived from dor.score)
         merged["phase"] = ItemPhase.PENDING.value
 
-    return merged
+    return _migrate_v1_to_v2(merged)
 
 
 def _resolve_state_cwd(cwd: str, slug: str) -> str:
@@ -265,8 +317,11 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
 # ---------------------------------------------------------------------------
 
 
-def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateValue]:
-    """Mark a phase with a status.
+def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateValue]:  # pylint: disable=too-many-locals
+    """Mark a phase with a status, routing through the StateMachine engine.
+
+    Fires the corresponding transition to update ``current`` and record history.
+    Preserves review-specific side effects (round tracking, findings).
 
     Args:
         cwd: Worktree directory (not main repo)
@@ -277,8 +332,26 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
     Returns:
         Updated state dict
     """
+    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
+        MARK_PHASE_TO_TRANSITION,
+        build_lifecycle_machine,
+    )
+    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
+
     state = read_phase_state(cwd, slug)
-    state[phase] = status
+
+    # Fire transition through the engine (updates current + records history)
+    transition_name = MARK_PHASE_TO_TRANSITION.get((phase, status))
+    if transition_name:
+        machine = build_lifecycle_machine()
+        state = machine.fire(
+            state,
+            transition_name,
+            actor_id=get_session_id() or "mark-phase",
+            at=datetime.now(UTC).isoformat(),
+        )
+
+    # Review-specific side effects (bookkeeping, not state transitions)
     if phase == PhaseName.REVIEW.value:
         review_round = state.get("review_round")
         current_round = review_round if isinstance(review_round, int) else 0
@@ -296,7 +369,6 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
         if status == PhaseStatus.CHANGES_REQUESTED.value:
             findings_ids = _extract_finding_ids(cwd, slug)
             state["unresolved_findings"] = findings_ids  # type: ignore[assignment]
-            # Keep resolved IDs stable and de-duplicated
             state["resolved_findings"] = list(dict.fromkeys(str(i) for i in resolved_ids))
         elif status == PhaseStatus.APPROVED.value:
             merged = list(dict.fromkeys([*(str(i) for i in resolved_ids), *(str(i) for i in unresolved_ids)]))
@@ -334,7 +406,7 @@ def mark_prepare_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[
 
 
 def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue]:
-    """Set prepare_phase directly in state.yaml.
+    """Set the current prepare phase in state.yaml via the v2 current field.
 
     When advancing to 'prepared', also stamps grounding as valid with the
     current HEAD sha and input digest so the work state machine accepts it.
@@ -351,7 +423,7 @@ def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue
         raise ValueError(f"invalid prepare_phase '{status}': must be one of {', '.join(_PREPARE_PHASE_VALUES)}")
 
     state = read_phase_state(cwd, slug)
-    state["prepare_phase"] = status
+    state["current"] = status
 
     if status == PreparePhase.PREPARED.value:
         grounding = state.get("grounding", {})
@@ -405,6 +477,11 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
             "push the latest branch head before marking ready"
         )
 
+    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
+        build_lifecycle_machine,
+    )
+    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
+
     state = read_phase_state(worktree_cwd, slug)
     finalize = _get_finalize_state(state)
     if finalize.get("status") == "handed_off" and finalize.get("sha") == branch_head:
@@ -412,11 +489,20 @@ def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dic
     if finalize.get("status") == "ready" and finalize.get("sha") == branch_head:
         return state
 
+    # Fire transition through the engine (updates current + records history)
+    machine = build_lifecycle_machine()
+    now = datetime.now(UTC).isoformat()
+    state = machine.fire(
+        state,
+        "mark_finalize_ready",
+        actor_id=get_session_id() or worker_session_id or "mark-finalize-ready",
+        at=now,
+    )
     state["finalize"] = {
         "status": "ready",
         "branch": slug,
         "sha": branch_head,
-        "ready_at": datetime.now(UTC).isoformat(),
+        "ready_at": now,
         "worker_session_id": worker_session_id.strip(),
     }
     write_phase_state(worktree_cwd, slug, state)
@@ -429,16 +515,29 @@ def _mark_finalize_handed_off(
     *,
     handoff_session_id: str,
 ) -> dict[str, StateValue]:
+    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
+        build_lifecycle_machine,
+    )
+
     state = read_phase_state(worktree_cwd, slug)
     finalize = _get_finalize_state(state)
     if finalize.get("status") != "ready":
         raise ValueError(f"finalize state for {slug} is not ready")
 
+    # Fire transition through the engine (updates current + records history)
+    machine = build_lifecycle_machine()
+    now = datetime.now(UTC).isoformat()
+    state = machine.fire(
+        state,
+        "finalize_handoff",
+        actor_id=handoff_session_id,
+        at=now,
+    )
     state["finalize"] = {
         **finalize,  # type: ignore[dict-item]
         "status": "handed_off",
         "handoff_session_id": handoff_session_id,
-        "handed_off_at": datetime.now(UTC).isoformat(),
+        "handed_off_at": now,
     }
     write_phase_state(worktree_cwd, slug, state)
     return state
@@ -514,25 +613,37 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
 # ---------------------------------------------------------------------------
 
 
+_BUILD_COMPLETE_STATES = frozenset(
+    {
+        "build_complete",
+        "review_pending",
+        "review_changes_requested",
+        "review_approved",
+        "finalize_ready",
+        "finalize_handed_off",
+    }
+)
+
+
 def is_build_complete(cwd: str, slug: str) -> bool:
-    """Check if build phase is complete."""
+    """Check if build phase is complete (current is at or past build_complete)."""
     state = read_phase_state(cwd, slug)
-    build = state.get(PhaseName.BUILD.value)
-    return isinstance(build, str) and build == PhaseStatus.COMPLETE.value
+    current = str(state.get("current", ""))
+    return current in _BUILD_COMPLETE_STATES
 
 
 def is_review_approved(cwd: str, slug: str) -> bool:
     """Check if review phase is approved."""
     state = read_phase_state(cwd, slug)
-    review = state.get(PhaseName.REVIEW.value)
-    return isinstance(review, str) and review == PhaseStatus.APPROVED.value
+    current = str(state.get("current", ""))
+    return current in ("review_approved", "finalize_ready", "finalize_handed_off")
 
 
 def is_review_changes_requested(cwd: str, slug: str) -> bool:
     """Check if review requested changes."""
     state = read_phase_state(cwd, slug)
-    review = state.get(PhaseName.REVIEW.value)
-    return isinstance(review, str) and review == PhaseStatus.CHANGES_REQUESTED.value
+    current = str(state.get("current", ""))
+    return current == "review_changes_requested"
 
 
 def has_pending_deferrals(cwd: str, slug: str) -> bool:
@@ -610,9 +721,9 @@ def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
     """Fast-track a todo to work-ready state, bypassing the full prepare lifecycle.
 
     Sets all state.yaml fields required by the work state machine entry checks:
-    - phase: pending, build: pending
+    - phase: pending, current: prepared
     - dor.score >= 8, dor.status: pass
-    - prepare_phase: prepared, grounding.valid: true
+    - grounding.valid: true
     - requirements_review.verdict: approve, plan_review.verdict: approve
 
     Requires requirements.md and implementation-plan.md to already exist with real
@@ -650,9 +761,7 @@ def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
     state = read_phase_state(cwd, slug)
 
     state["phase"] = ItemPhase.PENDING.value
-    state["build"] = PhaseStatus.PENDING.value
-    state["review"] = PhaseStatus.PENDING.value
-    state["prepare_phase"] = PreparePhase.PREPARED.value
+    state["current"] = PreparePhase.PREPARED.value
 
     # DOR
     state["dor"] = {
