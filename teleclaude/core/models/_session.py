@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, cast
 
-from teleclaude.constants import FIELD_ADAPTER_METADATA, HUMAN_ROLE_ADMIN
+from teleclaude.constants import FIELD_ADAPTER_METADATA
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
@@ -164,7 +164,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
     tui_log_file: str | None = None
     tui_capture_started: bool = False
     human_email: str | None = None
-    human_role: str | None = HUMAN_ROLE_ADMIN
+    human_role: str | None = None
     principal: str | None = None
     lifecycle_status: str = "active"
     last_memory_extraction_at: datetime | None = None
@@ -330,7 +330,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             last_output_digest=_get_optional_str("last_output_digest"),
             working_slug=_get_optional_str("working_slug"),
             human_email=_get_optional_str("human_email"),
-            human_role=_get_optional_str("human_role") or HUMAN_ROLE_ADMIN,
+            human_role=_get_optional_str("human_role"),
             lifecycle_status=str(data.get("lifecycle_status") or "active"),
             last_memory_extraction_at=parse_iso_datetime(data.get("last_memory_extraction_at"))
             if isinstance(data.get("last_memory_extraction_at"), str)

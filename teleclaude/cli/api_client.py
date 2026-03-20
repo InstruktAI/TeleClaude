@@ -550,7 +550,7 @@ class _TelecSessionAPI:
             "message": kwargs.get("message"),
             "auto_command": kwargs.get("auto_command"),
             "human_email": kwargs.get("human_email"),
-            "human_role": kwargs.get("human_role", "admin"),
+            "human_role": kwargs.get("human_role"),
             "metadata": kwargs.get("metadata"),
         }
         subdir = kwargs.get("subdir")

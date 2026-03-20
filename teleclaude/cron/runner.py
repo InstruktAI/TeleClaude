@@ -254,8 +254,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
                 thinking_mode=thinking_mode,
                 title=f"Job: {job_name}",
                 message=message,
-                human_role="admin",  # Jobs run as admin
-                metadata={"job_name": job_name, "job_type": config.type or "agent"},
+                metadata={"system_role": "system", "job": job_name, "job_type": config.type or "agent"},
             )
             return True
         except Exception as e:  # pylint: disable=broad-exception-caught

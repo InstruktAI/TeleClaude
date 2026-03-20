@@ -10,7 +10,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_CUSTOMER
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 
 from .. import db_models
 
@@ -115,4 +115,4 @@ def resolve_session_principal(session: "Session") -> tuple[str, str]:
         return principal, role
     # System/job session — use full session_id as the stable identifier.
     principal = f"system:{session.session_id}"
-    return principal, session.human_role or HUMAN_ROLE_ADMIN
+    return principal, session.human_role

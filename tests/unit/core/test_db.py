@@ -55,7 +55,7 @@ class TestResolveSessionPrincipal:
         principal, role = resolve_session_principal(session)
         assert principal == "system:abc-def-123"
         assert "abc-def-123" in principal
-        assert role == "admin"
+        assert role is None
 
     @pytest.mark.unit
     def test_anonymous_human_uses_system_principal(self):

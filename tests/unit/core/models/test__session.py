@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.models._adapter import SessionAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.core.models._session import (
     ChannelMetadata,
@@ -171,9 +170,9 @@ class TestSession:
         return Session(**defaults)
 
     @pytest.mark.unit
-    def test_human_role_defaults_to_admin(self):
+    def test_human_role_defaults_to_none(self):
         session = self._make_session()
-        assert session.human_role == HUMAN_ROLE_ADMIN
+        assert session.human_role is None
 
     @pytest.mark.unit
     def test_lifecycle_status_defaults_to_active(self):
@@ -293,7 +292,7 @@ class TestSession:
         assert session.session_metadata is None
 
     @pytest.mark.unit
-    def test_from_dict_human_role_defaults_to_admin_when_missing(self):
+    def test_from_dict_human_role_defaults_to_none_when_missing(self):
         data = {
             "session_id": "s1",
             "computer_name": "local",
@@ -301,7 +300,7 @@ class TestSession:
             "title": "T",
         }
         session = Session.from_dict(data)
-        assert session.human_role == HUMAN_ROLE_ADMIN
+        assert session.human_role is None
 
     @pytest.mark.unit
     def test_from_dict_lifecycle_status_defaults_to_active_when_missing(self):
