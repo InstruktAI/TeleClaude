@@ -50,7 +50,6 @@
 - slug: web-tui-parity
   description: Full TUI parity in web frontend — all 4 tabs, hierarchical trees, keyboard
     nav, activity highlights, footer, toasts
-- slug: ts-migration-requirements
 - slug: refactor-agent-readiness
 - slug: fix-api-command-receipt
 - slug: chip-tunes-regression
