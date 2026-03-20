@@ -204,29 +204,19 @@ class TestProtectedCommitOnMain:
         assert "TELECLAUDE_SYSTEM_ROLE=system" not in result.stderr
 
 
-# ── PROTECTED: push from main (integrator + system) ─────────────────────────
+# ── PROTECTED: push from main (integrator only) ─────────────────────────────
 
 
 @pytest.mark.timeout(10, method="thread")
 class TestProtectedPushFromMain:
-    """Push from main: integrator and system allowed, all others blocked."""
+    """Push from main: integrator only. All others blocked including system."""
 
-    def test_worker_blocked(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator"])
+    def test_non_integrator_blocked(self, role: str | None, tmp_path: Path) -> None:
         repo = _make_push_repo(tmp_path)
-        result = _run_wrapper(["push", "origin", "main"], cwd=str(repo))
+        result = _run_wrapper(["push", "origin", "main"], role=role, cwd=str(repo))
         assert result.returncode != 0
         assert "protected" in result.stderr.lower()
-
-    def test_orchestrator_blocked(self, tmp_path: Path) -> None:
-        repo = _make_push_repo(tmp_path)
-        result = _run_wrapper(["push", "origin", "main"], role="orchestrator", cwd=str(repo))
-        assert result.returncode != 0
-        assert "protected" in result.stderr.lower()
-
-    def test_system_allowed(self, tmp_path: Path) -> None:
-        repo = _make_push_repo(tmp_path)
-        result = _run_wrapper(["push", "origin", "main"], role="system", cwd=str(repo))
-        assert result.returncode == 0
 
     def test_integrator_allowed(self, tmp_path: Path) -> None:
         repo = _make_push_repo(tmp_path)

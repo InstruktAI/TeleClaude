@@ -3,7 +3,7 @@
 #
 # Three-tier permission model:
 #   DESTRUCTIVE  — blocked for all roles, no override
-#   PROTECTED    — integrator only (stash), integrator+system (commit/push on main)
+#   PROTECTED    — integrator only (stash, push on main), integrator+system (commit on main)
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
 # Roles (TELECLAUDE_SYSTEM_ROLE, default: worker):
@@ -210,8 +210,8 @@ fi
 
 if [ "$_subcmd" = "push" ]; then
     _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ "$_current_branch" = "main" ] && [ "$_role" != "system" ] && [ "$_role" != "integrator" ]; then
-        echo "ERROR: Push from main is a protected operation. Ask the human or use the integrator." >&2
+    if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
+        echo "ERROR: Push from main is a protected operation. Only the integrator role may push from main." >&2
         exit 1
     fi
 fi
