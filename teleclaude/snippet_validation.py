@@ -6,13 +6,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
-
-from teleclaude.constants import TAXONOMY_TYPES
-from teleclaude.utils import expand_env_vars, resolve_project_config_path
+from teleclaude.constants import DOMAIN_SCOPES, TAXONOMY_TYPES
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
-_DEFAULT_DOMAINS = {"software-development"}
+_DOMAINS = frozenset(DOMAIN_SCOPES)
 
 
 @dataclass(frozen=True)
@@ -30,33 +27,9 @@ class SnippetIdParts:
         return f"{self.scope}/{self.taxonomy}"
 
 
-def load_domains(project_root: Path) -> set[str]:  # pylint: disable=too-many-return-statements
-    """Load domain names from project config, falling back to defaults."""
-    config_path = resolve_project_config_path(project_root)
-    if not config_path.exists():
-        return set(_DEFAULT_DOMAINS)
-    try:
-        payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
-        return set(_DEFAULT_DOMAINS)
-    if not isinstance(payload, dict):
-        return set(_DEFAULT_DOMAINS)
-    payload = expand_env_vars(payload)
-    if not isinstance(payload, dict):
-        return set(_DEFAULT_DOMAINS)
-    business = payload.get("business")
-    if not isinstance(business, dict):
-        business = payload.get("event_domains")
-    if not isinstance(business, dict):
-        return set(_DEFAULT_DOMAINS)
-    domains = business.get("domains")
-    if isinstance(domains, list):
-        clean = {d for d in domains if isinstance(d, str) and d.strip()}
-        return clean or set(_DEFAULT_DOMAINS)
-    if isinstance(domains, dict):
-        clean = {k for k in domains.keys() if isinstance(k, str) and k.strip()}
-        return clean or set(_DEFAULT_DOMAINS)
-    return set(_DEFAULT_DOMAINS)
+def load_domains(_project_root: Path) -> set[str]:
+    """Return the canonical domain scopes from constants."""
+    return set(_DOMAINS)
 
 
 def _split_parts(value: str) -> tuple[list[str], bool]:

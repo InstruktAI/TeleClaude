@@ -77,11 +77,7 @@ class TestValidateInlineRefFormat:
 
 
 class TestLoadDomains:
-    def test_loads_domains_from_project_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        config_path = tmp_path / "teleclaude.yml"
-        config_path.write_text("business:\n  domains:\n    - engineering\n    - support\n", encoding="utf-8")
-        monkeypatch.setenv("TELECLAUDE_PROJECT_CONFIG_PATH", str(config_path))
-
+    def test_returns_canonical_domain_scopes(self, tmp_path: Path) -> None:
         domains = snippet_validation.load_domains(tmp_path)
 
-        assert domains == {"engineering", "support"}
+        assert domains == {"software-development", "creative", "marketing", "customer-relations"}

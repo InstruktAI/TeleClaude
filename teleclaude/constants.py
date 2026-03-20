@@ -7,6 +7,10 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 
+# Domain scopes (single source of truth)
+# Used for snippet validation — every docs/global/<domain>/ must be listed here
+DOMAIN_SCOPES = ["software-development", "creative", "marketing", "customer-relations"]
+
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
 TAXONOMY_TYPES = ["principle", "concept", "policy", "procedure", "design", "spec"]
