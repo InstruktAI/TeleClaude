@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncGenerator
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -16,7 +18,7 @@ pytestmark = pytest.mark.functional
 
 
 @pytest.fixture
-async def api(monkeypatch: pytest.MonkeyPatch, tmp_path):
+async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator[AsyncClient, None]:
     """Spin up the real FastAPI app backed by in-memory SQLite.
 
     Mocks only tmux (no real processes) and adapters (no network).

@@ -9,6 +9,7 @@ No fallback to admin should exist for sessions without explicit identity.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -49,7 +50,7 @@ async def _create_session(
     return resp.json()
 
 
-async def _get_session_from_db(api: AsyncClient, session_id: str):
+async def _get_session_from_db(api: AsyncClient, session_id: str) -> Any:
     """Load session directly from DB (attached to the client by conftest)."""
     return await api.db.get_session(session_id)
 
@@ -59,7 +60,7 @@ async def _get_session_from_db(api: AsyncClient, session_id: str):
 # ---------------------------------------------------------------------------
 
 
-async def test_single_user_session_gets_admin_from_auth(api: AsyncClient):
+async def test_single_user_session_gets_admin_from_auth(api: AsyncClient) -> None:
     """In single-user mode, a terminal caller gets admin from the auth layer.
 
     The session record must have human_role='admin' — not because of a model
@@ -76,7 +77,7 @@ async def test_single_user_session_gets_admin_from_auth(api: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
-async def test_explicit_member_role_preserved(api: AsyncClient):
+async def test_explicit_member_role_preserved(api: AsyncClient) -> None:
     """When the request carries human_role='member', the session record
     must reflect that — not silently upgrade to admin.
     """
@@ -90,7 +91,7 @@ async def test_explicit_member_role_preserved(api: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
-async def test_system_session_has_no_human_role_fallback(api: AsyncClient):
+async def test_system_session_has_no_human_role_fallback(api: AsyncClient) -> None:
     """A system session created with system_role metadata should not get
     human_role='admin' from a fallback. human_role comes from the auth
     layer (single-user → admin in this test), not from a model default.
@@ -111,7 +112,7 @@ async def test_system_session_has_no_human_role_fallback(api: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
-async def test_child_inherits_parent_human_role(api: AsyncClient):
+async def test_child_inherits_parent_human_role(api: AsyncClient) -> None:
     """When an agent session spawns a child via POST /sessions with
     x-caller-session-id, the child should inherit the parent's human_role.
     """
@@ -146,7 +147,7 @@ async def test_child_inherits_parent_human_role(api: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
-async def test_token_auth_allows_session_list(api: AsyncClient):
+async def test_token_auth_allows_session_list(api: AsyncClient) -> None:
     """An agent session with a valid token can call GET /sessions.
 
     The token must authenticate successfully and the endpoint must return 200.
@@ -173,7 +174,7 @@ async def test_token_auth_allows_session_list(api: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
-async def test_token_auth_with_null_human_role(api: AsyncClient):
+async def test_token_auth_with_null_human_role(api: AsyncClient) -> None:
     """A system-spawned session may have human_role=None in the DB.
     Token auth should still work — principal_role from the token record
     is used for clearance when human_role is absent.
@@ -197,7 +198,7 @@ async def test_token_auth_with_null_human_role(api: AsyncClient):
 # ---------------------------------------------------------------------------
 
 
-async def test_no_identity_no_token_rejected_in_multiuser(api: AsyncClient, monkeypatch: pytest.MonkeyPatch):
+async def test_no_identity_no_token_rejected_in_multiuser(api: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """In multi-user mode, a caller with no headers at all gets 401."""
     from teleclaude.api import auth as auth_mod
 
@@ -212,7 +213,7 @@ async def test_no_identity_no_token_rejected_in_multiuser(api: AsyncClient, monk
 # ---------------------------------------------------------------------------
 
 
-async def test_session_model_default_is_none():
+async def test_session_model_default_is_none() -> None:
     """The Session dataclass must default human_role to None.
     This is the foundational invariant — no silent admin escalation.
     """
@@ -232,7 +233,7 @@ async def test_session_model_default_is_none():
 # ---------------------------------------------------------------------------
 
 
-async def test_from_dict_preserves_null_human_role():
+async def test_from_dict_preserves_null_human_role() -> None:
     """Session.from_dict must not coerce missing human_role to admin."""
     from teleclaude.core.models._session import Session
 
@@ -252,7 +253,7 @@ async def test_from_dict_preserves_null_human_role():
 # ---------------------------------------------------------------------------
 
 
-async def test_restricted_role_jailed_to_help_desk(api: AsyncClient, tmp_path: Path):
+async def test_restricted_role_jailed_to_help_desk(api: AsyncClient, tmp_path: Path) -> None:
     """A session with human_role='newcomer' (non-admin, no system_role)
     should be jailed to the help-desk directory.
     """
