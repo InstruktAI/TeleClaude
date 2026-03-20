@@ -54,6 +54,8 @@
 - slug: fix-api-command-receipt
 - slug: chip-tunes-regression
 - slug: session-memory-extraction
+  after:
+  - mirror-timestamp-fix
 - slug: state-machine-versioning
 - slug: state-machine-core
   group: state-machine-versioning

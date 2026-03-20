@@ -62,6 +62,14 @@ snippets:
   path: docs/project/design/architecture/checkpoint-system.md
   visibility: internal
   source_project: TeleClaude
+- id: project/design/architecture/command-classification
+  description: 'Response-mode classification for API commands: immediate, fire-and-forget,
+    and receipt-backed async.'
+  type: design
+  scope: project
+  path: docs/project/design/architecture/command-classification.md
+  visibility: internal
+  source_project: TeleClaude
 - id: project/design/architecture/context-index
   description: Snippet index generation that produces docs/index.yaml from snippet
     frontmatter.
@@ -171,8 +179,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/operation-receipts
-  description: Receipt-first contract for telec todo work with durable operation tracking
-    and polling.
+  description: 'Receipt-first contract for durable async operations: immediate operation_id,
+    background execution, polling, and completion event.'
   type: design
   scope: project
   path: docs/project/design/architecture/operation-receipts.md

@@ -16,11 +16,22 @@ unresolved_findings: []
 resolved_findings: []
 prepare_phase: plan_drafting
 grounding:
-  valid: false
-  base_sha: ''
+  valid: true
+  base_sha: 8a53172f8fe9198cfd5ddbc90662197b2b987b63
   input_digest: ''
-  referenced_paths: []
-  last_grounded_at: ''
+  referenced_paths:
+  - teleclaude/types/todos.py
+  - teleclaude/core/next_machine/state_io.py
+  - teleclaude/core/next_machine/work.py
+  - teleclaude/core/roadmap.py
+  - teleclaude/api_models.py
+  - teleclaude/resource_validation/__init__.py
+  - teleclaude/cli/tui/widgets/todo_row.py
+  - teleclaude/core/next_machine/output_formatting.py
+  - teleclaude/core/next_machine/prepare_events.py
+  - tests/unit/core/next_machine/test_state_io.py
+  - tests/unit/core/next_machine/test_prepare_events.py
+  last_grounded_at: '2026-03-20T08:45:00+00:00'
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:

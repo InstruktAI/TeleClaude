@@ -14,26 +14,26 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: plan_drafting
+prepare_phase: gate
 grounding:
   valid: true
-  base_sha: de862eeea0c873603cad6cd6f771d70967708a23
+  base_sha: 8a53172f8fe9198cfd5ddbc90662197b2b987b63
   input_digest: 1ae046f81fda1e5508c6f13b4bd753df
   referenced_paths:
   - jobs/session_memory_extraction.py
+  - tests/unit/test_session_memory_extraction.py
+  - teleclaude/services/maintenance_service.py
+  - teleclaude/mirrors/generator.py
+  - teleclaude/core/agents.py
   - teleclaude/core/summarizer.py
   - teleclaude/mirrors/store.py
-  - teleclaude/mirrors/generator.py
+  - teleclaude/utils/transcript/_tool_calls.py
   - teleclaude/memory/store.py
   - teleclaude/memory/types.py
   - teleclaude/channels/publisher.py
-  - teleclaude/transport/redis_transport/_transport.py
-  - teleclaude/core/models/_session.py
-  - teleclaude/core/db_models.py
-  - teleclaude/core/db.py
-  - teleclaude/services/maintenance_service.py
-  - tests/jobs/test_session_memory_extraction.py
-  last_grounded_at: '2026-03-20T12:00:00Z'
+  - teleclaude/config/__init__.py
+  - teleclaude/transport/redis_transport/_connection.py
+  last_grounded_at: '2026-03-20T07:27:51Z'
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
@@ -49,11 +49,11 @@ test_spec_review:
   findings_count: 0
   rounds: 1
 plan_review:
-  verdict: ''
+  verdict: approve
   reviewed_at: ''
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  rounds: 2
+  baseline_commit: 1484cc620fbb5a724a339b56c03dee62a6a03e19
   findings: []
 artifacts:
   input:
@@ -69,8 +69,8 @@ artifacts:
     produced_at: '2026-03-20T06:18:00.835897+00:00'
     stale: false
   implementation_plan:
-    digest: 9adf32b7906932b4653b3c24921bdae3a61caf4c
-    produced_at: '2026-03-20T06:23:48.651110+00:00'
+    digest: 405876d5827a8da304e2b11728caed165120f67227f23f2cc9c0986c47047a3b
+    produced_at: '2026-03-20T07:29:30.188728+00:00'
     stale: false
 audit:
   input_assessment:
@@ -87,14 +87,14 @@ audit:
     rounds: 1
     findings: []
   plan_drafting:
-    started_at: '2026-03-20T12:15:00Z'
-    completed_at: '2026-03-20T12:30:00Z'
+    started_at: '2026-03-20T07:05:58.471830+00:00'
+    completed_at: '2026-03-20T07:27:51Z'
   plan_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
+    started_at: '2026-03-20T07:29:48.959570+00:00'
+    completed_at: '2026-03-20T07:29:48.959625+00:00'
+    baseline_commit: 1484cc620fbb5a724a339b56c03dee62a6a03e19
+    verdict: approve
+    rounds: 2
     findings: []
   gate:
     started_at: ''

@@ -30,6 +30,8 @@ requirements_review:
   reviewed_at: ''
   findings_count: 0
   rounds: 0
+  baseline_commit: ''
+  findings: []
 test_spec_review:
   verdict: approve
   reviewed_at: ''
@@ -40,6 +42,8 @@ plan_review:
   reviewed_at: ''
   findings_count: 0
   rounds: 0
+  baseline_commit: ''
+  findings: []
 artifacts:
   input:
     digest: ''
@@ -54,8 +58,8 @@ artifacts:
     produced_at: '2026-03-20T06:36:16.601596+00:00'
     stale: false
   implementation_plan:
-    digest: 06f23b8ed62ebf92541aa1e712faa2b0543a24112dce4162d21adf5b375e6db6
-    produced_at: '2026-03-20T06:53:44.370734+00:00'
+    digest: ''
+    produced_at: '2026-03-20T07:29:07.105060+00:00'
     stale: false
 audit:
   input_assessment:

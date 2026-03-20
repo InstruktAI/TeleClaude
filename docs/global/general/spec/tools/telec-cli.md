@@ -19,6 +19,10 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec -h -->
 
+### `telec bugs report`
+
+<!-- @exec: telec bugs report -h -->
+
 ### `telec sessions run`
 
 <!-- @exec: telec sessions run -h -->

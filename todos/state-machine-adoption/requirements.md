@@ -1,180 +1,150 @@
-# Requirements: state-machine-versioning
+# Requirements: state-machine-adoption
 
 ## Goal
 
-Replace the bag-of-fields `state.yaml` with a versioned state machine where the current state is a single authoritative value, transitions are atomic and guarded, and history enables rewind. Eliminate all inference-based state derivation, field-by-field patching, and ghost artifact protection hacks.
+Complete the v1-to-v2 state model migration across all remaining consumers.
+After `state-machine-core` delivers the engine, migration, CLI surface, and
+initial prepare/readiness adoption, this todo migrates every other consumer of
+the legacy bag-of-fields model to read from `current`, consolidates mark-*
+commands into transition wrappers, removes ghost artifact protection, and
+enforces NFR-1 (no inference anywhere).
 
 ## Scope
 
 ### In scope
 
-- State machine core: states, transitions, guards, and action handling defined in code
-- Versioned transition history with rewind capability
-- New `telec todo state` CLI command surface
-- Schema versioning with v1 -> v2 migration
-- Replacement of the existing prepare-phase inference helper with authoritative state
-- Replacement of mark-* field-patch commands with transition-based operations
-- Elimination of ghost artifact protection (`produced_at` existence checks as state proxy)
-- Elimination of digest-based staleness loops as state inference mechanism
-- Prepare state machine (Phase A) migration to the new model
-- Work state machine (Phase B) migration to the new model
-- Integration state machine (Phase C) migration to the new model
+- Consumer migration: all code paths that read `prepare_phase`, `build`, or
+  `review` as top-level state fields switch to reading `current`
+- Mark-* command consolidation: `mark-phase`, `mark-ready`,
+  `mark-finalize-ready`, and `mark-prepare-phase` become thin wrappers that
+  fire corresponding transitions through the `StateMachine` engine
+- Ghost artifact protection removal: `produced_at` existence checks used as
+  state proxy are eliminated (state is authoritative via `current`)
+- Work machine (Phase B) adoption: `work.py` dispatch reads `current` and
+  fires transitions instead of calling `mark_phase` directly
+- NFR-1 enforcement: codebase-wide verification that no code path infers
+  lifecycle state from artifact existence, file digests, or field combinations
+- Pydantic model updates: `TodoState` in `types/todos.py` reflects v2 schema
+- DTO/API model updates: `api_models.py` maps from v2 state fields
+- Display layer updates: `roadmap.py`, `todo_row.py`, `output_formatting.py`
+  read `current` instead of legacy fields
+- Resource validation updates: `resource_validation/__init__.py` uses `current`
+- Agent artifact/procedure/CLI help text migration from mark-* to
+  `telec todo state`
 
 ### Out of scope
 
-- `roadmap.yaml` structure changes: roadmap is item metadata, not lifecycle state [inferred]
-- DOR scoring algorithm changes: DOR assessment is a gate check, not a state transition [inferred]
-- Creative lifecycle state machines: separate domain with its own state model [inferred]
-- Changes to the artifact file format (`.md` files themselves) [inferred]
+- Integration machine (Phase C) refactor: the integration module
+  (`teleclaude/core/integration/`) already has its own working state machine
+  (`IntegrationCheckpoint` + `IntegrationPhase` + step functions). It does NOT
+  use the bag-of-fields model and does NOT suffer from the inference, ghost
+  artifact, or field-patching problems this work addresses. Refactoring it to
+  use the generic `StateMachine` engine is a consistency improvement, not a
+  correctness fix, and is architecturally separate from the v1->v2 consumer
+  migration. [inferred: recommend a dedicated follow-up todo if unification is desired]
 
 ## Functional Requirements
 
-### FR-1: Authoritative State Value
+### FR-1: Work Machine Transition Adoption
 
-The state machine must maintain a single `current` field that is the sole source of truth for lifecycle phase. No code path may infer the current state from artifact existence, file digests, or field combinations.
-
-**Success criteria:**
-
-- The existing prepare-phase derivation helper and equivalent inference logic are removed
-- Every state query resolves from the `current` field, never from file system inspection
-- Attempting to read state always returns a concrete state value, never a derived one
-
-### FR-2: Atomic Guarded Transitions
-
-State changes happen through named transitions with precondition guards. A transition either succeeds atomically (state + history updated together) or fails with a clear rejection message.
+The work machine dispatch in `work.py` reads `current` for phase checks and
+fires transitions through the `StateMachine` engine instead of calling
+`mark_phase()` directly.
 
 **Success criteria:**
 
-- Each transition declares its source state(s) and target state
-- Guards validate preconditions before the transition fires
-- If the guard fails, the state is unchanged and the caller receives a diagnostic explaining why
-- No partial state updates are possible (no field-by-field patching)
+- `next_work()` precondition checks read `state["current"]` instead of
+  `state.get("prepare_phase")`
+- Build/review status advancement uses `StateMachine.fire()` instead of direct
+  `mark_phase()` calls
+- The `_mark_finalize_handed_off()` call routes through the transition engine
+- No direct field writes for lifecycle state remain in `work.py`
 
-### FR-3: Idempotent Transition Semantics
+### FR-2: Mark-* Command Consolidation
 
-Transitions follow the idempotency rules described in the input:
-
-- Already past the target state -> no-op (success, no state change)
-- At the required source state -> fires the transition
-- Not yet at the required source state -> rejects with diagnostic ("current state is X, transition Y requires state Z")
-
-**Success criteria:**
-
-- Firing a transition when already past it does not error or re-execute actions
-- The idempotency check is part of the transition engine, not per-transition custom logic
-
-### FR-4: Versioned Transition History
-
-Every transition appends an entry to a history log within the state blob. History entries capture the transition metadata needed for audit and rewind.
+The existing `mark_phase`, `mark_prepare_phase`, `mark_ready`, and
+`mark_finalize_ready` functions become thin wrappers that fire the
+corresponding transition through the `StateMachine` engine.
 
 **Success criteria:**
 
-- History entries include: source state, target state, timestamp, actor identity (session ID), and transition-specific metadata (for example verdict value or digest) [inferred]
-- History is append-only during normal operation
-- History survives serialization round-trips (YAML read/write)
+- Each mark-* function reads the current v2 state, fires the appropriate
+  transition via `StateMachine.fire()`, and writes the result
+- The CLI surface and API routes for mark-* commands continue to work
+  (backward compatibility for in-flight agent sessions)
+- The wrappers produce the same observable state changes as the current
+  direct-write implementations
 
-### FR-5: Rewind Capability
+### FR-3: Ghost Artifact Protection Removal
 
-The state machine supports reverting to the previous state by popping the most recent history entry.
-
-**Success criteria:**
-
-- `telec todo state <slug> --rewind` restores the previous state from history
-- Rewind on an empty history (initial state) is rejected with a clear message
-- Rewind updates the `current` field atomically with the history pop
-
-### FR-6: Steps as Functions
-
-Transition behavior is defined in code, not in external YAML/JSON step configuration. The step definition remains a code-level callable rather than a data-driven lookup.
+The `produced_at` existence checks in `prepare_events.py` that serve as
+state proxy are removed. State authority comes from `current`, not from
+whether an artifact has a `produced_at` timestamp.
 
 **Success criteria:**
 
-- Core transition definitions are represented as code-defined callables rather than configuration lookups
-- The transition engine executes transitions through one consistent callable contract
-- Adding a new transition does not require adding new external transition configuration
+- `_is_artifact_produced()` checks in `prepare_events.py` are removed or
+  replaced with `current`-based state checks
+- No code path uses artifact metadata (`produced_at`, `digest`) as a proxy
+  for lifecycle phase
 
-### FR-7: CLI Command Surface
+### FR-4: Consumer Model Updates
 
-A new `telec todo state` command provides state inspection and transition firing.
-
-**Success criteria:**
-
-- `telec todo state <slug>` displays current state, history summary, and valid transitions from current state
-- `telec todo state <slug> <transition>` fires a named transition (idempotent per FR-3)
-- `telec todo state <slug> --rewind` pops to the previous state (per FR-5)
-- Command output exposes the current state and valid transitions explicitly enough for both human and agent consumers
-
-### FR-8: Schema Versioning and Migration
-
-The new state blob carries a `schema_version` field. A migration path from the current v1 bag-of-fields format to the new v2 state machine format exists.
+All remaining consumers of the legacy field model switch to v2 format.
 
 **Success criteria:**
 
-- Existing `state.yaml` files (`schema_version: 1`) are migrated to v2 on first read
-- Migration maps the current bag-of-fields into the closest equivalent v2 state based on field values [inferred: the mapping must handle the combinations currently used by prepare/work lifecycle state]
-- The migration is idempotent: reading an already-migrated v2 file does not re-migrate
-- The migration helper is reusable for future v2 -> v3 transitions
+- `TodoState` Pydantic model in `types/todos.py` replaces `build`, `review`,
+  `prepare_phase` top-level fields with `current` and `history`
+- `TodoDTO`/`TodoInfo` in `api_models.py` maps from v2 fields
+- `roadmap.py` reads `current` instead of `build`/`review`
+- `resource_validation/__init__.py` checks `current` instead of `build`
+- `todo_row.py` TUI widget reads `current` for display
+- `output_formatting.py` guidance strings reference `telec todo state`
+  instead of `telec todo mark-phase`
 
-### FR-9: Mark-Command Consolidation
+### FR-5: NFR-1 Enforcement
 
-The existing `mark-ready`, `mark-phase`, `mark-finalize-ready`, and `mark-prepare-phase` commands are replaced by transition-based equivalents. The `telec todo state <slug> <transition>` surface subsumes their functionality.
-
-**Success criteria:**
-
-- Each mark-* operation maps to one or more named transitions
-- The old mark-* CLI commands are removed or become thin wrappers that fire the corresponding transition [inferred: thin wrappers may be needed for backward compatibility during rollout, but the goal is elimination]
-- Agent artifacts, procedures, and CLI help text that reference mark-* commands are updated
-
-### FR-10: Prepare, Work, and Integration Machine Coverage
-
-The prepare lifecycle (Phase A), work lifecycle (Phase B), and integration lifecycle (Phase C) are all expressed through the new state model rather than through field inference or checkpoint-specific ad hoc sequencing.
+After all consumer migrations, no code path in the codebase infers lifecycle
+state from artifact existence, file digests, field combinations, or
+checkpoint-specific state reconstruction (excluding the integration module
+which has its own separate state system).
 
 **Success criteria:**
 
-- All current prepare lifecycle states map to states in the v2 model
-- All current work lifecycle transitions map to states or transitions in the v2 model
-- All current integration lifecycle phases map to states or transitions in the new model [inferred]
-- The prepare/work/integration orchestrator flows drive lifecycle advancement through the transition engine rather than through direct field writes or phase re-derivation
+- A grep/search sweep confirms no remaining references to `prepare_phase`,
+  `state["build"]`, or `state["review"]` as state authority outside of
+  migration code and test characterization
+- The `_derive_prepare_phase` function is either deleted or marked as
+  migration-only (not called from any runtime path)
 
 ## Non-Functional Requirements
 
-### NFR-1: No State Inference Anywhere
+### NFR-1: Backward Compatibility During Rollout
 
-After migration, no code path in the codebase may infer lifecycle state from artifact existence, file digests, field combinations, or checkpoint-specific state reconstruction. The authoritative current state value is the sole lifecycle authority.
-
-### NFR-2: Backward-Compatible Persistence
-
-Lifecycle persistence remains in the existing file-backed formats used by each machine, and external consumers must continue to find the information they need either in the new structure or through a compatibility accessor. [inferred]
-
-### NFR-3: Atomic Writes
-
-Lifecycle state writes remain atomic (write-then-rename or equivalent) to prevent corruption from concurrent access or crashes mid-write. [inferred]
+Mark-* CLI commands and API routes remain functional as thin wrappers for
+the transition period. They can be deprecated in a future todo.
 
 ## Acceptance Criteria
 
-- [ ] The existing prepare-phase derivation helper is deleted and no equivalent inference exists
-- [ ] Ghost artifact protection (`produced_at` existence checks) is removed as a state proxy
-- [ ] All mark-* commands route through the transition engine
-- [ ] `telec todo state <slug>` shows current state and valid transitions
-- [ ] Existing v1 lifecycle state files migrate cleanly to the new model
-- [ ] Rewind restores the previous state from history
-- [ ] Prepare, work, and integration lifecycle routing all use the new state model
-- [ ] Pre-commit hooks pass (lint, typecheck, tests) [inferred]
-- [ ] All existing tests updated or replaced to match the new model [inferred]
+- [ ] `work.py` dispatch reads `current` and fires transitions
+- [ ] All mark-* functions route through `StateMachine.fire()`
+- [ ] Ghost artifact protection (`produced_at` state proxy) removed
+- [ ] `TodoState` model reflects v2 schema
+- [ ] `api_models.py` maps from v2 fields
+- [ ] `roadmap.py`, `todo_row.py`, `output_formatting.py` read `current`
+- [ ] `resource_validation` uses `current`
+- [ ] No codebase path infers state from fields/artifacts (NFR-1)
+- [ ] Agent artifacts and help text reference `telec todo state`
+- [ ] Pre-commit hooks pass (lint, typecheck, tests)
+- [ ] All existing tests updated to v2 state format
 
-## Dependency / Prerequisites
+## Dependencies
 
-- No blocking dependencies in `roadmap.yaml` [inferred]
-- The iceboxed `workflow-engine-refactor` todo is architecturally superseded by this work because it builds on the broken state model rather than replacing it [inferred]
+- Depends on `state-machine-core` (engine, migration, CLI/API surface)
 
 ## Constraints
 
-- Must not break running orchestrator sessions during migration: legacy state encountered at runtime is migrated on read [inferred]
-- Must preserve the audit trail information currently stored in lifecycle state [inferred: existing review metadata and timestamps remain recoverable from transition history]
-- Phase C is not exempt from the new model even if it continues to use its existing checkpoint location or file format [inferred]
-
-## Risks
-
-- **Scope size:** This change touches a broad lifecycle state surface across prepare, work, and integration code paths [inferred]. The draft phase should assess whether splitting into foundation and adoption work is warranted.
-- **Agent artifact drift:** Procedures, command artifacts, and CLI help text reference current mark-* commands and state field names. These must be updated atomically with the code changes to prevent agent confusion.
-- **Concurrent state access:** Multiple agent sessions may read or write lifecycle state concurrently. The transition engine must handle this safely [inferred: current atomic-write guarantees need to be preserved].
+- Mark-* commands remain as wrappers (not deleted) for backward compatibility
+- Must not break running agent sessions during transition
+- Integration module is explicitly excluded from this migration scope
