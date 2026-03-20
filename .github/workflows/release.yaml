@@ -110,7 +110,6 @@ jobs:
         # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
-          set -euo pipefail
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent claude --thinking-mode slow \
             --prompt-file release-prompt.txt \
@@ -120,7 +119,6 @@ jobs:
         # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
-          set -euo pipefail
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent codex --thinking-mode slow \
             --prompt-file release-prompt.txt \
@@ -130,7 +128,6 @@ jobs:
         # 2-of-3 quorum by design — individual lane failures are expected
         continue-on-error: true
         run: |
-          set -euo pipefail
           ./.venv/bin/python -m teleclaude.helpers.agent_cli \
             --agent gemini --thinking-mode slow \
             --prompt-file release-prompt.txt \
