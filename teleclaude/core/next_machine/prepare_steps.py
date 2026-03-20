@@ -588,7 +588,7 @@ async def _prepare_step_gate(
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return True, ""  # loop
 
-    # Dispatch gate worker to run DOR assessment
+    # Dispatch gate worker to run DOR assessment (in worktree — test specs live there)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -596,7 +596,7 @@ async def _prepare_step_gate(
             args=slug,
             project=cwd,
             guidance=guidance,
-            subfolder="",
+            subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
                 f"Requirements/plan exist for {slug}, but DOR score is below threshold. "
                 f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
