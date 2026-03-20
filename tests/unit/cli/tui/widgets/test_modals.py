@@ -68,7 +68,7 @@ def test_mode_selector_default_selected_is_slow_index() -> None:
 @pytest.mark.unit
 def test_mode_selector_action_next_wraps_around() -> None:
     sel = ModeSelector()
-    sel.selected = 2  # last index (len=3)
+    sel.selected = len(ModeSelector._MODES) - 1
     sel.action_next()
     assert sel.selected == 0
 

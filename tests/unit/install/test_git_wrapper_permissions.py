@@ -176,23 +176,13 @@ class TestCheckoutPermissions:
 
 @pytest.mark.timeout(10, method="thread")
 class TestProtectedCommitOnMain:
-    """Commit on main: integrator and system allowed, all others blocked."""
+    """Commit on main: integrator only. All others blocked."""
 
-    def test_worker_blocked(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator"])
+    def test_non_integrator_blocked(self, role: str | None, tmp_path: Path) -> None:
         repo = _make_main_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], cwd=str(repo))
+        result = _run_wrapper(["commit", "-m", "test"], role=role, cwd=str(repo))
         assert result.returncode != 0
-        assert "protected" in result.stderr.lower()
-
-    def test_orchestrator_blocked(self, tmp_path: Path) -> None:
-        repo = _make_main_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], role="orchestrator", cwd=str(repo))
-        assert result.returncode != 0
-
-    def test_system_allowed(self, tmp_path: Path) -> None:
-        repo = _make_main_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], role="system", cwd=str(repo))
-        assert result.returncode == 0
 
     def test_integrator_allowed(self, tmp_path: Path) -> None:
         repo = _make_main_repo(tmp_path)

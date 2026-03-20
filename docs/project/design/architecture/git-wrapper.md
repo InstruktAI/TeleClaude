@@ -32,21 +32,21 @@ They are independent layers.
 
 Three tiers, applied in order:
 
-| Tier | Operations | Behavior |
-|------|-----------|----------|
-| DESTRUCTIVE | restore, clean, switch, reset (bare), revert (bare) | Blocked for all roles |
-| PROTECTED | stash (integrator), commit/push on main (integrator+system) | Role-gated |
-| RESTRICTED | commit (orchestrator) | Blocked on all branches |
+| Tier        | Operations                                            | Behavior                |
+| ----------- | ----------------------------------------------------- | ----------------------- |
+| DESTRUCTIVE | restore, clean, switch, reset (bare), revert (bare)   | Blocked for all roles   |
+| PROTECTED   | stash, commit on main, push on main (integrator only) | Role-gated              |
+| RESTRICTED  | commit (orchestrator)                                 | Blocked on all branches |
 
 ### Roles
 
-| Role | Set by | Use case |
-|------|--------|----------|
-| (unset) | Default | Human interactive session — worker permissions internally |
-| worker | Daemon bootstrap | Worktree-scoped builders, fixers, reviewers |
-| system | Daemon bootstrap | Job runners, human-supervised bookkeeping |
-| orchestrator | Daemon bootstrap | State machine drivers — no commits anywhere |
-| integrator | Daemon bootstrap | Merge workflow — full protected access |
+| Role         | Set by           | Use case                                                  |
+| ------------ | ---------------- | --------------------------------------------------------- |
+| (unset)      | Default          | Human interactive session — worker permissions internally |
+| worker       | Daemon bootstrap | Worktree-scoped builders, fixers, reviewers               |
+| system       | Daemon bootstrap | Job runners — same restrictions as worker                 |
+| orchestrator | Daemon bootstrap | State machine drivers — no commits anywhere               |
+| integrator   | Daemon bootstrap | Merge workflow — full protected access                    |
 
 ### Autostash prevention
 
@@ -54,6 +54,7 @@ Git's `merge.autoStash` and `rebase.autoStash` create repo-wide stash entries
 silently. In multi-worktree environments, this corrupts other worktrees.
 
 Prevention layers:
+
 1. **Wrapper:** Injects `GIT_CONFIG_COUNT/KEY/VALUE` env vars disabling both
    `rebase.autoStash` and `merge.autoStash` for every command.
 2. **GitPython:** `no_autostash_env()` helper returns an env dict with the

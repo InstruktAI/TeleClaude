@@ -3,13 +3,13 @@
 #
 # Three-tier permission model:
 #   DESTRUCTIVE  — blocked for all roles, no override
-#   PROTECTED    — integrator only (stash, push on main), integrator+system (commit on main)
+#   PROTECTED    — integrator only (stash, commit on main, push on main)
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
 # Roles (TELECLAUDE_SYSTEM_ROLE, set by daemon bootstrap only):
 #   (unset)      — human-interactive session, defaults to worker permissions internally
 #   worker       — can commit on worktree branches, blocked on main
-#   system       — worker + commit on main (job runners, human-supervised)
+#   system       — same as worker (job runners)
 #   orchestrator — no commits anywhere (machine commands only)
 #   integrator   — full protected access (merge workflow)
 #
@@ -193,7 +193,7 @@ MSG
     fi
 fi
 
-# ── PROTECTED: integrator + system only ───────────────────────────────────────
+# ── PROTECTED: integrator only ────────────────────────────────────────────────
 if [ "$_subcmd" = "stash" ] && [ "$_role" != "integrator" ]; then
     echo "ERROR: 'git stash' is a protected operation. Only the integrator role may use it." >&2
     exit 1
@@ -214,16 +214,35 @@ fi
 
 if [ "$_subcmd" = "commit" ]; then
     _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ "$_current_branch" = "main" ] && [ "$_role" != "system" ] && [ "$_role" != "integrator" ]; then
+    if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
         cat >&2 <<'MSG'
 ERROR: Commits on main are a protected operation.
 
-Inspect the changeset (git diff --staged --name-only), then propose
-one of these paths to the human:
+STEP 1 — Inspect:
+  git diff --staged --name-only
+  git status
 
-  A) Non-functional files only (YAML, Markdown, scaffolding) → ask human to approve
-  B) Small functional change, human present → ask human to approve
-  C) Substantial code change → use telec todo from-main --slug <name>
+STEP 2 — Classify and propose ONE of these paths to the human:
+
+  A) Only non-functional files (Markdown, YAML, todo scaffolding, roadmap,
+     state files, doc snippets — no .py / .ts / .sh logic):
+     → Ask human to approve, then commit with --no-verify:
+       TELECLAUDE_SYSTEM_ROLE=integrator git commit --no-verify -m "chore(...): <subject> [skip ci]"
+
+  B) Functional code change that is small and self-evident (human is present
+     and driving this, no meaningful review value):
+     → Ask human to approve, then commit with hooks:
+       TELECLAUDE_SYSTEM_ROLE=integrator git commit -m "<type>(<scope>): <subject>"
+
+  C) Functional code change of any real substance:
+     → Must go through the review pipeline:
+       telec todo from-main --slug <meaningful-name>
+       telec todo work <slug>
+
+STEP 3 — Ask:
+  State which path you recommend and why (file types seen, size, context).
+  Then ask: "Shall I proceed with [path X]?"
+  Wait for the user to confirm before executing.
 MSG
         exit 1
     fi

@@ -197,7 +197,7 @@ class ModeSelector(TelecMixin, Widget, can_focus=True):
         ("right", "next", "Next"),
     ]
 
-    _MODES = (("fast", "fast"), ("slow", "slow"), ("med", "med"))
+    _MODES = (("fast", "fast"), ("slow", "slow"), ("med", "med"), ("default", "default"))
     _CELL_WIDTH = 12
 
     def render(self) -> Text:

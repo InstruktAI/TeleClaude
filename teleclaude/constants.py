@@ -415,8 +415,9 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         },
         "model_flags": {
             "fast": "--model haiku",
-            "med": "--model 'sonnet[1m]'",
-            "slow": "--model 'opus[1m]'",
+            "med": "--model 'sonnet'",
+            "slow": "--model 'opus'",
+            "default": "",
         },
         "exec_subcommand": "",
         "interactive_flag": "",
@@ -437,6 +438,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "fast": "-m gemini-2.5-flash-lite",
             "med": "-m gemini-3-flash-preview",
             "slow": "-m gemini-3-pro-preview",
+            "default": "",
         },
         "exec_subcommand": "",
         "interactive_flag": "-i",
@@ -475,6 +477,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
                 " --config show_raw_agent_reasoning=true"
                 " --config hide_agent_reasoning=false"
             ),
+            "default": "",
         },
         "exec_subcommand": "exec",
         "interactive_flag": "",
