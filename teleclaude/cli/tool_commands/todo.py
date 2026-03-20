@@ -32,7 +32,7 @@ __all__ = [
 def handle_todo_create(args: list[str]) -> None:
     """Run the creative lifecycle state machine.
 
-    Usage: telec todo create [<slug>]
+    Usage: telec todo co-create [<slug>]
 
     Checks creative state for the given slug and returns instructions for
     the next action: design discovery, art generation, visual drafting,
@@ -45,8 +45,8 @@ def handle_todo_create(args: list[str]) -> None:
       <slug>    Work item slug (optional; auto-selects if omitted)
 
     Examples:
-      telec todo create
-      telec todo create my-feature
+      telec todo co-create
+      telec todo co-create my-feature
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_create.__doc__ or "")

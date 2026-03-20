@@ -349,7 +349,9 @@ def test_restamp_artifact_digest_updates_when_file_changed(tmp_path: Path) -> No
 
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
-    assert artifacts["requirements"]["digest"] == expected_digest
+    req = artifacts["requirements"]
+    assert isinstance(req, dict)
+    assert req["digest"] == expected_digest
 
 
 def test_restamp_artifact_digest_noop_when_unchanged(tmp_path: Path) -> None:
@@ -366,7 +368,9 @@ def test_restamp_artifact_digest_noop_when_unchanged(tmp_path: Path) -> None:
 
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
-    assert artifacts["requirements"]["digest"] == same_digest
+    req = artifacts["requirements"]
+    assert isinstance(req, dict)
+    assert req["digest"] == same_digest
 
 
 @pytest.mark.asyncio
@@ -392,7 +396,9 @@ async def test_requirements_review_approve_restamps_digest_when_reviewer_modifie
     assert state["prepare_phase"] == PreparePhase.TEST_SPEC_BUILD.value
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
-    assert artifacts["requirements"]["digest"] == new_digest
+    req = artifacts["requirements"]
+    assert isinstance(req, dict)
+    assert req["digest"] == new_digest
 
 
 @pytest.mark.asyncio
@@ -417,4 +423,6 @@ async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifa
     assert state["prepare_phase"] == PreparePhase.GATE.value
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
-    assert artifacts["implementation_plan"]["digest"] == new_digest
+    plan = artifacts["implementation_plan"]
+    assert isinstance(plan, dict)
+    assert plan["digest"] == new_digest

@@ -19,7 +19,7 @@ hardcoded status codes.
 flowchart TD
     Request["HTTP Request"]
     Router["API Route"]
-    Command["InternalCommand\n(response_mode declared)"]
+    Command["InternalCommand<br/>(response_mode declared)"]
     Service["CommandService"]
 
     Request --> Router
@@ -29,7 +29,7 @@ flowchart TD
     Command -->|RECEIPT| Service
 
     Service -->|returns data| ImmediateResp["200 + payload"]
-    Service -->|emits event, returns nothing| FFResp["202 accepted\n+ completion_event"]
+    Service -->|emits event, returns nothing| FFResp["202 accepted<br/>+ completion_event"]
     Service -->|persists operation row| ReceiptResp["202 + receipt"]
 ```
 
@@ -98,7 +98,7 @@ sequenceDiagram
     CommandService->>Handler: dispatch
     Handler->>EventBus: emit SESSION_CLOSE_REQUESTED
     CommandService->>Route: None
-    Route->>Client: 202 Accepted\n{completion_event: "session.close_completed"}
+    Route->>Client: 202 Accepted<br/>{completion_event: "session.close_completed"}
     EventBus-->>Client: WS push: session.close_completed
 ```
 
@@ -190,4 +190,3 @@ class InternalCommand:
   a convenience, not the authority.
 - **FIRE_AND_FORGET with no completion_event declared.** Assertion failure at startup.
   No command may ship with `response_mode=FIRE_AND_FORGET` and `completion_event=None`.
-

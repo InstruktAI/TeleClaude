@@ -82,9 +82,13 @@ case "$_subcmd" in
         if [ "$_has_separator" -eq 1 ] && { [ "$_role" = "integrator" ] || [ "$_role" = "system" ]; }; then
             : # allowed — file-scoped checkout
         else
-            echo "ERROR: 'git checkout' is prohibited in agent sessions. Use 'git switch' for branches or commits for file changes." >&2
+            echo "ERROR: 'git checkout' is prohibited in agent sessions." >&2
             exit 1
         fi
+        ;;
+    switch)
+        echo "ERROR: 'git switch' is prohibited in agent sessions. Branch switching on repo root is not allowed." >&2
+        exit 1
         ;;
     restore)
         echo "ERROR: 'git restore' is prohibited in agent sessions. Commit or discard intentionally." >&2

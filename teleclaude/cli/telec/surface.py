@@ -188,6 +188,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--attach", desc="Attach to tmux session after revive"),
                 ],
                 notes=[
+                    (
+                        "Restarts an ended session's agent with the full prior transcript, "
+                        "so the agent resumes with its original context intact."
+                    ),
                     "Without --agent, session_id is a TeleClaude session ID.",
                     "With --agent, session_id is a native agent session ID resolved via the specified agent.",
                 ],
@@ -378,7 +382,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "todo": CommandDef(
         desc="Manage work items",
         subcommands={
-            "create": CommandDef(
+            "co-create": CommandDef(
                 desc="Run the creative state machine",
                 args="[<slug>]",
                 flags=[_H],

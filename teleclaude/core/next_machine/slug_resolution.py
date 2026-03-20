@@ -11,7 +11,7 @@ import asyncio
 from pathlib import Path
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, ItemPhase, PhaseName, PhaseStatus
-from teleclaude.core.next_machine.path_checks import check_file_exists, check_file_has_content
+from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     check_dependencies_satisfied,
     load_roadmap,
@@ -194,11 +194,6 @@ async def resolve_slug_async(
     return await asyncio.to_thread(resolve_slug, cwd, slug, ready_only, dependencies)
 
 
-def check_file_exists(cwd: str, relative_path: str) -> bool:
-    """Check if a file exists relative to cwd."""
-    return (Path(cwd) / relative_path).exists()
-
-
 def resolve_canonical_project_root(cwd: str) -> str:
     """Resolve canonical repository root from cwd.
 
@@ -271,7 +266,6 @@ def set_item_phase(cwd: str, slug: str, phase: str) -> None:
 
 __all__ = [
     "_find_next_prepare_slug",
-    "check_file_exists",
     "get_item_phase",
     "is_ready_for_work",
     "resolve_canonical_project_root",

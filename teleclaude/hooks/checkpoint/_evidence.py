@@ -190,8 +190,8 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return head == "pkill" and any("SIGUSR2" in token for token in rest)
     if evidence == "kill -USR2":
         return head in {"kill", "pkill"} and any("USR2" in token for token in rest)
-    if evidence == "--unix-socket /tmp/teleclaude-api.sock":
-        return "--unix-socket" in tokens and "/tmp/teleclaude-api.sock" in tokens
+    if evidence == "telec sessions restart":
+        return head == "telec" and "sessions" in rest and "restart" in rest
     if evidence == "/agent-restart":
         return any("/agent-restart" in token for token in tokens)
     if evidence == "agent_restart":

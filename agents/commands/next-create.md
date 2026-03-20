@@ -34,7 +34,7 @@ Run the creative state machine and execute its instructions verbatim.
 
 ## Steps
 
-- Call `telec todo create` with the slug if provided.
+- Call `telec todo co-create` with the slug if provided.
 - Follow the orchestration loop:
   1. Call the state machine.
   2. Read the returned instruction.

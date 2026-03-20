@@ -74,7 +74,7 @@ def _handle_todo(args: list[str]) -> None:
         return
 
     subcommand = args[0]
-    if subcommand == "create":
+    if subcommand == "co-create":
         handle_todo_create(args[1:])
     elif subcommand == "scaffold":
         _handle_todo_create(args[1:])

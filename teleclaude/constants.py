@@ -276,13 +276,8 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="agent artifacts",
         include_patterns=["agents/**", ".agents/**", "**/AGENTS.master.md"],
-        instruction=(
-            "Reload artifacts: `curl -s --unix-socket "
-            "/tmp/teleclaude-api.sock -X POST "
-            '"http://localhost/sessions/$(cat \\"$TMPDIR/teleclaude_session_id\\")/agent-restart"`'
-        ),
-        # Evidence accepts direct API call text and daemon restart log markers.
-        evidence_substrings=["--unix-socket /tmp/teleclaude-api.sock", "/agent-restart", "agent_restart"],
+        instruction="Reload artifacts: `telec sessions restart self`",
+        evidence_substrings=["telec sessions restart", "/agent-restart", "agent_restart"],
         precedence=50,
     ),
     FileCategory(

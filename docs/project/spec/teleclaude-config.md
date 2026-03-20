@@ -11,56 +11,80 @@ description: 'Authoritative surface for TeleClaude YAML configuration and enviro
 
 The Teleclaude Config surface defines how the daemon and CLI are initialized and validated.
 
+## Two config files, three levels
+
+Configuration lives in two files. `GlobalConfig` extends `ProjectConfig`, so all
+project keys are valid at global level — but not the reverse. `ProjectConfig`
+explicitly rejects global-only keys (`people`, `ops`, `creds`, `notifications`,
+`timezone`). See `teleclaude/config/schema.py` for the Pydantic models.
+
+| File                  | Location                                     | Model           | Owns                                                                                                    |
+| --------------------- | -------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
+| **Global config**     | `~/.teleclaude/teleclaude.yml`               | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                              |
+| **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_name`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
+| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`                                                   |
+
+**The project config is a regular file committed to the repository.** It is never a
+symlink. Replacing it with a symlink to the global config breaks validation because
+`ProjectConfig.reject_disallowed_keys` rejects `people`.
+
 ## Canonical fields
 
-### Machine-Readable Surface
+### Project config keys (`ProjectConfig`)
+
+Valid in both project and global configs.
 
 ```yaml
-config_keys:
-  computer:
-    name: string
-    role: string
-    timezone: string
-  agents:
-    claude:
-      enabled: boolean
-    gemini:
-      enabled: boolean
-    codex:
-      enabled: boolean
-  redis:
+project_name: string
+description: string
+business:
+  domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)
+jobs: mapping[string, JobScheduleConfig]
+hooks:
+  inbound: mapping[string, InboundSourceConfig]
+  subscriptions: list[SubscriptionConfig]
+git:
+  checkout_root: string
+integrator:
+  cutover:
     enabled: boolean
-    host: string
-    port: int
-  whatsapp:
-    enabled: boolean
-    phone_number_id: string
-    access_token: string
-    webhook_secret: string
-    verify_token: string
-    api_version: string
-    template_name: string
-    template_language: string
-  deployment:
-    channel: string # alpha | beta | stable (default: alpha)
-    pinned_minor: string # required when channel=stable (e.g. "1.2")
-  people: list[PersonEntry]
-  jobs: mapping[string, JobScheduleConfig]
-  # Job-specific extra fields (extra="allow" on JobScheduleConfig):
-  #   jobs.youtube_scraper.tags: list[string]  — channel tag filter for the scraper job.
-  #     A channel matches if any of its CSV tags appear in this list.
-  #     Channels with empty or "n/a" tags are always excluded.
-  #     Example:
-  #       jobs:
-  #         youtube_scraper:
-  #           category: system
-  #           when:
-  #             at: '06:00'
-  #           script: jobs/youtube_scraper.py
-  #           tags:
-  #             - ai
-  #             - devtools
+    parity_evidence_accepted: boolean
+    rollback_on_incomplete_parity: boolean
+deployment:
+  channel: string # alpha | beta | stable (default: alpha)
+  pinned_minor: string # required when channel=stable
+channel_subscriptions: list[ChannelSubscription]
+```
 
+### Global-only keys (`GlobalConfig` adds these)
+
+Valid **only** in `~/.teleclaude/teleclaude.yml`. Rejected by `ProjectConfig`.
+
+```yaml
+people: list[PersonEntry] # REJECTED at project level
+subscriptions: list[SubscriptionEntry]
+interests: list[string]
+event_domains:
+  domains: mapping[string, DomainConfig]
+```
+
+### Per-person keys (`PersonConfig`)
+
+Valid **only** in `~/.teleclaude/people/{name}/teleclaude.yml`.
+
+```yaml
+creds:
+  telegram: { user_name, user_id, chat_id }
+  discord: { user_id }
+  whatsapp: { phone_number }
+subscriptions: list[SubscriptionEntry]
+interests: list[string]
+invite_token: string
+```
+
+### Environment variables
+
+```yaml
 environment_variables:
   - TELEGRAM_BOT_TOKEN
   - WHATSAPP_PHONE_NUMBER_ID
@@ -95,3 +119,4 @@ This spec must be updated whenever config keys or env vars are added, renamed, o
 - Changing a configuration key from optional to required is a breaking change (Minor bump).
 - Removing or renaming a configuration key is a breaking change.
 - Adding a new optional key or environment variable is a patch.
+- **The project `teleclaude.yml` must be a regular file, never a symlink.** `ProjectConfig` validation rejects global-only keys like `people` and `agents`. Symlinking to the global config causes runtime errors.

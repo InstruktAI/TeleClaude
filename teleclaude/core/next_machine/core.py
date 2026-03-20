@@ -312,9 +312,6 @@ from teleclaude.core.next_machine.slug_resolution import (
     _find_next_prepare_slug as _find_next_prepare_slug,
 )
 from teleclaude.core.next_machine.slug_resolution import (
-    check_file_exists as check_file_exists,
-)
-from teleclaude.core.next_machine.slug_resolution import (
     get_item_phase as get_item_phase,
 )
 from teleclaude.core.next_machine.slug_resolution import (

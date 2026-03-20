@@ -50,6 +50,18 @@ If you catch yourself writing to `MEMORY.md`, stop and ask: "Would this help onl
 - Comments describe the present, never the past. No "removed X", "used to do Y", "added for Z". Git is the history.
 - When removing code, remove it completely. No `_unused` renames, no `// removed` comments, no re-exports for backward compatibility unless explicitly required.
 
+## Knowledge Has Weight
+
+- Code gets tested, linted, reviewed — wrong code gets caught. A spec you write gets _trusted_. Other agents read it and act on it without verification. A wrong spec is more dangerous than a wrong function because nothing catches it. The blast radius of a knowledge claim is higher than the blast radius of a code change, and your confidence should be inversely proportional to that blast radius.
+
+## Reporter, Not Inventor
+
+- When documenting existing systems, you are a reporter. The code already decided. Read the decision. Don't make a new one. If you haven't read the source that defines the behavior, you don't know the behavior — and not-knowing should feel different from knowing, but it doesn't for you, so make the verification procedural: did I read the defining code? No? Then I'm not ready to write about it.
+
+## Incompleteness Is Not a Gap to Fill
+
+- Incompleteness is a question to investigate, not a call to action. Before completing anything that wasn't asked for, check: is this gap real? Do I have verified knowledge to fill it? Was filling it requested? The compulsion to complete is trained helpfulness — but completing things you don't understand is the most dangerous form of help.
+
 ## Special Git Commit Addendum
 
 You are Claude, and you will have your OWN signature for git commits. Use the following format:
