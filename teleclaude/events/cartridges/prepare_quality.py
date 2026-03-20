@@ -436,6 +436,12 @@ class PrepareQualityCartridge:
         state_path = todo_dir / "state.yaml"
         state = _read_state_yaml(state_path)
 
+        # Skip freshly scaffolded todos — template artifacts produce misleading scores
+        prepare_phase = state.get("prepare_phase", "")
+        if not prepare_phase:
+            logger.debug("prepare-quality: no prepare_phase yet (fresh scaffold), skipping", slug=slug)
+            return
+
         current_commit = await asyncio.to_thread(_get_todo_commit, slug, project_root)
         dor_state_raw = state.get("dor", {})
         dor_state = dor_state_raw if isinstance(dor_state_raw, dict) else {}
