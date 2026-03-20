@@ -23,6 +23,7 @@ _PHASE_PREFIX_INTEGRATION = "I"
 _PREPARE_LABEL_DISCOVERY = "discovery"
 _PREPARE_LABEL_REQUIREMENTS = "requirements"
 _PREPARE_LABEL_PLANNING = "planning"
+_PREPARE_LABEL_PREPARED = "prepared"
 _PREPARE_LABEL_BLOCKED = "blocked"
 
 _INTEGRATION_LABEL_STARTED = "started"
@@ -46,6 +47,7 @@ _PREPARE_PHASE_LABELS: dict[PreparePhase, str] = {
     PreparePhase.GATE: _PREPARE_LABEL_PLANNING,
     PreparePhase.GROUNDING_CHECK: _PREPARE_LABEL_PLANNING,
     PreparePhase.RE_GROUNDING: _PREPARE_LABEL_PLANNING,
+    PreparePhase.PREPARED: _PREPARE_LABEL_PREPARED,
     PreparePhase.BLOCKED: _PREPARE_LABEL_BLOCKED,
 }
 
@@ -92,7 +94,12 @@ def prepare_phase_label(phase: str | None) -> tuple[str, str, str] | None:
     value = _PREPARE_PHASE_LABELS.get(prepared_phase)
     if not value:
         return None
-    color = _gold_color() if prepared_phase == PreparePhase.BLOCKED else _ok_color()
+    if prepared_phase == PreparePhase.PREPARED:
+        color = _ok_color()
+    elif prepared_phase == PreparePhase.BLOCKED:
+        color = _red_color()
+    else:
+        color = _gold_color()
     return _PHASE_PREFIX_PREPARE, value, color
 
 
@@ -129,6 +136,8 @@ _OK_DARK = "color(71)"
 _OK_LIGHT = "color(28)"
 _GOLD_DARK = "color(178)"
 _GOLD_LIGHT = "color(136)"
+_RED_DARK = "color(196)"
+_RED_LIGHT = "color(160)"
 
 # Column gap between aligned properties
 _COL_GAP = 2
@@ -146,6 +155,11 @@ def _ok_color() -> str:
 def _gold_color() -> str:
     """Return the theme-aware warning color."""
     return _GOLD_DARK if is_dark_mode() else _GOLD_LIGHT
+
+
+def _red_color() -> str:
+    """Return the theme-aware error color."""
+    return _RED_DARK if is_dark_mode() else _RED_LIGHT
 
 
 def _muted_color() -> str:

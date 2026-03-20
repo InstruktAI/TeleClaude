@@ -11,6 +11,7 @@ from teleclaude.cli.tui.widgets.todo_row import (
     _gold_color,
     _ok_color,
     _pad,
+    _red_color,
     integration_phase_label,
     prepare_phase_label,
 )
@@ -51,13 +52,13 @@ def test_prepare_phase_label_input_assessment_maps_to_discovery() -> None:
 
 
 @pytest.mark.unit
-def test_prepare_phase_label_blocked_returns_gold_color() -> None:
+def test_prepare_phase_label_blocked_returns_red_color() -> None:
     result = prepare_phase_label(PreparePhase.BLOCKED.value)
     assert result is not None
     prefix, value, color = result
     assert prefix == "P"
     assert value == "blocked"
-    assert color == _gold_color()
+    assert color == _red_color()
 
 
 @pytest.mark.unit
