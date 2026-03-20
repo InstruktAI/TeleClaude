@@ -251,7 +251,13 @@ _CLI_STRIP_EXACT = {
 
 
 def _cli_env() -> dict[str, str]:
-    """Build a clean environment for CLI agent subprocesses."""
+    """Build a clean environment for CLI agent subprocesses.
+
+    In CI, API keys are the only auth path (runner is sandboxed from
+    host OAuth credential stores), so stripping is skipped.
+    """
+    if os.environ.get("CI") == "true":
+        return dict(os.environ)
     return {
         k: v
         for k, v in os.environ.items()
