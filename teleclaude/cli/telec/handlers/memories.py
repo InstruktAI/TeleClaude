@@ -11,6 +11,7 @@ __all__ = [
     "_VALID_OBS_TYPES",
     "_handle_memories",
     "_handle_memories_delete",
+    "_handle_memories_list",
     "_handle_memories_save",
     "_handle_memories_search",
     "_handle_memories_timeline",
@@ -129,6 +130,36 @@ def _print_memory_table(
         title = str(result.get("title", ""))[:40]
         narrative = str(result.get("narrative", "") or result.get("text", ""))[:60]
         print(f"{obs_id:>6} | {obs_type:<12} | {project:<16} | {title:<40} | {narrative}…{marker}")
+
+
+def _parse_memories_list_args(args: list[str]) -> tuple[int, str | None, str | None] | None:
+    """Parse `telec memories list` arguments."""
+    limit = 50
+    obs_type: str | None = None
+    project: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-h", "--help"):
+            print(_usage("memories", "list"))
+            return None
+        if arg == "--limit":
+            value, i = _read_memories_option_value(args, i, "--limit", "list")
+            limit = _parse_integer_option(value, "--limit")
+            continue
+        if arg == "--type":
+            value, i = _read_memories_option_value(args, i, "--type", "list")
+            obs_type = _parse_observation_type(value)
+            continue
+        if arg == "--project":
+            project, i = _read_memories_option_value(args, i, "--project", "list")
+            continue
+        if arg.startswith("-"):
+            _memories_usage_error("list", f"Unknown option: {arg}")
+        _memories_usage_error("list", f"Unexpected argument: {arg}")
+
+    return limit, obs_type, project
 
 
 def _parse_memories_search_args(args: list[str]) -> tuple[str, int, str | None, str | None] | None:
@@ -267,7 +298,9 @@ def _handle_memories(args: list[str]) -> None:
         return
 
     subcommand = args[0]
-    if subcommand == "search":
+    if subcommand == "list":
+        _handle_memories_list(args[1:])
+    elif subcommand == "search":
         _handle_memories_search(args[1:])
     elif subcommand == "save":
         _handle_memories_save(args[1:])
@@ -279,6 +312,26 @@ def _handle_memories(args: list[str]) -> None:
         print(f"Unknown memories subcommand: {subcommand}")
         print(_usage("memories"))
         raise SystemExit(1)
+
+
+def _handle_memories_list(args: list[str]) -> None:
+    """Handle telec memories list."""
+    parsed = _parse_memories_list_args(args)
+    if parsed is None:
+        return
+    limit, obs_type, project = parsed
+
+    try:
+        results = asyncio.run(_memory_search("", limit, obs_type, project))
+    except APIError as exc:
+        print(f"Error: {exc.detail}")
+        raise SystemExit(1) from exc
+
+    if not results:
+        print("No memories found.")
+        return
+
+    _print_memory_table(results, f"\nMemories ({len(results)} found):\n")
 
 
 def _handle_memories_search(args: list[str]) -> None:

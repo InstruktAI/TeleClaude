@@ -82,6 +82,41 @@ def _reset_fake_client() -> Iterator[None]:
     FakeMemoryClient.timeline_call = None
 
 
+def test_handle_memories_routes_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    received: list[list[str]] = []
+
+    monkeypatch.setattr(memories, "_handle_memories_list", lambda args: received.append(args))
+
+    memories._handle_memories(["list"])
+
+    assert received == [[]]
+
+
+def test_handle_memories_list_returns_all(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(memories, "TelecAPIClient", FakeMemoryClient)
+
+    memories._handle_memories_list([])
+
+    assert FakeMemoryClient.search_call == SearchCall("", 50, None, None)
+    assert "1 found" in capsys.readouterr().out
+
+
+def test_handle_memories_list_with_filters(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(memories, "TelecAPIClient", FakeMemoryClient)
+
+    memories._handle_memories_list(["--type", "gotcha", "--project", "teleclaude", "--limit", "10"])
+
+    assert FakeMemoryClient.search_call == SearchCall("", 10, "gotcha", "teleclaude")
+    assert "1 found" in capsys.readouterr().out
+
+
+def test_handle_memories_list_rejects_positional_args() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        memories._handle_memories_list(["something"])
+
+    assert exc_info.value.code == 1
+
+
 def test_handle_memories_routes_search(monkeypatch: pytest.MonkeyPatch) -> None:
     received: list[list[str]] = []
 

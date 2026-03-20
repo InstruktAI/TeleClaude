@@ -858,6 +858,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "memories": CommandDef(
         desc="Search and manage memory observations",
         subcommands={
+            "list": CommandDef(
+                desc="List memory observations",
+                flags=[
+                    _H,
+                    Flag("--limit", desc="Max results (default: 50)"),
+                    Flag(
+                        "--type",
+                        desc="Filter by type: preference, decision, discovery, gotcha, pattern, friction, context",
+                    ),
+                    Flag("--project", desc="Filter by project name"),
+                ],
+                examples=[
+                    "telec memories list",
+                    "telec memories list --type gotcha --project teleclaude",
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+            ),
             "search": CommandDef(
                 desc="Search memory observations",
                 args="<query>",
