@@ -20,7 +20,7 @@ class CreateSessionRequest(BaseModel):
     project_path: str = Field(..., min_length=2)
     launch_kind: Literal["empty", "agent", "agent_then_message", "agent_resume"] = "agent"
     agent: Literal["claude", "gemini", "codex"] | None = None
-    thinking_mode: Literal["fast", "med", "slow"] | None = None
+    thinking_mode: Literal["fast", "med", "slow", "default"] | None = None
     title: str | None = None
     message: str | None = None
     direct: bool = False

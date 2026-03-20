@@ -32,6 +32,7 @@ class ThinkingMode(str, Enum):
     MED = "med"
     SLOW = "slow"
     DEEP = "deep"
+    DEFAULT = "default"
 
     @classmethod
     def from_str(cls, value: str) -> "ThinkingMode":

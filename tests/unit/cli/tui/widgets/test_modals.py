@@ -82,22 +82,21 @@ def test_mode_selector_action_prev_wraps_around() -> None:
 
 
 @pytest.mark.unit
-def test_mode_selector_default_mode_returns_none() -> None:
-    """'default' selection must map to None — API only accepts fast/med/slow/None."""
+def test_mode_selector_default_mode_returns_string() -> None:
+    """'default' selection returns the string 'default' — accepted by the API Literal."""
     sel = ModeSelector()
     default_idx = next(i for i, (k, _) in enumerate(ModeSelector._MODES) if k == "default")
     sel.selected = default_idx
-    assert sel.selected_mode is None
+    assert sel.selected_mode == "default"
 
 
 @pytest.mark.unit
-def test_mode_selector_non_default_modes_return_string() -> None:
-    """All modes except 'default' should return their string value unchanged."""
+def test_mode_selector_all_modes_return_their_string_value() -> None:
+    """Every mode returns its string key unchanged."""
     sel = ModeSelector()
     for i, (key, _) in enumerate(ModeSelector._MODES):
-        if key != "default":
-            sel.selected = i
-            assert sel.selected_mode == key
+        sel.selected = i
+        assert sel.selected_mode == key
 
 
 # --- SessionIdTypeSelector ---
