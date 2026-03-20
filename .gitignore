@@ -59,7 +59,6 @@ workspace/
 
 *.local.json
 trees/
-worktrees/
 .state.json
 todos/.finalize-lock
 
@@ -82,5 +81,3 @@ docs/diagrams/
 .claude/
 .codex/
 .gemini/
-.bugs-worktree/
-.worktrees/

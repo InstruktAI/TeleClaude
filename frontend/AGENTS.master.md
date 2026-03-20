@@ -8,14 +8,14 @@ This directory is a **Next.js web application**. It is NOT a terminal UI and mus
 
 The TeleClaude project has two separate UIs with completely different architectures:
 
-|                 | Python TUI                             | This Frontend                          |
-| --------------- | -------------------------------------- | -------------------------------------- |
-| **Location**    | `teleclaude/cli/tui/`                  | `frontend/`                            |
-| **Framework**   | Python Textual + tmux                  | Next.js + React                        |
-| **Runs in**     | Terminal                               | Browser                                |
-| **State**       | Dataclass + reducer                    | React state / server state             |
-| **Layout**      | Tmux pane splits                       | CSS / responsive web layout            |
-| **Interaction** | Keyboard-driven, double-press gestures | Standard web UX (click, hover, modals) |
+|                 | Python TUI                                                                   | This Frontend               |
+| --------------- | ---------------------------------------------------------------------------- | --------------------------- |
+| **Location**    | `teleclaude/cli/tui/`                                                        | `frontend/`                 |
+| **Framework**   | Python Textual + tmux                                                        | Next.js + React             |
+| **Runs in**     | Terminal                                                                     | Browser                     |
+| **State**       | Dataclass + reducer                                                          | React state / server state  |
+| **Layout**      | Tmux pane splits                                                             | CSS / responsive web layout |
+| **Interaction** | Keyboard-driven, double-press gestures, mouse actions (click, hover, modals) | same                        |
 
 **These are independent applications. There is no shared architecture between them.**
 
@@ -24,7 +24,6 @@ The TeleClaude project has two separate UIs with completely different architectu
 - Tmux concepts: panes, splits, pane IDs, layout grids, `execSync("tmux ...")`
 - Ink (React terminal renderer) components or imports
 - State machines ported from the Python TUI (`reduce_state`, `TreeInteractionState`)
-- Double-press gesture detection or terminal interaction patterns
 - "Sticky sessions" as a layout concept (this is a tmux pane grid pattern)
 - SSH/remote tmux attachment logic
 - Any file with comments like "Ported from", "Source: \*.py", or "Faithful port"

@@ -196,7 +196,10 @@ async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
         return False
 
     # Small delay to ensure text is buffered by tmux before we send Enter.
-    await asyncio.sleep(0.2)
+    # Investigation: Reducing to 0.1s causes test flakiness and missed Enter key delivery on
+    # slow hosts. 1.0s is conservative but keeps the path reliable. The inbound queue
+    # now bears the latency cost; adapter responsiveness is unaffected.
+    await asyncio.sleep(1.0)
 
     # Send Enter key once if requested
     if send_enter:

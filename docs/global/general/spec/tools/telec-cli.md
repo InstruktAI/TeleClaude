@@ -27,6 +27,10 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec sessions send -h -->
 
+### `telec sessions revive`
+
+<!-- @exec: telec sessions revive -h -->
+
 ### `telec docs`
 
 <!-- @exec: telec docs -h -->
