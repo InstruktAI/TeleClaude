@@ -140,13 +140,15 @@ class TestProtectedStash:
     """Stash is a protected operation — integrator only."""
 
     @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator"])
-    def test_non_integrator_blocked(self, role: str | None) -> None:
-        result = _run_wrapper(["stash"], role=role)
+    def test_non_integrator_blocked(self, role: str | None, tmp_path: Path) -> None:
+        repo = _make_branch_repo(tmp_path)
+        result = _run_wrapper(["stash"], role=role, cwd=str(repo))
         assert result.returncode != 0
         assert "protected" in result.stderr.lower()
 
-    def test_integrator_allowed(self) -> None:
-        result = _run_wrapper(["stash"], role="integrator")
+    def test_integrator_allowed(self, tmp_path: Path) -> None:
+        repo = _make_branch_repo(tmp_path)
+        result = _run_wrapper(["stash"], role="integrator", cwd=str(repo))
         assert "protected" not in result.stderr.lower()
 
 
@@ -254,7 +256,8 @@ class TestInvalidRolePermissions:
     """Typoed or invalid roles fall back to worker (fail-closed)."""
 
     @pytest.mark.parametrize("invalid_role", ["admin", "Integrator", "", " "])
-    def test_invalid_role_blocked_from_stash(self, invalid_role: str) -> None:
-        result = _run_wrapper(["stash"], role=invalid_role)
+    def test_invalid_role_blocked_from_stash(self, invalid_role: str, tmp_path: Path) -> None:
+        repo = _make_branch_repo(tmp_path)
+        result = _run_wrapper(["stash"], role=invalid_role, cwd=str(repo))
         assert result.returncode != 0
         assert "protected" in result.stderr.lower()
