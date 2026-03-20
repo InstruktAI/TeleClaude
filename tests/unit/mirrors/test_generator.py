@@ -34,6 +34,41 @@ def _existing_record() -> MirrorRecord:
     )
 
 
+class TestRenderConversation:
+    def test_render_conversation_includes_timestamp_prefix_when_present(self) -> None:
+        messages = [
+            _message("user", "text", "Hello", "2025-01-01T10:00:00+00:00"),
+            _message("assistant", "text", "Hi there", "2025-01-01T10:01:00+00:00"),
+        ]
+        result = generator_module._render_conversation(messages)
+        assert result == "[2025-01-01T10:00:00+00:00] User: Hello\n\n[2025-01-01T10:01:00+00:00] Assistant: Hi there"
+
+    def test_render_conversation_omits_timestamp_prefix_when_none(self) -> None:
+        messages = [
+            StructuredMessage(role="user", type="text", text="Hello", timestamp=None),
+            StructuredMessage(role="assistant", type="text", text="Hi there", timestamp=None),
+        ]
+        result = generator_module._render_conversation(messages)
+        assert result == "User: Hello\n\nAssistant: Hi there"
+
+    def test_render_conversation_includes_timestamp_prefix_when_empty_string(self) -> None:
+        """Empty string timestamp is not None — the prefix is rendered explicitly."""
+        messages = [
+            StructuredMessage(role="user", type="text", text="Hello", timestamp=""),
+            StructuredMessage(role="assistant", type="text", text="Hi there", timestamp=""),
+        ]
+        result = generator_module._render_conversation(messages)
+        assert result == "[] User: Hello\n\n[] Assistant: Hi there"
+
+    def test_render_conversation_handles_mixed_timestamp_presence(self) -> None:
+        messages = [
+            _message("user", "text", "Hello", "2025-01-01T10:00:00+00:00"),
+            StructuredMessage(role="assistant", type="text", text="Hi there", timestamp=None),
+        ]
+        result = generator_module._render_conversation(messages)
+        assert result == "[2025-01-01T10:00:00+00:00] User: Hello\n\nAssistant: Hi there"
+
+
 class TestNormalizeConversationMessages:
     def test_normalize_conversation_messages_keeps_user_and_assistant_text(self) -> None:
         normalized = generator_module._normalize_conversation_messages(
@@ -113,7 +148,10 @@ class TestGenerateMirrorSync:
         assert record.created_at == "2024-12-31T23:59:00+00:00"
         assert record.title == "Plan the rollout"
         assert record.message_count == 2
-        assert record.conversation_text == "User: Plan the rollout\n\nAssistant: Here is the rollout"
+        assert (
+            record.conversation_text
+            == "[2025-01-01T00:00:00+00:00] User: Plan the rollout\n\n[2025-01-01T00:01:00+00:00] Assistant: Here is the rollout"
+        )
         assert record.metadata["agent"] == "claude"
         assert record.metadata["transcript_path"] == "/tmp/transcript.jsonl"
 

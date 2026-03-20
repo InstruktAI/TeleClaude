@@ -44,7 +44,12 @@ def _title_from_messages(messages: list[StructuredMessage]) -> str:
 
 
 def _render_conversation(messages: list[StructuredMessage]) -> str:
-    lines = [f"{message.role.capitalize()}: {message.text}" for message in messages]
+    lines = [
+        f"[{message.timestamp}] {message.role.capitalize()}: {message.text}"
+        if message.timestamp is not None
+        else f"{message.role.capitalize()}: {message.text}"
+        for message in messages
+    ]
     return "\n\n".join(lines)
 
 

@@ -428,7 +428,7 @@ def _resolve_entry_timestamp(
 ) -> tuple[str | None, bool]:
     """Return entry timestamp and whether it passes the since filter."""
     entry_ts_str = entry.get("timestamp")
-    if not isinstance(entry_ts_str, str):
+    if not isinstance(entry_ts_str, str) or not entry_ts_str:
         return None, True
     if since_dt is None:
         return entry_ts_str, True
