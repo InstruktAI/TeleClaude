@@ -199,13 +199,14 @@ def _get_finalize_state(state: dict[str, StateValue]) -> FinalizeState:
 
 
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
-    """Read state.yaml for a work item.
+    """Read state.yaml for a work item, preferring worktree when it exists.
 
     Returns default state if file doesn't exist.
     Migrates missing 'phase' field from existing build/dor state.
     Performs deep-merge for nested dict keys so sub-key defaults are always present.
     """
-    state_path = get_state_path(cwd, slug)
+    effective_cwd = _resolve_state_cwd(cwd, slug)
+    state_path = get_state_path(effective_cwd, slug)
 
     if not state_path.exists():
         return default_state()
@@ -237,9 +238,23 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     return merged
 
 
+def _resolve_state_cwd(cwd: str, slug: str) -> str:
+    """Prefer worktree for state writes when it exists.
+
+    If cwd is the repo root and trees/{slug} exists, return the worktree path.
+    If cwd is already inside the worktree, return as-is.
+    This prevents state writes from landing on main when the worktree owns the state.
+    """
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    if worktree_path.is_dir():
+        return str(worktree_path)
+    return cwd
+
+
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
-    """Write state.yaml."""
-    state_path = get_state_path(cwd, slug)
+    """Write state.yaml, preferring worktree when it exists."""
+    effective_cwd = _resolve_state_cwd(cwd, slug)
+    state_path = get_state_path(effective_cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     content = yaml.dump(state, default_flow_style=False, sort_keys=False)
     write_text_sync(state_path, content)
