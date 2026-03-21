@@ -197,8 +197,11 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disa
             if global_cfg.people:
                 team_cat = await self._ensure_category(guild, "Team", existing_cats, cat_changes)
                 await self._ensure_team_channels(guild, team_cat, global_cfg.people)  # type: ignore[arg-type]
+                logger.info("Team channels provisioned: %d entries in _team_channel_map", len(self._team_channel_map))
+            else:
+                logger.info("No people in global config — skipping team channel provisioning")
         except Exception as exc:
-            logger.warning("Failed to provision team category: %s", exc)
+            logger.warning("Failed to provision team category: %s", exc, exc_info=True)
 
         # Persist all changes
         if cat_changes:

@@ -85,13 +85,16 @@ class TeamChannelsMixin:
                 person_cfg = get_person_config(name)
                 if person_cfg.creds.discord:
                     discord_user_id = self._parse_optional_int(person_cfg.creds.discord.user_id)
-            except (AttributeError, OSError, TypeError, ValueError):
-                pass
+            except (AttributeError, OSError, TypeError, ValueError) as exc:
+                logger.warning("Failed to resolve Discord user_id for person %s: %s", name, exc)
 
             ch_id = await self._find_or_create_private_text_channel(guild, category, slug, discord_user_id)
             if ch_id is not None:
                 person_folder = os.path.join(os.path.expanduser("~"), ".teleclaude", "people", name)
                 self._team_channel_map[ch_id] = person_folder
+                logger.info("Team channel mapped: %s -> channel_id=%d discord_user=%s", name, ch_id, discord_user_id)
+            else:
+                logger.warning("Team channel not found/created for person %s (slug=%s)", name, slug)
             # Ensure permissions are correct on existing channels too
             if ch_id is not None and discord_user_id is not None:
                 await self._ensure_channel_private(ch_id, guild, discord_user_id)

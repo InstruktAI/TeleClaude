@@ -221,8 +221,11 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
         # Auto-provision Discord infrastructure (category + forums)
         try:
             await self._ensure_discord_infrastructure()
+            logger.info(
+                "Discord on_ready: infrastructure provisioned, team_channel_map=%d entries", len(self._team_channel_map)
+            )
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning("Discord infrastructure provisioning failed: %s", exc)
+            logger.warning("Discord infrastructure provisioning failed: %s", exc, exc_info=True)
 
         if self._tree is not None and self._guild_id is not None:
             sync_fn = getattr(self._tree, "sync", None)
@@ -459,7 +462,17 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
 
         # Channel gating: only process messages from managed forums
         if not self._is_managed_message(message):
-            logger.debug("Ignoring message from non-managed channel")
+            channel = getattr(message, "channel", None)
+            ch_id = self._parse_optional_int(getattr(channel, "id", None))
+            ch_name = getattr(channel, "name", None)
+            parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+            logger.info(
+                "Ignoring message from non-managed channel: channel_id=%s name=%s parent_id=%s team_map_size=%d",
+                ch_id,
+                ch_name,
+                parent_id,
+                len(self._team_channel_map),
+            )
             return
 
         # Voice/audio attachment — handle before the text guard
@@ -483,11 +496,19 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
             logger.error("Discord session resolution failed: %s", exc, exc_info=True)
             return
         if not session:
+            logger.warning(
+                "Discord session resolution returned None for channel %s",
+                getattr(getattr(message, "channel", None), "id", None),
+            )
             return
 
         # Role-based authorization: customers only accepted from help desk threads
         if self._is_customer_session(session) and not self._is_help_desk_thread(message):
-            logger.debug("Ignoring customer message from non-help-desk channel")
+            logger.error(
+                "Blocking customer session %s from non-help-desk channel (human_role=%s)",
+                session.session_id,
+                session.human_role,
+            )
             return
 
         # Relay mode: divert customer messages to the relay thread instead of the AI session

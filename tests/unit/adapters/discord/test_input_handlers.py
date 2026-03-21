@@ -102,7 +102,7 @@ def test_resolve_team_session_target_uses_discord_identity_and_scaffolded_worksp
         "teleclaude.adapters.discord.input_handlers.get_identity_resolver",
         lambda: Resolver(),
     )
-    monkeypatch.setattr("teleclaude.invite.scaffold_personal_workspace", fake_scaffold)
+    monkeypatch.setattr("teleclaude.adapters.discord.input_handlers.scaffold_personal_workspace", fake_scaffold)
 
     adapter = DummyInputHandlers()
     message = SimpleNamespace(author=SimpleNamespace(id="900"))
