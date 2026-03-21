@@ -266,12 +266,36 @@ def _model_to_dict(model: BaseModel) -> dict[str, Any]:  # guard: loose-dict - P
     return model.model_dump(mode="json", exclude_defaults=True)
 
 
+def _deep_merge(
+    base: dict[str, Any],  # guard: loose-dict - recursive merge of arbitrary YAML
+    overlay: dict[str, Any],  # guard: loose-dict - recursive merge of arbitrary YAML
+) -> dict[str, Any]:  # guard: loose-dict - recursive merge of arbitrary YAML
+    """Recursively merge overlay into base, returning a new dict."""
+    result = dict(base)
+    for key, value in overlay.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
-    """Atomic write of global config."""
+    """Atomic merge-write of global config.
+
+    Reads the existing file first and merges model fields on top, preserving
+    keys that are not part of the GlobalConfig schema (e.g. jobs, deployment).
+    """
     target = path or _GLOBAL_CONFIG_PATH
-    data = _model_to_dict(config)
-    _atomic_yaml_write(target, data)
-    logger.info("Saved global config to %s", target)
+    existing: dict[str, Any] = {}  # guard: loose-dict - raw YAML config
+    if target.exists():
+        yaml = YAML()
+        with open(target, encoding="utf-8") as f:
+            existing = yaml.load(f) or {}
+    overlay = _model_to_dict(config)
+    merged = _deep_merge(existing, overlay)
+    _atomic_yaml_write(target, merged)
+    logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(existing))
 
 
 def save_person_config(name: str, config: PersonConfig) -> None:
