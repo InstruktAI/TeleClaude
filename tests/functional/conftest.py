@@ -56,6 +56,17 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
             monkeypatch.setattr(mod, "db", test_db)
 
     # --- Config: single-user mode (no login required → admin) ---
+    # Point _GLOBAL_CONFIG_PATH at a temp file with a single person so
+    # _load_email_role_map() doesn't re-read the real global config.
+    import teleclaude.api.auth as _auth_mod
+
+    tmp_global_cfg = tmp_path / "teleclaude.yml"
+    tmp_global_cfg.write_text(
+        "people:\n  - name: test\n    email: test@test.com\n    role: admin\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(_auth_mod, "_GLOBAL_CONFIG_PATH", tmp_global_cfg)
+
     from teleclaude.api.auth import _EMAIL_ROLE_CACHE_STATE
 
     _EMAIL_ROLE_CACHE_STATE.role_map = {}

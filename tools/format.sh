@@ -55,6 +55,17 @@ if [ -n "$md_files" ]; then
   fi
 fi
 
+# Remove empty CLAUDE.md files (created by agent sessions without content)
+REPO_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+for claude_md in $(find "$REPO_ROOT" -name "CLAUDE.md" -not -path "*/trees/*" -not -path "*/.git/*" 2>/dev/null); do
+  # Strip claude-mem-context tags and whitespace — if nothing remains, delete
+  cleaned=$(sed 's/<\/*claude-mem-context>//g' "$claude_md" | tr -d '[:space:]')
+  if [ -z "$cleaned" ]; then
+    rm -f "$claude_md"
+    echo "Removed empty CLAUDE.md: $claude_md"
+  fi
+done
+
 # Auto-add formatted files back to staging area (pre-commit hook)
 if [ $# -gt 0 ]; then
   rm -f .git/index.lock

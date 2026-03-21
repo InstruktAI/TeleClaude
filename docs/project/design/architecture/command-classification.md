@@ -43,6 +43,81 @@ flowchart TD
 - `FIRE_AND_FORGET` — `202 Accepted` with `{status: "accepted", completion_event: "<domain.event>"}`.
 - `RECEIPT` — `202 Accepted` with a full `OperationReceipt` (see below).
 
+Command-to-mode mapping:
+
+| Command               | Mode                                        | completion_event           |
+| --------------------- | ------------------------------------------- | -------------------------- |
+| CreateSessionCommand  | IMMEDIATE                                   | None                       |
+| GetSessionDataCommand | IMMEDIATE                                   | None                       |
+| SystemCommand         | IMMEDIATE (default; instances may override) | None                       |
+| ProcessMessageCommand | IMMEDIATE                                   | None                       |
+| KeysCommand           | IMMEDIATE                                   | None                       |
+| HandleVoiceCommand    | IMMEDIATE                                   | None                       |
+| HandleFileCommand     | IMMEDIATE                                   | None                       |
+| StartAgentCommand     | IMMEDIATE                                   | None                       |
+| ResumeAgentCommand    | IMMEDIATE                                   | None                       |
+| RunAgentCommand       | IMMEDIATE                                   | None                       |
+| RestartAgentCommand   | FIRE_AND_FORGET                             | "agent.restart_dispatched" |
+| CloseSessionCommand   | FIRE_AND_FORGET                             | "session.close_completed"  |
+| TodoWorkCommand       | RECEIPT                                     | (per operation kind)       |
+| TodoIntegrateCommand  | RECEIPT                                     | (per operation kind)       |
+| TodoCreateCommand     | RECEIPT                                     | (per operation kind)       |
+| TodoPrepareCommand    | RECEIPT                                     | (per operation kind)       |
+
+### `ResponseMode` enum
+
+```python
+class ResponseMode(str, Enum):
+    IMMEDIATE       = "immediate"        # sync result returned in response body
+    FIRE_AND_FORGET = "fire_and_forget"  # async work, event signals completion
+    RECEIPT         = "receipt"          # durable operation row, polling + event
+```
+
+### `InternalCommand` base fields
+
+```python
+@dataclass(kw_only=True)
+class InternalCommand:
+    command_type:     CommandType
+    request_id:       str | None      = None
+    response_mode:    ResponseMode    = ResponseMode.IMMEDIATE
+    completion_event: str | None      = None  # required when response_mode != IMMEDIATE
+
+    def __post_init__(self) -> None:
+        # Construction-time validation: FIRE_AND_FORGET requires a completion_event
+        if self.response_mode == ResponseMode.FIRE_AND_FORGET and self.completion_event is None:
+            raise ValueError(
+                f"{type(self).__name__}: FIRE_AND_FORGET requires non-null completion_event"
+            )
+```
+
+Construction-time validation enforces the invariant that every FIRE_AND_FORGET command
+declares a `completion_event` at instantiation. A missing `completion_event` raises
+`ValueError` immediately — the invalid command never reaches the dispatcher.
+
+### `OperationReceipt` fields (RECEIPT mode response)
+
+```python
+{
+  "operation_id":       str,       # durable identity
+  "kind":               str,       # operation kind (e.g. "todo_work")
+  "state":              str,       # queued | running | completed | failed | stale
+  "status_path":        str,       # /operations/{operation_id}
+  "poll_after_ms":      int,       # suggested polling interval (0 if terminal)
+  "completion_event":   str,       # domain event emitted on terminal transition
+  "recovery_command":   str,       # telec operations get {operation_id}
+}
+```
+
+### FIRE_AND_FORGET 202 response fields
+
+```python
+{
+  "status":             "accepted",
+  "completion_event":   str,       # domain event name to listen for
+}
+```
+
 ## Invariants
 
 - **Mode lives on the command.** No route may hardcode a status code that contradicts the
@@ -132,83 +207,6 @@ sequenceDiagram
 
 Commands in this mode: `TodoWorkCommand`, `TodoIntegrateCommand`, `TodoCreateCommand`,
 `TodoPrepareCommand`.
-
-## Full command-to-mode mapping
-
-| Command               | Mode                                        | completion_event           |
-| --------------------- | ------------------------------------------- | -------------------------- |
-| CreateSessionCommand  | IMMEDIATE                                   | None                       |
-| GetSessionDataCommand | IMMEDIATE                                   | None                       |
-| SystemCommand         | IMMEDIATE (default; instances may override) | None                       |
-| ProcessMessageCommand | IMMEDIATE                                   | None                       |
-| KeysCommand           | IMMEDIATE                                   | None                       |
-| HandleVoiceCommand    | IMMEDIATE                                   | None                       |
-| HandleFileCommand     | IMMEDIATE                                   | None                       |
-| StartAgentCommand     | IMMEDIATE                                   | None                       |
-| ResumeAgentCommand    | IMMEDIATE                                   | None                       |
-| RunAgentCommand       | IMMEDIATE                                   | None                       |
-| RestartAgentCommand   | FIRE_AND_FORGET                             | "agent.restart_dispatched" |
-| CloseSessionCommand   | FIRE_AND_FORGET                             | "session.close_completed"  |
-| TodoWorkCommand       | RECEIPT                                     | (per operation kind)       |
-| TodoIntegrateCommand  | RECEIPT                                     | (per operation kind)       |
-| TodoCreateCommand     | RECEIPT                                     | (per operation kind)       |
-| TodoPrepareCommand    | RECEIPT                                     | (per operation kind)       |
-
-## Inputs/Outputs
-
-### `ResponseMode` enum
-
-```python
-class ResponseMode(str, Enum):
-    IMMEDIATE       = "immediate"        # sync result returned in response body
-    FIRE_AND_FORGET = "fire_and_forget"  # async work, event signals completion
-    RECEIPT         = "receipt"          # durable operation row, polling + event
-```
-
-### `InternalCommand` base fields
-
-```python
-@dataclass(kw_only=True)
-class InternalCommand:
-    command_type:     CommandType
-    request_id:       str | None      = None
-    response_mode:    ResponseMode    = ResponseMode.IMMEDIATE
-    completion_event: str | None      = None  # required when response_mode != IMMEDIATE
-
-    def __post_init__(self) -> None:
-        # Construction-time validation: FIRE_AND_FORGET requires a completion_event
-        if self.response_mode == ResponseMode.FIRE_AND_FORGET and self.completion_event is None:
-            raise ValueError(
-                f"{type(self).__name__}: FIRE_AND_FORGET requires non-null completion_event"
-            )
-```
-
-Construction-time validation enforces the invariant that every FIRE_AND_FORGET command
-declares a `completion_event` at instantiation. A missing `completion_event` raises
-`ValueError` immediately — the invalid command never reaches the dispatcher.
-
-### `OperationReceipt` fields (RECEIPT mode response)
-
-```python
-{
-  "operation_id":       str,       # durable identity
-  "kind":               str,       # operation kind (e.g. "todo_work")
-  "state":              str,       # queued | running | completed | failed | stale
-  "status_path":        str,       # /operations/{operation_id}
-  "poll_after_ms":      int,       # suggested polling interval (0 if terminal)
-  "completion_event":   str,       # domain event emitted on terminal transition
-  "recovery_command":   str,       # telec operations get {operation_id}
-}
-```
-
-### FIRE_AND_FORGET 202 response fields
-
-```python
-{
-  "status":             "accepted",
-  "completion_event":   str,       # domain event name to listen for
-}
-```
 
 ## Failure modes
 

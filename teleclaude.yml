@@ -1,1 +1,62 @@
-/Users/Morriz/.teleclaude/teleclaude.yml
+project_name: TeleClaude
+
+business:
+  domains:
+    software-development: docs
+    creative: docs
+
+jobs:
+  help_desk_intelligence:
+    when:
+      at: '06:00'
+
+    agent: claude
+    thinking_mode: fast
+
+  youtube_scraper:
+    category: system
+    when:
+      at: '06:00'
+    script: jobs/youtube_scraper.py
+    tags:
+    - ai
+    - devtools
+
+  temp_reaper:
+    category: system
+    when:
+      every: '60m'
+    script: jobs/temp_reaper.py
+
+  dependency_upgrade:
+    category: system
+    when:
+      at: '03:00'
+    script: jobs/dependency_upgrade.py
+
+  youtube_sync_subscriptions:
+    category: system
+    when:
+      at: '06:00'
+    script: jobs/youtube_sync_subscriptions.py
+
+  memory_review:
+    schedule: weekly
+    preferred_weekday: 0
+    preferred_hour: 8
+    type: agent
+    job: memory-review
+    agent: claude
+    thinking_mode: fast
+
+  log_bug_hunter:
+    schedule: hourly
+    type: agent
+    job: log-bug-hunter
+    agent: codex
+    thinking_mode: fast
+# git:
+#   checkout_root: ~/Workspace/public-repos
+deployment:
+  channel: alpha
+  pinned_minor: ''

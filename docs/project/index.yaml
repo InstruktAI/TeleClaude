@@ -15,6 +15,14 @@ snippets:
   path: docs/project/concept/master-bot.md
   visibility: internal
   source_project: TeleClaude
+- id: project/design/adr/001-git-stash-prevention
+  description: "ADR: git stash prevention in multi-worktree environment \u2014 root\
+    \ cause, defense-in-depth, and permission model."
+  type: design
+  scope: project
+  path: docs/project/design/adr/001-git-stash-prevention.md
+  visibility: internal
+  source_project: TeleClaude
 - id: project/design/architecture/adapter-client
   description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer
     routing.
@@ -113,6 +121,13 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/feature-flags.md
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/git-wrapper
+  description: Three-tier git wrapper permission model for agent sessions.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/git-wrapper.md
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/help-desk-platform
@@ -419,6 +434,14 @@ snippets:
   type: policy
   scope: project
   path: docs/project/policy/feature-flag-usage.md
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/launch-service-authoring
+  description: Launchd/systemd service templates must use replacement markers, never
+    hardcoded paths.
+  type: policy
+  scope: project
+  path: docs/project/policy/launch-service-authoring.md
   visibility: internal
   source_project: TeleClaude
 - id: project/policy/master-bot-registration

@@ -103,7 +103,9 @@ class ReadinessProjection:
         """Apply one canonical event and recompute readiness."""
         logger.info(
             "readiness-projection: applying event_type=%s event_id=%s candidates_tracked=%d",
-            event.event_type, event.event_id[:8], len(self._readiness_by_key),
+            event.event_type,
+            event.event_id,
+            len(self._readiness_by_key),
         )
         previous_status = {key: readiness.status for key, readiness in self._readiness_by_key.items()}
         if event.event_type == "review_approved":

@@ -74,21 +74,6 @@ status_path, poll_after_ms, completion_event, recovery_command}`.
 5. Clients either poll `GET /operations/{operation_id}` or listen for the WebSocket
    event — both lead to the same terminal payload.
 
-## completion_event on receipt DTOs
-
-Every `OperationReceipt` includes a `completion_event` field — the domain event name
-that will be emitted when the operation reaches a terminal state (`completed`, `failed`,
-or `stale`). Callers may subscribe to this event via WebSocket to avoid polling.
-
-### Terminal emission contract
-
-When a background task transitions an operation to a terminal state, the
-`OperationsService` emits the `completion_event` atomically as the final step of
-marking the row terminal. The event and the DB row transition happen in the same
-logical unit — they are never split across separate code paths. If the task crashes
-before the terminal write, no event is emitted; callers detect the stale state via
-polling.
-
 ## Failure modes
 
 - **Daemon restart:** Leftover `queued` or `running` operations are marked `stale`

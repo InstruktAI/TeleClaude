@@ -285,7 +285,7 @@ async def spawn_integrator_session(
         if integrator_session:
             logger.info(
                 "Integrator session %s already running; notifying of new candidate %s",
-                integrator_session.session_id[:8],
+                integrator_session.session_id,
                 slug,
             )
             try:
@@ -301,7 +301,7 @@ async def spawn_integrator_session(
             except Exception:  # pylint: disable=broad-exception-caught
                 logger.exception(
                     "Failed to notify integrator session %s of candidate %s; candidate is queued",
-                    integrator_session.session_id[:8],
+                    integrator_session.session_id,
                     slug,
                 )
             return None

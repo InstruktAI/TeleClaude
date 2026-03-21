@@ -353,29 +353,26 @@ def _remove_empty_claude_md(repo_root: Path) -> None:
     wrapper tags and whitespace — no content remains. Files with real content
     (e.g. @./AGENTS.md references) are left alone.
     """
-    removed: list[str] = []
+    empty: list[str] = []
     for path in sorted(repo_root.rglob("CLAUDE.md")):
         rel = path.relative_to(repo_root).as_posix()
-        # Skip worktrees — managed separately
         if rel.startswith("trees/"):
             continue
         try:
             content = path.read_text(encoding="utf-8").strip()
         except OSError:
             continue
-        # Strip claude-mem-context wrapper to check if anything real remains
         cleaned = re.sub(r"</?claude-mem-context>", "", content).strip()
         if cleaned:
             continue
-        path.unlink()
-        removed.append(rel)
+        empty.append(rel)
 
-    if removed:
-        formatted = "\n".join(f"  - {r}" for r in removed)
+    if empty:
+        formatted = "\n".join(f"  - {r}" for r in empty)
         _fail(
-            f"removed {len(removed)} empty CLAUDE.md file(s):\n"
+            f"empty CLAUDE.md file(s) detected:\n"
             f"{formatted}\n"
-            "Do not create CLAUDE.md files without content. "
+            "Delete these files — they have no content. "
             "Legitimate CLAUDE.md files are generated from AGENTS.master.md."
         )
 

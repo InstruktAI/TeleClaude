@@ -159,27 +159,6 @@ Response mode is declared on the command, not the route. Routes derive HTTP stat
 | POST   | /api/memory/batch               | READ            | Bulk fetch observations            |
 | GET    | /api/memory/inject              | READ            | Generate memory context markdown   |
 
-## Command classification by response mode
-
-Endpoints grouped by the `response_mode` declared on their backing command:
-
-**IMMEDIATE** (200 OK with result in body):
-`POST /sessions`, `POST /sessions/{id}/message`, `POST /sessions/{id}/keys`,
-`POST /sessions/{id}/voice`, `POST /sessions/self/file`, `POST /sessions/run`,
-`POST /sessions/self/result`, `POST /sessions/self/widget`,
-`POST /api/notifications/{id}/claim`, `POST /api/notifications/{id}/resolve`,
-`POST /api/memory/save`.
-
-**FIRE_AND_FORGET + EVENT** (202 Accepted with `completion_event`):
-`POST /sessions/{id}/agent-restart` (`agent.restart_dispatched`),
-`DELETE /sessions/{id}` (`session.close_completed`),
-`POST /sessions/self/escalate` (`session.escalation_started`),
-`POST /jobs/{name}/run` (`job.completed`).
-
-**RECEIPT** (202 Accepted with `OperationReceipt`):
-`POST /todos/work`, `POST /todos/integrate`, `POST /todos/create`,
-`POST /todos/prepare`.
-
 ## Failure modes
 
 - **Cache Miss**: Returns empty array until cache refresh completes. Client sees "no data" briefly.
