@@ -396,7 +396,14 @@ async def _validate_preparation_freshness(
     current_val = str(prep_state.get("current", "")).strip()
     grounding = prep_state.get("grounding", {})
     grounding_valid = isinstance(grounding, dict) and grounding.get("valid") is True
-    if current_val and current_val != PreparePhase.PREPARED.value:
+    # The v2 unified `current` field carries both prepare and work lifecycle
+    # states. Preparation is complete when current is at or past "prepared"
+    # in the canonical LIFECYCLE_STATES ordering.
+    from teleclaude.core.next_machine.work_lifecycle import LIFECYCLE_STATES  # pylint: disable=import-outside-toplevel
+
+    prepared_index = LIFECYCLE_STATES.index("prepared")
+    current_index = LIFECYCLE_STATES.index(current_val) if current_val in LIFECYCLE_STATES else -1
+    if current_val and current_index < prepared_index:
         _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_preparation")
         return format_error(
             "STALE",
