@@ -126,6 +126,14 @@ class SmartWatcher(FileSystemEventHandler):
             logger.debug("Skipping sync (debounce active)")
             return
 
+        # Git holds index.lock during commits (including pre-commit hooks).
+        # Syncing while hooks run causes race conditions where the watcher
+        # modifies files mid-commit, triggering false "files modified by hook" errors.
+        index_lock = self.project_root / ".git" / "index.lock"
+        if index_lock.exists():
+            logger.debug("Skipping sync (git index.lock active — commit in progress)")
+            return
+
         # Update last run time BEFORE running to act as a naive mutex/debounce
         self.last_run_time = now
         self._sync()
