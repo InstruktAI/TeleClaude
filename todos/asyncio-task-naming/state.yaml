@@ -1,17 +1,11 @@
 schema_version: 2
-phase: pending
+phase: in_progress
 kind: bug
 current: input_assessment
 history: []
 deferrals_processed: false
 finalize:
   status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
