@@ -506,7 +506,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         if self._watch_task and not self._watch_task.done():
             return
         self._last_watch_tick = time.monotonic()
-        self._watch_task = asyncio.create_task(self._watch_loop())
+        self._watch_task = asyncio.create_task(self._watch_loop(), name="api-watch-loop")
 
     async def _stop_watch_task(self) -> None:
         if not self._watch_task:
@@ -588,7 +588,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         # Run server in background task. Avoid uvicorn's signal handling to keep daemon in control.
         serve_coro = server._serve() if hasattr(server, "_serve") else server.serve()
-        self.server_task = asyncio.create_task(serve_coro)
+        self.server_task = asyncio.create_task(serve_coro, name="api-server-serve")
         self.server_task.add_done_callback(lambda t, s=server: self._on_server_task_done(t, s))
 
         # Wait for server to be ready (socket file created and bound)
@@ -651,7 +651,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         tcp_server = self._tcp_server
 
         serve_coro = tcp_server._serve() if hasattr(tcp_server, "_serve") else tcp_server.serve()
-        self._tcp_server_task = asyncio.create_task(serve_coro)
+        self._tcp_server_task = asyncio.create_task(serve_coro, name="api-tcp-serve")
         self._tcp_server_task.add_done_callback(lambda t, s=tcp_server: self._on_tcp_server_task_done(t, s))
 
         max_retries = 50
@@ -769,7 +769,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         if self.task_registry:
             self._metrics_task = self.task_registry.spawn(coro, name="api-metrics")
         else:
-            self._metrics_task = asyncio.create_task(coro)
+            self._metrics_task = asyncio.create_task(coro, name="api-metrics")
 
     async def _stop_metrics_task(self) -> None:
         """Stop periodic API server metrics logging."""

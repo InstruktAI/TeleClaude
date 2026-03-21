@@ -294,7 +294,7 @@ class RuntimeSettings:
             return
         if self._flush_task and not self._flush_task.done():
             self._flush_task.cancel()
-        self._flush_task = loop.create_task(self._debounced_flush())
+        self._flush_task = loop.create_task(self._debounced_flush(), name="settings-debounced-flush")
 
     async def _debounced_flush(self) -> None:
         await asyncio.sleep(FLUSH_DELAY_S)

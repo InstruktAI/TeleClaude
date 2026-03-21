@@ -85,7 +85,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         label: str,
     ) -> None:
         """Run non-critical work without blocking hook event handling."""
-        task = asyncio.create_task(coro)
+        task = asyncio.create_task(coro, name=label)
         self._background_tasks.add(task)
 
         def _on_done(done: asyncio.Task[object]) -> None:

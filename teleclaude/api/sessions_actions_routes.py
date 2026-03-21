@@ -389,7 +389,7 @@ async def agent_restart(
             {"session_id": session_id, "args": []},
             metadata,
         )
-        asyncio.create_task(get_command_service().restart_agent(cmd))
+        asyncio.create_task(get_command_service().restart_agent(cmd), name=f"agent-restart-{session_id}")
         return {"status": "accepted", "completion_event": cmd.completion_event or "agent.restart_dispatched"}
     except HTTPException:
         raise

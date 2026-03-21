@@ -166,7 +166,7 @@ class MaintenanceService:
             if session.tmux_session_name not in active_tmux_sessions:
                 if session.session_id not in self._restoring_sessions:
                     self._restoring_sessions.add(session.session_id)
-                    asyncio.create_task(self._restore_tmux_session(session))
+                    asyncio.create_task(self._restore_tmux_session(session), name=f"restore-tmux-{session.session_id}")
                 continue
 
             if await tmux_bridge.is_pane_dead(session.tmux_session_name):

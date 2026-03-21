@@ -215,7 +215,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
         if self.task_registry:
             self.task_registry.spawn(coro, name="initial-refresh")
         else:
-            asyncio.create_task(coro)
+            asyncio.create_task(coro, name="initial-refresh")
 
     async def _refresh_remote_cache_and_notify(self) -> None:
         """Refresh remote cache snapshot and notify clients to refresh projects."""
@@ -468,7 +468,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
         if self.task_registry:
             self._refresh_debounce_task = self.task_registry.spawn(_debounced(), name="ws-broadcast-refresh")
         else:
-            self._refresh_debounce_task = asyncio.create_task(_debounced())
+            self._refresh_debounce_task = asyncio.create_task(_debounced(), name="ws-broadcast-refresh")
 
     def _broadcast_payload(self, event: str, payload: JsonDict, *, targets: list[WebSocket] | None = None) -> None:
         """Send a WS payload to connected clients. If targets is given, only those clients receive it."""

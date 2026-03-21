@@ -327,7 +327,7 @@ async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements 
             update_session_cb=db.update_session,
         )
 
-    asyncio.create_task(_inject_checkpoint_after_restart())
+    asyncio.create_task(_inject_checkpoint_after_restart(), name="inject-checkpoint-restart")
 
     event_bus.emit(
         cmd.completion_event,  # type: ignore[arg-type]

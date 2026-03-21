@@ -477,7 +477,10 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             def _capture_progress(phase: str, decision: str, reason: str) -> None:
                 nonlocal latest_progress
                 latest_progress = (phase, decision, reason)
-                task = asyncio.create_task(self._record_progress(operation_id, phase, decision, reason))
+                task = asyncio.create_task(
+                    self._record_progress(operation_id, phase, decision, reason),
+                    name=f"operation-progress-{operation_id}",
+                )
                 progress_tasks.add(task)
                 task.add_done_callback(progress_tasks.discard)
 

@@ -133,7 +133,9 @@ class IntegrationTriggerCartridge:
         first_slug, first_branch, first_sha = ready_candidates[0]
         logger.info(
             "Integration trigger: spawning integrator for READY candidate slug=%s branch=%s sha=%s",
-            first_slug, first_branch, first_sha[:8] if first_sha else "",
+            first_slug,
+            first_branch,
+            first_sha[:8] if first_sha else "",
         )
         try:
             result = self._spawn_callback(first_slug, first_branch, first_sha)

@@ -483,23 +483,27 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             await self.lifecycle.startup()
 
             # Start periodic cleanup task (runs every hour)
-            self.cleanup_task = asyncio.create_task(self.maintenance_service.periodic_cleanup())  # pylint: disable=attribute-defined-outside-init
+            self.cleanup_task = asyncio.create_task(  # pylint: disable=attribute-defined-outside-init
+                self.maintenance_service.periodic_cleanup(), name="periodic-cleanup"
+            )
             self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
             logger.info("Periodic cleanup task started (72h session lifecycle)")
 
             # Start polling watcher (keeps pollers aligned with tmux foreground state)
-            self.poller_watch_task = asyncio.create_task(self.maintenance_service.poller_watch_loop())  # pylint: disable=attribute-defined-outside-init
+            self.poller_watch_task = asyncio.create_task(  # pylint: disable=attribute-defined-outside-init
+                self.maintenance_service.poller_watch_loop(), name="poller-watch"
+            )
             self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
             logger.info("Poller watch task started")
 
-            self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker())
+            self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker(), name="hook-outbox-worker")
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
 
             mirror_db_path = getattr(getattr(config, "database", None), "path", None)
             if isinstance(mirror_db_path, str) and mirror_db_path:
                 mirror_worker = MirrorWorker(mirror_db_path)
-                self.mirror_worker_task = asyncio.create_task(mirror_worker.run())
+                self.mirror_worker_task = asyncio.create_task(mirror_worker.run(), name="mirror-worker")
                 self._track_background_task(self.mirror_worker_task, "mirror-worker")
                 logger.info("Mirror worker started")
             else:
@@ -507,7 +511,8 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
             if CODEX_TRANSCRIPT_WATCH_INTERVAL_S > 0:
                 self.codex_transcript_watch_task = asyncio.create_task(
-                    self.maintenance_service.codex_transcript_watch_loop()
+                    self.maintenance_service.codex_transcript_watch_loop(),
+                    name="codex-transcript-watch",
                 )
                 self.codex_transcript_watch_task.add_done_callback(
                     self._log_background_task_exception("codex_transcript_watch")
@@ -537,23 +542,27 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
                 if isinstance(redis_adapter, _RT):
                     set_redis_transport(redis_adapter)
-            self.resource_monitor_task = asyncio.create_task(self.monitoring_service.resource_monitor_loop())
+            self.resource_monitor_task = asyncio.create_task(
+                self.monitoring_service.resource_monitor_loop(), name="resource-monitor"
+            )
             self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
             logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
 
-            self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop())  # pylint: disable=attribute-defined-outside-init
+            self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop(), name="wal-checkpoint")  # pylint: disable=attribute-defined-outside-init
             self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
             logger.info("WAL checkpoint task started (interval=300s)")
 
             todo_watcher = TodoWatcher(self.cache)
-            self.todo_watcher_task = asyncio.create_task(todo_watcher.run())
+            self.todo_watcher_task = asyncio.create_task(todo_watcher.run(), name="todo-watcher")
             self.todo_watcher_task.add_done_callback(self._log_background_task_exception("todo_watcher"))
             logger.info("Todo watcher task started")
 
             self.monitoring_service.log_resource_snapshot("startup")
 
             if LAUNCHD_WATCH_ENABLED:
-                self.launchd_watch_task = asyncio.create_task(self.monitoring_service.launchd_watch_loop())
+                self.launchd_watch_task = asyncio.create_task(
+                    self.monitoring_service.launchd_watch_loop(), name="launchd-watch"
+                )
                 self.launchd_watch_task.add_done_callback(self._log_background_task_exception("launchd_watch"))
                 logger.info("Launchd watch task started (interval=%.0fs)", LAUNCHD_WATCH_INTERVAL_S)
 

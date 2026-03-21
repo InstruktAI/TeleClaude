@@ -155,7 +155,9 @@ async def handle_deployment_event(  # pylint: disable=too-many-branches,too-many
     from teleclaude.deployment.executor import execute_update  # pylint: disable=import-outside-toplevel
 
     logger.info("Deployment handler: triggering update (channel=%s)", channel)
-    task = asyncio.create_task(execute_update(channel, version_info, get_redis=_get_redis))
+    task = asyncio.create_task(
+        execute_update(channel, version_info, get_redis=_get_redis), name=f"deploy-update-{channel}"
+    )
     task.add_done_callback(_log_execute_update_task_exception)
 
 

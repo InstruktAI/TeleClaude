@@ -150,11 +150,11 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable
             self._heartbeat_task = self.task_registry.spawn(self._heartbeat_loop(), name="redis-heartbeat")
             self._peer_refresh_task = self.task_registry.spawn(self._peer_refresh_loop(), name="redis-peer-refresh")
         else:
-            self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
+            self._message_poll_task = asyncio.create_task(self._poll_redis_messages(), name="redis-message-poll")
             self._message_poll_task.add_done_callback(self._log_task_exception)
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="redis-heartbeat")
             self._heartbeat_task.add_done_callback(self._log_task_exception)
-            self._peer_refresh_task = asyncio.create_task(self._peer_refresh_loop())
+            self._peer_refresh_task = asyncio.create_task(self._peer_refresh_loop(), name="redis-peer-refresh")
             self._peer_refresh_task.add_done_callback(self._log_task_exception)
 
         logger.info("RedisTransport connected and background tasks started")

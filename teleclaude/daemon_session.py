@@ -116,7 +116,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
                 label,
             )
             return
-        task = asyncio.create_task(coro)
+        task = asyncio.create_task(coro, name=label)
         self._track_background_task(task, label)
 
     async def _handle_agent_event_direct(self, context: AgentEventContext) -> None:

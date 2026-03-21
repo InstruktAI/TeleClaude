@@ -199,7 +199,9 @@ class TelecAppMediaMixin:
             finally:
                 self._chiptunes_reconcile_task = None  # type: ignore[attr-defined]
 
-        self._chiptunes_reconcile_task = asyncio.create_task(_reconcile())  # type: ignore[attr-defined]
+        self._chiptunes_reconcile_task = asyncio.create_task(  # type: ignore[attr-defined]
+            _reconcile(), name="chiptunes-reconcile"
+        )
 
     def _cancel_chiptunes_reconcile(self) -> None:
         task = self._chiptunes_reconcile_task  # type: ignore[attr-defined]

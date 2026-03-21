@@ -215,7 +215,7 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
             logger.error("No running event loop to restart API server (%s)", reason)
             self.shutdown_event.set()
             return
-        loop.create_task(self._restart_api_server(reason))
+        loop.create_task(self._restart_api_server(reason), name="api-server-restart")
 
     def schedule_api_restart(self, reason: str) -> None:
         """Request an API server restart from external watchdogs."""

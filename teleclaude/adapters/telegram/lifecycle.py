@@ -256,7 +256,9 @@ class LifecycleMixin:
         logger.info("Whitelisted user IDs: %s", host.user_whitelist)
         # Non-critical startup housekeeping can involve Telegram rate limits and
         # should not block daemon/API readiness.
-        host._startup_housekeeping_task = asyncio.create_task(self._run_startup_housekeeping(bot_id=bot_info.id))
+        host._startup_housekeeping_task = asyncio.create_task(
+            self._run_startup_housekeeping(bot_id=bot_info.id), name="telegram-startup-housekeeping"
+        )
         logger.debug("Scheduled Telegram startup housekeeping task")
 
     async def _run_startup_housekeeping(self, bot_id: int) -> None:

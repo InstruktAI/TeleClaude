@@ -100,7 +100,10 @@ async def _revive_headless_and_send(
 
     # Update in-place so callers see the new tmux_session_name immediately
     session.tmux_session_name = tmux_name
-    asyncio.create_task(db.update_session(session.session_id, lifecycle_status="active", tmux_session_name=tmux_name))
+    asyncio.create_task(
+        db.update_session(session.session_id, lifecycle_status="active", tmux_session_name=tmux_name),
+        name="tmux-db-update",
+    )
 
     return await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_name,

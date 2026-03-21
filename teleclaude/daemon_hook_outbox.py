@@ -807,7 +807,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         worker = self._session_outbox_workers.get(session_id)
         if worker and not worker.done():
             return
-        task = asyncio.create_task(self._run_session_outbox_worker(session_id))
+        task = asyncio.create_task(self._run_session_outbox_worker(session_id), name=f"outbox-worker-{session_id}")
         self._session_outbox_workers[session_id] = task
         self._track_background_task(task, f"outbox-worker:{session_id}")
 

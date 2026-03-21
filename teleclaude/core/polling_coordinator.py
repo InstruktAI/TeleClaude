@@ -349,7 +349,8 @@ async def schedule_polling(
             adapter_client=adapter_client,
             get_output_file=get_output_file,
             _skip_register=True,
-        )
+        ),
+        name=f"poll-output-{session_id}",
     )
     task.add_done_callback(lambda t, sid=session_id: _handle_background_poller_result(t, sid))  # type: ignore[misc]
     return True

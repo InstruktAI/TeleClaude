@@ -42,7 +42,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
 
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(_emit())
+        loop.create_task(_emit(), name="prepare-event-emit")
     except RuntimeError:
         # No running loop (thread or sync CLI context) — fire-and-forget via new event loop
         try:

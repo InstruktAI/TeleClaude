@@ -239,13 +239,20 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
             if ready:
                 logger.info(
                     "integration-ingest: READY candidates produced event_type=%s slug=%s branch=%s sha=%s ready=%s",
-                    canonical_type, slug, branch, sha, ready,
+                    canonical_type,
+                    slug,
+                    branch,
+                    sha,
+                    ready,
                 )
             else:
                 logger.warning(
                     "integration-ingest: no READY candidates after event_type=%s slug=%s branch=%s sha=%s "
                     "diagnostics=%s projection_state=%s",
-                    canonical_type, slug, branch, sha,
+                    canonical_type,
+                    slug,
+                    branch,
+                    sha,
                     getattr(result, "diagnostics", []),
                     len(integration_service.all_candidates()),
                 )
@@ -362,7 +369,9 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
             pipeline=pipeline,
             consumer_name=f"{computer_label}-{os.getpid()}",
         )
-        self._event_processor_task = asyncio.create_task(event_processor.start(self.shutdown_event))
+        self._event_processor_task = asyncio.create_task(
+            event_processor.start(self.shutdown_event), name="event-processor"
+        )
         self._event_processor_task.add_done_callback(self._log_background_task_exception("event_processor"))
         logger.info("EventProcessor started")
         return computer_label
@@ -452,7 +461,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
             )
 
             self._ingest_scheduler_task = asyncio.create_task(
-                IngestScheduler(ingest_cartridge, context, source_config.pull_interval_seconds).run(self.shutdown_event)
+                IngestScheduler(ingest_cartridge, context, source_config.pull_interval_seconds).run(
+                    self.shutdown_event
+                ),
+                name="ingest-scheduler",
             )
             self._ingest_scheduler_task.add_done_callback(self._log_background_task_exception("ingest_scheduler"))
             pipeline.register(cluster_cartridge)
@@ -543,7 +555,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
         )
         if isinstance(redis_transport, RedisTransport):
             self._deployment_fanout_task = asyncio.create_task(
-                self._deployment_fanout_consumer(dispatcher, redis_transport)
+                self._deployment_fanout_consumer(dispatcher, redis_transport),
+                name="deployment-fanout",
             )
             self._deployment_fanout_task.add_done_callback(self._log_background_task_exception("deployment_fanout"))
 
@@ -583,7 +596,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
                             redis=redis_client,
                             subscriptions=project_config.channel_subscriptions,
                             shutdown_event=self.shutdown_event,
-                        )
+                        ),
+                        name="channel-subscription-worker",
                     )
                     self.channel_subscription_worker_task.add_done_callback(
                         self._log_background_task_exception("subscription_worker")
@@ -598,13 +612,15 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
         bridge.register(event_bus)
 
         # Start delivery worker
-        self.webhook_delivery_task = asyncio.create_task(delivery_worker.run(self.shutdown_event))
+        self.webhook_delivery_task = asyncio.create_task(
+            delivery_worker.run(self.shutdown_event), name="webhook-delivery"
+        )
         self.webhook_delivery_task.add_done_callback(self._log_background_task_exception("webhook_delivery"))
         self._webhook_delivery_worker = delivery_worker
         self._contract_registry = contract_registry
 
         # Start contract TTL sweep (every 60s)
-        self._contract_sweep_task = asyncio.create_task(self._contract_sweep_loop())
+        self._contract_sweep_task = asyncio.create_task(self._contract_sweep_loop(), name="contract-sweep")
         self._contract_sweep_task.add_done_callback(self._log_background_task_exception("contract_sweep"))
 
         logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))  # pylint: disable=protected-access
