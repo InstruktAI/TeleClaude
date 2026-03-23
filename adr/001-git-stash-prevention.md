@@ -1,15 +1,10 @@
 ---
-id: 'project/design/adr/001-git-stash-prevention'
-type: 'design'
-scope: 'project'
-description: 'ADR: git stash prevention in multi-worktree environment — root cause, defense-in-depth, and permission model.'
+number: 1
+title: Git stash prevention in multi-worktree environment
+date: 2026-03-20
 ---
 
-# Git Stash Prevention (ADR-001) — Design
-
-## Required reads
-
-- @docs/project/design/architecture/git-wrapper.md
+# ADR-001: Git Stash Prevention
 
 ## Purpose
 
@@ -108,7 +103,7 @@ These must hold going forward:
 Three-tier git wrapper permissions:
 
 - **DESTRUCTIVE** — blocked for all roles (restore, clean, switch, reset, revert)
-- **PROTECTED** — integrator only (stash, push on main), integrator+system (commit on main)
+- **PROTECTED** — integrator only (stash, commit on main, push on main)
 - **RESTRICTED** — orchestrator cannot commit on any branch
 
 ## Failure modes

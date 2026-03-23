@@ -45,28 +45,39 @@ This is a document-quality check, not a code review. The orchestrator does not r
 - If `telec todo prepare <slug>` returns `CONTAINER:` or `todos/{slug}/state.yaml` has non-empty `breakdown.todos`, treat that slug as a grouping container only.
 - Run each child slug via `telec todo work <child>` in dependency order until children complete, and do not dispatch build/review/fix/finalize directly for the container slug.
 
+### Tailing Discipline
+
+The orchestrator maintains a **marker timestamp** per dispatched worker, initialized
+to the dispatch time. All session inspection follows this protocol:
+
+- **First tail** (after dispatch): use a full window (`telec sessions tail <session_id> --tools --thinking`) to establish context. Save the timestamp of the last message as the marker.
+- **All subsequent tails**: use `--since <marker>` to retrieve only new output. This avoids re-reading content already seen and makes progress detection trivial — if `--since` returns no new messages, nothing happened.
+- After every tail, update the marker to the latest message timestamp from the response.
+
 ### When Notification Arrives
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the worker was dispatched, pause and confirm with the user before proceeding. The notification's implicit instruction ("continue the loop") may be stale.
-2. Verify output matches intended outcome.
-3. Execute POST_COMPLETION steps (orchestrator responsibility):
+2. **Codex false-notification guard.** Codex emits turn-complete notifications for internal sub-agent completions, not only when the main session finishes. When the worker is Codex, do not act on the notification immediately. Tail the session with `--since <marker>` and check whether the new output contains a final deliverable (commit, verdict, or completion report matching the expected outcome). If not, update the marker, reset the heartbeat timer, and continue waiting. A Codex worker may only be considered complete after two consecutive tails (across two heartbeats) confirm no new output and the last output contains the expected deliverable. This guard does not apply to Claude or Gemini workers, whose notifications reliably indicate session completion.
+3. **(Claude/Gemini only)** Tail the session with `--since <marker>` to retrieve the final output. Verify it matches the intended outcome.
+4. Execute POST_COMPLETION steps (orchestrator responsibility):
    - Mark phase status using `telec todo mark-phase ...` if applicable
    - **Terminate worker session: `telec sessions end <session_id> --computer <computer>`** ← ORCHESTRATOR OWNS THIS
    - Execute any phase-specific cleanup from the state machine instruction
-4. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`).
-5. Send `telec sessions send` only when actionable:
+5. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`).
+6. Send `telec sessions send` only when actionable:
    - gate failure details to fix,
    - explicit answer to a worker question,
    - or a user-directed plan change.
-6. If none apply, invoke the state machine again instead of messaging the worker.
-7. Invoke the work state machine to continue.
+7. If none apply, invoke the state machine again instead of messaging the worker.
+8. Invoke the work state machine to continue.
 
 ### When Timer Expires
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the timer was set, the timer's intent is stale — discard the encoded instructions and re-evaluate from the current state. Do not blindly resume the orchestration loop.
-2. Check session output using the session inspection tool.
-3. Determine status and take action.
-4. If worker still running, reset timer and continue waiting.
+2. Tail the session with `--since <marker>`.
+   - If new messages appear: the worker is progressing. Update the marker to the latest message timestamp. Reset timer and continue waiting.
+   - If no new messages appear: the worker may be stuck. Investigate (check for errors, context exhaustion) or escalate to the user.
+3. Always update the marker after each tail.
 
 ### When Worker Needs Help
 

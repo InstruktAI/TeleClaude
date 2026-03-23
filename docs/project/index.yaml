@@ -15,14 +15,6 @@ snippets:
   path: docs/project/concept/master-bot.md
   visibility: internal
   source_project: TeleClaude
-- id: project/design/adr/001-git-stash-prevention
-  description: "ADR: git stash prevention in multi-worktree environment \u2014 root\
-    \ cause, defense-in-depth, and permission model."
-  type: design
-  scope: project
-  path: docs/project/design/adr/001-git-stash-prevention.md
-  visibility: internal
-  source_project: TeleClaude
 - id: project/design/architecture/adapter-client
   description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer
     routing.

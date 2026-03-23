@@ -38,8 +38,8 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 - **System role permissions:** The wrapper reads `TELECLAUDE_SYSTEM_ROLE` (set by the daemon from `session_metadata.system_role`) to determine permission scope. Four roles:
   - `worker` (default): Standard restrictions.
   - `orchestrator`: Auth-only; equivalent to worker permissions.
-  - `integrator`: stash + file-scoped checkout.
-  - `system`: commit/push on main + file-scoped checkout (stash remains blocked).
+  - `system`: Equivalent to worker (daemon-spawned job runners). No main access.
+  - `integrator`: Full protected access — stash, commit on main, push on main, file-scoped checkout.
     Agents must never set this variable on their own initiative.
 - Never discard or overwrite uncommitted work unless told to.
 - Do not stop, reroute, or escalate solely because unrelated files are dirty.
