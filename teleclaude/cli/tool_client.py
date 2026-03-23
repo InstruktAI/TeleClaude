@@ -2,9 +2,9 @@
 
 One-shot requests to the daemon REST API over the Unix socket.
 Sends identity headers on every call:
-  X-Session-Token:     from $TELEC_SESSION_TOKEN (daemon-issued credential)
-  X-Caller-Session-Id: from $TMPDIR/teleclaude_session_id
-  X-Telec-Email:       from TTY-scoped telec login state
+  X-Session-Token:     from $TMPDIR/teleclaude_identity.json
+  X-Caller-Session-Id: from $TMPDIR/teleclaude_identity.json
+  X-Telec-Email:       from per-TTY telec login state
   X-Tmux-Session:      from tmux server (unforgeable by agent)
 """
 # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
@@ -13,15 +13,14 @@ Sends identity headers on every call:
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
-from pathlib import Path
 
 import httpx
 
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.session_identity import get_session_id, get_session_token
 
 
 class ToolAPIError(Exception):
@@ -32,18 +31,6 @@ class ToolAPIError(Exception):
         self.message = message
         self.status_code = status_code
         self.is_timeout = is_timeout
-
-
-def _read_caller_session_id() -> str | None:
-    """Read session_id from $TMPDIR/teleclaude_session_id."""
-    tmpdir = os.environ.get("TMPDIR", "")
-    if not tmpdir:
-        return None
-    id_file = Path(tmpdir) / "teleclaude_session_id"
-    try:
-        return id_file.read_text(encoding="utf-8").strip() or None
-    except OSError:
-        return None
 
 
 def _read_tmux_session_name() -> str | None:
@@ -95,12 +82,12 @@ def tool_api_request(
     Raises:
         ToolAPIError: On daemon unavailability, timeout, or HTTP error response.
     """
-    session_id = _read_caller_session_id()
+    session_id = get_session_id()
     terminal_email = read_current_session_email()
     tmux_session = _read_tmux_session_name()
 
     headers: dict[str, str] = {}
-    token = os.environ.get("TELEC_SESSION_TOKEN")
+    token = get_session_token()
     if token:
         headers["x-session-token"] = token
     if session_id:

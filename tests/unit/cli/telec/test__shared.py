@@ -18,5 +18,4 @@ def test_config_proxy_reads_runtime_config_attributes_lazily() -> None:
 def test_shared_constants_match_tmux_and_tui_contract() -> None:
     assert _shared.TMUX_ENV_KEY == "TMUX"
     assert _shared.TUI_ENV_KEY == "TELEC_TUI_SESSION"
-    assert _shared.TUI_AUTH_EMAIL_ENV_KEY == "TELEC_AUTH_EMAIL"
     assert _shared.TUI_SESSION_NAME == "tc_tui"

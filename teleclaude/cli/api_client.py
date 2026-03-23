@@ -11,7 +11,6 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from http import HTTPMethod
-from pathlib import Path
 from typing import Any, NotRequired, Required, TypedDict, Unpack
 
 import httpx
@@ -41,6 +40,7 @@ from teleclaude.cli.models import (
     WsEvent,
 )
 from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.session_identity import get_session_id, get_session_token
 
 logger = get_logger(__name__)
 
@@ -451,11 +451,11 @@ class _TelecConnectionClient:
         headers: dict[str, str] = {}
 
         # Agent sessions: send daemon-issued token first (takes priority on the server side).
-        token = os.environ.get("TELEC_SESSION_TOKEN")
+        token = get_session_token()
         if token:
             headers["x-session-token"] = token
 
-        session_id = self._read_caller_session_id()
+        session_id = get_session_id()
         if session_id:
             headers["x-caller-session-id"] = session_id
 
@@ -468,18 +468,6 @@ class _TelecConnectionClient:
             headers["x-tmux-session"] = tmux_session
 
         return headers
-
-    def _read_caller_session_id(self) -> str | None:
-        """Read caller session_id from TMPDIR/teleclaude_session_id."""
-        tmpdir = os.environ.get("TMPDIR", "")
-        if not tmpdir:
-            return None
-
-        marker = Path(tmpdir) / "teleclaude_session_id"
-        try:
-            return marker.read_text(encoding="utf-8").strip() or None
-        except OSError:
-            return None
 
     def _read_tmux_session_name(self) -> str | None:
         """Read tmux session name from tmux server for dual-factor checks."""

@@ -9,9 +9,10 @@ description: 'Three-tier git wrapper permission model for agent sessions.'
 
 ## Purpose
 
-A PATH-based bash wrapper installed at `~/.teleclaude/bin/git` (symlink to
+A PATH-based Python wrapper installed at `~/.teleclaude/bin/git` (symlink to
 `teleclaude/install/wrappers/git`). Intercepts all shell `git` commands in
-agent tmux sessions and enforces role-based permissions.
+agent tmux sessions and enforces role-based permissions. Uses `uv run` with
+gitpython to execute commands against the real git binary.
 
 Two git execution paths exist:
 
@@ -37,29 +38,31 @@ NEVER invoked — all sessions resolve `git` via PATH which hits the symlink.
 
 **Inputs:**
 
-- `TELECLAUDE_SYSTEM_ROLE` — role identifier set by daemon bootstrap (worker, system, orchestrator, integrator)
+- `$TMPDIR/teleclaude_identity.json` — per-session identity file containing `system_role`, `human_role`, `session_id`, and `session_token`. Written by daemon bootstrap.
+- `TELECLAUDE_SYSTEM_ROLE` env var — human-only escape hatch. Honored only when `human_role` is present in the identity file. Pure agent sessions ignore this variable.
 - `GIT_CONFIG_COUNT/KEY/VALUE` — env vars injected by the wrapper to disable autostash
-- `TELECLAUDE_GIT_WRAPPER_LOG` — when set, enables invocation logging
 
 **Outputs:**
 
 - Blocked or allowed git operations based on role and tier
-- Invocation logs (timestamp, role, subcommand, args, cwd) when logging is enabled
+- Invocation logs (timestamp, role, subcommand, args, cwd) — best-effort to `/var/log/instrukt-ai/teleclaude/git-wrapper.log`
 - `GIT_CONFIG` env vars propagated to the real git binary for autostash prevention
 
 **Roles:**
 
-| Role         | Set by           | Use case                                                  |
-| ------------ | ---------------- | --------------------------------------------------------- |
-| (unset)      | Default          | Human interactive session — worker permissions internally |
-| worker       | Daemon bootstrap | Worktree-scoped builders, fixers, reviewers               |
-| system       | Daemon bootstrap | Job runners — same restrictions as worker                 |
-| orchestrator | Daemon bootstrap | State machine drivers — no commits anywhere               |
-| integrator   | Daemon bootstrap | Merge workflow — full protected access                    |
+| Role         | Set by                           | Use case                                               |
+| ------------ | -------------------------------- | ------------------------------------------------------ |
+| human_role   | Identity file (daemon bootstrap) | Human interactive session — directory scope check only |
+| worker       | Identity file (daemon bootstrap) | Worktree-scoped builders, fixers, reviewers            |
+| system       | Identity file (daemon bootstrap) | Job runners — same restrictions as worker              |
+| orchestrator | Identity file (daemon bootstrap) | State machine drivers — no commits anywhere            |
+| integrator   | Identity file (daemon bootstrap) | Merge workflow — full protected access                 |
+
+Valid system roles: `worker`, `system`, `orchestrator`, `integrator`. Unknown roles fail fast.
 
 ## Invariants
 
-Three permission tiers, applied in order:
+Three permission tiers, applied in order for agent sessions:
 
 | Tier        | Operations                                           | Behavior                |
 | ----------- | ---------------------------------------------------- | ----------------------- |
@@ -67,13 +70,25 @@ Three permission tiers, applied in order:
 | PROTECTED   | stash (integrator), commit/push on main (integrator) | Role-gated              |
 | RESTRICTED  | commit (orchestrator)                                | Blocked on all branches |
 
+Human sessions (identity file has `human_role`, no `system_role`):
+
+- Git is allowed freely within the current working directory tree.
+- Operations targeting directories outside cwd are blocked.
+
+No identity (neither `system_role` nor `human_role` in identity file):
+
+- Fail fast — contract violation.
+
 - Wrapper permission tests MUST use `tmp_path` temp repos for any test where
   the wrapper allows the operation. This prevents test-created git state from
   polluting the shared repository.
-- `TELECLAUDE_SYSTEM_ROLE` is a bash variable local to the wrapper script.
-  It does not export or bleed into the session environment.
+- The env var escape hatch (`TELECLAUDE_SYSTEM_ROLE`) is only honored when
+  `human_role` is present in the identity file. Agent sessions cannot
+  self-escalate via environment variables.
 - Pre-commit's staged-file isolation uses `git checkout -- .` which goes
   through the wrapper. File-scoped checkout is allowed for all roles.
+- Branch resolution for main-branch protection uses `-C`, `--git-dir`, and
+  `--work-tree` args to resolve against the correct repository context.
 
 ## Primary flows
 
@@ -87,8 +102,8 @@ Prevention layers:
    same config injection, scoped to individual subprocess calls.
 3. **Explicit flags:** `--no-autostash` on merge and pull-rebase calls.
 
-When `TELECLAUDE_GIT_WRAPPER_LOG` is set (injected by daemon bootstrap), the
-wrapper logs every invocation with timestamp, role, subcommand, args, and cwd.
+The wrapper always logs invocations (best-effort) with timestamp, role,
+subcommand, args, and cwd to a fixed log path.
 
 ## Failure modes
 
@@ -101,3 +116,5 @@ wrapper logs every invocation with timestamp, role, subcommand, args, and cwd.
   `Path(__file__).parents[3]` which in worktrees points to the stale copy —
   acceptable because tests test wrapper behavior, not the installed version,
   but tests must use temp repos to prevent side effects.
+- The wrapper sets `GIT_PYTHON_GIT_EXECUTABLE` to the real binary before
+  importing gitpython to prevent `uv run` recursion through the wrapper symlink.

@@ -14,22 +14,11 @@ auth_cmds = importlib.import_module("teleclaude.cli.telec.handlers.auth_cmds")
 def test_handle_auth_routes_conversational_whoami(monkeypatch: pytest.MonkeyPatch) -> None:
     received: list[list[str]] = []
 
-    monkeypatch.delenv(auth_cmds.TMUX_ENV_KEY, raising=False)
     monkeypatch.setattr(auth_cmds, "_handle_whoami", lambda args: received.append(args))
 
     auth_cmds._handle_auth(["who", "am", "i?", "extra"])
 
     assert received == [["extra"]]
-
-
-def test_handle_auth_rejects_tmux_sessions(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setenv(auth_cmds.TMUX_ENV_KEY, "1")
-
-    with pytest.raises(SystemExit) as exc_info:
-        auth_cmds._handle_auth(["login", "person@example.com"])
-
-    assert exc_info.value.code == 1
-    assert "tmux" in capsys.readouterr().out
 
 
 def test_role_for_email_matches_loaded_person() -> None:
@@ -64,7 +53,7 @@ def test_handle_whoami_reads_tty_session_state(
 ) -> None:
     context = SimpleNamespace(tty="ttys001", auth_path=Path("/tmp/telec-auth"))
 
-    monkeypatch.delenv("TELEC_SESSION_TOKEN", raising=False)
+    monkeypatch.setattr(auth_cmds, "get_session_token", lambda: None)
     monkeypatch.setattr(auth_cmds, "get_current_session_context", lambda: context)
     monkeypatch.setattr(auth_cmds, "read_current_session_email", lambda: "person@example.com")
     monkeypatch.setattr(auth_cmds, "_role_for_email", lambda _email: "operator")

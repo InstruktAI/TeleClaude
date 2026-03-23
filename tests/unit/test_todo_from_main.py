@@ -104,7 +104,6 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_ready") as mock_ready,
             patch(f"{_SI}.mark_phase") as mock_phase,
         ):
             output = create_from_main_skeleton(str(project), "test-slug", description="Test changes")
@@ -142,9 +141,10 @@ class TestCreateFromMainSkeleton:
         # Verify untracked file removed from main
         assert not (project / "src" / "new.py").exists()
 
-        # Verify state was set for review
-        mock_ready.assert_called_once()
-        mock_phase.assert_called_once_with(str(worktree_path), "test-slug", "build", "complete")
+        # Verify state was set: prepared then build_complete
+        assert mock_phase.call_count == 2
+        mock_phase.assert_any_call(str(worktree_path), "test-slug", "prepared")
+        mock_phase.assert_any_call(str(worktree_path), "test-slug", "build_complete")
 
     def test_deleted_files_removed_from_worktree(self, tmp_path: Path) -> None:
         """Deleted files on main should be removed from the worktree."""
@@ -167,7 +167,6 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_ready"),
             patch(f"{_SI}.mark_phase"),
         ):
             create_from_main_skeleton(str(project), "del-slug")
@@ -205,7 +204,6 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_ready"),
             patch(f"{_SI}.mark_phase"),
         ):
             create_from_main_skeleton(str(project), "not-a-repo-slug")
@@ -229,7 +227,6 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_ready"),
             patch(f"{_SI}.mark_phase"),
         ):
             create_from_main_skeleton(str(project), "no-desc")
@@ -262,7 +259,6 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_ready"),
             patch(f"{_SI}.mark_phase"),
         ):
             create_from_main_skeleton(str(project), "scoped-slug")
@@ -302,6 +298,41 @@ class TestCreateFromMainSkeleton:
         ):
             create_from_main_skeleton(str(project), "empty-files")
 
+    def test_all_files_true_transfers_without_session_scoping(self, tmp_path: Path) -> None:
+        """all_files=True transfers all dirty files without invoking _collect_session_touched_files."""
+        from teleclaude.todo_scaffold import create_from_main_skeleton
+
+        project = _setup_project(tmp_path)
+        (project / "docs").mkdir()
+        (project / "docs" / "guide.md").write_text("guide content", encoding="utf-8")
+
+        worktree_path = project / "trees" / "all-slug"
+        worktree_path.mkdir(parents=True)
+        (worktree_path / "src").mkdir(parents=True)
+        (worktree_path / "docs").mkdir(parents=True)
+
+        repo = _make_repo_ns(status=" M src/app.py\n M docs/guide.md\n?? src/new.py")
+
+        with (
+            patch("teleclaude.git.Repo", return_value=repo),
+            patch(_COLLECT) as mock_collect,
+            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
+            patch(f"{_WT}._create_or_attach_worktree", return_value=True),
+            patch(
+                f"{_WT}._decide_worktree_prep",
+                return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
+            ),
+            patch(f"{_SI}.mark_phase"),
+        ):
+            create_from_main_skeleton(str(project), "all-slug", all_files=True)
+
+        # _collect_session_touched_files must NOT be called
+        mock_collect.assert_not_called()
+        # All dirty files transferred
+        assert (worktree_path / "src" / "app.py").exists()
+        assert (worktree_path / "src" / "new.py").exists()
+        assert (worktree_path / "docs" / "guide.md").exists()
+
     def test_no_intersection_between_session_and_status_raises(self, tmp_path: Path) -> None:
         """ValueError when session-touched files don't overlap with git status."""
         from teleclaude.todo_scaffold import create_from_main_skeleton
@@ -312,7 +343,7 @@ class TestCreateFromMainSkeleton:
         with (
             patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"completely/unrelated.py"}),
-            pytest.raises(ValueError, match="No uncommitted changes match session-touched files"),
+            pytest.raises(ValueError, match="No uncommitted changes to transfer"),
         ):
             create_from_main_skeleton(str(project), "no-overlap")
 
@@ -345,7 +376,7 @@ class TestCollectSessionTouchedFiles:
         expected_files = {"src/app.py", "src/utils.py"}
 
         with (
-            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-123"),
+            patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-123"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
@@ -366,7 +397,7 @@ class TestCollectSessionTouchedFiles:
         from teleclaude.todo_scaffold import _collect_session_touched_files
 
         with (
-            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value=None),
+            patch("teleclaude.todo_scaffold._get_session_id", return_value=None),
             pytest.raises(ValueError, match="active agent session"),
         ):
             _collect_session_touched_files("/project")
@@ -379,7 +410,7 @@ class TestCollectSessionTouchedFiles:
         mock_db.get.return_value = None
 
         with (
-            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-missing"),
+            patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-missing"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             pytest.raises(ValueError, match="Session sess-missing not found"),
@@ -398,7 +429,7 @@ class TestCollectSessionTouchedFiles:
         mock_db.get.return_value = mock_row
 
         with (
-            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-no-log"),
+            patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-no-log"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             pytest.raises(ValueError, match="No transcript found"),
@@ -419,7 +450,7 @@ class TestCollectSessionTouchedFiles:
         mock_timeline = SimpleNamespace(has_data=False, tool_calls=[])
 
         with (
-            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-empty"),
+            patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-empty"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
@@ -445,7 +476,7 @@ class TestCollectSessionTouchedFiles:
         mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
 
         with (
-            patch("teleclaude.cli.tool_client._read_caller_session_id", return_value="sess-no-files"),
+            patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-no-files"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
@@ -459,3 +490,49 @@ class TestCollectSessionTouchedFiles:
             mock_agent_name.from_str.return_value = mock_agent_name.CLAUDE
 
             _collect_session_touched_files("/project")
+
+
+class TestCreateFromMainSkeletonAllFiles:
+    """Tests for the all_files=True bypass path (I-6)."""
+
+    def test_all_files_skips_session_scoping(self, tmp_path: Path) -> None:
+        """all_files=True transfers all dirty files without calling _collect_session_touched_files."""
+        from teleclaude.todo_scaffold import create_from_main_skeleton
+
+        project = tmp_path
+        (project / "src").mkdir()
+        (project / "src" / "app.py").write_text("modified content")
+        (project / "todos").mkdir()
+
+        worktree_path = project / "trees" / "all-files-slug"
+        worktree_path.mkdir(parents=True)
+        (worktree_path / "src").mkdir(parents=True)
+
+        # Status has both a modified file and an added (staged) file
+        repo_ns = SimpleNamespace(
+            git=SimpleNamespace(
+                status=MagicMock(return_value=" M src/app.py\nA  src/staged.py"),
+                diff=MagicMock(return_value=""),
+                checkout=MagicMock(),
+                reset=MagicMock(),
+                update_environment=lambda **kwargs: {},
+            ),
+            active_branch=SimpleNamespace(name="main"),
+        )
+
+        collect_mock = MagicMock()
+        with (
+            patch("teleclaude.git.Repo", return_value=repo_ns),
+            patch(_COLLECT, collect_mock),
+            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
+            patch(f"{_WT}._create_or_attach_worktree", return_value=True),
+            patch(
+                f"{_WT}._decide_worktree_prep",
+                return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
+            ),
+            patch(f"{_SI}.mark_phase"),
+        ):
+            create_from_main_skeleton(str(project), "all-files-slug", all_files=True)
+
+        # Session scoping must not be called when all_files=True
+        collect_mock.assert_not_called()

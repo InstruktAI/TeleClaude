@@ -3,15 +3,22 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
 
 from teleclaude.core.db import resolve_session_principal
+from teleclaude.core.db._sync import SessionIdentityError
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class _FakeMetadata:
+    system_role: str | None = None
 
 
 def _make_session(
@@ -19,12 +26,14 @@ def _make_session(
     human_email: str | None = None,
     human_role: str | None = None,
     principal: str | None = None,
+    system_role: str | None = None,
 ) -> MagicMock:
     session = MagicMock()
     session.session_id = session_id
     session.human_email = human_email
     session.human_role = human_role
     session.principal = principal
+    session.session_metadata = _FakeMetadata(system_role=system_role) if system_role else None
     return session
 
 
@@ -52,22 +61,21 @@ class TestResolveSessionPrincipal:
 
     @pytest.mark.unit
     def test_system_session_uses_full_session_id(self):
-        session = _make_session(session_id="abc-def-123", human_email=None)
+        session = _make_session(session_id="abc-def-123", human_email=None, system_role="worker")
         principal, role = resolve_session_principal(session)
         assert principal == "system:abc-def-123"
         assert "abc-def-123" in principal
-        assert role is None
+        assert role == "worker"
 
     @pytest.mark.unit
-    def test_anonymous_human_uses_system_principal(self):
+    def test_no_identity_raises(self):
         session = _make_session(session_id="anon-123", human_email=None, human_role="customer")
-        principal, role = resolve_session_principal(session)
-        assert principal == "system:anon-123"
-        assert role == "customer"
+        with pytest.raises(SessionIdentityError):
+            resolve_session_principal(session)
 
     @pytest.mark.unit
     def test_system_principal_does_not_truncate_id(self):
         long_id = "a" * 64
-        session = _make_session(session_id=long_id, human_email=None)
+        session = _make_session(session_id=long_id, human_email=None, system_role="worker")
         principal, _ = resolve_session_principal(session)
         assert long_id in principal

@@ -18,7 +18,6 @@ from teleclaude.cli.telec._run_tui import _run_tui, _run_tui_config_mode
 # Re-export shared config proxy and constants
 from teleclaude.cli.telec._shared import (
     TMUX_ENV_KEY,
-    TUI_AUTH_EMAIL_ENV_KEY,
     TUI_ENV_KEY,
     TUI_SESSION_NAME,
     _ConfigProxy,
@@ -159,7 +158,6 @@ __all__ = [
     "CLI_SURFACE",
     "HELP_SUBCOMMAND_EXPANSIONS",
     "TMUX_ENV_KEY",
-    "TUI_AUTH_EMAIL_ENV_KEY",
     "TUI_ENV_KEY",
     "TUI_SESSION_NAME",
     "_H",
@@ -358,10 +356,8 @@ def _exec_tmux_tui() -> None:
         )
 
     tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME, "-e", f"{TUI_ENV_KEY}={ENV_ENABLE}"]
-    if terminal_email:
-        tmux_args.extend(["-e", f"{TUI_AUTH_EMAIL_ENV_KEY}={terminal_email}"])
     for key, value in os.environ.items():
-        if key in {TUI_ENV_KEY, TUI_AUTH_EMAIL_ENV_KEY}:
+        if key == TUI_ENV_KEY:
             continue
         tmux_args.extend(["-e", f"{key}={value}"])
     tmux_args.append("telec")

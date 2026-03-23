@@ -36,6 +36,7 @@ from teleclaude.core.next_machine.git_ops import (
     _has_meaningful_diff,
     _merge_origin_main_into_worktree,
     compose_agent_guidance,
+    get_head_commit,
     get_stash_entries,
     has_uncommitted_changes,
 )
@@ -63,10 +64,8 @@ from teleclaude.core.next_machine.slug_resolution import (
     set_item_phase,
 )
 from teleclaude.core.next_machine.state_io import (
-    _get_finalize_state,
-    _get_head_commit,
     _is_review_round_limit_reached,
-    _mark_finalize_handed_off,
+    _normalize_finalize_state,
     _review_scope_note,
     has_pending_deferrals,
     is_bug_todo,
@@ -532,7 +531,7 @@ async def _prepare_dispatch_state(
     # Derive build/review status from authoritative current value
     build_status, review_status = _derive_work_statuses(current)
 
-    finalize_state = _get_finalize_state(state)
+    finalize_state = _normalize_finalize_state(state.get("finalize"))
     review_status = await _repair_stale_review_approval(
         worktree_cwd, resolved_slug, phase_slug, state, review_status, finalize_state
     )
@@ -554,14 +553,14 @@ async def _repair_stale_review_approval(  # pylint: disable=too-many-arguments,t
 
     baseline_raw = state.get("review_baseline_commit")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
-    head_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
+    head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
     if not (baseline and head_sha and baseline != head_sha):
         return review_status
     if not await asyncio.to_thread(_has_meaningful_diff, worktree_cwd, baseline, head_sha):
         return review_status
 
     repair_started = perf_counter()
-    await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, PhaseName.REVIEW.value, PhaseStatus.PENDING.value)
+    await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "review_pending")
     _log_next_work_phase(phase_slug, "state_repair", repair_started, "run", "review_approval_stale_baseline")
     return PhaseStatus.PENDING.value
 
@@ -775,9 +774,7 @@ async def _handle_gate_failure(  # pylint: disable=too-many-arguments,too-many-p
     """Apply retry-state bookkeeping after a failed build/review gate."""
     _log_next_work_phase(phase_slug, "gate_execution", started_at, "error", log_detail)
     if review_round == 0:
-        await asyncio.to_thread(
-            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
-        )
+        await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "build_started")
     return format_build_gate_failure(resolved_slug, gate_output, f"telec todo work {resolved_slug}")
 
 
@@ -844,7 +841,7 @@ async def _dispatch_finalize_handoff(
             orchestrator_session_id=session_id,
             ready_at=finalize_state.get("ready_at"),
         )
-        await asyncio.to_thread(_mark_finalize_handed_off, worktree_cwd, resolved_slug, handoff_session_id=session_id)
+        await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "finalize_handed_off")
     except Exception as exc:  # pylint: disable=broad-exception-caught
         _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "error", "finalize_handoff_failed")
         return format_error(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import teleclaude.cli.session_auth as sa
 from teleclaude.cli.session_auth import (
     TerminalAuthState,
     TerminalSessionContext,
@@ -42,12 +43,29 @@ def test_in_tmux_context_returns_false_when_tmux_unset(monkeypatch: pytest.Monke
 # ---------------------------------------------------------------------------
 
 
-def test_get_current_session_context_returns_global_context() -> None:
+def test_get_current_session_context_returns_context() -> None:
+    ctx = get_current_session_context()
+    assert ctx is not None
+    assert isinstance(ctx.key, str)
+    assert isinstance(ctx.tty, str)
+    assert isinstance(ctx.auth_path, Path)
+
+
+def test_get_current_session_context_per_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys007")
+    ctx = get_current_session_context()
+    assert ctx is not None
+    assert ctx.tty == "/dev/ttys007"
+    assert ctx.key == "ttys007"
+    assert ctx.auth_path.name == "ttys007.json"
+
+
+def test_get_current_session_context_global_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: None)
     ctx = get_current_session_context()
     assert ctx is not None
     assert ctx.key == "global"
-    assert ctx.tty == ""
-    assert isinstance(ctx.auth_path, Path)
+    assert ctx.auth_path.name == "global_identity.json"
 
 
 # ---------------------------------------------------------------------------
@@ -58,72 +76,58 @@ def test_get_current_session_context_returns_global_context() -> None:
 def test_terminal_session_context_is_frozen() -> None:
     ctx = TerminalSessionContext(tty="", key="global", auth_path=Path("/tmp/identity.json"))
     with pytest.raises(Exception):  # noqa: B017  # FrozenInstanceError (dataclass freeze)
-        ctx.key = "other"
+        ctx.key = "other"  # type: ignore[misc,unused-ignore]
 
 
 # ---------------------------------------------------------------------------
-# read_current_session_email — env var path
+# read_current_session_email
 # ---------------------------------------------------------------------------
 
 
-def test_read_current_session_email_from_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TELEC_AUTH_EMAIL", "alice@example.com")
-    result = read_current_session_email()
-    assert result == "alice@example.com"
+def test_read_current_session_email_from_per_tty_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    auth_file = tmp_path / "ttys003.json"
+    auth_file.write_text(json.dumps({"email": "alice@example.com"}))
+    assert read_current_session_email() == "alice@example.com"
 
 
-def test_read_current_session_email_normalizes_to_lowercase(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TELEC_AUTH_EMAIL", "ALICE@EXAMPLE.COM")
-    result = read_current_session_email()
-    assert result == "alice@example.com"
+def test_read_current_session_email_falls_back_to_global(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    global_file = tmp_path / "global_identity.json"
+    global_file.write_text(json.dumps({"email": "global@example.com"}))
+    assert read_current_session_email() == "global@example.com"
 
 
-def test_read_current_session_email_returns_none_for_empty_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("TELEC_AUTH_EMAIL", "  ")
-    # Prevent reading real auth file by patching AUTH_PATH to nonexistent file
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "AUTH_PATH", tmp_path / "identity.json")
-    result = read_current_session_email()
-    assert result is None
+def test_read_current_session_email_normalizes_to_lowercase(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    auth_file = tmp_path / "ttys003.json"
+    auth_file.write_text(json.dumps({"email": "ALICE@EXAMPLE.COM"}))
+    assert read_current_session_email() == "alice@example.com"
 
 
-# ---------------------------------------------------------------------------
-# read_current_session_email — file path
-# ---------------------------------------------------------------------------
+def test_read_current_session_email_returns_none_when_no_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    assert read_current_session_email() is None
 
 
-def test_read_current_session_email_from_json_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("TELEC_AUTH_EMAIL", raising=False)
-    auth_file = tmp_path / "identity.json"
-    auth_file.write_text(json.dumps({"email": "bob@example.com"}))
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "AUTH_PATH", auth_file)
-    result = read_current_session_email()
-    assert result == "bob@example.com"
+def test_read_current_session_email_no_tty_reads_global(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: None)
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    global_file = tmp_path / "global_identity.json"
+    global_file.write_text(json.dumps({"email": "bob@example.com"}))
+    assert read_current_session_email() == "bob@example.com"
 
 
 def test_read_current_session_email_from_plain_text_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("TELEC_AUTH_EMAIL", raising=False)
-    auth_file = tmp_path / "identity.json"
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    auth_file = tmp_path / "ttys003.json"
     auth_file.write_text("carol@example.com\n")
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "AUTH_PATH", auth_file)
-    result = read_current_session_email()
-    assert result == "carol@example.com"
-
-
-def test_read_current_session_email_returns_none_when_file_absent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.delenv("TELEC_AUTH_EMAIL", raising=False)
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "AUTH_PATH", tmp_path / "identity.json")
-    result = read_current_session_email()
-    assert result is None
+    assert read_current_session_email() == "carol@example.com"
 
 
 # ---------------------------------------------------------------------------
@@ -131,54 +135,47 @@ def test_read_current_session_email_returns_none_when_file_absent(
 # ---------------------------------------------------------------------------
 
 
-def test_write_current_session_email_creates_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    auth_dir = tmp_path / "session-auth"
-    auth_file = auth_dir / "identity.json"
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", auth_dir)
-    monkeypatch.setattr(sa, "AUTH_PATH", auth_file)
+def test_write_current_session_email_creates_per_tty_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
     result = write_current_session_email("dave@example.com")
-    assert auth_file.exists()
+    assert (tmp_path / "ttys003.json").exists()
     assert result.email == "dave@example.com"
     assert isinstance(result, TerminalAuthState)
 
 
 def test_write_current_session_email_normalizes_email(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    auth_dir = tmp_path / "session-auth"
-    auth_file = auth_dir / "identity.json"
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", auth_dir)
-    monkeypatch.setattr(sa, "AUTH_PATH", auth_file)
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
     result = write_current_session_email("EVE@EXAMPLE.COM")
     assert result.email == "eve@example.com"
 
 
 def test_write_current_session_email_rejects_invalid_email(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    auth_dir = tmp_path / "session-auth"
-    auth_file = auth_dir / "identity.json"
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", auth_dir)
-    monkeypatch.setattr(sa, "AUTH_PATH", auth_file)
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
     with pytest.raises(ValueError):
         write_current_session_email("not-an-email")
 
 
-def test_write_current_session_email_stores_json_with_updated_at(
+def test_write_current_session_email_stores_json_with_tty_and_timestamp(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    auth_dir = tmp_path / "session-auth"
-    auth_file = auth_dir / "identity.json"
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", auth_dir)
-    monkeypatch.setattr(sa, "AUTH_PATH", auth_file)
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
     write_current_session_email("frank@example.com")
-    data = json.loads(auth_file.read_text())
+    data = json.loads((tmp_path / "ttys003.json").read_text())
     assert data["email"] == "frank@example.com"
+    assert data["tty"] == "/dev/ttys003"
     assert "updated_at" in data
+
+
+def test_write_current_session_email_no_tty_writes_global(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: None)
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    result = write_current_session_email("global@example.com")
+    assert (tmp_path / "global_identity.json").exists()
+    assert result.email == "global@example.com"
 
 
 # ---------------------------------------------------------------------------
@@ -187,21 +184,17 @@ def test_write_current_session_email_stores_json_with_updated_at(
 
 
 def test_clear_current_session_email_deletes_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    auth_file = tmp_path / "identity.json"
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    auth_file = tmp_path / "ttys003.json"
     auth_file.write_text(json.dumps({"email": "grace@example.com"}))
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "AUTH_PATH", auth_file)
-    result = clear_current_session_email()
-    assert result is True
+    assert clear_current_session_email() is True
     assert not auth_file.exists()
 
 
 def test_clear_current_session_email_returns_false_when_file_absent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import teleclaude.cli.session_auth as sa
-
-    monkeypatch.setattr(sa, "AUTH_PATH", tmp_path / "identity.json")
-    result = clear_current_session_email()
-    assert result is False
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    assert clear_current_session_email() is False

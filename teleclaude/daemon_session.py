@@ -13,15 +13,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import (
-    ROLE_INTEGRATOR,
-    ROLE_ORCHESTRATOR,
-    ROLE_SYSTEM,
-    ROLE_WORKER,
-    TELEC_SESSION_TOKEN,
-    TELECLAUDE_SYSTEM_ROLE,
-    UI_MESSAGE_MAX_CHARS,
-)
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.db import db, resolve_session_principal
@@ -43,7 +35,57 @@ from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
+from teleclaude.session_identity import write_session_identity_to
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
+
+
+async def ensure_tmux_with_identity(
+    session: Session,
+    tmux_name: str,
+    working_dir: str,
+    env_vars: dict[str, str],
+) -> bool:
+    """Create tmux session and write full identity file.
+
+    Shared by bootstrap (new sessions) and adoption (headless → tmux).
+    Returns True on success, False on failure.
+    """
+    created = await tmux_bridge.ensure_tmux_session(
+        name=tmux_name,
+        working_dir=working_dir,
+        session_id=session.session_id,
+        env_vars=env_vars,
+    )
+    if not created:
+        logger.error("Failed to create tmux session for %s", session.session_id)
+        return False
+
+    session_tmp = tmux_bridge.get_session_tmpdir(session.session_id)
+    if not session_tmp:
+        logger.error("No session TMPDIR for %s — cannot write identity", session.session_id)
+        return False
+
+    # Resolve principal and token for system sessions
+    principal, _role = resolve_session_principal(session)
+    session_token: str | None = None
+    if principal.startswith("system:"):
+        session_token = await db.issue_session_token(session.session_id, principal, _role)
+
+    system_role = (
+        session.session_metadata.system_role.strip().lower()
+        if session.session_metadata and session.session_metadata.system_role
+        else None
+    )
+
+    write_session_identity_to(
+        directory=session_tmp,
+        session_id=session.session_id,
+        session_token=session_token,
+        system_role=system_role,
+        human_role=session.human_role,
+    )
+    return True
+
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -54,8 +96,6 @@ if TYPE_CHECKING:
     from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 
 logger = get_logger(__name__)
-
-_VALID_SYSTEM_ROLES = {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR}
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -290,49 +330,19 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
             return
 
         voice = await db.get_voice(session_id)
-        voice_env_vars = get_voice_env_vars(voice) if voice else {}
-        env_vars = voice_env_vars.copy()
+        env_vars = get_voice_env_vars(voice) if voice else {}
         working_dir = resolve_working_dir(session.project_path, session.subdir)
 
-        # Resolve principal for role derivation and (for system sessions) token issuance.
-        # Human sessions authenticate via x-telec-email / x-caller-session-id — no token.
-        # System sessions get a token injected as TELEC_SESSION_TOKEN.
-        principal, role = resolve_session_principal(session)
-        if principal.startswith("system:"):
-            session_token = await db.issue_session_token(session_id, principal, role)
-            env_vars[TELEC_SESSION_TOKEN] = session_token
-
-        # Git wrapper observability — log all git calls from agent sessions
-        env_vars["TELECLAUDE_GIT_WRAPPER_LOG"] = "/var/log/instrukt-ai/teleclaude/git-wrapper.log"
-
-        # Expose system_role to the git wrapper for permission decisions
-        if session.session_metadata and session.session_metadata.system_role:
-            role = session.session_metadata.system_role.strip().lower()
-            if role in _VALID_SYSTEM_ROLES:
-                env_vars[TELECLAUDE_SYSTEM_ROLE] = role
-            else:
-                logger.warning(
-                    "Session %s has unrecognized system_role=%r, defaulting to worker",
-                    session_id,
-                    role,
-                )
-
-        created = await tmux_bridge.ensure_tmux_session(
-            name=session.tmux_session_name,
-            working_dir=working_dir,
-            session_id=session_id,
-            env_vars=env_vars,
+        success = await ensure_tmux_with_identity(
+            session,
+            session.tmux_session_name,
+            working_dir,
+            env_vars,
         )
-        if not created:
-            logger.error("Failed to create tmux session for %s", session_id)
-            await db.update_session(
-                session_id,
-                lifecycle_status="closed",
-                closed_at=datetime.now(UTC),
-            )
+        if not success:
+            logger.error("Bootstrap failed for %s — session left in initializing state", session_id)
             return
 
-        # TTS session_start is triggered via event_bus (SESSION_STARTED event)
         await self._start_polling_for_session(session_id, session.tmux_session_name)
 
         # Run auto-command BEFORE transitioning to active so that process_message

@@ -69,29 +69,12 @@ print_info "Preparing worktree: $SLUG"
 print_info "Installing Python dependencies..."
 cd "$WORKTREE_DIR"
 
-# Check if uv is available
-if command -v uv &> /dev/null; then
-    # If worktree lacks a lockfile, symlink from main repo to enable --frozen install
-    if [ ! -f "uv.lock" ] && [ -f "$TOOL_ROOT/uv.lock" ]; then
-        ln -sf "../../uv.lock" uv.lock
-        print_info "Symlinked uv.lock from main repo"
-    fi
-    # Use --frozen when lockfile exists to avoid fetching git deps over network
-    if [ -f "uv.lock" ]; then
-        uv sync --frozen --group dev
-    else
-        uv sync --group dev
-    fi
-else
-    print_warning "uv not found, falling back to pip"
-    # Create venv if it doesn't exist
-    if [ ! -d ".venv" ]; then
-        python3 -m venv .venv
-    fi
-    # Install with pip
-    .venv/bin/python -m pip install --quiet --upgrade pip
-    .venv/bin/python -m pip install --quiet -e ".[dev]"
+# Symlink lockfile from main repo if missing
+if [ ! -f "uv.lock" ] && [ -f "$TOOL_ROOT/uv.lock" ]; then
+    ln -sf "../../uv.lock" uv.lock
 fi
+
+uv sync --group dev
 
 print_success "Dependencies installed"
 

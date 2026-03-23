@@ -332,9 +332,6 @@ from teleclaude.core.next_machine.slug_resolution import (
 
 # ── state I/O ──────────────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.state_io import (
-    _DEEP_MERGE_KEYS as _DEEP_MERGE_KEYS,
-)
-from teleclaude.core.next_machine.state_io import (
     _PREPARE_ARTIFACT_PHASES as _PREPARE_ARTIFACT_PHASES,
 )
 from teleclaude.core.next_machine.state_io import (
@@ -345,42 +342,6 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_io import (
     _PREPARE_VERDICT_VALUES as _PREPARE_VERDICT_VALUES,
-)
-from teleclaude.core.next_machine.state_io import (
-    _deep_merge_state as _deep_merge_state,
-)
-from teleclaude.core.next_machine.state_io import (
-    _extract_finding_ids as _extract_finding_ids,
-)
-from teleclaude.core.next_machine.state_io import (
-    _file_sha256 as _file_sha256,
-)
-from teleclaude.core.next_machine.state_io import (
-    _get_finalize_state as _get_finalize_state,
-)
-from teleclaude.core.next_machine.state_io import (
-    _get_head_commit as _get_head_commit,
-)
-from teleclaude.core.next_machine.state_io import (
-    _get_ref_commit as _get_ref_commit,
-)
-from teleclaude.core.next_machine.state_io import (
-    _get_remote_branch_head as _get_remote_branch_head,
-)
-from teleclaude.core.next_machine.state_io import (
-    _is_review_round_limit_reached as _is_review_round_limit_reached,
-)
-from teleclaude.core.next_machine.state_io import (
-    _mark_finalize_handed_off as _mark_finalize_handed_off,
-)
-from teleclaude.core.next_machine.state_io import (
-    _normalize_finalize_state as _normalize_finalize_state,
-)
-from teleclaude.core.next_machine.state_io import (
-    _review_scope_note as _review_scope_note,
-)
-from teleclaude.core.next_machine.state_io import (
-    _run_git_prepare as _run_git_prepare,
 )
 from teleclaude.core.next_machine.state_io import (
     check_review_status as check_review_status,
@@ -404,19 +365,7 @@ from teleclaude.core.next_machine.state_io import (
     is_review_changes_requested as is_review_changes_requested,
 )
 from teleclaude.core.next_machine.state_io import (
-    mark_finalize_ready as mark_finalize_ready,
-)
-from teleclaude.core.next_machine.state_io import (
     mark_phase as mark_phase,
-)
-from teleclaude.core.next_machine.state_io import (
-    mark_prepare_artifact as mark_prepare_artifact,
-)
-from teleclaude.core.next_machine.state_io import (
-    mark_prepare_phase as mark_prepare_phase,
-)
-from teleclaude.core.next_machine.state_io import (
-    mark_prepare_verdict as mark_prepare_verdict,
 )
 from teleclaude.core.next_machine.state_io import (
     read_breakdown_state as read_breakdown_state,
@@ -426,6 +375,12 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_io import (
     read_text_sync as read_text_sync,
+)
+from teleclaude.core.next_machine.state_io import (
+    stamp_artifact as stamp_artifact,
+)
+from teleclaude.core.next_machine.state_io import (
+    stamp_verdict as stamp_verdict,
 )
 from teleclaude.core.next_machine.state_io import (
     write_breakdown_state as write_breakdown_state,

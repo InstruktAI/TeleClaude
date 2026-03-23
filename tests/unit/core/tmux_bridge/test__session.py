@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -56,7 +57,8 @@ class TestSessionTmpDirHelpers:
         assert session_tmp == stale_dir
         assert session_tmp.is_dir()
         assert not (session_tmp / "stale.txt").exists()
-        assert (session_tmp / "teleclaude_session_id").read_text(encoding="utf-8") == session_id
+        identity = json.loads((session_tmp / "teleclaude_identity.json").read_text(encoding="utf-8"))
+        assert identity["session_id"] == session_id
 
 
 class TestShellGuardrails:

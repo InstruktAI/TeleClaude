@@ -81,7 +81,7 @@ def test_handle_sessions_end_resolves_self(monkeypatch: pytest.MonkeyPatch) -> N
     tool_api_call = MagicMock(return_value={"ok": True})
     print_json = MagicMock()
 
-    monkeypatch.setattr(sessions, "_read_caller_session_id", lambda: "caller-1")
+    monkeypatch.setattr(sessions, "get_session_id", lambda: "caller-1")
     monkeypatch.setattr(sessions, "tool_api_call", tool_api_call)
     monkeypatch.setattr(sessions, "print_json", print_json)
 

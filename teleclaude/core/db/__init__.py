@@ -16,6 +16,7 @@ from ._rows import HookOutboxRow, InboundQueueRow, OperationRow
 from ._sessions import DbSessionsMixin
 from ._settings import DbSettingsMixin
 from ._sync import (
+    SessionIdentityError,
     get_session_field_sync,
     get_session_id_by_field_sync,
     get_session_id_by_tmux_name_sync,
@@ -51,6 +52,7 @@ __all__ = [
     "HookOutboxRow",
     "InboundQueueRow",
     "OperationRow",
+    "SessionIdentityError",
     # Singleton
     "db",
     # Sync helpers

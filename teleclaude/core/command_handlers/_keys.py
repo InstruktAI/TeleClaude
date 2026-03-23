@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core import tmux_io
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.daemon_session import ensure_tmux_with_identity
 from teleclaude.types.commands import KeysCommand
 
 from ._utils import StartPollingFunc, with_session
@@ -93,12 +94,7 @@ async def _ensure_tmux_for_headless(  # pylint: disable=too-many-locals  # Adopt
     env_vars = get_voice_env_vars(voice) if voice else {}
 
     try:
-        created = await tmux_bridge.ensure_tmux_session(
-            name=tmux_name,
-            working_dir=working_dir,
-            session_id=session.session_id,
-            env_vars=env_vars,
-        )
+        success = await ensure_tmux_with_identity(session, tmux_name, working_dir, env_vars)
     except (OSError, RuntimeError, ValueError) as exc:
         await client.send_message(
             session,
@@ -106,7 +102,7 @@ async def _ensure_tmux_for_headless(  # pylint: disable=too-many-locals  # Adopt
             metadata=MessageMetadata(),
         )
         return None
-    if not created:
+    if not success:
         await client.send_message(
             session,
             "❌ Failed to create tmux session for headless session.",

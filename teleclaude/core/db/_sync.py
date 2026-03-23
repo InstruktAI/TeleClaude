@@ -95,17 +95,22 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
             raise
 
 
+class SessionIdentityError(ValueError):
+    """Raised when a session has no resolvable identity."""
+
+
 def resolve_session_principal(session: "Session") -> tuple[str, str]:
-    """Resolve the (principal, role) pair for a session at token issuance time.
+    """Resolve the principal identity for a session.
+
+    Returns (principal, role) where role is informational only — system sessions
+    get their authoritative role from session_metadata.system_role, not from
+    this function.
 
     Rules:
-    - Inherited principal (session.principal set by parent): reuse it with the
-      session's human_role (preserving the identity chain across agent spawns).
-    - Human session (human_email present): principal="human:<email>", role=human_role or "customer"
-    - System/job session: principal="system:<session_id>", role="admin"
-
-    The full session_id is used as the stable identifier for system principals
-    to ensure traceability without truncation.
+    - Inherited principal (session.principal set by parent): reuse it.
+    - Human session (human_email present): principal="human:<email>".
+    - System session (session_metadata.system_role present): principal="system:<session_id>".
+    - No identity: raises SessionIdentityError (401).
     """
     if session.principal:
         return session.principal, session.human_role or HUMAN_ROLE_CUSTOMER
@@ -113,6 +118,12 @@ def resolve_session_principal(session: "Session") -> tuple[str, str]:
         principal = f"human:{session.human_email}"
         role = session.human_role or HUMAN_ROLE_CUSTOMER
         return principal, role
-    # System/job session — use full session_id as the stable identifier.
-    principal = f"system:{session.session_id}"
-    return principal, session.human_role
+    # System session — only if explicitly created with a system_role.
+    if session.session_metadata and session.session_metadata.system_role:
+        principal = f"system:{session.session_id}"
+        return principal, session.session_metadata.system_role
+    raise SessionIdentityError(
+        f"Session {session.session_id} has no identity: "
+        "no principal, no human_email, no system_role. "
+        "Authentication required."
+    )

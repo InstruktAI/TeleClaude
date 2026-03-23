@@ -24,6 +24,55 @@ logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Git primitives (public, used by work_lifecycle on_enter handlers)
+# ---------------------------------------------------------------------------
+
+
+def get_head_commit(cwd: str) -> str:
+    """Return HEAD commit hash for cwd, or empty string when unavailable."""
+    try:
+        repo = Repo(cwd)
+        result: str = repo.git.rev_parse("HEAD").strip()
+        return result
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
+        return ""
+
+
+def get_ref_commit(cwd: str, ref: str) -> str:
+    """Return commit hash for a git ref in cwd, or empty string when unavailable."""
+    try:
+        repo = Repo(cwd)
+        result: str = repo.git.rev_parse(ref).strip()
+        return result
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
+        return ""
+
+
+def get_remote_branch_head(cwd: str, branch: str) -> str:
+    """Return origin/<branch> HEAD commit, or empty string when unavailable."""
+    try:
+        repo = Repo(cwd)
+        output = repo.git.ls_remote("origin", f"refs/heads/{branch}").strip()
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
+        return ""
+    parts = output.split()
+    return parts[0] if parts else ""
+
+
+def run_git_command(args: list[str], cwd: str) -> tuple[int, str, str]:
+    """Run a git command and return (returncode, stdout, stderr)."""
+    try:
+        repo = Repo(cwd, search_parent_directories=True)
+        output = str(repo.git.execute(["git", *args]))
+        return 0, output, ""
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return 128, "", "not a git repository"
+    except GitCommandError as exc:
+        rc = exc.status if isinstance(exc.status, int) else 1
+        return rc, exc.stdout or "", exc.stderr or ""
+
+
+# ---------------------------------------------------------------------------
 # Async file helpers
 # ---------------------------------------------------------------------------
 

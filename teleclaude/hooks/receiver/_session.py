@@ -21,6 +21,7 @@ from teleclaude.config import config
 from teleclaude.core import db_models
 from teleclaude.memory.context import generate_context_sync
 from teleclaude.paths import SESSION_MAP_PATH
+from teleclaude.session_identity import get_session_id
 
 try:
     import fcntl
@@ -214,25 +215,18 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
 
 
 def _get_tmux_contract_session_id() -> str:
-    """Resolve TeleClaude session id from TMUX contract marker file.
+    """Resolve TeleClaude session id from the session identity file.
 
     Contract (non-headless):
     - TMUX env var is present
     - TMPDIR/TMP/TEMP is present
-    - {temp}/teleclaude_session_id exists and is non-empty
+    - {temp}/teleclaude_identity.json exists with a session_id field
     """
-    tmpdir = _get_tmux_contract_tmpdir()
-
-    marker = Path(tmpdir).expanduser() / "teleclaude_session_id"
-    try:
-        value = marker.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise ValueError(f"TMUX hook contract violated: missing session marker at {marker}") from exc
-
-    if not value:
-        raise ValueError(f"TMUX hook contract violated: empty session marker at {marker}")
-
-    return value
+    session_id = get_session_id()
+    if not session_id:
+        tmpdir = _get_tmux_contract_tmpdir()
+        raise ValueError(f"TMUX hook contract violated: no session_id in identity file at {tmpdir}")
+    return session_id
 
 
 def _is_headless_route() -> bool:

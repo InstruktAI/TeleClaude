@@ -1,265 +1,354 @@
-#!/usr/bin/env bash
-# Git wrapper for TeleClaude agent sessions.
-#
-# Three-tier permission model:
-#   DESTRUCTIVE  — blocked for all roles, no override
-#   PROTECTED    — integrator only (stash, commit on main, push on main)
-#   RESTRICTED   — orchestrator cannot commit on any branch
-#
-# Roles (TELECLAUDE_SYSTEM_ROLE, set by daemon bootstrap only):
-#   (unset)      — human-interactive session, defaults to worker permissions internally
-#   worker       — can commit on worktree branches, blocked on main
-#   system       — same as worker (job runners)
-#   orchestrator — no commits anywhere (machine commands only)
-#   integrator   — full protected access (merge workflow)
-#
-# When TELECLAUDE_SYSTEM_ROLE is unset (human sessions), the wrapper applies
-# worker-equivalent restrictions. The variable is never exported — it stays
-# local to this script and does not affect the session environment.
-#
-# Daemon Python code bypasses this wrapper via teleclaude/git.py.
-# Installed via `telec init` into ~/.teleclaude/bin/git.
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["gitpython"]
+# ///
+"""Git wrapper for TeleClaude sessions.
 
-set -euo pipefail
+Three-tier permission model for agent sessions:
+  DESTRUCTIVE  — blocked for all agent roles, no override
+  PROTECTED    — integrator only (stash, commit on main, push on main)
+  RESTRICTED   — orchestrator cannot commit on any branch
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+Human sessions: git is allowed within the current working directory tree.
+No system_role and no human_role in identity file → fail fast.
 
-_WRAPPER_LOG="${TELECLAUDE_GIT_WRAPPER_LOG:-}"
+Uses gitpython to execute commands — no subprocess delegation to binaries.
+Installed via `telec init` as a symlink at ~/.teleclaude/bin/git.
+"""
 
-_log_wrapper() {
-    [ -n "$_WRAPPER_LOG" ] && echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [git-wrapper] role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$_WRAPPER_LOG" || true
-}
+from __future__ import annotations
 
-_real_git() {
-    IFS=: read -ra path_parts <<< "$PATH"
-    for dir in "${path_parts[@]}"; do
-        [ "$dir" = "$SCRIPT_DIR" ] && continue
-        if [ -x "$dir/git" ]; then
-            # Disable all auto-stash for every git invocation through the wrapper.
-            # Both rebase and merge can auto-stash dirty files internally.
-            # Stash is repo-wide — auto-stash from one worktree corrupts another.
-            _count="${GIT_CONFIG_COUNT:-0}"
-            export GIT_CONFIG_COUNT=$((_count + 2))
-            export "GIT_CONFIG_KEY_${_count}=rebase.autoStash"
-            export "GIT_CONFIG_VALUE_${_count}=false"
-            export "GIT_CONFIG_KEY_$((_count + 1))=merge.autoStash"
-            export "GIT_CONFIG_VALUE_$((_count + 1))=false"
-            _log_wrapper "$@"
-            "$dir/git" "$@"
-            return $?
-        fi
-    done
-    echo "ERROR: real git binary not found in PATH" >&2
-    exit 1
-}
+import json
+import os
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
 
-# Find the actual git subcommand by skipping global flags.
-# Also capture -C <dir> so branch checks run in the correct worktree.
-_subcmd=""
-_skip_next=0
-_capture_C=0
-_dir_args=()
-for _arg in "$@"; do
-    if [ "$_capture_C" -eq 1 ]; then
-        _dir_args+=("-C" "$_arg")
-        _capture_C=0
-        _skip_next=0
-        continue
-    fi
-    if [ "$_skip_next" -eq 1 ]; then
-        _skip_next=0
-        continue
-    fi
-    case "$_arg" in
-        -C)
-            _capture_C=1
-            _skip_next=1
-            ;;
-        -c|--git-dir|--work-tree|--namespace)
-            _skip_next=1
-            ;;
-        --git-dir=*|--work-tree=*|--namespace=*|-c*)
-            ;;
-        --bare|--no-pager|--paginate|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--no-optional-locks)
-            ;;
-        -*)
-            ;;
-        *)
-            _subcmd="$_arg"
-            break
-            ;;
-    esac
-done
+WRAPPER_LOG = Path("/var/log/instrukt-ai/teleclaude/git-wrapper.log")
+IDENTITY_FILENAME = "teleclaude_identity.json"
+SCRIPT_DIR = Path(__file__).resolve().parent
 
-_role="${TELECLAUDE_SYSTEM_ROLE:-worker}"
 
-# ── DESTRUCTIVE: blocked for all roles, no override ──────────────────────────
-case "$_subcmd" in
-    restore)
-        echo "ERROR: 'git restore' is a destructive operation and is prohibited." >&2
-        exit 1
-        ;;
-    clean)
-        echo "ERROR: 'git clean' is a destructive operation and is prohibited." >&2
-        exit 1
-        ;;
-    switch)
-        echo "ERROR: 'git switch' is a destructive operation and is prohibited." >&2
-        exit 1
-        ;;
-    revert)
-        _has_confirmed=0
-        for _rarg in "$@"; do
-            [ "$_rarg" = "--confirmed" ] && _has_confirmed=1
-        done
-        if [ "$_has_confirmed" -eq 0 ]; then
-            cat >&2 <<'MSG'
-WARNING: 'git revert' blocked — inspection required.
-
-Commits in multi-agent environments often contain changes from multiple workers.
-A blind revert destroys other agents' work.
-
-Before reverting:
-  1. Run: git show --stat <commit>
-  2. Verify EVERY file in the commit belongs to the scope you intend to undo.
-  3. Rerun with: git revert --confirmed <commit>
-MSG
-            exit 1
-        fi
-        # Strip --confirmed before passing to real git
-        _revert_args=()
-        for _rarg in "$@"; do
-            [ "$_rarg" = "--confirmed" ] && continue
-            _revert_args+=("$_rarg")
-        done
-        _real_git "${_revert_args[@]}"
-        exit $?
-        ;;
-esac
-
-# Destructive reset variants (--hard, --merge, --keep) blocked for all roles.
-# Pathspec reset (git reset HEAD <file>, git reset -- <file>) is allowed.
-if [ "$_subcmd" = "reset" ]; then
-    _has_separator=0
-    _non_flag_args=0
-    
-    _is_subcmd=0
-    for _arg in "$@"; do
-        if [ "$_is_subcmd" -eq 0 ]; then
-            [ "$_arg" = "reset" ] && _is_subcmd=1
+def _find_real_git() -> str:
+    """Find the real git binary on PATH, skipping our own directory."""
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        if not directory or Path(directory).resolve() == SCRIPT_DIR:
             continue
-        fi
-        
-        case "$_arg" in
-            --hard|--merge|--keep)
-                echo "ERROR: 'git reset $_arg' is prohibited in agent sessions. Do not discard commits." >&2
-                exit 1
-                ;;
-            --)
-                _has_separator=1
-                ;;
-            -*)
-                ;;
-            *)
-                _non_flag_args=$((_non_flag_args + 1))
-                ;;
-        esac
-    done
+        candidate = Path(directory) / "git"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    print("ERROR: real git binary not found in PATH", file=sys.stderr)
+    sys.exit(1)
 
-    # Pathspec reset (allowed): git reset [<tree-ish>] [--] <pathspec>...
-    # Commit reset (prohibited): git reset [<mode>] [<commit>]
-    
-    # We allow pathspec resets if they are unambiguous:
-    # 1. Contain '--' separator
-    # 2. Contain at least 2 non-flag arguments (likely <tree-ish> <pathspec>)
-    if [ "$_has_separator" -eq 1 ] && [ "$_non_flag_args" -ge 1 ]; then
-        : # allowed — pathspec reset (separator + at least one pathspec arg)
-    elif [ "$_non_flag_args" -ge 2 ]; then
-        : # allowed — likely 'git reset <tree-ish> <pathspec>...'
-    else
-        # 0 or 1 non-flag args without '--' is either bare reset or ambiguous 'git reset <commit|path>'.
-        # We block these to prevent accidental HEAD movement or full index reset.
-        cat >&2 <<'MSG'
-ERROR: 'git reset' without explicit pathspecs is prohibited.
 
-To unstage specific files, use:
-  git reset HEAD <path>
-  git reset -- <path>
+_gitpython = None  # lazy-loaded in run_git / get_current_branch
 
-Bare 'git reset' or 'git reset <commit>' are blocked because they move HEAD
-or discard the entire staging area, which violates safety policy.
-MSG
-        exit 1
-    fi
-fi
 
-# ── PROTECTED: integrator only ────────────────────────────────────────────────
-if [ "$_subcmd" = "stash" ] && [ "$_role" != "integrator" ]; then
-    echo "ERROR: 'git stash' is a protected operation. Only the integrator role may use it." >&2
-    exit 1
-fi
+def _get_gitpython():  # type: ignore[no-untyped-def]
+    global _gitpython  # noqa: PLW0603
+    if _gitpython is None:
+        os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = _find_real_git()
+        import git  # pylint: disable=import-outside-toplevel
 
-if [ "$_subcmd" = "checkout" ]; then
-    _has_separator=0
-    for _carg in "$@"; do
-        [ "$_carg" = "--" ] && _has_separator=1
-    done
-    if [ "$_has_separator" -eq 1 ]; then
-        : # allowed — file-scoped checkout is local to the working tree (pre-commit needs this)
-    else
-        echo "ERROR: 'git checkout' (branch switch) is a protected operation. Only file-scoped checkout (with --) is allowed." >&2
-        exit 1
-    fi
-fi
+        _gitpython = git
+    return _gitpython
 
-if [ "$_subcmd" = "commit" ]; then
-    _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
-        cat >&2 <<'MSG'
-ERROR: Commits on main are a protected operation.
 
-STEP 1 — Inspect:
-  git diff --staged --name-only
-  git status
+def run_git(args: list[str]) -> None:
+    """Execute a git command via gitpython with auto-stash disabled."""
+    gp = _get_gitpython()
+    env = os.environ.copy()
+    count = int(env.get("GIT_CONFIG_COUNT", "0"))
+    env[f"GIT_CONFIG_KEY_{count}"] = "rebase.autoStash"
+    env[f"GIT_CONFIG_VALUE_{count}"] = "false"
+    env[f"GIT_CONFIG_KEY_{count + 1}"] = "merge.autoStash"
+    env[f"GIT_CONFIG_VALUE_{count + 1}"] = "false"
+    env["GIT_CONFIG_COUNT"] = str(count + 2)
 
-STEP 2 — Classify and propose ONE of these paths to the human:
+    try:
+        cmd = gp.cmd.Git()
+        cmd.update_environment(**{k: v for k, v in env.items() if k.startswith("GIT_CONFIG")})
+        output = cmd.execute(["git"] + args, with_extended_output=False)
+        if output:
+            print(output)
+    except gp.exc.GitCommandError as exc:
+        if exc.stderr:
+            print(exc.stderr, file=sys.stderr, end="")
+        if exc.stdout:
+            print(exc.stdout, end="")
+        sys.exit(exc.status if isinstance(exc.status, int) else 1)
 
-  A) Only non-functional files (Markdown, YAML, todo scaffolding, roadmap,
-     state files, doc snippets — no .py / .ts / .sh logic):
-     → Ask human to approve, then commit with --no-verify:
-       TELECLAUDE_SYSTEM_ROLE=integrator git commit --no-verify -m "chore(...): <subject> [skip ci]"
 
-  B) Functional code change that is small and self-evident (human is present
-     and driving this, no meaningful review value):
-     → Ask human to approve, then commit with hooks:
-       TELECLAUDE_SYSTEM_ROLE=integrator git commit -m "<type>(<scope>): <subject>"
+def log_invocation(role: str, subcmd: str, args: list[str]) -> None:
+    """Append a log line for observability."""
+    try:
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        line = f"[{ts}] [git-wrapper] role={role} subcmd={subcmd} args={' '.join(args)} cwd={os.getcwd()}\n"
+        with open(WRAPPER_LOG, "a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError:
+        pass
 
-  C) Functional code change of any real substance:
-     → Must go through the review pipeline:
-       telec todo from-main --slug <meaningful-name>
-       telec todo work <slug>
 
-STEP 3 — Ask:
-  State which path you recommend and why (file types seen, size, context).
-  Then ask: "Shall I proceed with [path X]?"
-  Wait for the user to confirm before executing.
-MSG
-        exit 1
-    fi
-fi
+def read_identity() -> dict[str, str]:
+    """Read the session identity file."""
+    tmpdir = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP") or ""
+    path = Path(tmpdir) / IDENTITY_FILENAME
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
 
-if [ "$_subcmd" = "push" ]; then
-    _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
-        echo "ERROR: Push from main is a protected operation. Only the integrator role may push from main." >&2
-        exit 1
-    fi
-fi
 
-# ── ORCHESTRATOR RESTRICTION: no commit on any branch ────────────────────────
-if [ "$_subcmd" = "commit" ] && [ "$_role" = "orchestrator" ]; then
-    echo "ERROR: Orchestrators cannot commit. Use telec machine commands (mark-phase, etc.)." >&2
-    exit 1
-fi
+def parse_args(args: list[str]) -> tuple[str, list[str]]:
+    """Parse git args to find the subcommand and repo-targeting args.
 
-_real_git "$@"
+    Captures -C, --git-dir, and --work-tree so get_current_branch resolves
+    against the correct repository context.
+    """
+    subcmd = ""
+    dir_args: list[str] = []
+    skip_next = False
+    capture_next: str = ""
+
+    for arg in args:
+        if capture_next:
+            dir_args.extend([capture_next, arg])
+            capture_next = ""
+            skip_next = False
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "-C":
+            capture_next = "-C"
+            skip_next = True
+        elif arg == "--git-dir":
+            capture_next = "--git-dir"
+            skip_next = True
+        elif arg == "--work-tree":
+            capture_next = "--work-tree"
+            skip_next = True
+        elif arg.startswith("--git-dir="):
+            dir_args.extend(["--git-dir", arg.split("=", 1)[1]])
+        elif arg.startswith("--work-tree="):
+            dir_args.extend(["--work-tree", arg.split("=", 1)[1]])
+        elif arg in ("-c", "--namespace"):
+            skip_next = True
+        elif arg.startswith(("--namespace=", "-c")):
+            pass
+        elif arg in ("--bare", "--no-pager", "--paginate", "--no-replace-objects",
+                      "--literal-pathspecs", "--glob-pathspecs", "--no-optional-locks"):
+            pass
+        elif arg.startswith("-"):
+            pass
+        else:
+            subcmd = arg
+            break
+
+    return subcmd, dir_args
+
+
+def extract_target_dirs(args: list[str]) -> list[Path]:
+    """Extract all directory-targeting paths from git args (-C, --git-dir, --work-tree)."""
+    targets: list[Path] = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "-C" and i + 1 < len(args):
+            targets.append(Path(args[i + 1]))
+            i += 2
+        elif arg == "--git-dir" and i + 1 < len(args):
+            targets.append(Path(args[i + 1]))
+            i += 2
+        elif arg == "--work-tree" and i + 1 < len(args):
+            targets.append(Path(args[i + 1]))
+            i += 2
+        elif arg.startswith("--git-dir="):
+            targets.append(Path(arg.split("=", 1)[1]))
+            i += 1
+        elif arg.startswith("--work-tree="):
+            targets.append(Path(arg.split("=", 1)[1]))
+            i += 1
+        else:
+            i += 1
+    return targets
+
+
+def check_human_directory_scope(args: list[str]) -> None:
+    """Human sessions can only target cwd or subdirectories."""
+    cwd = Path.cwd().resolve()
+    for target in extract_target_dirs(args):
+        try:
+            resolved = target.resolve()
+        except OSError:
+            resolved = target
+        if not (resolved == cwd or cwd in resolved.parents):
+            print("ERROR: Human sessions cannot target directories outside the current working directory.", file=sys.stderr)
+            print(f"  cwd: {cwd}", file=sys.stderr)
+            print(f"  target: {target} (resolved: {resolved})", file=sys.stderr)
+            sys.exit(1)
+
+
+def get_current_branch(dir_args: list[str]) -> str:
+    """Get the current branch name."""
+    gp = _get_gitpython()
+    try:
+        cmd = gp.cmd.Git()
+        return cmd.execute(["git"] + dir_args + ["rev-parse", "--abbrev-ref", "HEAD"]).strip()
+    except gp.exc.GitCommandError:
+        return ""
+
+
+def check_destructive(subcmd: str, args: list[str]) -> None:
+    """Tier 1: blocked for all agent roles, no override."""
+    if subcmd in ("restore", "clean", "switch"):
+        print(f"ERROR: 'git {subcmd}' is a destructive operation and is prohibited.", file=sys.stderr)
+        sys.exit(1)
+
+    if subcmd == "revert":
+        if "--confirmed" not in args:
+            print("WARNING: 'git revert' blocked — inspection required.", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("Commits in multi-agent environments often contain changes from multiple workers.", file=sys.stderr)
+            print("A blind revert destroys other agents' work.", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("Before reverting:", file=sys.stderr)
+            print("  1. Run: git show --stat <commit>", file=sys.stderr)
+            print("  2. Verify EVERY file in the commit belongs to the scope you intend to undo.", file=sys.stderr)
+            print("  3. Rerun with: git revert --confirmed <commit>", file=sys.stderr)
+            sys.exit(1)
+        filtered = [a for a in args if a != "--confirmed"]
+        log_invocation("agent", subcmd, filtered)
+        run_git(filtered)
+        sys.exit(0)
+
+    if subcmd == "reset":
+        has_separator = False
+        non_flag_args = 0
+        past_subcmd = False
+        for arg in args:
+            if not past_subcmd:
+                if arg == "reset":
+                    past_subcmd = True
+                continue
+            if arg in ("--hard", "--merge", "--keep"):
+                print(f"ERROR: 'git reset {arg}' is prohibited in agent sessions. Do not discard commits.", file=sys.stderr)
+                sys.exit(1)
+            if arg == "--":
+                has_separator = True
+            elif not arg.startswith("-"):
+                non_flag_args += 1
+
+        if (has_separator and non_flag_args >= 1) or non_flag_args >= 2:
+            pass
+        else:
+            print("ERROR: 'git reset' without explicit pathspecs is prohibited.", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("To unstage specific files, use:", file=sys.stderr)
+            print("  git reset HEAD <path>", file=sys.stderr)
+            print("  git reset -- <path>", file=sys.stderr)
+            sys.exit(1)
+
+
+def check_protected(subcmd: str, role: str, args: list[str], dir_args: list[str]) -> None:
+    """Tier 2: integrator only."""
+    if subcmd == "stash" and role != "integrator":
+        print("ERROR: 'git stash' is a protected operation. Only the integrator role may use it.", file=sys.stderr)
+        sys.exit(1)
+
+    if subcmd == "checkout":
+        if "--" not in args:
+            print("ERROR: 'git checkout' (branch switch) is a protected operation. Only file-scoped checkout (with --) is allowed.", file=sys.stderr)
+            sys.exit(1)
+
+    if subcmd == "commit":
+        branch = get_current_branch(dir_args)
+        if branch == "main" and role != "integrator":
+            print("ERROR: Commits on main are a protected operation.", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("STEP 1 — Inspect:", file=sys.stderr)
+            print("  git diff --staged --name-only", file=sys.stderr)
+            print("  git status", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("STEP 2 — Classify and propose ONE of these paths to the human:", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("  A) Only non-functional files (Markdown, YAML, todo scaffolding, roadmap,", file=sys.stderr)
+            print("     state files, doc snippets — no .py / .ts / .sh logic):", file=sys.stderr)
+            print("     → Ask human to approve, then commit with --no-verify:", file=sys.stderr)
+            print('       TELECLAUDE_SYSTEM_ROLE=integrator git commit --no-verify -m "chore(...): <subject> [skip ci]"', file=sys.stderr)
+            print("", file=sys.stderr)
+            print("  B) Functional code change that is small and self-evident (human is present", file=sys.stderr)
+            print("     and driving this, no meaningful review value):", file=sys.stderr)
+            print("     → Ask human to approve, then commit with hooks:", file=sys.stderr)
+            print('       TELECLAUDE_SYSTEM_ROLE=integrator git commit -m "<type>(<scope>): <subject>"', file=sys.stderr)
+            print("", file=sys.stderr)
+            print("  C) Functional code change of any real substance:", file=sys.stderr)
+            print("     → Must go through the review pipeline:", file=sys.stderr)
+            print("       telec todo from-main --slug <meaningful-name>", file=sys.stderr)
+            print("       telec todo work <slug>", file=sys.stderr)
+            print("", file=sys.stderr)
+            print("STEP 3 — Ask:", file=sys.stderr)
+            print("  State which path you recommend and why (file types seen, size, context).", file=sys.stderr)
+            print('  Then ask: "Shall I proceed with [path X]?"', file=sys.stderr)
+            print("  Wait for the user to confirm before executing.", file=sys.stderr)
+            sys.exit(1)
+
+    if subcmd == "push":
+        branch = get_current_branch(dir_args)
+        if branch == "main" and role != "integrator":
+            print("ERROR: Push from main is a protected operation. Only the integrator role may push from main.", file=sys.stderr)
+            sys.exit(1)
+
+
+def check_restricted(subcmd: str, role: str) -> None:
+    """Tier 3: orchestrator cannot commit."""
+    if subcmd == "commit" and role == "orchestrator":
+        print("ERROR: Orchestrators cannot commit. Use telec machine commands (mark-phase, etc.).", file=sys.stderr)
+        sys.exit(1)
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    subcmd, dir_args = parse_args(args)
+
+    identity = read_identity()
+    system_role = identity.get("system_role", "") or ""
+    human_role = identity.get("human_role", "") or ""
+
+    # Env var override — only honored when a human owns this session.
+    # Pure agent sessions (no human_role) cannot self-escalate.
+    if human_role:
+        env_override = os.environ.get("TELECLAUDE_SYSTEM_ROLE", "")
+        if env_override:
+            system_role = env_override
+
+    # No identity — broken session, fail fast
+    if not system_role and not human_role:
+        tmpdir = os.environ.get("TMPDIR") or ""
+        identity_path = Path(tmpdir) / IDENTITY_FILENAME
+        print(f"ERROR: No system_role or human_role in {identity_path}. Session identity is broken.", file=sys.stderr)
+        sys.exit(1)
+
+    # Human session: directory scope check only
+    if human_role and not system_role:
+        check_human_directory_scope(args)
+        log_invocation(f"human:{human_role}", subcmd, args)
+        run_git(args)
+        return
+
+    # Agent session: apply three-tier restrictions
+    role = system_role
+    check_destructive(subcmd, args)
+    check_protected(subcmd, role, args, dir_args)
+    check_restricted(subcmd, role)
+
+    log_invocation(role, subcmd, args)
+    run_git(args)
+
+
+if __name__ == "__main__":
+    main()

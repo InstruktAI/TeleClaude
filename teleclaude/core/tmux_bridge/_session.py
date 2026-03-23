@@ -10,6 +10,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.session_identity import write_session_identity_to
 
 from ._pane import session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
@@ -60,11 +61,15 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
         session_tmp.chmod(0o700)
     except OSError:
         pass
-    try:
-        (session_tmp / "teleclaude_session_id").write_text(session_id, encoding="utf-8")
-    except OSError:
-        pass
+    write_session_identity_to(directory=session_tmp, session_id=session_id)
     return session_tmp
+
+
+def get_session_tmpdir(session_id: str) -> Path | None:
+    """Return the TMPDIR path for an existing session, or None if it doesn't exist."""
+    safe_id = _safe_path_component(session_id)
+    path = _get_session_tmp_basedir() / safe_id
+    return path if path.is_dir() else None
 
 
 async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing env/bootstrap flow is intentionally flat.
@@ -95,7 +100,7 @@ async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing e
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
         effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
 
-        # Ensure TeleClaude bin is first in PATH so agent-session git/gh wrappers
+        # Ensure TeleClaude bin is first in PATH so the agent-session git wrapper
         # enforce version-control guardrails in every tmux-created session.
         # Always set PATH explicitly for the session; tmux server env can differ
         # from daemon env, so conditional omission is unsafe.

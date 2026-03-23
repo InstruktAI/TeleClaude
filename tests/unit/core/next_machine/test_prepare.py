@@ -33,7 +33,7 @@ async def test_next_prepare_returns_container_message_when_holder_has_children()
     ):
         result = await next_prepare(db, "holder", "/repo")
 
-    assert result.startswith("CONTAINER:")
+    assert result.startswith("SPLIT FINALIZE:")
     assert "holder" in result
     assert "child-a" in result
     assert "child-b" in result

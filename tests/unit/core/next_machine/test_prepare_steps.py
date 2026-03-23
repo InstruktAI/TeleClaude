@@ -36,7 +36,7 @@ def test_prepare_step_grounding_check_first_pass_captures_baseline_and_marks_pre
     state: dict[str, StateValue] = {"grounding": {}}
 
     with (
-        patch("teleclaude.core.next_machine.prepare_steps._run_git_prepare", return_value=(0, "abc123\n", "")),
+        patch("teleclaude.core.next_machine.prepare_steps.run_git_command", return_value=(0, "abc123\n", "")),
         patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"),
     ):
         keep_going, instruction = _prepare_step_grounding_check("slug-a", str(tmp_path), state)
@@ -65,7 +65,7 @@ def test_prepare_step_grounding_check_invalidates_when_input_digest_changes(tmp_
     }
 
     with (
-        patch("teleclaude.core.next_machine.prepare_steps._run_git_prepare", return_value=(0, "abc123\n", "")),
+        patch("teleclaude.core.next_machine.prepare_steps.run_git_command", return_value=(0, "abc123\n", "")),
         patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"),
     ):
         keep_going, instruction = _prepare_step_grounding_check("slug-b", str(tmp_path), state)
@@ -174,7 +174,7 @@ async def test_prepare_dispatch_records_baseline_and_dispatches_plan_review(tmp_
     state: dict[str, StateValue] = {}
 
     with (
-        patch("teleclaude.core.next_machine.prepare_steps._run_git_prepare", return_value=(0, "abc123\n", "")),
+        patch("teleclaude.core.next_machine.prepare_steps.run_git_command", return_value=(0, "abc123\n", "")),
         patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"),
     ):
         keep_going, instruction = await _prepare_dispatch(

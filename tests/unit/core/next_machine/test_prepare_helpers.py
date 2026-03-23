@@ -159,7 +159,7 @@ def test_compute_artifact_diff_returns_diff_output(tmp_path: Path) -> None:
 
     cwd, slug = _make_todo(tmp_path)
 
-    with patch("teleclaude.core.next_machine.prepare_helpers._run_git_prepare") as mock_git:
+    with patch("teleclaude.core.next_machine.prepare_helpers.run_git_command") as mock_git:
         mock_git.return_value = (0, "diff content", "")
         result = compute_artifact_diff(cwd, slug, "todos/test-slug/requirements.md", "abc123")
 
@@ -171,7 +171,7 @@ def test_compute_todo_folder_diff_returns_folder_diff(tmp_path: Path) -> None:
 
     cwd, slug = _make_todo(tmp_path)
 
-    with patch("teleclaude.core.next_machine.prepare_helpers._run_git_prepare") as mock_git:
+    with patch("teleclaude.core.next_machine.prepare_helpers.run_git_command") as mock_git:
         mock_git.return_value = (0, "folder diff", "")
         result = compute_todo_folder_diff(cwd, slug, "abc123")
 

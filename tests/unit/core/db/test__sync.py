@@ -7,13 +7,14 @@ import pytest
 
 from teleclaude.core.db import Db
 from teleclaude.core.db._sync import (
+    SessionIdentityError,
     _fetch_session_id_sync,
     get_session_field_sync,
     get_session_id_by_field_sync,
     get_session_id_by_tmux_name_sync,
     resolve_session_principal,
 )
-from teleclaude.core.models import Session, SessionAdapterMetadata
+from teleclaude.core.models import Session, SessionAdapterMetadata, SessionMetadata
 
 pytestmark = pytest.mark.asyncio
 
@@ -93,10 +94,20 @@ async def test_resolve_session_principal_prefers_inherited_then_human_then_syste
         tmux_session_name="tmux-003",
         title="System",
         adapter_metadata=SessionAdapterMetadata(),
+        session_metadata=SessionMetadata(system_role="worker"),
         human_email=None,
-        human_role="worker",
+    )
+    no_identity = Session(
+        session_id="sess-004",
+        computer_name="builder-mac",
+        tmux_session_name="tmux-004",
+        title="NoIdentity",
+        adapter_metadata=SessionAdapterMetadata(),
+        human_email=None,
     )
 
     assert resolve_session_principal(inherited) == ("human:parent@example.com", "member")
     assert resolve_session_principal(human) == ("human:alice@example.com", "customer")
     assert resolve_session_principal(system) == ("system:sess-003", "worker")
+    with pytest.raises(SessionIdentityError):
+        resolve_session_principal(no_identity)

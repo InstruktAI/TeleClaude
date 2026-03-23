@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import types
 from pathlib import Path
@@ -113,8 +114,8 @@ class TestTmuxContractResolution:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        marker = tmp_path / "teleclaude_session_id"
-        marker.write_text("session-1\n", encoding="utf-8")
+        identity_file = tmp_path / "teleclaude_identity.json"
+        identity_file.write_text(json.dumps({"session_id": "session-1"}), encoding="utf-8")
         monkeypatch.setenv("TMPDIR", str(tmp_path))
 
         assert session_module._get_tmux_contract_tmpdir() == str(tmp_path)

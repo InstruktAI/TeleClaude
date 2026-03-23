@@ -21,7 +21,6 @@ __all__ = [
     "handle_operations_get",
     "handle_todo_create",
     "handle_todo_integrate",
-    "handle_todo_mark_finalize_ready",
     "handle_todo_mark_phase",
     "handle_todo_prepare",
     "handle_todo_set_deps",
@@ -330,46 +329,29 @@ def _print_operation_recovery(status: dict[str, object]) -> None:  # guard: loos
 def handle_todo_mark_phase(args: list[str]) -> None:
     """Mark a work or prepare phase in state.yaml.
 
-    Usage: telec todo mark-phase <slug> --phase <phase> --status <status>
+    Usage: telec todo mark-phase <slug> --target <state>
+           telec todo mark-phase <slug> --phase <phase> --status <status>  (legacy)
 
-    Work phases (build, review):
-      Updates the phase status. Terminal statuses (complete, approved)
-      require the worktree to have no uncommitted changes and no stash debt.
-      Statuses: pending, started, complete, approved, changes_requested
+    Target mode (preferred):
+      Directly targets a lifecycle state. All side effects are handled by
+      the state machine's on_enter handlers.
 
-    Prepare verdict phases (requirements_review, plan_review):
-      Sets the verdict on a prepare sub-phase. Operates on the main repo
-      (no worktree required).
-      Statuses: approve, needs_work
-
-    Prepare lifecycle (prepare):
-      Sets prepare_phase directly. 'prepared' also stamps grounding valid.
-      Statuses: input_assessment, triangulation, requirements_review,
-                plan_drafting, plan_review, gate, grounding_check,
-                re_grounding, prepared, blocked
-
-    Artifact stamp phases (requirements, test_specs, implementation_plan):
-      Stamps lifecycle metadata in state.yaml. File-backed artifacts also record
-      the current digest. Operates on the main repo.
-      No --status value is checked; any non-empty value is accepted.
+    Legacy mode (--phase/--status):
+      Maps to a target state internally. Kept for backward compatibility.
 
     Options:
-      <slug>          Work item slug
-      --phase <p>     Phase: build, review, prepare, requirements_review, plan_review,
-                      requirements, test_specs, implementation_plan
-      --status <s>    New status or verdict (see above; use 'complete' for artifact phases)
-      --force         Bypass worktree, uncommitted-changes, and stash guards
+      <slug>            Work item slug
+      --target <state>  Target state name (e.g. build_complete, review_approved, prepared)
+      --phase <p>       Legacy: build, review, prepare, requirements_review, plan_review, etc.
+      --status <s>      Legacy: pending, started, complete, approved, changes_requested, etc.
+      --force           Bypass worktree, uncommitted-changes guards
 
     Examples:
-      telec todo mark-phase my-slug --phase build --status complete
-      telec todo mark-phase my-slug --phase review --status approved
-      telec todo mark-phase my-slug --phase build --status pending --force
-      telec todo mark-phase my-slug --phase review --status approved --force
-      telec todo mark-phase my-slug --phase plan_review --status approve
-      telec todo mark-phase my-slug --phase prepare --status prepared
-      telec todo mark-phase my-slug --phase requirements --status complete
-      telec todo mark-phase my-slug --phase test_specs --status complete
-      telec todo mark-phase my-slug --phase implementation_plan --status complete
+      telec todo mark-phase my-slug --target build_complete
+      telec todo mark-phase my-slug --target review_approved
+      telec todo mark-phase my-slug --target prepared
+      telec todo mark-phase my-slug --target finalize_ready
+      telec todo mark-phase my-slug --phase build --status complete  (legacy)
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_mark_phase.__doc__ or "")
@@ -379,7 +361,10 @@ def handle_todo_mark_phase(args: list[str]) -> None:
 
     i = 0
     while i < len(args):
-        if args[i] == "--phase" and i + 1 < len(args):
+        if args[i] == "--target" and i + 1 < len(args):
+            body["target"] = args[i + 1]
+            i += 2
+        elif args[i] == "--phase" and i + 1 < len(args):
             body["phase"] = args[i + 1]
             i += 2
         elif args[i] == "--status" and i + 1 < len(args):
@@ -394,46 +379,15 @@ def handle_todo_mark_phase(args: list[str]) -> None:
         else:
             i += 1
 
-    for req in ("slug", "phase", "status"):
-        if not body.get(req):
-            print(f"Error: --{req} is required" if req != "slug" else "Error: slug is required", file=sys.stderr)
-            raise SystemExit(1)
-
-    data = tool_api_call("POST", "/todos/mark-phase", json_body=body)
-    print_json(data)
-
-
-def handle_todo_mark_finalize_ready(args: list[str]) -> None:
-    """Record durable finalize readiness in worktree state.yaml.
-
-    Usage: telec todo mark-finalize-ready <slug> [--worker-session-id <session_id>]
-
-    Called by the orchestrator after a finalizer worker reports FINALIZE_READY.
-    Verifies the finalized branch is pushed to origin/<slug>, then records the
-    durable handoff marker consumed by the next slug-specific `telec todo work`.
-    """
-    if "--help" in args or "-h" in args:
-        print(handle_todo_mark_finalize_ready.__doc__ or "")
-        return
-
-    body: dict[str, object] = {"cwd": os.getcwd()}  # guard: loose-dict - JSON request body
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--worker-session-id" and i + 1 < len(args):
-            body["worker_session_id"] = args[i + 1]
-            i += 2
-        elif not args[i].startswith("-"):
-            body["slug"] = args[i]
-            i += 1
-        else:
-            i += 1
-
     if not body.get("slug"):
         print("Error: slug is required", file=sys.stderr)
         raise SystemExit(1)
 
-    data = tool_api_call("POST", "/todos/mark-finalize-ready", json_body=body)
+    if not body.get("target") and (not body.get("phase") or not body.get("status")):
+        print("Error: --target or both --phase and --status are required", file=sys.stderr)
+        raise SystemExit(1)
+
+    data = tool_api_call("POST", "/todos/mark-phase", json_body=body)
     print_json(data)
 
 
@@ -482,29 +436,4 @@ def handle_todo_set_deps(args: list[str]) -> None:
 
     body: dict[str, object] = {"slug": slug, "after": after, "cwd": cwd}  # guard: loose-dict - JSON request body
     data = tool_api_call("POST", "/todos/set-deps", json_body=body)
-    print_json(data)
-
-
-def handle_todo_state(args: list[str]) -> None:
-    """Inspect state, fire a transition, or rewind.
-
-    Usage: telec todo state <slug> [<transition>] [--rewind]
-    """
-    cwd = os.getcwd()
-    rewind = "--rewind" in args
-    positional = [a for a in args if not a.startswith("--")]
-
-    if not positional:
-        print("Error: slug is required", file=sys.stderr)
-        raise SystemExit(1)
-
-    slug = positional[0]
-    body: dict[str, object] = {"slug": slug, "cwd": cwd}  # guard: loose-dict - JSON request body
-
-    if rewind:
-        body["rewind"] = True
-    elif len(positional) > 1:
-        body["transition"] = positional[1]
-
-    data = tool_api_call("POST", "/todos/state", json_body=body)
     print_json(data)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,7 +10,6 @@ import pytest
 from teleclaude.cli.tool_client import (
     ToolAPIError,
     _extract_detail,
-    _read_caller_session_id,
     _read_tmux_session_name,
     print_json,
     tool_api_call,
@@ -47,31 +45,6 @@ def test_tool_api_error_is_timeout_flag() -> None:
 def test_tool_api_error_is_timeout_defaults_false() -> None:
     err = ToolAPIError("other error")
     assert err.is_timeout is False
-
-
-# ---------------------------------------------------------------------------
-# _read_caller_session_id
-# ---------------------------------------------------------------------------
-
-
-def test_read_caller_session_id_reads_from_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    id_file = tmp_path / "teleclaude_session_id"
-    id_file.write_text("session-abc-123\n")
-    result = _read_caller_session_id()
-    assert result == "session-abc-123"
-
-
-def test_read_caller_session_id_returns_none_when_tmpdir_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TMPDIR", "")
-    result = _read_caller_session_id()
-    assert result is None
-
-
-def test_read_caller_session_id_returns_none_when_file_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    result = _read_caller_session_id()
-    assert result is None
 
 
 # ---------------------------------------------------------------------------

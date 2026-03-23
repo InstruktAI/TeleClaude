@@ -513,6 +513,16 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
             and native_session_id
         ):
             discovered_path = discover_codex_transcript_path(native_session_id)
+            if not discovered_path:
+                logger.info(
+                    "Codex hook sub-agent probe",
+                    session_id=session_id,
+                    native_session_id=native_session_id,
+                    event_type=event_type,
+                    transcript_exists=False,
+                    is_subagent=None,
+                    source=None,
+                )
             if discovered_path:
                 native_log_file = discovered_path
                 data["native_log_file"] = discovered_path
@@ -525,6 +535,24 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
                     native_session_id=native_session_id,
                     path=discovered_path,
                 )
+                # Observability: check if this is a sub-agent notification
+                try:
+                    with open(discovered_path, encoding="utf-8") as _f:
+                        _first_line = _f.readline()
+                    _meta = json.loads(_first_line)
+                    _source = _meta.get("payload", {}).get("source")
+                    _is_subagent = isinstance(_source, dict) and "subagent" in _source
+                    logger.info(
+                        "Codex hook sub-agent probe",
+                        session_id=session_id,
+                        native_session_id=native_session_id,
+                        event_type=event_type,
+                        transcript_exists=True,
+                        is_subagent=_is_subagent,
+                        source=_source,
+                    )
+                except (OSError, json.JSONDecodeError, KeyError) as _exc:
+                    logger.debug("Codex sub-agent probe failed", error=str(_exc))
         elif not has_transcript_path and has_native_log and isinstance(native_log_file, str):
             transcript_path = native_log_file
             data["transcript_path"] = native_log_file

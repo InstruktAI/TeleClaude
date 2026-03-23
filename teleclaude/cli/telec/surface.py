@@ -458,14 +458,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug>",
                 flags=[
                     _H,
-                    Flag("--phase", desc="Phase: build, review, prepare, requirements_review, plan_review"),
+                    Flag("--target", desc="Target state name (e.g. build_complete, review_approved, prepared)"),
+                    Flag("--phase", desc="Legacy: build, review, prepare, requirements_review, plan_review"),
                     Flag(
                         "--status",
                         desc=(
-                            "Work: pending/started/complete/approved/changes_requested; Prepare verdict: "
-                            "approve/needs_work/needs_decision; Prepare lifecycle: prepared, gate, etc."
+                            "Legacy: pending/started/complete/approved/changes_requested; "
+                            "Prepare verdict: approve/needs_work/needs_decision"
                         ),
                     ),
+                    Flag("--force", desc="Bypass worktree and uncommitted-changes guards"),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -478,24 +480,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Sets DOR 8, prepare_phase=prepared, grounding=valid, reviews=approved.",
                     "Use for straightforward work items that don't need the full prepare ceremony.",
                     "Accepts multiple slugs to fast-track a batch in one call.",
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "mark-finalize-ready": CommandDef(
-                desc="Record finalize readiness in worktree state.yaml",
-                args="<slug>",
-                flags=[
-                    _H,
-                    Flag("--worker-session-id", desc="Finalizer worker session that reported FINALIZE_READY"),
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "state": CommandDef(
-                desc="Inspect state, fire transition, or rewind",
-                args="<slug> [<transition>]",
-                flags=[
-                    _H,
-                    Flag("--rewind", desc="Rewind to previous state"),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),

@@ -659,7 +659,6 @@ def main() -> None:
     print(f"Configuring hooks from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")
-    install_agent_wrapper(repo_root, "gh")
     install_env_symlink(repo_root)
     configure_claude(repo_root)
     configure_gemini(repo_root)

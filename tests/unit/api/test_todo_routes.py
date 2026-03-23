@@ -280,7 +280,7 @@ class TestTodoRoutes:
                 force=True,
             )
         assert "result" in response
-        mock_mark.assert_called_once_with(str(tmp_path), "test-slug", "build", "pending")
+        mock_mark.assert_called_once_with(str(tmp_path), "test-slug", "build_pending")
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -298,3 +298,92 @@ class TestTodoRoutes:
                     _identity=_identity(),
                 )
         assert exc_info.value.status_code == 404
+
+    # ------------------------------------------------------------------
+    # New target= path tests (I-3)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_target_happy_path(self, tmp_path: Path) -> None:
+        """target= path calls mark_phase and auto-commits state (non-build-terminal target)."""
+        mock_repo = MagicMock()
+        mock_repo.git.diff.return_value = ""
+        with (
+            patch("teleclaude.api.todo_routes.mark_phase", return_value={"current": "build_started"}) as mock_mark,
+            patch("teleclaude.git.Repo", return_value=mock_repo),
+        ):
+            response = await todo_routes.todo_mark_phase(
+                slug="test-slug",
+                target="build_started",
+                cwd=str(tmp_path),
+                _identity=_identity(),
+            )
+        assert "result" in response
+        assert "OK:" in response["result"]
+        mock_mark.assert_called_once_with(str(tmp_path), "test-slug", "build_started")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_target_returns_409_on_value_error(self, tmp_path: Path) -> None:
+        """target= path converts ValueError from mark_phase to 409."""
+        with (
+            patch("teleclaude.api.todo_routes.mark_phase", side_effect=ValueError("transition not allowed")),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.todo_mark_phase(
+                    slug="test-slug",
+                    target="build_started",
+                    cwd=str(tmp_path),
+                    _identity=_identity(),
+                )
+        assert exc_info.value.status_code == 409
+        assert "transition not allowed" in exc_info.value.detail
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_target_404_when_build_terminal_and_no_worktree(self, tmp_path: Path) -> None:
+        """target= path returns 404 when a build-terminal target requires a worktree that is absent."""
+        with (
+            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.todo_mark_phase(
+                    slug="test-slug",
+                    target="build_complete",
+                    cwd=str(tmp_path),
+                    _identity=_identity(),
+                )
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_target_400_when_cwd_missing(self) -> None:
+        """target= path rejects request when cwd is absent."""
+        with pytest.raises(HTTPException) as exc_info:
+            await todo_routes.todo_mark_phase(
+                slug="test-slug",
+                target="review_pending",
+                cwd=None,
+                _identity=_identity(),
+            )
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_target_build_complete_blocks_uncommitted_changes(self, tmp_path: Path) -> None:
+        """target=build_complete raises 409 when worktree has uncommitted changes."""
+        worktree = tmp_path / "trees" / "test-slug"
+        worktree.mkdir(parents=True)
+        with (
+            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
+            patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=True),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.todo_mark_phase(
+                    slug="test-slug",
+                    target="build_complete",
+                    cwd=str(tmp_path),
+                    _identity=_identity(),
+                )
+        assert exc_info.value.status_code == 409

@@ -1,15 +1,12 @@
 """State I/O — pure read/write operations for work-item state files.
 
 All state read/write, mark operations, review helpers, and phase status checks.
-Git primitives needed internally by mark operations are co-located here.
 No imports from core.py (circular-import guard).
 """
 
 from __future__ import annotations
 
 import copy
-import hashlib
-import importlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,7 +16,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
-    FINDING_ID_PATTERN,
     REVIEW_APPROVE_MARKER,
     FinalizeState,
     ItemPhase,
@@ -29,82 +25,15 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
-from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.core.next_machine.file_io import (
+    file_sha256 as _file_sha256,
+)
+from teleclaude.core.next_machine.file_io import (
+    read_text_sync,
+    write_text_sync,
+)
 
 logger = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# File helpers
-# ---------------------------------------------------------------------------
-
-
-def read_text_sync(path: Path) -> str:
-    """Read text from a file in a typed sync wrapper."""
-    return path.read_text(encoding="utf-8")
-
-
-def write_text_sync(path: Path, content: str) -> None:
-    """Write text to a file in a typed sync wrapper."""
-    path.write_text(content, encoding="utf-8")
-
-
-def _file_sha256(path: Path) -> str:
-    """Return sha256 digest for a file."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8192), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-# ---------------------------------------------------------------------------
-# Git primitives (needed by mark operations below)
-# ---------------------------------------------------------------------------
-
-
-def _get_head_commit(cwd: str) -> str:
-    """Return HEAD commit hash for cwd, or empty string when unavailable."""
-    try:
-        repo = Repo(cwd)
-        result: str = repo.git.rev_parse("HEAD").strip()
-        return result
-    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
-        return ""
-
-
-def _get_ref_commit(cwd: str, ref: str) -> str:
-    """Return commit hash for a git ref in cwd, or empty string when unavailable."""
-    try:
-        repo = Repo(cwd)
-        result: str = repo.git.rev_parse(ref).strip()
-        return result
-    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
-        return ""
-
-
-def _get_remote_branch_head(cwd: str, branch: str) -> str:
-    """Return origin/<branch> HEAD commit, or empty string when unavailable."""
-    try:
-        repo = Repo(cwd)
-        output = repo.git.ls_remote("origin", f"refs/heads/{branch}").strip()
-    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
-        return ""
-    parts = output.split()
-    return parts[0] if parts else ""
-
-
-def _run_git_prepare(args: list[str], cwd: str) -> tuple[int, str, str]:
-    """Run a git command and return (returncode, stdout, stderr)."""
-    try:
-        repo = Repo(cwd, search_parent_directories=True)
-        output = str(repo.git.execute(["git", *args]))
-        return 0, output, ""
-    except (InvalidGitRepositoryError, NoSuchPathError):
-        return 128, "", "not a git repository"
-    except GitCommandError as exc:
-        rc = exc.status if isinstance(exc.status, int) else 1
-        return rc, exc.stdout or "", exc.stderr or ""
-
 
 # ---------------------------------------------------------------------------
 # Internal constants
@@ -119,24 +48,6 @@ _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 
 # Valid prepare_phase values for direct phase advancement
 _PREPARE_PHASE_VALUES = tuple(p.value for p in PreparePhase)
-
-
-# ---------------------------------------------------------------------------
-# Finding ID helpers
-# ---------------------------------------------------------------------------
-
-
-def _extract_finding_ids(cwd: str, slug: str) -> list[str]:
-    """Extract stable finding IDs (e.g. R1-F1) from review-findings.md."""
-    review_path = Path(cwd) / "todos" / slug / "review-findings.md"
-    if not review_path.exists():
-        return []
-    content = read_text_sync(review_path)
-    seen: list[str] = []
-    for match in FINDING_ID_PATTERN.findall(content):
-        if match not in seen:
-            seen.append(match)
-    return seen
 
 
 # ---------------------------------------------------------------------------
@@ -192,10 +103,6 @@ def _normalize_finalize_state(raw: object) -> FinalizeState:
         if isinstance(value, str) and value.strip():
             finalize[key] = value.strip()
     return finalize
-
-
-def _get_finalize_state(state: dict[str, StateValue]) -> FinalizeState:
-    return _normalize_finalize_state(state.get("finalize"))
 
 
 def _migrate_v1_to_v2(state: dict[str, StateValue]) -> dict[str, StateValue]:
@@ -317,69 +224,46 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
 # ---------------------------------------------------------------------------
 
 
-def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateValue]:  # pylint: disable=too-many-locals
-    """Mark a phase with a status, routing through the StateMachine engine.
+def mark_phase(cwd: str, slug: str, target: str) -> dict[str, StateValue]:
+    """Target a lifecycle state, routing through the StateMachine engine.
 
-    Fires the corresponding transition to update ``current`` and record history.
-    Preserves review-specific side effects (round tracking, findings).
+    Moves to the named target state. On_enter handlers on the state definition
+    handle all side effects (review bookkeeping, grounding, finalize validation).
 
     Args:
-        cwd: Worktree directory (not main repo)
+        cwd: Worktree or project root directory
         slug: Work item slug
-        phase: Phase to update (build, review)
-        status: New status (pending, complete, approved, changes_requested)
+        target: Target state name (e.g. "prepared", "build_complete", "review_approved")
 
     Returns:
         Updated state dict
     """
+    from teleclaude.core.next_machine.slug_resolution import (  # pylint: disable=import-outside-toplevel
+        resolve_canonical_project_root,
+    )
     from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
-        MARK_PHASE_TO_TRANSITION,
         build_lifecycle_machine,
     )
     from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
 
     state = read_phase_state(cwd, slug)
+    machine = build_lifecycle_machine()
 
-    # Fire transition through the engine (updates current + records history)
-    transition_name = MARK_PHASE_TO_TRANSITION.get((phase, status))
-    if transition_name:
-        machine = build_lifecycle_machine()
-        state = machine.fire(
-            state,
-            transition_name,
-            actor_id=get_session_id() or "mark-phase",
-            at=datetime.now(UTC).isoformat(),
-        )
+    from teleclaude.core.next_machine.state_machine import TargetContext  # pylint: disable=import-outside-toplevel
 
-    # Review-specific side effects (bookkeeping, not state transitions)
-    if phase == PhaseName.REVIEW.value:
-        review_round = state.get("review_round")
-        current_round = review_round if isinstance(review_round, int) else 0
-        unresolved = state.get("unresolved_findings")
-        unresolved_ids = list(unresolved) if isinstance(unresolved, list) else []
-        resolved = state.get("resolved_findings")
-        resolved_ids = list(resolved) if isinstance(resolved, list) else []
-
-        if status in (PhaseStatus.CHANGES_REQUESTED.value, PhaseStatus.APPROVED.value):
-            state["review_round"] = current_round + 1
-            head_sha = _get_head_commit(cwd)
-            if head_sha:
-                state["review_baseline_commit"] = head_sha
-
-        if status == PhaseStatus.CHANGES_REQUESTED.value:
-            findings_ids = _extract_finding_ids(cwd, slug)
-            state["unresolved_findings"] = findings_ids  # type: ignore[assignment]
-            state["resolved_findings"] = list(dict.fromkeys(str(i) for i in resolved_ids))
-        elif status == PhaseStatus.APPROVED.value:
-            merged = list(dict.fromkeys([*(str(i) for i in resolved_ids), *(str(i) for i in unresolved_ids)]))
-            state["resolved_findings"] = merged  # type: ignore[assignment]
-            state["unresolved_findings"] = []
+    ctx = TargetContext(
+        cwd=resolve_canonical_project_root(cwd),
+        slug=slug,
+        actor_id=get_session_id() or "mark-phase",
+        at=datetime.now(UTC).isoformat(),
+    )
+    state = machine.target(state, target, ctx)
     write_phase_state(cwd, slug, state)
     return state
 
 
-def mark_prepare_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, StateValue]:
-    """Mark a prepare sub-phase verdict in state.yaml.
+def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, StateValue]:
+    """Stamp a prepare sub-phase verdict in state.yaml.
 
     Args:
         cwd: Project root directory (not worktree)
@@ -402,144 +286,6 @@ def mark_prepare_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[
     review_dict["verdict"] = verdict
     state[phase] = review_dict
     write_phase_state(cwd, slug, state)
-    return state
-
-
-def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue]:
-    """Set the current prepare phase in state.yaml via the v2 current field.
-
-    When advancing to 'prepared', also stamps grounding as valid with the
-    current HEAD sha and input digest so the work state machine accepts it.
-
-    Args:
-        cwd: Project root directory (not worktree)
-        slug: Work item slug
-        status: PreparePhase value (e.g. prepared, gate, plan_review)
-
-    Returns:
-        Updated state dict
-    """
-    if status not in _PREPARE_PHASE_VALUES:
-        raise ValueError(f"invalid prepare_phase '{status}': must be one of {', '.join(_PREPARE_PHASE_VALUES)}")
-
-    state = read_phase_state(cwd, slug)
-    state["current"] = status
-
-    if status == PreparePhase.PREPARED.value:
-        grounding = state.get("grounding", {})
-        grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
-        rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
-        if rc == 0 and current_sha.strip():
-            grounding_dict["base_sha"] = current_sha.strip()
-        input_path = Path(cwd) / "todos" / slug / "input.md"
-        if input_path.exists():
-            grounding_dict["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
-        grounding_dict["valid"] = True
-        grounding_dict["last_grounded_at"] = datetime.now(UTC).isoformat()
-        grounding_dict["invalidation_reason"] = ""
-        grounding_dict["changed_paths"] = []
-        state["grounding"] = grounding_dict
-
-    write_phase_state(cwd, slug, state)
-    return state
-
-
-def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dict[str, StateValue]:
-    """Record durable finalize readiness after finalizer prepare succeeds.
-
-    The orchestrator owns this write after verifying the worker reported
-    FINALIZE_READY. The record becomes the single source of truth consumed by
-    the subsequent slug-specific `telec todo work {slug}` handoff step.
-    """
-    has_uncommitted_changes = importlib.import_module("teleclaude.core.next_machine.git_ops").has_uncommitted_changes
-    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
-    if not Path(worktree_cwd).exists():
-        raise ValueError(f"worktree not found at {worktree_cwd}")
-    if has_uncommitted_changes(cwd, slug):
-        raise ValueError(f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes")
-
-    worktree_head = _get_head_commit(worktree_cwd)
-    branch_head = _get_ref_commit(cwd, slug)
-    if not worktree_head or not branch_head:
-        raise ValueError(f"unable to resolve finalized branch head for {slug}")
-    if worktree_head != branch_head:
-        raise ValueError(
-            f"branch {slug} does not match worktree HEAD after finalize prepare "
-            f"(branch={branch_head or '<missing>'}, worktree={worktree_head or '<missing>'})"
-        )
-
-    remote_head = _get_remote_branch_head(cwd, slug)
-    if not remote_head:
-        raise ValueError(f"origin/{slug} is missing — push the finalized branch before marking ready")
-    if remote_head != branch_head:
-        raise ValueError(
-            f"origin/{slug} is at {remote_head}, expected finalized head {branch_head}; "
-            "push the latest branch head before marking ready"
-        )
-
-    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
-        build_lifecycle_machine,
-    )
-    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
-
-    state = read_phase_state(worktree_cwd, slug)
-    finalize = _get_finalize_state(state)
-    if finalize.get("status") == "handed_off" and finalize.get("sha") == branch_head:
-        return state
-    if finalize.get("status") == "ready" and finalize.get("sha") == branch_head:
-        return state
-
-    # Fire transition through the engine (updates current + records history)
-    machine = build_lifecycle_machine()
-    now = datetime.now(UTC).isoformat()
-    state = machine.fire(
-        state,
-        "mark_finalize_ready",
-        actor_id=get_session_id() or worker_session_id or "mark-finalize-ready",
-        at=now,
-    )
-    state["finalize"] = {
-        "status": "ready",
-        "branch": slug,
-        "sha": branch_head,
-        "ready_at": now,
-        "worker_session_id": worker_session_id.strip(),
-    }
-    write_phase_state(worktree_cwd, slug, state)
-    return state
-
-
-def _mark_finalize_handed_off(
-    worktree_cwd: str,
-    slug: str,
-    *,
-    handoff_session_id: str,
-) -> dict[str, StateValue]:
-    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
-        build_lifecycle_machine,
-    )
-
-    state = read_phase_state(worktree_cwd, slug)
-    finalize = _get_finalize_state(state)
-    if finalize.get("status") != "ready":
-        raise ValueError(f"finalize state for {slug} is not ready")
-
-    # Fire transition through the engine (updates current + records history)
-    machine = build_lifecycle_machine()
-    now = datetime.now(UTC).isoformat()
-    state = machine.fire(
-        state,
-        "finalize_handoff",
-        actor_id=handoff_session_id,
-        at=now,
-    )
-    state["finalize"] = {
-        **finalize,  # type: ignore[dict-item]
-        "status": "handed_off",
-        "handoff_session_id": handoff_session_id,
-        "handed_off_at": now,
-    }
-    write_phase_state(worktree_cwd, slug, state)
     return state
 
 
@@ -683,131 +429,6 @@ def check_review_status(cwd: str, slug: str) -> str:
     return PhaseStatus.CHANGES_REQUESTED.value
 
 
-_QUALITY_CHECKLIST_TEMPLATE = """\
-# Quality Checklist: {slug}
-
-This checklist is the execution projection of `definition-of-done.md` for this todo.
-
-Ownership:
-
-- Build section: Builder updates only this section.
-- Review section: Reviewer updates only this section.
-- Finalize section: Finalizer updates only this section.
-
-## Build Gates (Builder)
-
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate {slug}` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
-
-## Review Gates (Reviewer)
-
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-"""
-
-
-def mark_ready(cwd: str, slug: str) -> tuple[bool, str]:
-    """Fast-track a todo to work-ready state, bypassing the full prepare lifecycle.
-
-    Sets all state.yaml fields required by the work state machine entry checks:
-    - phase: pending, current: prepared
-    - dor.score >= 8, dor.status: pass
-    - grounding.valid: true
-    - requirements_review.verdict: approve, plan_review.verdict: approve
-
-    Requires requirements.md and implementation-plan.md to already exist with real
-    content. Generates quality-checklist.md if missing (always the same template).
-    Does NOT attempt to derive artifacts from input.md — that's a separate concern.
-
-    Returns:
-        (success, message) tuple.
-    """
-    todo_dir = Path(cwd) / "todos" / slug
-    if not todo_dir.exists():
-        return False, f"Todo directory not found: todos/{slug}/"
-
-    # --- Validate required artifacts ---
-    input_path = todo_dir / "input.md"
-    requirements_path = todo_dir / "requirements.md"
-    plan_path = todo_dir / "implementation-plan.md"
-    checklist_path = todo_dir / "quality-checklist.md"
-
-    if not requirements_path.exists() or not _has_content(requirements_path):
-        return False, f"Missing requirements.md with content in todos/{slug}/"
-
-    if not plan_path.exists() or not _has_content(plan_path):
-        return False, f"Missing implementation-plan.md with content in todos/{slug}/"
-
-    # Quality checklist can be generated — it's always the same template
-    if not checklist_path.exists() or not _has_content(checklist_path):
-        checklist_path.write_text(
-            _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug),
-            encoding="utf-8",
-        )
-
-    # --- State update ---
-    now_iso = datetime.now(UTC).isoformat()
-    state = read_phase_state(cwd, slug)
-
-    state["phase"] = ItemPhase.PENDING.value
-    state["current"] = PreparePhase.PREPARED.value
-
-    # DOR
-    state["dor"] = {
-        "last_assessed_at": now_iso,
-        "score": 8,
-        "status": "pass",
-        "schema_version": 1,
-        "blockers": [],
-        "actions_taken": {
-            "requirements_updated": False,
-            "implementation_plan_updated": False,
-        },
-    }
-
-    # Review verdicts
-    state["requirements_review"] = {
-        "verdict": "approve",
-        "reviewed_at": now_iso,
-        "findings_count": 0,
-    }
-    state["plan_review"] = {
-        "verdict": "approve",
-        "reviewed_at": now_iso,
-        "findings_count": 0,
-    }
-
-    # Grounding
-    rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
-    grounding: dict[str, StateValue] = {
-        **default_state()["grounding"],  # type: ignore[dict-item]
-        "valid": True,
-        "last_grounded_at": now_iso,
-        "invalidation_reason": "",
-        "changed_paths": [],
-    }
-    if rc == 0 and current_sha.strip():
-        grounding["base_sha"] = current_sha.strip()
-    if input_path.exists():
-        grounding["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
-    state["grounding"] = grounding
-
-    write_phase_state(cwd, slug, state)
-
-    return True, f"✓ {slug} fast-tracked to work-ready (DOR 8, prepared, grounded)"
-
-
 # Artifact keys that can be stamped via mark-phase after worker output is verified.
 _PREPARE_ARTIFACT_FILES = {
     "requirements": "requirements.md",
@@ -816,7 +437,7 @@ _PREPARE_ARTIFACT_FILES = {
 _PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_FILES.keys(), "test_specs")
 
 
-def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateValue]:
+def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateValue]:
     """Stamp an artifact as produced in state.yaml by setting produced_at.
 
     File-backed artifacts record both digest and produced_at. Directory-backed
@@ -857,19 +478,10 @@ def mark_prepare_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, S
     return state
 
 
-def _has_content(path: Path) -> bool:
-    """Check if a file has non-trivial content (beyond whitespace and headings)."""
-    if not path.exists():
-        return False
-    text = path.read_text(encoding="utf-8").strip()
-    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
-    return len(lines) > 0
-
-
 __all__ = [
     "_file_sha256",
     "_is_review_round_limit_reached",
-    "_mark_finalize_handed_off",
+    "_normalize_finalize_state",
     "_review_scope_note",
     "check_review_status",
     "get_state_path",
@@ -878,15 +490,12 @@ __all__ = [
     "is_build_complete",
     "is_review_approved",
     "is_review_changes_requested",
-    "mark_finalize_ready",
     "mark_phase",
-    "mark_prepare_artifact",
-    "mark_prepare_phase",
-    "mark_prepare_verdict",
-    "mark_ready",
     "read_breakdown_state",
     "read_phase_state",
     "read_text_sync",
+    "stamp_artifact",
+    "stamp_verdict",
     "write_breakdown_state",
     "write_phase_state",
     "write_text_sync",

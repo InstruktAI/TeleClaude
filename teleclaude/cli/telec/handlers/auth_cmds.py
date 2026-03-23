@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 from typing import Any
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
@@ -14,8 +13,8 @@ from teleclaude.cli.session_auth import (
     read_current_session_email,
     write_current_session_email,
 )
-from teleclaude.cli.telec._shared import TMUX_ENV_KEY
 from teleclaude.cli.telec.help import _usage
+from teleclaude.session_identity import get_session_token
 
 __all__ = [
     "_handle_auth",
@@ -33,11 +32,6 @@ def _load_global_config() -> Any:
 
 def _handle_auth(args: list[str]) -> None:
     """Handle telec auth subcommands."""
-    if os.environ.get(TMUX_ENV_KEY):
-        print("Error: telec auth is unavailable inside tmux sessions.")
-        print("Run it from a plain SSH terminal before starting telec.")
-        raise SystemExit(1)
-
     if not args:
         print(_usage("auth"))
         return
@@ -117,7 +111,7 @@ def _handle_whoami(args: list[str]) -> None:
         raise SystemExit(1)
 
     # Agent session path: resolve principal from daemon via session token.
-    session_token = os.environ.get("TELEC_SESSION_TOKEN")
+    session_token = get_session_token()
     if session_token:
 
         async def _resolve_principal() -> None:

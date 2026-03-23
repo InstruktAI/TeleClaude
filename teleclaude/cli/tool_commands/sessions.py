@@ -10,7 +10,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from teleclaude.cli.tool_client import _read_caller_session_id, print_json, tool_api_call
+from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.session_identity import get_session_id
 
 
 def handle_sessions(args: list[str]) -> None:
@@ -412,7 +413,7 @@ def handle_sessions_end(args: list[str]) -> None:
     Usage: telec sessions end <session_id> [--computer <name>]
 
     session_id may be 'self' to end the caller's own session
-    (resolved from $TMPDIR/teleclaude_session_id).
+    (resolved from $TMPDIR/teleclaude_identity.json).
 
     Gracefully terminates the session: kills the tmux session, deletes the
     session record, and cleans up all resources (listeners, workspace dirs).
@@ -449,9 +450,9 @@ def handle_sessions_end(args: list[str]) -> None:
         raise SystemExit(1)
 
     if session_id == "self":
-        session_id = _read_caller_session_id()
+        session_id = get_session_id()
         if not session_id:
-            print("Error: could not resolve 'self' — $TMPDIR/teleclaude_session_id not found", file=sys.stderr)
+            print("Error: could not resolve 'self' — $TMPDIR/teleclaude_identity.json not found", file=sys.stderr)
             raise SystemExit(1)
 
     data = tool_api_call("DELETE", f"/sessions/{session_id}", params={"computer": computer})
@@ -466,7 +467,7 @@ def handle_sessions_restart(args: list[str]) -> None:
 
     Triggers an agent restart for the target session. When 'self' is given,
     restarts the caller's own session (resolved from
-    $TMPDIR/teleclaude_session_id).
+    $TMPDIR/teleclaude_identity.json).
 
     Examples:
       telec sessions restart self
@@ -486,9 +487,9 @@ def handle_sessions_restart(args: list[str]) -> None:
         raise SystemExit(1)
 
     if session_id == "self":
-        session_id = _read_caller_session_id()
+        session_id = get_session_id()
         if not session_id:
-            print("Error: could not resolve 'self' — $TMPDIR/teleclaude_session_id not found", file=sys.stderr)
+            print("Error: could not resolve 'self' — $TMPDIR/teleclaude_identity.json not found", file=sys.stderr)
             raise SystemExit(1)
 
     data = tool_api_call("POST", f"/sessions/{session_id}/agent-restart")

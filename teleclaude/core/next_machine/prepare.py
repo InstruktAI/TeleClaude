@@ -91,7 +91,13 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
 
     holder_children = await asyncio.to_thread(resolve_holder_children, cwd, resolved_slug)
     if holder_children:
-        return f"CONTAINER: {resolved_slug} was split into: {', '.join(holder_children)}. Work on those first."
+        # Container items (split holders) do not have worktrees, so mark_phase("finalize_ready")
+        # cannot run here — its on_enter handler requires a worktree. The work machine handles
+        # finalization routing for container items.
+        return (
+            f"SPLIT FINALIZE: {resolved_slug} was split into: {', '.join(holder_children)}. "
+            f"Run telec todo work {resolved_slug} to trigger finalize and integration."
+        )
 
     if not await asyncio.to_thread(slug_in_roadmap, cwd, resolved_slug):
         await asyncio.to_thread(add_to_roadmap, cwd, resolved_slug)

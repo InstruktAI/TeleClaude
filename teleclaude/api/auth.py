@@ -256,7 +256,7 @@ async def verify_caller(
 ) -> CallerIdentity:
     """FastAPI dependency: verify caller identity via dual-factor check.
 
-    Factor 1: session_id from $TMPDIR/teleclaude_session_id (file, writable by agent)
+    Factor 1: session_id from $TMPDIR/teleclaude_identity.json (file, writable by agent)
     Factor 2: tmux session name from tmux server (unforgeable from within session)
 
     Both must agree with the daemon's DB records when present.
@@ -268,7 +268,7 @@ async def verify_caller(
         HTTPException(401): Missing or unknown session_id.
         HTTPException(403): Tmux cross-check mismatch (session_id forgery attempt).
     """
-    # Token path: agent sessions present TELEC_SESSION_TOKEN via X-Session-Token header.
+    # Token path: agent sessions present the session token via X-Session-Token header.
     # This takes priority over the legacy dual-factor path so daemon-spawned agents
     # can authenticate even when human_role is absent.
     if x_session_token:

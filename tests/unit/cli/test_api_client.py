@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -70,34 +69,6 @@ def test_telec_api_client_ws_not_running_initially() -> None:
 
 
 # ---------------------------------------------------------------------------
-# TelecAPIClient._read_caller_session_id
-# ---------------------------------------------------------------------------
-
-
-def test_read_caller_session_id_reads_from_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    marker = tmp_path / "teleclaude_session_id"
-    marker.write_text("my-session-id\n")
-    client = TelecAPIClient()
-    result = client._read_caller_session_id()
-    assert result == "my-session-id"
-
-
-def test_read_caller_session_id_returns_none_when_no_tmpdir(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TMPDIR", "")
-    client = TelecAPIClient()
-    result = client._read_caller_session_id()
-    assert result is None
-
-
-def test_read_caller_session_id_returns_none_when_file_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    client = TelecAPIClient()
-    result = client._read_caller_session_id()
-    assert result is None
-
-
-# ---------------------------------------------------------------------------
 # TelecAPIClient._read_tmux_session_name
 # ---------------------------------------------------------------------------
 
@@ -134,17 +105,17 @@ def test_read_tmux_session_name_returns_none_on_nonzero_exit() -> None:
 
 
 def test_build_identity_headers_includes_session_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TELEC_SESSION_TOKEN", "tok-abc")
     monkeypatch.setenv("TMPDIR", "")
-    with patch("teleclaude.cli.api_client.read_current_session_email", return_value=None):
-        with patch("teleclaude.cli.api_client.subprocess.run", side_effect=FileNotFoundError):
-            client = TelecAPIClient()
-            headers = client._build_identity_headers()
+    with patch("teleclaude.cli.api_client.get_session_token", return_value="tok-abc"):
+        with patch("teleclaude.cli.api_client.get_session_id", return_value=None):
+            with patch("teleclaude.cli.api_client.read_current_session_email", return_value=None):
+                with patch("teleclaude.cli.api_client.subprocess.run", side_effect=FileNotFoundError):
+                    client = TelecAPIClient()
+                    headers = client._build_identity_headers()
     assert headers.get("x-session-token") == "tok-abc"
 
 
 def test_build_identity_headers_includes_email(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("TELEC_SESSION_TOKEN", raising=False)
     monkeypatch.setenv("TMPDIR", "")
     with patch("teleclaude.cli.api_client.read_current_session_email", return_value="alice@example.com"):
         with patch("teleclaude.cli.api_client.subprocess.run", side_effect=FileNotFoundError):

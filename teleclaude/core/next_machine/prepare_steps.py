@@ -22,7 +22,7 @@ from teleclaude.core.next_machine._types import (
     default_state,
 )
 from teleclaude.core.next_machine.artifacts import artifact_digest, compute_artifact_diff, compute_todo_folder_diff
-from teleclaude.core.next_machine.git_ops import compose_agent_guidance
+from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
 from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.prepare_events import (
@@ -30,7 +30,7 @@ from teleclaude.core.next_machine.prepare_events import (
     _has_test_spec_artifacts,
 )
 from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
-from teleclaude.core.next_machine.state_io import _run_git_prepare, write_phase_state
+from teleclaude.core.next_machine.state_io import write_phase_state
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 logger = get_logger(__name__)
@@ -237,7 +237,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         )
 
     # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
-    rc, head_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
+    rc, head_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     if rc == 0 and head_sha.strip():
         req_review_dict = state.get("requirements_review", {})
         if not isinstance(req_review_dict, dict):
@@ -537,7 +537,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         )
 
     # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
-    rc, head_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
+    rc, head_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     if rc == 0 and head_sha.strip():
         plan_review_dict = state.get("plan_review", {})
         if not isinstance(plan_review_dict, dict):
@@ -609,7 +609,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
         referenced_paths = []
 
     # Get current HEAD
-    rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
+    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     current_sha = current_sha.strip() if rc == 0 else ""
 
     # Get current input digest
@@ -663,7 +663,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
     # Check if referenced paths changed between base_sha and HEAD
     changed_paths: list[str] = []
     if sha_changed and referenced_paths and base_sha and current_sha:
-        rc2, diff_output, _ = _run_git_prepare(["diff", "--name-only", f"{base_sha}..{current_sha}"], cwd=cwd)
+        rc2, diff_output, _ = run_git_command(["diff", "--name-only", f"{base_sha}..{current_sha}"], cwd=cwd)
         if rc2 == 0:
             changed_files = {line.strip() for line in diff_output.splitlines() if line.strip()}
             changed_paths = [p for p in referenced_paths if p in changed_files]  # type: ignore[misc]

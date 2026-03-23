@@ -16,25 +16,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import git as _gitpython
-from git import Repo as Repo  # pylint: disable=useless-import-alias  # Re-export for public API
-from git.exc import (  # pylint: disable=useless-import-alias  # Re-export for public API
-    GitCommandError as GitCommandError,
-)
-from git.exc import (  # pylint: disable=useless-import-alias  # Re-export for public API
-    InvalidGitRepositoryError as InvalidGitRepositoryError,
-)
-from git.exc import (  # pylint: disable=useless-import-alias  # Re-export for public API
-    NoSuchPathError as NoSuchPathError,
-)
-
-__all__ = [
-    "GitCommandError",
-    "InvalidGitRepositoryError",
-    "NoSuchPathError",
-    "Repo",
-]
-
 _WRAPPER_DIR = str(Path("~/.teleclaude/bin").expanduser())
 
 
@@ -49,7 +30,26 @@ def _find_real_git() -> str:
     raise FileNotFoundError("real git binary not found in PATH")
 
 
-_gitpython.refresh(_find_real_git())
+# Point gitpython at the real binary BEFORE import to prevent recursion
+# through the wrapper (whose shebang is uv run).
+os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = _find_real_git()
+from git import Repo as Repo  # noqa: E402  # pylint: disable=useless-import-alias,wrong-import-position
+from git.exc import (  # noqa: E402  # pylint: disable=useless-import-alias,wrong-import-position
+    GitCommandError as GitCommandError,
+)
+from git.exc import (  # noqa: E402  # pylint: disable=useless-import-alias,wrong-import-position
+    InvalidGitRepositoryError as InvalidGitRepositoryError,
+)
+from git.exc import (  # noqa: E402  # pylint: disable=useless-import-alias,wrong-import-position
+    NoSuchPathError as NoSuchPathError,
+)
+
+__all__ = [
+    "GitCommandError",
+    "InvalidGitRepositoryError",
+    "NoSuchPathError",
+    "Repo",
+]
 
 
 def no_autostash_env() -> dict[str, str]:

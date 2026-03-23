@@ -29,10 +29,10 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
     """Handle telec todo mark-ready <slug> [<slug> ...].
 
     Fast-track one or more TODOs to work-ready state, bypassing the full prepare lifecycle.
-    Promotes input.md → requirements.md, generates implementation-plan.md and quality-checklist.md,
-    and sets state.yaml to satisfy all work state machine entry conditions.
+    Validates required artifacts exist, then targets the 'prepared' state which stamps
+    DOR, grounding, and review verdicts.
     """
-    from teleclaude.core.next_machine.state_io import mark_ready
+    from teleclaude.core.next_machine.state_io import mark_phase
 
     if not args:
         print("Usage: telec todo mark-ready <slug> [<slug> ...]")
@@ -46,9 +46,11 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
     cwd = str(Path.cwd())
     failed = 0
     for slug in slugs:
-        ok, msg = mark_ready(cwd, slug)
-        print(msg)
-        if not ok:
+        try:
+            mark_phase(cwd, slug, "prepared")
+            print(f"✓ {slug} fast-tracked to work-ready (prepared)")
+        except (ValueError, FileNotFoundError) as exc:
+            print(str(exc))
             failed += 1
 
     if failed:
@@ -61,11 +63,9 @@ def _handle_todo(args: list[str]) -> None:
     from teleclaude.cli.tool_commands import (
         handle_todo_create,
         handle_todo_integrate,
-        handle_todo_mark_finalize_ready,
         handle_todo_mark_phase,
         handle_todo_prepare,
         handle_todo_set_deps,
-        handle_todo_state,
         handle_todo_work,
     )
 
@@ -90,10 +90,6 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_integrate(args[1:])
     elif subcommand == "mark-phase":
         handle_todo_mark_phase(args[1:])
-    elif subcommand == "mark-finalize-ready":
-        handle_todo_mark_finalize_ready(args[1:])
-    elif subcommand == "state":
-        handle_todo_state(args[1:])
     elif subcommand == "set-deps":
         handle_todo_set_deps(args[1:])
     elif subcommand == "verify-artifacts":
@@ -416,11 +412,12 @@ def _handle_todo_remove(args: list[str]) -> None:
 
 
 def _handle_todo_from_main(args: list[str]) -> None:
-    """Handle telec todo from-main --slug <name> [--description <desc>]."""
+    """Handle telec todo from-main --slug <name> [--description <desc>] [--all]."""
     from teleclaude.todo_scaffold import create_from_main_skeleton
 
     slug: str | None = None
     description: str | None = None
+    all_files = False
 
     i = 0
     while i < len(args):
@@ -431,6 +428,9 @@ def _handle_todo_from_main(args: list[str]) -> None:
         elif arg == "--description" and i + 1 < len(args):
             description = args[i + 1]
             i += 2
+        elif arg == "--all":
+            all_files = True
+            i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "from-main"))
@@ -447,7 +447,7 @@ def _handle_todo_from_main(args: list[str]) -> None:
 
     project_root = str(Path.cwd())
     try:
-        output = create_from_main_skeleton(project_root, slug, description=description)
+        output = create_from_main_skeleton(project_root, slug, description=description, all_files=all_files)
     except (ValueError, RuntimeError) as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc

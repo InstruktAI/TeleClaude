@@ -13,6 +13,7 @@ import yaml
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.models import JsonDict
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.session_identity import get_session_id as _get_session_id
 from teleclaude.slug import validate_slug
 from teleclaude.types.todos import DorState, TodoState
 
@@ -539,16 +540,15 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
     """
     from sqlmodel import Session as SqlSession  # pylint: disable=import-outside-toplevel
 
-    from teleclaude.cli.tool_client import _read_caller_session_id  # pylint: disable=import-outside-toplevel
     from teleclaude.core import db_models  # pylint: disable=import-outside-toplevel
     from teleclaude.core.agents import AgentName, get_default_agent  # pylint: disable=import-outside-toplevel
     from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals  # pylint: disable=import-outside-toplevel
     from teleclaude.hooks.receiver._session import _create_sync_engine  # pylint: disable=import-outside-toplevel
     from teleclaude.utils.transcript import extract_tool_calls_current_turn  # pylint: disable=import-outside-toplevel
 
-    session_id = _read_caller_session_id()
+    session_id = _get_session_id()
     if not session_id:
-        raise ValueError("from-main requires an active agent session ($TMPDIR/teleclaude_session_id not found)")
+        raise ValueError("from-main requires an active agent session ($TMPDIR/teleclaude_identity.json not found)")
 
     with SqlSession(_create_sync_engine()) as db_session:  # type: ignore[arg-type]
         row = db_session.get(db_models.Session, session_id)
@@ -583,12 +583,13 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
     slug: str,
     *,
     description: str | None = None,
+    all_files: bool = False,
 ) -> str:
     """Transfer uncommitted changes from main into a todo worktree for review.
 
     File scoping is automatic: the session transcript is parsed to determine
     which files this agent session actually touched. Only those files are
-    transferred. Requires an active agent session ($TMPDIR/teleclaude_session_id).
+    transferred. Requires an active agent session ($TMPDIR/teleclaude_identity.json).
 
     Steps:
     1. Validate preconditions (on main, has uncommitted changes)
@@ -607,7 +608,7 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
         ValueError: If not on main or no uncommitted changes
         RuntimeError: If scaffold push or worktree creation fails
     """
-    from teleclaude.core.next_machine.state_io import mark_phase, mark_ready  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.state_io import mark_phase  # pylint: disable=import-outside-toplevel
     from teleclaude.core.next_machine.worktrees import (  # pylint: disable=import-outside-toplevel
         _create_or_attach_worktree,
         _decide_worktree_prep,
@@ -637,17 +638,17 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
     # --- 5b. Capture uncommitted changes ---
     modified_files, untracked_files, deleted_files, added_files = _classify_porcelain_status(status_output)
 
-    # Scope to files this session actually touched (transcript-based)
-    session_files = _collect_session_touched_files(cwd)
-    modified_files = [f for f in modified_files if f in session_files]
-    untracked_files = [f for f in untracked_files if f in session_files]
-    deleted_files = [f for f in deleted_files if f in session_files]
+    # Scope to files this session actually touched (transcript-based), unless --all
+    if not all_files:
+        session_files = _collect_session_touched_files(cwd)
+        modified_files = [f for f in modified_files if f in session_files]
+        untracked_files = [f for f in untracked_files if f in session_files]
+        deleted_files = [f for f in deleted_files if f in session_files]
+        added_files = [f for f in added_files if f in session_files]
 
     all_changed = modified_files + untracked_files + deleted_files + added_files
     if not all_changed:
-        raise ValueError(
-            f"No uncommitted changes match session-touched files.\nSession touched: {sorted(session_files)}"
-        )
+        raise ValueError("No uncommitted changes to transfer.")
 
     # --- 5c. Scaffold todo artifacts ---
     project_root = Path(cwd)
@@ -684,13 +685,13 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
         project_root, worktree_path, modified_files + added_files, untracked_files, deleted_files
     )
 
-    # --- 5g. Clean main working tree ---
-    _clean_main_working_tree(repo, project_root, modified_files, untracked_files, added_files)
-
-    # --- 5h. Set state for review dispatch ---
+    # --- 5g. Set state for review dispatch (before cleaning main — atomic) ---
     worktree_cwd = str(worktree_path)
-    mark_ready(worktree_cwd, slug)
-    mark_phase(worktree_cwd, slug, "build", "complete")
+    mark_phase(worktree_cwd, slug, "prepared")
+    mark_phase(worktree_cwd, slug, "build_complete")
+
+    # --- 5h. Clean main working tree (only after all worktree operations succeed) ---
+    _clean_main_working_tree(repo, project_root, modified_files, untracked_files, added_files)
 
     # --- 5i. Return instructions ---
     return (

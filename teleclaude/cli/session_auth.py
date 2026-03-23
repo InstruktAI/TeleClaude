@@ -1,4 +1,4 @@
-"""Terminal auth state for telec login — single global identity file."""
+"""Terminal auth state for telec login — per-TTY file with global fallback."""
 
 from __future__ import annotations
 
@@ -10,16 +10,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.session_identity import get_session_id
 
 SESSION_AUTH_DIR = Path("~/.local/state/telec/session-auth").expanduser()
-AUTH_PATH = SESSION_AUTH_DIR / "identity.json"
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
-TUI_AUTH_EMAIL_ENV_KEY = "TELEC_AUTH_EMAIL"
 
 
 @dataclass(frozen=True)
 class TerminalSessionContext:
-    """Retained for API compatibility — no longer TTY-scoped."""
+    """Per-TTY auth context pointing at the identity file for this terminal."""
 
     tty: str
     key: str
@@ -39,28 +38,48 @@ def in_tmux_context() -> bool:
     return bool((os.environ.get("TMUX") or "").strip())
 
 
+def _detect_tty() -> str | None:
+    """Detect the controlling TTY for the current process."""
+    for fd in (0, 1, 2):
+        try:
+            return os.ttyname(fd)
+        except OSError:
+            continue
+    return os.environ.get("SSH_TTY") or None
+
+
+def _tty_key(tty: str) -> str:
+    """Convert a TTY path to a filesystem-safe key.
+
+    ``/dev/ttys003`` becomes ``ttys003``.
+    """
+    return tty.rsplit("/", 1)[-1]
+
+
+def _global_auth_path() -> Path:
+    return SESSION_AUTH_DIR / "global_identity.json"
+
+
 def get_current_session_context() -> TerminalSessionContext | None:
-    """Return a context pointing at the global auth file."""
-    return TerminalSessionContext(tty="", key="global", auth_path=AUTH_PATH)
+    """Return a context for the current terminal.
+
+    Per-TTY when a TTY is detectable, global fallback otherwise.
+    """
+    tty = _detect_tty()
+    if tty:
+        key = _tty_key(tty)
+        return TerminalSessionContext(tty=tty, key=key, auth_path=SESSION_AUTH_DIR / f"{key}.json")
+    return TerminalSessionContext(tty="(no tty)", key="global", auth_path=_global_auth_path())
 
 
 def _normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
-def read_current_session_email() -> str | None:  # pylint: disable=too-many-return-statements
-    """Read login email.
-
-    Resolution order:
-    1. TELEC_AUTH_EMAIL env var (set at TUI launch for tc_tui sessions)
-    2. Global identity file written by ``telec auth login``
-    """
-    env_email = (os.environ.get(TUI_AUTH_EMAIL_ENV_KEY) or "").strip()
-    if env_email:
-        return _normalize_email(env_email) or None
-
+def _read_auth_file(path: Path) -> str | None:
+    """Read and parse an auth file, returning the normalized email or None."""
     try:
-        payload = AUTH_PATH.read_text(encoding="utf-8").strip()
+        payload = path.read_text(encoding="utf-8").strip()
     except OSError:
         return None
     if not payload:
@@ -77,11 +96,37 @@ def read_current_session_email() -> str | None:  # pylint: disable=too-many-retu
     return _normalize_email(raw_email) or None
 
 
+def read_current_session_email() -> str | None:
+    """Read login email.
+
+    Resolution order:
+    1. Per-TTY auth file (when TTY detectable)
+    2. Global identity file (fallback)
+    """
+    tty = _detect_tty()
+    if tty:
+        key = _tty_key(tty)
+        email = _read_auth_file(SESSION_AUTH_DIR / f"{key}.json")
+        if email:
+            return email
+
+    return _read_auth_file(_global_auth_path())
+
+
 def write_current_session_email(email: str) -> TerminalAuthState:
-    """Write login email to the global identity file."""
+    """Write login email to the per-TTY identity file."""
     normalized_email = _normalize_email(email)
     if not normalized_email or "@" not in normalized_email:
         raise ValueError("A valid email address is required.")
+
+    tty = _detect_tty()
+    if tty:
+        key = _tty_key(tty)
+        auth_path = SESSION_AUTH_DIR / f"{key}.json"
+    else:
+        key = "global"
+        tty = "(no tty)"
+        auth_path = _global_auth_path()
 
     SESSION_AUTH_DIR.mkdir(parents=True, exist_ok=True)
     try:
@@ -90,9 +135,9 @@ def write_current_session_email(email: str) -> TerminalAuthState:
         pass
 
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    payload = {"email": normalized_email, "updated_at": now}
+    payload = {"email": normalized_email, "tty": tty, "updated_at": now}
 
-    tmp_path = AUTH_PATH.with_name(f"identity.{os.getpid()}.tmp")
+    tmp_path = auth_path.with_name(f"{auth_path.stem}.{os.getpid()}.tmp")
     with open(tmp_path, "w", encoding="utf-8") as tmp:
         json.dump(payload, tmp, sort_keys=True)
         tmp.write("\n")
@@ -102,20 +147,26 @@ def write_current_session_email(email: str) -> TerminalAuthState:
         os.chmod(tmp_path, 0o600)
     except OSError:
         pass
-    os.replace(tmp_path, AUTH_PATH)
+    os.replace(tmp_path, auth_path)
     try:
-        os.chmod(AUTH_PATH, 0o600)
+        os.chmod(auth_path, 0o600)
     except OSError:
         pass
 
-    context = TerminalSessionContext(tty="", key="global", auth_path=AUTH_PATH)
+    context = TerminalSessionContext(tty=tty, key=key, auth_path=auth_path)
     return TerminalAuthState(email=normalized_email, context=context)
 
 
 def clear_current_session_email() -> bool:
-    """Delete the global identity file."""
+    """Delete the auth file for the current TTY (or global)."""
+    tty = _detect_tty()
+    if tty:
+        key = _tty_key(tty)
+        auth_path = SESSION_AUTH_DIR / f"{key}.json"
+    else:
+        auth_path = _global_auth_path()
     try:
-        AUTH_PATH.unlink()
+        auth_path.unlink()
         return True
     except FileNotFoundError:
         return False
@@ -132,7 +183,7 @@ def resolve_cli_caller_role() -> str | None:
 
     Returns the effective human role, or None if unidentifiable.
     """
-    # Path 1: TTY auth file → IdentityResolver
+    # Path 1: TTY auth file -> IdentityResolver
     email = read_current_session_email()
     if email:
         ctx = get_identity_resolver().resolve_by_email(email)
@@ -140,11 +191,7 @@ def resolve_cli_caller_role() -> str | None:
             return ctx.person_role
 
     # Path 2: daemon API — works for any TeleClaude-managed session
-    tmpdir = os.environ.get("TMPDIR", "")
-    if not tmpdir:
-        return None
-    session_id_path = Path(tmpdir) / "teleclaude_session_id"
-    if not session_id_path.exists():
+    if not get_session_id():
         return None
 
     try:

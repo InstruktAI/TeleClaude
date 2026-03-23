@@ -49,11 +49,11 @@ POST_COMPLETION: dict[str, str] = {
 1. Read worker output via get_session_data to extract verdict
 2. If verdict is APPROVE:
    a. telec sessions end <session_id>
-   b. telec todo state {args} approve_review
+   b. telec todo mark-phase {args} --target review_approved
    c. Call {next_call}
 3. If verdict is REQUEST CHANGES — PEER CONVERSATION PROTOCOL (keep reviewer alive):
    a. DO NOT end the reviewer session — keep it alive throughout peer iteration
-   b. telec todo state {args} request_changes
+   b. telec todo mark-phase {args} --target review_changes_requested
    c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
         --project <project-root> --subfolder trees/{args}
    d. Save <reviewer_session_id> and <fixer_session_id>
@@ -66,7 +66,7 @@ POST_COMPLETION: dict[str, str] = {
    g. When fixer reports FIX COMPLETE:
       - Read review-findings.md verdict
       - If APPROVE: telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>,
-          telec todo state {args} approve_review,
+          telec todo mark-phase {args} --target review_approved,
           call {next_call}
       - If still REQUEST CHANGES: telec sessions end <fixer_session_id>,
           telec sessions end <reviewer_session_id>,
@@ -79,7 +79,7 @@ POST_COMPLETION: dict[str, str] = {
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
 2. telec sessions end <session_id>
-3. telec todo state {args} request_review
+3. telec todo mark-phase {args} --target review_pending
 4. Call {next_call}
 5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
@@ -103,7 +103,7 @@ WHEN WORKER COMPLETES:
    Ignore notifications from any other session.
 3. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
-4. telec todo mark-finalize-ready {args} --worker-session-id <session_id>
+4. telec todo mark-phase {args} --target finalize_ready
 5. telec sessions end <session_id>
 6. Call {next_call}
 7. Non-recoverable errors (FATAL/BLOCKER reported by worker):
@@ -299,28 +299,63 @@ Legacy dispatch marker: command="{formatted_command}" subfolder="{subfolder}"
 Save the returned session_id.
 Command metadata: command="{formatted_command}" args="{args}" subfolder="{subfolder}".
 
-STEP 2 - START BACKGROUND TIMER:
+STEP 2 - START BACKGROUND TIMER AND INITIALIZE MARKER:
 Bash(command="sleep 300", run_in_background=true)
 Save the returned task_id.
+Save the current time as <marker_timestamp> for the tailing discipline.
 
 STEP 3 - WAIT:
 Tell the user: "Dispatched session <session_id>. Waiting for completion."
 Do NOT call any more tools UNTIL one of the events below fires.
 When an event fires, you MUST immediately act on it — do NOT wait for user input.
 
+TAILING DISCIPLINE:
+- First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
+- All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+
+=== IF YOU SELECTED CODEX AS THE AGENT ===
+
+Codex emits false turn-complete notifications for internal sub-agent completions.
+You MUST use the two-heartbeat protocol. You are FORBIDDEN from acting on the
+first heartbeat or notification. Follow these steps exactly:
+
+STEP 3a - OBSERVATION HEARTBEAT (5 minutes):
+When the first timer fires OR a notification arrives:
+- Tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+- Update <marker_timestamp> to the latest message timestamp.
+- Do NOT act. Do NOT proceed to WHEN WORKER COMPLETES. You are NOT ALLOWED to act.
+- Set a second timer: Bash(command="sleep 600", run_in_background=true)
+- Save the new task_id. This is the ACTION heartbeat.
+- WAIT again.
+
+STEP 3b - ACTION HEARTBEAT (10 minutes):
+When the second timer fires:
+- Tail with --since <marker_timestamp>.
+- If NO new messages since the observation tail: the worker is stable. Proceed to WHEN WORKER COMPLETES.
+- If new messages appear: the worker is still active. Update <marker_timestamp>.
+  Go back to STEP 3a (set a new 5-minute observation heartbeat, repeat the cycle).
+
+Any notification that arrives while waiting for the action heartbeat:
+- Tail with --since <marker_timestamp>. Update marker. Continue waiting for the action heartbeat.
+  Do NOT act.
+
+=== IF YOU SELECTED CLAUDE OR GEMINI AS THE AGENT ===
+
+Claude and Gemini notifications reliably indicate session completion.
+
 WHAT HAPPENS NEXT (one of these will occur):
 
-A) NOTIFICATION ARRIVES (worker completed):
-   - The timer is now irrelevant (let it expire or ignore it)
-   - Follow WHEN WORKER COMPLETES below
+A) NOTIFICATION ARRIVES:
+   - Tail with --since <marker_timestamp>. Verify output contains expected deliverable.
+   - Proceed to WHEN WORKER COMPLETES below.
 
 B) TIMER COMPLETES (no notification after 5 minutes):
-   THIS IS YOUR ACTIVATION TRIGGER. You MUST act immediately:
-   - Check on the session: telec sessions tail <session_id> --tools --thinking
-   - If still running: reset timer (sleep 300, run_in_background=true) and WAIT again
-   - If completed/idle: follow WHEN WORKER COMPLETES below
-   - If stuck/errored: intervene or escalate to user
+   - Tail with --since <marker_timestamp>.
+   - If new messages: worker is progressing. Update marker, reset timer, WAIT again.
+   - If no new messages: worker may be stuck. Investigate or escalate.
    Do NOT stop after checking — either reset the timer or execute completion steps.
+
+=== END AGENT-SPECIFIC SECTION ===
 
 C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
    - Cancel the old timer: KillShell(shell_id=<task_id>)

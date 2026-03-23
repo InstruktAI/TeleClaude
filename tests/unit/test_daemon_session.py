@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -86,13 +87,13 @@ async def test_handle_session_closed_cleans_state_and_cancels_worker(monkeypatch
 
 
 @pytest.mark.unit
-async def test_bootstrap_injects_system_role_into_tmux_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When a session has system_role in metadata, it reaches the tmux env."""
+async def test_bootstrap_writes_system_role_to_identity_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """When a session has system_role in metadata, it is written to the identity file."""
     from teleclaude.constants import ROLE_INTEGRATOR
     from teleclaude.core.models import SessionMetadata
 
     daemon_inst = _TestDaemon()
-    captured_env: dict[str, str] = {}
+    identity_calls: list[dict[str, str]] = []
 
     session = SimpleNamespace(
         session_id="sess-role",
@@ -107,7 +108,6 @@ async def test_bootstrap_injects_system_role_into_tmux_env(monkeypatch: pytest.M
     )
 
     async def fake_ensure_tmux(*, name: str, working_dir: str, session_id: str, env_vars: dict[str, str]) -> bool:
-        captured_env.update(env_vars)
         return True
 
     db_stub = SimpleNamespace(
@@ -119,20 +119,31 @@ async def test_bootstrap_injects_system_role_into_tmux_env(monkeypatch: pytest.M
     monkeypatch.setattr(daemon_session, "db", db_stub)
     monkeypatch.setattr(daemon_session, "resolve_session_principal", lambda s: ("system:sess-role", "admin"))
     monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda p, s: "/tmp/proj")
-    monkeypatch.setattr(daemon_session, "tmux_bridge", SimpleNamespace(ensure_tmux_session=fake_ensure_tmux))
+    monkeypatch.setattr(
+        daemon_session,
+        "tmux_bridge",
+        SimpleNamespace(ensure_tmux_session=fake_ensure_tmux, get_session_tmpdir=lambda sid: tmp_path),
+    )
+    monkeypatch.setattr(
+        daemon_session,
+        "write_session_identity_to",
+        lambda **kw: identity_calls.append(kw),
+    )
     monkeypatch.setattr(daemon_inst, "_start_polling_for_session", AsyncMock())
 
     await daemon_inst._bootstrap_session_resources("sess-role", None)
 
-    assert "TELECLAUDE_SYSTEM_ROLE" in captured_env
-    assert captured_env["TELECLAUDE_SYSTEM_ROLE"] == ROLE_INTEGRATOR
+    assert len(identity_calls) == 1
+    assert identity_calls[0]["session_id"] == "sess-role"
+    assert identity_calls[0]["system_role"] == ROLE_INTEGRATOR
+    assert identity_calls[0]["session_token"] == "tok"
 
 
 @pytest.mark.unit
-async def test_bootstrap_omits_system_role_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When a session has no system_role, TELECLAUDE_SYSTEM_ROLE is not set."""
+async def test_bootstrap_writes_none_system_role_when_absent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """When a session has no system_role, None is written to the identity file."""
     daemon_inst = _TestDaemon()
-    captured_env: dict[str, str] = {}
+    identity_calls: list[dict[str, str]] = []
 
     session = SimpleNamespace(
         session_id="sess-plain",
@@ -147,7 +158,6 @@ async def test_bootstrap_omits_system_role_when_absent(monkeypatch: pytest.Monke
     )
 
     async def fake_ensure_tmux(*, name: str, working_dir: str, session_id: str, env_vars: dict[str, str]) -> bool:
-        captured_env.update(env_vars)
         return True
 
     db_stub = SimpleNamespace(
@@ -159,19 +169,29 @@ async def test_bootstrap_omits_system_role_when_absent(monkeypatch: pytest.Monke
     monkeypatch.setattr(daemon_session, "db", db_stub)
     monkeypatch.setattr(daemon_session, "resolve_session_principal", lambda s: ("system:sess-plain", "admin"))
     monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda p, s: "/tmp/proj")
-    monkeypatch.setattr(daemon_session, "tmux_bridge", SimpleNamespace(ensure_tmux_session=fake_ensure_tmux))
+    monkeypatch.setattr(
+        daemon_session,
+        "tmux_bridge",
+        SimpleNamespace(ensure_tmux_session=fake_ensure_tmux, get_session_tmpdir=lambda sid: tmp_path),
+    )
+    monkeypatch.setattr(
+        daemon_session,
+        "write_session_identity_to",
+        lambda **kw: identity_calls.append(kw),
+    )
     monkeypatch.setattr(daemon_inst, "_start_polling_for_session", AsyncMock())
 
     await daemon_inst._bootstrap_session_resources("sess-plain", None)
 
-    assert "TELECLAUDE_SYSTEM_ROLE" not in captured_env
+    assert len(identity_calls) == 1
+    assert identity_calls[0]["system_role"] is None
 
 
 @pytest.mark.unit
-async def test_bootstrap_skips_token_for_human_principal(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_bootstrap_skips_token_for_human_principal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Human-initiated sessions (human:<email> principal) do not receive a token."""
     daemon_inst = _TestDaemon()
-    captured_env: dict[str, str] = {}
+    identity_calls: list[dict[str, str]] = []
 
     session = SimpleNamespace(
         session_id="sess-human",
@@ -186,7 +206,6 @@ async def test_bootstrap_skips_token_for_human_principal(monkeypatch: pytest.Mon
     )
 
     async def fake_ensure_tmux(*, name: str, working_dir: str, session_id: str, env_vars: dict[str, str]) -> bool:
-        captured_env.update(env_vars)
         return True
 
     db_stub = SimpleNamespace(
@@ -198,13 +217,71 @@ async def test_bootstrap_skips_token_for_human_principal(monkeypatch: pytest.Mon
     monkeypatch.setattr(daemon_session, "db", db_stub)
     monkeypatch.setattr(daemon_session, "resolve_session_principal", lambda s: ("human:maurice@instrukt.ai", "admin"))
     monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda p, s: "/tmp/proj")
-    monkeypatch.setattr(daemon_session, "tmux_bridge", SimpleNamespace(ensure_tmux_session=fake_ensure_tmux))
+    monkeypatch.setattr(
+        daemon_session,
+        "tmux_bridge",
+        SimpleNamespace(ensure_tmux_session=fake_ensure_tmux, get_session_tmpdir=lambda sid: tmp_path),
+    )
+    monkeypatch.setattr(
+        daemon_session,
+        "write_session_identity_to",
+        lambda **kw: identity_calls.append(kw),
+    )
     monkeypatch.setattr(daemon_inst, "_start_polling_for_session", AsyncMock())
 
     await daemon_inst._bootstrap_session_resources("sess-human", None)
 
-    assert "TELEC_SESSION_TOKEN" not in captured_env
+    assert len(identity_calls) == 1
+    assert identity_calls[0]["session_token"] is None
     db_stub.issue_session_token.assert_not_called()
+
+
+@pytest.mark.unit
+async def test_bootstrap_writes_human_role_without_email(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Headless human sessions have human_role but no human_email — human_role must still be written."""
+    daemon_inst = _TestDaemon()
+    identity_calls: list[dict[str, str]] = []
+
+    session = SimpleNamespace(
+        session_id="sess-headless-human",
+        tmux_session_name="tc_sess-headless",
+        project_path="/tmp/proj",
+        subdir=None,
+        lifecycle_status="headless",
+        session_metadata=None,
+        principal=None,
+        human_email=None,
+        human_role="admin",
+    )
+
+    async def fake_ensure_tmux(*, name: str, working_dir: str, session_id: str, env_vars: dict[str, str]) -> bool:
+        return True
+
+    db_stub = SimpleNamespace(
+        get_session=AsyncMock(return_value=session),
+        get_voice=AsyncMock(return_value=None),
+        issue_session_token=AsyncMock(return_value="tok"),
+        update_session=AsyncMock(),
+    )
+    monkeypatch.setattr(daemon_session, "db", db_stub)
+    monkeypatch.setattr(daemon_session, "resolve_session_principal", lambda s: ("system:sess-headless-human", "admin"))
+    monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda p, s: "/tmp/proj")
+    monkeypatch.setattr(
+        daemon_session,
+        "tmux_bridge",
+        SimpleNamespace(ensure_tmux_session=fake_ensure_tmux, get_session_tmpdir=lambda sid: tmp_path),
+    )
+    monkeypatch.setattr(
+        daemon_session,
+        "write_session_identity_to",
+        lambda **kw: identity_calls.append(kw),
+    )
+    monkeypatch.setattr(daemon_inst, "_start_polling_for_session", AsyncMock())
+
+    await daemon_inst._bootstrap_session_resources("sess-headless-human", None)
+
+    assert len(identity_calls) == 1
+    assert identity_calls[0]["human_role"] == "admin"
 
 
 @pytest.mark.unit

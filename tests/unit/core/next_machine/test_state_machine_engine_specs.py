@@ -1,51 +1,32 @@
 from __future__ import annotations
 
 # guard: no-companion
-import importlib
-from types import ModuleType
-from typing import NotRequired, TypedDict
-
 import pytest
 
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.next_machine.state_machine import State, StateMachine, TargetContext
 
 pytestmark = [
     pytest.mark.unit,
 ]
 
 
-class _TransitionContext(TypedDict):
-    actor_id: str
-    at: NotRequired[str]
-    metadata: NotRequired[dict[str, StateValue]]
+def test_target_advances_current_records_history_and_runs_on_enter() -> None:
 
+    on_enter_calls: list[str] = []
 
-def _load_state_machine_module() -> ModuleType:
-    try:
-        return importlib.import_module("teleclaude.core.next_machine.state_machine")
-    except ModuleNotFoundError as exc:
-        pytest.fail(f"missing v2 state-machine module: {exc.name}")
-
-
-def test_fire_advances_current_records_history_and_runs_callable_action() -> None:
-    module = _load_state_machine_module()
-    action_calls: list[str] = []
-
-    def _action(snapshot: dict[str, StateValue], context: _TransitionContext) -> dict[str, StateValue]:
-        action_calls.append(str(context["actor_id"]))
+    def _on_enter(snapshot: dict[str, StateValue], context: TargetContext) -> dict[str, StateValue]:
+        on_enter_calls.append(context.actor_id)
         updated = dict(snapshot)
-        updated["action_marker"] = "ran"
+        updated["on_enter_marker"] = "ran"
         return updated
 
-    machine = module.StateMachine(
-        states=["input_assessment", "requirements_review", "test_spec_build", "plan_review"],
-        transitions=[
-            module.TransitionDefinition(
-                name="approve_requirements",
-                sources={"requirements_review"},
-                target="test_spec_build",
-                action=_action,
-            )
+    machine = StateMachine(
+        states=[
+            State("input_assessment"),
+            State("requirements_review"),
+            State("test_spec_build", on_enter=_on_enter),
+            State("plan_review"),
         ],
     )
     snapshot = {
@@ -54,91 +35,67 @@ def test_fire_advances_current_records_history_and_runs_callable_action() -> Non
         "history": [],
     }
 
-    updated = machine.fire(
-        snapshot=snapshot,
-        transition="approve_requirements",
+    ctx = TargetContext(
+        cwd="/repo",
+        slug="test-slug",
         actor_id="session-123",
         at="2025-01-01T00:00:00+00:00",
-        metadata={"verdict": "approve"},
     )
+    updated = machine.target(snapshot, "test_spec_build", ctx)
 
     assert updated["current"] == "test_spec_build"
-    assert updated["action_marker"] == "ran"
-    assert action_calls == ["session-123"]
+    assert updated["on_enter_marker"] == "ran"
+    assert on_enter_calls == ["session-123"]
     assert updated["history"] == [
         {
             "source": "requirements_review",
             "target": "test_spec_build",
-            "transition": "approve_requirements",
-            "at": "2025-01-01T00:00:00+00:00",
             "by": "session-123",
-            "metadata": {"verdict": "approve"},
+            "at": "2025-01-01T00:00:00+00:00",
+            "metadata": {},
         }
     ]
 
 
-def test_fire_is_a_noop_when_current_state_is_already_past_the_target() -> None:
-    module = _load_state_machine_module()
-    action_calls: list[str] = []
+def test_target_is_noop_when_already_at_target() -> None:
 
-    def _action(snapshot: dict[str, StateValue], context: _TransitionContext) -> dict[str, StateValue]:
-        action_calls.append(str(context["actor_id"]))
+    on_enter_calls: list[str] = []
+
+    def _on_enter(snapshot: dict[str, StateValue], context: TargetContext) -> dict[str, StateValue]:
+        on_enter_calls.append(context.actor_id)
         return snapshot
 
-    machine = module.StateMachine(
-        states=["input_assessment", "requirements_review", "test_spec_build", "plan_review"],
-        transitions=[
-            module.TransitionDefinition(
-                name="approve_requirements",
-                sources={"requirements_review"},
-                target="test_spec_build",
-                action=_action,
-            )
+    machine = StateMachine(
+        states=[
+            State("input_assessment"),
+            State("test_spec_build", on_enter=_on_enter),
         ],
     )
     snapshot = {
         "schema_version": 2,
-        "current": "plan_review",
-        "history": [
-            {
-                "source": "requirements_review",
-                "target": "test_spec_build",
-                "transition": "approve_requirements",
-                "at": "2025-01-01T00:00:00+00:00",
-                "by": "session-123",
-                "metadata": {"verdict": "approve"},
-            }
-        ],
+        "current": "test_spec_build",
+        "history": [],
     }
 
-    updated = machine.fire(
-        snapshot=snapshot,
-        transition="approve_requirements",
+    ctx = TargetContext(
+        cwd="/repo",
+        slug="test-slug",
         actor_id="session-999",
         at="2025-01-02T00:00:00+00:00",
-        metadata={"verdict": "approve"},
     )
+    updated = machine.target(snapshot, "test_spec_build", ctx)
 
-    assert updated["current"] == "plan_review"
-    assert updated["history"] == snapshot["history"]
-    assert action_calls == []
+    assert updated["current"] == "test_spec_build"
+    assert updated["history"] == []
+    assert on_enter_calls == []
 
 
-def test_fire_rejects_when_transition_source_state_has_not_been_reached() -> None:
-    module = _load_state_machine_module()
+def test_target_raises_for_unknown_state() -> None:
 
-    def _action(snapshot: dict[str, StateValue], _context: _TransitionContext) -> dict[str, StateValue]:
-        return snapshot
-
-    machine = module.StateMachine(
-        states=["input_assessment", "requirements_review", "test_spec_build", "plan_review"],
-        transitions=[
-            module.TransitionDefinition(
-                name="approve_requirements",
-                sources={"requirements_review"},
-                target="test_spec_build",
-                action=_action,
-            )
+    machine = StateMachine(
+        states=[
+            State("input_assessment"),
+            State("requirements_review"),
         ],
     )
     snapshot = {
@@ -147,70 +104,25 @@ def test_fire_rejects_when_transition_source_state_has_not_been_reached() -> Non
         "history": [],
     }
 
-    with pytest.raises(module.TransitionRejected) as exc_info:
-        machine.fire(
-            snapshot=snapshot,
-            transition="approve_requirements",
-            actor_id="session-123",
-            at="2025-01-01T00:00:00+00:00",
-            metadata={"verdict": "approve"},
-        )
-
-    error = exc_info.value
-    assert error.current == "input_assessment"
-    assert error.transition == "approve_requirements"
-    assert error.required_sources == {"requirements_review"}
-
-
-def test_rewind_restores_previous_current_value_and_pops_last_history_entry() -> None:
-    module = _load_state_machine_module()
-    machine = module.StateMachine(
-        states=["input_assessment", "requirements_review", "test_spec_build", "plan_review"],
-        transitions=[],
+    ctx = TargetContext(
+        cwd="/repo",
+        slug="test-slug",
+        actor_id="session-123",
+        at="2025-01-01T00:00:00+00:00",
     )
-    snapshot = {
-        "schema_version": 2,
-        "current": "plan_review",
-        "history": [
-            {
-                "source": "input_assessment",
-                "target": "requirements_review",
-                "transition": "produce_requirements",
-                "at": "2025-01-01T00:00:00+00:00",
-                "by": "session-111",
-                "metadata": {"digest": "abc"},
-            },
-            {
-                "source": "requirements_review",
-                "target": "plan_review",
-                "transition": "approve_requirements",
-                "at": "2025-01-01T00:05:00+00:00",
-                "by": "session-222",
-                "metadata": {"verdict": "approve"},
-            },
+
+    with pytest.raises(ValueError, match="unknown state"):
+        machine.target(snapshot, "nonexistent_state", ctx)
+
+
+def test_target_without_on_enter_just_advances() -> None:
+
+    machine = StateMachine(
+        states=[
+            State("input_assessment"),
+            State("requirements_review"),
+            State("test_spec_build"),
         ],
-    }
-
-    rewound = machine.rewind(snapshot=snapshot)
-
-    assert rewound["current"] == "requirements_review"
-    assert rewound["history"] == [
-        {
-            "source": "input_assessment",
-            "target": "requirements_review",
-            "transition": "produce_requirements",
-            "at": "2025-01-01T00:00:00+00:00",
-            "by": "session-111",
-            "metadata": {"digest": "abc"},
-        }
-    ]
-
-
-def test_rewind_rejects_when_the_machine_has_no_history() -> None:
-    module = _load_state_machine_module()
-    machine = module.StateMachine(
-        states=["input_assessment", "requirements_review"],
-        transitions=[],
     )
     snapshot = {
         "schema_version": 2,
@@ -218,8 +130,13 @@ def test_rewind_rejects_when_the_machine_has_no_history() -> None:
         "history": [],
     }
 
-    with pytest.raises(module.RewindRejected) as exc_info:
-        machine.rewind(snapshot=snapshot)
+    ctx = TargetContext(
+        cwd="/repo",
+        slug="test-slug",
+        actor_id="session-123",
+        at="2025-01-01T00:00:00+00:00",
+    )
+    updated = machine.target(snapshot, "test_spec_build", ctx)
 
-    error = exc_info.value
-    assert error.current == "input_assessment"
+    assert updated["current"] == "test_spec_build"
+    assert len(updated["history"]) == 1

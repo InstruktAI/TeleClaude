@@ -7,8 +7,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.core.next_machine.file_io import file_sha256
+from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
-from teleclaude.core.next_machine.state_io import _run_git_prepare, read_phase_state, write_phase_state
+from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 
 
 def artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
@@ -49,7 +50,7 @@ def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str
     """Run git diff {base_sha}..HEAD -- {artifact_path} and return the diff output."""
     if not base_sha:
         return ""
-    rc, stdout, _ = _run_git_prepare(["diff", f"{base_sha}..HEAD", "--", artifact_path], cwd=cwd)
+    rc, stdout, _ = run_git_command(["diff", f"{base_sha}..HEAD", "--", artifact_path], cwd=cwd)
     if rc != 0:
         return ""
     return stdout
@@ -59,7 +60,7 @@ def compute_todo_folder_diff(cwd: str, slug: str, base_sha: str) -> str:
     """Run git diff {base_sha}..HEAD -- todos/{slug}/ and return the diff output."""
     if not base_sha:
         return ""
-    rc, stdout, _ = _run_git_prepare(["diff", f"{base_sha}..HEAD", "--", f"todos/{slug}/"], cwd=cwd)
+    rc, stdout, _ = run_git_command(["diff", f"{base_sha}..HEAD", "--", f"todos/{slug}/"], cwd=cwd)
     if rc != 0:
         return ""
     return stdout

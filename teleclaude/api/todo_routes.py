@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import (
     CallerIdentity,
@@ -35,16 +35,14 @@ from teleclaude.core.next_machine.core import (
     has_uncommitted_changes,
     load_roadmap,
     load_roadmap_deps,
-    mark_finalize_ready,
-    mark_phase,
-    mark_prepare_artifact,
-    mark_prepare_phase,
-    mark_prepare_verdict,
     save_roadmap,
 )
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
+from teleclaude.core.next_machine.state_io import mark_phase, stamp_artifact, stamp_verdict
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -148,24 +146,88 @@ async def todo_integrate(  # pyright: ignore
     )
 
 
+_BUILD_TERMINAL_STATES = frozenset(
+    {"build_complete", "review_pending", "review_approved", "finalize_ready", "finalize_handed_off"}
+)
+
+
+def _resolve_worktree_cwd(cwd: str, slug: str, force: bool) -> str:
+    """Resolve effective cwd for worktree-scoped operations."""
+    project_root = resolve_canonical_project_root(cwd)
+    worktree_path = Path(project_root) / WORKTREE_DIR / slug
+    if worktree_path.exists():
+        return str(worktree_path)
+    if force:
+        return cwd
+    raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_path}")
+
+
+def _auto_commit_state(effective_cwd: str, slug: str, label: str) -> None:
+    """Auto-commit state.yaml to keep the worktree clean."""
+    from teleclaude.git import Repo  # pylint: disable=import-outside-toplevel
+
+    repo = Repo(effective_cwd)
+    if repo.git.diff("HEAD", "--", f"todos/{slug}/state.yaml").strip():
+        repo.git.add("--", f"todos/{slug}/state.yaml")
+        # --no-verify: state.yaml is pure machine-generated data, not subject to test/lint
+        # gates. Pre-commit hooks running code checks on a bookkeeping commit would be
+        # slow, irrelevant, and would fail in environments where the test suite requires
+        # a running daemon.
+        repo.git.commit("-m", f"chore(todo): {slug} {label}", "--no-verify", "--only", "--", f"todos/{slug}/state.yaml")
+
+
 @router.post("/mark-phase")
-async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals,too-many-return-statements
     slug: Annotated[str, Body()],
-    phase: Annotated[str, Body()],
-    status: Annotated[str, Body()],
+    phase: Annotated[str | None, Body()] = None,
+    status: Annotated[str | None, Body()] = None,
+    target: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
     force: Annotated[bool, Body()] = False,
 ) -> dict[str, str]:
     """Mark a work phase as complete/approved in state.yaml.
 
-    Updates the phase status for the given slug. For build:complete/approved,
-    uncommitted changes are blocked unless --force is set. When --force is set
-    and no worktree exists, falls back to cwd. Requires clearance to modify
-    phase state.
+    Supports both the new `target` param (direct state name) and the legacy
+    `phase`/`status` pair. When `target` is provided, it takes precedence.
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
+
+    # New target-based path
+    if target:
+        # Work-phase targets that need worktree resolution
+        effective_cwd = _resolve_worktree_cwd(cwd, slug, force) if target in _BUILD_TERMINAL_STATES else cwd
+
+        # Uncommitted-changes guard for build terminal states
+        if not force and target in ("build_complete",):
+            if has_uncommitted_changes(cwd, slug):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes"
+                        " — commit them before marking phase complete"
+                    ),
+                )
+
+        try:
+            updated_state = mark_phase(effective_cwd, slug, target)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        try:
+            _auto_commit_state(effective_cwd, slug, target)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("auto_commit_state failed slug=%s cwd=%s target=%s err=%s", slug, effective_cwd, target, exc)
+            return {
+                "result": f"PARTIAL: {slug} state updated - target: {target} (state written, commit failed: {exc})",
+                "state": str(updated_state),
+            }
+        return {"result": f"OK: {slug} state updated - target: {target}", "state": str(updated_state)}
+
+    # Legacy phase/status path — map to target
+    if not phase or not status:
+        raise HTTPException(status_code=400, detail="either 'target' or both 'phase' and 'status' are required")
 
     # Prepare sub-phases: verdict-based, operate on main repo
     if phase in _PREPARE_VERDICT_PHASES:
@@ -174,50 +236,37 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
                 status_code=400,
                 detail=f"invalid verdict '{status}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}",
             )
-        updated_state = mark_prepare_verdict(cwd, slug, phase, status)
+        updated_state = stamp_verdict(cwd, slug, phase, status)
         return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(updated_state)}
 
-    # Artifact stamp phases: produce a lifecycle stamp, operate on main repo
+    # Artifact stamp phases
     if phase in _PREPARE_ARTIFACT_PHASES:
-        updated_state = mark_prepare_artifact(cwd, slug, phase)
+        updated_state = stamp_artifact(cwd, slug, phase)
         return {
             "result": f"OK: {slug} state updated - artifacts.{phase}.produced_at stamped",
             "state": str(updated_state),
         }
 
-    # Direct prepare_phase advancement, operate on main repo
+    # Direct prepare_phase advancement
     if phase == "prepare":
         if status not in _PREPARE_PHASE_VALUES:
             raise HTTPException(
                 status_code=400,
                 detail=f"invalid prepare status '{status}': must be one of {', '.join(_PREPARE_PHASE_VALUES)}",
             )
-        updated_state = mark_prepare_phase(cwd, slug, status)
+        resolved_target = status
+        updated_state = mark_phase(cwd, slug, resolved_target)
         return {"result": f"OK: {slug} state updated - prepare_phase: {status}", "state": str(updated_state)}
 
-    # Work phases: build/review, operate on worktree
+    # Work phases: build/review — map to target name
     if phase not in ("build", "review"):
         all_phases = ("build", "review", "prepare", *_PREPARE_VERDICT_PHASES, *_PREPARE_ARTIFACT_PHASES)
         raise HTTPException(status_code=400, detail=f"invalid phase '{phase}': must be one of {', '.join(all_phases)}")
-    valid_statuses = ("pending", "started", "complete", "approved", "changes_requested")
-    if status not in valid_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail=f"invalid status '{status}': must be one of {', '.join(valid_statuses)}",
-        )
 
-    # R1: Resolve project root canonically (works from repo root or worktree),
-    # then check for worktree. This prevents double-nesting when cwd is already a worktree.
-    project_root = resolve_canonical_project_root(cwd)
-    worktree_path = Path(project_root) / WORKTREE_DIR / slug
-    if worktree_path.exists():
-        effective_cwd = str(worktree_path)
-    elif force:
-        effective_cwd = cwd
-    else:
-        raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_path}")
+    resolved_target = f"{phase}_{status}"
+    effective_cwd = _resolve_worktree_cwd(cwd, slug, force)
 
-    # R3: Uncommitted-changes guard narrowed to build terminal statuses only
+    # Uncommitted-changes guard
     build_terminal = ("complete", "approved")
     if not force and phase == "build" and status in build_terminal:
         if has_uncommitted_changes(cwd, slug):
@@ -229,51 +278,22 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
                 ),
             )
 
-    # R2: Stash check removed entirely
-
-    updated_state = mark_phase(effective_cwd, slug, phase, status)
-
-    # Auto-commit state change to keep the worktree clean. Dirty worktrees
-    # cause auto-stash during merge (repo-wide, corrupts other worktrees).
-    from teleclaude.git import Repo  # pylint: disable=import-outside-toplevel
-
-    repo = Repo(effective_cwd)
-    if repo.git.diff("--", f"todos/{slug}/state.yaml").strip():
-        repo.git.add("--", f"todos/{slug}/state.yaml")
-        repo.git.commit(
-            "-m", f"chore(todo): {slug} {phase}={status}", "--no-verify", "--only", "--", f"todos/{slug}/state.yaml"
-        )
-
-    return {"result": f"OK: {slug} state updated - {phase}: {status}", "state": str(updated_state)}
-
-
-@router.post("/mark-finalize-ready")
-async def todo_mark_finalize_ready(  # pyright: ignore
-    slug: Annotated[str, Body()],
-    cwd: Annotated[str | None, Body()] = None,
-    worker_session_id: Annotated[str, Body()] = "",
-    _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
-) -> dict[str, str]:
-    """Record durable finalize readiness in worktree state.yaml.
-
-    Called by the orchestrator after verifying a finalizer worker emitted
-    FINALIZE_READY. This locks in the post-merge, pushed branch SHA so the
-    next slug-specific `telec todo work {slug}` call can emit integration
-    handoff events exactly once.
-    """
-    if not cwd:
-        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-
-    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
-    if not Path(worktree_cwd).exists():
-        raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_cwd}")
-
     try:
-        updated_state = mark_finalize_ready(cwd, slug, worker_session_id=worker_session_id)
+        updated_state = mark_phase(effective_cwd, slug, resolved_target)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    return {"result": f"OK: {slug} finalize readiness recorded", "state": str(updated_state)}
+    try:
+        _auto_commit_state(effective_cwd, slug, f"{phase}={status}")
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error(
+            "auto_commit_state failed slug=%s cwd=%s phase=%s status=%s err=%s", slug, effective_cwd, phase, status, exc
+        )
+        return {
+            "result": f"PARTIAL: {slug} state updated - {phase}: {status} (state written, commit failed: {exc})",
+            "state": str(updated_state),
+        }
+    return {"result": f"OK: {slug} state updated - {phase}: {status}", "state": str(updated_state)}
 
 
 @router.post("/set-deps")
@@ -332,62 +352,3 @@ async def todo_set_deps(  # pyright: ignore
 
     msg = f"dependencies set for '{slug}': {', '.join(after)}" if after else f"dependencies cleared for '{slug}'"
     return {"result": f"OK: {msg}"}
-
-
-@router.post("/state")
-async def todo_state(  # pylint: disable=too-many-locals
-    slug: Annotated[str, Body()],
-    cwd: Annotated[str | None, Body()] = None,
-    transition: Annotated[str | None, Body()] = None,
-    rewind: Annotated[bool, Body()] = False,
-    _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
-) -> JSONResponse:
-    """Inspect state, fire a transition, or rewind."""
-    if not cwd:
-        raise HTTPException(status_code=400, detail="cwd required")
-
-    from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
-        read_phase_state,
-        write_phase_state,
-    )
-    from teleclaude.core.next_machine.state_machine import (  # pylint: disable=import-outside-toplevel
-        RewindRejected,
-        TransitionRejected,
-    )
-    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
-        build_lifecycle_machine,
-    )
-
-    state = read_phase_state(cwd, slug)
-    machine = build_lifecycle_machine()
-
-    if rewind:
-        try:
-            state = machine.rewind(state)
-        except RewindRejected as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        write_phase_state(cwd, slug, state)
-        return JSONResponse(content=dict(state))
-
-    if transition:
-        from datetime import UTC, datetime  # pylint: disable=import-outside-toplevel
-
-        from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
-
-        actor_id = get_session_id() or _identity.principal or "api"
-        try:
-            state = machine.fire(
-                state,
-                transition,
-                actor_id=actor_id,
-                at=datetime.now(UTC).isoformat(),
-            )
-        except TransitionRejected as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        write_phase_state(cwd, slug, state)
-        return JSONResponse(content=dict(state))
-
-    # Inspection: return current snapshot
-    return JSONResponse(content=dict(state))

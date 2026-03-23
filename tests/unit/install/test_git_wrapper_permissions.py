@@ -1,253 +1,275 @@
 # guard: no-companion
 """Behavioral tests for the git wrapper three-tier permission model.
 
-Three tiers:
-  DESTRUCTIVE  — blocked for all roles, no override
-  PROTECTED    — integrator only (stash), integrator+system (checkout, commit/push on main)
-  RESTRICTED   — orchestrator cannot commit on any branch
-
-Roles: worker (default), system, orchestrator, integrator.
+Tests import the wrapper as a Python module and call main() directly,
+mocking gitpython for actual git execution. No subprocess.
 """
 
 from __future__ import annotations
 
+import importlib
+import importlib.machinery
+import importlib.util
+import json
 import os
-import subprocess
+import tempfile
 from pathlib import Path
+from types import ModuleType
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 pytestmark = pytest.mark.unit
 
-WRAPPER = Path(__file__).resolve().parents[3] / "teleclaude" / "install" / "wrappers" / "git"
+WRAPPER_PATH = Path(__file__).resolve().parents[3] / "teleclaude" / "install" / "wrappers" / "git"
 
 
-def _run_wrapper(args: list[str], role: str | None = None, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
-    """Run the git wrapper with given args and role, capturing output."""
-    env = os.environ.copy()
-    if role is not None:
-        env["TELECLAUDE_SYSTEM_ROLE"] = role
-    else:
-        env.pop("TELECLAUDE_SYSTEM_ROLE", None)
-    # Strip ~/.teleclaude/bin from PATH so the wrapper finds real git, not the
-    # installed (potentially stale) copy of itself.
-    teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
-    env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep) if p != teleclaude_bin)
-    return subprocess.run(
-        ["bash", str(WRAPPER)] + args,
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=cwd,
-        timeout=5,
-    )
+def _load_wrapper() -> ModuleType:
+    """Import the git wrapper as a module.
+
+    The wrapper has no .py extension (it uses a uv run shebang), so we must
+    provide a loader explicitly — spec_from_file_location returns None for
+    extensionless files without one.
+    """
+    loader = importlib.machinery.SourceFileLoader("git_wrapper", str(WRAPPER_PATH))
+    spec = importlib.util.spec_from_file_location("git_wrapper", WRAPPER_PATH, loader=loader)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
-def _make_main_repo(tmp_path: Path) -> Path:
-    """Create a git repo on branch 'main' with staged changes ready to commit."""
-    subprocess.run(["git", "init", "-b", "main", str(tmp_path)], capture_output=True)
-    (tmp_path / "f.txt").write_text("x")
-    subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
-    (tmp_path / "f.txt").write_text("y")
-    subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
-    return tmp_path
+_wrapper = _load_wrapper()
 
 
-def _make_branch_repo(tmp_path: Path, branch: str = "feature") -> Path:
-    """Create a git repo on a non-main branch with staged changes."""
-    subprocess.run(["git", "init", "-b", branch, str(tmp_path)], capture_output=True)
-    (tmp_path / "f.txt").write_text("x")
-    subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
-    (tmp_path / "f.txt").write_text("y")
-    subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
-    return tmp_path
+def _run(
+    args: list[str],
+    role: str | None = None,
+    cwd: str | None = None,
+    *,
+    human_role: str | None = None,
+    branch: str = "feature",
+    no_identity_file: bool = False,
+) -> tuple[int, str]:
+    """Run the wrapper's main() with mocked identity and git, return (exit_code, stderr)."""
+    session_tmpdir = Path(tempfile.mkdtemp())
+    if not no_identity_file:
+        identity: dict[str, str] = {"session_id": "test-session"}
+        if role is not None:
+            identity["system_role"] = role
+        if human_role is not None:
+            identity["human_role"] = human_role
+        (session_tmpdir / "teleclaude_identity.json").write_text(json.dumps(identity))
+
+    mock_git_cmd = MagicMock()
+    mock_git_cmd.execute.return_value = ""
+
+    captured_stderr: list[str] = []
+    exit_code = 0
+
+    def fake_print(*a: object, **kw: object) -> None:
+        import sys as _sys
+
+        if kw.get("file") is _sys.stderr:
+            captured_stderr.append(" ".join(str(x) for x in a))
+        else:
+            # stdout output (e.g. git command output) — discard in tests
+            pass
+
+    env_overrides = {"TMPDIR": str(session_tmpdir), "TELECLAUDE_SYSTEM_ROLE": ""}
+
+    mock_gp = MagicMock()
+    mock_gp.cmd.Git.return_value = mock_git_cmd
+    mock_gp.exc.GitCommandError = Exception
+
+    with (
+        patch.dict(os.environ, env_overrides),
+        patch.object(_wrapper, "_get_gitpython", return_value=mock_gp),
+        patch.object(_wrapper, "get_current_branch", return_value=branch),
+        patch("sys.argv", ["git"] + args),
+        patch("builtins.print", side_effect=fake_print),
+    ):
+        if cwd:
+            with patch.object(Path, "cwd", return_value=Path(cwd).resolve()):
+                try:
+                    _wrapper.main()
+                except SystemExit as exc:
+                    exit_code = exc.code if isinstance(exc.code, int) else 1
+        else:
+            try:
+                _wrapper.main()
+            except SystemExit as exc:
+                exit_code = exc.code if isinstance(exc.code, int) else 1
+
+    return exit_code, "\n".join(captured_stderr)
 
 
-def _make_push_repo(tmp_path: Path) -> Path:
-    """Create a git repo on main with a remote, ready to push."""
-    remote_path = tmp_path / "remote"
-    remote_path.mkdir()
-    subprocess.run(["git", "init", "--bare", str(remote_path)], capture_output=True)
-    repo_path = tmp_path / "repo"
-    repo_path.mkdir()
-    subprocess.run(["git", "init", "-b", "main", str(repo_path)], capture_output=True)
-    (repo_path / "f.txt").write_text("x")
-    subprocess.run(["git", "-C", str(repo_path), "add", "."], capture_output=True)
-    subprocess.run(["git", "-C", str(repo_path), "commit", "-m", "init"], capture_output=True)
-    subprocess.run(["git", "-C", str(repo_path), "remote", "add", "origin", str(remote_path)], capture_output=True)
-    return repo_path
+# ── NO IDENTITY: fail fast ────────────────────────────────────────────────────
 
 
-# ── DESTRUCTIVE: blocked for all roles ───────────────────────────────────────
+class TestNoIdentity:
+    def test_no_role_fails_fast(self) -> None:
+        code, stderr = _run(["status"])
+        assert code != 0
+        assert "identity is broken" in stderr.lower()
+
+    def test_no_identity_file_fails(self) -> None:
+        code, stderr = _run(["status"], no_identity_file=True)
+        assert code != 0
+        assert "identity is broken" in stderr.lower()
 
 
-@pytest.mark.timeout(10, method="thread")
+# ── HUMAN SESSION ─────────────────────────────────────────────────────────────
+
+
+class TestHumanSession:
+    def test_human_status_allowed(self) -> None:
+        code, _ = _run(["status"], human_role="admin")
+        assert code == 0
+
+    def test_human_commit_allowed(self) -> None:
+        code, _ = _run(["commit", "-m", "human commit"], human_role="admin", branch="main")
+        assert code == 0
+
+    def test_human_blocked_outside_cwd(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        other = tmp_path / "other"
+        other.mkdir()
+        code, stderr = _run(["-C", str(other), "status"], human_role="admin", cwd=str(repo))
+        assert code != 0
+        assert "outside" in stderr.lower()
+
+    def test_human_allowed_in_subdirectory(self, tmp_path: Path) -> None:
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        code, _ = _run(["-C", str(sub), "status"], human_role="admin", cwd=str(tmp_path))
+        assert code == 0
+
+
+# ── DESTRUCTIVE ───────────────────────────────────────────────────────────────
+
+
 class TestDestructive:
-    """Destructive operations are blocked for every role."""
-
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator", "integrator"])
-    def test_restore_blocked(self, role: str | None) -> None:
-        result = _run_wrapper(["restore", "file.txt"], role=role)
-        assert result.returncode != 0
-        assert "destructive" in result.stderr.lower()
-
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator", "integrator"])
-    def test_clean_blocked(self, role: str | None) -> None:
-        result = _run_wrapper(["clean", "-fd"], role=role)
-        assert result.returncode != 0
-        assert "destructive" in result.stderr.lower()
-
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator", "integrator"])
-    def test_switch_blocked(self, role: str | None) -> None:
-        result = _run_wrapper(["switch", "main"], role=role)
-        assert result.returncode != 0
-        assert "destructive" in result.stderr.lower()
-
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator", "integrator"])
-    def test_revert_without_confirmed_blocked(self, role: str | None) -> None:
-        result = _run_wrapper(["revert", "abc123"], role=role)
-        assert result.returncode != 0
-        assert "inspection required" in result.stderr.lower()
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_restore_blocked(self, role: str) -> None:
+        code, stderr = _run(["restore", "file.txt"], role=role)
+        assert code != 0
+        assert "destructive" in stderr.lower()
 
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
-    def test_reset_hard_blocked(self, role: str | None) -> None:
-        result = _run_wrapper(["reset", "--hard"], role=role)
-        assert result.returncode != 0
+    def test_clean_blocked(self, role: str) -> None:
+        code, stderr = _run(["clean", "-fd"], role=role)
+        assert code != 0
+        assert "destructive" in stderr.lower()
 
-    def test_reset_bare_blocked(self, tmp_path: Path) -> None:
-        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-        result = _run_wrapper(["reset"], cwd=str(tmp_path))
-        assert result.returncode != 0
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_switch_blocked(self, role: str) -> None:
+        code, stderr = _run(["switch", "main"], role=role)
+        assert code != 0
+        assert "destructive" in stderr.lower()
 
-    def test_reset_pathspec_allowed(self, tmp_path: Path) -> None:
-        repo = _make_branch_repo(tmp_path)
-        result = _run_wrapper(["reset", "HEAD", "f.txt"], cwd=str(repo))
-        assert result.returncode == 0
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_revert_without_confirmed_blocked(self, role: str) -> None:
+        code, stderr = _run(["revert", "abc123"], role=role)
+        assert code != 0
+        assert "inspection required" in stderr.lower()
 
-    def test_reset_separator_pathspec_allowed(self, tmp_path: Path) -> None:
-        repo = _make_branch_repo(tmp_path)
-        result = _run_wrapper(["reset", "--", "f.txt"], cwd=str(repo))
-        assert result.returncode == 0
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_reset_hard_blocked(self, role: str) -> None:
+        code, _ = _run(["reset", "--hard"], role=role)
+        assert code != 0
+
+    def test_reset_bare_blocked(self) -> None:
+        code, _ = _run(["reset"], role="worker")
+        assert code != 0
+
+    def test_reset_pathspec_allowed(self) -> None:
+        code, _ = _run(["reset", "HEAD", "f.txt"], role="worker")
+        assert code == 0
+
+    def test_reset_separator_pathspec_allowed(self) -> None:
+        code, _ = _run(["reset", "--", "f.txt"], role="worker")
+        assert code == 0
 
 
-# ── PROTECTED: stash (integrator only) ───────────────────────────────────────
+# ── PROTECTED: stash ──────────────────────────────────────────────────────────
 
 
-@pytest.mark.timeout(10, method="thread")
 class TestProtectedStash:
-    """Stash is a protected operation — integrator only."""
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
+    def test_non_integrator_blocked(self, role: str) -> None:
+        code, stderr = _run(["stash"], role=role)
+        assert code != 0
+        assert "protected" in stderr.lower()
 
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator"])
-    def test_non_integrator_blocked(self, role: str | None, tmp_path: Path) -> None:
-        repo = _make_branch_repo(tmp_path)
-        result = _run_wrapper(["stash"], role=role, cwd=str(repo))
-        assert result.returncode != 0
-        assert "protected" in result.stderr.lower()
-
-    def test_integrator_allowed(self, tmp_path: Path) -> None:
-        repo = _make_branch_repo(tmp_path)
-        result = _run_wrapper(["stash"], role="integrator", cwd=str(repo))
-        assert "protected" not in result.stderr.lower()
+    def test_integrator_allowed(self) -> None:
+        _, stderr = _run(["stash"], role="integrator")
+        assert "protected" not in stderr.lower()
 
 
-# ── PROTECTED: checkout ──────────────────────────────────────────────────────
+# ── PROTECTED: checkout ───────────────────────────────────────────────────────
 
 
-@pytest.mark.timeout(10, method="thread")
 class TestCheckoutPermissions:
-    """Branch checkout blocked for all. File-scoped checkout allowed for all (pre-commit needs it)."""
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_bare_checkout_blocked_for_all(self, role: str) -> None:
+        code, stderr = _run(["checkout", "main"], role=role)
+        assert code != 0
+        assert "protected" in stderr.lower()
 
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator", "integrator"])
-    def test_bare_checkout_blocked_for_all(self, role: str | None) -> None:
-        result = _run_wrapper(["checkout", "main"], role=role)
-        assert result.returncode != 0
-        assert "protected" in result.stderr.lower()
-
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator", "integrator"])
-    def test_file_scoped_checkout_allowed_for_all(self, role: str | None) -> None:
-        result = _run_wrapper(["checkout", "HEAD", "--", "f.txt"], role=role)
-        assert "protected" not in result.stderr.lower()
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_file_scoped_checkout_allowed_for_all(self, role: str) -> None:
+        _, stderr = _run(["checkout", "HEAD", "--", "f.txt"], role=role)
+        assert "protected" not in stderr.lower()
 
 
-# ── PROTECTED: commit on main (integrator + system) ─────────────────────────
+# ── PROTECTED: commit on main ─────────────────────────────────────────────────
 
 
-@pytest.mark.timeout(10, method="thread")
 class TestProtectedCommitOnMain:
-    """Commit on main: integrator only. All others blocked."""
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
+    def test_non_integrator_blocked(self, role: str) -> None:
+        code, _ = _run(["commit", "-m", "test"], role=role, branch="main")
+        assert code != 0
 
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator"])
-    def test_non_integrator_blocked(self, role: str | None, tmp_path: Path) -> None:
-        repo = _make_main_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], role=role, cwd=str(repo))
-        assert result.returncode != 0
-
-    def test_integrator_allowed(self, tmp_path: Path) -> None:
-        repo = _make_main_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], role="integrator", cwd=str(repo))
-        assert result.returncode == 0
+    def test_integrator_allowed(self) -> None:
+        code, _ = _run(["commit", "-m", "test"], role="integrator", branch="main")
+        assert code == 0
 
 
-# ── PROTECTED: push from main (integrator only) ─────────────────────────────
+# ── PROTECTED: push from main ─────────────────────────────────────────────────
 
 
-@pytest.mark.timeout(10, method="thread")
 class TestProtectedPushFromMain:
-    """Push from main: integrator only. All others blocked including system."""
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
+    def test_non_integrator_blocked(self, role: str) -> None:
+        code, stderr = _run(["push", "origin", "main"], role=role, branch="main")
+        assert code != 0
+        assert "protected" in stderr.lower()
 
-    @pytest.mark.parametrize("role", [None, "worker", "system", "orchestrator"])
-    def test_non_integrator_blocked(self, role: str | None, tmp_path: Path) -> None:
-        repo = _make_push_repo(tmp_path)
-        result = _run_wrapper(["push", "origin", "main"], role=role, cwd=str(repo))
-        assert result.returncode != 0
-        assert "protected" in result.stderr.lower()
-
-    def test_integrator_allowed(self, tmp_path: Path) -> None:
-        repo = _make_push_repo(tmp_path)
-        result = _run_wrapper(["push", "origin", "main"], role="integrator", cwd=str(repo))
-        assert result.returncode == 0
+    def test_integrator_allowed(self) -> None:
+        code, _ = _run(["push", "origin", "main"], role="integrator", branch="main")
+        assert code == 0
 
 
-# ── ORCHESTRATOR RESTRICTION: no commit anywhere ─────────────────────────────
+# ── ORCHESTRATOR RESTRICTION ──────────────────────────────────────────────────
 
 
-@pytest.mark.timeout(10, method="thread")
 class TestOrchestratorRestriction:
-    """Orchestrators cannot commit on any branch."""
+    def test_orchestrator_blocked_on_branch(self) -> None:
+        code, stderr = _run(["commit", "-m", "test"], role="orchestrator", branch="feature")
+        assert code != 0
+        assert "orchestrator" in stderr.lower()
 
-    def test_orchestrator_blocked_on_branch(self, tmp_path: Path) -> None:
-        repo = _make_branch_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], role="orchestrator", cwd=str(repo))
-        assert result.returncode != 0
-        assert "orchestrator" in result.stderr.lower()
+    def test_orchestrator_blocked_on_main(self) -> None:
+        code, _ = _run(["commit", "-m", "test"], role="orchestrator", branch="main")
+        assert code != 0
 
-    def test_orchestrator_blocked_on_main(self, tmp_path: Path) -> None:
-        repo = _make_main_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], role="orchestrator", cwd=str(repo))
-        assert result.returncode != 0
+    def test_worker_allowed_on_branch(self) -> None:
+        code, _ = _run(["commit", "-m", "test"], role="worker", branch="feature")
+        assert code == 0
 
-    def test_worker_allowed_on_branch(self, tmp_path: Path) -> None:
-        repo = _make_branch_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], role="worker", cwd=str(repo))
-        assert result.returncode == 0
-
-    def test_system_allowed_on_branch(self, tmp_path: Path) -> None:
-        repo = _make_branch_repo(tmp_path)
-        result = _run_wrapper(["commit", "-m", "test"], role="system", cwd=str(repo))
-        assert result.returncode == 0
-
-
-# ── INVALID ROLES: fail-closed to worker ─────────────────────────────────────
-
-
-class TestInvalidRolePermissions:
-    """Typoed or invalid roles fall back to worker (fail-closed)."""
-
-    @pytest.mark.parametrize("invalid_role", ["admin", "Integrator", "", " "])
-    def test_invalid_role_blocked_from_stash(self, invalid_role: str, tmp_path: Path) -> None:
-        repo = _make_branch_repo(tmp_path)
-        result = _run_wrapper(["stash"], role=invalid_role, cwd=str(repo))
-        assert result.returncode != 0
-        assert "protected" in result.stderr.lower()
+    def test_system_allowed_on_branch(self) -> None:
+        code, _ = _run(["commit", "-m", "test"], role="system", branch="feature")
+        assert code == 0
