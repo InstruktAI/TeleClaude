@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: session-memory-extraction
+  date: '2026-03-23'
+  commit: bf320710298a
 - slug: mirror-timestamp-fix
   date: '2026-03-20'
   commit: 4d5bf8d4474b
