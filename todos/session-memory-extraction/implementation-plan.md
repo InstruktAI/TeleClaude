@@ -13,12 +13,21 @@ This remains a single builder-sized todo. The work is concentrated in one job
 file plus its 1:1 unit test home. The mirror, transcript, memory, logging, and
 channel modules are grounding references, not new workstreams.
 
+## Task Status
+
+- [x] Task 1: Activate the unit-spec home for the job
+- [x] Task 2: Rework session orchestration and bookkeeping in the job
+- [x] Task 3: Implement mirror-backed transcript delta reading
+- [x] Task 4: Implement structured personal and business memory extraction
+- [x] Task 5: Implement actionable-item extraction and publication
+- [x] Task 6: Final verification and demo alignment
+
 ## Atomicity Decision
 
 **Atomic.** This is one behavior change: turn a stubbed extraction job into a
 working extraction job. The required code lives primarily in
-`jobs/session_memory_extraction.py`, with one new test file at
-`tests/unit/test_session_memory_extraction.py`. Splitting this into
+`jobs/session_memory_extraction.py`, with one 1:1 test file at
+`tests/unit/jobs/test_session_memory_extraction.py`. Splitting this into
 "delta-reading", "memory extraction", and "action publication" would create a
 half-working pipeline and add coordination overhead without reducing session
 size.
@@ -40,14 +49,14 @@ size.
   `teleclaude.channels.publisher.publish(...)` rather than introducing new
   persistence or transport interfaces.
 - The 1:1 unit-test home for this job is
-  `tests/unit/test_session_memory_extraction.py`, matching the existing pattern
+  `tests/unit/jobs/test_session_memory_extraction.py`, matching the existing pattern
   used by other root-level `jobs/*.py` modules.
 
 ## Task 1: Activate the unit-spec home for the job
 
 **What**
 
-Create or complete `tests/unit/test_session_memory_extraction.py` as the single
+Create or complete `tests/unit/jobs/test_session_memory_extraction.py` as the single
 unit-test home for `jobs/session_memory_extraction.py`, and place the expected-
 failure specs for FR1-FR5 there so the builder can remove the relevant xfail
 markers before each code change.
@@ -62,7 +71,7 @@ layout instead of inventing a new `tests/unit/jobs/` subtree.
 
 **Referenced files**
 
-- `tests/unit/test_session_memory_extraction.py`
+- `tests/unit/jobs/test_session_memory_extraction.py`
 
 **Verification**
 

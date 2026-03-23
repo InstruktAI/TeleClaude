@@ -18,7 +18,7 @@ CLI + targeted unit tests
 ## Validation Commands
 
 ```bash
-python3 -m pytest tests/unit/test_session_memory_extraction.py -q
+python3 -m pytest tests/unit/jobs/test_session_memory_extraction.py -q
 ```
 
 ```bash
