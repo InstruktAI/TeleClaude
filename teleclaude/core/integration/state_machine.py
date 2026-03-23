@@ -85,7 +85,9 @@ def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
     # Sync repo root with origin/main on every entry.
     # The integration worktree pushes directly to origin/main; without this
     # pull, repo root diverges and cleanup commits cause merge conflicts.
-    rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
+    # --autostash: atomically stash dirty files, pull, pop — prevents orphaned
+    # stashes that occur when agent sessions die between manual stash and pop.
+    rc, _, stderr = _run_git(["pull", "--ff-only", "--autostash", "origin", "main"], cwd=cwd)
     if rc != 0:
         return _format_error(
             "REPO_ROOT_DIVERGED",
