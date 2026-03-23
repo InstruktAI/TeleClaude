@@ -78,7 +78,7 @@ class TestSessionsActionsRoutes:
         assert command_name == "keys"
         assert payload == {"session_id": "sess-keys", "key": "Enter", "args": ["3"]}
         assert isinstance(metadata, MessageMetadata)
-        assert metadata.origin == InputOrigin.API.value
+        assert metadata.origin == InputOrigin.TERMINAL.value
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -127,7 +127,7 @@ class TestSessionsActionsRoutes:
             "message_thread_id": 77,
         }
         assert isinstance(metadata, MessageMetadata)
-        assert metadata.origin == InputOrigin.API.value
+        assert metadata.origin == InputOrigin.TERMINAL.value
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -166,7 +166,7 @@ class TestSessionsActionsRoutes:
             "file_size": 512,
         }
         assert isinstance(metadata, MessageMetadata)
-        assert metadata.origin == InputOrigin.API.value
+        assert metadata.origin == InputOrigin.TERMINAL.value
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -243,7 +243,7 @@ class TestSessionsActionsRoutes:
         assert command_name == "agent_restart"
         assert payload == {"session_id": "sess-revive", "args": []}
         assert isinstance(metadata, MessageMetadata)
-        assert metadata.origin == InputOrigin.API.value
+        assert metadata.origin == InputOrigin.TERMINAL.value
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -418,7 +418,7 @@ class TestSessionsActionsRoutes:
         assert command_name == "new_session"
         assert payload == {"skip_listener_registration": True}
         assert isinstance(metadata, MessageMetadata)
-        assert metadata.origin == InputOrigin.API.value
+        assert metadata.origin == InputOrigin.TERMINAL.value
         assert metadata.title == expected_title
         assert metadata.project_path == "/repo/demo"
         assert metadata.subdir == "api"
@@ -509,6 +509,25 @@ class TestSessionsActionsRoutes:
         assert cmd.command == "render_widget"
         assert cmd.session_id == "sess-widget"
         assert cmd.data["widget_data"] == request.data
+
+    @pytest.mark.unit
+    def test_run_session_injects_caller_email_into_channel_metadata(self) -> None:
+        """Email from CallerIdentity is injected into channel_metadata for identity resolution."""
+        request = RunSessionRequest(
+            command="/next-build",
+            args="my-slug",
+            project="/repo/demo",
+        )
+        identity = CallerIdentity(
+            session_id="caller-123",
+            system_role=None,
+            human_role=None,
+            tmux_session_name=None,
+            email="alice@example.com",
+        )
+        plan = sessions_actions_routes._prepare_run_session(request, identity)
+        assert plan.channel_metadata is not None
+        assert plan.channel_metadata["email"] == "alice@example.com"
 
     @pytest.mark.unit
     @pytest.mark.asyncio

@@ -9,6 +9,7 @@ class InputOrigin(str, Enum):
     TELEGRAM = "telegram"
     DISCORD = "discord"
     WHATSAPP = "whatsapp"
+    WEB = "web"
     REDIS = "redis"
     API = "api"
     TERMINAL = "terminal"

@@ -34,7 +34,7 @@ _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
 _PEOPLE_DIR = Path("~/.teleclaude/people").expanduser()
 
 
-class IdentityResolver:  # pylint: disable=too-few-public-methods
+class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-instance-attributes
     """Resolves human identity from channel metadata."""
 
     def __init__(self) -> None:
@@ -43,6 +43,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods
         self._by_telegram_user_id: dict[int, PersonEntry] = {}
         self._by_discord_user_id: dict[str, PersonEntry] = {}
         self._by_whatsapp_phone: dict[str, PersonEntry] = {}
+        self._registered_people_count: int = 0
         self._config_mtime_ns: int | None = None
         self._people_mtime_ns: int | None = None
         self._load_config()
@@ -88,6 +89,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods
         self._by_telegram_user_id.clear()
         self._by_discord_user_id.clear()
         self._by_whatsapp_phone.clear()
+        self._registered_people_count = 0
 
         try:
             global_config = load_global_config()
@@ -95,6 +97,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods
             logger.error("Failed to load global config for identity resolution: %s", e)
             return
 
+        self._registered_people_count = len(global_config.people)
         people_by_key: dict[str, PersonEntry] = {}
         for person in global_config.people:
             if person.email:
@@ -131,11 +134,29 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods
                 if normalized_phone:
                     self._by_whatsapp_phone[normalized_phone] = person
 
+    def resolve_by_email(self, email: str) -> IdentityContext:
+        """Resolve identity from email address."""
+        self._reload_if_stale()
+        person = self._by_email.get(email.lower())
+        if person:
+            return IdentityContext(
+                person_name=person.name,
+                person_email=person.email,
+                person_role=self._normalize_role(person.role),
+            )
+        return IdentityContext()
+
+    @property
+    def registered_people_count(self) -> int:
+        """Number of registered people in global config."""
+        self._reload_if_stale()
+        return self._registered_people_count
+
     def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> IdentityContext:  # pylint: disable=too-many-branches,too-many-return-statements
         """Resolve identity from origin and metadata.
 
         Args:
-            origin: Source of the session (e.g. 'telegram', 'web', 'api').
+            origin: Source of the session (e.g. 'telegram', 'web', 'terminal').
             channel_metadata: Dictionary of metadata from the channel.
 
         Returns:
@@ -143,10 +164,23 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods
         """
         self._reload_if_stale()
 
-        # API-origin sessions are already authenticated by verify_caller().
-        # Identity comes from the auth layer, not from channel metadata.
         if origin == "api":
+            # API-origin sessions are already authenticated by verify_caller().
+            # Identity comes from the auth layer, not from channel metadata.
             return IdentityContext()
+
+        if origin == "terminal":
+            email = channel_metadata.get("email")
+            if isinstance(email, str):
+                person = self._by_email.get(email.lower())
+                if person:
+                    return IdentityContext(
+                        person_name=person.name,
+                        person_email=person.email,
+                        person_role=self._normalize_role(person.role),
+                        platform="terminal",
+                        platform_user_id=email,
+                    )
 
         if origin == "telegram":
             user_id = channel_metadata.get("user_id")

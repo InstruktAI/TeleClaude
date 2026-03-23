@@ -21,6 +21,10 @@ class TestInputOrigin:
         assert InputOrigin.WHATSAPP.value == "whatsapp"
 
     @pytest.mark.unit
+    def test_web_value(self):
+        assert InputOrigin.WEB.value == "web"
+
+    @pytest.mark.unit
     def test_redis_value(self):
         assert InputOrigin.REDIS.value == "redis"
 
