@@ -53,3 +53,6 @@
 - slug: chip-tunes-regression
 - slug: unified-identity-resolution
 - slug: web-tui-panels
+- slug: scoped-agent-lint-test
+  after:
+  - state-machine-mark-phase-redesign
