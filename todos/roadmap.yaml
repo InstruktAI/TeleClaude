@@ -51,6 +51,5 @@
   description: Full TUI parity in web frontend — all 4 tabs, hierarchical trees, keyboard
     nav, activity highlights, footer, toasts
 - slug: chip-tunes-regression
-- slug: web-tui-panels
 - slug: scoped-agent-lint-test
 - slug: cli-auth-consolidation
