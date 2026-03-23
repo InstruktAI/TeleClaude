@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: unified-identity-resolution
+  date: '2026-03-23'
+  commit: a0e4f9461fe6
 - slug: session-memory-extraction
   date: '2026-03-23'
   commit: bf320710298a
