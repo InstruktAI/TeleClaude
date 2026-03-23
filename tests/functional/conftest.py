@@ -56,22 +56,22 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
             monkeypatch.setattr(mod, "db", test_db)
 
     # --- Config: single-user mode (no login required → admin) ---
-    # Point _GLOBAL_CONFIG_PATH at a temp file with a single person so
-    # _load_email_role_map() doesn't re-read the real global config.
-    import teleclaude.api.auth as _auth_mod
+    # Mock the IdentityResolver to return admin for test@test.com
+    # and report single-user mode (no login required).
+    from teleclaude.core.identity import IdentityResolver
 
-    tmp_global_cfg = tmp_path / "teleclaude.yml"
-    tmp_global_cfg.write_text(
-        "people:\n  - name: test\n    email: test@test.com\n    role: admin\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(_auth_mod, "_GLOBAL_CONFIG_PATH", tmp_global_cfg)
-
-    from teleclaude.api.auth import _EMAIL_ROLE_CACHE_STATE
-
-    _EMAIL_ROLE_CACHE_STATE.role_map = {}
-    _EMAIL_ROLE_CACHE_STATE.mtime_ns = 0
-    _EMAIL_ROLE_CACHE_STATE.registered_people_count = 1  # single user
+    mock_resolver = IdentityResolver.__new__(IdentityResolver)
+    mock_resolver._by_email = {
+        "test@test.com": type("P", (), {"name": "test", "email": "test@test.com", "role": "admin", "username": None})()
+    }
+    mock_resolver._by_username = {}
+    mock_resolver._by_telegram_user_id = {}
+    mock_resolver._by_discord_user_id = {}
+    mock_resolver._by_whatsapp_phone = {}
+    mock_resolver._registered_people_count = 1
+    mock_resolver._config_mtime_ns = 0
+    mock_resolver._people_mtime_ns = 0
+    monkeypatch.setattr("teleclaude.core.identity._resolver_instance", mock_resolver)
 
     # --- tmux: no-op ---
     from teleclaude.core import tmux_bridge

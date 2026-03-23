@@ -74,6 +74,119 @@ class TestIdentityResolver:
         assert ctx.person_role == "customer"
 
 
+class TestResolveByEmail:
+    @pytest.mark.unit
+    def test_known_email_returns_identity(self):
+        person = MagicMock()
+        person.name = "Alice"
+        person.email = "alice@example.com"
+        person.role = "admin"
+        person.username = None
+        with (
+            patch("teleclaude.core.identity.load_global_config") as mock_cfg,
+            patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
+        ):
+            mock_cfg.return_value = MagicMock(people=[person])
+            mock_dir.glob.return_value = []
+            resolver = IdentityResolver()
+            ctx = resolver.resolve_by_email("alice@example.com")
+        assert ctx.person_name == "Alice"
+        assert ctx.person_email == "alice@example.com"
+        assert ctx.person_role == "admin"
+
+    @pytest.mark.unit
+    def test_unknown_email_returns_empty_context(self):
+        with (
+            patch("teleclaude.core.identity.load_global_config") as mock_cfg,
+            patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
+        ):
+            mock_cfg.return_value = MagicMock(people=[])
+            mock_dir.glob.return_value = []
+            resolver = IdentityResolver()
+            ctx = resolver.resolve_by_email("nobody@example.com")
+        assert ctx.person_name is None
+        assert ctx.person_role is None
+
+    @pytest.mark.unit
+    def test_email_lookup_is_case_insensitive(self):
+        person = MagicMock()
+        person.name = "Bob"
+        person.email = "bob@example.com"
+        person.role = "member"
+        person.username = None
+        with (
+            patch("teleclaude.core.identity.load_global_config") as mock_cfg,
+            patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
+        ):
+            mock_cfg.return_value = MagicMock(people=[person])
+            mock_dir.glob.return_value = []
+            resolver = IdentityResolver()
+            ctx = resolver.resolve_by_email("BOB@EXAMPLE.COM")
+        assert ctx.person_name == "Bob"
+        assert ctx.person_role == "member"
+
+
+class TestResolveTerminalOrigin:
+    @pytest.mark.unit
+    def test_terminal_origin_with_matching_email_returns_resolved_identity(self):
+        person = MagicMock()
+        person.name = "Carol"
+        person.email = "carol@example.com"
+        person.role = "admin"
+        person.username = None
+        with (
+            patch("teleclaude.core.identity.load_global_config") as mock_cfg,
+            patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
+        ):
+            mock_cfg.return_value = MagicMock(people=[person])
+            mock_dir.glob.return_value = []
+            resolver = IdentityResolver()
+            ctx = resolver.resolve("terminal", {"email": "carol@example.com"})
+        assert ctx.person_name == "Carol"
+        assert ctx.person_role == "admin"
+        assert ctx.platform == "terminal"
+        assert ctx.platform_user_id == "carol@example.com"
+
+    @pytest.mark.unit
+    def test_terminal_origin_with_unrecognized_email_falls_through_to_customer(self):
+        with (
+            patch("teleclaude.core.identity.load_global_config") as mock_cfg,
+            patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
+        ):
+            mock_cfg.return_value = MagicMock(people=[])
+            mock_dir.glob.return_value = []
+            resolver = IdentityResolver()
+            ctx = resolver.resolve("terminal", {"email": "unknown@example.com"})
+        assert ctx.person_role == "customer"
+
+    @pytest.mark.unit
+    def test_terminal_origin_with_no_email_falls_through_to_customer(self):
+        with (
+            patch("teleclaude.core.identity.load_global_config") as mock_cfg,
+            patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
+        ):
+            mock_cfg.return_value = MagicMock(people=[])
+            mock_dir.glob.return_value = []
+            resolver = IdentityResolver()
+            ctx = resolver.resolve("terminal", {})
+        assert ctx.person_role == "customer"
+
+
+class TestResolveApiOrigin:
+    @pytest.mark.unit
+    def test_api_origin_returns_empty_identity(self):
+        with (
+            patch("teleclaude.core.identity.load_global_config") as mock_cfg,
+            patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
+        ):
+            mock_cfg.return_value = MagicMock(people=[])
+            mock_dir.glob.return_value = []
+            resolver = IdentityResolver()
+            ctx = resolver.resolve("api", {})
+        assert ctx.person_role is None
+        assert ctx.person_name is None
+
+
 class TestGetIdentityResolver:
     @pytest.mark.unit
     def test_returns_identity_resolver_instance(self):

@@ -85,9 +85,9 @@ def configure(client: AdapterClient | None = None) -> None:
         _STATE.client = client
 
 
-def _build_metadata(**kwargs: object) -> MessageMetadata:
-    """Build API boundary metadata."""
-    return MessageMetadata(origin=InputOrigin.API.value, **kwargs)
+def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
+    """Build API boundary metadata with explicit origin."""
+    return MessageMetadata(origin=origin, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -257,6 +257,11 @@ def _prepare_run_session(
             raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
         channel_metadata = channel_metadata or {}
         channel_metadata["working_slug"] = normalized_args.split()[0]
+
+    # Inject identity into channel_metadata for IdentityResolver
+    if identity.email:
+        channel_metadata = channel_metadata or {}
+        channel_metadata["email"] = identity.email
 
     try:
         slash_cmd = SlashCommand(normalized_cmd)

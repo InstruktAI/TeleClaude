@@ -16,17 +16,14 @@ The human_role comes from DB session record or terminal email mapping.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Header, HTTPException
 
 from teleclaude.cli.telec import is_command_allowed
-from teleclaude.config.loader import load_global_config
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
-    HUMAN_ROLES,
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
@@ -34,22 +31,11 @@ from teleclaude.constants import (
 )
 from teleclaude.core import db_models
 from teleclaude.core.db import db
+from teleclaude.core.identity import get_identity_resolver
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
-
-_GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
-
-
-@dataclass
-class _EmailRoleCacheState:
-    role_map: dict[str, str] = field(default_factory=dict)
-    mtime_ns: int | None = None
-    registered_people_count: int = 0
-
-
-_EMAIL_ROLE_CACHE_STATE = _EmailRoleCacheState()
 
 # In-memory session cache for verify_caller (avoids DB hit per authenticated request)
 _SESSION_CACHE_TTL = 30.0  # seconds
@@ -127,50 +113,17 @@ def _normalize_email(value: object) -> str | None:
     return normalized or None
 
 
-def _load_email_role_map() -> dict[str, str]:
-    """Load email->role map from global config with mtime-based cache."""
-    try:
-        mtime_ns = _GLOBAL_CONFIG_PATH.stat().st_mtime_ns
-    except OSError:
-        _EMAIL_ROLE_CACHE_STATE.role_map = {}
-        _EMAIL_ROLE_CACHE_STATE.mtime_ns = None
-        _EMAIL_ROLE_CACHE_STATE.registered_people_count = 0
-        return _EMAIL_ROLE_CACHE_STATE.role_map
-
-    if _EMAIL_ROLE_CACHE_STATE.mtime_ns == mtime_ns:
-        return _EMAIL_ROLE_CACHE_STATE.role_map
-
-    role_map: dict[str, str] = {}
-    try:
-        global_cfg = load_global_config(_GLOBAL_CONFIG_PATH)
-    except ValueError:
-        return _EMAIL_ROLE_CACHE_STATE.role_map
-
-    _EMAIL_ROLE_CACHE_STATE.registered_people_count = 0
-    for person in global_cfg.people:
-        _EMAIL_ROLE_CACHE_STATE.registered_people_count += 1
-        email = _normalize_email(person.email)
-        role = (person.role or "").strip().lower()
-        if not email or role not in HUMAN_ROLES:
-            continue
-        role_map[email] = role
-
-    _EMAIL_ROLE_CACHE_STATE.role_map = role_map
-    _EMAIL_ROLE_CACHE_STATE.mtime_ns = mtime_ns
-    return role_map
-
-
 def _resolve_terminal_role(email_header: str | None) -> str | None:
+    """Resolve human role from email via the shared IdentityResolver."""
     email = _normalize_email(email_header)
     if not email:
         return None
-    return _load_email_role_map().get(email)
+    return get_identity_resolver().resolve_by_email(email).person_role
 
 
 def _requires_terminal_login() -> bool:
     """Return True when global config has multiple registered users."""
-    _load_email_role_map()
-    return _EMAIL_ROLE_CACHE_STATE.registered_people_count > 1
+    return get_identity_resolver().registered_people_count > 1
 
 
 def _derive_session_system_role(session: Session) -> str | None:
@@ -199,6 +152,7 @@ class CallerIdentity:
     system_role: str | None  # e.g. "worker" or None (orchestrator/admin)
     human_role: str | None  # e.g. "admin", "member", etc.
     tmux_session_name: str | None  # for diagnostic use only
+    email: str | None = None  # authenticated email from terminal login or web header
     principal: str | None = None  # "human:<email>" or "system:<id>" (token-auth only)
     principal_role: str | None = None  # role carried with the token (token-auth only)
 
@@ -241,6 +195,7 @@ def _build_terminal_identity(
     tmux_session_name: str | None,
 ) -> CallerIdentity:
     """Resolve caller identity for non-session callers."""
+    normalized_email = _normalize_email(email_header)
     terminal_role = _resolve_terminal_role(email_header)
     if terminal_role:
         return CallerIdentity(
@@ -248,6 +203,7 @@ def _build_terminal_identity(
             system_role=None,
             human_role=terminal_role,
             tmux_session_name=tmux_session_name,
+            email=normalized_email,
         )
     if _requires_terminal_login():
         raise HTTPException(status_code=401, detail="login required in multi-user mode")
@@ -256,6 +212,7 @@ def _build_terminal_identity(
         system_role=None,
         human_role=HUMAN_ROLE_ADMIN,
         tmux_session_name=tmux_session_name,
+        email=normalized_email,
     )
 
 
@@ -280,11 +237,13 @@ async def _verify_session_identity(
     if x_tmux_session and session.tmux_session_name and x_tmux_session != session.tmux_session_name:
         raise HTTPException(status_code=403, detail="session identity mismatch")
 
+    resolved_email = _normalize_email(x_telec_email) or getattr(session, "human_email", None)
     return CallerIdentity(
         session_id=caller_session_id,
         system_role=_derive_session_system_role(session),
         human_role=_resolve_human_role(session, x_telec_email),
         tmux_session_name=session.tmux_session_name,
+        email=resolved_email,
     )
 
 

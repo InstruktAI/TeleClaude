@@ -135,10 +135,9 @@ def resolve_cli_caller_role() -> str | None:
     # Path 1: TTY auth file → IdentityResolver
     email = read_current_session_email()
     if email:
-        resolver = get_identity_resolver()
-        person = resolver._by_email.get(email.lower())  # pylint: disable=protected-access
-        if person:
-            return resolver._normalize_role(person.role)  # pylint: disable=protected-access
+        ctx = get_identity_resolver().resolve_by_email(email)
+        if ctx.person_role:
+            return ctx.person_role
 
     # Path 2: daemon API — works for any TeleClaude-managed session
     tmpdir = os.environ.get("TMPDIR", "")

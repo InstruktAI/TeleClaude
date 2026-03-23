@@ -13,6 +13,7 @@ from teleclaude.api import sessions_routes
 from teleclaude.api.sessions_routes import ListSessionsQuery
 from teleclaude.api_models import CreateSessionRequest, SendMessageRequest
 from teleclaude.core.models import SessionSnapshot
+from teleclaude.core.origins import InputOrigin
 
 
 def _make_request(headers: dict[str, str] | None = None) -> SimpleNamespace:
@@ -25,7 +26,7 @@ class TestSessionsRoutes:
     async def test_create_session_returns_400_when_requested_agent_is_disabled(self) -> None:
         """Session creation surfaces disabled-agent validation as an HTTP 400."""
         request = CreateSessionRequest(computer="local", project_path="/repo/demo", agent="claude")
-        identity = SimpleNamespace(session_id=None, human_role=None)
+        identity = SimpleNamespace(session_id=None, human_role=None, email=None)
 
         with patch("teleclaude.api.sessions_routes.assert_agent_enabled", side_effect=ValueError("disabled")):
             with pytest.raises(HTTPException) as exc_info:
@@ -137,3 +138,44 @@ class TestSessionsRoutes:
 
         mock_service.close_session.assert_awaited_once()
         assert response.status_code == 202
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_selects_web_origin_when_human_email_provided(self) -> None:
+        """When request.human_email is set, origin becomes WEB and email is injected into channel_metadata."""
+        request = CreateSessionRequest(
+            computer="local",
+            project_path="/repo/demo",
+            human_email="web@example.com",
+        )
+        identity = SimpleNamespace(session_id=None, human_role=None, email=None)
+
+        with patch(
+            "teleclaude.api.sessions_routes._build_launch_intent",
+            new=AsyncMock(return_value=(None, None)),
+        ):
+            metadata, _title, _intent, _caller = await sessions_routes._prepare_create_session(request, identity)
+
+        assert metadata.origin == InputOrigin.WEB.value
+        assert metadata.channel_metadata is not None
+        assert metadata.channel_metadata["email"] == "web@example.com"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_injects_identity_email_into_channel_metadata(self) -> None:
+        """Email from CallerIdentity is injected into channel_metadata for IdentityResolver."""
+        request = CreateSessionRequest(
+            computer="local",
+            project_path="/repo/demo",
+        )
+        identity = SimpleNamespace(session_id=None, human_role=None, email="terminal@example.com")
+
+        with patch(
+            "teleclaude.api.sessions_routes._build_launch_intent",
+            new=AsyncMock(return_value=(None, None)),
+        ):
+            metadata, _title, _intent, _caller = await sessions_routes._prepare_create_session(request, identity)
+
+        assert metadata.origin == InputOrigin.TERMINAL.value
+        assert metadata.channel_metadata is not None
+        assert metadata.channel_metadata["email"] == "terminal@example.com"

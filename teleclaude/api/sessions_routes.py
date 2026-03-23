@@ -73,9 +73,9 @@ def configure(
     _STATE.cache = cache
 
 
-def _build_metadata(**kwargs: object) -> MessageMetadata:
-    """Build API boundary metadata."""
-    return MessageMetadata(origin=InputOrigin.API.value, **kwargs)
+def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
+    """Build API boundary metadata with explicit origin."""
+    return MessageMetadata(origin=origin, **kwargs)
 
 
 def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) -> list[SessionSnapshot]:
@@ -382,12 +382,27 @@ async def _prepare_create_session(
 ) -> tuple[MessageMetadata, str, SessionLaunchIntent | None, Session | None]:
     """Prepare session creation metadata and launch intent."""
     channel_metadata = _build_channel_metadata(request, identity)
+
+    # Determine real origin and caller email from identity context
+    origin = InputOrigin.TERMINAL.value
+    caller_email = identity.email
+    if request.human_email:
+        origin = InputOrigin.WEB.value
+        caller_email = request.human_email
+
+    # Inject identity into channel_metadata — same path as adapters.
+    # The IdentityResolver resolves human_email/human_role from this.
+    if caller_email:
+        channel_metadata = channel_metadata or {}
+        channel_metadata["email"] = caller_email
+
     request_session_meta = _build_request_session_metadata(
         request.metadata,
-        human_email=request.human_email,
+        human_email=caller_email,
         human_role=request.human_role or identity.human_role,
     )
     metadata = _build_metadata(
+        origin=origin,
         title=request.title or "Untitled",
         project_path=request.project_path,
         subdir=request.subdir,
