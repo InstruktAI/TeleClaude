@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: asyncio-task-naming
+  date: '2026-03-24'
+  commit: 53f3d0e6a03e
 - slug: state-machine-mark-phase-redesign
   date: '2026-03-24'
   commit: 1b1248518b24
