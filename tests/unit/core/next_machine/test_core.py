@@ -344,17 +344,17 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
 
 
 # ---------------------------------------------------------------------------
-# next_prepare — referenced path existence check
+# next_prepare — plan drafting advances to plan review
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 @patch("teleclaude.core.next_machine.core._emit_prepare_event")
-async def test_plan_with_missing_referenced_paths_returns_redraft(
+async def test_plan_with_referenced_paths_advances_to_plan_review(
     _mock_emit: MagicMock,
     tmp_path: Path,
 ) -> None:
-    """When plan references non-existent paths, machine returns re-draft."""
+    """Plan with referenced_paths (including not-yet-created files) advances to review."""
     from teleclaude.core.next_machine.core import (
         next_prepare,
         read_phase_state,
@@ -387,7 +387,6 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
         "invalidated_at": "",
         "invalidation_reason": "",
     }
-    # Plan was previously produced: stamp required by v2 ghost artifact protection
     artifacts = state.get("artifacts", {})
     if isinstance(artifacts, dict):
         impl_plan = artifacts.get("implementation_plan", {})
@@ -408,64 +407,7 @@ async def test_plan_with_missing_referenced_paths_returns_redraft(
             with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
 
-    assert "next-prepare-draft" in result or "DISPATCH" in result
-    assert "nonexistent_module.py" in result
-
-
-@pytest.mark.asyncio
-@patch("teleclaude.core.next_machine.core._emit_prepare_event")
-async def test_plan_with_valid_referenced_paths_advances_to_plan_review(
-    _mock_emit: MagicMock,
-    tmp_path: Path,
-) -> None:
-    """When all referenced paths exist, machine advances to plan review."""
-    from teleclaude.core.next_machine.core import (
-        next_prepare,
-        read_phase_state,
-        write_phase_state,
-    )
-
-    cwd, slug = _make_todo(tmp_path)
-    _write_file(tmp_path / "todos" / slug, "input.md")
-    _write_file(tmp_path / "todos" / slug, "implementation-plan.md")
-
-    (tmp_path / "teleclaude").mkdir(exist_ok=True)
-    _write_file(tmp_path / "teleclaude", "real_file.py", "# real python file")
-
-    state = read_phase_state(cwd, slug)
-    state["prepare_phase"] = "plan_drafting"
-    state["requirements_review"] = {
-        "verdict": "approve",
-        "reviewed_at": "",
-        "findings_count": 0,
-        "rounds": 0,
-        "baseline_commit": "",
-        "findings": [],
-    }
-    state["grounding"] = {
-        "valid": True,
-        "base_sha": "abc123",
-        "input_digest": "",
-        "referenced_paths": ["teleclaude/real_file.py"],
-        "last_grounded_at": "",
-        "invalidated_at": "",
-        "invalidation_reason": "",
-    }
-    write_phase_state(cwd, slug, state)
-
-    mock_db = MagicMock()
-
-    with patch(
-        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
-        new_callable=AsyncMock,
-        return_value="guidance",
-    ):
-        with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
-                result = await next_prepare(mock_db, slug, cwd)
-
     assert "next-review-plan" in result or "DISPATCH" in result or "plan_review" in result.lower()
-    assert "nonexistent" not in result
 
 
 @pytest.mark.asyncio

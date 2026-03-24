@@ -382,33 +382,6 @@ async def _prepare_step_plan_drafting(
 
     has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
     if has_plan:
-        # R16: check that all referenced_paths exist before advancing to plan review
-        grounding = state.get("grounding", {})
-        referenced_paths: list[str] = []
-        if isinstance(grounding, dict):
-            rp = grounding.get("referenced_paths", [])
-            referenced_paths = [p for p in (rp if isinstance(rp, list) else []) if isinstance(p, str)]
-        missing_paths = [p for p in referenced_paths if not Path(cwd, p).exists()]
-        if missing_paths:
-            guidance = await compose_agent_guidance(db)
-            missing_list = "\n".join(f"- {p}" for p in missing_paths)
-            return False, format_tool_call(
-                ToolCallRequest(
-                    command=SlashCommand.NEXT_PREPARE_DRAFT,
-                    args=slug,
-                    project=cwd,
-                    guidance=guidance,
-                    subfolder=f"{WORKTREE_DIR}/{slug}",
-                    note=(
-                        f"FIX MODE: todos/{slug}/implementation-plan.md references {len(missing_paths)} "
-                        f"path(s) that do not exist in the codebase. Correct the paths or remove "
-                        f"references to non-existent files, then rewrite implementation-plan.md."
-                    ),
-                    next_call=f"telec todo prepare {slug}",
-                    additional_context=f"Missing referenced paths:\n{missing_list}",
-                )
-            )
-
         stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.PLAN_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
