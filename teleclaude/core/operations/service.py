@@ -537,7 +537,8 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
     async def _heartbeat_loop(self, operation_id: str, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=self._heartbeat_interval_s)
+                async with asyncio.timeout(self._heartbeat_interval_s):
+                    await stop_event.wait()
             except TimeoutError:
                 await self._db.touch_operation(operation_id, datetime.now(UTC).isoformat())
 

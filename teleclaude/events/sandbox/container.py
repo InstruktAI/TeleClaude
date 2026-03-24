@@ -264,7 +264,8 @@ class SandboxContainerManager:
         """Monitor the running sandbox container and restart it on failed health checks."""
         while not shutdown_event.is_set():
             try:
-                await asyncio.wait_for(asyncio.shield(shutdown_event.wait()), timeout=_HEALTH_INTERVAL)
+                async with asyncio.timeout(_HEALTH_INTERVAL):
+                    await shutdown_event.wait()
                 return  # shutdown requested
             except TimeoutError:
                 pass
@@ -280,7 +281,8 @@ class SandboxContainerManager:
         """Monitor the cartridge directory and start or stop the sidecar on changes."""
         while not shutdown_event.is_set():
             try:
-                await asyncio.wait_for(asyncio.shield(shutdown_event.wait()), timeout=_CARTRIDGE_POLL_INTERVAL)
+                async with asyncio.timeout(_CARTRIDGE_POLL_INTERVAL):
+                    await shutdown_event.wait()
                 return  # shutdown requested
             except TimeoutError:
                 pass

@@ -1,17 +1,36 @@
 schema_version: 2
 phase: in_progress
 kind: bug
-current: input_assessment
-history: []
+current: finalize_ready
+history:
+- source: input_assessment
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-24T15:13:24.383958+00:00'
+  metadata: {}
+- source: build_complete
+  target: review_approved
+  by: mark-phase
+  at: '2026-03-24T15:13:32.945012+00:00'
+  metadata: {}
+- source: review_approved
+  target: finalize_ready
+  by: mark-phase
+  at: '2026-03-24T15:14:32.685856+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
-  status: pending
+  status: ready
+  branch: asyncio-task-naming
+  sha: db989762510a6406eda6ba145a131c50ac395915
+  ready_at: '2026-03-24T15:14:34.682280+00:00'
+  worker_session_id: mark-phase
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 1
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: 32cc8520f3523809d076642ba0ef877f7703dbcc
 unresolved_findings: []
 resolved_findings: []
 grounding:

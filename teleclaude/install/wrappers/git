@@ -1,9 +1,9 @@
-#!/usr/bin/env -S uv run --quiet
-# /// script
-# requires-python = ">=3.11"
-# dependencies = []
-# ///
+#!/usr/bin/env python3
 """Git wrapper for TeleClaude sessions.
+
+Pure stdlib Python — no external dependencies. Uses subprocess to call the
+real git binary. Cannot use gitpython or uv run because both call git
+internally, causing infinite recursion when this script IS git on PATH.
 
 Three-tier permission model for agent sessions:
   DESTRUCTIVE  — blocked for all agent roles, no override
@@ -13,7 +13,6 @@ Three-tier permission model for agent sessions:
 Human sessions: git is allowed within the current working directory tree.
 No system_role and no human_role in identity file → fail fast.
 
-Uses gitpython to execute commands — no subprocess delegation to binaries.
 Installed via `telec init` as a symlink at ~/.teleclaude/bin/git.
 """
 
@@ -21,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,42 +42,18 @@ def _find_real_git() -> str:
     sys.exit(1)
 
 
-_gitpython = None  # lazy-loaded in run_git / get_current_branch
-
-
-def _get_gitpython():  # type: ignore[no-untyped-def]
-    global _gitpython  # noqa: PLW0603
-    if _gitpython is None:
-        os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = _find_real_git()
-        import git  # pylint: disable=import-outside-toplevel
-
-        _gitpython = git
-    return _gitpython
-
-
 def run_git(args: list[str]) -> None:
-    """Execute a git command via gitpython with auto-stash disabled."""
-    gp = _get_gitpython()
+    """Run the real git binary with auto-stash disabled."""
+    real = _find_real_git()
     env = os.environ.copy()
     count = int(env.get("GIT_CONFIG_COUNT", "0"))
+    env["GIT_CONFIG_COUNT"] = str(count + 2)
     env[f"GIT_CONFIG_KEY_{count}"] = "rebase.autoStash"
     env[f"GIT_CONFIG_VALUE_{count}"] = "false"
     env[f"GIT_CONFIG_KEY_{count + 1}"] = "merge.autoStash"
     env[f"GIT_CONFIG_VALUE_{count + 1}"] = "false"
-    env["GIT_CONFIG_COUNT"] = str(count + 2)
-
-    try:
-        cmd = gp.cmd.Git()
-        cmd.update_environment(**{k: v for k, v in env.items() if k.startswith("GIT_CONFIG")})
-        output = cmd.execute(["git"] + args, with_extended_output=False)
-        if output:
-            print(output)
-    except gp.exc.GitCommandError as exc:
-        if exc.stderr:
-            print(exc.stderr, file=sys.stderr, end="")
-        if exc.stdout:
-            print(exc.stdout, end="")
-        sys.exit(exc.status if isinstance(exc.status, int) else 1)
+    result = subprocess.run([real] + args, env=env, check=False)
+    raise SystemExit(result.returncode)
 
 
 def log_invocation(role: str, subcmd: str, args: list[str]) -> None:
@@ -195,11 +171,14 @@ def check_human_directory_scope(args: list[str]) -> None:
 
 def get_current_branch(dir_args: list[str]) -> str:
     """Get the current branch name."""
-    gp = _get_gitpython()
+    real = _find_real_git()
     try:
-        cmd = gp.cmd.Git()
-        return cmd.execute(["git"] + dir_args + ["rev-parse", "--abbrev-ref", "HEAD"]).strip()
-    except gp.exc.GitCommandError:
+        result = subprocess.run(
+            [real] + dir_args + ["rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
         return ""
 
 

@@ -917,7 +917,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
 
                 if row is None:
                     try:
-                        await asyncio.wait_for(queue_state.notify.wait(), timeout=HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S)
+                        async with asyncio.timeout(HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S):
+                            await queue_state.notify.wait()
                     except TimeoutError:
                         async with queue_state.lock:
                             if not queue_state.pending:

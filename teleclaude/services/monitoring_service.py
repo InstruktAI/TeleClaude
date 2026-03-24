@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 # Resource pressure thresholds
 _FD_WARN = 200
-_ASYNCIO_TASKS_WARN = 500
+_ASYNCIO_TASKS_WARN = 150
 _LOOP_LAG_WARN_MS = 1000.0
 
 

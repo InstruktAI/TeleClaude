@@ -39,7 +39,8 @@ class IngestScheduler:
         logger.info("IngestScheduler started (interval=%ds)", self._interval)
         while not shutdown_event.is_set():
             try:
-                await asyncio.wait_for(shutdown_event.wait(), timeout=self._interval)
+                async with asyncio.timeout(self._interval):
+                    await shutdown_event.wait()
                 # shutdown_event was set
                 break
             except TimeoutError:
