@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from teleclaude.core.integration.formatters import (
+    _format_anomalies,
     _format_commit_decision,
     _format_conflict_decision,
     _format_error,
@@ -73,6 +74,34 @@ def test_format_queue_empty_returns_string():
     assert isinstance(result, str)
     assert "3" in result
     assert "1" in result
+
+
+def test_format_anomalies_empty_returns_empty_string():
+    assert _format_anomalies([]) == ""
+
+
+def test_format_anomalies_single_warning():
+    result = _format_anomalies(["deliver_to_delivered failed for my-slug"])
+    assert "Anomalies" in result
+    assert "deliver_to_delivered failed for my-slug" in result
+
+
+def test_format_anomalies_multiple_warnings():
+    result = _format_anomalies(["warning A", "warning B"])
+    assert "Anomalies" in result
+    assert "- warning A" in result
+    assert "- warning B" in result
+
+
+def test_format_queue_empty_without_warnings():
+    result = _format_queue_empty(3, 1, 5000)
+    assert "Anomalies" not in result
+
+
+def test_format_queue_empty_with_warnings():
+    result = _format_queue_empty(3, 1, 5000, warnings=["bookkeeping commit failed"])
+    assert "Anomalies" in result
+    assert "bookkeeping commit failed" in result
 
 
 def test_format_error_returns_string_with_code():

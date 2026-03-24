@@ -115,6 +115,53 @@ def test_write_checkpoint_updates_last_updated_at(tmp_path: Path) -> None:
     datetime.fromisoformat(restored.last_updated_at)  # must be valid ISO-8601
 
 
+def test_warnings_round_trips(tmp_path: Path) -> None:
+    """Warnings field round-trips through write/read."""
+    path = tmp_path / "checkpoint.json"
+    checkpoint = IntegrationCheckpoint(
+        phase=IntegrationPhase.DELIVERY_BOOKKEEPING.value,
+        candidate_slug="my-slug",
+        candidate_branch="my-branch",
+        candidate_sha="abc123",
+        lease_token=None,
+        items_processed=1,
+        items_blocked=0,
+        started_at="2024-01-01T12:00:00+00:00",
+        last_updated_at="2024-01-01T12:00:00+00:00",
+        error_context=None,
+        pre_merge_head=None,
+        warnings=["deliver_to_delivered failed for my-slug", "git rm failed"],
+    )
+    _write_checkpoint(path, checkpoint)
+    restored = _read_checkpoint(path)
+    assert restored.warnings == ["deliver_to_delivered failed for my-slug", "git rm failed"]
+
+
+def test_old_checkpoint_without_warnings_reads_as_empty_list(tmp_path: Path) -> None:
+    """Backward compat: old checkpoint files without warnings key read as []."""
+    import json
+
+    path = tmp_path / "checkpoint.json"
+    # Write a checkpoint without the warnings field (simulating old format)
+    payload = {
+        "version": 1,
+        "phase": "idle",
+        "candidate_slug": None,
+        "candidate_branch": None,
+        "candidate_sha": None,
+        "lease_token": None,
+        "items_processed": 0,
+        "items_blocked": 0,
+        "started_at": "2024-01-01T12:00:00+00:00",
+        "last_updated_at": "2024-01-01T12:00:00+00:00",
+        "error_context": None,
+        "pre_merge_head": None,
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    restored = _read_checkpoint(path)
+    assert restored.warnings == []
+
+
 def test_write_checkpoint_is_atomic(tmp_path: Path) -> None:
     """Verify no .tmp file left behind after successful write."""
     path = tmp_path / "checkpoint.json"

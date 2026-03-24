@@ -6,6 +6,14 @@ No imports from state_machine.py or step_functions.py (circular-import guard).
 from __future__ import annotations
 
 
+def _format_anomalies(warnings: list[str]) -> str:
+    """Render accumulated anomalies for agent-facing output. Empty when no warnings."""
+    if not warnings:
+        return ""
+    items = "\n".join(f"- {w}" for w in warnings)
+    return f"\n\n## Anomalies\n\nThe following non-fatal issues occurred during this integration session:\n{items}"
+
+
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 def _format_commit_decision(
     slug: str,
@@ -14,6 +22,8 @@ def _format_commit_decision(
     branch_log: str,
     requirements: str,
     impl_plan: str,
+    *,
+    warnings: list[str] | None = None,
 ) -> str:
     return f"""INTEGRATION DECISION: SQUASH COMMIT REQUIRED
 
@@ -43,10 +53,14 @@ Staged changes are ready for commit.
 3. Run: git -C trees/_integration commit -m '<your message>'
 4. Then call: telec todo integrate
 
-NEXT: Compose and execute git commit in trees/_integration, then call telec todo integrate"""
+NEXT: Compose and execute git commit in trees/_integration, then call telec todo integrate""" + _format_anomalies(
+        warnings or []
+    )
 
 
-def _format_conflict_decision(slug: str, branch: str, conflicted_files: list[str]) -> str:
+def _format_conflict_decision(
+    slug: str, branch: str, conflicted_files: list[str], *, warnings: list[str] | None = None
+) -> str:
     file_list = "\n".join(f"  - {f}" for f in conflicted_files) if conflicted_files else "  (none detected)"
     return f"""INTEGRATION DECISION: CONFLICT RESOLUTION REQUIRED
 
@@ -73,10 +87,12 @@ Full procedure: `telec docs get software-development/procedure/lifecycle/integra
 
 If unresolvable, call telec todo integrate without committing.
 
-NEXT: Resolve conflicts in trees/_integration, stage, commit, then call telec todo integrate"""
+NEXT: Resolve conflicts in trees/_integration, stage, commit, then call telec todo integrate""" + _format_anomalies(
+        warnings or []
+    )
 
 
-def _format_push_rejected(rejection_reason: str, slug: str) -> str:
+def _format_push_rejected(rejection_reason: str, slug: str, *, warnings: list[str] | None = None) -> str:
     return f"""INTEGRATION DECISION: PUSH REJECTION RECOVERY
 
 Candidate: {slug}
@@ -94,7 +110,9 @@ Rejection output:
 4. Push again: git -C trees/_integration push origin HEAD:main
 5. Then call: telec todo integrate
 
-NEXT: Rebase in trees/_integration, resolve (if needed), push, then call telec todo integrate"""
+NEXT: Rebase in trees/_integration, resolve (if needed), push, then call telec todo integrate""" + _format_anomalies(
+        warnings or []
+    )
 
 
 def _format_lease_busy(holder_session_id: str) -> str:
@@ -108,8 +126,8 @@ Exit this session immediately. The active integrator will drain the queue.
 NEXT: End this session — another integrator is already active"""
 
 
-def _format_pull_blocked(pull_stderr: str, slug: str) -> str:
-    return f"""INTEGRATION DECISION: REPO ROOT SYNC BLOCKED
+def _format_pull_blocked(pull_stderr: str, slug: str, *, warnings: list[str] | None = None) -> str:
+    base = f"""INTEGRATION DECISION: REPO ROOT SYNC BLOCKED
 
 Candidate: {slug} — delivery pushed to origin/main successfully.
 
@@ -136,10 +154,14 @@ starting work on local main will see stale files as truth.
    - After all conflicts resolved: git stash drop
    - Then call: telec todo integrate
 
-NEXT: Inform user, wait for confirmation, stash/pull/pop, resolve conflicts if any, then call telec todo integrate"""
+NEXT: Inform user, wait for confirmation, stash/pull/pop, resolve conflicts if any, \
+then call telec todo integrate"""
+    return base + _format_anomalies(warnings or [])
 
 
-def _format_queue_empty(items_processed: int, items_blocked: int, duration_ms: int) -> str:
+def _format_queue_empty(
+    items_processed: int, items_blocked: int, duration_ms: int, *, warnings: list[str] | None = None
+) -> str:
     return f"""INTEGRATION COMPLETE: Queue empty
 
 Candidates processed: {items_processed}
@@ -148,7 +170,7 @@ Duration: {duration_ms}ms
 
 The integration queue is empty.
 
-NEXT: End this session — integration complete"""
+NEXT: End this session — integration complete""" + _format_anomalies(warnings or [])
 
 
 def _format_error(code: str, message: str) -> str:
@@ -156,6 +178,7 @@ def _format_error(code: str, message: str) -> str:
 
 
 __all__ = [
+    "_format_anomalies",
     "_format_commit_decision",
     "_format_conflict_decision",
     "_format_error",

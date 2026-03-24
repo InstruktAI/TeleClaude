@@ -102,6 +102,7 @@ def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
     if initial_checkpoint.phase == IntegrationPhase.IDLE.value:
         initial_checkpoint.items_processed = 0
         initial_checkpoint.items_blocked = 0
+        initial_checkpoint.warnings = []
         _write_checkpoint(checkpoint_path, initial_checkpoint)
 
     for _iter in range(_LOOP_LIMIT):
@@ -239,7 +240,12 @@ def _step(  # pylint: disable=too-many-arguments,too-many-return-statements
 
     if phase == IntegrationPhase.COMPLETED:
         elapsed_ms = int((perf_counter() - started) * 1000)
-        return False, _format_queue_empty(checkpoint.items_processed, checkpoint.items_blocked, elapsed_ms)
+        return False, _format_queue_empty(
+            checkpoint.items_processed,
+            checkpoint.items_blocked,
+            elapsed_ms,
+            warnings=checkpoint.warnings or [],
+        )
 
     return False, _format_error("UNHANDLED_PHASE", f"No handler for phase: {phase.value}")
 

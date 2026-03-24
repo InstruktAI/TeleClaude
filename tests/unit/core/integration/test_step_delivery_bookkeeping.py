@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import yaml
@@ -44,6 +45,7 @@ def _make_checkpoint(
         last_updated_at="2026-01-01T00:00:00+00:00",
         error_context=None,
         pre_merge_head="b" * 40,
+        warnings=[],
     )
     cp_path = tmp_path / "integrate-state.json"
     _write_checkpoint(cp_path, cp)
@@ -235,6 +237,7 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
         last_updated_at="2026-01-01T00:00:00+00:00",
         error_context=None,
         pre_merge_head="b" * 40,
+        warnings=[],
     )
     cp_path = tmp_path / "integrate-state.json"
     _write_checkpoint(cp_path, cp)
@@ -366,3 +369,147 @@ def test_reconcile_preserves_valid_entries(tmp_path: Path) -> None:
 
     assert removed == []
     assert _read_roadmap_slugs(tmp_path) == ["item-a", "item-b"]
+
+
+# --- Anomaly capture tests ---
+
+
+def _base_mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+    """Default mock that succeeds on everything."""
+    if args[:2] == ["diff", "--cached"]:
+        return 1, "", ""  # staged changes exist
+    if args[0] == "push":
+        return 0, "ok", ""
+    if args[:2] == ["rev-parse", "HEAD"]:
+        return 0, "c" * 40 + "\n", ""
+    return 0, "", ""
+
+
+def _run_bookkeeping_with_mock(
+    tmp_path: Path,
+    mock_run_git: Any,
+    *,
+    mock_deliver_result: bool = True,
+) -> IntegrationCheckpoint:
+    """Run _step_delivery_bookkeeping with given mocks and return checkpoint."""
+    slug = "my-feature"
+    wt = tmp_path / "trees" / "_integration"
+    wt.mkdir(parents=True, exist_ok=True)
+    (wt / "todos" / slug).mkdir(parents=True, exist_ok=True)
+
+    cp, cp_path = _make_checkpoint(tmp_path)
+
+    with (
+        patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
+        patch("teleclaude.core.next_machine.core.deliver_to_delivered", return_value=mock_deliver_result),
+        patch("teleclaude.core.next_machine.icebox.clean_dependency_references"),
+        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
+        patch("teleclaude.core.next_machine.delivery.reconcile_roadmap_after_merge", return_value=[]),
+    ):
+        _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
+
+    return cp
+
+
+def test_anomaly_deliver_to_delivered_fails(tmp_path: Path) -> None:
+    """When deliver_to_delivered returns False, warning is captured."""
+    cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git, mock_deliver_result=False)
+    assert cp.warnings
+    assert any("deliver_to_delivered failed" in w for w in cp.warnings)
+
+
+def test_anomaly_bookkeeping_commit_fails(tmp_path: Path) -> None:
+    """When bookkeeping commit fails, warning is captured."""
+
+    def mock_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        if args[0] == "commit" and "delivery bookkeeping" in " ".join(args):
+            return 1, "", "commit failed"
+        return _base_mock_run_git(args, cwd=cwd, timeout=timeout)
+
+    cp = _run_bookkeeping_with_mock(tmp_path, mock_git)
+    assert cp.warnings
+    assert any("Bookkeeping commit failed" in w for w in cp.warnings)
+
+
+def test_anomaly_git_rm_fails(tmp_path: Path) -> None:
+    """When git rm todo dir fails, warning is captured."""
+
+    def mock_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        if args[0] == "rm":
+            return 1, "", "rm failed"
+        return _base_mock_run_git(args, cwd=cwd, timeout=timeout)
+
+    cp = _run_bookkeeping_with_mock(tmp_path, mock_git)
+    assert cp.warnings
+    assert any("git rm todo dir failed" in w for w in cp.warnings)
+
+
+def test_anomaly_cleanup_commit_fails(tmp_path: Path) -> None:
+    """When cleanup commit fails, warning is captured."""
+
+    def mock_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        if args[0] == "commit" and "todo cleanup" in " ".join(args):
+            return 1, "", "cleanup commit failed"
+        return _base_mock_run_git(args, cwd=cwd, timeout=timeout)
+
+    cp = _run_bookkeeping_with_mock(tmp_path, mock_git)
+    assert cp.warnings
+    assert any("Cleanup commit failed" in w for w in cp.warnings)
+
+
+def test_anomaly_none_on_full_success(tmp_path: Path) -> None:
+    """When all steps succeed, no warnings are captured."""
+    cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git)
+    assert cp.warnings == []
+
+
+def test_anomaly_cleanup_delivered_slug_exception(tmp_path: Path) -> None:
+    """When cleanup_delivered_slug throws, warning is captured and flow continues."""
+    from teleclaude.core.integration.readiness_projection import CandidateKey
+    from teleclaude.core.integration.step_functions import _do_cleanup
+
+    cp, cp_path = _make_checkpoint(tmp_path, phase=IntegrationPhase.CLEANUP.value)
+    key = CandidateKey(slug="my-feature", branch="my-feature", sha="a" * 40)
+
+    def mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return 0, "d" * 40 + "\n", ""
+        return 0, "", ""
+
+    with (
+        patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
+        patch(
+            "teleclaude.core.next_machine.core.cleanup_delivered_slug",
+            side_effect=RuntimeError("cleanup boom"),
+        ),
+        patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
+    ):
+        ok, _msg = _do_cleanup(checkpoint=cp, checkpoint_path=cp_path, key=key, cwd=str(tmp_path))
+
+    assert ok is True
+    assert cp.phase == IntegrationPhase.CANDIDATE_DELIVERED.value
+    assert cp.warnings
+    assert any("cleanup_delivered_slug failed" in w for w in cp.warnings)
+
+
+def test_anomaly_push_succeeded_pull_fails(tmp_path: Path) -> None:
+    """When repo root pull fails in PUSH_SUCCEEDED, warning is captured."""
+    cp, cp_path = _make_checkpoint(tmp_path, phase=IntegrationPhase.PUSH_SUCCEEDED.value)
+
+    def mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        if args[:3] == ["pull", "--ff-only", "origin"]:
+            return 1, "", "fatal: not possible to fast-forward"
+        if args[:2] == ["rev-parse", "HEAD"]:
+            return 0, "d" * 40 + "\n", ""
+        return 0, "", ""
+
+    with (
+        patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
+        patch("teleclaude.core.next_machine.core.cleanup_delivered_slug"),
+        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
+        patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
+    ):
+        _step_push_succeeded(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
+
+    assert cp.warnings
+    assert any("pull --ff-only failed" in w for w in cp.warnings)

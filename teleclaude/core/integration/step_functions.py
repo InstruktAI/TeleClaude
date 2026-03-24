@@ -422,7 +422,12 @@ def _step_idle(  # pylint: disable=too-many-arguments,too-many-locals
     if not candidates:
         elapsed_ms = int((perf_counter() - started) * 1000)
         _try_release_lease(lease_store, session_id, checkpoint.lease_token)
-        return False, _format_queue_empty(checkpoint.items_processed, checkpoint.items_blocked, elapsed_ms)
+        return False, _format_queue_empty(
+            checkpoint.items_processed,
+            checkpoint.items_blocked,
+            elapsed_ms,
+            warnings=checkpoint.warnings or [],
+        )
 
     # Acquire lease
     acquire_result = lease_store.acquire(
@@ -616,7 +621,7 @@ def _step_committed(
     return True, ""  # loop into DELIVERY_BOOKKEEPING
 
 
-def _step_delivery_bookkeeping(
+def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-statements
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
@@ -638,8 +643,12 @@ def _step_delivery_bookkeeping(
     # --- Delivery bookkeeping in integration worktree ---
     from teleclaude.core.next_machine.core import deliver_to_delivered  # pylint: disable=import-outside-toplevel
 
+    warnings = checkpoint.warnings if checkpoint.warnings is not None else []
+
     if not deliver_to_delivered(wt, key.slug):
-        logger.warning("deliver_to_delivered failed for %s (not in roadmap or delivered)", key.slug)
+        msg = f"deliver_to_delivered failed for {key.slug} (not in roadmap or delivered)"
+        logger.warning(msg)
+        warnings.append(msg)
 
     # Reconcile stale entries that squash merges may re-introduce
     from teleclaude.core.next_machine.delivery import reconcile_roadmap_after_merge  # noqa: I001  # pylint: disable=import-outside-toplevel
@@ -648,10 +657,15 @@ def _step_delivery_bookkeeping(
     if removed:
         logger.info("Reconciled stale roadmap entries after merge: %s", removed)
 
-    _run_git(["add", "todos/roadmap.yaml", "todos/delivered.yaml"], cwd=wt)
+    rc_add, _, stderr_add = _run_git(["add", "todos/roadmap.yaml", "todos/delivered.yaml"], cwd=wt)
+    if rc_add != 0:
+        msg = f"git add bookkeeping files failed for {key.slug}: {stderr_add.strip()}"
+        logger.warning(msg)
+        warnings.append(msg)
+
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if rc != 0:  # staged changes exist
-        _run_git(
+        rc_commit, _, stderr_commit = _run_git(
             [
                 "commit",
                 "-m",
@@ -663,18 +677,26 @@ def _step_delivery_bookkeeping(
             ],
             cwd=wt,
         )
+        if rc_commit != 0:
+            msg = f"Bookkeeping commit failed for {key.slug}: {stderr_commit.strip()}"
+            logger.warning(msg)
+            warnings.append(msg)
 
     # --- Todo cleanup in integration worktree ---
     from teleclaude.core.next_machine.icebox import clean_dependency_references  # noqa: I001  # pylint: disable=import-outside-toplevel
 
     todo_dir_wt = Path(wt) / "todos" / key.slug
     if todo_dir_wt.exists():
-        _run_git(["rm", "-r", "--force", f"todos/{key.slug}"], cwd=wt)
+        rc_rm, _, stderr_rm = _run_git(["rm", "-r", "--force", f"todos/{key.slug}"], cwd=wt)
+        if rc_rm != 0:
+            msg = f"git rm todo dir failed for {key.slug}: {stderr_rm.strip()}"
+            logger.warning(msg)
+            warnings.append(msg)
     clean_dependency_references(wt, key.slug)
     _run_git(["add", "todos/"], cwd=wt)
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if rc != 0:
-        _run_git(
+        rc_cleanup, _, stderr_cleanup = _run_git(
             [
                 "commit",
                 "-m",
@@ -686,6 +708,12 @@ def _step_delivery_bookkeeping(
             ],
             cwd=wt,
         )
+        if rc_cleanup != 0:
+            msg = f"Cleanup commit failed for {key.slug}: {stderr_cleanup.strip()}"
+            logger.warning(msg)
+            warnings.append(msg)
+
+    checkpoint.warnings = warnings
 
     # --- Push all commits (squash + bookkeeping + cleanup) from integration worktree ---
     rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
@@ -758,11 +786,11 @@ def _step_push_succeeded(
     # but does not block cleanup — the integration worktree already pushed.
     rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
     if rc != 0:
-        logger.warning(
-            "Repo root pull --ff-only failed for %s (non-blocking): %s",
-            key.slug,
-            stderr.strip(),
-        )
+        msg = f"Repo root pull --ff-only failed for {key.slug} (non-blocking): {stderr.strip()}"
+        logger.warning(msg)
+        warnings = checkpoint.warnings if checkpoint.warnings is not None else []
+        warnings.append(msg)
+        checkpoint.warnings = warnings
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
@@ -810,7 +838,14 @@ def _do_cleanup(
 
     # Delegates to cleanup_delivered_slug for physical artifacts (worktree,
     # branch, leftover dirs) plus idempotent dependency reference cleanup.
-    cleanup_delivered_slug(cwd, key.slug, branch=key.branch)
+    try:
+        cleanup_delivered_slug(cwd, key.slug, branch=key.branch)
+    except Exception:  # pylint: disable=broad-exception-caught
+        msg = f"cleanup_delivered_slug failed for {key.slug} (non-fatal)"
+        logger.warning(msg, exc_info=True)
+        warnings = checkpoint.warnings if checkpoint.warnings is not None else []
+        warnings.append(msg)
+        checkpoint.warnings = warnings
 
     _emit_lifecycle_event(
         "integration.candidate.delivered",
