@@ -56,6 +56,3 @@
   after:
   - session-arch-cleanup
 - slug: with-session-staleness
-- slug: output-delivery-redesign
-  description: Adapter-owned output pull architecture — core signals activity, adapters
-    pull transcripts on their own cadence
