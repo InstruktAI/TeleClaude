@@ -48,3 +48,51 @@ class TestTerminateSessionRevokesTokens:
 
         mock_db.revoke_session_tokens.assert_called_once_with("sess-lifecycle")
         mock_invalidate.assert_called_once_with("sess-lifecycle")
+
+
+class TestEndEscalationIfActive:
+    """_end_escalation_if_active clears relay state and emits event when escalated."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_active_escalation_is_cleared_and_event_emitted(self):
+        from teleclaude.core.session_cleanup import _end_escalation_if_active
+
+        session = _make_session(session_id="sess-esc")
+        session.relay_status = "active"
+
+        with (
+            patch("teleclaude.core.session_cleanup.db") as mock_db,
+            patch("teleclaude.core.session_cleanup.event_bus") as mock_event_bus,
+        ):
+            mock_db.update_session = AsyncMock()
+
+            await _end_escalation_if_active(session)
+
+        mock_db.update_session.assert_called_once_with(
+            "sess-esc",
+            relay_status=None,
+            relay_discord_channel_id=None,
+            relay_started_at=None,
+        )
+        mock_event_bus.emit.assert_called_once()
+        assert mock_event_bus.emit.call_args.args[0] == "session.escalation_ended"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_non_escalated_session_is_skipped(self):
+        from teleclaude.core.session_cleanup import _end_escalation_if_active
+
+        session = _make_session(session_id="sess-no-esc")
+        session.relay_status = None
+
+        with (
+            patch("teleclaude.core.session_cleanup.db") as mock_db,
+            patch("teleclaude.core.session_cleanup.event_bus") as mock_event_bus,
+        ):
+            mock_db.update_session = AsyncMock()
+
+            await _end_escalation_if_active(session)
+
+        mock_db.update_session.assert_not_called()
+        mock_event_bus.emit.assert_not_called()

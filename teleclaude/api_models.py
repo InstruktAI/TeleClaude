@@ -1,6 +1,5 @@
 """API request/response models for API server."""
 
-import dataclasses
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -121,7 +120,8 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
     active_agent: str | None = None
     status: str
     visibility: str = "private"
-    session_metadata: dict[str, object] | None = None  # guard: loose-dict
+    system_role: str | None = None
+    job: str | None = None
 
     @classmethod
     def from_core(cls, session: "SessionSnapshot", computer: str | None = None) -> "SessionDTO":
@@ -152,13 +152,12 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
                 "human_email": session.human_email,
                 "human_role": session.human_role,
                 "visibility": session.visibility,
-                "session_metadata": session.session_metadata,
+                "system_role": session.system_role,
+                "job": session.job,
             }
         payload = dict(payload_obj)
         payload["visibility"] = session.visibility or "private"
         payload["computer"] = computer
-        if session.session_metadata:
-            payload["session_metadata"] = dataclasses.asdict(session.session_metadata)
         return cls.model_validate(payload)
 
 

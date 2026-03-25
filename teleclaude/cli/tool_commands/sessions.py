@@ -106,7 +106,7 @@ def handle_sessions_list(args: list[str]) -> None:
     Without --all, lists only sessions spawned by the current session.
     With --all, lists all sessions on the local computer.
     With --closed, includes closed sessions.
-    With --job <job>, filters to sessions whose session_metadata.job matches.
+    With --job <job>, filters to sessions whose job field matches.
 
     Examples:
       telec sessions list

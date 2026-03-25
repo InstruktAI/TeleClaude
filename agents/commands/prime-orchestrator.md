@@ -1,5 +1,4 @@
 ---
-argument-hint: '[optional focus or slug]'
 description: Prime command - bootstrap orchestrator context from creative and software development lifecycles
 ---
 

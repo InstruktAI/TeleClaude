@@ -21,7 +21,7 @@ from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
-from teleclaude.core.models import JsonDict, SessionAdapterMetadata
+from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters._stdin import read_stdin_payload
 from teleclaude.hooks.checkpoint import get_checkpoint_content
@@ -151,9 +151,13 @@ def _resolve_identity_context(session_id: str) -> tuple[str | None, str | None]:
     if not row:
         return None, None
     identity_key: str | None = None
-    if row.adapter_metadata:
-        adapter_meta = SessionAdapterMetadata.from_json(row.adapter_metadata)
-        identity_key = derive_identity_key(adapter_meta)
+    if row.origin_metadata:
+        try:
+            origin = json.loads(row.origin_metadata)
+            if isinstance(origin, dict):
+                identity_key = derive_identity_key(origin)
+        except json.JSONDecodeError:
+            pass
     human_email = getattr(row, "human_email", None)
     if not human_email:
         return identity_key, None

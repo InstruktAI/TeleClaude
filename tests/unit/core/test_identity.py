@@ -172,21 +172,6 @@ class TestResolveTerminalOrigin:
         assert ctx.person_role == "customer"
 
 
-class TestResolveApiOrigin:
-    @pytest.mark.unit
-    def test_api_origin_returns_empty_identity(self):
-        with (
-            patch("teleclaude.core.identity.load_global_config") as mock_cfg,
-            patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
-        ):
-            mock_cfg.return_value = MagicMock(people=[])
-            mock_dir.glob.return_value = []
-            resolver = IdentityResolver()
-            ctx = resolver.resolve("api", {})
-        assert ctx.person_role is None
-        assert ctx.person_name is None
-
-
 class TestGetIdentityResolver:
     @pytest.mark.unit
     def test_returns_identity_resolver_instance(self):

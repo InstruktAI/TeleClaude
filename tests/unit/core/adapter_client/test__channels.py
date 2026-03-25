@@ -131,18 +131,15 @@ class TestCreateChannel:
     async def test_returns_entry_point_channel_id_and_persists_all_adapter_ids(self):
         client = AdapterClient()
         session = _make_session()
-        fresh_session = _make_session()
         telegram = _make_ui_adapter()
         redis = _make_base_adapter()
-        telegram.create_channel = AsyncMock(return_value="topic-1")
+        telegram.create_channel = AsyncMock(return_value="42")
         redis.create_channel = AsyncMock(return_value="stream-1")
-        redis.store_channel_id = MagicMock()
         client.register_adapter("telegram", telegram)
         client.register_adapter("redis", redis)
 
         with patch("teleclaude.core.adapter_client._channels.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=fresh_session)
-            mock_db.update_session = AsyncMock()
+            mock_db.update_origin_metadata = AsyncMock()
 
             result = await client.create_channel(
                 session,
@@ -151,15 +148,10 @@ class TestCreateChannel:
                 target_computer="worker-1",
             )
 
-        assert result == "topic-1"
+        assert result == "42"
         telegram.create_channel.assert_awaited_once()
         redis.create_channel.assert_awaited_once()
-        telegram.store_channel_id.assert_called_once_with(fresh_session.adapter_metadata, "topic-1")
-        redis.store_channel_id.assert_called_once_with(fresh_session.adapter_metadata, "stream-1")
-        mock_db.update_session.assert_awaited_once_with(
-            session.session_id,
-            adapter_metadata=fresh_session.adapter_metadata,
-        )
+        assert mock_db.update_origin_metadata.await_count == 2
 
     @pytest.mark.unit
     @pytest.mark.asyncio

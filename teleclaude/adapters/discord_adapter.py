@@ -30,6 +30,7 @@ from teleclaude.core.events import (
     SessionStatusContext,
     SessionUpdatedContext,
 )
+from teleclaude.core.models import DiscordAdapterMetadata
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -176,30 +177,34 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     # =========================================================================
     # Per-adapter output message tracking
     # =========================================================================
-    # Discord uses adapter_metadata instead of the shared DB column
-    # to prevent cross-adapter races with Telegram.
+    # Discord stores output tracking in origin_metadata to prevent cross-adapter races.
+
+    @staticmethod
+    def _dc(session: Session) -> DiscordAdapterMetadata:
+        """Read Discord section from origin_metadata."""
+        return DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
 
     async def _get_output_message_id(self, session: Session) -> str | None:
         fresh = await db.get_session(session.session_id)
         if fresh:
-            return fresh.get_metadata().get_ui().get_discord().output_message_id
-        return session.get_metadata().get_ui().get_discord().output_message_id
+            return self._dc(fresh).output_message_id
+        return self._dc(session).output_message_id
 
     async def _store_output_message_id(self, session: Session, message_id: str) -> None:
-        meta = session.get_metadata().get_ui().get_discord()
-        meta.output_message_id = message_id
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        dc = self._dc(session)
+        dc.output_message_id = message_id
+        await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
         logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id, message_id)
 
     async def _clear_output_message_id(self, session: Session) -> None:
-        meta = session.get_metadata().get_ui().get_discord()
-        meta.output_message_id = None
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        dc = self._dc(session)
+        dc.output_message_id = None
+        await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
         logger.debug("Cleared discord output_message_id: session=%s", session.session_id)
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Discord thread."""
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = self._dc(session)
         if discord_meta.thread_id is None:
             logger.debug("Typing skipped: no thread_id for session %s", session.session_id)
             return
@@ -267,22 +272,22 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
         # Suppress lifecycle badges in threaded mode — only AI output matters.
         if self.THREADED_OUTPUT:
             return
-        discord_meta = session.get_metadata().get_ui().get_discord()
-        if discord_meta.thread_id is None:
+        dc = self._dc(session)
+        if dc.thread_id is None:
             return  # No Discord thread for this session
         status_text = self._format_lifecycle_status(context.status)
-        existing_id = discord_meta.status_message_id
+        existing_id = dc.status_message_id
         if existing_id:
             edited = await self.edit_message(session, existing_id, status_text)
             if edited:
                 return
             # Edit failed (message deleted?) — clear and fall through to send
-            discord_meta.status_message_id = None
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            dc.status_message_id = None
+            await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
         try:
             new_id = await self.send_message(session, status_text)
-            discord_meta.status_message_id = new_id
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            dc.status_message_id = new_id
+            await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
         except (AdapterError, RuntimeError, OSError) as exc:
             logger.debug(
                 "Discord status message update failed for session %s: %s",
@@ -302,15 +307,15 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
         if not session or not session.native_session_id:
             return
 
-        discord_meta = session.get_metadata().get_ui().get_discord()
-        if discord_meta.thread_id is None:
+        dc = self._dc(session)
+        if dc.thread_id is None:
             return
 
-        topper_message_id = discord_meta.thread_topper_message_id
+        topper_message_id = dc.thread_topper_message_id
         if not topper_message_id:
-            topper_message_id = str(discord_meta.thread_id)
-            discord_meta.thread_topper_message_id = topper_message_id
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            topper_message_id = str(dc.thread_id)
+            dc.thread_topper_message_id = topper_message_id
+            await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
 
         topper = self._build_thread_topper(session)
         edited = await self.edit_message(session, topper_message_id, topper)

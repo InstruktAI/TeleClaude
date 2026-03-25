@@ -26,12 +26,6 @@ from teleclaude.core.agent_coordinator._helpers import (
     _whatsapp_identity_meta,
 )
 from teleclaude.core.models import Session
-from teleclaude.core.models._adapter import (
-    DiscordAdapterMetadata,
-    SessionAdapterMetadata,
-    TelegramAdapterMetadata,
-    WhatsAppAdapterMetadata,
-)
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 
@@ -178,20 +172,17 @@ class TestHasActiveOutputMessage:
 
     @pytest.mark.unit
     def test_telegram_output_message_id_returns_true(self):
-        meta = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(output_message_id="msg-123"))
-        session = _make_session(adapter_metadata=meta)
+        session = _make_session(origin_metadata={"telegram": {"output_message_id": "x"}})
         assert _has_active_output_message(session) is True
 
     @pytest.mark.unit
     def test_discord_output_message_id_returns_true(self):
-        meta = SessionAdapterMetadata(discord=DiscordAdapterMetadata(output_message_id="msg-456"))
-        session = _make_session(adapter_metadata=meta)
+        session = _make_session(origin_metadata={"discord": {"output_message_id": "x"}})
         assert _has_active_output_message(session) is True
 
     @pytest.mark.unit
     def test_whatsapp_output_message_id_returns_true(self):
-        meta = SessionAdapterMetadata(whatsapp=WhatsAppAdapterMetadata(output_message_id="msg-789"))
-        session = _make_session(adapter_metadata=meta)
+        session = _make_session(origin_metadata={"whatsapp": {"output_message_id": "x"}})
         assert _has_active_output_message(session) is True
 
 
@@ -434,10 +425,9 @@ class TestResolveHookActorName:
 
     @pytest.mark.unit
     def test_resolved_person_name_returned(self):
-        meta = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(user_id=12345))
         session = _make_session(
             last_input_origin=InputOrigin.TELEGRAM.value,
-            adapter_metadata=meta,
+            origin_metadata={"telegram": {"user_id": 12345}},
             human_email=None,
         )
         with patch("teleclaude.core.agent_coordinator._helpers.get_identity_resolver") as mock_resolver:

@@ -127,7 +127,9 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             data[b"channel_metadata"] = json.dumps(metadata.channel_metadata).encode("utf-8")
         if metadata.launch_intent:
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
-        origin = metadata.origin or InputOrigin.REDIS.value
+        if not metadata.origin:
+            raise ValueError("MessageMetadata.origin is required for Redis transport")
+        origin = metadata.origin
         data[b"origin"] = origin.encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
@@ -298,7 +300,7 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             b"command": command.encode("utf-8"),
             b"timestamp": str(time.time()).encode("utf-8"),
             b"from_computer": self.computer_name.encode("utf-8"),
-            b"origin": InputOrigin.REDIS.value.encode("utf-8"),
+            b"origin": InputOrigin.TERMINAL.value.encode("utf-8"),
         }
 
         # Add args as JSON if provided

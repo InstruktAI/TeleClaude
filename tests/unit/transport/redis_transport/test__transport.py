@@ -122,23 +122,6 @@ class TestGetAiSessionPollInterval:
         assert transport.get_ai_session_poll_interval() == 0.5
 
 
-class TestStoreChannelId:
-    @pytest.mark.unit
-    def test_sets_channel_id_on_redis_meta(self, transport: RedisTransport) -> None:
-        from teleclaude.core.models import SessionAdapterMetadata
-
-        adapter_metadata = SessionAdapterMetadata()
-        transport.store_channel_id(adapter_metadata, "channel-123")
-        redis_meta = adapter_metadata.get_transport().get_redis()
-        assert redis_meta.channel_id == "channel-123"
-
-    @pytest.mark.unit
-    def test_does_nothing_for_non_session_adapter_metadata(self, transport: RedisTransport) -> None:
-        # Must not raise for unrecognized adapter_metadata type
-        transport.store_channel_id(object(), "channel-123")
-        transport.store_channel_id(None, "channel-123")
-
-
 class TestCacheProperty:
     @pytest.mark.unit
     def test_setting_cache_subscribes_to_changes(self, transport: RedisTransport) -> None:

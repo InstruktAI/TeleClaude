@@ -17,7 +17,7 @@ from telegram import ForumTopic, InlineKeyboardMarkup, Message, Update
 from telegram.error import BadRequest, TelegramError
 
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session, TelegramAdapterMetadata
 from teleclaude.utils import command_retry
 
 from ..base_adapter import AdapterError
@@ -103,7 +103,9 @@ class ChannelOperationsMixin:
             # Re-fetch session inside lock to get latest metadata
             fresh_session = await db.get_session(session_id)
             if fresh_session:
-                existing_topic_id = fresh_session.get_metadata().get_ui().get_telegram().topic_id
+                existing_topic_id = TelegramAdapterMetadata.from_dict(
+                    fresh_session.get_origin_section("telegram")
+                ).topic_id
                 if existing_topic_id:
                     logger.warning(
                         "Session %s already has topic_id %s, returning existing (prevented duplicate)",
@@ -126,9 +128,9 @@ class ChannelOperationsMixin:
             updated_session = await db.get_session(session_id)
             if updated_session:
                 # Use new accessor chain to set topic_id
-                telegram_meta = updated_session.get_metadata().get_ui().get_telegram()
-                telegram_meta.topic_id = int(topic_id)
-                await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
+                tg = TelegramAdapterMetadata.from_dict(updated_session.get_origin_section("telegram"))
+                tg.topic_id = int(topic_id)
+                await db.update_origin_metadata(session_id, "telegram", tg.to_dict())
 
             return str(topic_id)
 
@@ -166,7 +168,7 @@ class ChannelOperationsMixin:
         """Update topic title."""
         self._ensure_started()
 
-        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        topic_id = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram")).topic_id
         if topic_id is None:
             raise AdapterError("Session missing telegram topic_id")
 
@@ -186,7 +188,7 @@ class ChannelOperationsMixin:
         """Soft-close forum topic (can be reopened)."""
         self._ensure_started()
 
-        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        topic_id = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram")).topic_id
         if topic_id is None:
             logger.debug(
                 "Skipping Telegram close_channel for session %s: topic_id missing",
@@ -211,7 +213,7 @@ class ChannelOperationsMixin:
         """Reopen a closed forum topic."""
         self._ensure_started()
 
-        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        topic_id = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram")).topic_id
         if topic_id is None:
             raise AdapterError("Session missing telegram topic_id")
 
@@ -232,7 +234,7 @@ class ChannelOperationsMixin:
         """Delete forum topic (permanent)."""
         self._ensure_started()
 
-        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        topic_id = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram")).topic_id
         if topic_id is None:
             logger.debug(
                 "Skipping Telegram delete_channel for session %s: topic_id missing",
@@ -261,9 +263,9 @@ class ChannelOperationsMixin:
         # Clear persisted topic_id so maintenance replay does not retry this session.
         fresh_session = await db.get_session(session.session_id)
         if fresh_session:
-            telegram_meta = fresh_session.get_metadata().get_ui().get_telegram()
-            telegram_meta.topic_id = None
-            await db.update_session(session.session_id, adapter_metadata=fresh_session.adapter_metadata)
+            tg = TelegramAdapterMetadata.from_dict(fresh_session.get_origin_section("telegram"))
+            tg.topic_id = None
+            await db.update_origin_metadata(session.session_id, "telegram", tg.to_dict())
             logger.debug("Cleared topic_id for session %s", session.session_id)
 
         return True
@@ -306,7 +308,7 @@ class ChannelOperationsMixin:
 
         thread_id = message.message_thread_id
 
-        sessions = await db.get_sessions_by_adapter_metadata(
+        sessions = await db.get_sessions_by_origin_metadata(
             "telegram",
             "topic_id",
             thread_id,

@@ -1,6 +1,5 @@
 """Database base class: lifecycle, static helpers, and shared infrastructure."""
 
-import dataclasses
 import json
 import os
 import tempfile
@@ -11,11 +10,9 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from instrukt_ai_logging import get_logger
 from sqlalchemy import event, text
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import DB_IN_MEMORY
@@ -23,41 +20,16 @@ from teleclaude.core.migrations.runner import run_pending_migrations
 
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
-from ..models import Session, SessionAdapterMetadata, SessionMetadata
+from ..models import Session
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
 
-_SM_FIELDS = {"system_role", "job", "human_email", "human_role", "principal"}
-
 
 class DbBase:
     """Database base class: init, lifecycle, and shared helpers."""
-
-    @staticmethod
-    def _serialize_adapter_metadata(
-        value: SessionAdapterMetadata
-        | dict[str, object]  # guard: loose-dict - Adapter metadata JSON payload.
-        | str
-        | None,
-    ) -> str | None:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            return value
-        if isinstance(value, dict):
-            return json.dumps(value)
-        return value.to_json()
-
-    @staticmethod
-    def _serialize_session_metadata(
-        value: SessionMetadata | None,
-    ) -> str | None:
-        if value is None:
-            return None
-        return json.dumps(dataclasses.asdict(value))
 
     @staticmethod
     def _coerce_datetime(value: datetime | str | None) -> datetime | None:
@@ -69,17 +41,12 @@ class DbBase:
 
     @staticmethod
     def _to_core_session(row: db_models.Session) -> Session:
-        adapter_metadata = (
-            SessionAdapterMetadata.from_json(row.adapter_metadata)
-            if isinstance(row.adapter_metadata, str) and row.adapter_metadata
-            else SessionAdapterMetadata()
-        )
-        session_metadata: SessionMetadata | None = None
-        if row.session_metadata:
+        origin_metadata: dict[str, object] = {}  # guard: loose-dict - JSON blob from DB
+        if hasattr(row, "origin_metadata") and row.origin_metadata:
             try:
-                _raw = json.loads(row.session_metadata)
-                if isinstance(_raw, dict):
-                    session_metadata = SessionMetadata(**{k: v for k, v in _raw.items() if k in _SM_FIELDS})
+                parsed = json.loads(row.origin_metadata)
+                if isinstance(parsed, dict):
+                    origin_metadata = parsed
             except json.JSONDecodeError:
                 pass
 
@@ -89,8 +56,9 @@ class DbBase:
             tmux_session_name=row.tmux_session_name,
             last_input_origin=row.last_input_origin,
             title=row.title or "",
-            adapter_metadata=adapter_metadata,
-            session_metadata=session_metadata,
+            origin_metadata=origin_metadata,
+            system_role=row.system_role if hasattr(row, "system_role") else None,
+            job=row.job if hasattr(row, "job") else None,
             created_at=DbBase._coerce_datetime(row.created_at),
             last_activity=DbBase._coerce_datetime(row.last_activity),
             closed_at=DbBase._coerce_datetime(row.closed_at),
@@ -200,45 +168,6 @@ class DbBase:
             cursor.execute("PRAGMA busy_timeout = 5000")  # guard: raw-sql
             cursor.execute("PRAGMA cache_size = -8000")  # guard: raw-sql  8MB per connection
             cursor.close()
-
-        await self._normalize_adapter_metadata()
-
-    async def _normalize_adapter_metadata(self) -> None:
-        """Normalize adapter_metadata types (e.g., topic_id stored as string)."""
-        async with self._session() as session:
-            try:
-                result = await session.exec(select(db_models.Session))
-            except OperationalError:
-                return
-            rows = result.all()
-            if not rows:
-                return
-
-            any_updated = False
-            for row in rows:
-                raw = row.adapter_metadata
-                if not isinstance(raw, str) or not raw:
-                    continue
-                try:
-                    parsed: object = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(parsed, dict):
-                    continue
-                tg = parsed.get("telegram")
-                row_updated = False
-                if isinstance(tg, dict):
-                    topic_id = tg.get("topic_id")
-                    if isinstance(topic_id, str) and topic_id.isdigit():
-                        tg["topic_id"] = int(topic_id)
-                        row_updated = True
-                if row_updated:
-                    row.adapter_metadata = json.dumps(parsed)
-                    session.add(row)
-                    any_updated = True
-
-            if any_updated:
-                await session.commit()
 
     def _session(self) -> SqlAsyncSession:
         """Create an async ORM session from the initialized session factory."""

@@ -343,6 +343,7 @@ class CommandService:
             relay_status="active",
             relay_discord_channel_id=str(thread_id),
             relay_started_at=datetime.now(UTC).isoformat(),
+            lifecycle_status="escalated",
         )
         event_bus.emit(
             "session.escalation_started",  # type: ignore[arg-type]
@@ -364,22 +365,22 @@ class CommandService:
         """Spawn a new agent session for a slash command without a caller session identity.
 
         Used for daemon-internal spawning (e.g. integration_bridge) where no
-        human caller session is available.  The session_metadata is derived from
-        COMMAND_ROLE_MAP so auth can identify system_role and job.
+        human caller session is available.  system_role and job are derived from
+        COMMAND_ROLE_MAP so auth can identify the session's role.
         """
         from teleclaude.core.command_mapper import CommandMapper  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.models import MessageMetadata, SessionMetadata  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
         from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
 
         role_info = COMMAND_ROLE_MAP.get(command)
-        session_meta = SessionMetadata(system_role=role_info[0], job=role_info[1].value) if role_info else None
         full_command = f"/{command.value} {args}".rstrip() if args else f"/{command.value}"
         auto_command = f"agent_then_message {agent} {thinking_mode} {shlex.quote(full_command)}"
         metadata = MessageMetadata(
-            origin=InputOrigin.API.value,
+            origin=InputOrigin.TERMINAL.value,
             title=full_command,
             project_path=project_path,
-            session_metadata=session_meta,
+            system_role=role_info[0] if role_info else None,
+            job=role_info[1].value if role_info else None,
             auto_command=auto_command,
         )
         cmd = CommandMapper.map_api_input(

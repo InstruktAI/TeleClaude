@@ -458,7 +458,7 @@ Usage:
 
         topic_id = update.message.message_thread_id
 
-        sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id, include_closed=True)
+        sessions = await db.get_sessions_by_origin_metadata("telegram", "topic_id", topic_id, include_closed=True)
 
         if not sessions:
             logger.warning("No session found for topic %s", topic_id)
@@ -510,7 +510,7 @@ Usage:
 
         Returns True when a closed session event was emitted, False otherwise.
         """
-        sessions = await db.get_sessions_by_adapter_metadata(
+        sessions = await db.get_sessions_by_origin_metadata(
             "telegram",
             "topic_id",
             topic_id,

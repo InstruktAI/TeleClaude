@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
 
 from teleclaude.core.db import Db
 from teleclaude.core.events import TeleClaudeEvents
-from teleclaude.core.models import SessionAdapterMetadata, SessionField, SessionMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import SessionField
 
 pytestmark = pytest.mark.asyncio
+
+
+def _section(data: dict[str, object], key: str) -> dict[str, Any]:  # guard: loose-dict - JSON section extract
+    """Extract a platform section from origin_metadata, narrowing the type."""
+    val = data[key]
+    assert isinstance(val, dict)
+    return cast(dict[str, Any], val)  # guard: loose-dict - runtime-checked above
 
 
 async def test_create_session_uses_default_title_and_emits_started_event(db: Db) -> None:
@@ -37,7 +45,7 @@ async def test_create_headless_session_persists_headless_without_emitting_starte
         session = await db.create_headless_session(
             session_id="headless-001",
             computer_name="builder-mac",
-            last_input_origin="api",
+            last_input_origin="terminal",
             title="Headless",
             active_agent="codex",
             native_session_id="native-123",
@@ -77,7 +85,7 @@ async def test_session_queries_apply_lifecycle_filters_and_counts(db: Db) -> Non
     headless = await db.create_headless_session(
         session_id="sess-headless",
         computer_name="builder-mac",
-        last_input_origin="api",
+        last_input_origin="terminal",
         title="Headless",
         active_agent="codex",
         native_session_id="native-1",
@@ -129,7 +137,7 @@ async def test_session_queries_apply_lifecycle_filters_and_counts(db: Db) -> Non
     assert [session.session_id for session in active_sessions] == ["sess-active"]
 
 
-async def test_update_session_persists_adapter_metadata_auto_timestamps_and_emits_updated_event(db: Db) -> None:
+async def test_update_session_persists_fields_auto_timestamps_and_emits_updated_event(db: Db) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-001",
@@ -141,7 +149,6 @@ async def test_update_session_persists_adapter_metadata_auto_timestamps_and_emit
     with patch("teleclaude.core.db._sessions.event_bus.emit") as mock_emit:
         await db.update_session(
             "sess-001",
-            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(output_suppressed=True)),
             last_message_sent="hello",
             last_output_raw="summary",
             invalid_field="ignored",
@@ -150,7 +157,6 @@ async def test_update_session_persists_adapter_metadata_auto_timestamps_and_emit
     session = await db.get_session("sess-001")
 
     assert session is not None
-    assert session.adapter_metadata.get_ui().get_telegram().output_suppressed is True
     assert session.last_message_sent == "hello"
     assert session.last_message_sent_at is not None
     assert session.last_output_raw == "summary"
@@ -159,7 +165,6 @@ async def test_update_session_persists_adapter_metadata_auto_timestamps_and_emit
     assert mock_emit.call_args.args[0] == TeleClaudeEvents.SESSION_UPDATED
     assert mock_emit.call_args.args[1].session_id == "sess-001"
     assert set(mock_emit.call_args.args[1].updated_fields) >= {
-        SessionField.ADAPTER_METADATA.value,
         SessionField.LAST_MESSAGE_SENT.value,
         SessionField.LAST_MESSAGE_SENT_AT.value,
         SessionField.LAST_OUTPUT_RAW.value,
@@ -257,6 +262,89 @@ async def test_pending_deletions_output_message_and_notification_helpers_round_t
     assert await db.get_pending_deletions("sess-001", deletion_type="feedback") == []
 
 
+async def test_update_origin_metadata_creates_section_for_new_platform(db: Db) -> None:
+    await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-001",
+        last_input_origin="telegram",
+        title="Origin Test",
+        session_id="sess-origin",
+        emit_session_started=False,
+    )
+    await db.update_origin_metadata("sess-origin", "telegram", {"topic_id": 42, "user_id": 99})
+    session = await db.get_session("sess-origin")
+
+    assert session is not None
+    data = session.origin_metadata
+    assert data["platform"] == "telegram"
+    tg = _section(data, "telegram")
+    assert tg["topic_id"] == 42
+    assert tg["user_id"] == 99
+
+
+async def test_update_origin_metadata_preserves_other_platform_sections(db: Db) -> None:
+    await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-001",
+        last_input_origin="telegram",
+        title="Multi Platform",
+        session_id="sess-multi",
+        emit_session_started=False,
+    )
+    await db.update_origin_metadata("sess-multi", "telegram", {"topic_id": 42})
+    await db.update_origin_metadata("sess-multi", "discord", {"guild_id": 100})
+    session = await db.get_session("sess-multi")
+
+    assert session is not None
+    data = session.origin_metadata
+    assert _section(data, "telegram")["topic_id"] == 42
+    assert _section(data, "discord")["guild_id"] == 100
+    assert data["platform"] == "discord"
+
+
+async def test_update_origin_metadata_merges_within_platform_section(db: Db) -> None:
+    await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-001",
+        last_input_origin="telegram",
+        title="Merge Test",
+        session_id="sess-merge",
+        emit_session_started=False,
+    )
+    await db.update_origin_metadata("sess-merge", "telegram", {"topic_id": 42})
+    await db.update_origin_metadata("sess-merge", "telegram", {"user_id": 99})
+    session = await db.get_session("sess-merge")
+
+    assert session is not None
+    data = session.origin_metadata
+    tg = _section(data, "telegram")
+    assert tg["topic_id"] == 42
+    assert tg["user_id"] == 99
+
+
+async def test_update_origin_metadata_on_no_prior_metadata(db: Db) -> None:
+    await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-001",
+        last_input_origin="telegram",
+        title="No Prior",
+        session_id="sess-empty",
+        emit_session_started=False,
+    )
+    session_before = await db.get_session("sess-empty")
+    assert session_before is not None
+    tg_before = session_before.origin_metadata.get("telegram")
+    assert not isinstance(tg_before, dict) or "topic_id" not in tg_before
+
+    await db.update_origin_metadata("sess-empty", "telegram", {"topic_id": 1})
+    session = await db.get_session("sess-empty")
+
+    assert session is not None
+    data = session.origin_metadata
+    assert data["platform"] == "telegram"
+    assert _section(data, "telegram")["topic_id"] == 1
+
+
 async def test_adapter_metadata_and_title_pattern_queries_apply_current_filters(db: Db) -> None:
     await db.create_session(
         computer_name="builder-mac",
@@ -264,24 +352,25 @@ async def test_adapter_metadata_and_title_pattern_queries_apply_current_filters(
         last_input_origin="telegram",
         title="Task Active",
         session_id="sess-active",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=42)),
-        session_metadata=SessionMetadata(system_role="worker", job="chartest"),
+        system_role="worker",
+        job="chartest",
         emit_session_started=False,
     )
+    await db.update_session("sess-active", origin_metadata='{"telegram": {"topic_id": 42}}')
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-closed",
         last_input_origin="telegram",
         title="Task Closed",
         session_id="sess-closed",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=42)),
         emit_session_started=False,
     )
+    await db.update_session("sess-closed", origin_metadata='{"telegram": {"topic_id": 42}}')
     await db.close_session("sess-closed")
     await db.create_headless_session(
         session_id="sess-headless",
         computer_name="builder-mac",
-        last_input_origin="api",
+        last_input_origin="terminal",
         title="Task Headless",
         active_agent="codex",
         native_session_id="native-1",
@@ -291,7 +380,7 @@ async def test_adapter_metadata_and_title_pattern_queries_apply_current_filters(
         human_role="admin",
     )
 
-    adapter_matches = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", 42)
+    adapter_matches = await db.get_sessions_by_origin_metadata("telegram", "topic_id", 42)
     title_matches = await db.get_sessions_by_title_pattern("Task")
 
     assert [session.session_id for session in adapter_matches] == ["sess-active"]

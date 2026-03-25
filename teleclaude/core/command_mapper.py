@@ -20,6 +20,12 @@ from teleclaude.types.commands import (
     StartAgentCommand,
 )
 
+
+def _require_origin() -> str:
+    """Fail-fast: origin must be provided by caller."""
+    raise ValueError("MessageMetadata.origin is required - caller must set it")
+
+
 _KEY_COMMANDS = {
     "cancel",
     "cancel2x",
@@ -181,7 +187,7 @@ class CommandMapper:
         """Map Redis inbound message to internal command."""
         cmd_name, args = parse_command_string(command_str)
         if not origin:
-            origin = InputOrigin.REDIS.value
+            raise ValueError("Redis inbound message missing origin")
         launch_intent_obj: SessionLaunchIntent | None = None
         if isinstance(launch_intent, dict):
             launch_intent_obj = SessionLaunchIntent.from_dict(launch_intent)  # type: ignore[arg-type]
@@ -312,7 +318,8 @@ class CommandMapper:
                 channel_metadata=metadata.channel_metadata,
                 launch_intent=metadata.launch_intent,
                 auto_command=metadata.auto_command,
-                session_metadata=metadata.session_metadata,
+                system_role=metadata.system_role,
+                job=metadata.job,
                 skip_listener_registration=skip_listener_registration,
             )
 
@@ -325,12 +332,12 @@ class CommandMapper:
             payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
             meta_actor_id, meta_actor_name, meta_actor_avatar = CommandMapper._extract_actor_from_channel_metadata(
                 metadata.channel_metadata,
-                metadata.origin or InputOrigin.API.value,
+                metadata.origin or _require_origin(),
             )
             return ProcessMessageCommand(
                 session_id=session_id,
                 text=str(payload.get("text", "")),
-                origin=metadata.origin or InputOrigin.API.value,
+                origin=metadata.origin or _require_origin(),
                 actor_id=payload_actor_id or meta_actor_id,
                 actor_name=payload_actor_name or meta_actor_name,
                 actor_avatar_url=payload_actor_avatar or meta_actor_avatar,
@@ -354,7 +361,7 @@ class CommandMapper:
             payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
             meta_actor_id, meta_actor_name, meta_actor_avatar = CommandMapper._extract_actor_from_channel_metadata(
                 metadata.channel_metadata,
-                metadata.origin or InputOrigin.API.value,
+                metadata.origin or _require_origin(),
             )
             return HandleVoiceCommand(
                 session_id=session_id,
@@ -362,7 +369,7 @@ class CommandMapper:
                 duration=cast(float | None, payload.get("duration")),
                 message_id=cast(str | None, payload.get("message_id")),
                 message_thread_id=cast(int | None, payload.get("message_thread_id")),
-                origin=metadata.origin or InputOrigin.API.value,
+                origin=metadata.origin or _require_origin(),
                 actor_id=payload_actor_id or meta_actor_id,
                 actor_name=payload_actor_name or meta_actor_name,
                 actor_avatar_url=payload_actor_avatar or meta_actor_avatar,

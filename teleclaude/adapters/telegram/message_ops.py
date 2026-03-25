@@ -23,7 +23,7 @@ from telegram import (
 from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
 
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES, UI_MESSAGE_MAX_CHARS
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import MessageMetadata, TelegramAdapterMetadata
 from teleclaude.utils import command_retry
 from teleclaude.utils.markdown import (
     _required_markdown_closers_from_state,
@@ -165,7 +165,7 @@ class MessageOperationsMixin:
                     text = f"{text}\n\n---\n"
 
         # Skip when topic_id absent (channel still creating, or headless session without a topic).
-        telegram_meta = session.get_metadata().get_ui().get_telegram()
+        telegram_meta = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
         topic_id = telegram_meta.topic_id
         if not topic_id:
             logger.debug("send_message: skipping, topic_id not ready for session %s", session.session_id)
@@ -415,7 +415,7 @@ class MessageOperationsMixin:
         _ = metadata
 
         # Skip when topic_id absent (channel still creating, or headless session without a topic).
-        telegram_meta = session.get_metadata().get_ui().get_telegram()
+        telegram_meta = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
         topic_id = telegram_meta.topic_id
         if not topic_id:
             logger.debug("send_file: skipping, topic_id not ready for session %s", session.session_id)

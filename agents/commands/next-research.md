@@ -1,6 +1,6 @@
 ---
-description: Research third-party documentation and update index
 argument-hint: '[research brief]'
+description: Research third-party documentation and update index
 ---
 
 # Research

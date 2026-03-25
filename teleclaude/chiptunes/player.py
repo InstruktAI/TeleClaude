@@ -27,6 +27,21 @@ logger = get_logger(__name__)
 _PREBUFFER_SECONDS = 2.5  # seconds of audio pre-buffered before stream starts
 _QUEUE_MAX_CHUNKS = 400  # maximum queue depth (~400 frames at 50Hz ≈ 8s)
 _SAMPLE_RATE = 48000
+_DEVICE_POLL_INTERVAL_S = 2.0  # how often to check for default output device changes
+
+
+def _get_default_output_device() -> int | None:  # used by ChiptunesPlayer._open_stream and _device_monitor_loop
+    """Return the current default output device index, or None on failure."""
+    if not _sounddevice_available:
+        return None
+    try:
+        raw: object = sd.default.device  # pyright: ignore[reportUnknownMemberType]
+        if isinstance(raw, (tuple, list)):  # pyright: ignore[reportUnnecessaryIsInstance]
+            val = raw[1]
+            return int(val) if val is not None else None
+        return int(str(raw)) if raw is not None else None
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None
 
 
 class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
@@ -53,6 +68,8 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._playback_position_seconds = 0.0
         self._position_lock = threading.Lock()
         self.on_track_end: Callable[[str | None], None] | None = None
+        self._stream_device_id: int | None = None
+        self._device_monitor_thread: threading.Thread | None = None
 
     @property
     def is_playing(self) -> bool:
@@ -255,7 +272,9 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                     callback=self._stream_callback,
                 )
                 self._stream = stream
+                self._stream_device_id = _get_default_output_device()
                 stream.start()
+                self._start_device_monitor()
                 return True
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.error("Failed to open audio stream: %s", exc)
@@ -269,11 +288,52 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 return
             stream = self._stream
             self._stream = None
+            self._stream_device_id = None
         try:
             stream.stop()  # type: ignore
             stream.close()  # type: ignore
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.debug("Stream cleanup error: %s", exc)
+
+    def _start_device_monitor(self) -> None:
+        """Start the default-device polling thread if not already running."""
+        if self._device_monitor_thread is not None and self._device_monitor_thread.is_alive():
+            return
+        self._device_monitor_thread = threading.Thread(
+            target=self._device_monitor_loop,
+            daemon=True,
+            name="chiptunes-device-monitor",
+        )
+        self._device_monitor_thread.start()
+
+    def _device_monitor_loop(self) -> None:
+        """Poll for default output device changes and reopen the stream when needed."""
+        while not self._stop_event.wait(_DEVICE_POLL_INTERVAL_S):
+            with self._pause_lock:
+                if self._paused:
+                    continue
+            with self._stream_lock:
+                if self._stream is None:
+                    continue
+                current_default = _get_default_output_device()
+                if current_default is None or current_default == self._stream_device_id:
+                    continue
+                logger.info(
+                    "Default output device changed (%s -> %s), reopening audio stream",
+                    self._stream_device_id,
+                    current_default,
+                )
+                old_stream = self._stream
+                self._stream = None
+            # Close old stream outside the lock
+            try:
+                old_stream.stop()  # type: ignore
+                old_stream.close()  # type: ignore
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.debug("Old stream cleanup on device switch: %s", exc)
+            # Open new stream on the new default device
+            if not self._open_stream():
+                logger.warning("Failed to reopen stream after device change")
 
     def _enqueue_pcm(self, pcm: bytes, frame_duration: float) -> bool:
         """Push one rendered frame without long blocking in the daemon process."""
@@ -370,6 +430,11 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             self._playback_position_seconds = 0.0
 
         self._close_stream()
+
+        # Wait for device monitor to exit (it checks _stop_event)
+        if self._device_monitor_thread is not None:
+            self._device_monitor_thread.join(timeout=_DEVICE_POLL_INTERVAL_S + 1.0)
+            self._device_monitor_thread = None
 
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=2.0)

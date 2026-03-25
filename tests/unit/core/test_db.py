@@ -1,81 +1,28 @@
 # guard: no-companion
-"""Tests for teleclaude.core.db — principal resolution."""
+"""Tests for teleclaude.core.db — principal resolution edge cases.
+
+Core principal resolution is tested in test__sync.py with real Session objects.
+This file covers edge cases that benefit from explicit construction.
+"""
 
 from __future__ import annotations
-
-from dataclasses import dataclass
-from unittest.mock import MagicMock
 
 import pytest
 
 from teleclaude.core.db import resolve_session_principal
-from teleclaude.core.db._sync import SessionIdentityError
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+from teleclaude.core.models import Session
 
 
-@dataclass
-class _FakeMetadata:
-    system_role: str | None = None
-
-
-def _make_session(
-    session_id: str = "sess-001",
-    human_email: str | None = None,
-    human_role: str | None = None,
-    principal: str | None = None,
-    system_role: str | None = None,
-) -> MagicMock:
-    session = MagicMock()
-    session.session_id = session_id
-    session.human_email = human_email
-    session.human_role = human_role
-    session.principal = principal
-    session.session_metadata = _FakeMetadata(system_role=system_role) if system_role else None
-    return session
-
-
-# ---------------------------------------------------------------------------
-# resolve_session_principal
-# ---------------------------------------------------------------------------
-
-
-class TestResolveSessionPrincipal:
-    """Tests for the resolve_session_principal() helper."""
-
-    @pytest.mark.unit
-    def test_human_session_returns_human_principal(self):
-        session = _make_session(human_email="alice@example.com", human_role="admin")
-        principal, role = resolve_session_principal(session)
-        assert principal == "human:alice@example.com"
-        assert role == "admin"
-
-    @pytest.mark.unit
-    def test_human_session_defaults_role_to_customer(self):
-        session = _make_session(human_email="alice@example.com", human_role=None)
-        principal, role = resolve_session_principal(session)
-        assert principal == "human:alice@example.com"
-        assert role == "customer"
-
-    @pytest.mark.unit
-    def test_system_session_uses_full_session_id(self):
-        session = _make_session(session_id="abc-def-123", human_email=None, system_role="worker")
-        principal, role = resolve_session_principal(session)
-        assert principal == "system:abc-def-123"
-        assert "abc-def-123" in principal
-        assert role == "worker"
-
-    @pytest.mark.unit
-    def test_no_identity_raises(self):
-        session = _make_session(session_id="anon-123", human_email=None, human_role="customer")
-        with pytest.raises(SessionIdentityError):
-            resolve_session_principal(session)
-
-    @pytest.mark.unit
-    def test_system_principal_does_not_truncate_id(self):
-        long_id = "a" * 64
-        session = _make_session(session_id=long_id, human_email=None, system_role="worker")
-        principal, _ = resolve_session_principal(session)
-        assert long_id in principal
+@pytest.mark.unit
+def test_system_principal_does_not_truncate_session_id():
+    """Identity invariant: system principals must use the full UUID, never truncated."""
+    long_id = "a" * 64
+    session = Session(
+        session_id=long_id,
+        computer_name="x",
+        tmux_session_name="t",
+        title="S",
+        system_role="worker",
+    )
+    principal, _ = resolve_session_principal(session)
+    assert long_id in principal

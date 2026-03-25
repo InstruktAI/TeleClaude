@@ -94,7 +94,7 @@ class TestSendRequest:
         mock_redis.xadd = AsyncMock(return_value=b"1234567890-0")
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
-        result = await transport.send_request("target", "list_sessions", MessageMetadata())
+        result = await transport.send_request("target", "list_sessions", MessageMetadata(origin="terminal"))
         assert result == "1234567890-0"
 
     @pytest.mark.unit
@@ -103,7 +103,7 @@ class TestSendRequest:
         mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
-        await transport.send_request("target-computer", "list_sessions", MessageMetadata())
+        await transport.send_request("target-computer", "list_sessions", MessageMetadata(origin="terminal"))
         stream_arg = mock_redis.xadd.call_args.args[0]
         assert stream_arg == "messages:target-computer"
 
@@ -113,7 +113,7 @@ class TestSendRequest:
         mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
-        await transport.send_request("target", "restart", MessageMetadata())
+        await transport.send_request("target", "restart", MessageMetadata(origin="terminal"))
         data_arg = mock_redis.xadd.call_args.args[1]
         assert data_arg[b"command"] == b"restart"
 
@@ -123,7 +123,9 @@ class TestSendRequest:
         mock_redis.xadd = AsyncMock(return_value=b"msg-id-0")
         transport._get_redis = AsyncMock(return_value=mock_redis)
 
-        await transport.send_request("target", "process_message", MessageMetadata(), session_id="sess-1")
+        await transport.send_request(
+            "target", "process_message", MessageMetadata(origin="terminal"), session_id="sess-1"
+        )
         data_arg = mock_redis.xadd.call_args.args[1]
         assert data_arg[b"session_id"] == b"sess-1"
 

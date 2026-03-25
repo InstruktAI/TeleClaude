@@ -82,7 +82,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--all", desc="Show all sessions"),
                     Flag("--closed", desc="Include closed sessions"),
-                    Flag("--job", desc="Filter by session_metadata.job value"),
+                    Flag("--job", desc="Filter by job value"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),

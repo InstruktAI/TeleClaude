@@ -7,7 +7,6 @@ import pytest
 
 from teleclaude.adapters.discord.channel_ops import ChannelOperationsMixin
 from teleclaude.core.models import Session
-from teleclaude.core.models._adapter import SessionAdapterMetadata
 
 pytestmark = pytest.mark.unit
 
@@ -79,25 +78,3 @@ def test_resolve_forum_context_falls_back_to_help_desk_for_unknown_parent() -> N
 
     assert forum_type == "help_desk"
     assert Path(forum_path).name == "help-desk"
-
-
-def test_store_channel_id_keeps_help_desk_forum_as_channel_id() -> None:
-    adapter = DummyChannelOperations()
-    metadata = SessionAdapterMetadata()
-
-    adapter.store_channel_id(metadata, "100")
-
-    discord_meta = metadata.get_ui().get_discord()
-    assert discord_meta.channel_id == 100
-    assert discord_meta.thread_id is None
-
-
-def test_store_channel_id_records_thread_id_and_preserves_help_desk_forum() -> None:
-    adapter = DummyChannelOperations()
-    metadata = SessionAdapterMetadata()
-
-    adapter.store_channel_id(metadata, "999")
-
-    discord_meta = metadata.get_ui().get_discord()
-    assert discord_meta.channel_id == 100
-    assert discord_meta.thread_id == 999

@@ -71,11 +71,7 @@ async def ensure_tmux_with_identity(
     if principal.startswith("system:"):
         session_token = await db.issue_session_token(session.session_id, principal, _role)
 
-    system_role = (
-        session.session_metadata.system_role.strip().lower()
-        if session.session_metadata and session.session_metadata.system_role
-        else None
-    )
+    system_role = session.system_role.strip().lower() if session.system_role else None
 
     write_session_identity_to(
         directory=session_tmp,

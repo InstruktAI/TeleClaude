@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from teleclaude.core.models._session import Session, SessionMetadata
+from teleclaude.core.models._session import Session
 from teleclaude.core.models._snapshot import (
     ComputerInfo,
     ProjectInfo,
@@ -94,8 +94,7 @@ class TestSessionSnapshot:
         assert "visibility" in d
 
     @pytest.mark.unit
-    def test_to_dict_session_metadata_serialized_as_dict(self):
-        sm = SessionMetadata(system_role="agent")
+    def test_to_dict_system_role_and_job_serialized(self):
         snap = SessionSnapshot(
             session_id="s1",
             last_input_origin=None,
@@ -103,14 +102,15 @@ class TestSessionSnapshot:
             thinking_mode=None,
             active_agent=None,
             status="active",
-            session_metadata=sm,
+            system_role="worker",
+            job="builder",
         )
         d = snap.to_dict()
-        assert isinstance(d["session_metadata"], dict)
-        assert d["session_metadata"]["system_role"] == "agent"
+        assert d["system_role"] == "worker"
+        assert d["job"] == "builder"
 
     @pytest.mark.unit
-    def test_to_dict_no_session_metadata_is_none(self):
+    def test_to_dict_no_system_role_is_none(self):
         snap = SessionSnapshot(
             session_id="s1",
             last_input_origin=None,
@@ -120,7 +120,8 @@ class TestSessionSnapshot:
             status="active",
         )
         d = snap.to_dict()
-        assert d["session_metadata"] is None
+        assert d["system_role"] is None
+        assert d["job"] is None
 
     @pytest.mark.unit
     def test_from_db_session_copies_basic_fields(self):
@@ -200,7 +201,7 @@ class TestSessionSnapshot:
         assert snap.visibility == "private"
 
     @pytest.mark.unit
-    def test_from_dict_session_metadata_dict_parsed(self):
+    def test_from_dict_system_role_and_job_parsed(self):
         data: dict[str, object] = {  # guard: loose-dict - from_dict test input
             "session_id": "s1",
             "title": "T",
@@ -208,11 +209,12 @@ class TestSessionSnapshot:
             "thinking_mode": None,
             "active_agent": None,
             "last_input_origin": None,
-            "session_metadata": {"system_role": "builder", "job": "build"},
+            "system_role": "builder",
+            "job": "build",
         }
         snap = SessionSnapshot.from_dict(data)
-        assert snap.session_metadata is not None
-        assert snap.session_metadata.system_role == "builder"
+        assert snap.system_role == "builder"
+        assert snap.job == "build"
 
 
 class TestComputerInfo:

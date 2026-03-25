@@ -40,7 +40,6 @@ from teleclaude.core.models import (
     MessageMetadata,
     SessionLaunchIntent,
     SessionLaunchKind,
-    SessionMetadata,
     SessionSnapshot,
 )
 from teleclaude.core.origins import InputOrigin
@@ -152,25 +151,15 @@ def _build_channel_metadata(
     return channel_metadata
 
 
-def _build_request_session_metadata(
+def _extract_session_role_fields(
     metadata: JsonDict | None,
-    *,
-    human_email: str | None = None,
-    human_role: str | None = None,
-    principal: str | None = None,
-) -> SessionMetadata | None:
-    """Normalize request metadata into SessionMetadata, merging identity fields."""
-    base_system_role = str(metadata.get("system_role") or "") or None if metadata else None
-    base_job = str(metadata.get("job") or "") or None if metadata else None
-    if not any((base_system_role, base_job, human_email, human_role, principal)):
-        return None
-    return SessionMetadata(
-        system_role=base_system_role,
-        job=base_job,
-        human_email=human_email,
-        human_role=human_role,
-        principal=principal,
-    )
+) -> tuple[str | None, str | None]:
+    """Extract system_role and job from request metadata dict."""
+    if not metadata:
+        return None, None
+    system_role = str(metadata.get("system_role") or "") or None
+    job = str(metadata.get("job") or "") or None
+    return system_role, job
 
 
 def _resolve_enabled_agent(requested_agent: str | None) -> str:
@@ -396,18 +385,15 @@ async def _prepare_create_session(
         channel_metadata = channel_metadata or {}
         channel_metadata["email"] = caller_email
 
-    request_session_meta = _build_request_session_metadata(
-        request.metadata,
-        human_email=caller_email,
-        human_role=request.human_role or identity.human_role,
-    )
+    req_system_role, req_job = _extract_session_role_fields(request.metadata)
     metadata = _build_metadata(
         origin=origin,
         title=request.title or "Untitled",
         project_path=request.project_path,
         subdir=request.subdir,
         channel_metadata=channel_metadata,
-        session_metadata=request_session_meta,
+        system_role=req_system_role,
+        job=req_job,
     )
 
     title = request.title or "Untitled"
@@ -509,7 +495,7 @@ async def list_sessions(
 
         # Job filter: narrows existing visibility results
         if query.job:
-            merged = [s for s in merged if s.session_metadata is not None and s.session_metadata.job == query.job]
+            merged = [s for s in merged if s.job == query.job]
 
         return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
     except Exception as e:

@@ -14,7 +14,7 @@ from teleclaude.core.db._sync import (
     get_session_id_by_tmux_name_sync,
     resolve_session_principal,
 )
-from teleclaude.core.models import Session, SessionAdapterMetadata, SessionMetadata
+from teleclaude.core.models import Session
 
 pytestmark = pytest.mark.asyncio
 
@@ -75,7 +75,6 @@ async def test_resolve_session_principal_prefers_inherited_then_human_then_syste
         computer_name="builder-mac",
         tmux_session_name="tmux-001",
         title="Inherited",
-        adapter_metadata=SessionAdapterMetadata(),
         principal="human:parent@example.com",
         human_role="member",
     )
@@ -84,7 +83,6 @@ async def test_resolve_session_principal_prefers_inherited_then_human_then_syste
         computer_name="builder-mac",
         tmux_session_name="tmux-002",
         title="Human",
-        adapter_metadata=SessionAdapterMetadata(),
         human_email="alice@example.com",
         human_role=None,
     )
@@ -93,8 +91,7 @@ async def test_resolve_session_principal_prefers_inherited_then_human_then_syste
         computer_name="builder-mac",
         tmux_session_name="tmux-003",
         title="System",
-        adapter_metadata=SessionAdapterMetadata(),
-        session_metadata=SessionMetadata(system_role="worker"),
+        system_role="worker",
         human_email=None,
     )
     no_identity = Session(
@@ -102,7 +99,6 @@ async def test_resolve_session_principal_prefers_inherited_then_human_then_syste
         computer_name="builder-mac",
         tmux_session_name="tmux-004",
         title="NoIdentity",
-        adapter_metadata=SessionAdapterMetadata(),
         human_email=None,
     )
 

@@ -201,7 +201,7 @@ class TestSendMessage:
     @pytest.mark.asyncio
     async def test_source_only_messages_with_non_ui_origin_are_dropped(self):
         client = AdapterClient()
-        session = _make_session(last_input_origin="redis")
+        session = _make_session(last_input_origin="terminal")
         telegram = _make_ui_adapter()
         client.register_adapter("telegram", telegram)
 
@@ -375,7 +375,7 @@ class TestBroadcastUserInput:
             await client.broadcast_user_input(
                 session,
                 "hello",
-                InputOrigin.API.value,
+                InputOrigin.TERMINAL.value,
                 actor_id="user-1",
                 actor_name="Alice",
                 actor_avatar_url="https://example.test/avatar.png",
@@ -388,7 +388,7 @@ class TestBroadcastUserInput:
         assert metadata.reflection_actor_id == "user-1"
         assert metadata.reflection_actor_name == "Alice"
         assert metadata.reflection_actor_avatar_url == "https://example.test/avatar.png"
-        assert metadata.reflection_origin == InputOrigin.API.value
+        assert metadata.reflection_origin == InputOrigin.TERMINAL.value
 
 
 class TestChannelUpdates:

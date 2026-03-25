@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
-from teleclaude.core.models import ChannelMetadata, Session
+from teleclaude.core.models import ChannelMetadata, Session, WhatsAppAdapterMetadata
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -19,16 +19,15 @@ from teleclaude.core.models import ChannelMetadata, Session
 
 
 def _make_session(phone_number: str = "+1234567890", **kwargs: object) -> Session:
-    session = Session(
+    wa = WhatsAppAdapterMetadata(phone_number=phone_number)
+    return Session(
         session_id="wa-sess-1",
         computer_name="local",
         tmux_session_name="test",
         title="Test",
+        origin_metadata={"platform": "whatsapp", "whatsapp": wa.to_dict()},
         **kwargs,
     )
-    meta = session.get_metadata().get_ui().get_whatsapp()
-    meta.phone_number = phone_number
-    return session
 
 
 @pytest.fixture
@@ -319,20 +318,19 @@ class TestLifecycleHelpers:
     async def test_close_channel_marks_closed(self, adapter: WhatsAppAdapter) -> None:
         session = _make_session()
         with patch("teleclaude.adapters.whatsapp_adapter.db") as mock_db:
-            mock_db.update_session = AsyncMock()
+            mock_db.update_origin_metadata = AsyncMock()
             result = await adapter.close_channel(session)
         assert result is True
-        assert session.get_metadata().get_ui().get_whatsapp().closed is True
+        mock_db.update_origin_metadata.assert_awaited_once()
 
     @pytest.mark.unit
     async def test_reopen_channel_marks_not_closed(self, adapter: WhatsAppAdapter) -> None:
         session = _make_session()
-        session.get_metadata().get_ui().get_whatsapp().closed = True
         with patch("teleclaude.adapters.whatsapp_adapter.db") as mock_db:
-            mock_db.update_session = AsyncMock()
+            mock_db.update_origin_metadata = AsyncMock()
             result = await adapter.reopen_channel(session)
         assert result is True
-        assert session.get_metadata().get_ui().get_whatsapp().closed is False
+        mock_db.update_origin_metadata.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

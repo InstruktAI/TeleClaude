@@ -719,8 +719,46 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         await self._poll_and_send_output(session_id, tmux_session_name)
 
 
+def _install_event_wait_tracer() -> None:
+    """TEMPORARY DIAGNOSTIC: trace who creates Event.wait tasks."""
+    import traceback as _tb  # pylint: disable=import-outside-toplevel
+
+    _original_wait = asyncio.Event.wait
+    _event_wait_callers: dict[str, int] = {}
+
+    async def _traced_wait(self: asyncio.Event) -> bool:
+        task = asyncio.current_task()
+        if task and task.get_name().startswith("Task-"):
+            frames = _tb.format_stack(limit=10)
+            # Get compact multi-line stack (skip last frame which is this tracer)
+            compact_lines = []
+            for f in frames[:-1]:
+                for line in f.strip().split("\n"):
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("File"):
+                        compact_lines.append(stripped[:100])
+                    elif stripped.startswith("File"):
+                        # Extract just filename:lineno
+                        parts = stripped.split(",")
+                        if len(parts) >= 2:
+                            compact_lines.append(f"{parts[0].split('/')[-1].rstrip('"')}:{parts[1].strip()}")
+            key = " | ".join(compact_lines[-4:])  # last 4 frames
+            _event_wait_callers[key] = _event_wait_callers.get(key, 0) + 1
+            total = sum(_event_wait_callers.values())
+            if total % 20 == 1:
+                _logger = get_logger("teleclaude.diag.event_wait")
+                for k, v in sorted(_event_wait_callers.items(), key=lambda x: -x[1])[:3]:
+                    _logger.warning("Event.wait top caller (x%d): %s", v, k)
+        return await _original_wait(self)
+
+    asyncio.Event.wait = _traced_wait  # type: ignore[assignment]
+
+
 async def main() -> None:
     """Main entry point."""
+    if os.environ.get("TELECLAUDE_TRACE_EVENT_WAIT"):
+        _install_event_wait_tracer()
+
     # Find .env file for daemon constructor
     base_dir = Path(__file__).parent.parent
     env_path = base_dir / ".env"

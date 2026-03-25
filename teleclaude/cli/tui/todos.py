@@ -25,3 +25,4 @@ class TodoItem:  # pylint: disable=too-many-instance-attributes
     prepare_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None
+    todo_path: str | None = None

@@ -17,7 +17,7 @@ from teleclaude import config as teleclaude_config
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata
+from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, Session
 from teleclaude.core.session_utils import get_short_project_name
 
 if TYPE_CHECKING:
@@ -57,25 +57,8 @@ class ChannelOperationsMixin:
     _resolve_parent_forum_id: Callable[[object | None], int | None]
 
     # =========================================================================
-    # store_channel_id / ensure_channel
+    # ensure_channel
     # =========================================================================
-
-    def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
-        """Store Discord channel/thread ids on session adapter metadata."""
-        if not isinstance(adapter_metadata, SessionAdapterMetadata):
-            return
-        parsed = self._parse_optional_int(channel_id)
-        if parsed is None:
-            return
-
-        discord_meta = adapter_metadata.get_ui().get_discord()
-        if self._help_desk_channel_id is not None and parsed != self._help_desk_channel_id:
-            discord_meta.thread_id = parsed
-            if discord_meta.channel_id is None:
-                discord_meta.channel_id = self._help_desk_channel_id
-            return
-
-        discord_meta.channel_id = parsed
 
     async def ensure_channel(self, session: Session) -> Session:
         """Ensure a session has its Discord destination channel or thread provisioned."""
@@ -84,7 +67,7 @@ class ChannelOperationsMixin:
         if fresh:
             session = fresh
 
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         if discord_meta.thread_id is not None:
             return session
 
@@ -225,7 +208,7 @@ class ChannelOperationsMixin:
         if self._client is None:
             raise AdapterError("Discord adapter not started")
 
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
 
         if discord_meta.thread_id is not None:
             return str(discord_meta.thread_id)
@@ -251,7 +234,7 @@ class ChannelOperationsMixin:
             discord_meta.channel_id = target_forum_id
             discord_meta.thread_id = thread_id
             discord_meta.thread_topper_message_id = topper_message_id
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
             return str(thread_id)
 
         if discord_meta.channel_id is not None:
@@ -261,7 +244,7 @@ class ChannelOperationsMixin:
 
     async def update_channel_title(self, session: Session, _title: str) -> bool:
         """Rename an existing Discord thread to match the current session title."""
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         if discord_meta.thread_id is None:
             return False
         thread = await self._get_channel(discord_meta.thread_id)
@@ -284,7 +267,7 @@ class ChannelOperationsMixin:
 
     async def close_channel(self, session: Session) -> bool:
         """Delete the Discord thread for a closed session."""
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         if discord_meta.thread_id is None:
             return False
         thread = await self._get_channel(discord_meta.thread_id)
@@ -304,7 +287,7 @@ class ChannelOperationsMixin:
 
     async def reopen_channel(self, session: Session) -> bool:
         """Reopen an archived Discord thread for an active session."""
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         if discord_meta.thread_id is None:
             return False
         thread = await self._get_channel(discord_meta.thread_id)
@@ -324,7 +307,7 @@ class ChannelOperationsMixin:
 
     async def delete_channel(self, session: Session) -> bool:
         """Delete the Discord thread associated with a session."""
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         if discord_meta.thread_id is None:
             return False
         thread = await self._get_channel(discord_meta.thread_id)
@@ -436,7 +419,7 @@ class ChannelOperationsMixin:
                 return "unknown"
             return "active" if session.relay_status == "active" else "closed"
 
-        sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id, include_closed=True)
+        sessions = await db.get_sessions_by_origin_metadata("discord", "thread_id", thread_id, include_closed=True)
         if not sessions:
             return "unknown"
         if any(s.closed_at is None for s in sessions):

@@ -1,4 +1,10 @@
-"""Adapter metadata types for TeleClaude sessions."""
+"""Adapter metadata types for TeleClaude sessions.
+
+Per-platform dataclasses store adapter-specific state. Each has from_dict/to_dict
+for round-tripping through the origin_metadata JSON column. The container classes
+(SessionAdapterMetadata, UiAdapterMetadata, TransportAdapterMetadata) are kept
+temporarily for migration but will be removed.
+"""
 
 import json
 from dataclasses import dataclass, field
@@ -35,6 +41,20 @@ class PeerInfo:  # pylint: disable=too-many-instance-attributes
     tmux_binary: str | None = None
 
 
+def _int_or_none(value: object) -> int | None:
+    """Coerce to int if possible."""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _str_or_none(value: object) -> str | None:
+    """Coerce to str if not None."""
+    return str(value) if value is not None else None
+
+
 @dataclass
 class TelegramAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter payload shape
     """Telegram-specific adapter metadata."""
@@ -47,6 +67,25 @@ class TelegramAdapterMetadata:  # pylint: disable=too-many-instance-attributes  
     char_offset: int = 0
     user_id: int | None = None
     badge_sent: bool = False
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, object]) -> "TelegramAdapterMetadata":  # guard: loose-dict
+        """Deserialize from a dict with type coercion."""
+        footer = raw.get("footer_message_id") or raw.get("threaded_footer_message_id")
+        return cls(
+            topic_id=_int_or_none(raw.get("topic_id")),
+            output_message_id=_str_or_none(raw.get("output_message_id")),
+            footer_message_id=_str_or_none(footer),
+            output_suppressed=bool(raw.get("output_suppressed", False)),
+            parse_mode=str(raw["parse_mode"]) if raw.get("parse_mode") else None,
+            char_offset=int(raw.get("char_offset", 0)),
+            user_id=_int_or_none(raw.get("user_id")),
+            badge_sent=bool(raw.get("badge_sent", False)),
+        )
+
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
+        """Serialize to dict, excluding None fields."""
+        return dict(asdict_exclude_none(self))
 
 
 @dataclass
@@ -64,6 +103,26 @@ class DiscordAdapterMetadata:  # pylint: disable=too-many-instance-attributes  #
     badge_sent: bool = False
     char_offset: int = 0
 
+    @classmethod
+    def from_dict(cls, raw: dict[str, object]) -> "DiscordAdapterMetadata":  # guard: loose-dict
+        """Deserialize from a dict with type coercion."""
+        return cls(
+            user_id=_str_or_none(raw.get("user_id")),
+            guild_id=_int_or_none(raw.get("guild_id")),
+            channel_id=_int_or_none(raw.get("channel_id")),
+            thread_id=_int_or_none(raw.get("thread_id")),
+            all_sessions_thread_id=_int_or_none(raw.get("all_sessions_thread_id")),
+            output_message_id=_str_or_none(raw.get("output_message_id")),
+            thread_topper_message_id=_str_or_none(raw.get("thread_topper_message_id")),
+            status_message_id=_str_or_none(raw.get("status_message_id")),
+            badge_sent=bool(raw.get("badge_sent", False)),
+            char_offset=int(raw.get("char_offset", 0)),
+        )
+
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
+        """Serialize to dict, excluding None fields."""
+        return dict(asdict_exclude_none(self))
+
 
 @dataclass
 class WhatsAppAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter payload shape
@@ -77,6 +136,74 @@ class WhatsAppAdapterMetadata:  # pylint: disable=too-many-instance-attributes  
     last_customer_message_at: str | None = None
     last_received_message_id: str | None = None
     closed: bool = False
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, object]) -> "WhatsAppAdapterMetadata":  # guard: loose-dict
+        """Deserialize from a dict with type coercion."""
+        return cls(
+            phone_number=_str_or_none(raw.get("phone_number")),
+            conversation_id=_str_or_none(raw.get("conversation_id")),
+            output_message_id=_str_or_none(raw.get("output_message_id")),
+            badge_sent=bool(raw.get("badge_sent", False)),
+            char_offset=int(raw.get("char_offset", 0)),
+            last_customer_message_at=_str_or_none(raw.get("last_customer_message_at")),
+            last_received_message_id=_str_or_none(raw.get("last_received_message_id")),
+            closed=bool(raw.get("closed", False)),
+        )
+
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
+        """Serialize to dict, excluding None fields."""
+        return dict(asdict_exclude_none(self))
+
+
+@dataclass
+class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
+    """Redis-specific adapter metadata."""
+
+    channel_id: str | None = None
+    output_stream: str | None = None
+    target_computer: str | None = None
+    native_session_id: str | None = None
+    project_path: str | None = None
+    last_checkpoint_time: str | None = None
+    title: str | None = None
+    channel_metadata: str | None = None  # JSON string
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, object]) -> "RedisTransportMetadata":  # guard: loose-dict
+        """Deserialize from a dict with type coercion."""
+        channel_meta_val = raw.get("channel_metadata")
+        channel_meta_str: str | None
+        if isinstance(channel_meta_val, dict):
+            channel_meta_str = json.dumps(channel_meta_val)
+        elif channel_meta_val is not None:
+            channel_meta_str = str(channel_meta_val)
+        else:
+            channel_meta_str = None
+        return cls(
+            channel_id=_str_or_none(raw.get("channel_id")),
+            output_stream=_str_or_none(raw.get("output_stream")),
+            target_computer=_str_or_none(raw.get("target_computer")),
+            native_session_id=_str_or_none(raw.get("native_session_id")),
+            project_path=_str_or_none(raw.get("project_path")),
+            last_checkpoint_time=_str_or_none(raw.get("last_checkpoint_time")),
+            title=_str_or_none(raw.get("title")),
+            channel_metadata=channel_meta_str,
+        )
+
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
+        """Serialize to dict, excluding None fields."""
+        return dict(asdict_exclude_none(self))
+
+
+# ---------------------------------------------------------------------------
+# Container classes — MIGRATION SHIM
+#
+# These exist only so existing code that accesses
+# session.adapter_metadata.get_ui().get_telegram() continues to work during
+# the migration to origin_metadata. They will be removed once all adapters
+# read/write through origin_metadata directly.
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -122,20 +249,6 @@ class UiAdapterMetadata:
 
 
 @dataclass
-class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
-    """Redis-specific adapter metadata."""
-
-    channel_id: str | None = None
-    output_stream: str | None = None
-    target_computer: str | None = None
-    native_session_id: str | None = None
-    project_path: str | None = None
-    last_checkpoint_time: str | None = None
-    title: str | None = None
-    channel_metadata: str | None = None  # JSON string
-
-
-@dataclass
 class TransportAdapterMetadata:
     """Metadata container for Transport adapters."""
 
@@ -155,7 +268,10 @@ class TransportAdapterMetadata:
 
 @dataclass
 class SessionAdapterMetadata:
-    """Typed metadata container for all adapters."""
+    """Typed metadata container for all adapters.
+
+    MIGRATION SHIM — will be removed when all adapters use origin_metadata.
+    """
 
     _ui: UiAdapterMetadata = field(default_factory=UiAdapterMetadata)
     _transport: TransportAdapterMetadata = field(default_factory=TransportAdapterMetadata)
@@ -189,34 +305,25 @@ class SessionAdapterMetadata:
         return self._transport
 
     def to_json(self) -> str:
-        """Serialize to JSON string, excluding None fields.
-
-        Flattens adapters back to root keys for backward compatibility.
-        """
-        # manual dict construction to preserve root keys
+        """Serialize to JSON string, excluding None fields."""
         data: dict[str, JsonValue] = {}
         ui_metadata = self.get_ui()
         transport_metadata = self.get_transport()
 
-        # UI Adapters (flattened)
         if ui_metadata.telegram:
-            data["telegram"] = asdict_exclude_none(ui_metadata.telegram)
+            data["telegram"] = ui_metadata.telegram.to_dict()
         if ui_metadata.discord:
-            data["discord"] = asdict_exclude_none(ui_metadata.discord)
+            data["discord"] = ui_metadata.discord.to_dict()
         if ui_metadata.whatsapp:
-            data["whatsapp"] = asdict_exclude_none(ui_metadata.whatsapp)
-
-        # Transport Adapters (flattened)
+            data["whatsapp"] = ui_metadata.whatsapp.to_dict()
         if transport_metadata.redis:
-            data["redis"] = asdict_exclude_none(transport_metadata.redis)
+            data["redis"] = transport_metadata.redis.to_dict()
 
         return json.dumps(data)
 
     @classmethod
-    def from_json(  # pylint: disable=too-many-locals,too-many-statements  # Backward-compatible payload parsing
-        cls, raw: str
-    ) -> "SessionAdapterMetadata":
-        """Deserialize from JSON string, filtering unknown fields per adapter."""
+    def from_json(cls, raw: str) -> "SessionAdapterMetadata":
+        """Deserialize from JSON string."""
         data_obj: object = json.loads(raw)
         telegram_metadata: TelegramAdapterMetadata | None = None
         discord_metadata: DiscordAdapterMetadata | None = None
@@ -226,114 +333,20 @@ class SessionAdapterMetadata:
         if isinstance(data_obj, dict):
             tg_raw = data_obj.get("telegram")
             if isinstance(tg_raw, dict):
-                topic_id_val: object = tg_raw.get("topic_id")
-                output_msg_val: object = tg_raw.get("output_message_id")
-                footer_val: object = tg_raw.get("footer_message_id") or tg_raw.get("threaded_footer_message_id")
-                topic_id: int | None = None
-                if isinstance(topic_id_val, int):
-                    topic_id = topic_id_val
-                elif isinstance(topic_id_val, str) and topic_id_val.isdigit():
-                    topic_id = int(topic_id_val)
-                output_message_id = str(output_msg_val) if output_msg_val is not None else None
-                footer_message_id = str(footer_val) if footer_val is not None else None
-                output_suppressed = bool(tg_raw.get("output_suppressed", False))
-                parse_mode = str(tg_raw.get("parse_mode")) if tg_raw.get("parse_mode") else None
-                char_offset = int(tg_raw.get("char_offset", 0))
-                tg_user_id_val: object = tg_raw.get("user_id")
-                tg_user_id: int | None = None
-                if isinstance(tg_user_id_val, int):
-                    tg_user_id = tg_user_id_val
-                elif isinstance(tg_user_id_val, str) and tg_user_id_val.isdigit():
-                    tg_user_id = int(tg_user_id_val)
-                telegram_metadata = TelegramAdapterMetadata(
-                    topic_id=topic_id,
-                    output_message_id=output_message_id,
-                    footer_message_id=footer_message_id,
-                    output_suppressed=output_suppressed,
-                    parse_mode=parse_mode,
-                    char_offset=char_offset,
-                    user_id=tg_user_id,
-                    badge_sent=bool(tg_raw.get("badge_sent", False)),
-                )
+                telegram_metadata = TelegramAdapterMetadata.from_dict(tg_raw)
 
             discord_raw = data_obj.get("discord")
             if isinstance(discord_raw, dict):
-
-                def _get_int_or_none(key: str) -> int | None:
-                    value = discord_raw.get(key)
-                    if isinstance(value, int):
-                        return value
-                    if isinstance(value, str) and value.isdigit():
-                        return int(value)
-                    return None
-
-                raw_user_id = discord_raw.get("user_id")
-                user_id = str(raw_user_id) if raw_user_id is not None else None
-                raw_output_msg = discord_raw.get("output_message_id")
-                discord_output_message_id = str(raw_output_msg) if raw_output_msg is not None else None
-                raw_topper_msg = discord_raw.get("thread_topper_message_id")
-                discord_topper_message_id = str(raw_topper_msg) if raw_topper_msg is not None else None
-                raw_status_msg = discord_raw.get("status_message_id")
-                discord_status_message_id = str(raw_status_msg) if raw_status_msg is not None else None
-                discord_metadata = DiscordAdapterMetadata(
-                    user_id=user_id,
-                    guild_id=_get_int_or_none("guild_id"),
-                    channel_id=_get_int_or_none("channel_id"),
-                    thread_id=_get_int_or_none("thread_id"),
-                    all_sessions_thread_id=_get_int_or_none("all_sessions_thread_id"),
-                    output_message_id=discord_output_message_id,
-                    thread_topper_message_id=discord_topper_message_id,
-                    status_message_id=discord_status_message_id,
-                    badge_sent=bool(discord_raw.get("badge_sent", False)),
-                    char_offset=int(discord_raw.get("char_offset", 0)),
-                )
+                discord_metadata = DiscordAdapterMetadata.from_dict(discord_raw)
 
             whatsapp_raw = data_obj.get("whatsapp")
             if isinstance(whatsapp_raw, dict):
-
-                def _get_wa_str(key: str) -> str | None:
-                    val = whatsapp_raw.get(key)
-                    return str(val) if val is not None else None
-
-                whatsapp_metadata = WhatsAppAdapterMetadata(
-                    phone_number=_get_wa_str("phone_number"),
-                    conversation_id=_get_wa_str("conversation_id"),
-                    output_message_id=_get_wa_str("output_message_id"),
-                    badge_sent=bool(whatsapp_raw.get("badge_sent", False)),
-                    char_offset=int(whatsapp_raw.get("char_offset", 0)),
-                    last_customer_message_at=_get_wa_str("last_customer_message_at"),
-                    last_received_message_id=_get_wa_str("last_received_message_id"),
-                    closed=bool(whatsapp_raw.get("closed", False)),
-                )
+                whatsapp_metadata = WhatsAppAdapterMetadata.from_dict(whatsapp_raw)
 
             redis_raw = data_obj.get("redis")
             if isinstance(redis_raw, dict):
+                redis_metadata = RedisTransportMetadata.from_dict(redis_raw)
 
-                def _get_str(key: str) -> str | None:
-                    val = redis_raw.get(key)
-                    return str(val) if val is not None else None
-
-                channel_meta_val = redis_raw.get("channel_metadata")
-                channel_meta_str: str | None
-                if isinstance(channel_meta_val, dict):
-                    channel_meta_str = json.dumps(channel_meta_val)
-                elif channel_meta_val is not None:
-                    channel_meta_str = str(channel_meta_val)
-                else:
-                    channel_meta_str = None
-
-                redis_metadata = RedisTransportMetadata(
-                    channel_id=_get_str("channel_id"),
-                    output_stream=_get_str("output_stream"),
-                    target_computer=_get_str("target_computer"),
-                    native_session_id=_get_str("native_session_id"),
-                    project_path=_get_str("project_path"),
-                    last_checkpoint_time=_get_str("last_checkpoint_time"),
-                    title=_get_str("title"),
-                    channel_metadata=channel_meta_str,
-                )
-
-        # Reconstruct hierarchy
         ui_metadata = UiAdapterMetadata(
             _telegram=telegram_metadata, _discord=discord_metadata, _whatsapp=whatsapp_metadata
         )

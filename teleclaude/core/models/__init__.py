@@ -33,7 +33,6 @@ from ._session import (
     SessionField,
     SessionLaunchIntent,
     SessionLaunchKind,
-    SessionMetadata,
     TranscriptFormat,
 )
 from ._snapshot import (
@@ -96,7 +95,6 @@ __all__ = [
     "SessionField",
     "SessionLaunchIntent",
     "SessionLaunchKind",
-    "SessionMetadata",
     "SessionSnapshot",
     "StartSessionArgs",
     "SystemCommandArgs",

@@ -1,16 +1,13 @@
 """Session model and related types for TeleClaude."""
 
-import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, cast
 
-from teleclaude.constants import FIELD_ADAPTER_METADATA
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.session_fields import SessionRecentOutputFields, SessionRecentToolFields
 
-from ._adapter import SessionAdapterMetadata
 from ._types import JsonDict
 
 if TYPE_CHECKING:
@@ -22,17 +19,6 @@ class ChannelMetadata:
     """Per-call metadata for create_channel operations."""
 
     target_computer: str | None = None
-
-
-@dataclass(frozen=True)
-class SessionMetadata:  # pylint: disable=too-few-public-methods  # Identity record container
-    """Typed metadata for session identity and role."""
-
-    system_role: str | None = None  # ROLE_* constant
-    job: str | None = None  # JobRole value
-    human_email: str | None = None
-    human_role: str | None = None
-    principal: str | None = None
 
 
 @dataclass
@@ -49,7 +35,8 @@ class MessageMetadata:  # pylint: disable=too-many-instance-attributes  # Adapte
     project_path: str | None = None
     subdir: str | None = None
     channel_metadata: dict[str, object] | None = None  # guard: loose-dict
-    session_metadata: "SessionMetadata | None" = None
+    system_role: str | None = None
+    job: str | None = None
     auto_command: str | None = None  # legacy adapter boundary (deprecated)
     launch_intent: Optional["SessionLaunchIntent"] = None
     is_transcription: bool = False
@@ -116,7 +103,7 @@ class CleanupTrigger(Enum):
 class SessionField(Enum):
     """Session field names used in updates/events."""
 
-    ADAPTER_METADATA = "adapter_metadata"
+    ORIGIN_METADATA = "origin_metadata"
     TITLE = "title"
     PROJECT_PATH = "project_path"
     SUBDIR = "subdir"
@@ -145,8 +132,9 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
     tmux_session_name: str
     title: str
     last_input_origin: str | None = None
-    adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
-    session_metadata: SessionMetadata | None = None
+    origin_metadata: dict[str, object] = field(default_factory=dict)  # guard: loose-dict - JSON blob from DB
+    system_role: str | None = None
+    job: str | None = None
     created_at: datetime | None = None
     last_activity: datetime | None = None
     closed_at: datetime | None = None
@@ -176,9 +164,12 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
     char_offset: int = 0
     visibility: str | None = "private"
 
-    def get_metadata(self) -> SessionAdapterMetadata:
-        """Get session adapter metadata."""
-        return self.adapter_metadata
+    def get_origin_section(self, key: str) -> dict[str, object]:  # guard: loose-dict - JSON section
+        """Get a platform section from origin_metadata."""
+        section = self.origin_metadata.get(key)
+        if isinstance(section, dict):
+            return dict(section)
+        return {}
 
     def to_dict(self) -> JsonDict:  # pylint: disable=too-many-branches  # Datetime field serialization
         """Convert session to dictionary for JSON serialization."""
@@ -206,13 +197,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
         if self.relay_started_at:
             data["relay_started_at"] = self.relay_started_at.isoformat()
         data["lifecycle_status"] = self.lifecycle_status
-        adapter_meta = self.adapter_metadata
-        if isinstance(adapter_meta, dict):
-            data["adapter_metadata"] = json.dumps(adapter_meta)
-        else:
-            data["adapter_metadata"] = adapter_meta.to_json()
-        if self.session_metadata:
-            data["session_metadata"] = asdict(self.session_metadata)
+        data["origin_metadata"] = self.origin_metadata
         return data
 
     @classmethod
@@ -261,24 +246,11 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             else last_checkpoint_at_raw
         )
 
-        adapter_metadata: SessionAdapterMetadata
-        if FIELD_ADAPTER_METADATA in data and isinstance(data[FIELD_ADAPTER_METADATA], str):
-            adapter_metadata = SessionAdapterMetadata.from_json(data[FIELD_ADAPTER_METADATA])
-        else:
-            adapter_metadata = SessionAdapterMetadata()
-
-        session_metadata_raw = data.get("session_metadata")
-        session_metadata: SessionMetadata | None = None
-        _sm_fields = {"system_role", "job", "human_email", "human_role", "principal"}
-        if isinstance(session_metadata_raw, dict):
-            session_metadata = SessionMetadata(**{k: v for k, v in session_metadata_raw.items() if k in _sm_fields})
-        elif isinstance(session_metadata_raw, str):
-            try:
-                _raw = json.loads(session_metadata_raw)
-                if isinstance(_raw, dict):
-                    session_metadata = SessionMetadata(**{k: v for k, v in _raw.items() if k in _sm_fields})
-            except json.JSONDecodeError:
-                pass
+        # Parse origin_metadata from dict or keep empty
+        origin_raw = data.get("origin_metadata")
+        origin_metadata: dict[str, object] = {}  # guard: loose-dict - JSON blob
+        if isinstance(origin_raw, dict):
+            origin_metadata = dict(origin_raw)
 
         ia_val = data.get("initiated_by_ai")
         initiated_by_ai = bool(ia_val) if ia_val is not None else False
@@ -298,8 +270,9 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             computer_name=_get_optional_str("computer_name") or "",
             tmux_session_name=_get_optional_str("tmux_session_name") or "",
             title=_get_optional_str("title") or "",
-            adapter_metadata=adapter_metadata,
-            session_metadata=session_metadata,
+            origin_metadata=origin_metadata,
+            system_role=_get_optional_str("system_role"),
+            job=_get_optional_str("job"),
             created_at=ensure_utc(created_at) if isinstance(created_at, datetime) else None,
             last_activity=ensure_utc(last_activity) if isinstance(last_activity, datetime) else None,
             closed_at=ensure_utc(closed_at) if isinstance(closed_at, datetime) else None,

@@ -2,26 +2,17 @@
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 
 from teleclaude.cli.telec.help import _usage
+from teleclaude.context_selector import build_context_output
+from teleclaude.core.identity import get_identity_resolver
 
 __all__ = [
     "_handle_docs",
     "_handle_docs_get",
     "_handle_docs_index",
 ]
-
-
-def _build_context_output(**kwargs: object) -> str:
-    result: str = importlib.import_module("teleclaude.context_selector").build_context_output(**kwargs)
-    return result
-
-
-def _resolve_cli_caller_role() -> str | None:
-    result: str | None = importlib.import_module("teleclaude.cli.session_auth").resolve_cli_caller_role()
-    return result
 
 
 def _handle_docs(args: list[str]) -> None:
@@ -84,8 +75,8 @@ def _handle_docs_index(args: list[str]) -> None:
             print(_usage("docs", "index"))
             raise SystemExit(1)
 
-    effective_role = _resolve_cli_caller_role()
-    output = _build_context_output(
+    effective_role = get_identity_resolver().resolve_from_terminal().person_role
+    output = build_context_output(
         areas=areas,
         project_root=project_root,
         snippet_ids=None,
@@ -120,8 +111,8 @@ def _handle_docs_get(args: list[str]) -> None:
         print(_usage("docs", "get"))
         raise SystemExit(1)
 
-    effective_role = _resolve_cli_caller_role()
-    output = _build_context_output(
+    effective_role = get_identity_resolver().resolve_from_terminal().person_role
+    output = build_context_output(
         areas=[],
         project_root=project_root,
         snippet_ids=snippet_ids,

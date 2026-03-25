@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-
-from teleclaude.core.identity import get_identity_resolver
-from teleclaude.session_identity import get_session_id
 
 SESSION_AUTH_DIR = Path("~/.local/state/telec/session-auth").expanduser()
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
@@ -172,40 +168,3 @@ def clear_current_session_email() -> bool:
         return False
     except OSError:
         return False
-
-
-def resolve_cli_caller_role() -> str | None:
-    """Resolve the effective human role for the current CLI caller.
-
-    Two paths (tried in order):
-    1. TTY auth: terminal human logged in via ``telec auth login``.
-    2. Daemon API: dual-factor auth (session_id + tmux session name).
-
-    Returns the effective human role, or None if unidentifiable.
-    """
-    # Path 1: TTY auth file -> IdentityResolver
-    email = read_current_session_email()
-    if email:
-        ctx = get_identity_resolver().resolve_by_email(email)
-        if ctx.person_role:
-            return ctx.person_role
-
-    # Path 2: daemon API — works for any TeleClaude-managed session
-    if not get_session_id():
-        return None
-
-    try:
-        from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
-
-        async def _fetch() -> str | None:
-            api = TelecAPIClient()
-            await api.connect()
-            try:
-                data = await api.get_auth_whoami()
-            finally:
-                await api.close()
-            return data.get("role")
-
-        return asyncio.run(_fetch())
-    except (OSError, RuntimeError, ValueError, KeyError):
-        return None

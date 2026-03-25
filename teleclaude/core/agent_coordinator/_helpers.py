@@ -82,11 +82,10 @@ def _is_codex_synthetic_prompt_event(raw_payload: object) -> bool:
 
 def _has_active_output_message(session: "Session") -> bool:
     """Check if any adapter has an active output message in metadata."""
-    meta = session.get_metadata().get_ui()
     return bool(
-        meta.get_telegram().output_message_id
-        or meta.get_discord().output_message_id
-        or meta.get_whatsapp().output_message_id
+        session.get_origin_section("telegram").get("output_message_id")
+        or session.get_origin_section("discord").get("output_message_id")
+        or session.get_origin_section("whatsapp").get("output_message_id")
     )
 
 
@@ -100,10 +99,11 @@ def _coerce_nonempty_str(value: object) -> str | None:
 
 def _resolve_hook_actor_name(session: "Session") -> str:
     """Resolve actor label for hook-reflected user input."""
-    ui_meta = session.get_metadata().get_ui()
-    telegram_user_id = ui_meta.get_telegram().user_id
-    discord_user_id = ui_meta.get_discord().user_id
-    whatsapp_phone = _coerce_nonempty_str(ui_meta.get_whatsapp().phone_number)
+    tg_uid_raw = session.get_origin_section("telegram").get("user_id")
+    telegram_user_id: int | None = int(str(tg_uid_raw)) if tg_uid_raw is not None else None
+    dc_uid_raw = session.get_origin_section("discord").get("user_id")
+    discord_user_id: str | None = str(dc_uid_raw) if dc_uid_raw is not None else None
+    whatsapp_phone = _coerce_nonempty_str(session.get_origin_section("whatsapp").get("phone_number"))
 
     origin_hint = (session.last_input_origin or "").strip().lower()
     resolver = get_identity_resolver()

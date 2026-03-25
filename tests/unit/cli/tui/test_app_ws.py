@@ -196,7 +196,8 @@ def test_on_session_started_daemon_spawned_session_does_not_auto_focus() -> None
         status="idle",
         computer="c1",
         active_agent="claude",
-        session_metadata={"system_role": "integrator", "job": "integrator"},
+        system_role="integrator",
+        job="integrator",
     )
 
     from teleclaude.cli.tui.messages import SessionStarted
@@ -248,7 +249,8 @@ def test_on_session_started_user_run_session_with_job_auto_focuses() -> None:
         status="idle",
         computer="c1",
         active_agent="claude",
-        session_metadata={"system_role": "integrator", "job": "integrator"},
+        system_role="integrator",
+        job="integrator",
     )
 
     from teleclaude.cli.tui.messages import SessionStarted

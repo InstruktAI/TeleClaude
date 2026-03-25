@@ -15,6 +15,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.tmux_bridge import send_keys_existing_tmux
 
@@ -121,12 +123,18 @@ class RelayOperationsMixin:
         # Inject context into the AI session's tmux
         await send_keys_existing_tmux(session.tmux_session_name, context_block, send_enter=True)
 
-        # Clear relay state
+        # Clear relay state and restore active lifecycle
         await db.update_session(
             session.session_id,
             relay_status=None,
             relay_discord_channel_id=None,
             relay_started_at=None,
+            lifecycle_status="active",
+        )
+
+        event_bus.emit(
+            "session.escalation_ended",  # type: ignore[arg-type]
+            SessionEscalatedPayload(session_id=session.session_id),
         )
 
         logger.info("Agent handback completed for session %s (thread %s)", session.session_id, thread_id)

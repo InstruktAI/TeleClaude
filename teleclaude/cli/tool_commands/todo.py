@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 import uuid
 
 from teleclaude.cli.tool_client import print_json, tool_api_call
-
-_TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
+from teleclaude.cli.tool_commands._receipt import poll_operation
 
 __all__ = [
     "handle_operations",
@@ -165,31 +163,7 @@ def handle_todo_work(args: list[str]) -> None:
         print_json(receipt)
         return
 
-    status = receipt
-    operation_id = status.get("operation_id")
-    if not isinstance(operation_id, str) or not operation_id:
-        print_json(status)
-        return
-
-    try:
-        while status.get("state") not in _TERMINAL_OPERATION_STATES:
-            poll_after_ms = status.get("poll_after_ms")
-            delay_s = 0.25
-            if isinstance(poll_after_ms, int) and poll_after_ms > 0:
-                delay_s = poll_after_ms / 1000.0
-            time.sleep(delay_s)
-            polled = tool_api_call("GET", f"/operations/{operation_id}")
-            if not isinstance(polled, dict):
-                print_json(polled)
-                return
-            status = polled
-    except KeyboardInterrupt:
-        _print_operation_recovery(status)
-        raise SystemExit(130)
-    except SystemExit:
-        _print_operation_recovery(status)
-        raise
-
+    status = poll_operation(receipt, estimated_timeout_ms=600_000)
     print_json(status)
 
 
@@ -235,31 +209,7 @@ def handle_todo_integrate(args: list[str]) -> None:
         print_json(receipt)
         return
 
-    status = receipt
-    operation_id = status.get("operation_id")
-    if not isinstance(operation_id, str) or not operation_id:
-        print_json(status)
-        return
-
-    try:
-        while status.get("state") not in _TERMINAL_OPERATION_STATES:
-            poll_after_ms = status.get("poll_after_ms")
-            delay_s = 0.25
-            if isinstance(poll_after_ms, int) and poll_after_ms > 0:
-                delay_s = poll_after_ms / 1000.0
-            time.sleep(delay_s)
-            polled = tool_api_call("GET", f"/operations/{operation_id}")
-            if not isinstance(polled, dict):
-                print_json(polled)
-                return
-            status = polled
-    except KeyboardInterrupt:
-        _print_operation_recovery(status)
-        raise SystemExit(130)
-    except SystemExit:
-        _print_operation_recovery(status)
-        raise
-
+    status = poll_operation(receipt, estimated_timeout_ms=300_000)
     print_json(status)
 
 
@@ -314,16 +264,6 @@ def handle_operations_get(args: list[str]) -> None:
 
     data = tool_api_call("GET", f"/operations/{operation_id}")
     print_json(data)
-
-
-def _print_operation_recovery(status: dict[str, object]) -> None:  # guard: loose-dict - JSON-deserialized API response
-    operation_id = status.get("operation_id")
-    recovery_command = status.get("recovery_command")
-    if isinstance(recovery_command, str) and recovery_command:
-        print(f"Recovery: {recovery_command}", file=sys.stderr)
-        return
-    if isinstance(operation_id, str) and operation_id:
-        print(f"Recovery: telec operations get {operation_id}", file=sys.stderr)
 
 
 def handle_todo_mark_phase(args: list[str]) -> None:

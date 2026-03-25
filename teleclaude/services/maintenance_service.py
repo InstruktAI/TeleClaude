@@ -151,8 +151,8 @@ class MaintenanceService:
                 continue
 
             # Ensure UI channels exist for output delivery (all origins)
-            telegram_meta = session.get_metadata().get_ui().get_telegram()
-            if not telegram_meta.topic_id:
+            telegram_topic = session.get_origin_section("telegram").get("topic_id")
+            if not telegram_topic:
                 try:
                     await self._client.ensure_ui_channels(session)
                 except Exception as exc:  # pylint: disable=broad-exception-caught

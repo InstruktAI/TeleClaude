@@ -246,11 +246,12 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
         if not session:
             return
 
-        redis_meta = session.get_metadata().get_transport().get_redis()
-        if not redis_meta.target_computer:
+        redis_section = session.get_origin_section("redis")
+        target_computer = redis_section.get("target_computer")
+        if not target_computer:
             return
 
-        initiator_computer = redis_meta.target_computer
+        initiator_computer = str(target_computer)
         if initiator_computer == config.computer.name:
             return
 
@@ -309,11 +310,14 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
                 actor_name = f"system@{sender_computer}"
 
                 try:
+                    sender_origin = (
+                        sender.last_input_origin or InputOrigin.TERMINAL.value if sender else InputOrigin.TERMINAL.value
+                    )
                     if target_computer == config.computer.name:
                         cmd = ProcessMessageCommand(
                             session_id=peer.session_id,
                             text=framed_message,
-                            origin=InputOrigin.REDIS.value,
+                            origin=sender_origin,
                             actor_id=actor_id,
                             actor_name=actor_name,
                         )
@@ -324,7 +328,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
                             command=f"message {shlex.quote(framed_message)}",
                             session_id=peer.session_id,
                             metadata=MessageMetadata(
-                                origin=InputOrigin.REDIS.value,
+                                origin=sender_origin,
                                 channel_metadata={
                                     "actor_id": actor_id,
                                     "actor_name": actor_name,

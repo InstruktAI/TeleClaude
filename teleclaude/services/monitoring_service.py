@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 # Resource pressure thresholds
 _FD_WARN = 200
-_ASYNCIO_TASKS_WARN = 150
+_ASYNCIO_TASKS_WARN = 500
 _LOOP_LAG_WARN_MS = 1000.0
 
 
@@ -44,6 +44,30 @@ def _get_rss_kb() -> int | None:
     if platform.system().lower() == "darwin":
         return int(rss / 1024)
     return rss
+
+
+def _log_unnamed_task_diagnostics(unnamed_coros: list[str]) -> None:
+    """Log diagnostic info for unnamed asyncio tasks."""
+    coro_counts: dict[str, int] = {}
+    for entry in unnamed_coros:
+        key = entry.split(":", 1)[1] if ":" in entry else entry
+        coro_counts[key] = coro_counts.get(key, 0) + 1
+    logger.warning(
+        "Unnamed task coroutines: %s",
+        ", ".join(f"{n}={c}" for n, c in sorted(coro_counts.items(), key=lambda x: -x[1])[:10]),
+    )
+    stacks: dict[str, int] = {}
+    for t in asyncio.all_tasks():
+        if not t.get_name().startswith("Task-"):
+            continue
+        coro = t.get_coro()
+        if coro and "Event.wait" in getattr(coro, "__qualname__", ""):
+            s = " -> ".join(
+                f"{f.f_code.co_filename.split('/')[-1]}:{f.f_lineno}:{f.f_code.co_name}" for f in t.get_stack(limit=6)
+            )
+            stacks[s] = stacks.get(s, 0) + 1
+    for stack, count in sorted(stacks.items(), key=lambda x: -x[1])[:5]:
+        logger.warning("Event.wait stack (x%d): %s", count, stack)
 
 
 class MonitoringService:  # pylint: disable=too-many-instance-attributes
@@ -169,12 +193,19 @@ class MonitoringService:  # pylint: disable=too-many-instance-attributes
         tasks = snapshot.get("asyncio_tasks")
         if isinstance(tasks, int) and tasks > _ASYNCIO_TASKS_WARN:
             breakdown = ""
+            unnamed_coros: list[str] = []
             try:
                 all_tasks = asyncio.all_tasks()
                 name_counts: dict[str, int] = {}
                 for t in all_tasks:
                     name = t.get_name()
                     name_counts[name] = name_counts.get(name, 0) + 1
+                    # Capture coroutine info for unnamed tasks (Task-NNN pattern)
+                    if name.startswith("Task-"):
+                        coro = t.get_coro()
+                        if coro is not None:
+                            coro_name = getattr(coro, "__qualname__", getattr(coro, "__name__", repr(coro)))
+                            unnamed_coros.append(f"{name}:{coro_name}")
                 top_names = sorted(name_counts.items(), key=lambda x: -x[1])[:15]
                 breakdown = ", ".join(f"{n}={c}" for n, c in top_names)
             except RuntimeError:
@@ -185,6 +216,8 @@ class MonitoringService:  # pylint: disable=too-many-instance-attributes
                 _ASYNCIO_TASKS_WARN,
                 breakdown,
             )
+            if unnamed_coros:
+                _log_unnamed_task_diagnostics(unnamed_coros)
 
         lag = snapshot.get("loop_lag_ms")
         if isinstance(lag, (int, float)) and lag > _LOOP_LAG_WARN_MS:

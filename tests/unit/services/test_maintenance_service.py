@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from teleclaude.core.models import Session
-from teleclaude.core.models._adapter import TelegramAdapterMetadata
 from teleclaude.services.maintenance_service import COMPACTION_IDLE_THRESHOLD_S, MaintenanceService
 
 
@@ -59,7 +58,7 @@ def _make_session(
         project_path=project_path,
     )
     if topic_id is not None:
-        session.adapter_metadata.get_ui()._telegram = TelegramAdapterMetadata(topic_id=topic_id)
+        session.origin_metadata = {"telegram": {"topic_id": topic_id}}
     return session
 
 

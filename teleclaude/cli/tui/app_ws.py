@@ -171,7 +171,19 @@ class TelecAppWsMixin:
         self._refresh_data()  # type: ignore[attr-defined]
 
     def _notify_session_lifecycle_status(self, event: SessionLifecycleStatusEvent) -> None:
-        """Surface session lifecycle failures as TUI notifications."""
+        """Surface session lifecycle events as TUI notifications."""
+        if event.status == "escalated":
+            self.notify(  # type: ignore[attr-defined]
+                f"Session {event.session_id} escalated to human",
+                severity="information",
+            )
+            return
+        if event.status == "escalation_ended":
+            self.notify(  # type: ignore[attr-defined]
+                f"Session {event.session_id} returned from escalation",
+                severity="information",
+            )
+            return
         if event.status != "error":
             return
         if event.reason == "close_failed":

@@ -24,7 +24,16 @@ class TestConstants:
 
     @pytest.mark.unit
     def test_lifecycle_statuses_contains_expected_values(self):
-        expected = {"accepted", "active", "active_output", "completed", "error", "closed"}
+        expected = {
+            "accepted",
+            "active",
+            "active_output",
+            "completed",
+            "error",
+            "closed",
+            "escalated",
+            "escalation_ended",
+        }
         assert LIFECYCLE_STATUSES == expected
 
 

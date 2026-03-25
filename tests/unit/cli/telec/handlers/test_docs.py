@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TypedDict
@@ -35,21 +34,13 @@ def test_handle_docs_index_builds_context_with_filters(
     received: list[ContextCall] = []
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(docs, "build_context_output", lambda **kwargs: received.append(kwargs) or "INDEX")
+    mock_resolver = SimpleNamespace(resolve_from_terminal=lambda: SimpleNamespace(person_role="member"))
+    monkeypatch.setattr(docs, "get_identity_resolver", lambda: mock_resolver)
 
-    with pytest.MonkeyPatch.context() as sys_patch:
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.context_selector",
-            SimpleNamespace(build_context_output=lambda **kwargs: received.append(kwargs) or "INDEX"),
-        )
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.cli.session_auth",
-            SimpleNamespace(resolve_cli_caller_role=lambda: "member"),
-        )
-        docs._handle_docs_index(
-            ["--baseline-only", "--third-party", "--areas", "policy,procedure", "--domains", "software-development"]
-        )
+    docs._handle_docs_index(
+        ["--baseline-only", "--third-party", "--areas", "policy,procedure", "--domains", "software-development"]
+    )
 
     assert received == [
         {
@@ -71,19 +62,11 @@ def test_handle_docs_get_splits_snippet_ids(
     received: list[ContextCall] = []
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(docs, "build_context_output", lambda **kwargs: received.append(kwargs) or "GET")
+    mock_resolver = SimpleNamespace(resolve_from_terminal=lambda: SimpleNamespace(person_role="member"))
+    monkeypatch.setattr(docs, "get_identity_resolver", lambda: mock_resolver)
 
-    with pytest.MonkeyPatch.context() as sys_patch:
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.context_selector",
-            SimpleNamespace(build_context_output=lambda **kwargs: received.append(kwargs) or "GET"),
-        )
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.cli.session_auth",
-            SimpleNamespace(resolve_cli_caller_role=lambda: "member"),
-        )
-        docs._handle_docs_get(["a,b", "c"])
+    docs._handle_docs_get(["a,b", "c"])
 
     assert received[0]["snippet_ids"] == ["a", "b", "c"]
     assert received[0]["project_root"] == tmp_path

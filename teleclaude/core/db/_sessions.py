@@ -1,11 +1,12 @@
 """Mixin: DbSessionsMixin."""
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
@@ -13,12 +14,23 @@ from teleclaude.core.event_bus import event_bus
 
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from ..models import Session, SessionAdapterMetadata, SessionField, SessionMetadata
+from ..models import Session, SessionField
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+
+def _parse_origin_metadata(raw: str | None) -> dict[str, object]:  # guard: loose-dict - JSON parse
+    """Parse origin_metadata JSON, returning empty dict on failure."""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
 
 
 class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session storage exposes the legacy DB API surface.
@@ -30,8 +42,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         tmux_session_name: str,
         last_input_origin: str,
         title: str,
-        adapter_metadata: SessionAdapterMetadata | None = None,
-        session_metadata: SessionMetadata | None = None,
+        system_role: str | None = None,
+        job: str | None = None,
         project_path: str | None = None,
         subdir: str | None = None,
         description: str | None = None,
@@ -56,8 +68,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             tmux_session_name: Name of tmux session
             last_input_origin: Last input origin (InputOrigin.*.value)
             title: Optional session title
-            adapter_metadata: Optional adapter-specific metadata
-            session_metadata: Optional generic JSON metadata (e.g. job details)
+            system_role: Optional system role (worker, orchestrator, integrator, system)
+            job: Optional job role value
             project_path: Base project path (no subdir)
             subdir: Optional subdirectory/worktree relative to project_path
             description: Optional description (for AI-to-AI sessions)
@@ -82,8 +94,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             tmux_session_name=tmux_session_name,
             last_input_origin=last_input_origin,
             title=title or f"[{computer_name}] Untitled",
-            adapter_metadata=adapter_metadata or SessionAdapterMetadata(),
-            session_metadata=session_metadata,
+            system_role=system_role,
+            job=job,
             created_at=now,
             last_activity=now,
             project_path=project_path,
@@ -99,14 +111,19 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             thinking_mode=thinking_mode,
         )
 
+        # Build origin_metadata: platform key + adapter sections
+        origin_meta = dict(session.origin_metadata) if session.origin_metadata else {}
+        origin_meta.setdefault("platform", session.last_input_origin)
+
         db_row = db_models.Session(
             session_id=session.session_id,
             computer_name=session.computer_name,
             title=session.title,
             tmux_session_name=session.tmux_session_name,
             last_input_origin=session.last_input_origin,
-            adapter_metadata=self._serialize_adapter_metadata(session.adapter_metadata),
-            session_metadata=self._serialize_session_metadata(session.session_metadata),
+            origin_metadata=json.dumps(origin_meta),
+            system_role=session.system_role,
+            job=session.job,
             created_at=session.created_at,
             last_activity=session.last_activity,
             project_path=session.project_path,
@@ -145,7 +162,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         native_log_file: str | None,
         project_path: str | None,
         subdir: str | None,
-        human_role: str,
+        human_email: str | None = None,
+        human_role: str | None = None,
     ) -> Session:
         """Create a headless session (no tmux)."""
         now = datetime.now(UTC)
@@ -157,7 +175,6 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             tmux_session_name=tmux_session_name,
             last_input_origin=last_input_origin,
             title=title,
-            adapter_metadata=SessionAdapterMetadata(),
             created_at=now,
             last_activity=now,
             project_path=project_path,
@@ -165,6 +182,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             description=None,
             working_slug=None,
             initiator_session_id=None,
+            human_email=human_email,
             human_role=human_role,
             lifecycle_status="headless",
             active_agent=active_agent,
@@ -172,13 +190,14 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             native_log_file=native_log_file,
         )
 
+        headless_origin = {"platform": session.last_input_origin}
         db_row = db_models.Session(
             session_id=session.session_id,
             computer_name=session.computer_name,
             title=session.title,
             tmux_session_name=session.tmux_session_name,
             last_input_origin=session.last_input_origin,
-            adapter_metadata=self._serialize_adapter_metadata(session.adapter_metadata),
+            origin_metadata=json.dumps(headless_origin),
             created_at=session.created_at,
             last_activity=session.last_activity,
             project_path=session.project_path,
@@ -186,6 +205,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             description=session.description,
             working_slug=session.working_slug,
             initiator_session_id=session.initiator_session_id,
+            human_email=session.human_email,
             human_role=session.human_role,
             lifecycle_status=session.lifecycle_status,
             active_agent=session.active_agent,
@@ -337,11 +357,12 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
                         continue
                     current_val = getattr(row, attr_name)
 
-                    # Special handling for adapter_metadata: always update if provided
-                    # to ensure nested flag changes (like output_suppressed) are persisted.
-                    if attr_name == "adapter_metadata":
-                        serialized = self._serialize_adapter_metadata(value)
-                        updates[attr_name] = serialized
+                    # Sync last_input_origin to origin_metadata["platform"]
+                    if attr_name == "last_input_origin" and value != current_val:
+                        updates[attr_name] = value
+                        om = _parse_origin_metadata(row.origin_metadata)
+                        om["platform"] = value
+                        updates["origin_metadata"] = json.dumps(om)
                         continue
 
                     if attr_name in {
@@ -425,6 +446,32 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             TeleClaudeEvents.SESSION_CLOSED,
             SessionLifecycleContext(session_id=session_id),
         )
+
+    async def update_origin_metadata(
+        self,
+        session_id: str,
+        platform: str,
+        section_updates: dict[str, object] | None = None,  # guard: loose-dict - Per-platform JSON section
+    ) -> None:
+        """Atomic merge-write of origin_metadata for a session.
+
+        Uses SQLite json_patch for a single-statement update, eliminating
+        the read-modify-write race between concurrent adapter writes.
+        """
+        patch: dict[str, object] = {"platform": platform}  # guard: loose-dict - JSON merge patch
+        if section_updates:
+            patch[platform] = section_updates
+
+        async with self._session() as db_session:
+            # '' || strips the JSON subtype so the column stays plain TEXT.
+            stmt = text(  # guard: raw-sql - atomic json_patch eliminates race
+                "UPDATE sessions SET origin_metadata = '' || json_patch("
+                "  COALESCE(origin_metadata, '{}'),"
+                "  json(:patch_json)"
+                ") WHERE session_id = :session_id"
+            ).bindparams(patch_json=json.dumps(patch), session_id=session_id)
+            await db_session.exec(stmt)
+            await db_session.commit()
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -567,22 +614,21 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             count = result.one()
             return int(count)
 
-    async def get_sessions_by_adapter_metadata(
+    async def get_sessions_by_origin_metadata(
         self,
         adapter_type: str,
         metadata_key: str,
         metadata_value: object,
         include_closed: bool = False,
     ) -> list[Session]:
-        """Get sessions by adapter metadata field.
+        """Get sessions by origin_metadata field.
 
-        Finds sessions that HAVE the specified adapter metadata, regardless of
-        which adapter was the entry point. This enables any UI adapter to find
-        sessions it has channels for regardless of the entry point.
+        Finds sessions that HAVE the specified platform metadata, regardless of
+        which adapter was the entry point.
 
         Args:
-            adapter_type: Adapter type whose metadata to search
-            metadata_key: JSON key to search in adapter_metadata
+            adapter_type: Platform key whose section to search
+            metadata_key: JSON key within the platform section
             metadata_value: Value to match
 
         Returns:
@@ -590,7 +636,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         """
         # SQLite JSON path: $.{adapter_type}.{metadata_key}
         json_path = f"$.{adapter_type}.{metadata_key}"
-        json_expr = func.json_extract(db_models.Session.adapter_metadata, json_path)
+        json_expr = func.json_extract(db_models.Session.origin_metadata, json_path)
 
         # Handle int values that may be stored as strings in JSON
         if isinstance(metadata_value, int):

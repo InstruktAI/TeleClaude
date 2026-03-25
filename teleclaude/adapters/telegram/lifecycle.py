@@ -131,9 +131,22 @@ class LifecycleMixin:
         builder.token(host.bot_token)
         # Force IPv4 for Telegram API calls. Some networks advertise IPv6 (AAAA) without
         # providing a working IPv6 route, which can cause connect timeouts inside httpx.
+        # Pool limits must be passed directly to the transport — httpx ignores the top-level
+        # `limits` kwarg when a custom transport is provided, which causes unbounded connection
+        # accumulation (each connection leaks anyio TLS/memory stream tasks).
         httpx_kwargs = cast(
             dict[str, object],  # guard: loose-dict - Telegram Bot API httpx kwargs
-            {"transport": httpx.AsyncHTTPTransport(local_address="0.0.0.0")},
+            {
+                "transport": httpx.AsyncHTTPTransport(
+                    local_address="0.0.0.0",
+                    limits=httpx.Limits(
+                        max_connections=20,
+                        max_keepalive_connections=5,
+                        keepalive_expiry=30.0,
+                    ),
+                    retries=1,
+                ),
+            },
         )
         builder.request(HTTPXRequest(httpx_kwargs=httpx_kwargs))
         builder.concurrent_updates(True)  # Enable concurrent update processing

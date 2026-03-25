@@ -29,6 +29,7 @@ Mirror creation already fires on AGENT_STOP and SESSION_CLOSED — the session a
 ### 3. Role-aware filtering
 
 Scope history commands by caller identity:
+
 - Admin: unfiltered, sees all sessions across all computers and projects
 - Member: filtered by project membership (from people config). Sees sessions in their registered projects only.
 - Customer: filtered by source_identity (their email/channel ID). Sees only their own session history.
@@ -37,7 +38,7 @@ The filtering happens at the API level (daemon-side) and CLI level (telec histor
 
 ### 4. Session summary in mirrors
 
-Mirrors have conversation_text (full cleaned conversation) and title. Add a summary field — a one-paragraph summary of the session generated at mirror creation time. Uses the existing _call_summarizer pattern from teleclaude/core/summarizer.py (Claude Haiku with structured outputs).
+Mirrors have conversation_text (full cleaned conversation) and title. Add a summary field — a one-paragraph summary of the session generated at mirror creation time. Uses the existing \_call_summarizer pattern from teleclaude/core/summarizer.py (Claude Haiku with structured outputs).
 
 This summary is what telec history list shows — the agent reads summaries to decide which session to dig into.
 
@@ -56,5 +57,11 @@ Agent progressive disclosure: list → pick session → show → help customer
 - teleclaude/mirrors/generator.py — mirror generation from transcripts
 - teleclaude/mirrors/event_handlers.py — AGENT_STOP and SESSION_CLOSED handlers
 - teleclaude/core/summarizer.py — existing LLM summarizer pattern
-- teleclaude/core/models/_session.py — Session with adapter_metadata
-- teleclaude/core/models/_adapter.py — SessionAdapterMetadata (Telegram, Discord, WhatsApp)
+- teleclaude/core/models/\_session.py — Session with adapter_metadata
+- teleclaude/core/models/\_adapter.py — SessionAdapterMetadata (Telegram, Discord, WhatsApp)
+
+## Dependencies and shared abstractions
+
+**Parent dependency:** `channel-metadata-redesign` — delivers channel_metadata as single merge-on-write blob with cross-platform identity and a shared identity resolution helper. This todo MUST use that helper for filtering mirrors by person identity across platforms. Do not reimplement identity resolution.
+
+**Constraint:** The identity lookup for mirrors and the identity lookup for memories must use the same mechanism. A customer querying history from the web (email) must find sessions they accessed from Telegram (user_id) — because the mirror's channel_metadata has both. Same applies to `session-memory-extraction` storing/retrieving memories.

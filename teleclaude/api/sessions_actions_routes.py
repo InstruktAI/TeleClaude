@@ -53,7 +53,7 @@ from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata, SessionMetadata
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
@@ -155,6 +155,7 @@ async def _resolve_revive_session_id(
         native_log_file=None,
         project_path=project_path,
         subdir=subdir,
+        human_email=identity.email,
         human_role=identity.human_role or HUMAN_ROLE_CUSTOMER,
     )
     return new_session_id
@@ -220,7 +221,8 @@ class RunSessionPlan:
     full_command: str
     auto_command: str
     channel_metadata: dict[str, str] | None
-    session_meta: SessionMetadata
+    system_role: str | None
+    job: str | None
 
 
 def _resolve_run_session_agent(request: RunSessionRequest) -> str:
@@ -268,18 +270,13 @@ def _prepare_run_session(
     except ValueError:
         slash_cmd = None
     role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
-    session_meta = SessionMetadata(
-        system_role=role_info[0] if role_info else None,
-        job=role_info[1].value if role_info else None,
-        human_role=identity.human_role,
-        principal=identity.principal,
-    )
     return RunSessionPlan(
         effective_agent=effective_agent,
         full_command=full_command,
         auto_command=auto_command,
         channel_metadata=channel_metadata,
-        session_meta=session_meta,
+        system_role=role_info[0] if role_info else None,
+        job=role_info[1].value if role_info else None,
     )
 
 
@@ -540,7 +537,8 @@ async def run_session(
         project_path=request.project,
         subdir=request.subfolder or None,
         channel_metadata=plan.channel_metadata,
-        session_metadata=plan.session_meta,
+        system_role=plan.system_role,
+        job=plan.job,
     )
     metadata.auto_command = plan.auto_command
 

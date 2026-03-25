@@ -37,6 +37,8 @@ LifecycleStatus = Literal[
     "completed",
     "error",
     "closed",
+    "escalated",
+    "escalation_ended",
 ]
 
 # Allowed status values as a frozenset for O(1) validation
@@ -48,6 +50,8 @@ LIFECYCLE_STATUSES: frozenset[str] = frozenset(
         "completed",
         "error",
         "closed",
+        "escalated",
+        "escalation_ended",
     }
 )
 

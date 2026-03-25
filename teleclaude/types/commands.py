@@ -5,7 +5,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import SessionLaunchIntent, SessionMetadata
+    from teleclaude.core.models import SessionLaunchIntent
 
 
 class CommandType(str, Enum):
@@ -68,7 +68,8 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
     channel_metadata: dict[str, object] | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
     auto_command: str | None = None
-    session_metadata: Optional["SessionMetadata"] = None
+    system_role: str | None = None
+    job: str | None = None
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -83,7 +84,8 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
         channel_metadata: dict[str, object] | None = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
         auto_command: str | None = None,
-        session_metadata: Optional["SessionMetadata"] = None,
+        system_role: str | None = None,
+        job: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.CREATE_SESSION, request_id=request_id)
@@ -97,7 +99,8 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
         self.channel_metadata = channel_metadata
         self.launch_intent = launch_intent
         self.auto_command = auto_command
-        self.session_metadata = session_metadata
+        self.system_role = system_role
+        self.job = job
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = [self.title] if self.title else []

@@ -1,26 +1,24 @@
 """Unit tests for integration_bridge.spawn_integrator_session,
-CommandService.run_slash_command, and Db SessionMetadata serialization.
+CommandService.run_slash_command, and Db session column round-trips.
 
 Covers the code paths introduced in the fix-integrator-spawn-broken-integration-brid fix:
 - spawn_integrator_session guard (already running) and spawn branches
-- CommandService.run_slash_command SessionMetadata and auto_command construction
-- Db._serialize_session_metadata and Db._to_core_session round-trip
+- CommandService.run_slash_command system_role/job and auto_command construction
+- Db._to_core_session system_role/job column read
 """
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole, SlashCommand
-from teleclaude.core.models import SessionMetadata
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _db_row(session_metadata: str | None = None) -> MagicMock:
+def _db_row(system_role: str | None = None, job: str | None = None) -> MagicMock:
     """Minimal db_models.Session stub for _to_core_session tests."""
     row = MagicMock()
     row.session_id = "test-session-1"
@@ -28,8 +26,9 @@ def _db_row(session_metadata: str | None = None) -> MagicMock:
     row.tmux_session_name = None
     row.title = ""
     row.last_input_origin = None
-    row.adapter_metadata = None
-    row.session_metadata = session_metadata
+    row.origin_metadata = None
+    row.system_role = system_role
+    row.job = job
     # datetime fields — all None so _coerce_datetime returns None
     row.created_at = None
     row.last_activity = None
@@ -54,77 +53,24 @@ def _db_row(session_metadata: str | None = None) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# Db._serialize_session_metadata
+# Db._to_core_session — system_role/job column deserialization
 # ---------------------------------------------------------------------------
 
 
-def test_serialize_session_metadata_none():
-    from teleclaude.core.db import Db
-
-    assert Db._serialize_session_metadata(None) is None
-
-
-def test_serialize_session_metadata_produces_valid_json():
-    from teleclaude.core.db import Db
-
-    meta = SessionMetadata(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value)
-    result = Db._serialize_session_metadata(meta)
-    assert result is not None
-    parsed = json.loads(result)
-    assert parsed["system_role"] == ROLE_INTEGRATOR
-    assert parsed["job"] == JobRole.INTEGRATOR.value
-
-
-# ---------------------------------------------------------------------------
-# Db._to_core_session — session_metadata deserialization
-# ---------------------------------------------------------------------------
-
-
-def test_to_core_session_no_metadata_yields_none():
+def test_to_core_session_no_role_yields_none():
     from teleclaude.core.db import Db
 
     session = Db._to_core_session(_db_row())
-    assert session.session_metadata is None
+    assert session.system_role is None
+    assert session.job is None
 
 
-def test_to_core_session_valid_metadata_round_trip():
+def test_to_core_session_reads_role_columns():
     from teleclaude.core.db import Db
 
-    raw = json.dumps({"system_role": ROLE_INTEGRATOR, "job": JobRole.INTEGRATOR.value})
-    session = Db._to_core_session(_db_row(raw))
-    assert session.session_metadata is not None
-    assert session.session_metadata.system_role == ROLE_INTEGRATOR
-    assert session.session_metadata.job == JobRole.INTEGRATOR.value
-
-
-def test_to_core_session_unknown_keys_are_ignored():
-    """Extra keys in the JSON must not raise — only known keys flow through."""
-    from teleclaude.core.db import Db
-
-    raw = json.dumps({"system_role": "worker", "job": "builder", "unexpected_key": "noise"})
-    session = Db._to_core_session(_db_row(raw))
-    assert session.session_metadata is not None
-    assert session.session_metadata.system_role == "worker"
-    assert session.session_metadata.job == "builder"
-
-
-def test_to_core_session_bad_json_yields_none():
-    """Malformed JSON must not raise — session_metadata must fall back to None."""
-    from teleclaude.core.db import Db
-
-    session = Db._to_core_session(_db_row("not-valid-json{{{"))
-    assert session.session_metadata is None
-
-
-def test_session_metadata_full_round_trip():
-    """serialize → deserialize must reproduce the original SessionMetadata."""
-    from teleclaude.core.db import Db
-
-    original = SessionMetadata(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value)
-    serialized = Db._serialize_session_metadata(original)
-    assert serialized is not None
-    session = Db._to_core_session(_db_row(serialized))
-    assert session.session_metadata == original
+    session = Db._to_core_session(_db_row(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value))
+    assert session.system_role == ROLE_INTEGRATOR
+    assert session.job == JobRole.INTEGRATOR.value
 
 
 # ---------------------------------------------------------------------------
@@ -146,9 +92,8 @@ async def test_run_slash_command_builds_integrator_metadata():
     positional = mock_map.call_args[0]
     metadata = positional[2]  # MessageMetadata is the third positional arg
 
-    assert metadata.session_metadata is not None
-    assert metadata.session_metadata.system_role == ROLE_INTEGRATOR
-    assert metadata.session_metadata.job == JobRole.INTEGRATOR.value
+    assert metadata.system_role == ROLE_INTEGRATOR
+    assert metadata.job == JobRole.INTEGRATOR.value
     assert "agent_then_message claude slow" in metadata.auto_command
     assert "/next-integrate" in metadata.auto_command
 
@@ -170,7 +115,7 @@ async def test_run_slash_command_detach_forwarded_as_skip_listener():
 
 
 async def test_run_slash_command_unmapped_command_produces_no_metadata():
-    """A SlashCommand absent from COMMAND_ROLE_MAP must produce None session_metadata."""
+    """A SlashCommand absent from COMMAND_ROLE_MAP must produce None system_role/job."""
     from teleclaude.core.command_service import CommandService
 
     svc = object.__new__(CommandService)
@@ -185,7 +130,8 @@ async def test_run_slash_command_unmapped_command_produces_no_metadata():
 
     positional = mock_map.call_args[0]
     metadata = positional[2]
-    assert metadata.session_metadata is None
+    assert metadata.system_role is None
+    assert metadata.job is None
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +143,7 @@ async def test_spawn_integrator_session_notifies_running_session():
     """Guard branch: if an integrator session is already running, send it a ProcessMessageCommand."""
     running = MagicMock()
     running.session_id = "dead-beef-1234"
-    running.session_metadata = SessionMetadata(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value)
+    running.job = JobRole.INTEGRATOR
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[running])
     mock_svc = MagicMock()
@@ -222,7 +168,7 @@ async def test_spawn_integrator_session_notify_failure_returns_none():
     """If process_message raises, return None — exception is swallowed, candidate stays queued."""
     running = MagicMock()
     running.session_id = "dead-beef-1234"
-    running.session_metadata = SessionMetadata(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value)
+    running.job = JobRole.INTEGRATOR
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[running])
     mock_svc = MagicMock()
@@ -242,7 +188,7 @@ async def test_spawn_integrator_session_notify_failure_returns_none():
 async def test_spawn_integrator_session_spawns_when_none_running():
     """Spawn branch: when no integrator is active, run_slash_command is called."""
     non_integrator = MagicMock()
-    non_integrator.session_metadata = SessionMetadata(system_role="worker", job="builder")
+    non_integrator.job = "builder"
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[non_integrator])
     mock_svc = MagicMock()

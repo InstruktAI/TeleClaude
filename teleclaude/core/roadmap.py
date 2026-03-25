@@ -59,7 +59,6 @@ def _load_icebox_data(
 
 
 def _read_todo_metadata(  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
-    project_path: str,
     todo_dir: Path,
 ) -> tuple[
     bool,
@@ -87,10 +86,7 @@ def _read_todo_metadata(  # pylint: disable=too-many-locals  # Flat data assembl
     integration_phase: str | None = None
     finalize_status: str | None = None
 
-    slug = todo_dir.name
-    project_root = Path(project_path)
-    worktree_state = project_root / WORKTREE_DIR / slug / "todos" / slug / "state.yaml"
-    state_path = worktree_state if worktree_state.exists() else todo_dir / "state.yaml"
+    state_path = todo_dir / "state.yaml"
     if not state_path.exists():
         legacy_path = todo_dir / "state.json"
         if legacy_path.exists():
@@ -199,6 +195,8 @@ def _derive_phase_status(
         return "in_progress"
     if prepare_phase == "prepared":
         return "ready"
+    if prepare_phase and prepare_phase in _PREPARE_CURRENT_VALUES:
+        return "in_progress"
     if isinstance(dor_score, int) and dor_score >= 8:
         return "ready"
     return "pending"
@@ -216,7 +214,14 @@ def _append_todo(  # pylint: disable=too-many-arguments,too-many-locals  # Param
     group: str | None = None,
     is_icebox_item: bool = False,
 ) -> None:
-    todo_dir = (icebox_root / slug) if is_icebox_item and (icebox_root / slug).is_dir() else todos_root / slug
+    # Worktree wins: if a worktree exists for this slug, use it for all file resolution
+    worktree_dir = Path(project_path) / WORKTREE_DIR / slug / "todos" / slug
+    if not is_icebox_item and worktree_dir.is_dir():
+        todo_dir = worktree_dir
+    elif is_icebox_item and (icebox_root / slug).is_dir():
+        todo_dir = icebox_root / slug
+    else:
+        todo_dir = todos_root / slug
     (
         has_requirements,
         has_impl_plan,
@@ -230,7 +235,7 @@ def _append_todo(  # pylint: disable=too-many-arguments,too-many-locals  # Param
         prepare_phase,
         integration_phase,
         finalize_status,
-    ) = _read_todo_metadata(project_path, todo_dir)
+    ) = _read_todo_metadata(todo_dir)
     todos.append(
         TodoInfo(
             slug=slug,
@@ -249,6 +254,7 @@ def _append_todo(  # pylint: disable=too-many-arguments,too-many-locals  # Param
             prepare_phase=prepare_phase,
             integration_phase=integration_phase,
             finalize_status=finalize_status,
+            todo_path=str(todo_dir),
         )
     )
 
@@ -395,9 +401,11 @@ def _append_orphan_todos(  # pylint: disable=too-many-arguments  # Parameters ar
 def _inject_breakdown_relationships(todos: list[TodoInfo], todos_root: Path) -> None:
     slug_to_idx = {todo.slug: idx for idx, todo in enumerate(todos)}
     for todo in list(todos):
-        state_path = todos_root / todo.slug / "state.yaml"
+        # Use the resolved todo_path (worktree-aware) when available
+        state_dir = Path(todo.todo_path) if todo.todo_path else todos_root / todo.slug
+        state_path = state_dir / "state.yaml"
         if not state_path.exists():
-            legacy_path = todos_root / todo.slug / "state.json"
+            legacy_path = state_dir / "state.json"
             if legacy_path.exists():
                 state_path = legacy_path
         if not state_path.exists():

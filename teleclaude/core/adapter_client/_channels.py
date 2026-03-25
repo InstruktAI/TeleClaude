@@ -258,16 +258,17 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         if not entry_point_channel_id:
             entry_point_channel_id = ""
 
-        # Store all adapter channel_ids in session metadata
-        updated_session = await db.get_session(session_id)
-        if updated_session:
-            for adapter_type, channel_id in all_channel_ids.items():
-                adapter = self.adapters.get(adapter_type)
-                if adapter:
-                    adapter.store_channel_id(updated_session.adapter_metadata, channel_id)
-
-            await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
-            logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id)
+        # Store all adapter channel_ids in origin_metadata.
+        # Telegram stores topic_id (int), Discord stores thread_id (int), Redis stores channel_id (str).
+        channel_field: dict[str, tuple[str, type]] = {
+            "telegram": ("topic_id", int),
+            "discord": ("thread_id", int),
+            "redis": ("channel_id", str),
+        }
+        for adapter_type, channel_id in all_channel_ids.items():
+            field_name, coerce = channel_field.get(adapter_type, ("channel_id", str))
+            await db.update_origin_metadata(session_id, adapter_type, {field_name: coerce(channel_id)})
+        logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id)
 
         return entry_point_channel_id
 

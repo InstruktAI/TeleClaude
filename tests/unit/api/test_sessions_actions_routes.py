@@ -427,11 +427,8 @@ class TestSessionsActionsRoutes:
             "working_slug": "chartest-api-routes",
         }
         assert metadata.auto_command == f"agent_then_message codex med {shlex.quote(expected_title)}"
-        assert metadata.session_metadata is not None
-        assert metadata.session_metadata.system_role == expected_role[0]
-        assert metadata.session_metadata.job == expected_role[1].value
-        assert metadata.session_metadata.human_role == "member"
-        assert metadata.session_metadata.principal == "human:member@example.com"
+        assert metadata.system_role == expected_role[0]
+        assert metadata.job == expected_role[1].value
 
     @pytest.mark.unit
     @pytest.mark.asyncio

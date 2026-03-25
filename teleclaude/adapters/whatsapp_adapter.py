@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, MessageMetadata
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, WhatsAppAdapterMetadata
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -68,7 +68,7 @@ class WhatsAppAdapter(UiAdapter):
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         _ = (title, metadata)
-        phone_number = session.get_metadata().get_ui().get_whatsapp().phone_number
+        phone_number = WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp")).phone_number
         if phone_number:
             return phone_number
         return session.session_id
@@ -77,14 +77,21 @@ class WhatsAppAdapter(UiAdapter):
         _ = (session, title)
         return True
 
+    @staticmethod
+    def _wa(session: Session) -> WhatsAppAdapterMetadata:
+        """Read WhatsApp section from origin_metadata."""
+        return WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp"))
+
     async def close_channel(self, session: Session) -> bool:
-        session.get_metadata().get_ui().get_whatsapp().closed = True
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        wa = self._wa(session)
+        wa.closed = True
+        await db.update_origin_metadata(session.session_id, "whatsapp", wa.to_dict())
         return True
 
     async def reopen_channel(self, session: Session) -> bool:
-        session.get_metadata().get_ui().get_whatsapp().closed = False
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        wa = self._wa(session)
+        wa.closed = False
+        await db.update_origin_metadata(session.session_id, "whatsapp", wa.to_dict())
         return True
 
     async def delete_channel(self, session: Session) -> bool:
@@ -99,18 +106,18 @@ class WhatsAppAdapter(UiAdapter):
     async def _get_output_message_id(self, session: Session) -> str | None:
         fresh = await db.get_session(session.session_id)
         if fresh:
-            return fresh.get_metadata().get_ui().get_whatsapp().output_message_id
-        return session.get_metadata().get_ui().get_whatsapp().output_message_id
+            return self._wa(fresh).output_message_id
+        return self._wa(session).output_message_id
 
     async def _store_output_message_id(self, session: Session, message_id: str) -> None:
-        meta = session.get_metadata().get_ui().get_whatsapp()
-        meta.output_message_id = message_id
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        wa = self._wa(session)
+        wa.output_message_id = message_id
+        await db.update_origin_metadata(session.session_id, "whatsapp", wa.to_dict())
 
     async def _clear_output_message_id(self, session: Session) -> None:
-        meta = session.get_metadata().get_ui().get_whatsapp()
-        meta.output_message_id = None
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        wa = self._wa(session)
+        wa.output_message_id = None
+        await db.update_origin_metadata(session.session_id, "whatsapp", wa.to_dict())
 
     async def _post_json(
         self,
@@ -224,7 +231,7 @@ class WhatsAppAdapter(UiAdapter):
     ) -> str:
         _ = (metadata, multi_message)
 
-        whatsapp_meta = session.get_metadata().get_ui().get_whatsapp()
+        whatsapp_meta = WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp"))
         if not whatsapp_meta.phone_number:
             raise ValueError(f"Session {session.session_id} missing WhatsApp phone number")
 
@@ -304,7 +311,7 @@ class WhatsAppAdapter(UiAdapter):
         metadata: MessageMetadata | None = None,
     ) -> str:
         _ = metadata
-        whatsapp_meta = session.get_metadata().get_ui().get_whatsapp()
+        whatsapp_meta = WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp"))
         if not whatsapp_meta.phone_number:
             raise ValueError(f"Session {session.session_id} missing WhatsApp phone number")
 
@@ -366,7 +373,7 @@ class WhatsAppAdapter(UiAdapter):
         return self._convert_markdown_for_platform(tmux_output)
 
     async def send_typing_indicator(self, session: Session) -> None:
-        whatsapp_meta = session.get_metadata().get_ui().get_whatsapp()
+        whatsapp_meta = WhatsAppAdapterMetadata.from_dict(session.get_origin_section("whatsapp"))
         if not whatsapp_meta.last_received_message_id:
             return
 

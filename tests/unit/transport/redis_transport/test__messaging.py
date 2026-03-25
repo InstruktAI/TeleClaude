@@ -21,29 +21,27 @@ def transport() -> RedisTransport:
 class TestParseRedisMessage:
     @pytest.mark.unit
     def test_parses_msg_type_from_bytes(self, transport: RedisTransport) -> None:
-        data = {b"type": b"system", b"command": b"restart"}
+        data = {b"type": b"system", b"command": b"restart", b"origin": b"terminal"}
         result = transport._parse_redis_message(data)
         assert result.msg_type == "system"
 
     @pytest.mark.unit
     def test_parses_session_id_as_none_when_empty(self, transport: RedisTransport) -> None:
-        data = {b"session_id": b"", b"command": b"start_agent"}
+        data = {b"session_id": b"", b"command": b"start_agent", b"origin": b"terminal"}
         result = transport._parse_redis_message(data)
         assert result.session_id is None
 
     @pytest.mark.unit
     def test_parses_session_id_when_present(self, transport: RedisTransport) -> None:
-        data = {b"session_id": b"abc-123", b"command": b"process_message"}
+        data = {b"session_id": b"abc-123", b"command": b"process_message", b"origin": b"terminal"}
         result = transport._parse_redis_message(data)
         assert result.session_id == "abc-123"
 
     @pytest.mark.unit
-    def test_defaults_origin_to_redis_when_missing(self, transport: RedisTransport) -> None:
-        from teleclaude.core.origins import InputOrigin
-
+    def test_raises_when_origin_missing(self, transport: RedisTransport) -> None:
         data = {b"command": b"start_agent"}
-        result = transport._parse_redis_message(data)
-        assert result.origin == InputOrigin.REDIS.value
+        with pytest.raises(ValueError, match="missing origin"):
+            transport._parse_redis_message(data)
 
     @pytest.mark.unit
     def test_parses_channel_metadata_as_dict(self, transport: RedisTransport) -> None:
@@ -51,13 +49,14 @@ class TestParseRedisMessage:
         data = {
             b"command": b"create_session",
             b"channel_metadata": json.dumps(meta).encode("utf-8"),
+            b"origin": b"terminal",
         }
         result = transport._parse_redis_message(data)
         assert result.channel_metadata == meta
 
     @pytest.mark.unit
     def test_channel_metadata_none_when_invalid_json(self, transport: RedisTransport) -> None:
-        data = {b"command": b"create_session", b"channel_metadata": b"not-json"}
+        data = {b"command": b"create_session", b"channel_metadata": b"not-json", b"origin": b"terminal"}
         result = transport._parse_redis_message(data)
         assert result.channel_metadata is None
 
@@ -67,19 +66,20 @@ class TestParseRedisMessage:
         data = {
             b"command": b"create_session",
             b"launch_intent": json.dumps(intent).encode("utf-8"),
+            b"origin": b"terminal",
         }
         result = transport._parse_redis_message(data)
         assert result.launch_intent == intent
 
     @pytest.mark.unit
     def test_launch_intent_none_when_invalid_json(self, transport: RedisTransport) -> None:
-        data = {b"command": b"create_session", b"launch_intent": b"bad"}
+        data = {b"command": b"create_session", b"launch_intent": b"bad", b"origin": b"terminal"}
         result = transport._parse_redis_message(data)
         assert result.launch_intent is None
 
     @pytest.mark.unit
     def test_initiator_none_when_empty(self, transport: RedisTransport) -> None:
-        data = {b"command": b"create_session", b"initiator": b""}
+        data = {b"command": b"create_session", b"initiator": b"", b"origin": b"terminal"}
         result = transport._parse_redis_message(data)
         assert result.initiator is None
 
@@ -89,6 +89,7 @@ class TestParseRedisMessage:
             b"command": b"create_session",
             b"project_path": b"/repo/myproject",
             b"title": b"My Session",
+            b"origin": b"terminal",
         }
         result = transport._parse_redis_message(data)
         assert result.project_path == "/repo/myproject"

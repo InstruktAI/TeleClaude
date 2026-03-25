@@ -21,7 +21,7 @@ from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.models import MessageMetadata, Session, SessionMetadata
+from teleclaude.core.models import DiscordAdapterMetadata, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.invite import scaffold_personal_workspace
@@ -152,18 +152,15 @@ class InputHandlersMixin:
         self,
         message: object,
         context: _SessionCreationContext,
-    ) -> tuple[str, SessionMetadata | None]:
-        """Resolve the effective project path and session metadata for a new session."""
-        session_meta: SessionMetadata | None = None
+    ) -> tuple[str, str | None]:
+        """Resolve the effective project path and human_role override for a new session."""
         if context.forum_type == "help_desk":
-            session_meta = SessionMetadata(human_role="customer")
-            return context.project_path or teleclaude_config.config.computer.help_desk_dir, session_meta
+            return context.project_path or teleclaude_config.config.computer.help_desk_dir, "customer"
         if context.forum_type == "team":
             user_id = str(getattr(getattr(message, "author", None), "id", ""))
             identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
 
             human_role = identity.person_role
-            session_meta = SessionMetadata(human_role=human_role) if human_role else None
 
             project_path = context.project_path
             if not project_path:
@@ -177,13 +174,13 @@ class InputHandlersMixin:
                     workspace_path = Path(project_path)
                     if not workspace_path.exists():
                         workspace_path.mkdir(parents=True, exist_ok=True)
-            return project_path, session_meta
+            return project_path, human_role
 
         forum_id, _ = self._extract_channel_ids(message)
         forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
         return (
             forum_project_path or context.project_path or teleclaude_config.config.computer.help_desk_dir,
-            session_meta,
+            None,
         )
 
     # =========================================================================
@@ -368,7 +365,7 @@ class InputHandlersMixin:
         user_id: str,
     ) -> Session | None:
         if thread_id is not None:
-            thread_sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id)
+            thread_sessions = await db.get_sessions_by_origin_metadata("discord", "thread_id", thread_id)
             if thread_sessions:
                 return thread_sessions[0]
             # Thread-scoped: don't fall through to channel_id lookup.
@@ -378,9 +375,9 @@ class InputHandlersMixin:
         if channel_id is None:
             return None
 
-        channel_sessions = await db.get_sessions_by_adapter_metadata("discord", "channel_id", channel_id)
+        channel_sessions = await db.get_sessions_by_origin_metadata("discord", "channel_id", channel_id)
         for session in channel_sessions:
-            if session.get_metadata().get_ui().get_discord().user_id == user_id:
+            if DiscordAdapterMetadata.from_dict(session.get_origin_section("discord")).user_id == user_id:
                 return session
         return None
 
@@ -483,7 +480,7 @@ class InputHandlersMixin:
         }
 
         agent = get_default_agent()
-        effective_path, session_meta = self._resolve_session_creation_target(message, context)
+        effective_path, _human_role = self._resolve_session_creation_target(message, context)
         auto_command = self._build_auto_command(agent, context.first_message)
 
         create_cmd = CreateSessionCommand(
@@ -491,7 +488,6 @@ class InputHandlersMixin:
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
             channel_metadata=channel_metadata,  # type: ignore[arg-type]
-            session_metadata=session_meta,
             auto_command=auto_command,
         )
         result = await get_command_service().create_session(create_cmd)
@@ -502,7 +498,7 @@ class InputHandlersMixin:
         return await db.get_session(session_id)
 
     async def _update_session_discord_metadata(self, session: Session, routing_ids: _DiscordRoutingIds) -> Session:
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         changed = False
 
         if discord_meta.user_id != routing_ids.user_id:
@@ -521,7 +517,7 @@ class InputHandlersMixin:
         if not changed:
             return session
 
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
         return (await db.get_session(session.session_id)) or session
 
     async def _resolve_destination_channel(
@@ -536,7 +532,7 @@ class InputHandlersMixin:
         metadata_channel_id = (
             self._parse_optional_int(metadata.channel_id) if metadata and metadata.channel_id else None
         )
-        discord_meta = session.get_metadata().get_ui().get_discord()
+        discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         destination_id = metadata_channel_id or discord_meta.thread_id or discord_meta.channel_id
         if destination_id is None:
             raise AdapterError(f"Session {session.session_id} missing discord channel mapping")
@@ -553,7 +549,7 @@ class InputHandlersMixin:
             discord_meta.channel_id = None
             discord_meta.output_message_id = None
             discord_meta.thread_topper_message_id = None
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
             raise AdapterError(f"Discord channel {destination_id} not found (metadata cleared)")
         return channel
 

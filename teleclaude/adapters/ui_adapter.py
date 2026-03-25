@@ -155,81 +155,54 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             message_id,
         )
 
+    def _origin_field(self, session: Session, field: str, default: object = None) -> object:
+        """Read a field from this adapter's origin_metadata section."""
+        return session.get_origin_section(self.ADAPTER_KEY).get(field, default)
+
+    async def _set_origin_field(self, session: Session, **fields: object) -> None:
+        """Write fields to this adapter's origin_metadata section (merge-write)."""
+        section = session.get_origin_section(self.ADAPTER_KEY)
+        section.update(fields)
+        await db.update_origin_metadata(session.session_id, self.ADAPTER_KEY, section)
+
     async def _get_footer_message_id(self, session: Session) -> str | None:
         """Get threaded footer message id from adapter namespace."""
-        if self.ADAPTER_KEY == "telegram":
-            metadata = session.get_metadata().get_ui().get_telegram()
-            return metadata.footer_message_id
-        return None
+        val = self._origin_field(session, "footer_message_id")
+        return str(val) if val else None
 
     async def _store_footer_message_id(self, session: Session, message_id: str) -> None:
         """Store threaded footer message id in adapter namespace."""
-        if self.ADAPTER_KEY == "telegram":
-            metadata = session.get_metadata().get_ui().get_telegram()
-            metadata.footer_message_id = message_id
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-            logger.debug(
-                "Stored footer_message_id: session=%s message_id=%s",
-                session.session_id,
-                message_id,
-            )
+        await self._set_origin_field(session, footer_message_id=message_id)
+        logger.debug(
+            "Stored footer_message_id: session=%s message_id=%s",
+            session.session_id,
+            message_id,
+        )
 
     async def _clear_footer_message_id(self, session: Session) -> None:
         """Clear threaded footer message id from adapter namespace."""
-        if self.ADAPTER_KEY == "telegram":
-            metadata = session.get_metadata().get_ui().get_telegram()
-            metadata.footer_message_id = None
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-            logger.debug("Cleared footer_message_id: session=%s", session.session_id)
+        await self._set_origin_field(session, footer_message_id=None)
+        logger.debug("Cleared footer_message_id: session=%s", session.session_id)
 
     async def _get_badge_sent(self, session: Session) -> bool:
         """Check if session badge has been sent."""
         fresh = await db.get_session(session.session_id)
         if fresh:
-            # Sync local session metadata
-            session.adapter_metadata = fresh.adapter_metadata
-
-        if self.ADAPTER_KEY == "telegram":
-            return session.get_metadata().get_ui().get_telegram().badge_sent
-        if self.ADAPTER_KEY == "discord":
-            return session.get_metadata().get_ui().get_discord().badge_sent
-        if self.ADAPTER_KEY == "whatsapp":
-            return session.get_metadata().get_ui().get_whatsapp().badge_sent
-        return False
+            session.origin_metadata = fresh.origin_metadata
+        return bool(self._origin_field(session, "badge_sent", False))
 
     async def _set_badge_sent(self, session: Session, value: bool) -> None:
         """Update session badge sent status."""
-        if self.ADAPTER_KEY == "telegram":
-            session.get_metadata().get_ui().get_telegram().badge_sent = value
-        elif self.ADAPTER_KEY == "discord":
-            session.get_metadata().get_ui().get_discord().badge_sent = value
-        elif self.ADAPTER_KEY == "whatsapp":
-            session.get_metadata().get_ui().get_whatsapp().badge_sent = value
-        else:
-            return
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await self._set_origin_field(session, badge_sent=value)
 
     def _get_char_offset(self, session: Session) -> int:
         """Get adapter-specific char offset."""
-        if self.ADAPTER_KEY == "telegram":
-            return session.get_metadata().get_ui().get_telegram().char_offset
-        if self.ADAPTER_KEY == "discord":
-            return session.get_metadata().get_ui().get_discord().char_offset
-        if self.ADAPTER_KEY == "whatsapp":
-            return session.get_metadata().get_ui().get_whatsapp().char_offset
-        return 0
+        raw = self._origin_field(session, "char_offset", 0)
+        return int(str(raw)) if raw is not None else 0
 
     async def _set_char_offset(self, session: Session, value: int) -> None:
         """Set adapter-specific char offset."""
-        if self.ADAPTER_KEY == "telegram":
-            session.get_metadata().get_ui().get_telegram().char_offset = value
-        elif self.ADAPTER_KEY == "discord":
-            session.get_metadata().get_ui().get_discord().char_offset = value
-        elif self.ADAPTER_KEY == "whatsapp":
-            session.get_metadata().get_ui().get_whatsapp().char_offset = value
-        else:
-            return
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await self._set_origin_field(session, char_offset=value)
 
     async def _cleanup_footer_if_present(self, session: Session) -> None:
         """Delete and clear any tracked threaded footer message."""

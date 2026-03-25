@@ -9,8 +9,8 @@ import pytest
 from telegram.error import BadRequest, TelegramError
 
 from teleclaude.adapters.base_adapter import AdapterError
-from teleclaude.adapters.telegram.channel_ops import TOPIC_READY_TIMEOUT_S, ChannelOperationsMixin
-from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.adapters.telegram.channel_ops import ChannelOperationsMixin
+from teleclaude.core.models import ChannelMetadata, Session, TelegramAdapterMetadata
 
 
 class _StubChannelOps(ChannelOperationsMixin):
@@ -32,22 +32,19 @@ class _StubChannelOps(ChannelOperationsMixin):
 
 
 def _make_session(session_id: str = "sess-1", topic_id: int | None = None) -> Session:
+    tg = TelegramAdapterMetadata(topic_id=topic_id)
     return Session(
         session_id=session_id,
-        computer_name="test-computer",
-        tmux_session_name=f"tmux-{session_id}",
-        title="Test Session",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=topic_id)),
+        computer_name="x",
+        tmux_session_name=f"t-{session_id}",
+        title="S",
+        origin_metadata={"platform": "telegram", "telegram": tg.to_dict()},
     )
 
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-
-def test_topic_ready_timeout_is_five_seconds():
-    assert TOPIC_READY_TIMEOUT_S == 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +121,7 @@ async def test_create_channel_returns_topic_id_as_string():
 
     with patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db:
         mock_db.get_session = AsyncMock(side_effect=[session, updated_session])
-        mock_db.update_session = AsyncMock()
+        mock_db.update_origin_metadata = AsyncMock()
         result = await ops.create_channel(session, "Test Topic", ChannelMetadata())
 
     assert result == "999"
@@ -252,11 +249,11 @@ async def test_delete_channel_returns_true_and_clears_persisted_topic_id():
 
     with patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=fresh_session)
-        mock_db.update_session = AsyncMock()
+        mock_db.update_origin_metadata = AsyncMock()
         result = await ops.delete_channel(session)
 
     assert result is True
-    assert fresh_session.get_metadata().get_ui().get_telegram().topic_id is None
+    mock_db.update_origin_metadata.assert_awaited_once()
     ops._delete_forum_topic_with_retry.assert_awaited_once_with(55)
 
 
@@ -269,12 +266,12 @@ async def test_delete_channel_treats_topic_id_invalid_as_success_and_clears_meta
 
     with patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=fresh_session)
-        mock_db.update_session = AsyncMock()
+        mock_db.update_origin_metadata = AsyncMock()
 
         result = await ops.delete_channel(session)
 
     assert result is True
-    assert fresh_session.get_metadata().get_ui().get_telegram().topic_id is None
+    mock_db.update_origin_metadata.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

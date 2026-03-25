@@ -10,7 +10,4 @@ class InputOrigin(str, Enum):
     DISCORD = "discord"
     WHATSAPP = "whatsapp"
     WEB = "web"
-    REDIS = "redis"
-    API = "api"
     TERMINAL = "terminal"
-    HOOK = "hook"

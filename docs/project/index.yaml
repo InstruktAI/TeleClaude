@@ -1,13 +1,6 @@
 project_root: ~/Workspace/InstruktAI/TeleClaude
 snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
 snippets:
-- id: project/concept/ai-worker
-  description: The role of an AI agent session in the TeleClaude network.
-  type: concept
-  scope: project
-  path: docs/project/concept/ai-worker.md
-  visibility: internal
-  source_project: TeleClaude
 - id: project/concept/master-bot
   description: The role of the master bot in a multi-computer Telegram supergroup.
   type: concept

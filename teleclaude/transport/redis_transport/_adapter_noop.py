@@ -104,17 +104,13 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
         """Record transport metadata for AI-to-AI sessions (no Redis output streams)."""
         _ = title
 
-        redis_meta = session.get_metadata().get_transport().get_redis()
-
         if metadata.target_computer:
-            redis_meta.target_computer = metadata.target_computer
+            await db.update_origin_metadata(session.session_id, "redis", {"target_computer": metadata.target_computer})
             logger.info(
                 "Recorded Redis target for AI-to-AI session %s: target=%s",
                 session.session_id,
                 metadata.target_computer,
             )
-
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         return ""
 
     async def update_channel_title(self, session: Session, title: str) -> bool:

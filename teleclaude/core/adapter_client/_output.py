@@ -379,9 +379,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         Core sends raw text + metadata to every adapter. Each adapter owns
         suppression (own-user echo) and presentation (headers, formatting).
         """
-        default_actor = (
-            "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.TERMINAL.value} else source.upper()
-        )
+        default_actor = "TUI" if source.lower() == InputOrigin.TERMINAL.value else source.upper()
         normalized_actor_name = (actor_name or "").strip() or (actor_id or "").strip() or default_actor
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session

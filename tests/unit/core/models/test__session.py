@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import json
-from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 
 import pytest
 
-from teleclaude.core.models._adapter import SessionAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.core.models._session import (
     ChannelMetadata,
     CleanupTrigger,
@@ -18,7 +15,6 @@ from teleclaude.core.models._session import (
     SessionField,
     SessionLaunchIntent,
     SessionLaunchKind,
-    SessionMetadata,
     TranscriptFormat,
 )
 
@@ -44,35 +40,12 @@ class TestMessageMetadata:
         assert m.project_path is None
         assert m.subdir is None
         assert m.channel_metadata is None
-        assert m.session_metadata is None
+        assert m.system_role is None
+        assert m.job is None
         assert m.auto_command is None
         assert m.launch_intent is None
         assert m.is_transcription is False
         assert m.cleanup_trigger is None
-
-
-class TestSessionMetadata:
-    @pytest.mark.unit
-    def test_all_fields_default_to_none(self):
-        m = SessionMetadata()
-        assert m.system_role is None
-        assert m.job is None
-        assert m.human_email is None
-        assert m.human_role is None
-        assert m.principal is None
-
-    @pytest.mark.unit
-    def test_fields_can_be_set(self):
-        m = SessionMetadata(system_role="agent", job="builder", human_email="u@example.com")
-        assert m.system_role == "agent"
-        assert m.job == "builder"
-        assert m.human_email == "u@example.com"
-
-    @pytest.mark.unit
-    def test_is_frozen(self):
-        m = SessionMetadata(system_role="agent")
-        with pytest.raises(FrozenInstanceError):
-            m.system_role = "changed"
 
 
 class TestSessionLaunchKind:
@@ -143,8 +116,8 @@ class TestCleanupTrigger:
 
 class TestSessionField:
     @pytest.mark.unit
-    def test_adapter_metadata_value(self):
-        assert SessionField.ADAPTER_METADATA.value == "adapter_metadata"
+    def test_origin_metadata_value(self):
+        assert SessionField.ORIGIN_METADATA.value == "origin_metadata"
 
     @pytest.mark.unit
     def test_title_value(self):
@@ -185,9 +158,10 @@ class TestSession:
         assert session.visibility == "private"
 
     @pytest.mark.unit
-    def test_get_metadata_returns_adapter_metadata(self):
-        session = self._make_session()
-        assert session.get_metadata() is session.adapter_metadata
+    def test_get_origin_section_returns_dict(self):
+        session = self._make_session(origin_metadata={"telegram": {"topic_id": 7}})
+        assert session.get_origin_section("telegram") == {"topic_id": 7}
+        assert session.get_origin_section("missing") == {}
 
     @pytest.mark.unit
     def test_to_dict_serializes_datetime_as_iso_string(self):
@@ -197,20 +171,17 @@ class TestSession:
         assert d["created_at"] == now.isoformat()
 
     @pytest.mark.unit
-    def test_to_dict_adapter_metadata_serialized_as_json_string(self):
-        session = self._make_session()
+    def test_to_dict_origin_metadata_included(self):
+        session = self._make_session(origin_metadata={"platform": "terminal"})
         d = session.to_dict()
-        assert isinstance(d["adapter_metadata"], str)
-        # must be valid JSON
-        json.loads(str(d["adapter_metadata"]))
+        assert d["origin_metadata"] == {"platform": "terminal"}
 
     @pytest.mark.unit
-    def test_to_dict_session_metadata_included_when_set(self):
-        sm = SessionMetadata(system_role="worker")
-        session = self._make_session(session_metadata=sm)
+    def test_to_dict_system_role_and_job_included(self):
+        session = self._make_session(system_role="worker", job="builder")
         d = session.to_dict()
-        assert isinstance(d["session_metadata"], dict)
-        assert d["session_metadata"]["system_role"] == "worker"
+        assert d["system_role"] == "worker"
+        assert d["job"] == "builder"
 
     @pytest.mark.unit
     def test_from_dict_restores_basic_fields(self):
@@ -226,70 +197,42 @@ class TestSession:
         assert session.title == "My Session"
 
     @pytest.mark.unit
-    def test_from_dict_adapter_metadata_parsed_from_json_string(self):
-        tg = TelegramAdapterMetadata(topic_id=77)
-        meta = SessionAdapterMetadata(telegram=tg)
+    def test_from_dict_origin_metadata_parsed(self):
         data = {
             "session_id": "s1",
-            "computer_name": "local",
-            "tmux_session_name": "tc-s1",
+            "computer_name": "x",
+            "tmux_session_name": "t-s1",
             "title": "T",
-            "adapter_metadata": meta.to_json(),
+            "origin_metadata": {"platform": "terminal", "telegram": {"topic_id": 77}},
         }
         session = Session.from_dict(data)
-        assert session.adapter_metadata.get_ui().get_telegram().topic_id == 77
+        assert session.origin_metadata["platform"] == "terminal"
+        assert session.get_origin_section("telegram")["topic_id"] == 77
 
     @pytest.mark.unit
-    def test_from_dict_missing_adapter_metadata_uses_empty(self):
+    def test_from_dict_missing_origin_metadata_uses_empty(self):
         data = {
             "session_id": "s1",
-            "computer_name": "local",
-            "tmux_session_name": "tc-s1",
+            "computer_name": "x",
+            "tmux_session_name": "t-s1",
             "title": "T",
         }
         session = Session.from_dict(data)
-        assert isinstance(session.adapter_metadata, SessionAdapterMetadata)
+        assert session.origin_metadata == {}
 
     @pytest.mark.unit
-    def test_from_dict_session_metadata_dict_parsed(self):
+    def test_from_dict_system_role_and_job_parsed(self):
         data = {
             "session_id": "s1",
             "computer_name": "local",
             "tmux_session_name": "tc-s1",
             "title": "T",
-            "session_metadata": {"system_role": "agent", "job": "reviewer"},
+            "system_role": "agent",
+            "job": "reviewer",
         }
         session = Session.from_dict(data)
-        assert session.session_metadata is not None
-        assert session.session_metadata.system_role == "agent"
-        assert session.session_metadata.job == "reviewer"
-
-    @pytest.mark.unit
-    def test_from_dict_session_metadata_json_string_parsed(self):
-        sm_json = json.dumps({"system_role": "agent", "principal": "alice"})
-        data = {
-            "session_id": "s1",
-            "computer_name": "local",
-            "tmux_session_name": "tc-s1",
-            "title": "T",
-            "session_metadata": sm_json,
-        }
-        session = Session.from_dict(data)
-        assert session.session_metadata is not None
-        assert session.session_metadata.system_role == "agent"
-        assert session.session_metadata.principal == "alice"
-
-    @pytest.mark.unit
-    def test_from_dict_session_metadata_invalid_json_string_yields_none(self):
-        data = {
-            "session_id": "s1",
-            "computer_name": "local",
-            "tmux_session_name": "tc-s1",
-            "title": "T",
-            "session_metadata": "not-valid-json",
-        }
-        session = Session.from_dict(data)
-        assert session.session_metadata is None
+        assert session.system_role == "agent"
+        assert session.job == "reviewer"
 
     @pytest.mark.unit
     def test_from_dict_human_role_defaults_to_none_when_missing(self):

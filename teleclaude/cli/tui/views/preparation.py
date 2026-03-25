@@ -179,6 +179,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         prepare_phase=getattr(t, "prepare_phase", None),
                         integration_phase=getattr(t, "integration_phase", None),
                         finalize_status=getattr(t, "finalize_status", None),
+                        todo_path=getattr(t, "todo_path", None),
                     )
                 )
         slug_width = max((len(t.slug) for t in all_todo_items), default=0)
@@ -271,12 +272,13 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         file_tree_lines = node.tree_lines + [not is_last_sibling]
                         sorted_files = sorted(node.todo.files)
                         file_widgets: list[Widget] = []
-                        # Get project path for filepath construction
                         proj_path = self._slug_to_project_path.get(node.slug, "")
                         for fi, filename in enumerate(sorted_files):
                             f_last = fi == len(sorted_files) - 1
                             filepath = (
-                                f"{proj_path}/todos/{node.slug}/{filename}"
+                                f"{node.todo.todo_path}/{filename}"
+                                if node.todo.todo_path
+                                else f"{proj_path}/todos/{node.slug}/{filename}"
                                 if proj_path
                                 else f"todos/{node.slug}/{filename}"
                             )
@@ -317,12 +319,15 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         row_idx = self._nav_items.index(todo_row)
         # File tree_lines = parent's lines + parent's own branch continuation
         file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]  # pylint: disable=protected-access
-        # Get project path for filepath construction
         proj_path = self._slug_to_project_path.get(todo_row.slug, "")
         for i, filename in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
             filepath = (
-                f"{proj_path}/todos/{todo_row.slug}/{filename}" if proj_path else f"todos/{todo_row.slug}/{filename}"
+                f"{todo_row.todo.todo_path}/{filename}"
+                if todo_row.todo.todo_path
+                else f"{proj_path}/todos/{todo_row.slug}/{filename}"
+                if proj_path
+                else f"todos/{todo_row.slug}/{filename}"
             )
             file_row = TodoFileRow(
                 filepath=filepath,

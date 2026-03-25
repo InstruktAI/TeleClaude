@@ -24,7 +24,6 @@ from teleclaude.core.events import (
     parse_command_string,
 )
 from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata, RedisInboundMessage, SessionLaunchIntent
-from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
 
 logger = get_logger(__name__)
@@ -366,7 +365,10 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
         msg_type = data.get(b"type", b"").decode("utf-8")
         session_id = data.get(b"session_id", b"").decode("utf-8") or None
         command = data.get(b"command", b"").decode("utf-8")
-        origin = data.get(b"origin", b"").decode("utf-8") or InputOrigin.REDIS.value
+        origin_raw = data.get(b"origin", b"").decode("utf-8")
+        if not origin_raw:
+            raise ValueError("Redis inbound message missing origin field")
+        origin = origin_raw
 
         channel_metadata: JsonDict | None = None
         if b"channel_metadata" in data:

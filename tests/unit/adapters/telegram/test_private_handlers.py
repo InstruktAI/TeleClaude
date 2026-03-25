@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from teleclaude.adapters.telegram.private_handlers import PrivateHandlersMixin
-from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import MessageMetadata, Session, TelegramAdapterMetadata
 from teleclaude.types.commands import KeysCommand
 
 
@@ -37,12 +37,13 @@ class _StubPrivateHandlers(PrivateHandlersMixin):
 
 
 def _make_session(session_id: str = "sess-1", user_id: int | None = None) -> Session:
+    tg = TelegramAdapterMetadata(user_id=user_id)
     return Session(
         session_id=session_id,
         computer_name="test-computer",
         tmux_session_name=f"tmux-{session_id}",
         title="Test Session",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(user_id=user_id)),
+        origin_metadata={"platform": "telegram", "telegram": tg.to_dict()},
     )
 
 

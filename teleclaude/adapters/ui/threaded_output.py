@@ -220,7 +220,7 @@ class ThreadedOutputMixin:
         """Refresh mutable session output state from the database before rendering."""
         fresh = await core_db.db.get_session(session.session_id)
         if fresh:
-            session.adapter_metadata = fresh.adapter_metadata
+            session.origin_metadata = fresh.origin_metadata
             session.output_message_id = fresh.output_message_id
             session.last_output_digest = fresh.last_output_digest
 

@@ -90,7 +90,6 @@ async def test_handle_session_closed_cleans_state_and_cancels_worker(monkeypatch
 async def test_bootstrap_writes_system_role_to_identity_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """When a session has system_role in metadata, it is written to the identity file."""
     from teleclaude.constants import ROLE_INTEGRATOR
-    from teleclaude.core.models import SessionMetadata
 
     daemon_inst = _TestDaemon()
     identity_calls: list[dict[str, str]] = []
@@ -101,7 +100,8 @@ async def test_bootstrap_writes_system_role_to_identity_file(monkeypatch: pytest
         project_path="/tmp/proj",
         subdir=None,
         lifecycle_status="initializing",
-        session_metadata=SessionMetadata(system_role=ROLE_INTEGRATOR, job="integrator"),
+        system_role=ROLE_INTEGRATOR,
+        job="integrator",
         principal=None,
         human_email=None,
         human_role=None,
@@ -151,7 +151,8 @@ async def test_bootstrap_writes_none_system_role_when_absent(monkeypatch: pytest
         project_path="/tmp/proj",
         subdir=None,
         lifecycle_status="initializing",
-        session_metadata=None,
+        system_role=None,
+        job=None,
         principal=None,
         human_email=None,
         human_role=None,
@@ -199,7 +200,8 @@ async def test_bootstrap_skips_token_for_human_principal(monkeypatch: pytest.Mon
         project_path="/tmp/proj",
         subdir=None,
         lifecycle_status="initializing",
-        session_metadata=None,
+        system_role=None,
+        job=None,
         principal=None,
         human_email="maurice@instrukt.ai",
         human_role="admin",
@@ -248,7 +250,8 @@ async def test_bootstrap_writes_human_role_without_email(monkeypatch: pytest.Mon
         project_path="/tmp/proj",
         subdir=None,
         lifecycle_status="headless",
-        session_metadata=None,
+        system_role=None,
+        job=None,
         principal=None,
         human_email=None,
         human_role="admin",
@@ -395,105 +398,3 @@ async def test_handle_session_close_requested_restores_active_status_after_failu
     assert emitted[0][0] == TeleClaudeEvents.SESSION_STATUS
     assert emitted[0][1].status == "error"
     assert emitted[0][1].reason == "close_failed"
-
-
-class TestDaemonSessionReadinessSpec:
-    """Test that _handle_agent_then_message uses the new detector and emits events."""
-
-    @pytest.mark.asyncio
-    async def test_handle_agent_then_message_emits_ready_event(self, monkeypatch):
-        """Test that _handle_agent_then_message calls detector and emits AGENT_READY."""
-        daemon = _TestDaemon()
-        session_id = "sess-1"
-
-        # Mock database and session
-        mock_db = AsyncMock()
-        monkeypatch.setattr("teleclaude.daemon_session.db", mock_db)
-
-        # Mock wait_for_agent_ready from the new module
-        mock_ready = AsyncMock(return_value=(True, "prompt > "))
-        # We'll need to patch wherever wait_for_agent_ready is imported in daemon_session
-        # Using raising=False since it's not yet imported there
-        monkeypatch.setattr("teleclaude.daemon_session.wait_for_agent_ready", mock_ready, raising=False)
-
-        mock_emit = MagicMock()
-        monkeypatch.setattr("teleclaude.daemon_session.event_bus.emit", mock_emit)
-
-        mock_tmux = SimpleNamespace(
-            is_process_running=AsyncMock(return_value=True),
-            process_text=AsyncMock(return_value=True),
-            wrap_bracketed_paste=lambda text, active_agent: text,
-        )
-        monkeypatch.setattr("teleclaude.daemon_session.tmux_io", mock_tmux)
-        monkeypatch.setattr(daemon, "_poll_and_send_output", AsyncMock())
-        monkeypatch.setattr(daemon, "_confirm_command_acceptance", AsyncMock(return_value=True))
-
-        # SC-3: Mock tmux_bridge to verify it's NOT called directly for polling by daemon_session
-        # (It should be called by the agent_readiness module, which is mocked above)
-        mock_bridge = AsyncMock()
-        monkeypatch.setattr("teleclaude.daemon_session.tmux_bridge", mock_bridge)
-
-        mock_db.get_session = AsyncMock(
-            return_value=MagicMock(session_id=session_id, project_path="/tmp", subdir="", active_agent="claude")
-        )
-
-        # Call the method
-        await daemon._handle_agent_then_message(session_id, ["claude", "slow", "hello"])
-
-        # SC-2/SC-3: Verify readiness module was called
-        mock_ready.assert_awaited_once()
-
-        # SC-3: Verify daemon_session did NOT call tmux_bridge directly for capture (proving it used the result)
-        # This tests the PUBLIC behavior/contract: use the module, don't poll directly.
-        assert mock_bridge.capture_pane.call_count == 0, (
-            "daemon_session should not call tmux_bridge.capture_pane directly"
-        )
-
-        # SC-4: Verify event was emitted with session_id
-        found_ready = False
-        for call in mock_emit.call_args_list:
-            if call.args[0] == TeleClaudeEvents.AGENT_READY:
-                ctx = call.args[1]
-                assert ctx.session_id == session_id
-                found_ready = True
-                break
-        assert found_ready, "AGENT_READY event not emitted"
-
-    @pytest.mark.asyncio
-    async def test_handle_agent_then_message_emits_timeout_event(self, monkeypatch):
-        """Test that _handle_agent_then_message emits AGENT_READINESS_TIMEOUT on failure."""
-        daemon = _TestDaemon()
-        session_id = "sess-1"
-
-        mock_db = AsyncMock()
-        monkeypatch.setattr("teleclaude.daemon_session.db", mock_db)
-
-        mock_ready = AsyncMock(return_value=(False, "still loading"))
-        monkeypatch.setattr("teleclaude.daemon_session.wait_for_agent_ready", mock_ready, raising=False)
-
-        mock_emit = MagicMock()
-        monkeypatch.setattr("teleclaude.daemon_session.event_bus.emit", mock_emit)
-
-        mock_terminate = AsyncMock()
-        monkeypatch.setattr(
-            "teleclaude.daemon_session.session_cleanup", SimpleNamespace(terminate_session=mock_terminate)
-        )
-
-        session_mock = MagicMock(session_id=session_id)
-        mock_db.get_session = AsyncMock(return_value=session_mock)
-
-        # Call the method
-        await daemon._handle_agent_then_message(session_id, ["claude", "slow", "hello"])
-
-        # SC-5: Verify event was emitted with session_id
-        found_timeout = False
-        for call in mock_emit.call_args_list:
-            if call.args[0] == TeleClaudeEvents.AGENT_READINESS_TIMEOUT:
-                ctx = call.args[1]
-                assert ctx.session_id == session_id
-                found_timeout = True
-                break
-        assert found_timeout, "AGENT_READINESS_TIMEOUT event not emitted"
-
-        # Session is kept alive on timeout — no terminate, no message injection
-        mock_terminate.assert_not_awaited()

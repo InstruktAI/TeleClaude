@@ -2,7 +2,7 @@
 """Behavioral tests for the git wrapper three-tier permission model.
 
 Tests import the wrapper as a Python module and call main() directly,
-mocking gitpython for actual git execution. No subprocess.
+mocking subprocess.run for actual git execution.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def _run(
     branch: str = "feature",
     no_identity_file: bool = False,
 ) -> tuple[int, str]:
-    """Run the wrapper's main() with mocked identity and git, return (exit_code, stderr)."""
+    """Run the wrapper's main() with mocked identity and subprocess, return (exit_code, stderr)."""
     session_tmpdir = Path(tempfile.mkdtemp())
     if not no_identity_file:
         identity: dict[str, str] = {"session_id": "test-session"}
@@ -61,9 +61,6 @@ def _run(
             identity["human_role"] = human_role
         (session_tmpdir / "teleclaude_identity.json").write_text(json.dumps(identity))
 
-    mock_git_cmd = MagicMock()
-    mock_git_cmd.execute.return_value = ""
-
     captured_stderr: list[str] = []
     exit_code = 0
 
@@ -72,19 +69,14 @@ def _run(
 
         if kw.get("file") is _sys.stderr:
             captured_stderr.append(" ".join(str(x) for x in a))
-        else:
-            # stdout output (e.g. git command output) — discard in tests
-            pass
 
-    env_overrides = {"TMPDIR": str(session_tmpdir), "TELECLAUDE_SYSTEM_ROLE": ""}
-
-    mock_gp = MagicMock()
-    mock_gp.cmd.Git.return_value = mock_git_cmd
-    mock_gp.exc.GitCommandError = Exception
+    env_overrides = {"TMPDIR": str(session_tmpdir), "TELECLAUDE_SYSTEM_ROLE": "", "TMUX": ""}
+    mock_proc = MagicMock(returncode=0)
 
     with (
         patch.dict(os.environ, env_overrides),
-        patch.object(_wrapper, "_get_gitpython", return_value=mock_gp),
+        patch.object(_wrapper, "_find_real_git", return_value="/usr/bin/git"),
+        patch("subprocess.run", return_value=mock_proc),
         patch.object(_wrapper, "get_current_branch", return_value=branch),
         patch("sys.argv", ["git"] + args),
         patch("builtins.print", side_effect=fake_print),

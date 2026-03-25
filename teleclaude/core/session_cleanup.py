@@ -22,7 +22,7 @@ from teleclaude.core import tmux_bridge
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.events import SessionEscalatedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.session_listeners import cleanup_caller_listeners, cleanup_session_links, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
@@ -99,6 +99,23 @@ async def cleanup_session_resources(
             logger.debug("Deleted workspace directory for session %s", session_id)
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to delete workspace for session %s: %s", session_id, e)
+
+
+async def _end_escalation_if_active(session: "Session") -> None:
+    """Clear relay state and emit escalation_ended if session was escalated."""
+    if session.relay_status != "active":
+        return
+    await db.update_session(
+        session.session_id,
+        relay_status=None,
+        relay_discord_channel_id=None,
+        relay_started_at=None,
+    )
+    event_bus.emit(
+        "session.escalation_ended",  # type: ignore[arg-type]
+        SessionEscalatedPayload(session_id=session.session_id),
+    )
+    logger.info("Escalation ended (session close) for %s", session.session_id)
 
 
 async def terminate_session(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
@@ -197,6 +214,8 @@ async def _terminate_session_inner(  # pylint: disable=too-many-arguments  # Par
     except RuntimeError:
         pass  # Queue manager not initialized (e.g. tests) — skip
 
+    await _end_escalation_if_active(session)
+
     if delete_db:
         await db.delete_session(session.session_id)
         logger.info("Deleted session %s from database", session.session_id)
@@ -243,8 +262,8 @@ async def emit_recently_closed_session_events(
 
         # Only replay if channel cleanup is still pending (topic_id or discord channel still set).
         # If already cleared, the cleanup already completed — skip to avoid duplicate deletes.
-        telegram_topic_id = session.get_metadata().get_ui().get_telegram().topic_id
-        discord_channel_id = session.get_metadata().get_ui().get_discord().channel_id
+        telegram_topic_id = session.get_origin_section("telegram").get("topic_id")
+        discord_channel_id = session.get_origin_section("discord").get("channel_id")
         if telegram_topic_id is None and discord_channel_id is None:
             logger.debug(
                 "Skipping replay for session %s: channel already cleared",

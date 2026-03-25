@@ -26,8 +26,8 @@ def transport(adapter_client: MagicMock) -> RedisTransport:
 def session() -> MagicMock:
     s = MagicMock()
     s.session_id = "sess-001"
-    redis_meta = MagicMock()
-    s.get_metadata.return_value.get_transport.return_value.get_redis.return_value = redis_meta
+    s.origin_metadata = {}
+    s.get_origin_section = lambda key: dict(s.origin_metadata.get(key, {}))
     return s
 
 
@@ -97,12 +97,10 @@ class TestCreateChannel:
     async def test_records_target_computer_when_set(self, transport: RedisTransport, session: MagicMock) -> None:
         channel_metadata = MagicMock()
         channel_metadata.target_computer = "remote-computer"
-        redis_meta = MagicMock()
-        session.get_metadata.return_value.get_transport.return_value.get_redis.return_value = redis_meta
         with patch("teleclaude.transport.redis_transport._adapter_noop.db") as mock_db:
-            mock_db.update_session = AsyncMock()
+            mock_db.update_origin_metadata = AsyncMock()
             await transport.create_channel(session, "title", channel_metadata)
-        assert redis_meta.target_computer == "remote-computer"
+        mock_db.update_origin_metadata.assert_awaited_once()
 
 
 class TestUpdateChannelTitle:

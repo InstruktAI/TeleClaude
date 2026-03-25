@@ -67,7 +67,8 @@ def _make_session_snapshot(
     title: str = "Test Session",
     status: str = "active",
     visibility: str | None = "private",
-    session_metadata: object = None,
+    system_role: str | None = None,
+    job: str | None = None,
     **kwargs: object,
 ) -> MagicMock:
     """Build a minimal SessionSnapshot-like mock for from_core tests."""
@@ -94,7 +95,8 @@ def _make_session_snapshot(
     snap.human_email = None
     snap.human_role = None
     snap.visibility = visibility
-    snap.session_metadata = session_metadata
+    snap.system_role = system_role
+    snap.job = job
     for k, v in kwargs.items():
         setattr(snap, k, v)
     return snap
@@ -268,22 +270,20 @@ class TestSessionDTOFromCore:
         assert dto.computer == "host-a"
 
     @pytest.mark.unit
-    def test_session_metadata_none_produces_none(self):
-        """When session_metadata is None, the DTO field is None."""
-        snap = _make_session_snapshot(session_metadata=None)
+    def test_system_role_none_produces_none(self):
+        """When system_role is None, the DTO field is None."""
+        snap = _make_session_snapshot()
         dto = SessionDTO.from_core(snap)
-        assert dto.session_metadata is None
+        assert dto.system_role is None
+        assert dto.job is None
 
     @pytest.mark.unit
-    def test_session_metadata_serialized_as_dict(self):
-        """When session_metadata is a dataclass, from_core converts it to a dict."""
-        from teleclaude.core.models import SessionMetadata
-
-        meta = SessionMetadata(system_role="worker", job=None, human_email=None, human_role=None, principal=None)
-        snap = _make_session_snapshot(session_metadata=meta)
+    def test_system_role_and_job_carried_through(self):
+        """system_role and job are carried from snapshot to DTO."""
+        snap = _make_session_snapshot(system_role="worker", job="builder")
         dto = SessionDTO.from_core(snap)
-        assert isinstance(dto.session_metadata, dict)
-        assert dto.session_metadata["system_role"] == "worker"
+        assert dto.system_role == "worker"
+        assert dto.job == "builder"
 
     @pytest.mark.unit
     def test_visibility_none_falls_back_to_private(self):

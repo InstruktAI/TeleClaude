@@ -66,16 +66,6 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
 
     _ALLOWED_REFRESH_REASONS = {"startup", "digest", "interest", "ttl"}
 
-    def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
-        """Store Redis channel_id into session adapter metadata."""
-        from teleclaude.core.models import SessionAdapterMetadata  # pylint: disable=C0415
-
-        if not isinstance(adapter_metadata, SessionAdapterMetadata):
-            return
-
-        redis_meta = adapter_metadata.get_transport().get_redis()
-        redis_meta.channel_id = channel_id
-
     def __init__(self, adapter_client: AdapterClient, task_registry: TaskRegistry | None = None):
         """Initialize Redis transport.
 

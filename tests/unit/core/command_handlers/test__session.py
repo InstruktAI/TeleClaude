@@ -16,7 +16,6 @@ from teleclaude.core.models import (
     Session,
     SessionLaunchIntent,
     SessionLaunchKind,
-    SessionMetadata,
     TodoInfo,
 )
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
@@ -73,7 +72,7 @@ class TestCreateSession:
         identity_resolver = SimpleNamespace(
             resolve=lambda _origin, _metadata: SimpleNamespace(
                 person_email=None,
-                person_role=None,
+                person_role="member",
                 platform=None,
                 platform_user_id=None,
             )
@@ -88,7 +87,7 @@ class TestCreateSession:
             origin="telegram",
             subdir="feature-branch",
             working_slug="feature-x",
-            session_metadata=SessionMetadata(human_role="member"),
+            channel_metadata={"user_id": 123, "platform": "telegram"},
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
                 agent="claude",

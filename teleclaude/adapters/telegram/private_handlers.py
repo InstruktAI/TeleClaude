@@ -24,7 +24,7 @@ from teleclaude.config.schema import TelegramCreds
 from teleclaude.core import command_registry
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
-from teleclaude.core.models import Session, SessionMetadata
+from teleclaude.core.models import Session, TelegramAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import CommandType, CreateSessionCommand, ProcessMessageCommand
 
@@ -163,7 +163,6 @@ class PrivateHandlersMixin:
                 "platform": "telegram",
                 "chat_type": "private",
             },
-            session_metadata=SessionMetadata(human_role="member"),
             auto_command=f"agent {agents_module.get_default_agent()}",
         )
         result_dict = await get_command_service().create_session(create_cmd)
@@ -213,7 +212,6 @@ class PrivateHandlersMixin:
                 user_id,
                 identity.person_name,
                 update.effective_message.text or "",
-                identity.person_role or "member",
             )
             session_id = str(result_dict.get("session_id", ""))
             if not session_id:
@@ -304,8 +302,8 @@ class PrivateHandlersMixin:
         """Return the active private-chat session for a Telegram user, if one exists."""
         sessions = await db.list_sessions(last_input_origin="telegram", include_closed=False)
         for session in sessions:
-            telegram_meta = session.get_metadata().get_ui().get_telegram()
-            if telegram_meta.user_id == int(user_id):
+            tg = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
+            if tg.user_id == int(user_id):
                 return session
         return None
 
@@ -314,7 +312,6 @@ class PrivateHandlersMixin:
         user_id: str,
         person_name: str,
         text: str,
-        human_role: str,
     ) -> dict[str, str]:
         """Create a private-chat session with the initial message bundled into auto_command."""
         workspace_path = invite_module.scaffold_personal_workspace(person_name)
@@ -330,7 +327,6 @@ class PrivateHandlersMixin:
                 "platform": "telegram",
                 "chat_type": "private",
             },
-            session_metadata=SessionMetadata(human_role=human_role),
             auto_command=auto_command,
         )
         return await get_command_service().create_session(create_cmd)

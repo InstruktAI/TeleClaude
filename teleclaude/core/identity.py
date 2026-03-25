@@ -9,12 +9,13 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import PersonEntry
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import SessionAdapterMetadata
+    pass
 
 logger = get_logger(__name__)
 
@@ -146,6 +147,13 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
             )
         return IdentityContext()
 
+    def resolve_from_terminal(self) -> IdentityContext:
+        """Resolve identity from terminal login state (TTY-first, global fallback)."""
+        email = read_current_session_email()
+        if email:
+            return self.resolve_by_email(email)
+        return IdentityContext()
+
     @property
     def registered_people_count(self) -> int:
         """Number of registered people in global config."""
@@ -163,11 +171,6 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
             IdentityContext with person_role always set. Unknown identity defaults to customer.
         """
         self._reload_if_stale()
-
-        if origin == "api":
-            # API-origin sessions are already authenticated by verify_caller().
-            # Identity comes from the auth layer, not from channel metadata.
-            return IdentityContext()
 
         if origin == "terminal":
             email = channel_metadata.get("email")
@@ -254,21 +257,21 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
         return IdentityContext(person_role=HUMAN_ROLE_CUSTOMER)
 
 
-def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
-    """Derive identity key from adapter metadata.
+def derive_identity_key(origin_metadata: dict[str, object]) -> str | None:  # guard: loose-dict
+    """Derive identity key from origin_metadata.
 
     Format: {platform}:{platform_user_id}
     Returns None if no identity can be determined.
     """
-    ui = adapter_metadata.get_ui()
-    if ui._discord and ui._discord.user_id:  # pylint: disable=protected-access
-        return f"discord:{ui._discord.user_id}"  # pylint: disable=protected-access
-    if ui._telegram and getattr(ui._telegram, "user_id", None):  # pylint: disable=protected-access
-        return f"telegram:{ui._telegram.user_id}"  # pylint: disable=protected-access
-    if ui._whatsapp and ui._whatsapp.phone_number:  # pylint: disable=protected-access
-        return f"whatsapp:{ui._whatsapp.phone_number}"  # pylint: disable=protected-access
-    # TODO: Add web platform when WebAdapterMetadata is implemented:  # pylint: disable=fixme
-    #   if ui._web and ui._web.email: return f"web:{ui._web.email}"
+    discord = origin_metadata.get("discord")
+    if isinstance(discord, dict) and discord.get("user_id"):
+        return f"discord:{discord['user_id']}"
+    telegram = origin_metadata.get("telegram")
+    if isinstance(telegram, dict) and telegram.get("user_id"):
+        return f"telegram:{telegram['user_id']}"
+    whatsapp = origin_metadata.get("whatsapp")
+    if isinstance(whatsapp, dict) and whatsapp.get("phone_number"):
+        return f"whatsapp:{whatsapp['phone_number']}"
     return None
 
 

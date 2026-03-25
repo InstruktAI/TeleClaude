@@ -8,7 +8,7 @@ import pytest
 
 from teleclaude.adapters.telegram.callback_handlers import CallbackAction
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
-from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import MessageMetadata, Session
 
 
 @pytest.fixture()
@@ -40,7 +40,6 @@ def _make_session(session_id: str = "sess-1", *, native_log_file: str | None = N
         computer_name="test-computer",
         tmux_session_name=f"tmux-{session_id}",
         title="Test Session",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata()),
         native_log_file=native_log_file,
     )
 
@@ -194,17 +193,6 @@ def test_is_message_from_trusted_bot_returns_false_for_unknown_bot(adapter: Tele
 # ---------------------------------------------------------------------------
 # store_channel_id
 # ---------------------------------------------------------------------------
-
-
-def test_store_channel_id_sets_topic_id_as_int(adapter: TelegramAdapter) -> None:
-    adapter_metadata = SessionAdapterMetadata()
-    adapter.store_channel_id(adapter_metadata, "999")
-    assert adapter_metadata.get_ui().get_telegram().topic_id == 999
-
-
-def test_store_channel_id_ignores_non_session_adapter_metadata(adapter: TelegramAdapter) -> None:
-    # Should not raise; non-SessionAdapterMetadata is silently ignored
-    adapter.store_channel_id(object(), "999")
 
 
 # ---------------------------------------------------------------------------

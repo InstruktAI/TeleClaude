@@ -144,7 +144,7 @@ OUTPUT_HOURGLASS_MARKER = "⏳"
 
 # JSON field names (internal normalized schema)
 FIELD_KIND = "kind"
-FIELD_ADAPTER_METADATA = "adapter_metadata"
+FIELD_ORIGIN_METADATA = "origin_metadata"
 FIELD_COMPUTER = "computer"
 FIELD_COMMAND = "command"
 

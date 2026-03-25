@@ -25,29 +25,16 @@ class TestInputOrigin:
         assert InputOrigin.WEB.value == "web"
 
     @pytest.mark.unit
-    def test_redis_value(self):
-        assert InputOrigin.REDIS.value == "redis"
-
-    @pytest.mark.unit
-    def test_api_value(self):
-        assert InputOrigin.API.value == "api"
-
-    @pytest.mark.unit
     def test_terminal_value(self):
         assert InputOrigin.TERMINAL.value == "terminal"
 
     @pytest.mark.unit
-    def test_hook_value(self):
-        assert InputOrigin.HOOK.value == "hook"
-
-    @pytest.mark.unit
     def test_is_str_subclass(self):
-        # InputOrigin(str, Enum) — inherits from str so instance is a str
         assert isinstance(InputOrigin.TELEGRAM, str)
 
     @pytest.mark.unit
-    def test_equality_with_string(self):
-        assert InputOrigin.API == "api"  # type: ignore[comparison-overlap]
+    def test_exactly_five_members(self):
+        assert len(InputOrigin) == 5
 
     @pytest.mark.unit
     def test_all_origins_have_string_values(self):

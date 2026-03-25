@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from teleclaude.adapters.telegram.message_ops import EditContext, MessageOperationsMixin
-from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import MessageMetadata, Session, TelegramAdapterMetadata
 
 pytestmark = pytest.mark.unit
 
@@ -37,12 +37,13 @@ class _StubMessageOps(MessageOperationsMixin):
 
 
 def _make_session(session_id: str = "sess-1", topic_id: int | None = None) -> Session:
+    tg = TelegramAdapterMetadata(topic_id=topic_id)
     return Session(
         session_id=session_id,
-        computer_name="test-computer",
-        tmux_session_name=f"tmux-{session_id}",
-        title="Test Session",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=topic_id)),
+        computer_name="x",
+        tmux_session_name=f"t-{session_id}",
+        title="S",
+        origin_metadata={"platform": "telegram", "telegram": tg.to_dict()},
     )
 
 

@@ -279,7 +279,7 @@ async def spawn_integrator_session(
     try:
         sessions = await db.list_sessions()
         integrator_session = next(
-            (s for s in sessions if s.session_metadata and s.session_metadata.job == JobRole.INTEGRATOR),
+            (s for s in sessions if s.job == JobRole.INTEGRATOR),
             None,
         )
         if integrator_session:
@@ -295,7 +295,7 @@ async def spawn_integrator_session(
                         f"New integration candidate ready: {slug} ({branch}@{sha[:8]}). "
                         "Please run `telec todo integrate` to drain the queue."
                     ),
-                    origin=InputOrigin.API.value,
+                    origin=InputOrigin.TERMINAL.value,
                 )
                 await get_command_service().process_message(cmd)
             except Exception:  # pylint: disable=broad-exception-caught

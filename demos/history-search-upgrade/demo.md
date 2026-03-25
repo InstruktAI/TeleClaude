@@ -4,12 +4,12 @@
 
 ```bash
 # 1. Verify migration creates the mirrors table and FTS5 index
-sqlite3 ~/.teleclaude/teleclaude.db "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'mirrors%';"
+sqlite3 ./teleclaude.db "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'mirrors%';"
 ```
 
 ```bash
 # 2. Verify mirror generation — check that recent sessions have mirrors
-sqlite3 ~/.teleclaude/teleclaude.db "SELECT session_id, agent, computer, message_count, substr(title, 1, 60) FROM mirrors ORDER BY timestamp_start DESC LIMIT 10;"
+sqlite3 ./teleclaude.db "SELECT session_id, agent, computer, message_count, substr(title, 1, 60) FROM mirrors ORDER BY timestamp_start DESC LIMIT 10;"
 ```
 
 ```bash
@@ -109,8 +109,8 @@ Verify the worker catches sessions that events missed:
 
 ```bash
 # Check worker reconciliation — mirrors.updated_at should be recent for all sessions with transcripts
-sqlite3 ~/.teleclaude/teleclaude.db "SELECT COUNT(*) as total_mirrors FROM mirrors;"
-sqlite3 ~/.teleclaude/teleclaude.db "SELECT COUNT(*) as stale FROM mirrors WHERE updated_at < datetime('now', '-10 minutes');"
+sqlite3 ./teleclaude.db "SELECT COUNT(*) as total_mirrors FROM mirrors;"
+sqlite3 ./teleclaude.db "SELECT COUNT(*) as stale FROM mirrors WHERE updated_at < datetime('now', '-10 minutes');"
 ```
 
 Observe: all sessions with transcripts have mirrors. The worker's first pass (on fresh install) processed everything. Subsequent passes catch stragglers.

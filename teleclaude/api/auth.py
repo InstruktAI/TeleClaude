@@ -130,12 +130,12 @@ def _derive_session_system_role(session: Session) -> str | None:
     """Derive system role from daemon-owned session state.
 
     Priority:
-    1. Explicit `session_metadata.system_role` if present and valid.
+    1. Explicit `session.system_role` if present and valid.
     2. Worker heuristic: sessions with a `working_slug` are worker sessions.
     3. Otherwise unknown (treated as non-worker for system-role restrictions).
     """
-    if session.session_metadata and session.session_metadata.system_role:
-        normalized = session.session_metadata.system_role.strip().lower()
+    if session.system_role:
+        normalized = session.system_role.strip().lower()
         if normalized in {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR}:
             return normalized
 

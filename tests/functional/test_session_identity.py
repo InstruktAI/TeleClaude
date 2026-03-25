@@ -101,8 +101,7 @@ async def test_system_session_has_no_human_role_fallback(api: AsyncClient) -> No
         metadata={"system_role": "system"},
     )
     session = await _get_session_from_db(api, data["session_id"])
-    assert session.session_metadata is not None
-    assert session.session_metadata.system_role == "system"
+    assert session.system_role == "system"
     # human_role is set by auth (single-user → admin), not by fallback
     assert session.human_role == "admin"
 

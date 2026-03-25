@@ -111,7 +111,8 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     subfolder = cmd.subdir
     working_slug = cmd.working_slug
     initiator_session_id = cmd.initiator_session_id
-    metadata_from_cmd = cmd.session_metadata
+    cmd_system_role = cmd.system_role
+    cmd_job = cmd.job
 
     if cmd.channel_metadata:
         # subfolder/slug/initiator_id can also be in metadata, but command fields take precedence
@@ -128,21 +129,18 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
 
-    # Resolve identity — session_metadata is the authoritative carrier for
-    # identity fields (human_email, human_role, principal).  The identity
-    # resolver is a fallback for platform origins where the adapter didn't
-    # set explicit identity on session_metadata.
-    sm = metadata_from_cmd
-    metadata_human_email = sm.human_email if sm else None
-    metadata_human_role = sm.human_role.strip().lower() if sm and sm.human_role else None
-    metadata_principal = sm.principal if sm else None
+    # Resolve identity — channel_metadata carries identity fields for platform
+    # origins where the adapter populates them.  The identity resolver is the
+    # fallback for origins that don't set explicit identity.
 
-    identity = get_identity_resolver().resolve(origin, cmd.channel_metadata or {})
-    human_email = metadata_human_email or identity.person_email
-    human_role = metadata_human_role or identity.person_role
+    if not cmd.channel_metadata:
+        raise ValueError(f"CreateSessionCommand missing channel_metadata (origin={origin}, title={cmd.title})")
+    identity = get_identity_resolver().resolve(origin, cmd.channel_metadata)
+    human_email = identity.person_email
+    human_role = identity.person_role
 
     # Handle parent session identity inheritance
-    principal: str | None = metadata_principal
+    principal: str | None = None
     if parent_session:
         if not human_email and parent_session.human_email:
             human_email = parent_session.human_email
@@ -153,7 +151,7 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
 
     # System-role sessions (workers, orchestrators, integrators) are trusted
     # internal principals — they bypass help-desk routing entirely.
-    system_role = sm.system_role if sm else None
+    system_role = cmd_system_role
     raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
     configured_help_desk_path = (
         raw_help_desk_path
@@ -231,7 +229,8 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
         human_role=human_role,
         principal=principal,
         lifecycle_status="initializing",
-        session_metadata=metadata_from_cmd,
+        system_role=cmd_system_role,
+        job=cmd_job,
         active_agent=launch.agent if launch else None,
         thinking_mode=launch.thinking_mode if launch else None,
         emit_session_started=False,
@@ -274,18 +273,14 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
             session_id,
         )
 
-    # Persist platform user_id on adapter metadata for derive_identity_key()
+    # Persist platform user_id in origin_metadata for identity resolution
     if identity and identity.platform == "telegram" and identity.platform_user_id:
         try:
-            tg_meta = session.get_metadata().get_ui().get_telegram()
-            tg_meta.user_id = int(identity.platform_user_id)
-            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+            await db.update_origin_metadata(session.session_id, "telegram", {"user_id": int(identity.platform_user_id)})
         except (ValueError, TypeError):
             pass
     if identity and identity.platform == "whatsapp" and identity.platform_user_id:
-        wa_meta = session.get_metadata().get_ui().get_whatsapp()
-        wa_meta.phone_number = identity.platform_user_id
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        await db.update_origin_metadata(session.session_id, "whatsapp", {"phone_number": identity.platform_user_id})
 
     # NOTE: tmux creation + auto-command execution are handled asynchronously
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes

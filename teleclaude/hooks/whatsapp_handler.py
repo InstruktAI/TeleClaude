@@ -6,7 +6,6 @@ import mimetypes
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol, cast
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -16,36 +15,13 @@ from teleclaude.config import config
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata, SessionMetadata
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.hooks.webhook_models import HookEvent
 from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
-
-
-class _WhatsAppSessionMetadata(Protocol):  # pylint: disable=too-few-public-methods
-    phone_number: str
-    last_received_message_id: str
-    last_customer_message_at: str
-
-
-def _get_whatsapp_metadata(session: object) -> _WhatsAppSessionMetadata | None:
-    """Return the WhatsApp UI metadata object for a session, if available."""
-    get_metadata = getattr(session, "get_metadata", None)
-    if not callable(get_metadata):
-        return None
-    metadata = get_metadata()
-    get_ui = getattr(metadata, "get_ui", None)
-    if not callable(get_ui):
-        return None
-    ui_metadata = get_ui()
-    get_whatsapp = getattr(ui_metadata, "get_whatsapp", None)
-    if not callable(get_whatsapp):
-        return None
-    metadata = get_whatsapp()
-    return cast(_WhatsAppSessionMetadata, metadata)
 
 
 def _normalize_phone_number(phone_number: str | None) -> str:
@@ -56,7 +32,7 @@ def _normalize_phone_number(phone_number: str | None) -> str:
 
 
 async def _resolve_or_create_session(phone_number: str) -> object | None:
-    sessions = await db.get_sessions_by_adapter_metadata("whatsapp", "phone_number", phone_number)
+    sessions = await db.get_sessions_by_origin_metadata("whatsapp", "phone_number", phone_number)
     if sessions:
         return sessions[0]
 
@@ -68,7 +44,6 @@ async def _resolve_or_create_session(phone_number: str) -> object | None:
             "phone_number": phone_number,
             "platform": "whatsapp",
         },
-        session_metadata=SessionMetadata(human_role="customer"),
         auto_command=f"agent {get_default_agent()}",
     )
     result = await get_command_service().create_session(create_cmd)
@@ -86,22 +61,18 @@ async def _update_whatsapp_session_metadata(
     message_id: str,
     timestamp: str,
 ) -> None:
-    metadata = _get_whatsapp_metadata(session)
-    if metadata is None:
+    session_id = getattr(session, "session_id", None)
+    if not isinstance(session_id, str):
         return
-
-    metadata.phone_number = phone_number
-    metadata.last_received_message_id = message_id
-    metadata.last_customer_message_at = timestamp
-
-    try:
-        session_id = getattr(session, "session_id", None)
-        adapter_metadata = getattr(session, "adapter_metadata", None)
-        if not isinstance(session_id, str):
-            return
-        await db.update_session(session_id, adapter_metadata=adapter_metadata)
-    except (AttributeError, TypeError, ValueError):
-        logger.debug("Failed to persist WhatsApp metadata for session", exc_info=True)
+    await db.update_origin_metadata(
+        session_id,
+        "whatsapp",
+        {
+            "phone_number": phone_number,
+            "last_received_message_id": message_id,
+            "last_customer_message_at": timestamp,
+        },
+    )
 
 
 async def _fetch_whatsapp_media_bytes(media_id: str) -> bytes:

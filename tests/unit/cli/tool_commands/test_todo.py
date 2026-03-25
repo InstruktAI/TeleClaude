@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 todo_commands = importlib.import_module("teleclaude.cli.tool_commands.todo")
+receipt_module = importlib.import_module("teleclaude.cli.tool_commands._receipt")
 
 
 def test_handle_todo_prepare_invalidate_check_stays_local(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -40,10 +41,13 @@ def test_handle_todo_work_polls_until_terminal_state(monkeypatch: pytest.MonkeyP
     sleep_calls: list[float] = []
 
     monkeypatch.setattr(todo_commands, "print_json", print_json)
+    monkeypatch.setattr(receipt_module, "print_json", print_json)
     monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
     monkeypatch.setattr(todo_commands.uuid, "uuid4", lambda: "req-1")
-    monkeypatch.setattr(todo_commands.time, "sleep", lambda delay: sleep_calls.append(delay))
-    monkeypatch.setattr(todo_commands, "tool_api_call", lambda *_args, **_kwargs: next(responses))
+    monkeypatch.setattr(receipt_module.time, "sleep", lambda delay: sleep_calls.append(delay))
+    api_call = lambda *_args, **_kwargs: next(responses)  # noqa: E731
+    monkeypatch.setattr(todo_commands, "tool_api_call", api_call)
+    monkeypatch.setattr(receipt_module, "tool_api_call", api_call)
 
     todo_commands.handle_todo_work(["sample-slug"])
 
@@ -62,9 +66,11 @@ def test_handle_todo_integrate_polls_until_terminal_state(monkeypatch: pytest.Mo
     sleep_calls: list[float] = []
 
     monkeypatch.setattr(todo_commands, "print_json", print_json)
+    monkeypatch.setattr(receipt_module, "print_json", print_json)
     monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
-    monkeypatch.setattr(todo_commands.time, "sleep", lambda delay: sleep_calls.append(delay))
+    monkeypatch.setattr(receipt_module.time, "sleep", lambda delay: sleep_calls.append(delay))
     monkeypatch.setattr(todo_commands, "tool_api_call", tool_api_call)
+    monkeypatch.setattr(receipt_module, "tool_api_call", tool_api_call)
 
     todo_commands.handle_todo_integrate(["sample-slug"])
 

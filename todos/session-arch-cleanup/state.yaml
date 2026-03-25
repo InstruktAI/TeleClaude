@@ -1,17 +1,30 @@
 schema_version: 2
 phase: pending
 kind: todo
-current: input_assessment
-history: []
+current: finalize_ready
+history:
+- source: input_assessment
+  target: prepared
+  by: c1f7595f-43cc-4594-8e29-befab35e1a9e
+  at: '2026-03-24T23:33:06.196405+00:00'
+  metadata: {}
+- source: prepared
+  target: build_complete
+  by: c1f7595f-43cc-4594-8e29-befab35e1a9e
+  at: '2026-03-24T23:33:06.250797+00:00'
+  metadata: {}
+- source: build_complete
+  target: finalize_ready
+  by: mark-phase
+  at: '2026-03-25T02:01:27.662196+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
-  status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
+  status: ready
+  branch: session-arch-cleanup
+  sha: e3608dd499298ff0b32e4be6eac341658ae27cd0
+  ready_at: '2026-03-25T02:01:30.052130+00:00'
+  worker_session_id: mark-phase
 breakdown:
   assessed: false
   todos: []
@@ -21,32 +34,27 @@ review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
 grounding:
-  valid: false
-  base_sha: ''
-  input_digest: ''
+  valid: true
+  base_sha: b43b7b03ecf71e72f88894b6a5c25033b5b39856
+  input_digest: 773d73971d29f3b007f09398cd56be3dd7abf178d9684d456e5a6ece720659e5
   referenced_paths: []
-  last_grounded_at: ''
+  last_grounded_at: '2026-03-24T23:33:06.196405+00:00'
   invalidated_at: ''
   invalidation_reason: ''
+  changed_paths: []
 requirements_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-24T23:33:06.196405+00:00'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
-  findings: []
 test_spec_review:
   verdict: ''
   reviewed_at: ''
   findings_count: 0
   rounds: 0
 plan_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-24T23:33:06.196405+00:00'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
-  findings: []
 artifacts:
   input:
     digest: ''
@@ -92,8 +100,9 @@ audit:
     started_at: ''
     completed_at: ''
 dor:
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-03-24T23:33:06.196405+00:00'
+  score: 8
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:

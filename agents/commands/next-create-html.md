@@ -1,5 +1,5 @@
 ---
-argument-hint: '<slug>'
+argument-hint: '[slug]'
 description: Worker command - produce HTML+CSS visual artifacts from approved art and design spec
 ---
 

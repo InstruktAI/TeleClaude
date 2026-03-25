@@ -18,7 +18,7 @@ from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.models import SessionMetadata
+from teleclaude.core.models import DiscordAdapterMetadata
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -306,7 +306,7 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
         sessions = await db.list_sessions(last_input_origin="discord", include_closed=False)
         session = None
         for s in sessions:
-            discord_meta = s.get_metadata().get_ui().get_discord()
+            discord_meta = DiscordAdapterMetadata.from_dict(s.get_origin_section("discord"))
             if discord_meta.user_id == user_id:
                 session = s
                 break
@@ -326,7 +326,6 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
                     "discord_user_id": user_id,
                     "platform": "discord",
                 },
-                session_metadata=SessionMetadata(human_role=identity.person_role or "member"),
                 auto_command=f"agent {get_default_agent()}",
             )
             result = await get_command_service().create_session(create_cmd)
@@ -405,7 +404,6 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
                 "discord_user_id": user_id,
                 "platform": "discord",
             },
-            session_metadata=SessionMetadata(human_role="member"),
             auto_command=f"agent {get_default_agent()}",
         )
         result = await get_command_service().create_session(create_cmd)  # type: ignore[assignment]
@@ -567,7 +565,7 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
         Shared by both thread-delete and thread-archive handlers.
         """
         # Guild filtering already done by callers.
-        sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id, include_closed=True)
+        sessions = await db.get_sessions_by_origin_metadata("discord", "thread_id", thread_id, include_closed=True)
         if not sessions:
             logger.debug("No session found for Discord thread %s (%s)", thread_id, trigger)
             return

@@ -8,7 +8,7 @@ from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
 from teleclaude.types import SystemStats
 
-from ._session import Session, SessionMetadata
+from ._session import Session
 from ._types import JsonDict
 
 
@@ -72,7 +72,8 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
     project_path: str | None = None
     subdir: str | None = None
     visibility: str | None = "private"
-    session_metadata: SessionMetadata | None = None
+    system_role: str | None = None
+    job: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert snapshot to a JSON-compatible dictionary."""
@@ -100,7 +101,8 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             "human_email": self.human_email,
             "human_role": self.human_role,
             "visibility": self.visibility,
-            "session_metadata": asdict(self.session_metadata) if self.session_metadata else None,
+            "system_role": self.system_role,
+            "job": self.job,
         }
 
     @classmethod
@@ -129,22 +131,13 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             human_email=session.human_email,
             human_role=session.human_role,
             visibility=getattr(session, "visibility", None) or "private",
-            session_metadata=session.session_metadata,
+            system_role=session.system_role,
+            job=session.job,
         )
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "SessionSnapshot":  # guard: loose-dict
         """Create from dict."""
-        sm_raw = data.get("session_metadata")
-        sm: SessionMetadata | None = None
-        if isinstance(sm_raw, dict):
-            sm = SessionMetadata(
-                **{
-                    k: v
-                    for k, v in sm_raw.items()
-                    if k in {"system_role", "job", "human_email", "human_role", "principal"}
-                }
-            )
         return cls(
             session_id=str(data["session_id"]),
             last_input_origin=str(data.get("last_input_origin")) if data.get("last_input_origin") else None,
@@ -176,7 +169,8 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             human_email=str(data.get("human_email")) if data.get("human_email") else None,
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
-            session_metadata=sm,
+            system_role=str(data.get("system_role")) if data.get("system_role") else None,
+            job=str(data.get("job")) if data.get("job") else None,
         )
 
 
@@ -260,6 +254,7 @@ class TodoInfo:  # pylint: disable=too-many-instance-attributes  # Todo summary 
     integration_phase: str | None = None
     finalize_status: str | None = None
     current: str | None = None
+    todo_path: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "TodoInfo":  # guard: loose-dict
@@ -290,6 +285,7 @@ class TodoInfo:  # pylint: disable=too-many-instance-attributes  # Todo summary 
             integration_phase=cast(str | None, data.get("integration_phase")),
             finalize_status=cast(str | None, data.get("finalize_status")),
             current=cast(str | None, data.get("current")),
+            todo_path=cast(str | None, data.get("todo_path")),
         )
 
     def to_dict(self) -> JsonDict:  # guard: loose-dict

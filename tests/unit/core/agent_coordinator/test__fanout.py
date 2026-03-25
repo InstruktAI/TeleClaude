@@ -322,7 +322,8 @@ class TestForwardStopToInitiator:
     async def test_no_target_computer_returns_early(self):
         mixin = _make_fanout()
         session = MagicMock()
-        session.get_metadata.return_value.get_transport.return_value.get_redis.return_value.target_computer = None
+        session.origin_metadata = {"redis": {}}
+        session.get_origin_section = lambda key: dict(session.origin_metadata.get(key, {}))
         with patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
             await mixin._forward_stop_to_initiator("sess-001")
@@ -332,7 +333,8 @@ class TestForwardStopToInitiator:
     async def test_same_computer_returns_early(self):
         mixin = _make_fanout()
         session = MagicMock()
-        session.get_metadata.return_value.get_transport.return_value.get_redis.return_value.target_computer = "myhost"
+        session.origin_metadata = {"redis": {"target_computer": "myhost"}}
+        session.get_origin_section = lambda key: dict(session.origin_metadata.get(key, {}))
         with (
             patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db,
             patch("teleclaude.core.agent_coordinator._fanout.config") as mock_config,
@@ -348,9 +350,8 @@ class TestForwardStopToInitiator:
         mixin.client.send_request = AsyncMock()
         session = MagicMock()
         session.title = "My Session"
-        session.get_metadata.return_value.get_transport.return_value.get_redis.return_value.target_computer = (
-            "remotehost"
-        )
+        session.origin_metadata = {"redis": {"target_computer": "remotehost"}}
+        session.get_origin_section = lambda key: dict(session.origin_metadata.get(key, {}))
         with (
             patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db,
             patch("teleclaude.core.agent_coordinator._fanout.config") as mock_config,

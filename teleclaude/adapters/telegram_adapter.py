@@ -34,6 +34,7 @@ from teleclaude.core.models import (
     ChannelMetadata,
     MessageMetadata,
     Session,
+    TelegramAdapterMetadata,
 )
 from teleclaude.core.session_utils import get_display_title_for_session
 
@@ -139,25 +140,29 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         self.register_simple_command_handlers()
 
     # --- Per-adapter output message tracking ---
-    # Telegram uses adapter_metadata instead of the shared DB column
-    # to prevent cross-adapter races with Discord.
+    # Telegram stores output tracking in origin_metadata to prevent cross-adapter races.
+
+    @staticmethod
+    def _tg(session: Session) -> TelegramAdapterMetadata:
+        """Read Telegram section from origin_metadata."""
+        return TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
 
     async def _get_output_message_id(self, session: Session) -> str | None:
         fresh = await db.get_session(session.session_id)
         if fresh:
-            return fresh.get_metadata().get_ui().get_telegram().output_message_id
-        return session.get_metadata().get_ui().get_telegram().output_message_id
+            return self._tg(fresh).output_message_id
+        return self._tg(session).output_message_id
 
     async def _store_output_message_id(self, session: Session, message_id: str) -> None:
-        meta = session.get_metadata().get_ui().get_telegram()
-        meta.output_message_id = message_id
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        tg = self._tg(session)
+        tg.output_message_id = message_id
+        await db.update_origin_metadata(session.session_id, "telegram", tg.to_dict())
         logger.debug("Stored telegram output_message_id: session=%s message_id=%s", session.session_id, message_id)
 
     async def _clear_output_message_id(self, session: Session) -> None:
-        meta = session.get_metadata().get_ui().get_telegram()
-        meta.output_message_id = None
-        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        tg = self._tg(session)
+        tg.output_message_id = None
+        await db.update_origin_metadata(session.session_id, "telegram", tg.to_dict())
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Update Telegram topic footer with canonical lifecycle status and fire typing on active."""
@@ -167,8 +172,8 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         session = await db.get_session(context.session_id)
         if not session:
             return
-        telegram_meta = session.get_metadata().get_ui().get_telegram()
-        if not telegram_meta.topic_id:
+        tg = self._tg(session)
+        if not tg.topic_id:
             return  # No Telegram topic for this session
         status_line = self._format_lifecycle_status(context.status)
         try:
@@ -182,7 +187,7 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Telegram topic."""
-        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        topic_id = self._tg(session).topic_id
         if not topic_id:
             return
         await self.bot.send_chat_action(
@@ -201,13 +206,13 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         if fresh:
             session = fresh
 
-        telegram_meta = session.get_metadata().get_ui().get_telegram()
+        tg = self._tg(session)
         logger.debug(
             "[TG_ENSURE] session=%s telegram_meta=present topic_id=%s",
             session.session_id,
-            telegram_meta.topic_id if telegram_meta.topic_id else "N/A",
+            tg.topic_id if tg.topic_id else "N/A",
         )
-        if telegram_meta.topic_id:
+        if tg.topic_id:
             logger.debug("[TG_ENSURE] Topic exists, returning session %s", session.session_id)
             return session
 
@@ -228,10 +233,10 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
             )
             current = await db.get_session(session.session_id)
             if current:
-                current_meta = current.get_metadata().get_ui().get_telegram()
-                current_meta.topic_id = None
-                current_meta.output_message_id = None
-                await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
+                reset_tg = self._tg(current)
+                reset_tg.topic_id = None
+                reset_tg.output_message_id = None
+                await db.update_origin_metadata(current.session_id, "telegram", reset_tg.to_dict())
             await self.create_channel(current or session, title, metadata=ChannelMetadata())
 
         refreshed = await db.get_session(session.session_id)
@@ -262,17 +267,14 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         refreshed = await db.get_session(session.session_id)
         recovery_session = refreshed or session
 
-        telegram_meta = recovery_session.get_metadata().get_ui().get_telegram()
-        telegram_meta.topic_id = None
-        telegram_meta.output_message_id = None
-        telegram_meta.footer_message_id = None
-        telegram_meta.char_offset = 0
+        reset_tg = self._tg(recovery_session)
+        reset_tg.topic_id = None
+        reset_tg.output_message_id = None
+        reset_tg.footer_message_id = None
+        reset_tg.char_offset = 0
 
-        await db.update_session(
-            recovery_session.session_id,
-            adapter_metadata=recovery_session.adapter_metadata,
-            last_output_digest=None,
-        )
+        await db.update_origin_metadata(recovery_session.session_id, "telegram", reset_tg.to_dict())
+        await db.update_session(recovery_session.session_id, last_output_digest=None)
 
         try:
             retry_session = await self.ensure_channel(recovery_session)
@@ -290,16 +292,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
                 retry_exc,
             )
             return None
-
-    def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
-        """Store Telegram topic_id into session adapter metadata."""
-        from teleclaude.core.models import SessionAdapterMetadata
-
-        if not isinstance(adapter_metadata, SessionAdapterMetadata):
-            return
-
-        telegram_meta = adapter_metadata.get_ui().get_telegram()
-        telegram_meta.topic_id = int(channel_id)
 
     def _is_message_from_trusted_bot(self, message: TelegramMessage) -> bool:
         """Check if message is from a trusted bot (for AI-to-AI communication).

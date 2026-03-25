@@ -7,7 +7,6 @@ from typing import TypedDict
 import pytest
 
 from teleclaude.adapters.discord.input_handlers import InputHandlersMixin, _SessionCreationContext
-from teleclaude.core.models import SessionMetadata
 
 pytestmark = pytest.mark.unit
 
@@ -106,11 +105,10 @@ def test_resolve_team_session_target_uses_discord_identity_and_scaffolded_worksp
 
     adapter = DummyInputHandlers()
     message = SimpleNamespace(author=SimpleNamespace(id="900"))
-    path, session_meta = adapter._resolve_session_creation_target(
+    path, human_role = adapter._resolve_session_creation_target(
         message,
         _SessionCreationContext(forum_type="team", project_path="/tmp/legacy-folder"),
     )
 
     assert path == "/tmp/alice-workspace"
-    assert isinstance(session_meta, SessionMetadata)
-    assert session_meta.human_role == "member"
+    assert human_role == "member"

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from teleclaude.core.db import Db
-from teleclaude.core.models import Session, SessionAdapterMetadata, SessionMetadata
+from teleclaude.core.models import Session
 
 
 @pytest.fixture
@@ -28,8 +28,8 @@ def session_factory(db: Db) -> Callable[..., Awaitable[Session]]:
         tmux_session_name: str = "tmux-001",
         last_input_origin: str = "telegram",
         title: str = "Example Session",
-        adapter_metadata: SessionAdapterMetadata | None = None,
-        session_metadata: SessionMetadata | None = None,
+        system_role: str | None = None,
+        job: str | None = None,
         project_path: str | None = None,
         subdir: str | None = None,
         description: str | None = None,
@@ -48,8 +48,8 @@ def session_factory(db: Db) -> Callable[..., Awaitable[Session]]:
             tmux_session_name=tmux_session_name,
             last_input_origin=last_input_origin,
             title=title,
-            adapter_metadata=adapter_metadata,
-            session_metadata=session_metadata,
+            system_role=system_role,
+            job=job,
             project_path=project_path,
             subdir=subdir,
             description=description,

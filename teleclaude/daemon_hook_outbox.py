@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.session_auth import resolve_cli_caller_role
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
@@ -27,6 +26,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     build_agent_payload,
 )
+from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import (
@@ -427,6 +427,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
             agent=agent_str,
             project_path=project_path or "",
         )
+        caller = get_identity_resolver().resolve_from_terminal()
         session = await db.create_headless_session(
             session_id=session_id,
             computer_name=config.computer.name,
@@ -437,7 +438,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
             native_log_file=str(native_log_file) if native_log_file else None,
             project_path=project_path,
             subdir=subdir,
-            human_role=resolve_cli_caller_role(),
+            human_email=caller.person_email,
+            human_role=caller.person_role,
         )
 
         event_bus.emit(
@@ -917,8 +919,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
 
                 if row is None:
                     try:
-                        async with asyncio.timeout(HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S):
-                            await queue_state.notify.wait()
+                        await asyncio.wait_for(queue_state.notify.wait(), timeout=HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S)
                     except TimeoutError:
                         async with queue_state.lock:
                             if not queue_state.pending:

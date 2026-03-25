@@ -109,13 +109,12 @@ def resolve_session_principal(session: "Session") -> tuple[str, str]:
     """Resolve the principal identity for a session.
 
     Returns (principal, role) where role is informational only — system sessions
-    get their authoritative role from session_metadata.system_role, not from
-    this function.
+    get their authoritative role from session.system_role, not from this function.
 
     Rules:
     - Inherited principal (session.principal set by parent): reuse it.
     - Human session (human_email present): principal="human:<email>".
-    - System session (session_metadata.system_role present): principal="system:<session_id>".
+    - System session (session.system_role present): principal="system:<session_id>".
     - No identity: raises SessionIdentityError (401).
     """
     if session.principal:
@@ -125,9 +124,9 @@ def resolve_session_principal(session: "Session") -> tuple[str, str]:
         role = session.human_role or HUMAN_ROLE_CUSTOMER
         return principal, role
     # System session — only if explicitly created with a system_role.
-    if session.session_metadata and session.session_metadata.system_role:
+    if session.system_role:
         principal = f"system:{session.session_id}"
-        return principal, session.session_metadata.system_role
+        return principal, session.system_role
     raise SessionIdentityError(
         f"Session {session.session_id} has no identity: "
         "no principal, no human_email, no system_role. "

@@ -203,7 +203,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
         """Build API boundary metadata."""
-        return MessageMetadata(origin=InputOrigin.API.value, **kwargs)
+        return MessageMetadata(origin=InputOrigin.TERMINAL.value, **kwargs)
 
     @property
     def cache(self) -> DaemonCache | None:

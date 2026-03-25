@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import is_dataclass
 from unittest.mock import AsyncMock, MagicMock
 
 from teleclaude.adapters.telegram.message_ops import EditContext, MessageOperationsMixin
-from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import MessageMetadata, Session, TelegramAdapterMetadata
 
 
 class _StubMessageOps(MessageOperationsMixin):
@@ -33,22 +32,19 @@ class _StubMessageOps(MessageOperationsMixin):
 
 
 def _make_session(session_id: str = "sess-1", topic_id: int | None = 7) -> Session:
+    tg = TelegramAdapterMetadata(topic_id=topic_id)
     return Session(
         session_id=session_id,
         computer_name="test-computer",
         tmux_session_name=f"tmux-{session_id}",
         title="Test Session",
-        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=topic_id)),
+        origin_metadata={"platform": "telegram", "telegram": tg.to_dict()},
     )
 
 
 # ---------------------------------------------------------------------------
 # EditContext dataclass
 # ---------------------------------------------------------------------------
-
-
-def test_edit_context_is_a_dataclass():
-    assert is_dataclass(EditContext)
 
 
 def test_edit_context_stores_message_id_and_text():

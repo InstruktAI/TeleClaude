@@ -26,6 +26,9 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     last_input_origin: str = InputOrigin.TELEGRAM.value
     adapter_metadata: str | None = None
     session_metadata: str | None = None
+    origin_metadata: str | None = None
+    system_role: str | None = None
+    job: str | None = None
     created_at: datetime | None = None
     last_activity: datetime | None = None
     closed_at: datetime | None = None
