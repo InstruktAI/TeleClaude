@@ -104,6 +104,10 @@ class MessageOperationsMixin:
             return "0"
 
         destination = await self._resolve_destination_channel(session, metadata=metadata)
+        logger.debug(
+            "[DISCORD SEND] session=%s destination=%s text_len=%d multi=%s",
+            session.session_id, type(destination).__name__, len(text), multi_message,
+        )
 
         if multi_message and len(text) > self.max_message_size:
             chunks = self._split_message_chunks(text)
@@ -138,6 +142,7 @@ class MessageOperationsMixin:
         message_id = getattr(sent, "id", None)
         if message_id is None:
             raise AdapterError("Discord send_message returned message without id")
+        logger.debug("[DISCORD SENT] message_id=%s channel=%s", message_id, getattr(destination, "id", "?"))
         return str(message_id)
 
     async def _send_reflection_via_webhook(
@@ -285,9 +290,10 @@ class MessageOperationsMixin:
         recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await edit_fn(content=text)
+            logger.debug("[DISCORD EDITED] message_id=%s session=%s text_len=%d", message_id, session.session_id, len(text))
             return True
         except recoverable_errors as exc:
-            logger.warning("Failed to edit Discord message %s: %s", message_id, exc)
+            logger.warning("[DISCORD EDIT FAILED] message_id=%s session=%s error=%s", message_id, session.session_id, exc)
             return False
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
