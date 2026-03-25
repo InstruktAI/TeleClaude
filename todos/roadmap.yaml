@@ -64,3 +64,6 @@
 - slug: web-tui-shell
   description: Web admin shell — layout, tab bar, Sessions tab, keyboard infra, footer,
     toasts
+- slug: web-tui-panels
+  description: Web admin panels — Preparation, Jobs, Config tabs with modals and API
+    routes
