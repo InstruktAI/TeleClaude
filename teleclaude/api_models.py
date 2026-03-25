@@ -221,6 +221,7 @@ class TodoDTO(BaseModel):
     prepare_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None
+    todo_path: str | None = None
 
     @classmethod
     def from_core(
@@ -250,6 +251,7 @@ class TodoDTO(BaseModel):
             prepare_phase=todo.prepare_phase,
             integration_phase=todo.integration_phase,
             finalize_status=todo.finalize_status,
+            todo_path=todo.todo_path,
         )
 
 

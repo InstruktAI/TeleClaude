@@ -4,8 +4,8 @@
 
 ```bash
 # 1. Trust ring SQLite tables exist after daemon start
-sqlite3 ./teleclaude.db ".tables" | grep -q trust_peers && echo "PASS: trust_peers table exists"
-sqlite3 ./teleclaude.db ".tables" | grep -q trust_observations && echo "PASS: trust_observations table exists"
+sqlite3 {project_root}/teleclaude.db ".tables" | grep -q trust_peers && echo "PASS: trust_peers table exists"
+sqlite3 {project_root}/teleclaude.db ".tables" | grep -q trust_observations && echo "PASS: trust_observations table exists"
 ```
 
 ```bash

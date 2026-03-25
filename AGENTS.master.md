@@ -17,6 +17,10 @@ The TUI is instrumented by the dotfiles repository at `~/Sync/dotfiles/terminal/
 - **Agent restart:** tmux `bind R` triggers agent restart via the daemon API.
 - See `~/Sync/dotfiles/terminal/AGENTS.md` for full architecture.
 
+## Database
+
+The database is at `<project-root>/teleclaude.db` (resolved from `config.database.path`). It is **not** under `~/.teleclaude/`. Never guess the path — it is always relative to the project root.
+
 ## TUI work
 
 - After any TUI code change, send SIGUSR2 to the running TUI to reload. (SIGUSR1 is reserved for appearance/theme refresh.)

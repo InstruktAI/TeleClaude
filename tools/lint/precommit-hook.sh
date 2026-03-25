@@ -24,6 +24,20 @@ else
     MYPY="uv run --quiet mypy"
 fi
 
+# Session scope detection: resolve session-touched Python files for type-checker scoping.
+# Exit 2 → no session (fall back silently). Exit 3 → collection failed (emit diagnostic).
+SCOPED_FILES=""
+_scope_stderr_tmp=$(mktemp)
+if _scope_out=$($RUN "${REPO_ROOT}/tools/session_scope.py" --mode lint 2>"$_scope_stderr_tmp"); then
+    SCOPED_FILES="$_scope_out"
+else
+    _scope_exit=$?
+    if [ "$_scope_exit" -eq 3 ]; then
+        cat "$_scope_stderr_tmp" >&2
+    fi
+fi
+rm -f "$_scope_stderr_tmp"
+
 component="$1"; shift
 
 case "$component" in
@@ -39,17 +53,29 @@ case "$component" in
         fi
         ;;
     pyright)
-        $PYRIGHT
+        if [ -n "$SCOPED_FILES" ]; then
+            # shellcheck disable=SC2086
+            $PYRIGHT $SCOPED_FILES
+        else
+            $PYRIGHT
+        fi
         ;;
     markdown)
         $RUN "${REPO_ROOT}/tools/lint/markdown.py"
         ;;
     mypy)
-        $MYPY
+        if [ -n "$SCOPED_FILES" ]; then
+            # shellcheck disable=SC2086
+            $MYPY $SCOPED_FILES
+        else
+            $MYPY
+        fi
         ;;
     pylint)
         # Scope to staged Python files for fast pre-commit feedback.
         # Full-codebase pylint runs in CI; pre-commit checks only what changed.
+        # Session scope is intentionally NOT applied here — pylint must only check
+        # what is staged, not everything the session touched (which may not be staged).
         staged_py=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' | grep '^teleclaude/' || true)
         if [ -z "$staged_py" ]; then
             exit 0
@@ -63,23 +89,41 @@ case "$component" in
         tmpdir=$(mktemp -d)
         trap 'rm -rf "$tmpdir"' EXIT
 
-        # Pyright
-        (if $PYRIGHT > "$tmpdir/pyright.out" 2>&1; then
-            echo 0 > "$tmpdir/pyright.rc"
+        # Pyright (session-scoped when inside an agent session)
+        (if [ -n "$SCOPED_FILES" ]; then
+            # shellcheck disable=SC2086
+            if $PYRIGHT $SCOPED_FILES > "$tmpdir/pyright.out" 2>&1; then
+                echo 0 > "$tmpdir/pyright.rc"
+            else
+                echo $? > "$tmpdir/pyright.rc"
+            fi
         else
-            echo $? > "$tmpdir/pyright.rc"
+            if $PYRIGHT > "$tmpdir/pyright.out" 2>&1; then
+                echo 0 > "$tmpdir/pyright.rc"
+            else
+                echo $? > "$tmpdir/pyright.rc"
+            fi
         fi) &
         pid_pyright=$!
 
-        # Mypy
-        (if $MYPY > "$tmpdir/mypy.out" 2>&1; then
-            echo 0 > "$tmpdir/mypy.rc"
+        # Mypy (session-scoped when inside an agent session)
+        (if [ -n "$SCOPED_FILES" ]; then
+            # shellcheck disable=SC2086
+            if $MYPY $SCOPED_FILES > "$tmpdir/mypy.out" 2>&1; then
+                echo 0 > "$tmpdir/mypy.rc"
+            else
+                echo $? > "$tmpdir/mypy.rc"
+            fi
         else
-            echo $? > "$tmpdir/mypy.rc"
+            if $MYPY > "$tmpdir/mypy.out" 2>&1; then
+                echo 0 > "$tmpdir/mypy.rc"
+            else
+                echo $? > "$tmpdir/mypy.rc"
+            fi
         fi) &
         pid_mypy=$!
 
-        # Pylint (scoped to staged files)
+        # Pylint (scoped to staged files — not session-scoped, to avoid checking unstaged edits)
         staged_py=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' | grep '^teleclaude/' || true)
         (if [ -z "$staged_py" ]; then
             echo 0 > "$tmpdir/pylint.rc"

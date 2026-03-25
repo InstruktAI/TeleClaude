@@ -10,25 +10,27 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate scoped-agent-lint-test` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 4352 passed, 0 failures
+- [x] Lint passes (`make lint`) — pyright: 0 errors, mypy: no issues, pylint: 10.00/10
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate scoped-agent-lint-test` exits 0, 3 executable blocks)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+**Manual verification:** `TMPDIR=$(mktemp -d) .venv/bin/python tools/session_scope.py --mode lint` exits 2 with empty stdout outside a session. `make lint --dry-run` exits 0. `make lint` falls back gracefully when session collection fails (shows diagnostic on stderr, runs full suite).
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior
+- [x] Deferrals justified and not hiding required scope
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [x] Critical issues resolved or explicitly blocked
+- [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
 

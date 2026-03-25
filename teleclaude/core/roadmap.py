@@ -87,11 +87,6 @@ def _read_todo_metadata(  # pylint: disable=too-many-locals  # Flat data assembl
     finalize_status: str | None = None
 
     state_path = todo_dir / "state.yaml"
-    if not state_path.exists():
-        legacy_path = todo_dir / "state.json"
-        if legacy_path.exists():
-            state_path = legacy_path
-
     if state_path.exists():
         try:
             state = yaml.safe_load(state_path.read_text())
@@ -398,16 +393,11 @@ def _append_orphan_todos(  # pylint: disable=too-many-arguments  # Parameters ar
         )
 
 
-def _inject_breakdown_relationships(todos: list[TodoInfo], todos_root: Path) -> None:
+def _inject_breakdown_relationships(todos: list[TodoInfo]) -> None:
     slug_to_idx = {todo.slug: idx for idx, todo in enumerate(todos)}
     for todo in list(todos):
-        # Use the resolved todo_path (worktree-aware) when available
-        state_dir = Path(todo.todo_path) if todo.todo_path else todos_root / todo.slug
+        state_dir = Path(todo.todo_path)
         state_path = state_dir / "state.yaml"
-        if not state_path.exists():
-            legacy_path = state_dir / "state.json"
-            if legacy_path.exists():
-                state_path = legacy_path
         if not state_path.exists():
             continue
         try:
@@ -515,6 +505,6 @@ def assemble_roadmap(
         icebox_only=icebox_only,
         delivered_only=delivered_only,
     )
-    _inject_breakdown_relationships(todos, todos_root)
+    _inject_breakdown_relationships(todos)
 
     return todos

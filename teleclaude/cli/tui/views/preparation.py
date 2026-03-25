@@ -171,15 +171,15 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         build_status=t.build_status,
                         review_status=t.review_status,
                         dor_score=t.dor_score,
-                        deferrals_status=getattr(t, "deferrals_status", None),
-                        findings_count=getattr(t, "findings_count", 0),
-                        files=getattr(t, "files", []),
-                        after=getattr(t, "after", []),
-                        group=getattr(t, "group", None),
-                        prepare_phase=getattr(t, "prepare_phase", None),
-                        integration_phase=getattr(t, "integration_phase", None),
-                        finalize_status=getattr(t, "finalize_status", None),
-                        todo_path=getattr(t, "todo_path", None),
+                        deferrals_status=t.deferrals_status,
+                        findings_count=t.findings_count,
+                        files=t.files,
+                        after=t.after,
+                        group=t.group,
+                        prepare_phase=t.prepare_phase,
+                        integration_phase=t.integration_phase,
+                        finalize_status=t.finalize_status,
+                        todo_path=t.todo_path,
                     )
                 )
         slug_width = max((len(t.slug) for t in all_todo_items), default=0)
@@ -272,16 +272,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         file_tree_lines = node.tree_lines + [not is_last_sibling]
                         sorted_files = sorted(node.todo.files)
                         file_widgets: list[Widget] = []
-                        proj_path = self._slug_to_project_path.get(node.slug, "")
                         for fi, filename in enumerate(sorted_files):
                             f_last = fi == len(sorted_files) - 1
-                            filepath = (
-                                f"{node.todo.todo_path}/{filename}"
-                                if node.todo.todo_path
-                                else f"{proj_path}/todos/{node.slug}/{filename}"
-                                if proj_path
-                                else f"todos/{node.slug}/{filename}"
-                            )
+                            filepath = node.todo.file_path(filename)
                             file_row = TodoFileRow(
                                 filepath=filepath,
                                 filename=filename,
@@ -319,16 +312,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         row_idx = self._nav_items.index(todo_row)
         # File tree_lines = parent's lines + parent's own branch continuation
         file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]  # pylint: disable=protected-access
-        proj_path = self._slug_to_project_path.get(todo_row.slug, "")
         for i, filename in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
-            filepath = (
-                f"{todo_row.todo.todo_path}/{filename}"
-                if todo_row.todo.todo_path
-                else f"{proj_path}/todos/{todo_row.slug}/{filename}"
-                if proj_path
-                else f"todos/{todo_row.slug}/{filename}"
-            )
+            filepath = todo_row.todo.file_path(filename)
             file_row = TodoFileRow(
                 filepath=filepath,
                 filename=filename,

@@ -254,7 +254,7 @@ class TodoInfo:  # pylint: disable=too-many-instance-attributes  # Todo summary 
     integration_phase: str | None = None
     finalize_status: str | None = None
     current: str | None = None
-    todo_path: str | None = None
+    todo_path: str | None = None  # Always set by assemble_roadmap; None = contract violation
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "TodoInfo":  # guard: loose-dict
