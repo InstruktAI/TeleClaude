@@ -14,6 +14,7 @@ from sqlalchemy import event, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
@@ -185,9 +186,7 @@ class DbBase:
             db_url,
             future=True,
             connect_args=connect_args,
-            pool_size=5,
-            max_overflow=5,
-            pool_pre_ping=True,
+            poolclass=NullPool,
         )
         self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
 

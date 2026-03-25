@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import create_engine
 from sqlalchemy import event as sa_event
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.pool import NullPool
 from sqlmodel import Session as SqlSession
 
 from teleclaude.config import config
@@ -84,8 +85,7 @@ def _create_sync_engine() -> object:
 
     engine = create_engine(
         f"sqlite:///{config.database.path}",
-        pool_size=5,
-        max_overflow=5,
+        poolclass=NullPool,
     )
 
     @sa_event.listens_for(engine, "connect")
