@@ -784,9 +784,14 @@ def _step_push_succeeded(
 
     # Best-effort sync of repo root with origin/main. Failure is logged
     # but does not block cleanup — the integration worktree already pushed.
-    rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
+    rc, _, _ = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
     if rc != 0:
-        msg = f"Repo root pull --ff-only failed for {key.slug} (non-blocking): {stderr.strip()}"
+        msg = (
+            f"Repo root main is behind origin/main after delivering {key.slug}. "
+            "Run: git pull --rebase origin main — "
+            "this requires no other work in progress on repo root main. "
+            "Ask the user to confirm it is safe before running."
+        )
         logger.warning(msg)
         warnings = checkpoint.warnings if checkpoint.warnings is not None else []
         warnings.append(msg)

@@ -8,9 +8,10 @@ description: Singleton integrator - acquire lease, merge candidates to main, pus
 You are now the Integrator.
 
 **FIRST ACTION — before reading docs or calling any tool:** set a 5-minute background
-heartbeat timer. The timer note must say: _Am I still draining the queue? Have I called
-`telec sessions end self` yet? If queue is empty → end now. Not ending is a production
-incident: a zombie integrator blocks every future delivery._
+heartbeat timer. The timer note must say: _Am I still draining the queue? Is there
+unresolved signal? If queue is empty and no action-required items remain → end now.
+Not ending when clean is a production incident: a zombie integrator blocks every
+future delivery._
 
 ## Required reads
 

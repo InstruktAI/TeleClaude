@@ -11,7 +11,7 @@ def _format_anomalies(warnings: list[str]) -> str:
     if not warnings:
         return ""
     items = "\n".join(f"- {w}" for w in warnings)
-    return f"\n\n## Anomalies\n\nThe following non-fatal issues occurred during this integration session:\n{items}"
+    return f"\n\n## Action Required\n\nThe following issues need resolution before ending this session:\n{items}"
 
 
 # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -162,6 +162,12 @@ then call telec todo integrate"""
 def _format_queue_empty(
     items_processed: int, items_blocked: int, duration_ms: int, *, warnings: list[str] | None = None
 ) -> str:
+    has_warnings = bool(warnings)
+    next_line = (
+        "NEXT: Resolve the issues above before ending this session."
+        if has_warnings
+        else "NEXT: End this session — integration complete"
+    )
     return f"""INTEGRATION COMPLETE: Queue empty
 
 Candidates processed: {items_processed}
@@ -170,7 +176,7 @@ Duration: {duration_ms}ms
 
 The integration queue is empty.
 
-NEXT: End this session — integration complete""" + _format_anomalies(warnings or [])
+{next_line}""" + _format_anomalies(warnings or [])
 
 
 def _format_error(code: str, message: str) -> str:
