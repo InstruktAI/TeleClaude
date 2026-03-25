@@ -129,15 +129,18 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
 
-    # Resolve identity — channel_metadata carries identity fields for platform
-    # origins where the adapter populates them.  The identity resolver is the
-    # fallback for origins that don't set explicit identity.
-
-    if not cmd.channel_metadata:
-        raise ValueError(f"CreateSessionCommand missing channel_metadata (origin={origin}, title={cmd.title})")
-    identity = get_identity_resolver().resolve(origin, cmd.channel_metadata)
-    human_email = identity.person_email
-    human_role = identity.person_role
+    # Resolve identity from origin signals or system_role.
+    # External sessions carry channel_metadata with platform identity signals.
+    # System sessions (daemon-spawned) identify via system_role instead.
+    if cmd.channel_metadata:
+        identity = get_identity_resolver().resolve(origin, cmd.channel_metadata)
+        human_email = identity.person_email
+        human_role = identity.person_role
+    elif not cmd_system_role:
+        raise ValueError(f"Session creation requires origin signals or system_role (origin={origin})")
+    else:
+        human_email = None
+        human_role = None
 
     # Handle parent session identity inheritance
     principal: str | None = None
