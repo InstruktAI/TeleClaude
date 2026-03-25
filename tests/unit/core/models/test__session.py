@@ -172,9 +172,9 @@ class TestSession:
 
     @pytest.mark.unit
     def test_to_dict_origin_metadata_included(self):
-        session = self._make_session(origin_metadata={"platform": "terminal"})
+        session = self._make_session(origin_metadata={"telegram": {"topic_id": 7}})
         d = session.to_dict()
-        assert d["origin_metadata"] == {"platform": "terminal"}
+        assert d["origin_metadata"] == {"telegram": {"topic_id": 7}}
 
     @pytest.mark.unit
     def test_to_dict_system_role_and_job_included(self):
@@ -203,10 +203,9 @@ class TestSession:
             "computer_name": "x",
             "tmux_session_name": "t-s1",
             "title": "T",
-            "origin_metadata": {"platform": "terminal", "telegram": {"topic_id": 77}},
+            "origin_metadata": {"telegram": {"topic_id": 77}},
         }
         session = Session.from_dict(data)
-        assert session.origin_metadata["platform"] == "terminal"
         assert session.get_origin_section("telegram")["topic_id"] == 77
 
     @pytest.mark.unit

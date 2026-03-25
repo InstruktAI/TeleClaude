@@ -18,7 +18,7 @@ def _make_session(session_id: str = "session-1", **discord_fields: object) -> Se
         computer_name="machine",
         tmux_session_name="tmux-session",
         title="Session",
-        origin_metadata={"platform": "discord", "discord": discord_section},
+        origin_metadata={"discord": discord_section},
     )
 
 

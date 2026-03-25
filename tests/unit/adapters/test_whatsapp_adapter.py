@@ -25,7 +25,7 @@ def _make_session(phone_number: str = "+1234567890", **kwargs: object) -> Sessio
         computer_name="local",
         tmux_session_name="test",
         title="Test",
-        origin_metadata={"platform": "whatsapp", "whatsapp": wa.to_dict()},
+        origin_metadata={"whatsapp": wa.to_dict()},
         **kwargs,
     )
 

@@ -38,7 +38,7 @@ def _make_session(session_id: str = "sess-1", topic_id: int | None = None) -> Se
         computer_name="x",
         tmux_session_name=f"t-{session_id}",
         title="S",
-        origin_metadata={"platform": "telegram", "telegram": tg.to_dict()},
+        origin_metadata={"telegram": tg.to_dict()},
     )
 
 

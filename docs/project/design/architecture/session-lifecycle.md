@@ -14,7 +14,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 ### 1. Creation
 
 - **Ingress**: A `/new-session` command arrives via an origin (UI adapter, web, terminal, or daemon-internal).
-- **Origin assembly**: The receiving edge assembles `origin_metadata` from platform-specific signals (HTTP headers, webhook fields, bot message attributes). Identity resolution reads from this normalized payload to derive `human_email`, `human_role`, and `principal`.
+- **Origin assembly**: The receiving edge assembles `channel_metadata` — a per-request dict carrying platform-specific identity signals (HTTP headers, webhook fields, bot message attributes). Identity resolution reads from this payload to derive `human_email`, `human_role`, and `principal`. The session handler merges `channel_metadata` into the session's `origin_metadata` — the accumulated record of all origin signals received during the session's lifetime.
 - **Queueing**: Command is persisted in the SQLite queue.
 - **Execution**: The `SessionLauncher` starts a new `tmux` session.
 - **Persistence**: Session metadata is saved in the `sessions` table.

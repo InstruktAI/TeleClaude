@@ -22,7 +22,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
 )
 from teleclaude.core.feedback import get_last_output_summary
-from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import (
     ComputerInfo,
     ProjectInfo,
@@ -132,6 +132,7 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     # Resolve identity from origin signals or system_role.
     # External sessions carry channel_metadata with platform identity signals.
     # System sessions (daemon-spawned) identify via system_role instead.
+    identity: IdentityContext | None = None
     if cmd.channel_metadata:
         identity = get_identity_resolver().resolve(origin, cmd.channel_metadata)
         human_email = identity.person_email
@@ -276,14 +277,9 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
             session_id,
         )
 
-    # Persist platform user_id in origin_metadata for identity resolution
-    if identity and identity.platform == "telegram" and identity.platform_user_id:
-        try:
-            await db.update_origin_metadata(session.session_id, "telegram", {"user_id": int(identity.platform_user_id)})
-        except (ValueError, TypeError):
-            pass
-    if identity and identity.platform == "whatsapp" and identity.platform_user_id:
-        await db.update_origin_metadata(session.session_id, "whatsapp", {"phone_number": identity.platform_user_id})
+    # Merge edge-assembled channel_metadata into session's origin_metadata
+    if cmd.channel_metadata:
+        await db.update_origin_metadata(session.session_id, last_input_origin, cmd.channel_metadata)
 
     # NOTE: tmux creation + auto-command execution are handled asynchronously
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes

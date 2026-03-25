@@ -67,6 +67,7 @@ class TestCreateSession:
         db = SimpleNamespace(
             create_session=AsyncMock(return_value=make_session()),
             update_session=AsyncMock(),
+            update_origin_metadata=AsyncMock(),
             get_session=AsyncMock(return_value=None),
         )
         identity_resolver = SimpleNamespace(

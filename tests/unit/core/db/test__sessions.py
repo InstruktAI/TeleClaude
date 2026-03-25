@@ -276,7 +276,6 @@ async def test_update_origin_metadata_creates_section_for_new_platform(db: Db) -
 
     assert session is not None
     data = session.origin_metadata
-    assert data["platform"] == "telegram"
     tg = _section(data, "telegram")
     assert tg["topic_id"] == 42
     assert tg["user_id"] == 99
@@ -299,7 +298,6 @@ async def test_update_origin_metadata_preserves_other_platform_sections(db: Db) 
     data = session.origin_metadata
     assert _section(data, "telegram")["topic_id"] == 42
     assert _section(data, "discord")["guild_id"] == 100
-    assert data["platform"] == "discord"
 
 
 async def test_update_origin_metadata_merges_within_platform_section(db: Db) -> None:
@@ -341,7 +339,6 @@ async def test_update_origin_metadata_on_no_prior_metadata(db: Db) -> None:
 
     assert session is not None
     data = session.origin_metadata
-    assert data["platform"] == "telegram"
     assert _section(data, "telegram")["topic_id"] == 1
 
 

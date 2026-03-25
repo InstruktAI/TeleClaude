@@ -22,17 +22,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _parse_origin_metadata(raw: str | None) -> dict[str, object]:  # guard: loose-dict - JSON parse
-    """Parse origin_metadata JSON, returning empty dict on failure."""
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-        return parsed if isinstance(parsed, dict) else {}
-    except json.JSONDecodeError:
-        return {}
-
-
 class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session storage exposes the legacy DB API surface.
     """Session persistence helpers and lifecycle state transitions."""
 
@@ -111,9 +100,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             thinking_mode=thinking_mode,
         )
 
-        # Build origin_metadata: platform key + adapter sections
+        # Serialize origin_metadata (accumulated platform sections, no "platform" key)
         origin_meta = dict(session.origin_metadata) if session.origin_metadata else {}
-        origin_meta.setdefault("platform", session.last_input_origin)
 
         db_row = db_models.Session(
             session_id=session.session_id,
@@ -190,7 +178,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             native_log_file=native_log_file,
         )
 
-        headless_origin = {"platform": session.last_input_origin}
+        headless_origin: dict[str, object] = {}  # guard: loose-dict - Empty origin for headless sessions
         db_row = db_models.Session(
             session_id=session.session_id,
             computer_name=session.computer_name,
@@ -357,14 +345,6 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
                         continue
                     current_val = getattr(row, attr_name)
 
-                    # Sync last_input_origin to origin_metadata["platform"]
-                    if attr_name == "last_input_origin" and value != current_val:
-                        updates[attr_name] = value
-                        om = _parse_origin_metadata(row.origin_metadata)
-                        om["platform"] = value
-                        updates["origin_metadata"] = json.dumps(om)
-                        continue
-
                     if attr_name in {
                         "created_at",
                         "last_activity",
@@ -458,7 +438,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         Uses SQLite json_patch for a single-statement update, eliminating
         the read-modify-write race between concurrent adapter writes.
         """
-        patch: dict[str, object] = {"platform": platform}  # guard: loose-dict - JSON merge patch
+        patch: dict[str, object] = {}  # guard: loose-dict - JSON merge patch
         if section_updates:
             patch[platform] = section_updates
 
