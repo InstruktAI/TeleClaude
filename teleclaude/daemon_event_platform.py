@@ -210,57 +210,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
 
     def _build_integration_trigger(self) -> IntegrationTriggerCartridge:
         """Create the integration trigger cartridge."""
-        from teleclaude.core.integration.service import (  # pylint: disable=import-outside-toplevel
-            IntegrationEventService,
-        )
         from teleclaude.core.integration_bridge import (  # pylint: disable=import-outside-toplevel
             spawn_integrator_session,
         )
 
-        integration_service = IntegrationEventService.create(
-            reachability_checker=lambda _b, _s, _r: True,
-            integrated_checker=lambda _s, _r: False,
-        )
-
-        def _ingest_callback(canonical_type: str, payload: object) -> list[tuple[str, str, str]]:
-            from collections.abc import Mapping  # pylint: disable=import-outside-toplevel
-
-            if not isinstance(payload, Mapping):
-                logger.warning("integration-ingest: payload is not a Mapping, skipping event_type=%s", canonical_type)
-                return []
-            slug = str(payload.get("slug", ""))
-            branch = str(payload.get("branch", ""))
-            sha = str(payload.get("sha", ""))[:8]
-            result = integration_service.ingest_raw(canonical_type, payload)
-            ready = [
-                (candidate.key.slug, candidate.key.branch, candidate.key.sha)
-                for candidate in result.transitioned_to_ready
-            ]
-            if ready:
-                logger.info(
-                    "integration-ingest: READY candidates produced event_type=%s slug=%s branch=%s sha=%s ready=%s",
-                    canonical_type,
-                    slug,
-                    branch,
-                    sha,
-                    ready,
-                )
-            else:
-                logger.warning(
-                    "integration-ingest: no READY candidates after event_type=%s slug=%s branch=%s sha=%s "
-                    "diagnostics=%s projection_state=%s",
-                    canonical_type,
-                    slug,
-                    branch,
-                    sha,
-                    getattr(result, "diagnostics", []),
-                    len(integration_service.all_candidates()),
-                )
-            return ready
-
         return IntegrationTriggerCartridge(
             spawn_callback=spawn_integrator_session,
-            ingest_callback=_ingest_callback,
         )
 
     def _build_pipeline_context(
