@@ -29,9 +29,9 @@ Each layer has a defined contract for what it receives and what it produces. The
 | Injection        | Raw protocol messages + environment    | Fully resolved tool calls               |
 | Contract         | Nothing (declarative)                  | Schema that governs what AI clients see |
 | Handler          | Resolved parameters                    | Tool results                            |
-| Command Pipeline | Adapter/handler outputs                | Normalized command objects              |
+| Command Pipeline | Edge/handler outputs                   | Normalized command objects              |
 | Core Services    | Commands, events                       | State transitions, domain events        |
-| Adapter          | Core events + external platform inputs | Platform-native UX                      |
+| Edge             | Raw platform input (headers, webhooks, bot messages) | `origin_metadata` + normalized commands |
 | CLI / TUI        | API responses, cache snapshots         | User-facing terminal interface          |
 | Infrastructure   | Service-layer requests                 | Storage, execution, transport           |
 
@@ -67,9 +67,9 @@ Must never: contain adapter-specific logic or bypass the queue for "simple" oper
 Owns: session management, event bus, output polling, hook processing, coordination logic. The engine that runs the system.
 Must never: import adapter-specific code, reference UI concepts, or know about specific transport protocols. Core defines protocols; adapters implement them.
 
-**Adapter Layer**
-Owns: platform-specific translation. Each adapter bridges core events to its external platform (Telegram, Discord, web). Adapters own their UX rules, message formatting, and platform lifecycle.
-Must never: contain domain logic or make domain decisions. Adapters translate — they don't decide. Domain policies live in core.
+**Edge Layer**
+Owns: inbound origin handling for all platforms. Every origin — UI adapters (Telegram, Discord, WhatsApp), API origins (terminal, web), and daemon-internal origins — passes through an edge that assembles `origin_metadata` from raw platform signals (HTTP headers, webhook payloads, bot message fields). Identity resolution reads from this normalized payload. The edge produces fully resolved inputs for the command pipeline; downstream layers never assemble origin context themselves.
+Must never: contain domain logic or make domain decisions. Edges translate inbound signals — they don't decide. Domain policies live in core. For outbound UX concerns (message rendering, channel management, platform lifecycle), see the [UI Adapter architecture](ui-adapter.md).
 
 **CLI / TUI**
 Owns: user-facing terminal interface, argument parsing, display logic.
@@ -82,7 +82,7 @@ Must never: be accessed directly by handlers, adapters, or artifacts. Each infra
 ### Cross-Cutting Rules
 
 1. **No upward resolution.** A layer never reaches into a layer above it to get what it needs. If it doesn't have the data, the layer that owns injection must provide it.
-2. **No sideways awareness.** Adapters don't know about each other. Handlers don't know which adapter triggered them. Core doesn't know which transport delivered the request.
+2. **No sideways awareness.** Edges don't know about each other. Handlers don't know which origin triggered them. Core doesn't know which transport delivered the request.
 3. **Contracts are the seams.** Layer boundaries are defined by explicit contracts (protocols, schemas, typed interfaces). Crossing a boundary without going through the contract is a violation.
 
 ## Primary flows
@@ -95,22 +95,23 @@ AI Client
     -> Handler (process with fully resolved params)
       -> Command Pipeline (normalize to command, enqueue)
         -> Core Services (execute, emit events)
-          -> Adapter (translate events to platform UX)
+          -> UI Adapter (translate events to platform UX)
 ```
 
 Each arrow is a boundary crossing. At each crossing, the downstream layer receives everything it needs. It never looks back.
 
-### Request traversal: Human via adapter
+### Request traversal: Human via origin
 
 ```
-External Platform (Telegram, Discord)
-  -> Adapter (normalize to internal event)
-    -> Command Pipeline (normalize to command, enqueue)
-      -> Core Services (execute, emit events)
-        -> Adapter (translate events back to platform UX)
+Origin (Telegram, Discord, WhatsApp, Web, Terminal, Daemon)
+  -> Edge (assemble origin_metadata from platform signals)
+    -> Identity Resolution (resolve human_email, human_role from origin_metadata)
+      -> Command Pipeline (normalize to command, enqueue)
+        -> Core Services (execute, emit events)
+          -> UI Adapter (translate events to platform UX, where applicable)
 ```
 
-The adapter translates at both edges. Core never knows the platform.
+The edge assembles `origin_metadata` — a normalized dict carrying `platform` and platform-specific identity signals. Identity resolution reads from this payload. Core never knows which platform originated the request.
 
 ## Failure modes
 
@@ -123,7 +124,7 @@ A bug appears in one layer. The fix is applied there instead of in the layer tha
 A layer is taught something it shouldn't know — an infrastructure detail, an environment variable, a file path for internal state. The layer now has a dependency it didn't need, and every agent session that reads this layer's artifacts inherits that coupling. _Example: a command artifact instructs the AI to read a file from `$TMPDIR` to get its session identity._
 
 **Responsibility Creep**
-Logic gradually accumulates in the wrong layer because it's convenient. Each addition is small and "harmless," but the layer's ownership boundary blurs until it owns everything and nothing. _Example: an adapter starts making domain decisions because adding one more `if` was easier than routing through core._
+Logic gradually accumulates in the wrong layer because it's convenient. Each addition is small and "harmless," but the layer's ownership boundary blurs until it owns everything and nothing. _Example: an edge starts making domain decisions because adding one more `if` was easier than routing through core._
 
 **Contract Bypass**
 A layer accesses another layer's internals directly instead of going through the contract. The coupling is invisible until something changes, then everything breaks at once. _Example: a handler directly reads from SQLite instead of going through the service layer that owns that data._
@@ -132,3 +133,4 @@ A layer accesses another layer's internals directly instead of going through the
 
 - docs/project/design/architecture/system-overview.md
 - docs/project/design/architecture/daemon.md
+- docs/project/design/architecture/ui-adapter.md — outbound UX concerns (rendering, channels, message lifecycle)
