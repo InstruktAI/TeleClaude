@@ -608,6 +608,7 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
         ValueError: If not on main or no uncommitted changes
         RuntimeError: If scaffold push or worktree creation fails
     """
+    from teleclaude.core.next_machine.slug_resolution import set_item_phase  # pylint: disable=import-outside-toplevel
     from teleclaude.core.next_machine.state_io import mark_phase  # pylint: disable=import-outside-toplevel
     from teleclaude.core.next_machine.worktrees import (  # pylint: disable=import-outside-toplevel
         _create_or_attach_worktree,
@@ -687,6 +688,7 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
 
     # --- 5g. Set state for review dispatch (before cleaning main — atomic) ---
     worktree_cwd = str(worktree_path)
+    set_item_phase(worktree_cwd, slug, "in_progress")
     mark_phase(worktree_cwd, slug, "prepared")
     mark_phase(worktree_cwd, slug, "build_complete")
 

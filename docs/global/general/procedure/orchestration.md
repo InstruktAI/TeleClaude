@@ -61,7 +61,7 @@ to the dispatch time. All session inspection follows this protocol:
 3. **(Claude/Gemini only)** Tail the session with `--since <marker>` to retrieve the final output. Verify it matches the intended outcome.
 4. Execute POST_COMPLETION steps (orchestrator responsibility):
    - Mark phase status using `telec todo mark-phase ...` if applicable
-   - **Terminate worker session: `telec sessions end <session_id> --computer <computer>`** ← ORCHESTRATOR OWNS THIS
+   - **Terminate worker session** — unless the outcome requires a follow-up dispatch to the same worker (e.g. `needs_work` → fix cycle). End idle workers: `telec sessions end <session_id> --computer <computer>` ← ORCHESTRATOR OWNS THIS
    - Execute any phase-specific cleanup from the state machine instruction
 5. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`).
 6. Send `telec sessions send` only when actionable:
