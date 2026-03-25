@@ -185,8 +185,8 @@ class DbBase:
             db_url,
             future=True,
             connect_args=connect_args,
-            pool_size=20,
-            max_overflow=10,
+            pool_size=5,
+            max_overflow=5,
             pool_pre_ping=True,
         )
         self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)

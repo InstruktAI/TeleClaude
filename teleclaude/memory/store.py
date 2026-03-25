@@ -63,27 +63,30 @@ class MemoryStore:
         session_id = self._get_or_create_manual_session_sync(project, db_path)
 
         engine = create_engine(f"sqlite:///{db_path}")
-        with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
-            obs = db_models.MemoryObservation(
-                memory_session_id=session_id,
-                project=project,
-                type=inp.type.value if hasattr(inp.type, "value") else str(inp.type),
-                title=title,
-                subtitle=None,
-                facts=json.dumps(inp.facts) if inp.facts else None,
-                narrative=inp.text,
-                concepts=json.dumps(inp.concepts) if inp.concepts else None,
-                files_read=None,
-                files_modified=None,
-                created_at=now.isoformat(),
-                created_at_epoch=int(now.timestamp()),
-                identity_key=inp.identity_key,
-            )
-            session.add(obs)
-            session.commit()
-            session.refresh(obs)
+        try:
+            with SqlSession(engine) as session:
+                session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
+                session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
+                obs = db_models.MemoryObservation(
+                    memory_session_id=session_id,
+                    project=project,
+                    type=inp.type.value if hasattr(inp.type, "value") else str(inp.type),
+                    title=title,
+                    subtitle=None,
+                    facts=json.dumps(inp.facts) if inp.facts else None,
+                    narrative=inp.text,
+                    concepts=json.dumps(inp.concepts) if inp.concepts else None,
+                    files_read=None,
+                    files_modified=None,
+                    created_at=now.isoformat(),
+                    created_at_epoch=int(now.timestamp()),
+                    identity_key=inp.identity_key,
+                )
+                session.add(obs)
+                session.commit()
+                session.refresh(obs)
+        finally:
+            engine.dispose()
 
         return ObservationResult(id=obs.id, title=title, project=project)
 
@@ -167,28 +170,31 @@ class MemoryStore:
     def _get_or_create_manual_session_sync(self, project: str, db_path: str) -> str:
         """Get or create a manual session synchronously."""
         engine = create_engine(f"sqlite:///{db_path}")
-        with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
-            result = session.exec(  # type: ignore[call-overload]
-                text(  # guard: raw-sql
-                    "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"
-                ).bindparams(project=project)
-            )
-            row = result.first()
-            if row:
-                return row[0] if isinstance(row, tuple) else str(row)
+        try:
+            with SqlSession(engine) as session:
+                session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
+                session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
+                result = session.exec(  # type: ignore[call-overload]
+                    text(  # guard: raw-sql
+                        "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"
+                    ).bindparams(project=project)
+                )
+                row = result.first()
+                if row:
+                    return row[0] if isinstance(row, tuple) else str(row)
 
-            session_id = str(uuid.uuid4())
-            now_epoch = int(datetime.now(UTC).timestamp())
-            ms = db_models.MemoryManualSession(
-                memory_session_id=session_id,
-                project=project,
-                created_at_epoch=now_epoch,
-            )
-            session.add(ms)
-            session.commit()
-            return session_id
+                session_id = str(uuid.uuid4())
+                now_epoch = int(datetime.now(UTC).timestamp())
+                ms = db_models.MemoryManualSession(
+                    memory_session_id=session_id,
+                    project=project,
+                    created_at_epoch=now_epoch,
+                )
+                session.add(ms)
+                session.commit()
+                return session_id
+        finally:
+            engine.dispose()
 
 
 def _auto_title(text: str) -> str:  # pylint: disable=redefined-outer-name

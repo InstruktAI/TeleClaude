@@ -35,26 +35,29 @@ def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | Non
         raise ValueError(f"Invalid field '{field}' for Session lookup. Valid fields: {sorted(valid_fields)}")
 
     engine = create_engine(f"sqlite:///{db_path}")
-    with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))  # guard: raw-sql
-        session.exec(text("PRAGMA busy_timeout = 5000"))  # guard: raw-sql
-        column = getattr(db_models.Session, field, None)
-        if column is None:
-            raise ValueError(f"Invalid field '{field}' for Session lookup")
-        stmt = (
-            select(db_models.Session.session_id)
-            .where(column == value)
-            .where(db_models.Session.closed_at.is_(None))
-            .order_by(db_models.Session.last_activity.desc())
-            .limit(1)
-        )
-        try:
-            row = session.exec(stmt).first()
-        except OperationalError as exc:
-            if "no such table" in str(exc).lower():
-                return None
-            raise
-        return str(row) if row else None
+    try:
+        with SqlSession(engine) as session:
+            session.exec(text("PRAGMA journal_mode = WAL"))  # guard: raw-sql
+            session.exec(text("PRAGMA busy_timeout = 5000"))  # guard: raw-sql
+            column = getattr(db_models.Session, field, None)
+            if column is None:
+                raise ValueError(f"Invalid field '{field}' for Session lookup")
+            stmt = (
+                select(db_models.Session.session_id)
+                .where(column == value)
+                .where(db_models.Session.closed_at.is_(None))
+                .order_by(db_models.Session.last_activity.desc())
+                .limit(1)
+            )
+            try:
+                row = session.exec(stmt).first()
+            except OperationalError as exc:
+                if "no such table" in str(exc).lower():
+                    return None
+                raise
+            return str(row) if row else None
+    finally:
+        engine.dispose()
 
 
 def get_session_id_by_field_sync(db_path: str, field: str, value: object) -> str | None:
@@ -80,19 +83,22 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
         raise ValueError(f"Invalid field '{field}' for Session lookup. Valid fields: {sorted(valid_fields)}")
 
     engine = create_engine(f"sqlite:///{db_path}")
-    with SqlSession(engine) as session:
-        session.exec(text("PRAGMA journal_mode = WAL"))  # guard: raw-sql
-        session.exec(text("PRAGMA busy_timeout = 5000"))  # guard: raw-sql
-        column = getattr(db_models.Session, field, None)
-        if column is None:
-            raise ValueError(f"Invalid field '{field}'")
-        stmt = select(column).where(db_models.Session.session_id == session_id)
-        try:
-            return session.exec(stmt).first()
-        except OperationalError as exc:
-            if "no such table" in str(exc).lower():
-                return None
-            raise
+    try:
+        with SqlSession(engine) as session:
+            session.exec(text("PRAGMA journal_mode = WAL"))  # guard: raw-sql
+            session.exec(text("PRAGMA busy_timeout = 5000"))  # guard: raw-sql
+            column = getattr(db_models.Session, field, None)
+            if column is None:
+                raise ValueError(f"Invalid field '{field}'")
+            stmt = select(column).where(db_models.Session.session_id == session_id)
+            try:
+                return session.exec(stmt).first()
+            except OperationalError as exc:
+                if "no such table" in str(exc).lower():
+                    return None
+                raise
+    finally:
+        engine.dispose()
 
 
 class SessionIdentityError(ValueError):

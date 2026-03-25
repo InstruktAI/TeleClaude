@@ -227,40 +227,43 @@ class MemorySearch:
     ) -> list[SearchResult]:
         """Sync search for hook receiver context generation."""
         engine = create_engine(f"sqlite:///{db_path}")
-        with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
+        try:
+            with SqlSession(engine) as session:
+                session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
+                session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
 
-            # Try FTS5 first
-            try:
+                # Try FTS5 first
+                try:
+                    sql = (
+                        f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
+                        "WHERE id IN (SELECT rowid FROM memory_observations_fts WHERE memory_observations_fts MATCH :query)"
+                    )
+                    params: dict[str, str | int] = {"query": query, "limit": limit}
+                    if project:
+                        sql += " AND project = :project"
+                        params["project"] = project
+                    sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
+                    result = session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
+                    rows = result.fetchall()
+                    return [_row_to_search_result(row) for row in rows]
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
+
+                # LIKE fallback
+                like_pattern = f"%{query}%"
                 sql = (
                     f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
-                    "WHERE id IN (SELECT rowid FROM memory_observations_fts WHERE memory_observations_fts MATCH :query)"
+                    "WHERE (title LIKE :pattern OR narrative LIKE :pattern OR facts LIKE :pattern)"
                 )
-                params: dict[str, str | int] = {"query": query, "limit": limit}
+                params = {"pattern": like_pattern, "limit": limit}
                 if project:
                     sql += " AND project = :project"
                     params["project"] = project
                 sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-                result = session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
+                result = session.exec(  # type: ignore[call-overload]
+                    text(sql).bindparams(**params)  # guard: raw-sql
+                )
                 rows = result.fetchall()
                 return [_row_to_search_result(row) for row in rows]
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
-
-            # LIKE fallback
-            like_pattern = f"%{query}%"
-            sql = (
-                f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
-                "WHERE (title LIKE :pattern OR narrative LIKE :pattern OR facts LIKE :pattern)"
-            )
-            params = {"pattern": like_pattern, "limit": limit}
-            if project:
-                sql += " AND project = :project"
-                params["project"] = project
-            sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-            result = session.exec(  # type: ignore[call-overload]
-                text(sql).bindparams(**params)  # guard: raw-sql
-            )
-            rows = result.fetchall()
-            return [_row_to_search_result(row) for row in rows]
+        finally:
+            engine.dispose()

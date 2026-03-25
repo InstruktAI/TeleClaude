@@ -67,9 +67,26 @@ __all__ = [
 ]
 
 
+_sync_engine: object | None = None
+
+
 def _create_sync_engine() -> object:
-    """Create a sync SQLAlchemy engine with SQLite PRAGMAs set at connect time."""
-    engine = create_engine(f"sqlite:///{config.database.path}")
+    """Return a shared sync SQLAlchemy engine with SQLite PRAGMAs set at connect time.
+
+    Reuses a module-level singleton to avoid leaking connection pools — each
+    ``create_engine()`` call allocates a pool that holds open file descriptors
+    on the database file.  Without reuse, high-frequency callers (hook
+    receiver) exhaust system FD limits within minutes.
+    """
+    global _sync_engine
+    if _sync_engine is not None:
+        return _sync_engine
+
+    engine = create_engine(
+        f"sqlite:///{config.database.path}",
+        pool_size=5,
+        max_overflow=5,
+    )
 
     @sa_event.listens_for(engine, "connect")
     def _set_sqlite_pragmas(  # pyright: ignore[reportUnusedFunction]
@@ -81,6 +98,7 @@ def _create_sync_engine() -> object:
         cursor.execute("PRAGMA busy_timeout = 5000")
         cursor.close()
 
+    _sync_engine = engine
     return engine
 
 

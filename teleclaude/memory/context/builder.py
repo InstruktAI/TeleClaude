@@ -34,8 +34,8 @@ async def generate_context(project: str, identity_key: str | None = None) -> str
 
 def generate_context_sync(project: str, db_path: str, identity_key: str | None = None) -> str:
     """Generate memory context markdown (sync, for hook receiver)."""
+    engine = create_engine(f"sqlite:///{db_path}")
     try:
-        engine = create_engine(f"sqlite:///{db_path}")
         with SqlSession(engine) as session:
             session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]
             session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]
@@ -69,6 +69,8 @@ def generate_context_sync(project: str, db_path: str, identity_key: str | None =
     except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to generate memory context (sync)", project=project, exc_info=True)
         return ""
+    finally:
+        engine.dispose()
 
 
 async def _get_recent_observations(
