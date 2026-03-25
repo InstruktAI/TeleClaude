@@ -23,7 +23,7 @@ Diagnose and resolve failures in AI-to-AI session dispatch and notifications.
 2.  **Verify Dispatch:** Check the daemon logs for `Listener register attempt` to confirm the Initiator was correctly registered as a listener.
 3.  **Inspect Database:**
     ```bash
-    sqlite3 teleclaude.db "SELECT session_id, initiator_session_id, active_agent, lifecycle_status FROM session WHERE initiator_session_id IS NOT NULL"
+    sqlite3 ~/.teleclaude/teleclaude.db "SELECT session_id, initiator_session_id, active_agent, lifecycle_status FROM sessions WHERE initiator_session_id IS NOT NULL"
     ```
     Confirm the `initiator_session_id` matches the parent session.
 4.  **Analyze Timeouts:** If receiving `TeleClaude backend did not respond in time`, verify the `ThinkingMode` is valid and the database is not saturated.

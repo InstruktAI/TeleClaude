@@ -9,16 +9,17 @@ description: 'SQLite persistence for sessions, hook outbox, memory, UX state, an
 
 ## Purpose
 
-- Persist all daemon runtime state in a single SQLite database (`teleclaude.db`).
+- Persist daemon runtime state in `~/.teleclaude/teleclaude.db`.
 - Provide durable command/session behavior across daemon restarts.
 - Back hook delivery, UX cleanup state, agent availability, and memory storage.
+- Transcript mirrors live in a separate `~/.teleclaude/mirrors.db` (see mirror database section).
 
 ## Invariants
 
-- **Single Database File**: Production daemon state lives in one SQLite file (`teleclaude.db`) per repo root.
+- **Database Location**: All databases live under `~/.teleclaude/`. Main DB is `teleclaude.db`, mirrors are `mirrors.db`.
 - **Fail Before Serve**: Migrations run before interfaces are considered ready.
 - **Headless Compatibility**: Sessions may have `tmux_session_name = NULL` and still be valid (`lifecycle_status='headless'`).
-- **Durable Hook Queue**: Hook events are persisted before daemon processing.
+- **Durable Hook Queue**: Hook events are persisted before daemon processing. Processed events are hard-deleted (no soft-delete retention).
 - **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
 - Schema bootstraps from `teleclaude/core/schema.sql`.
 - Incremental schema changes run through numbered migrations (`teleclaude/core/migrations/*.py`) tracked in `schema_migrations`.
@@ -48,7 +49,6 @@ erDiagram
         text next_attempt_at
         int attempt_count
         text last_error
-        text delivered_at
         text locked_at
     }
 
@@ -131,11 +131,11 @@ erDiagram
 
 ### 2. Hook outbox delivery
 
-1. Receiver inserts `hook_outbox` row (`delivered_at = NULL`).
+1. Receiver inserts `hook_outbox` row.
 2. Daemon claims row by setting `locked_at`.
-3. On success: set `delivered_at`.
+3. On success: delete row.
 4. On retryable failure: increment `attempt_count`, set `next_attempt_at`, store `last_error`.
-5. On non-retryable/corrupt payload: mark delivered with error.
+5. On non-retryable/corrupt payload: delete row (logged as error).
 
 ### 3. Memory persistence
 
@@ -149,4 +149,4 @@ erDiagram
 - **Migration failure**: Daemon startup aborts until schema issue is fixed.
 - **Outbox backlog growth**: If worker path is unhealthy, undelivered rows accumulate.
 - **Disk pressure**: WAL/table growth can degrade performance or fail writes.
-- **Corrupt row payload**: Outbox row is marked delivered-with-error to avoid infinite retry loops.
+- **Corrupt row payload**: Outbox row is deleted (with error logging) to avoid infinite retry loops.

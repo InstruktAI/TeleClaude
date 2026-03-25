@@ -10,10 +10,13 @@ description: 'Database boundaries follow domain boundaries. Each domain owns its
 ## Rules
 
 - Database files follow domain boundaries, not a single-file mandate.
-- **Daemon operational database** (`teleclaude.db`): sessions, hooks, memory, agent
-  metadata — daemon plumbing with shared access patterns.
-- **Event platform database** (`events.db`): notification projections, trust state,
-  mesh peer data — event domain storage with its own lifecycle.
+- All databases live under `~/.teleclaude/`.
+- **Daemon operational database** (`~/.teleclaude/teleclaude.db`): sessions, hooks,
+  memory, agent metadata — daemon plumbing with shared access patterns.
+- **Mirror database** (`~/.teleclaude/mirrors.db`): session transcript mirrors and
+  FTS search — separate domain with large payloads and independent lifecycle.
+- **Event platform database** (`~/.teleclaude/events.db`): notification projections,
+  trust state, mesh peer data — event domain storage with its own lifecycle.
 - Each domain owns its database file. Tables within a domain belong together.
 - Git worktrees use isolated database files for test isolation and must not touch
   production state.
