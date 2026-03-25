@@ -13,27 +13,9 @@ pytestmark = pytest.mark.unit
 
 
 def _prepare_worker_db(path: Path) -> None:
-    with sqlite3.connect(path) as conn:
-        conn.executescript(
-            """
-            CREATE TABLE mirrors (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT,
-                source_identity TEXT UNIQUE,
-                agent TEXT,
-                metadata TEXT
-            );
-            CREATE TABLE mirror_tombstones (
-                source_identity TEXT PRIMARY KEY,
-                agent TEXT,
-                transcript_path TEXT,
-                file_size INTEGER,
-                file_mtime TEXT,
-                created_at TEXT
-            );
-            """
-        )
-        conn.commit()
+    from teleclaude.mirrors.store import _connect_rw  # pylint: disable=import-outside-toplevel
+
+    _connect_rw(str(path)).close()
 
 
 class TestMirrorWorker:
@@ -67,11 +49,33 @@ class TestMirrorWorker:
 
         with sqlite3.connect(db_path) as conn:
             conn.executemany(
-                "INSERT INTO mirrors (id, session_id, source_identity, agent, metadata) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO mirrors (id, session_id, source_identity, agent, computer, title, conversation_text, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (1, "session-1", None, "claude", "{}"),
-                    (2, "session-2", "claude:/tmp/drop.jsonl", "claude", '{"transcript_path":"/tmp/drop.jsonl"}'),
-                    (3, "session-3", "claude:/tmp/keep.jsonl", "claude", '{"transcript_path":"/tmp/keep.jsonl"}'),
+                    (1, "session-1", None, "claude", "local", "", "", "2025-01-01", "2025-01-01", "{}"),
+                    (
+                        2,
+                        "session-2",
+                        "claude:/tmp/drop.jsonl",
+                        "claude",
+                        "local",
+                        "",
+                        "",
+                        "2025-01-01",
+                        "2025-01-01",
+                        '{"transcript_path":"/tmp/drop.jsonl"}',
+                    ),
+                    (
+                        3,
+                        "session-3",
+                        "claude:/tmp/keep.jsonl",
+                        "claude",
+                        "local",
+                        "",
+                        "",
+                        "2025-01-01",
+                        "2025-01-01",
+                        '{"transcript_path":"/tmp/keep.jsonl"}',
+                    ),
                 ],
             )
             conn.commit()

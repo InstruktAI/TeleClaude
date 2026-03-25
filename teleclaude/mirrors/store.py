@@ -17,6 +17,9 @@ from teleclaude.core.dates import format_local_datetime, parse_iso_datetime
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
+_MIRRORS_DB_PATH = Path("~/.teleclaude/mirrors.db").expanduser()
+_schema_initialized: set[str] = set()
+
 
 @dataclass(frozen=True)
 class MirrorSearchResult:  # pylint: disable=too-many-instance-attributes
@@ -77,9 +80,9 @@ class SessionMirrorContext:
 
 
 def resolve_db_path(db: object | None = None) -> str:
-    """Resolve a database path from a db-like object or fall back to config."""
+    """Resolve mirrors database path. Defaults to ~/.teleclaude/mirrors.db."""
     if db is None:
-        return config.database.path
+        return str(_MIRRORS_DB_PATH)
     if isinstance(db, Path):
         return str(db.expanduser())
     if isinstance(db, str):
@@ -89,19 +92,84 @@ def resolve_db_path(db: object | None = None) -> str:
         return db_path
     if isinstance(db_path, Path):
         return str(db_path.expanduser())
-    return config.database.path
+    return str(_MIRRORS_DB_PATH)
+
+
+def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
+    """Create mirrors tables and FTS index if they don't exist."""
+    if path in _schema_initialized:
+        return
+    conn.executescript(_MIRRORS_SCHEMA)
+    _schema_initialized.add(path)
+
+
+_MIRRORS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS mirrors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    source_identity TEXT UNIQUE,
+    computer TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    project TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',
+    timestamp_start TEXT,
+    timestamp_end TEXT,
+    conversation_text TEXT NOT NULL DEFAULT '',
+    message_count INTEGER NOT NULL DEFAULT 0,
+    metadata TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mirrors_agent ON mirrors(agent);
+CREATE INDEX IF NOT EXISTS idx_mirrors_project ON mirrors(project);
+CREATE INDEX IF NOT EXISTS idx_mirrors_timestamp ON mirrors(timestamp_start DESC);
+CREATE INDEX IF NOT EXISTS idx_mirrors_source_identity ON mirrors(source_identity);
+CREATE TABLE IF NOT EXISTS mirror_tombstones (
+    source_identity TEXT PRIMARY KEY,
+    agent TEXT NOT NULL DEFAULT '',
+    transcript_path TEXT NOT NULL DEFAULT '',
+    file_size INTEGER NOT NULL DEFAULT 0,
+    file_mtime TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT ''
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS mirrors_fts USING fts5(
+    title,
+    conversation_text,
+    content='mirrors',
+    content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS mirrors_ai AFTER INSERT ON mirrors BEGIN
+    INSERT INTO mirrors_fts(rowid, title, conversation_text)
+    VALUES (new.id, new.title, new.conversation_text);
+END;
+CREATE TRIGGER IF NOT EXISTS mirrors_ad AFTER DELETE ON mirrors BEGIN
+    INSERT INTO mirrors_fts(mirrors_fts, rowid, title, conversation_text)
+    VALUES ('delete', old.id, old.title, old.conversation_text);
+END;
+CREATE TRIGGER IF NOT EXISTS mirrors_au AFTER UPDATE ON mirrors BEGIN
+    INSERT INTO mirrors_fts(mirrors_fts, rowid, title, conversation_text)
+    VALUES ('delete', old.id, old.title, old.conversation_text);
+    INSERT INTO mirrors_fts(rowid, title, conversation_text)
+    VALUES (new.id, new.title, new.conversation_text);
+END;
+"""
 
 
 def _connect_rw(db: object | None = None) -> sqlite3.Connection:
     path = resolve_db_path(db)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
+    _ensure_schema(conn, path)
     return conn
 
 
 def _connect_ro(db: object | None = None) -> sqlite3.Connection:
     path = Path(resolve_db_path(db)).expanduser().resolve()
+    # If DB doesn't exist yet, create it with schema via RW.
+    if not path.exists():
+        _connect_rw(db).close()
     uri = f"file:{quote(str(path))}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
@@ -389,13 +457,23 @@ def delete_mirror(
         conn.commit()
 
 
+def _connect_main_ro() -> sqlite3.Connection:
+    """Read-only connection to the main teleclaude.db for session lookups."""
+    path = Path(config.database.path).expanduser().resolve()
+    uri = f"file:{quote(str(path))}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
+
+
 def get_session_context(
     *,
     session_id: str | None = None,
     transcript_path: str | None = None,
     db: object | None = None,
 ) -> SessionMirrorContext | None:
-    """Look up a session row by session id or transcript path."""
+    """Look up a session row from the main DB by session id or transcript path."""
     if not session_id and not transcript_path:
         return None
 
@@ -417,7 +495,8 @@ def get_session_context(
     params.append(session_id or "")
 
     try:
-        with _connect_ro(db) as conn:
+        conn_fn = _connect_ro if db is not None else _connect_main_ro
+        with conn_fn(db) if db is not None else conn_fn() as conn:
             row = conn.execute(sql, params).fetchone()
     except sqlite3.OperationalError as exc:
         if "no such table" in str(exc).lower():

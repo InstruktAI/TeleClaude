@@ -13,35 +13,13 @@ pytestmark = pytest.mark.unit
 
 
 def _prepare_store_db(path: Path) -> None:
-    with sqlite3.connect(path) as conn:
+    """Trigger schema auto-creation via _connect_rw, then add a sessions table for context lookups."""
+    from teleclaude.mirrors.store import _connect_rw  # pylint: disable=import-outside-toplevel
+
+    with _connect_rw(str(path)) as conn:
         conn.executescript(
             """
-            CREATE TABLE mirrors (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT,
-                source_identity TEXT UNIQUE,
-                computer TEXT,
-                agent TEXT,
-                project TEXT,
-                title TEXT,
-                timestamp_start TEXT,
-                timestamp_end TEXT,
-                conversation_text TEXT,
-                message_count INTEGER,
-                metadata TEXT,
-                created_at TEXT,
-                updated_at TEXT
-            );
-            CREATE VIRTUAL TABLE mirrors_fts USING fts5(title, conversation_text);
-            CREATE TABLE mirror_tombstones (
-                source_identity TEXT PRIMARY KEY,
-                agent TEXT,
-                transcript_path TEXT,
-                file_size INTEGER,
-                file_mtime TEXT,
-                created_at TEXT
-            );
-            CREATE TABLE sessions (
+            CREATE TABLE IF NOT EXISTS sessions (
                 session_id TEXT,
                 computer_name TEXT,
                 active_agent TEXT,
@@ -73,14 +51,8 @@ def _mirror_record(transcript_path: str, session_id: str = "session-1") -> store
 
 
 def _index_mirror_for_search(path: Path, record: store_module.MirrorRecord) -> None:
-    with sqlite3.connect(path) as conn:
-        row = conn.execute("SELECT id FROM mirrors WHERE source_identity = ?", (record.source_identity,)).fetchone()
-        assert row is not None
-        conn.execute(
-            "INSERT INTO mirrors_fts(rowid, title, conversation_text) VALUES (?, ?, ?)",
-            (int(row[0]), record.title, record.conversation_text),
-        )
-        conn.commit()
+    """No-op — FTS triggers auto-index on insert/update."""
+    _ = (path, record)
 
 
 class TestResolveDbPath:
