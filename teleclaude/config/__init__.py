@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from teleclaude.constants import (
     AGENT_PROTOCOL,
+    DATABASE_DIR,
     DATABASE_FILENAME,
     DIRECTORY_CHECK_INTERVAL,
     HELP_DESK_SUBDIR,
@@ -822,7 +823,7 @@ def _build_config(  # pylint: disable=too-many-locals,too-many-branches,too-many
 
     return Config(
         database=DatabaseConfig(
-            path=f"{WORKING_DIR}/{DATABASE_FILENAME}",
+            path=f"{DATABASE_DIR}/{DATABASE_FILENAME}",
         ),
         computer=ComputerConfig(
             name=str(comp_raw["name"]),  # type: ignore[index]

@@ -19,7 +19,7 @@ The TUI is instrumented by the dotfiles repository at `~/Sync/dotfiles/terminal/
 
 ## Database
 
-The database is at `<project-root>/teleclaude.db` (resolved from `config.database.path`). It is **not** under `~/.teleclaude/`. Never guess the path — it is always relative to the project root.
+The database is at `~/.teleclaude/teleclaude.db` (resolved from `config.database.path`). Mirrors are in `~/.teleclaude/mirrors.db` (separate database). Never guess the path — use `config.database.path` for the main DB.
 
 ## TUI work
 
