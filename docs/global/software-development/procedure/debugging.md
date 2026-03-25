@@ -45,6 +45,16 @@ Core rules:
 - Use commits, config differences, and boundary-level tracing to isolate the first bad value or violated invariant.
 - Validate each step with concrete values, not assumptions.
 
+**Regression check (mandatory when "this worked before"):** When the user reports a regression — behavior that previously worked but now fails — check git history FIRST, before any code analysis:
+
+1. Identify the files involved in the failing path.
+2. Run `git log --oneline --since=<timeframe> -- <files>` to find recent changes.
+3. For each recent commit, `git diff <commit>^..<commit> -- <files>` to inspect exactly what changed.
+4. Cross-reference the changes against the failure: does the diff explain the broken behavior?
+5. If a commit is the obvious cause, the fix targets that specific change — not a workaround elsewhere.
+
+This is faster and more reliable than reasoning from first principles. The code was working. Something changed. Find what changed. The answer is in the diff, not in the architecture.
+
 **Backward call-chain tracing:** When the bug manifests deep in the stack, trace backward to find the original trigger:
 
 1. Observe the symptom (error, wrong value, unexpected state).
