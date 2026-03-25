@@ -41,12 +41,31 @@ Date: 2026-03-25
 
 ## Investigation
 
-<!-- Fix worker fills this during debugging -->
+Traced the call chain: CLI (`handle_todo_prepare`) → API (`todo_prepare`) → operations
+service → `next_prepare(db, slug, cwd)`.
+
+Compared with `next_work` which canonicalizes `cwd` via `resolve_canonical_project_root`
+at entry (work.py:107). `next_prepare` passed raw `cwd` through the entire chain — slug
+resolution, roadmap lookup, state reads, artifact checks, and dispatch all operated
+relative to the uncanonicalized path.
+
+When `cwd` is a worktree path (e.g. `/repo/trees/web-tui-shell/`), all file lookups
+hit the worktree's branch-local copies of `todos/roadmap.yaml`, `todos/{slug}/state.yaml`,
+etc. — which diverge from the canonical project root state after mark-phase operations.
+
+`resolve_canonical_project_root` already existed in `slug_resolution.py:198` and was
+used by `next_work`, `mark_phase`, and `work_support` — but was never added to
+`next_prepare`.
 
 ## Root Cause
 
-<!-- Fix worker fills this after investigation -->
+Missing `resolve_canonical_project_root` call in `next_prepare`. The function used the
+raw `cwd` parameter without canonicalizing worktree paths to the project root. This is
+a regression by omission — `next_work` was updated to canonicalize but `next_prepare`
+was not.
 
 ## Fix Applied
 
-<!-- Fix worker fills this after committing the fix -->
+Added `resolve_canonical_project_root` import and call at the top of `next_prepare`,
+matching the pattern established in `next_work`. The canonicalized `cwd` is used for
+all downstream operations (slug resolution, state reads, roadmap checks, dispatch).

@@ -1,23 +1,76 @@
 schema_version: 2
-phase: pending
+phase: in_progress
 kind: bug
-current: input_assessment
-history: []
+current: finalize_ready
+history:
+- source: input_assessment
+  target: build_started
+  by: mark-phase
+  at: '2026-03-25T03:00:57.105052+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-25T03:16:35.972564+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-25T03:16:53.656950+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-25T03:17:22.800264+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-25T03:17:41.399517+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-25T03:17:55.540816+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-25T03:18:23.205885+00:00'
+  metadata: {}
+- source: build_started
+  target: review_approved
+  by: mark-phase
+  at: '2026-03-25T03:18:38.368034+00:00'
+  metadata: {}
+- source: review_approved
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-25T03:19:42.106248+00:00'
+  metadata: {}
+- source: build_complete
+  target: review_approved
+  by: mark-phase
+  at: '2026-03-25T03:27:35.658963+00:00'
+  metadata: {}
+- source: review_approved
+  target: finalize_ready
+  by: mark-phase
+  at: '2026-03-25T03:29:57.090024+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
-  status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
+  status: ready
+  branch: fix-telec-todo-prepare-returns-stale-repeate
+  sha: d21acb070ba393efcdfed3ac7f87047ff268dc44
+  ready_at: '2026-03-25T03:29:58.903009+00:00'
+  worker_session_id: mark-phase
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: dbca55cec8106f642ad6041c48ce682fc915469d
 unresolved_findings: []
 resolved_findings: []
 grounding:

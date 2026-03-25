@@ -20,6 +20,7 @@ from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
 from teleclaude.core.next_machine.roadmap import add_to_roadmap, slug_in_roadmap
 from teleclaude.core.next_machine.slug_resolution import (
     _find_next_prepare_slug,
+    resolve_canonical_project_root,
     resolve_holder_children,
 )
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
@@ -70,6 +71,11 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     Returns:
         Plain text instructions for the orchestrator to execute
     """
+    # Canonicalize cwd so worktree paths resolve to the project root.
+    # Without this, an orchestrator that cd's into a worktree would cause
+    # all file lookups (roadmap, state, artifacts) to hit the wrong directory.
+    cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
+
     # Pre-dispatch preconditions: slug resolution, roadmap validation, container detection
     resolved_slug = slug
     if not resolved_slug:
