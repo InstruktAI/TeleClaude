@@ -228,16 +228,15 @@ class OutputDeliveryMixin:
             return await host._get_output_message_id(session)
 
         # 2. Try edit existing
-        adapter_key = getattr(self, "ADAPTER_KEY", "unknown")
         edited = await self._try_edit_output_message(session, text, metadata)
         if edited:
-            logger.debug("[DELIVER] Edited existing: adapter=%s session=%s", adapter_key, session.session_id)
+            logger.debug("[DELIVER] Edited existing: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
             await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
             await self._send_footer(session, status_line=options.status_line)
             return await host._get_output_message_id(session)
 
         # 3. Edit failed → cleanup footer, send new, send footer below
-        logger.debug("[DELIVER] Edit failed, sending new: adapter=%s session=%s text_len=%d", adapter_key, session.session_id, len(text))
+        logger.debug("[DELIVER] Edit failed, sending new: adapter=%s session=%s text_len=%d", self.ADAPTER_KEY, session.session_id, len(text))
         await host._cleanup_footer_if_present(session)
         new_id = await host.send_message(
             session,
@@ -245,7 +244,7 @@ class OutputDeliveryMixin:
             metadata=metadata,
             multi_message=options.multi_message,
         )
-        logger.debug("[DELIVER] New message result: adapter=%s session=%s new_id=%s", adapter_key, session.session_id, new_id)
+        logger.debug("[DELIVER] New message result: adapter=%s session=%s new_id=%s", self.ADAPTER_KEY, session.session_id, new_id)
         if new_id:
             await host._store_output_message_id(session, new_id)
             await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
