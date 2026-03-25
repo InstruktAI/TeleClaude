@@ -52,3 +52,6 @@
 - slug: session-memory-extraction
 - slug: web-tui-shell
 - slug: web-tui-panels
+- slug: edge-session-creation
+  after:
+  - session-arch-cleanup
