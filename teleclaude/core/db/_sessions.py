@@ -637,11 +637,15 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         """Return open sessions with last_activity at or after cutoff.
 
         Used by adapter cadence loops to find sessions needing output delivery.
+        SQLAlchemy stores datetime as space-separated (no T), so we match
+        that format for string comparison in SQLite.
         """
+        # Strip timezone and use space-separated format to match SQLite storage.
+        cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S.%f")
         stmt = (
             select(db_models.Session)
             .where(db_models.Session.closed_at.is_(None))
-            .where(db_models.Session.last_activity >= cutoff.isoformat())
+            .where(db_models.Session.last_activity >= cutoff_str)
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
