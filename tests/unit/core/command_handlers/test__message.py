@@ -266,7 +266,6 @@ class TestDeliverInbound:
             update_last_activity=AsyncMock(),
         )
         client = SimpleNamespace(
-            broadcast_user_input=AsyncMock(),
             break_threaded_turn=AsyncMock(),
         )
         tmux_io = SimpleNamespace(
@@ -276,7 +275,7 @@ class TestDeliverInbound:
 
         monkeypatch.setattr(_message, "db", db)
         monkeypatch.setattr(_message, "tmux_io", tmux_io)
-        monkeypatch.setattr(_message, "is_threaded_output_enabled", lambda _agent: False)
+
         monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
 
         start_polling = AsyncMock()
@@ -284,7 +283,6 @@ class TestDeliverInbound:
         await _message.deliver_inbound(row, client, start_polling)
 
         tmux_io.process_text.assert_not_awaited()
-        client.broadcast_user_input.assert_awaited_once()
         db.update_last_activity.assert_not_awaited()
         start_polling.assert_not_awaited()
 
@@ -300,7 +298,6 @@ class TestDeliverInbound:
             update_last_activity=AsyncMock(),
         )
         client = SimpleNamespace(
-            broadcast_user_input=AsyncMock(),
             break_threaded_turn=AsyncMock(),
         )
         tmux_io = SimpleNamespace(
@@ -312,7 +309,7 @@ class TestDeliverInbound:
         monkeypatch.setattr(_message, "db", db)
         monkeypatch.setattr(_message, "tmux_io", tmux_io)
         monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
-        monkeypatch.setattr(_message, "is_threaded_output_enabled", lambda _agent: False)
+
         monkeypatch.setattr(_message, "polling_coordinator", polling_coordinator)
 
         start_polling = AsyncMock()

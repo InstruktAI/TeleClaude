@@ -78,10 +78,6 @@ class AdapterClient(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             (adapter_type, adapter) for adapter_type, adapter in self.adapters.items() if isinstance(adapter, UiAdapter)
         ]
 
-    def any_adapter_wants_threaded_output(self) -> bool:
-        """Return True when any registered UI adapter uses threaded output mode."""
-        return any(adapter.THREADED_OUTPUT for _, adapter in self._ui_adapters())
-
     async def _broadcast_to_ui_adapters(
         self,
         session: "Session",

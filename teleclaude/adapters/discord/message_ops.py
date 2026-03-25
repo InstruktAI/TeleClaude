@@ -106,7 +106,10 @@ class MessageOperationsMixin:
         destination = await self._resolve_destination_channel(session, metadata=metadata)
         logger.debug(
             "[DISCORD SEND] session=%s destination=%s text_len=%d multi=%s",
-            session.session_id, type(destination).__name__, len(text), multi_message,
+            session.session_id,
+            type(destination).__name__,
+            len(text),
+            multi_message,
         )
 
         if multi_message and len(text) > self.max_message_size:
@@ -290,10 +293,14 @@ class MessageOperationsMixin:
         recoverable_errors = recoverable_operation_errors(self._discord)
         try:
             await edit_fn(content=text)
-            logger.debug("[DISCORD EDITED] message_id=%s session=%s text_len=%d", message_id, session.session_id, len(text))
+            logger.debug(
+                "[DISCORD EDITED] message_id=%s session=%s text_len=%d", message_id, session.session_id, len(text)
+            )
             return True
         except recoverable_errors as exc:
-            logger.warning("[DISCORD EDIT FAILED] message_id=%s session=%s error=%s", message_id, session.session_id, exc)
+            logger.warning(
+                "[DISCORD EDIT FAILED] message_id=%s session=%s error=%s", message_id, session.session_id, exc
+            )
             return False
 
     async def delete_message(self, session: Session, message_id: str) -> bool:

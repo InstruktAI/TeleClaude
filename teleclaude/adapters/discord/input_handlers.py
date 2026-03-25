@@ -536,7 +536,11 @@ class InputHandlersMixin:
         destination_id = metadata_channel_id or discord_meta.thread_id or discord_meta.channel_id
         logger.debug(
             "[DISCORD_RESOLVE] session=%s meta_channel=%s thread_id=%s channel_id=%s -> destination=%s",
-            session.session_id, metadata_channel_id, discord_meta.thread_id, discord_meta.channel_id, destination_id,
+            session.session_id,
+            metadata_channel_id,
+            discord_meta.thread_id,
+            discord_meta.channel_id,
+            destination_id,
         )
         if destination_id is None:
             raise AdapterError(f"Session {session.session_id} missing discord channel mapping")

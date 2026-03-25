@@ -1,23 +1,71 @@
 schema_version: 2
 phase: work
 kind: todo
-current: build_complete
-history: []
+current: finalize_ready
+history:
+- source: input_assessment
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-25T21:01:05.779018+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-25T21:07:32.744644+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-25T21:09:07.288621+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-25T21:14:16.538261+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-25T21:18:06.739755+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-25T21:24:32.692959+00:00'
+  metadata: {}
+- source: build_complete
+  target: review_changes_requested
+  by: mark-phase
+  at: '2026-03-25T21:35:50.301148+00:00'
+  metadata: {}
+- source: review_changes_requested
+  target: review_pending
+  by: mark-phase
+  at: '2026-03-25T21:51:50.480267+00:00'
+  metadata: {}
+- source: review_pending
+  target: review_approved
+  by: mark-phase
+  at: '2026-03-25T22:00:58.809133+00:00'
+  metadata: {}
+- source: review_approved
+  target: finalize_ready
+  by: mark-phase
+  at: '2026-03-25T22:03:32.867750+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
-  status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
+  status: ready
+  branch: output-delivery-redesign
+  sha: 638c85fcf2cb05fb433f4d239a3853e5f28f92a1
+  ready_at: '2026-03-25T22:03:35.219296+00:00'
+  worker_session_id: mark-phase
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: d731608a9bb5dbd0ad1db4366d7f34adb6d47d01
 unresolved_findings: []
 resolved_findings: []
 grounding:
@@ -91,11 +139,3 @@ audit:
   gate:
     started_at: ''
     completed_at: ''
-dor:
-  score: 0
-  status: needs_work
-  schema_version: 1
-  blockers: []
-  actions_taken:
-    requirements_updated: false
-    implementation_plan_updated: false

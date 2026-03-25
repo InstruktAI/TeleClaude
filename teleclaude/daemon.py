@@ -45,7 +45,6 @@ from teleclaude.logging_config import setup_logging
 from teleclaude.mirrors import MirrorWorker
 from teleclaude.mirrors.processors import register_default_processors
 from teleclaude.paths import RUNTIME_SETTINGS_PATH
-from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
 from teleclaude.tts.manager import TTSManager
@@ -182,8 +181,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self.runtime_settings = RuntimeSettings(RUNTIME_SETTINGS_PATH, self.tts_manager, self.chiptunes_manager)
         self.runtime_settings.bootstrap_chiptunes()
 
-        # Summary + headless snapshot services
-        self.headless_snapshot_service = HeadlessSnapshotService()
         self.maintenance_service = MaintenanceService(
             client=self.client,
             output_poller=self.output_poller,
@@ -195,7 +192,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self.agent_coordinator = AgentCoordinator(
             self.client,
             self.tts_manager,
-            self.headless_snapshot_service,
         )
         register_default_processors()
 

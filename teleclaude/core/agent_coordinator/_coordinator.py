@@ -1,7 +1,6 @@
 """Core AgentCoordinator class composing incremental-output and fanout mixins."""
 
 import asyncio
-import inspect
 from collections.abc import Coroutine
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
@@ -25,11 +24,9 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
-from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
-from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
 
@@ -38,10 +35,7 @@ from ._helpers import (
     _is_checkpoint_prompt,
     _is_codex_input_already_recorded,
     _is_codex_synthetic_prompt_event,
-    _resolve_hook_actor_name,
-    _SuppressionState,
 )
-from ._incremental import _IncrementalOutputMixin
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -51,7 +45,7 @@ logger = get_logger(__name__)
 
 
 class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coordinator tracks per-session runtime state
-    _IncrementalOutputMixin, _FanoutMixin
+    _FanoutMixin,
 ):
     """Coordinator for agent events and inter-agent communication."""
 
@@ -59,25 +53,12 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         self,
         client: "AdapterClient",
         tts_manager: TTSManager,
-        headless_snapshot_service: HeadlessSnapshotService,
     ) -> None:
         self.client = client
         self.tts_manager = tts_manager
-        self.headless_snapshot_service = headless_snapshot_service
         self._background_tasks: set[asyncio.Task[object]] = set()
-        self._incremental_noop_state: dict[str, _SuppressionState] = {}
-        self._tool_use_skip_state: dict[str, _SuppressionState] = {}
-        self._incremental_eval_state: dict[str, tuple[str, bool]] = {}
-        # Upstream render bookkeeping for incremental threaded output.
-        # Stores digest of the full rendered message (not adapter chunk digests).
-        self._incremental_render_digests: dict[str, str] = {}
-        # Serialize incremental rendering/sending per session to avoid
-        # concurrent poll/hook races emitting the same payload twice.
-        self._incremental_output_locks: dict[str, asyncio.Lock] = {}
         # Track last emitted lifecycle status per session for guard checks.
         self._last_emitted_status: dict[str, str] = {}
-        # Debounced headless pull timers keyed by session_id.
-        self._headless_pull_handles: dict[str, asyncio.TimerHandle] = {}
 
     def _queue_background_task(
         self,
@@ -113,58 +94,12 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         task.add_done_callback(_on_done)
 
-    async def _schedule_headless_pull(self, session_id: str, *, immediate: bool = False) -> None:
-        """Schedule a debounced transcript pull for a headless session.
-
-        Non-headless sessions are skipped. When ``immediate`` is True the
-        snapshot is sent synchronously (used on agent_stop). Otherwise a
-        1-second debounce timer coalesces rapid events into a single pull,
-        matching the cadence of tmux-based scraping for non-headless sessions.
-        """
+    async def _signal_headless_activity(self, session_id: str) -> None:
+        """Update last_activity for headless sessions so adapter cadence loops pick them up."""
         session = await db.get_session(session_id)
         if not session or session.lifecycle_status != "headless":
             return
-
-        if immediate:
-            # Cancel any pending debounce and pull now.
-            self._cancel_headless_pull(session_id)
-            logger.debug("headless pull: immediate snapshot for %s", session_id)
-            await self.headless_snapshot_service.send_snapshot(
-                session, reason="headless_event_pull", client=self.client
-            )
-            return
-
-        # If a timer is already pending, let it fire — no-op.
-        if session_id in self._headless_pull_handles:
-            return
-
-        loop = asyncio.get_running_loop()
-
-        def _fire() -> None:
-            self._headless_pull_handles.pop(session_id, None)
-            logger.debug("headless pull: debounce fired for %s", session_id)
-            self._queue_background_task(
-                self._do_headless_pull(session_id),
-                f"headless-pull:{session_id}",
-            )
-
-        handle = loop.call_later(1.0, _fire)
-        self._headless_pull_handles[session_id] = handle
-        logger.debug("headless pull: scheduled debounce for %s", session_id)
-
-    async def _do_headless_pull(self, session_id: str) -> None:
-        """Execute a single headless snapshot pull (called from debounce timer)."""
-        session = await db.get_session(session_id)
-        if not session or session.lifecycle_status != "headless":
-            return
-        await self.headless_snapshot_service.send_snapshot(session, reason="headless_event_pull", client=self.client)
-
-    def _cancel_headless_pull(self, session_id: str) -> None:
-        """Cancel a pending debounced headless pull timer."""
-        handle = self._headless_pull_handles.pop(session_id, None)
-        if handle is not None:
-            handle.cancel()
-            logger.debug("headless pull: cancelled pending timer for %s", session_id)
+        await db.update_last_activity(session_id)
 
     def _emit_activity_event(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Event contract fields
         self,
@@ -336,8 +271,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         if not session or session.lifecycle_status != "headless":
             self._emit_status_event(context.session_id, "active", "agent_session_started")
 
-        # Headless snapshot delivery is now event-driven (_schedule_headless_pull)
-        # rather than firing at session start before output exists.
         await self._speak_session_start(context.session_id)
 
     async def handle_user_prompt_submit(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements  # Turn orchestration
@@ -345,9 +278,9 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
     ) -> None:
         """Handle user prompt submission.
 
-        For ALL sessions: write last_message_sent to DB (captures direct terminal input).
-        Refresh title from the latest accepted real user input.
-        For headless sessions: broadcast to adapters for display without tmux adoption.
+        For ALL sessions: write last_message_sent to DB, refresh title,
+        update last_activity, and reset threaded output state.
+        Adapters pull from transcripts on their own cadence.
         """
         session_id = context.session_id
         payload = cast(UserPromptSubmitPayload, context.data)
@@ -373,12 +306,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         # Clear checkpoint state on real user input
         await db.update_session(session_id, last_checkpoint_at=None, last_tool_use_at=None)
-        # NOTE: Do NOT clear _incremental_render_digests here. The poller may
-        # fire between this point and the first new assistant content. Clearing
-        # the digest opens a window where stale content from the previous turn
-        # is re-rendered and sent as a duplicate (no digest to compare against).
-        # The digest is naturally replaced when new assistant content arrives
-        # and produces a different hash.
 
         # Prepare batched update
         now = datetime.now(UTC)
@@ -403,42 +330,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                     incoming_input[:50],
                 )
 
-        incoming_input = prompt_text.strip()
-        existing_input = (session.last_message_sent or "").strip()
-        existing_origin = (session.last_input_origin or "").strip().lower()
-        existing_at = session.last_message_sent_at
-        # deliver_inbound truncates last_message_sent to 200 chars; compare at that
-        # boundary so the echo guard still fires for long messages.
-        compare_length = 200
-        is_recent_routed_echo = (
-            session.lifecycle_status != "headless"
-            and not is_codex_synthetic
-            and existing_origin
-            and existing_origin != InputOrigin.TERMINAL.value
-            and isinstance(existing_at, datetime)
-            and (now - existing_at).total_seconds() <= 20
-            and existing_input
-            and incoming_input
-            and existing_input[:compare_length] == incoming_input[:compare_length]
-        )
-        if not is_recent_routed_echo and existing_origin and existing_origin != InputOrigin.TERMINAL.value:
-            logger.debug(
-                "Echo guard miss for session %s: origin=%s age=%.1fs text_match=%s existing=%r incoming=%r",
-                session_id,
-                existing_origin,
-                (now - existing_at).total_seconds() if isinstance(existing_at, datetime) else -1,
-                existing_input[:50] == incoming_input[:50] if existing_input and incoming_input else "N/A",
-                existing_input[:50] if existing_input else None,
-                incoming_input[:50],
-            )
-        if is_recent_routed_echo:
-            should_update_last_message = False
-            logger.debug(
-                "Skipping duplicate hook prompt persistence for session %s (origin=%s)",
-                session_id,
-                existing_origin,
-            )
-
         update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         if should_update_last_message:
             update_kwargs.update(
@@ -450,12 +341,12 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             )
 
         # Track what triggered this turn for echo suppression in handle_agent_stop.
-        # Set unconditionally — deliver_inbound's eager writes must not control this.
         _linked_prefix_check = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
         update_kwargs["turn_triggered_by_linked_output"] = prompt_text.strip().startswith(_linked_prefix_check)
 
         # Single DB update for all fields
         await db.update_session(session_id, **update_kwargs)
+        await db.update_last_activity(session_id)
         logger.debug(
             "Recorded user input via hook for session %s: %s...",
             session_id,
@@ -463,7 +354,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         )
 
         # Title update is non-critical and must not block hook ordering.
-        # Only schedule when this submit became the canonical persisted input.
         if should_update_last_message:
             self._queue_background_task(
                 self._update_session_title_async(session_id, now, prompt_text),
@@ -471,48 +361,14 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             )
 
         # Reset threaded output state on user input.
-        # This seals the previous agent output block, ensuring the next response
-        # starts a fresh message (append-only flow).
-        if is_threaded_output_enabled(session.active_agent):
-            await self.client.break_threaded_turn(session)
+        await self.client.break_threaded_turn(session)
 
         # Emit activity event for all sessions
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
-        hook_actor_name = _resolve_hook_actor_name(session)
-
         if session.lifecycle_status != "headless":
-            # Emit canonical lifecycle status: accepted (R2)
             now_ts = datetime.now(UTC).isoformat()
             self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
-
-            if is_recent_routed_echo:
-                logger.debug(
-                    "Skipping duplicate non-headless hook reflection for session %s",
-                    session_id,
-                )
-                return
-            broadcast_result = self.client.broadcast_user_input(
-                session,
-                prompt_text,
-                InputOrigin.TERMINAL.value,
-                actor_id=f"terminal:{config.computer.name}:{session_id}",
-                actor_name=hook_actor_name,
-            )
-            if inspect.isawaitable(broadcast_result):
-                await broadcast_result
-            return
-
-        # Headless: broadcast to adapters for display, no tmux adoption.
-        broadcast_result = self.client.broadcast_user_input(
-            session,
-            prompt_text,
-            InputOrigin.TERMINAL.value,
-            actor_id=f"terminal:{config.computer.name}:{session_id}",
-            actor_name=hook_actor_name,
-        )
-        if inspect.isawaitable(broadcast_result):
-            await broadcast_result
 
     async def handle_agent_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped."""
@@ -540,20 +396,12 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=now_ts)
 
         # Immediate headless pull on stop — final output must be captured.
-        await self._schedule_headless_pull(session_id, immediate=True)
+        await self._signal_headless_activity(session_id)
 
-        # 2. Incremental threaded output (final turn portion)
-        await self._maybe_send_incremental_output(session_id, payload)
-
-        # Clear threaded output state for this turn (only for threaded sessions).
-        # Non-threaded sessions rely on the poller's output_message_id for in-place edits.
-        # NOTE: Do NOT clear _incremental_render_digests here. The poller may
-        # fire one more OutputChanged tick after this point; keeping the digest
-        # lets the deduplication check prevent a duplicate message send.
-        # The digest is naturally invalidated on the next user turn when new
-        # assistant content changes the hash.
-        session = await db.get_session(session_id)  # Refresh to get latest metadata
-        if session and is_threaded_output_enabled(session.active_agent):
+        # Output delivery is adapter-owned — adapters pull on their own cadence.
+        # Break threaded turn state so adapters know the turn boundary.
+        session = await db.get_session(session_id)
+        if session:
             await self.client.break_threaded_turn(session)
 
         # Clear turn-specific cursor at turn completion
@@ -588,15 +436,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         logger.info("Backfilling missing user_prompt_submit from codex agent_stop for session %s", session_id)
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
-        if session and session.lifecycle_status != "headless":
-            hook_actor_name = _resolve_hook_actor_name(session)
-            await self.client.broadcast_user_input(
-                session,
-                recovered_input_text,
-                InputOrigin.TERMINAL.value,
-                actor_id=f"terminal:{config.computer.name}:{session_id}",
-                actor_name=hook_actor_name,
-            )
 
     async def _record_agent_stop_output(
         self, session_id: str, payload: AgentStopPayload
@@ -705,10 +544,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         # DB write is deduped: only record the FIRST tool_use per turn for checkpoint timing
         session = await db.get_session(session_id)
-        if session and session.last_tool_use_at:
-            self._mark_tool_use_skip(session_id)
-        elif session:
-            self._clear_tool_use_skip(session_id)
+        if session and not session.last_tool_use_at:
             now = datetime.now(UTC)
             await db.update_session(session_id, last_tool_use_at=now.isoformat())
             logger.debug("tool_use recorded for session %s", session_id)
@@ -717,7 +553,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         # tool_use still emits activity + checkpoint timing metadata.
 
         # Drive headless output delivery via debounced transcript pull.
-        await self._schedule_headless_pull(session_id)
+        await self._signal_headless_activity(session_id)
 
     async def handle_tool_done(self, context: AgentEventContext) -> None:
         """Handle tool_done event — tool execution completed, output available."""
@@ -727,10 +563,10 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         self._emit_activity_event(session_id, AgentHookEvents.TOOL_DONE)
 
         # Drive headless output delivery via debounced transcript pull.
-        await self._schedule_headless_pull(session_id)
+        await self._signal_headless_activity(session_id)
 
     async def handle_session_end(self, context: AgentEventContext) -> None:
         """Handle session_end event - agent session ended."""
         _payload = cast(AgentSessionEndPayload, context.data)
-        self._cancel_headless_pull(context.session_id)
+        # No cleanup needed — adapter cadence loops handle their own state.
         logger.info("Agent %s for session %s", AgentHookEvents.AGENT_SESSION_END, context.session_id)

@@ -26,7 +26,6 @@ from teleclaude.core.session_listeners import (
 )
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.summarizer import generate_session_title, summarize_agent_output
-from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import (
@@ -55,7 +54,6 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
     if TYPE_CHECKING:
         client: "AdapterClient"
         tts_manager: TTSManager
-        headless_snapshot_service: HeadlessSnapshotService
 
     async def _update_session_title_async(  # pylint: disable=too-many-return-statements  # Guarded early exits
         self, session_id: str, expected_prompt_at: datetime, prompt_text: str = ""

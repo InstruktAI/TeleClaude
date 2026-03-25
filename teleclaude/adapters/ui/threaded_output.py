@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
     class _ThreadedOutputHost(Protocol):  # pylint: disable=too-few-public-methods
-        THREADED_OUTPUT: bool
         ADAPTER_KEY: str
         max_message_size: int
         THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS: int
@@ -89,7 +88,6 @@ class ThreadedOutputMixin:
     """Mixin providing threaded output delivery for UiAdapter.
 
     Required from host class:
-    - THREADED_OUTPUT: bool
     - ADAPTER_KEY: str
     - max_message_size: int
     - THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS: int
@@ -110,7 +108,6 @@ class ThreadedOutputMixin:
     - _build_session_id_lines(session) -> str
     """
 
-    THREADED_OUTPUT: bool
     ADAPTER_KEY: str
     max_message_size: int
     THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS: int
@@ -128,14 +125,6 @@ class ThreadedOutputMixin:
         _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
     ) -> str | None:
         """Send or edit threaded output message with smart pagination."""
-        # Skip threaded output for adapters that don't use it.
-        if not self.THREADED_OUTPUT:
-            logger.debug(
-                "[THREADED] Skipped (THREADED_OUTPUT=False): adapter=%s session=%s",
-                self.ADAPTER_KEY, session.session_id,
-            )
-            return None
-
         host = cast("_ThreadedOutputHost", self)
         lock = host._get_output_delivery_lock(session.session_id)
         async with lock:
@@ -144,7 +133,10 @@ class ThreadedOutputMixin:
             converted_text = host._convert_markdown_for_platform(text)
             logger.debug(
                 "[THREADED] Rendering: adapter=%s session=%s text_len=%d converted_len=%d",
-                self.ADAPTER_KEY, session.session_id, len(text), len(converted_text),
+                self.ADAPTER_KEY,
+                session.session_id,
+                len(text),
+                len(converted_text),
             )
             result = await self._send_threaded_output_unlocked(
                 session,
@@ -154,7 +146,9 @@ class ThreadedOutputMixin:
             )
             logger.debug(
                 "[THREADED] Result: adapter=%s session=%s result=%s",
-                self.ADAPTER_KEY, session.session_id, type(result).__name__ if result else "None",
+                self.ADAPTER_KEY,
+                session.session_id,
+                type(result).__name__ if result else "None",
             )
             return result
 
@@ -175,7 +169,11 @@ class ThreadedOutputMixin:
         output_message_id = await host._get_output_message_id(session)
         logger.debug(
             "[THREADED_UNLOCKED] adapter=%s session=%s char_offset=%d text_len=%d output_message_id=%s",
-            self.ADAPTER_KEY, session.session_id, char_offset, len(text), output_message_id,
+            self.ADAPTER_KEY,
+            session.session_id,
+            char_offset,
+            len(text),
+            output_message_id,
         )
 
         # 2. Slice text to get the "active" portion

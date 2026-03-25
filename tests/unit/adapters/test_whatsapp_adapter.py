@@ -58,10 +58,6 @@ class TestWhatsAppAdapterClassAttributes:
     def test_max_message_size_is_4096(self) -> None:
         assert WhatsAppAdapter.max_message_size == 4096
 
-    @pytest.mark.unit
-    def test_threaded_output_is_false(self) -> None:
-        assert WhatsAppAdapter.THREADED_OUTPUT is False
-
 
 # ---------------------------------------------------------------------------
 # URL properties

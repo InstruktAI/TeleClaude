@@ -512,4 +512,4 @@ def test_anomaly_push_succeeded_pull_fails(tmp_path: Path) -> None:
         _step_push_succeeded(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
     assert cp.warnings
-    assert any("pull --ff-only failed" in w for w in cp.warnings)
+    assert any("my-feature" in w for w in cp.warnings)

@@ -15,12 +15,11 @@ from teleclaude.core.models import Session
 
 def _make_coordinator() -> AgentCoordinator:
     client = MagicMock()
+    client.break_threaded_turn = AsyncMock()
     tts_manager = MagicMock()
-    headless_snapshot_service = MagicMock()
     return AgentCoordinator(
         client=client,
         tts_manager=tts_manager,
-        headless_snapshot_service=headless_snapshot_service,
     )
 
 
@@ -28,11 +27,6 @@ class TestAgentCoordinatorInit:
     @pytest.mark.unit
     def test_initial_state_dicts_empty(self):
         coord = _make_coordinator()
-        assert coord._incremental_noop_state == {}
-        assert coord._tool_use_skip_state == {}
-        assert coord._incremental_eval_state == {}
-        assert coord._incremental_render_digests == {}
-        assert coord._incremental_output_locks == {}
         assert coord._last_emitted_status == {}
 
     @pytest.mark.unit
@@ -46,7 +40,6 @@ class TestAgentCoordinatorInit:
         coord = AgentCoordinator(
             client=client,
             tts_manager=MagicMock(),
-            headless_snapshot_service=MagicMock(),
         )
         assert coord.client is client
 
@@ -372,7 +365,7 @@ class TestHandleSessionStart:
         assert call_kwargs["project_path"] == "/my/project"
 
     @pytest.mark.unit
-    async def test_calls_headless_snapshot_and_speak(self):
+    async def test_calls_speak_on_session_start(self):
         coord = _make_coordinator()
         context = MagicMock()
         context.session_id = "sess-001"
@@ -461,19 +454,15 @@ class TestHandleUserPromptSubmit:
             patch(
                 "teleclaude.core.agent_coordinator._coordinator._is_codex_synthetic_prompt_event", return_value=False
             ),
-            patch("teleclaude.core.agent_coordinator._coordinator._resolve_hook_actor_name", return_value="user"),
-            patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
             patch("teleclaude.core.agent_coordinator._coordinator.TELECLAUDE_SYSTEM_PREFIX", "__TC__"),
-            patch("teleclaude.core.agent_coordinator._coordinator.config") as mock_config,
         ):
-            mock_config.computer.name = "local"
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
             mock_db.set_notification_flag = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._queue_background_task = MagicMock(side_effect=_close_coro)
-            coord.client.broadcast_user_input = MagicMock(return_value=None)
             await coord.handle_user_prompt_submit(context)
 
         coord._emit_activity_event.assert_called_with("sess-001", AgentHookEvents.USER_PROMPT_SUBMIT)
@@ -497,19 +486,15 @@ class TestHandleUserPromptSubmit:
             patch(
                 "teleclaude.core.agent_coordinator._coordinator._is_codex_synthetic_prompt_event", return_value=False
             ),
-            patch("teleclaude.core.agent_coordinator._coordinator._resolve_hook_actor_name", return_value="user"),
-            patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
             patch("teleclaude.core.agent_coordinator._coordinator.TELECLAUDE_SYSTEM_PREFIX", "__TC__"),
-            patch("teleclaude.core.agent_coordinator._coordinator.config") as mock_config,
         ):
-            mock_config.computer.name = "local"
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
             mock_db.set_notification_flag = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._queue_background_task = MagicMock(side_effect=_close_coro)
-            coord.client.broadcast_user_input = MagicMock(return_value=None)
             await coord.handle_user_prompt_submit(context)
 
         called_statuses = [c[0][1] for c in coord._emit_status_event.call_args_list]
@@ -526,7 +511,6 @@ class TestHandleAgentStop:
 
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
@@ -550,7 +534,6 @@ class TestHandleAgentStop:
 
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
@@ -574,7 +557,6 @@ class TestHandleAgentStop:
 
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
@@ -599,7 +581,6 @@ class TestHandleAgentStop:
 
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator._coordinator.is_threaded_output_enabled", return_value=False),
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
@@ -678,9 +659,9 @@ class TestHandleToolUse:
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._clear_tool_use_skip = MagicMock()
             await coord.handle_tool_use(context)
 
         mock_db.update_session.assert_called_once()
@@ -702,13 +683,12 @@ class TestHandleToolUse:
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._mark_tool_use_skip = MagicMock()
             await coord.handle_tool_use(context)
 
         mock_db.update_session.assert_not_called()
-        coord._mark_tool_use_skip.assert_called_once_with("sess-001")
 
 
 class TestQueueBackgroundTask:
@@ -834,17 +814,12 @@ class TestRecordAgentStopInput:
             patch(
                 "teleclaude.core.agent_coordinator._coordinator._is_codex_input_already_recorded", return_value=False
             ),
-            patch("teleclaude.core.agent_coordinator._coordinator._resolve_hook_actor_name", return_value="user"),
-            patch("teleclaude.core.agent_coordinator._coordinator.config") as mock_config,
         ):
-            mock_config.computer.name = "local"
             mock_db.update_session = AsyncMock()
             coord._emit_activity_event = MagicMock()
-            coord.client.broadcast_user_input = AsyncMock()
             await coord._record_agent_stop_input("sess-001", payload, session)
 
         coord._emit_activity_event.assert_called_once_with("sess-001", AgentHookEvents.USER_PROMPT_SUBMIT)
-        coord.client.broadcast_user_input.assert_called_once()
 
 
 class TestRecordAgentStopOutput:

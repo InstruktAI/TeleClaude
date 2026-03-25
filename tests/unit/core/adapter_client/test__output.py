@@ -10,7 +10,6 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client._client import AdapterClient
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
-from teleclaude.core.origins import InputOrigin
 
 
 def _make_session(
@@ -29,9 +28,8 @@ def _make_session(
     )
 
 
-def _make_ui_adapter(*, threaded: bool = False) -> MagicMock:
+def _make_ui_adapter() -> MagicMock:
     adapter = MagicMock(spec=UiAdapter)
-    adapter.THREADED_OUTPUT = threaded
     adapter.ensure_channel = AsyncMock(side_effect=lambda session: session)
     adapter.send_error_feedback = AsyncMock()
     adapter.send_message = AsyncMock(return_value="message-id")
@@ -278,8 +276,8 @@ class TestMoveBadgeAndThreadState:
     async def test_break_threaded_turn_drops_pending_output_and_clears_turn_state(self):
         client = AdapterClient()
         session = _make_session()
-        telegram = _make_ui_adapter(threaded=True)
-        discord = _make_ui_adapter(threaded=True)
+        telegram = _make_ui_adapter()
+        discord = _make_ui_adapter()
         redis = _make_base_adapter()
         telegram.drop_pending_output.return_value = 2
         discord.drop_pending_output.return_value = 1
@@ -293,102 +291,6 @@ class TestMoveBadgeAndThreadState:
         discord.drop_pending_output.assert_called_once_with(session.session_id)
         telegram.clear_turn_state.assert_awaited_once_with(session)
         discord.clear_turn_state.assert_awaited_once_with(session)
-
-
-class TestThreadedAndStreamingOutput:
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_send_threaded_output_cleans_feedback_and_returns_origin_message_id(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="telegram")
-        telegram = _make_ui_adapter(threaded=True)
-        discord = _make_ui_adapter(threaded=True)
-        telegram.send_threaded_output = AsyncMock(return_value="thread-msg")
-        discord.send_threaded_output = AsyncMock(return_value="discord-thread")
-        client.register_adapter("telegram", telegram)
-        client.register_adapter("discord", discord)
-
-        with (
-            patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)),
-            patch("teleclaude.core.adapter_client._output.db") as mock_db,
-        ):
-            mock_db.get_pending_deletions = AsyncMock(return_value=["feedback-1"])
-            mock_db.clear_pending_deletions = AsyncMock()
-
-            result = await client.send_threaded_output(session, "output block")
-
-        assert result == "thread-msg"
-        telegram.delete_message.assert_awaited_once_with(session, "feedback-1")
-        discord.delete_message.assert_awaited_once_with(session, "feedback-1")
-        telegram.send_threaded_output.assert_awaited_once_with(session, "output block", multi_message=False)
-        discord.send_threaded_output.assert_awaited_once_with(session, "output block", multi_message=False)
-        mock_db.clear_pending_deletions.assert_awaited_once_with(session.session_id, deletion_type="feedback")
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_send_output_update_cleans_feedback_and_routes_to_ui_adapters(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="telegram")
-        telegram = _make_ui_adapter()
-        discord = _make_ui_adapter()
-        telegram.send_output_update = AsyncMock(return_value="output-msg")
-        discord.send_output_update = AsyncMock(return_value="discord-output")
-        client.register_adapter("telegram", telegram)
-        client.register_adapter("discord", discord)
-
-        with (
-            patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)),
-            patch("teleclaude.core.adapter_client._output.db") as mock_db,
-        ):
-            mock_db.get_pending_deletions = AsyncMock(return_value=["feedback-1"])
-            mock_db.clear_pending_deletions = AsyncMock()
-
-            result = await client.send_output_update(
-                session,
-                "stdout",
-                started_at=1.0,
-                last_output_changed_at=2.0,
-                is_final=True,
-                exit_code=0,
-                render_markdown=True,
-            )
-
-        assert result == "output-msg"
-        telegram.send_output_update.assert_awaited_once_with(session, "stdout", 1.0, 2.0, True, 0, True)
-        discord.send_output_update.assert_awaited_once_with(session, "stdout", 1.0, 2.0, True, 0, True)
-        mock_db.clear_pending_deletions.assert_awaited_once_with(session.session_id, deletion_type="feedback")
-
-
-class TestBroadcastUserInput:
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_broadcasts_reflection_metadata_using_fresh_session(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="telegram")
-        fresh_session = _make_session(last_input_origin="telegram")
-        telegram = _make_ui_adapter()
-        discord = _make_ui_adapter()
-        client.register_adapter("telegram", telegram)
-        client.register_adapter("discord", discord)
-
-        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=fresh_session)):
-            await client.broadcast_user_input(
-                session,
-                "hello",
-                InputOrigin.TERMINAL.value,
-                actor_id="user-1",
-                actor_name="Alice",
-                actor_avatar_url="https://example.test/avatar.png",
-            )
-
-        telegram.send_message.assert_awaited_once()
-        discord.send_message.assert_awaited_once()
-        metadata = telegram.send_message.await_args.kwargs["metadata"]
-        assert telegram.send_message.await_args.args[0] is fresh_session
-        assert metadata.reflection_actor_id == "user-1"
-        assert metadata.reflection_actor_name == "Alice"
-        assert metadata.reflection_actor_avatar_url == "https://example.test/avatar.png"
-        assert metadata.reflection_origin == InputOrigin.TERMINAL.value
 
 
 class TestChannelUpdates:

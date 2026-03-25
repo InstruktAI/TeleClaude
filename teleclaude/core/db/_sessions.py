@@ -633,6 +633,21 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             rows = result.all()
             return [self._to_core_session(row) for row in rows]
 
+    async def get_sessions_active_since(self, cutoff: datetime) -> list[Session]:
+        """Return open sessions with last_activity at or after cutoff.
+
+        Used by adapter cadence loops to find sessions needing output delivery.
+        """
+        stmt = (
+            select(db_models.Session)
+            .where(db_models.Session.closed_at.is_(None))
+            .where(db_models.Session.last_activity >= cutoff.isoformat())
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            rows = result.all()
+            return [self._to_core_session(row) for row in rows]
+
     async def get_sessions_by_title_pattern(self, pattern: str, include_closed: bool = False) -> list[Session]:
         """Get sessions where title starts with the given pattern.
 

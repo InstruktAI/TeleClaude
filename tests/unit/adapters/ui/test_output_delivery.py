@@ -18,7 +18,6 @@ from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
 
 class _FakeHost(OutputDeliveryMixin):
     ADAPTER_KEY = "telegram"
-    THREADED_OUTPUT = False
     max_message_size = 100
 
     def __init__(self):
@@ -222,39 +221,11 @@ class TestSendErrorFeedback:
 
 class TestSendFooter:
     @pytest.mark.unit
-    async def test_threaded_output_suppresses_footer(self, host: _FakeHost) -> None:
-        host.THREADED_OUTPUT = True
+    async def test_footer_always_returns_none(self, host: _FakeHost) -> None:
+        """All adapters use threaded output — footer is suppressed."""
         session = _make_session()
         result = await host._send_footer(session)
         assert result is None
-
-    @pytest.mark.unit
-    async def test_new_footer_stored_on_send(self, host: _FakeHost) -> None:
-        session = _make_session()
-        host._footer_message_id = None
-        host.send_message = AsyncMock(return_value="footer-msg")
-        result = await host._send_footer(session)
-        assert result == "footer-msg"
-        assert host._footer_message_id == "footer-msg"
-
-    @pytest.mark.unit
-    async def test_existing_footer_edited_not_replaced(self, host: _FakeHost) -> None:
-        session = _make_session()
-        host._footer_message_id = "existing-footer"
-        host.edit_message = AsyncMock(return_value=True)
-        send_message = host.send_message
-        result = await host._send_footer(session)
-        assert result == "existing-footer"
-        send_message.assert_not_called()
-
-    @pytest.mark.unit
-    async def test_stale_footer_edit_failure_clears_id(self, host: _FakeHost) -> None:
-        session = _make_session()
-        host._footer_message_id = "stale-footer"
-        host.edit_message = AsyncMock(return_value=False)
-        result = await host._send_footer(session)
-        assert result is None
-        assert host._footer_message_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -264,46 +235,22 @@ class TestSendFooter:
 
 class TestSendOutputUpdate:
     @pytest.mark.unit
-    async def test_threaded_output_suppresses_standard_send(self, host: _FakeHost) -> None:
-        host.THREADED_OUTPUT = True
+    async def test_send_output_update_always_returns_none(self, host: _FakeHost) -> None:
+        """All adapters use threaded output — edit-in-place is suppressed."""
         session = _make_session()
         result = await host.send_output_update(session, "output", 0.0, 0.0)
         assert result is None
 
     @pytest.mark.unit
-    async def test_final_output_delegates_to_deliver_output(self, host: _FakeHost) -> None:
+    async def test_final_output_returns_none(self, host: _FakeHost) -> None:
+        """Edit-in-place removed; send_output_update is suppressed for all adapters."""
         session = _make_session()
-        with (
-            patch("teleclaude.adapters.ui.output_delivery.config") as mock_cfg,
-            patch.object(host, "_fit_output_to_limit", return_value="formatted-output") as fit_output,
-            patch.object(host, "_deliver_output", new=AsyncMock(return_value="msg-final")) as deliver_output,
-        ):
-            mock_cfg.terminal.strip_ansi = False
-            mock_cfg.computer.timezone = "UTC"
-            result = await host.send_output_update(session, "output", 0.0, 0.0, is_final=True, exit_code=0)
-        assert result == "msg-final"
-        fit_output.assert_called_once_with("output")
-        delivered_session, delivered_text, delivered_metadata = deliver_output.await_args.args
-        assert delivered_session is session
-        assert delivered_text == "formatted-output"
-        assert isinstance(delivered_metadata, MessageMetadata)
-        assert bool(deliver_output.await_args.kwargs["status_line"])
+        result = await host.send_output_update(session, "output", 0.0, 0.0, is_final=True, exit_code=0)
+        assert result is None
 
     @pytest.mark.unit
-    async def test_active_output_delegates_to_deliver_output(self, host: _FakeHost) -> None:
+    async def test_active_output_returns_none(self, host: _FakeHost) -> None:
+        """Edit-in-place removed; send_output_update is suppressed for all adapters."""
         session = _make_session()
-        with (
-            patch("teleclaude.adapters.ui.output_delivery.config") as mock_cfg,
-            patch.object(host, "_fit_output_to_limit", return_value="formatted-output") as fit_output,
-            patch.object(host, "_deliver_output", new=AsyncMock(return_value="msg-active")) as deliver_output,
-        ):
-            mock_cfg.terminal.strip_ansi = False
-            mock_cfg.computer.timezone = "UTC"
-            result = await host.send_output_update(session, "output", 0.0, 0.0, is_final=False)
-        assert result == "msg-active"
-        fit_output.assert_called_once_with("output")
-        delivered_session, delivered_text, delivered_metadata = deliver_output.await_args.args
-        assert delivered_session is session
-        assert delivered_text == "formatted-output"
-        assert isinstance(delivered_metadata, MessageMetadata)
-        assert bool(deliver_output.await_args.kwargs["status_line"])
+        result = await host.send_output_update(session, "output", 0.0, 0.0, is_final=False)
+        assert result is None

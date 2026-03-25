@@ -33,7 +33,6 @@ def _make_session(
 
 def _make_ui_adapter() -> MagicMock:
     adapter = MagicMock(spec=UiAdapter)
-    adapter.THREADED_OUTPUT = False
     adapter.ensure_channel = AsyncMock(side_effect=lambda session: session)
     adapter.create_channel = AsyncMock(return_value="channel-id")
     adapter.send_message = AsyncMock(return_value="msg-id")

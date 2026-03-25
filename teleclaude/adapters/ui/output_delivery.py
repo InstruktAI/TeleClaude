@@ -1,31 +1,21 @@
 """Output delivery mixin for UI adapters.
 
-Handles standard (edit-in-place) output delivery, footer management,
-error feedback, and output formatting helpers.
+Handles threaded output delivery, footer management, error feedback,
+and output formatting helpers.
 """
 # pylint: disable=protected-access
 
 from __future__ import annotations
 
-import time
 from collections.abc import Awaitable, Callable, MutableMapping
 from dataclasses import dataclass
-from datetime import datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, cast
-from zoneinfo import ZoneInfo
 
 from instrukt_ai_logging import get_logger
 
 import teleclaude.core.db as core_db
-from teleclaude.config import config
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
-from teleclaude.utils import (
-    format_active_status_line,
-    format_completed_status_line,
-    format_size,
-    strip_ansi_codes,
-)
 
 if TYPE_CHECKING:
     import asyncio  # pylint: disable=import-outside-toplevel
@@ -37,7 +27,6 @@ if TYPE_CHECKING:
     class _OutputDeliveryHost(Protocol):  # pylint: disable=too-few-public-methods
         client: AdapterClient
         ADAPTER_KEY: str
-        THREADED_OUTPUT: bool
         max_message_size: int
         _convert_markdown_for_platform: Callable[[str], str]
         _fit_output_to_limit: Callable[[str], str]
@@ -85,7 +74,6 @@ class OutputDeliveryMixin:
     Required from host class:
     - client: AdapterClient
     - ADAPTER_KEY: str
-    - THREADED_OUTPUT: bool
     - max_message_size: int
     - _get_output_message_id(session) -> str | None
     - _store_output_message_id(session, message_id) -> None
@@ -103,14 +91,13 @@ class OutputDeliveryMixin:
 
     client: AdapterClient
     ADAPTER_KEY: str
-    THREADED_OUTPUT: bool
     max_message_size: int
 
     def _build_metadata_for_thread(self) -> MessageMetadata:
         """Build metadata for threaded content messages. Override for platform-specific parse mode."""
         return MessageMetadata()
 
-    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         session: Session,
         output: str,
@@ -120,81 +107,9 @@ class OutputDeliveryMixin:
         exit_code: int | None = None,
         render_markdown: bool = False,
     ) -> str | None:
-        """Send or edit output message - generic implementation.
-
-        Truncates based on self.max_message_size, formats with status line,
-        and always edits existing message (creates new only if edit fails).
-
-        Subclasses can override _build_output_metadata() for platform-specific formatting.
-        """
-        # Suppress standard poller output when threaded output is active for this adapter.
-        if self.THREADED_OUTPUT:
-            logger.debug(
-                "[UI_SEND_OUTPUT] Standard output suppressed for session %s on %s (threaded output active)",
-                session.session_id,
-                self.ADAPTER_KEY,
-            )
-            return None
-
-        # Strip ANSI codes if configured
-        if config.terminal.strip_ansi:
-            output = strip_ansi_codes(output)
-
-        # Truncate to platform limit
-        is_truncated = len(output) > self.max_message_size
-        tmux_output = output[-self.max_message_size :] if is_truncated else output
-
-        # Format status line
-        if is_final and exit_code is not None:
-            size_str = format_size(len(output.encode("utf-8")))
-            status_line = format_completed_status_line(exit_code, started_at, size_str, is_truncated)
-        else:
-            # Active status
-            tz = ZoneInfo(config.computer.timezone)
-            started_time = datetime.fromtimestamp(started_at, tz=tz).strftime("%H:%M:%S")
-            current_time = time.time()
-            last_active_time = datetime.fromtimestamp(current_time, tz=tz).strftime("%H:%M:%S")
-
-            # Status color based on idle time
-            idle_seconds = int(time.time() - last_output_changed_at)
-            if idle_seconds <= 5:
-                status_color = "⚪"
-            elif idle_seconds <= 10:
-                status_color = "🟡"
-            elif idle_seconds <= 20:
-                status_color = "🟠"
-            else:
-                status_color = "🔴"
-
-            size_str = format_size(len(output.encode("utf-8")))
-            status_line = format_active_status_line(
-                status_color, started_time, last_active_time, size_str, is_truncated
-            )
-
-        # Format output (tmux only; status line goes in footer)
-        host = cast("_OutputDeliveryHost", self)
-        if render_markdown:
-            if is_truncated:
-                prefix = f"[...truncated, showing last {self.max_message_size} chars...]"
-                max_body = max(self.max_message_size - len(prefix) - 2, 0)
-                tmux_output = output[-max_body:] if max_body else ""
-                display_output = f"{prefix}\n\n{tmux_output}" if tmux_output else prefix
-            else:
-                display_output = tmux_output
-
-            display_output = host._convert_markdown_for_platform(display_output)
-        else:
-            display_output = host._fit_output_to_limit(tmux_output)
-
-        # Platform-specific metadata (inline keyboards, etc.)
-        metadata = self._build_output_metadata(session, is_truncated)
-
-        return await self._deliver_output(
-            session,
-            display_output,
-            metadata,
-            status_line=status_line,
-        )
+        """No-op — all adapters use adapter-owned cadence-driven threaded output."""
+        _ = (session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown)
+        return None
 
     async def _deliver_output(
         self,
@@ -236,7 +151,12 @@ class OutputDeliveryMixin:
             return await host._get_output_message_id(session)
 
         # 3. Edit failed → cleanup footer, send new, send footer below
-        logger.debug("[DELIVER] Edit failed, sending new: adapter=%s session=%s text_len=%d", self.ADAPTER_KEY, session.session_id, len(text))
+        logger.debug(
+            "[DELIVER] Edit failed, sending new: adapter=%s session=%s text_len=%d",
+            self.ADAPTER_KEY,
+            session.session_id,
+            len(text),
+        )
         await host._cleanup_footer_if_present(session)
         new_id = await host.send_message(
             session,
@@ -244,7 +164,12 @@ class OutputDeliveryMixin:
             metadata=metadata,
             multi_message=options.multi_message,
         )
-        logger.debug("[DELIVER] New message result: adapter=%s session=%s new_id=%s", self.ADAPTER_KEY, session.session_id, new_id)
+        logger.debug(
+            "[DELIVER] New message result: adapter=%s session=%s new_id=%s",
+            self.ADAPTER_KEY,
+            session.session_id,
+            new_id,
+        )
         if new_id:
             await host._store_output_message_id(session, new_id)
             await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
@@ -304,38 +229,9 @@ class OutputDeliveryMixin:
             logger.error("Failed to send error feedback for session %s: %s", session_id, error)
 
     async def _send_footer(self, session: Session, status_line: str = "") -> str | None:
-        """Send or edit footer message below output."""
-        # Disable floating footer for threaded sessions (header strategy).
-        if self.THREADED_OUTPUT:
-            return None
-
-        host = cast("_OutputDeliveryHost", self)
-        footer_text = self._build_footer_text(session, status_line=status_line)
-        metadata = self._build_footer_metadata(session)
-
-        existing_id = await host._get_footer_message_id(session)
-        logger.trace(
-            "[FOOTER] session=%s existing_id=%s footer_len=%d",
-            session.session_id,
-            existing_id,
-            len(footer_text),
-        )
-        if existing_id:
-            success = await host.edit_message(session, existing_id, footer_text, metadata=metadata)
-            if success:
-                return existing_id
-            # Edit failed (stale message) — clear tracked ID and skip.
-            # Do NOT fall back to sending a new message here; the next
-            # render cycle will create a fresh footer naturally.
-            logger.debug("[FOOTER] Edit failed for session=%s, clearing stale id %s", session.session_id, existing_id)
-            await host._clear_footer_message_id(session)
-            return None
-
-        new_id = await host.send_message(session, footer_text, metadata=metadata)
-        logger.debug("[FOOTER] send_message returned %s for session=%s", new_id, session.session_id)
-        if new_id:
-            await host._store_footer_message_id(session, new_id)
-        return new_id
+        """No-op — footer replaced by threaded output with header-embedded session badge."""
+        _ = (session, status_line)
+        return None
 
     def _build_footer_text(self, session: Session, status_line: str = "") -> str:
         """Build footer text with session IDs first and status line last."""

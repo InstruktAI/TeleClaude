@@ -16,7 +16,6 @@ from teleclaude.core.models import MessageMetadata, Session
 
 
 class _ThreadedHost(ThreadedOutputMixin):
-    THREADED_OUTPUT = True
     ADAPTER_KEY = "telegram"
     max_message_size = 50
     THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS = 50
@@ -106,30 +105,6 @@ def _make_session(**kwargs: object) -> Session:
 @pytest.fixture
 def host() -> _ThreadedHost:
     return _ThreadedHost()
-
-
-# ---------------------------------------------------------------------------
-# send_threaded_output gate: THREADED_OUTPUT=False
-# ---------------------------------------------------------------------------
-
-
-class TestSendThreadedOutputGate:
-    @pytest.mark.unit
-    async def test_returns_none_when_threaded_output_disabled(self) -> None:
-        host = _ThreadedHost()
-        host.THREADED_OUTPUT = False
-        session = _make_session()
-        result = await host.send_threaded_output(session, "hello")
-        assert result is None
-
-    @pytest.mark.unit
-    async def test_threaded_output_enabled_processes_text(self, host: _ThreadedHost) -> None:
-        session = _make_session()
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=None)
-            result = await host.send_threaded_output(session, "hello world")
-        # Should return a message id (from the mocked send_message)
-        assert result is not None
 
 
 # ---------------------------------------------------------------------------

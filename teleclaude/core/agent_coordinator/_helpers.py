@@ -13,8 +13,6 @@ from teleclaude.constants import (
     CHECKPOINT_MESSAGE,
     CHECKPOINT_PREFIX,
 )
-from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.origins import InputOrigin
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -80,127 +78,21 @@ def _is_codex_synthetic_prompt_event(raw_payload: object) -> bool:
     return bool(raw_payload.get("synthetic")) and isinstance(source, str) and source.startswith("codex_")
 
 
-def _has_active_output_message(session: "Session") -> bool:
-    """Check if any adapter has an active output message in metadata."""
+async def _has_active_output_message(session: "Session") -> bool:
+    """Check if any adapter has an active output message in metadata.
+
+    Fetches fresh session from DB to avoid stale in-memory origin_metadata
+    that caused missed output on turn 2+ (the staleness regression).
+    """
+    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
+
+    fresh = await db.get_session(session.session_id)
+    s = fresh if fresh else session
     return bool(
-        session.get_origin_section("telegram").get("output_message_id")
-        or session.get_origin_section("discord").get("output_message_id")
-        or session.get_origin_section("whatsapp").get("output_message_id")
+        s.get_origin_section("telegram").get("output_message_id")
+        or s.get_origin_section("discord").get("output_message_id")
+        or s.get_origin_section("whatsapp").get("output_message_id")
     )
-
-
-def _coerce_nonempty_str(value: object) -> str | None:
-    """Normalize value to a non-empty string when possible."""
-    if value is None:
-        return None
-    text = value.strip() if isinstance(value, str) else str(value).strip()
-    return text or None
-
-
-def _resolve_hook_actor_name(session: "Session") -> str:
-    """Resolve actor label for hook-reflected user input."""
-    tg_uid_raw = session.get_origin_section("telegram").get("user_id")
-    telegram_user_id: int | None = int(str(tg_uid_raw)) if tg_uid_raw is not None else None
-    dc_uid_raw = session.get_origin_section("discord").get("user_id")
-    discord_user_id: str | None = str(dc_uid_raw) if dc_uid_raw is not None else None
-    whatsapp_phone = _coerce_nonempty_str(session.get_origin_section("whatsapp").get("phone_number"))
-
-    origin_hint = (session.last_input_origin or "").strip().lower()
-    resolver = get_identity_resolver()
-
-    def _resolve_identity_name(origin: str, channel_meta: Mapping[str, object]) -> str | None:
-        identity = resolver.resolve(origin, channel_meta)
-        if not identity:
-            return None
-        return _coerce_nonempty_str(identity.person_name)
-
-    for origin, channel_meta in _identity_resolution_candidates(
-        origin_hint, telegram_user_id, discord_user_id, whatsapp_phone
-    ):
-        resolved = _resolve_identity_name(origin, channel_meta)
-        if resolved:
-            return resolved
-
-    human_email = _coerce_nonempty_str(session.human_email)
-    if human_email:
-        return human_email
-
-    fallback_name = _fallback_hook_actor_name(origin_hint, telegram_user_id, discord_user_id, whatsapp_phone)
-    return fallback_name or "operator"
-
-
-def _identity_resolution_candidates(
-    origin_hint: str,
-    telegram_user_id: int | None,
-    discord_user_id: str | None,
-    whatsapp_phone: str | None,
-) -> list[tuple[str, Mapping[str, str]]]:
-    """Return identity resolver candidates in priority order."""
-    telegram_meta = _telegram_identity_meta(telegram_user_id)
-    discord_meta = _discord_identity_meta(discord_user_id)
-    whatsapp_meta = _whatsapp_identity_meta(whatsapp_phone)
-
-    prioritized: list[tuple[str, Mapping[str, str]]] = []
-    if origin_hint == InputOrigin.TELEGRAM.value and telegram_meta is not None:
-        prioritized.append((InputOrigin.TELEGRAM.value, telegram_meta))
-    if origin_hint == InputOrigin.DISCORD.value and discord_meta is not None:
-        prioritized.append((InputOrigin.DISCORD.value, discord_meta))
-    if origin_hint == InputOrigin.WHATSAPP.value and whatsapp_meta is not None:
-        prioritized.append((InputOrigin.WHATSAPP.value, whatsapp_meta))
-
-    for candidate in (
-        (InputOrigin.TELEGRAM.value, telegram_meta),
-        (InputOrigin.DISCORD.value, discord_meta),
-        (InputOrigin.WHATSAPP.value, whatsapp_meta),
-    ):
-        _origin, channel_meta = candidate
-        if channel_meta is not None and candidate not in prioritized:
-            prioritized.append(candidate)
-    return prioritized
-
-
-def _telegram_identity_meta(user_id: int | None) -> Mapping[str, str] | None:
-    if user_id is None:
-        return None
-    user_id_text = str(user_id)
-    return {"user_id": user_id_text, "telegram_user_id": user_id_text}
-
-
-def _discord_identity_meta(user_id: str | None) -> Mapping[str, str] | None:
-    if not user_id:
-        return None
-    return {"user_id": str(user_id), "discord_user_id": str(user_id)}
-
-
-def _whatsapp_identity_meta(phone_number: str | None) -> Mapping[str, str] | None:
-    if not phone_number:
-        return None
-    return {"phone_number": phone_number}
-
-
-def _fallback_hook_actor_name(
-    origin_hint: str,
-    telegram_user_id: int | None,
-    discord_user_id: str | None,
-    whatsapp_phone: str | None,
-) -> str | None:
-    """Return a deterministic fallback actor label when resolution fails."""
-    for origin, value in (
-        (InputOrigin.TELEGRAM.value, str(telegram_user_id) if telegram_user_id is not None else None),
-        (InputOrigin.DISCORD.value, str(discord_user_id) if discord_user_id else None),
-        (InputOrigin.WHATSAPP.value, whatsapp_phone),
-    ):
-        if origin_hint == origin and value:
-            return f"{origin}:{value}"
-
-    for origin, value in (
-        ("telegram", str(telegram_user_id) if telegram_user_id is not None else None),
-        ("discord", str(discord_user_id) if discord_user_id else None),
-        ("whatsapp", whatsapp_phone),
-    ):
-        if value:
-            return f"{origin}:{value}"
-    return None
 
 
 def _to_utc(ts: datetime) -> datetime:
@@ -244,5 +136,4 @@ __all__ = [
     "_is_checkpoint_prompt",
     "_is_codex_input_already_recorded",
     "_is_codex_synthetic_prompt_event",
-    "_resolve_hook_actor_name",
 ]

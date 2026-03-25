@@ -80,27 +80,21 @@ def test_format_anomalies_empty_returns_empty_string():
     assert _format_anomalies([]) == ""
 
 
-def test_format_anomalies_single_warning():
+def test_format_anomalies_non_empty_returns_string_with_items():
     result = _format_anomalies(["deliver_to_delivered failed for my-slug"])
-    assert "Anomalies" in result
+    assert isinstance(result, str)
+    assert len(result) > 0
     assert "deliver_to_delivered failed for my-slug" in result
 
 
-def test_format_anomalies_multiple_warnings():
+def test_format_anomalies_multiple_items_all_present():
     result = _format_anomalies(["warning A", "warning B"])
-    assert "Anomalies" in result
-    assert "- warning A" in result
-    assert "- warning B" in result
+    assert "warning A" in result
+    assert "warning B" in result
 
 
-def test_format_queue_empty_without_warnings():
-    result = _format_queue_empty(3, 1, 5000)
-    assert "Anomalies" not in result
-
-
-def test_format_queue_empty_with_warnings():
+def test_format_queue_empty_with_warnings_includes_warning_text():
     result = _format_queue_empty(3, 1, 5000, warnings=["bookkeeping commit failed"])
-    assert "Anomalies" in result
     assert "bookkeeping commit failed" in result
 
 

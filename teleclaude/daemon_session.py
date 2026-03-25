@@ -89,7 +89,6 @@ if TYPE_CHECKING:
     from teleclaude.core.command_service import CommandService
     from teleclaude.core.output_poller import OutputPoller
     from teleclaude.daemon_hook_outbox import _HookOutboxSessionQueue
-    from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 
 logger = get_logger(__name__)
 
@@ -136,7 +135,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
         client: AdapterClient
         agent_coordinator: AgentCoordinator
         command_service: CommandService
-        headless_snapshot_service: HeadlessSnapshotService
         output_poller: OutputPoller
 
         def _track_background_task(self, task: asyncio.Task[object], label: str) -> None: ...  # pylint: disable=unused-argument

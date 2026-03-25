@@ -1,7 +1,8 @@
 """Polling coordinator for tmux output streaming.
 
 Extracted from daemon.py to reduce file size and improve organization.
-Handles polling lifecycle orchestration and event routing to message manager.
+Handles polling lifecycle orchestration and signals activity to adapters,
+which pull and render output on their own cadence.
 """
 
 import asyncio
@@ -364,16 +365,17 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
     get_output_file: Callable[[str], Path],
     _skip_register: bool = False,
 ) -> None:
-    """Poll tmux output and send to all adapters for session.
+    """Poll tmux output and signal activity for session.
 
-    Pure orchestration - consumes events from poller, delegates to message manager.
+    Pure orchestration — consumes events from the poller and signals last_activity_at.
+    Adapters pull and render output on their own cadence.
     SINGLE RESPONSIBILITY: Owns the polling lifecycle for a session.
 
     Args:
         session_id: Session ID
         tmux_session_name: tmux session name
         output_poller: Output poller instance
-        adapter_client: AdapterClient instance (broadcasts to all adapters)
+        adapter_client: AdapterClient instance
         get_output_file: Function to get output file path for session
     """
     if not _skip_register:
@@ -438,38 +440,9 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                     except Exception as e:  # pylint: disable=broad-exception-caught
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
 
-                # Route through shared terminal_live projection before adapter push.
-                # The projection is a thin wrapper; adapter contract is unchanged.
-                from teleclaude.output_projection.terminal_live_projector import project_terminal_live  # noqa: I001  # pylint: disable=import-outside-toplevel
-
-                terminal_projection = project_terminal_live(clean_output)
-
-                # Unified output handling - ALL sessions use send_output_update
-                start_time = time.time()
-                logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id)
-                await adapter_client.send_output_update(
-                    session,
-                    terminal_projection.output,
-                    event.started_at,
-                    event.last_changed_at,
-                )
-                coordinator = getattr(adapter_client, "agent_coordinator", None)
-                if coordinator:
-                    try:
-                        await coordinator.trigger_incremental_output(event.session_id)
-                    except Exception:  # pylint: disable=broad-exception-caught
-                        logger.warning(
-                            "Poller-triggered incremental output failed for %s",
-                            event.session_id,
-                            exc_info=True,
-                        )
+                # Signal activity — adapters pull output on their own cadence.
+                await db.update_last_activity(event.session_id)
                 _record_output_tick(event.session_id, len(clean_output))
-                elapsed = time.time() - start_time
-                logger.debug(
-                    "[COORDINATOR %s] send_output_update completed in %.2fs",
-                    session_id,
-                    elapsed,
-                )
 
             elif isinstance(event, DirectoryChanged):
                 # Directory changed - update session (db dispatcher handles title update)
@@ -490,17 +463,9 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                     )
                     return
 
-                # Unified output handling - ALL sessions use send_output_update
+                # Signal final activity — adapters handle final rendering on their own cadence.
                 if event.exit_code is not None:
-                    # Exit with code - send final message via AdapterClient
-                    await adapter_client.send_output_update(
-                        session,
-                        clean_final_output,
-                        event.started_at,  # Use actual start time from poller
-                        time.time(),
-                        is_final=True,
-                        exit_code=event.exit_code,
-                    )
+                    await db.update_last_activity(event.session_id)
                     _record_output_tick(event.session_id, len(clean_final_output))
                     tmux_alive = True
                     if session.tmux_session_name:
@@ -509,6 +474,9 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                             log_missing=False,
                         )
                     if not tmux_alive:
+                        # Pull final output before termination sets closed_at and
+                        # removes the session from the cadence loop's activity window.
+                        await adapter_client.force_session_output_pull(session)
                         await session_cleanup.terminate_session(
                             event.session_id,
                             adapter_client,

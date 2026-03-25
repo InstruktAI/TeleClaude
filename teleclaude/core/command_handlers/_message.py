@@ -11,7 +11,6 @@ from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core import polling_coordinator, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.events import FileEventContext, VoiceEventContext
-from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
@@ -248,24 +247,7 @@ async def deliver_inbound(
 
     active_agent = session.active_agent
 
-    async def _broadcast() -> None:
-        if not row["origin"]:
-            return
-        try:
-            await client.broadcast_user_input(
-                session,
-                message_text,
-                row["origin"],
-                actor_id=row["actor_id"],
-                actor_name=row["actor_name"],
-                actor_avatar_url=row["actor_avatar_url"],
-            )
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # UI reflection failures are non-fatal here.
-            logger.warning("broadcast_user_input failed (non-fatal): session=%s error=%s", session_id, exc)
-
     async def _break_turn() -> None:
-        if not is_threaded_output_enabled(active_agent):
-            return
         try:
             await client.break_threaded_turn(session)
         except Exception as exc:  # pylint: disable=broad-exception-caught  # Thread-break failures must not block delivery.
@@ -284,7 +266,7 @@ async def deliver_inbound(
             active_agent=active_agent,
         )
 
-    results = await asyncio.gather(_tmux_inject(), _broadcast(), _break_turn(), return_exceptions=True)
+    results = await asyncio.gather(_tmux_inject(), _break_turn(), return_exceptions=True)
     tmux_result = results[0]
     if isinstance(tmux_result, Exception):
         raise tmux_result

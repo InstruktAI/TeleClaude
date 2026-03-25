@@ -136,10 +136,6 @@ class TestUiAdapterDefaults:
         assert UiAdapter.ADAPTER_KEY == "unknown"
 
     @pytest.mark.unit
-    def test_threaded_output_default_is_false(self):
-        assert UiAdapter.THREADED_OUTPUT is False
-
-    @pytest.mark.unit
     def test_max_message_size_equals_constant(self):
         assert UiAdapter.max_message_size == UI_MESSAGE_MAX_CHARS
 

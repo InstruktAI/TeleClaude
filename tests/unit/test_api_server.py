@@ -168,6 +168,7 @@ class TestApiServerHttpRoutes:
                 "prepare_phase": None,
                 "integration_phase": None,
                 "finalize_status": None,
+                "todo_path": None,
             }
         ]
 

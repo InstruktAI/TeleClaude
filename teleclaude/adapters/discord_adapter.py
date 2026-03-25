@@ -23,11 +23,10 @@ from teleclaude.adapters.discord import (
 )
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
-from teleclaude.adapters.ui_adapter import UiAdapter, _OutputUpdateRequest
+from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import (
-    SessionStatusContext,
     SessionUpdatedContext,
 )
 from teleclaude.core.models import DiscordAdapterMetadata
@@ -67,7 +66,7 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     """Discord bot adapter using discord.py."""
 
     ADAPTER_KEY = "discord"
-    THREADED_OUTPUT = True
+    OUTPUT_CADENCE_SECONDS = 1.0
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
 
@@ -146,11 +145,15 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
                     raise RuntimeError(f"Discord gateway failed to start: {task_exc}") from task_exc
             raise RuntimeError("Discord adapter did not become ready within 20 seconds") from exc
 
+        # Start adapter-owned output cadence loop.
+        self.start_output_cadence()
+
         # Start QoS scheduler (no-op if mode == "off").
         self._qos_scheduler.start()
 
     async def stop(self) -> None:
         """Stop Discord client and gateway task."""
+        await self.stop_output_cadence()
         await self._qos_scheduler.stop()
         self._tree = None
         self._launcher_registration_view = None
@@ -229,75 +232,7 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
                 session.session_id,
             )
 
-    async def send_output_update(  # type: ignore[override, unused-ignore]  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-        self,
-        session: Session,
-        output: str,
-        started_at: float,
-        last_output_changed_at: float,
-        is_final: bool = False,
-        exit_code: int | None = None,
-        render_markdown: bool = False,
-    ) -> str | None:
-        """Route Discord output update through the QoS scheduler.
-
-        For threaded sessions: the base class suppresses send_output_update
-        (threaded output is delivered via send_threaded_output instead).
-
-        For non-threaded sessions: delegates to QoS scheduler.
-        """
-        if self.THREADED_OUTPUT:
-            return None
-
-        return await self._send_output_update_via_qos(
-            self._qos_scheduler,
-            _OutputUpdateRequest(
-                session=session,
-                output=output,
-                started_at=started_at,
-                last_output_changed_at=last_output_changed_at,
-                is_final=is_final,
-                exit_code=exit_code,
-                render_markdown=render_markdown,
-            ),
-        )
-
     # send_threaded_output: inherited from UiAdapter base class.
-    # Discord uses the base class edit-in-place model for threaded output.
-
-    async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
-        """Send or edit the tracked status message in the Discord thread."""
-        # Base class fires typing indicator on active/accepted
-        await super()._handle_session_status(_event, context)
-
-        session = await db.get_session(context.session_id)
-        if not session:
-            return
-        # Suppress lifecycle badges in threaded mode — only AI output matters.
-        if self.THREADED_OUTPUT:
-            return
-        dc = self._dc(session)
-        if dc.thread_id is None:
-            return  # No Discord thread for this session
-        status_text = self._format_lifecycle_status(context.status)
-        existing_id = dc.status_message_id
-        if existing_id:
-            edited = await self.edit_message(session, existing_id, status_text)
-            if edited:
-                return
-            # Edit failed (message deleted?) — clear and fall through to send
-            dc.status_message_id = None
-            await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
-        try:
-            new_id = await self.send_message(session, status_text)
-            dc.status_message_id = new_id
-            await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
-        except (AdapterError, RuntimeError, OSError) as exc:
-            logger.debug(
-                "Discord status message update failed for session %s: %s",
-                context.session_id,
-                exc,
-            )
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Handle generic updates plus Discord topper refresh on native ID binding."""

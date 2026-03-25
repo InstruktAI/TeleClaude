@@ -26,7 +26,6 @@ class _TestDaemon(daemon_session._DaemonSessionMixin):
         self.client = SimpleNamespace(send_message=AsyncMock())
         self.agent_coordinator = SimpleNamespace(handle_event=AsyncMock())
         self.command_service = SimpleNamespace(start_agent=AsyncMock())
-        self.headless_snapshot_service = SimpleNamespace(send_snapshot=AsyncMock())
         self.output_poller = SimpleNamespace()
         self.tracked: list[tuple[asyncio.Task[object], str]] = []
 

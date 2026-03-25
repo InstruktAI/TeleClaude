@@ -10,12 +10,10 @@ import pytest
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client._client import AdapterClient
-from teleclaude.core.models import Session
 
 
-def _make_ui_adapter(*, threaded: bool = False) -> MagicMock:
+def _make_ui_adapter() -> MagicMock:
     adapter = MagicMock(spec=UiAdapter)
-    adapter.THREADED_OUTPUT = threaded
     adapter.start = AsyncMock()
     adapter.stop = AsyncMock()
     return adapter
@@ -26,16 +24,6 @@ def _make_base_adapter() -> MagicMock:
     adapter.start = AsyncMock()
     adapter.stop = AsyncMock()
     return adapter
-
-
-def _make_session(session_id: str = "sess-1", last_input_origin: str = "telegram") -> Session:
-    return Session(
-        session_id=session_id,
-        computer_name="local",
-        tmux_session_name=f"tmux-{session_id}",
-        title="Session",
-        last_input_origin=last_input_origin,
-    )
 
 
 class TestInit:
@@ -90,22 +78,6 @@ class TestRegisterAdapter:
         assert client.adapters["telegram"] is adapter_2
 
 
-class TestAnyAdapterWantsThreadedOutput:
-    @pytest.mark.unit
-    def test_returns_false_without_ui_adapters(self):
-        client = AdapterClient()
-
-        assert client.any_adapter_wants_threaded_output() is False
-
-    @pytest.mark.unit
-    def test_returns_true_when_any_ui_adapter_uses_threaded_output(self):
-        client = AdapterClient()
-        client.register_adapter("telegram", _make_ui_adapter(threaded=False))
-        client.register_adapter("discord", _make_ui_adapter(threaded=True))
-
-        assert client.any_adapter_wants_threaded_output() is True
-
-
 class TestStart:
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -134,8 +106,8 @@ class TestStart:
             whatsapp=SimpleNamespace(enabled=False, phone_number_id=None, access_token=None),
             redis=SimpleNamespace(enabled=True),
         )
-        discord_adapter = _make_ui_adapter(threaded=True)
-        telegram_adapter = _make_ui_adapter(threaded=False)
+        discord_adapter = _make_ui_adapter()
+        telegram_adapter = _make_ui_adapter()
         redis_adapter = _make_base_adapter()
 
         def fake_getenv(key: str) -> str | None:
@@ -197,17 +169,3 @@ class TestStop:
         await client.stop()
 
         healthy.stop.assert_awaited_once()
-
-
-class TestPublicClientState:
-    @pytest.mark.unit
-    def test_registered_ui_adapters_affect_threaded_output_flag(self):
-        client = AdapterClient()
-        session = _make_session()
-        telegram = _make_ui_adapter(threaded=False)
-        discord = _make_ui_adapter(threaded=True)
-        client.register_adapter("telegram", telegram)
-        client.register_adapter("discord", discord)
-
-        assert client.any_adapter_wants_threaded_output() is True
-        assert session.last_input_origin == "telegram"

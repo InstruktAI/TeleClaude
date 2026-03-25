@@ -19,15 +19,14 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
+from teleclaude.adapters.ui.output_cadence import OutputCadenceLoop
 from teleclaude.adapters.ui.output_delivery import OutputDeliveryMixin
 from teleclaude.adapters.ui.threaded_output import ThreadedOutputMixin
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents, UiCommands
-from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.models import (
-    CleanupTrigger,
     MessageMetadata,
     SessionField,
 )
@@ -65,9 +64,10 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
     # Adapter key for metadata storage (subclasses MUST override)
     ADAPTER_KEY: str = "unknown"
-    # Whether this adapter uses threaded output (append-only messages per turn).
-    # Subclasses set True to activate threaded output delivery and suppress edit-in-place.
-    THREADED_OUTPUT: bool = False
+
+    # Output cadence interval in seconds. Subclasses set this to their
+    # platform's rate limit interval. 0 disables the cadence loop.
+    OUTPUT_CADENCE_SECONDS: float = 0.0
 
     # Optional command handler overrides: command -> handler method name
     COMMAND_HANDLER_OVERRIDES: dict[str, str] = {}
@@ -99,9 +99,24 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         # Set client (BaseAdapter has no __init__, just requires this attribute)
         self.client = client
 
+        # Output cadence loop — pulls transcripts and renders on adapter's own schedule.
+        self._output_cadence: OutputCadenceLoop | None = None
+        if self.OUTPUT_CADENCE_SECONDS > 0:
+            self._output_cadence = OutputCadenceLoop(self, self.OUTPUT_CADENCE_SECONDS)
+
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
         event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
+
+    def start_output_cadence(self) -> None:
+        """Start the output cadence loop (call after adapter.start())."""
+        if self._output_cadence is not None:
+            self._output_cadence.start()
+
+    async def stop_output_cadence(self) -> None:
+        """Stop the output cadence loop (call before adapter.stop())."""
+        if self._output_cadence is not None:
+            await self._output_cadence.stop()
 
     # === Adapter Metadata Helpers ===
 
@@ -236,9 +251,16 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         await self._send_footer(session)
 
     async def clear_turn_state(self, session: Session) -> None:
-        """Reset per-turn output state (output_message_id and char_offset)."""
+        """Reset per-turn output state (output_message_id, char_offset, cadence digest)."""
+        if self._output_cadence is not None:
+            self._output_cadence.clear_session(session.session_id)
         await self._clear_output_message_id(session)
         await self._set_char_offset(session, 0)
+
+    async def force_output_pull(self, session: Session) -> None:
+        """Trigger an immediate output pull for a session outside the cadence schedule."""
+        if self._output_cadence is not None:
+            await self._output_cadence.pull_session(session)
 
     async def _send_output_update_via_qos(
         self,
@@ -574,32 +596,3 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             display_title = await get_display_title_for_session(session)
             await self.client.update_channel_title(session, display_title)
             logger.info("Synced display title to UiAdapters for session %s: %s", session_id, display_title)
-
-        # Send output summary as a notification trigger for non-threaded adapters.
-        # Telegram uses edit-in-place (silent) — the summary as a new message
-        # triggers a notification. Threaded-output adapters (Discord) already
-        # send new messages, so the summary would be redundant.
-        feedback_updated = (
-            SessionField.LAST_OUTPUT_RAW.value in updated_fields or "last_output_summary" in updated_fields
-        )
-        if (
-            feedback_updated
-            and session.lifecycle_status != "headless"
-            and session.last_input_origin == self.ADAPTER_KEY
-            and not self.THREADED_OUTPUT
-        ):
-            feedback = get_last_output_summary(session) or ""
-            if feedback:
-                logger.debug(
-                    "Feedback emit: session=%s origin=%s adapter=%s len=%d",
-                    session_id,
-                    session.last_input_origin,
-                    self.ADAPTER_KEY,
-                    len(feedback),
-                )
-                await self.client.send_message(
-                    session,
-                    feedback,
-                    metadata=MessageMetadata(parse_mode=None),
-                    cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
-                )

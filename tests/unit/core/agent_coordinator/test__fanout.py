@@ -16,7 +16,6 @@ def _make_fanout() -> _FanoutMixin:
     mixin = object.__new__(_FanoutMixin)
     mixin.client = MagicMock()
     mixin.tts_manager = MagicMock()
-    mixin.headless_snapshot_service = MagicMock()
     return mixin
 
 
