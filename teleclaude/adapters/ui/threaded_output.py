@@ -128,8 +128,13 @@ class ThreadedOutputMixin:
         _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
     ) -> str | None:
         """Send or edit threaded output message with smart pagination."""
+        adapter_key = getattr(self, "ADAPTER_KEY", "unknown")
         # Skip threaded output for adapters that don't use it.
         if not self.THREADED_OUTPUT:
+            logger.debug(
+                "[THREADED] Skipped (THREADED_OUTPUT=False): adapter=%s session=%s",
+                adapter_key, session.session_id,
+            )
             return None
 
         host = cast("_ThreadedOutputHost", self)
@@ -140,12 +145,21 @@ class ThreadedOutputMixin:
             # Convert once per render cycle. Telegram markdown conversion is not
             # idempotent; re-converting recursively can corrupt escape balance.
             converted_text = host._convert_markdown_for_platform(text)
-            return await self._send_threaded_output_unlocked(
+            logger.debug(
+                "[THREADED] Rendering: adapter=%s session=%s text_len=%d converted_len=%d",
+                adapter_key, session.session_id, len(text), len(converted_text),
+            )
+            result = await self._send_threaded_output_unlocked(
                 session,
                 converted_text,
                 multi_message=multi_message,
                 _continuation_state=_continuation_state,
             )
+            logger.debug(
+                "[THREADED] Result: adapter=%s session=%s result=%s",
+                adapter_key, session.session_id, type(result).__name__ if result else "None",
+            )
+            return result
 
     async def _send_threaded_output_unlocked(
         self,
@@ -160,8 +174,13 @@ class ThreadedOutputMixin:
         await host._cleanup_footer_if_present(session)
 
         # 1. Get current offset and ID.
+        adapter_key = getattr(self, "ADAPTER_KEY", "unknown")
         char_offset = await self._normalize_char_offset(session, text)
         output_message_id = await host._get_output_message_id(session)
+        logger.debug(
+            "[THREADED_UNLOCKED] adapter=%s session=%s char_offset=%d text_len=%d output_message_id=%s",
+            adapter_key, session.session_id, char_offset, len(text), output_message_id,
+        )
 
         # 2. Slice text to get the "active" portion
         active_text = text[char_offset:]
