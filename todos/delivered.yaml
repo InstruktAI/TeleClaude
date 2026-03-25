@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-telec-todo-prepare-returns-stale-repeate
+  date: '2026-03-25'
+  commit: 35d29b008b24
 - slug: fix-work-machine-delivered-check
   date: '2026-03-25'
   commit: 71110254fd14
