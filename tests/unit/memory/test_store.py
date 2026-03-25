@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.sql.elements import TextClause
@@ -173,7 +174,7 @@ class TestMemoryStore:
         monkeypatch.setattr(
             store_module.MemoryStore, "_get_or_create_manual_session_sync", fake_get_or_create_manual_session_sync
         )
-        monkeypatch.setattr(store_module, "create_engine", lambda url: url)
+        monkeypatch.setattr(store_module, "create_engine", lambda url: MagicMock())
         monkeypatch.setattr(store_module, "SqlSession", lambda engine: session)
 
         result = store_module.MemoryStore().save_observation_sync(

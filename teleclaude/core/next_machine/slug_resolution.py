@@ -221,9 +221,10 @@ def resolve_canonical_project_root(cwd: str) -> str:
 def get_item_phase(cwd: str, slug: str) -> str:
     """Get current phase for a work item from state.yaml.
 
-    When state.yaml has no phase (e.g. cleaned up after delivery), checks
-    delivered.yaml and roadmap.yaml to determine the real status. A slug
-    present in both is a data integrity error that requires human intervention.
+    Checks delivered.yaml before consulting state.yaml so delivered slugs still
+    resolve correctly after their todo folder has been cleaned up. A slug
+    present in both delivered.yaml and roadmap.yaml is a data integrity error
+    that requires human intervention.
 
     Args:
         cwd: Project root directory
@@ -236,10 +237,8 @@ def get_item_phase(cwd: str, slug: str) -> str:
         ValueError: If slug exists in both delivered.yaml and roadmap.yaml,
             or if slug cannot be resolved from any source.
     """
-    state = read_phase_state(cwd, slug)
-    phase = state.get("phase")
-    if isinstance(phase, str):
-        return phase
+    # Check delivered.yaml first: state.yaml default always has phase="pending",
+    # so it cannot distinguish delivered-and-cleaned-up from genuinely pending.
     is_delivered = slug in load_delivered_slugs(cwd)
     is_in_roadmap = slug_in_roadmap(cwd, slug)
     if is_delivered and is_in_roadmap:
@@ -250,6 +249,10 @@ def get_item_phase(cwd: str, slug: str) -> str:
         raise ValueError(msg)
     if is_delivered:
         return ItemPhase.DONE.value
+    state = read_phase_state(cwd, slug)
+    phase = state.get("phase")
+    if isinstance(phase, str):
+        return phase
     if is_in_roadmap:
         return ItemPhase.PENDING.value
     msg = (

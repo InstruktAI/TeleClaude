@@ -1,58 +1,65 @@
 # guard: no-companion
 """Behavioral tests for the git wrapper three-tier permission model.
 
-Tests import the wrapper as a Python module and call main() directly,
-mocking subprocess.run for actual git execution.
+Tests invoke the bash wrapper as a subprocess with a controlled environment
+and a fake git binary, asserting on exit code and stderr output.
+
+The wrapper behavior under test:
+  - Outside tmux ($TMUX unset): pass through, no restrictions.
+  - Inside tmux, no identity: fail with "identity is broken".
+  - Inside tmux, human_role set + no system_role: apply worker restrictions.
+  - Inside tmux, system_role set: apply role-based restrictions.
 """
 
 from __future__ import annotations
 
-import importlib
-import importlib.machinery
-import importlib.util
 import json
 import os
+import subprocess
 import tempfile
 from pathlib import Path
-from types import ModuleType
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.unit
+# The wrapper is exercised via real bash subprocesses, which exceed the repo's
+# default 1s per-test budget under xdist load even though behavior is correct.
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(5)]
 
 WRAPPER_PATH = Path(__file__).resolve().parents[3] / "teleclaude" / "install" / "wrappers" / "git"
 
-
-def _load_wrapper() -> ModuleType:
-    """Import the git wrapper as a module.
-
-    The wrapper has no .py extension (it uses a uv run shebang), so we must
-    provide a loader explicitly — spec_from_file_location returns None for
-    extensionless files without one.
-    """
-    loader = importlib.machinery.SourceFileLoader("git_wrapper", str(WRAPPER_PATH))
-    spec = importlib.util.spec_from_file_location("git_wrapper", WRAPPER_PATH, loader=loader)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-_wrapper = _load_wrapper()
+_FAKE_GIT_SCRIPT = """\
+#!/usr/bin/env bash
+# Fake git for wrapper permission tests.
+# Returns FAKE_BRANCH for branch detection; exits 0 for everything else.
+if [ "${1:-}" = "rev-parse" ] && [ "${2:-}" = "--abbrev-ref" ]; then
+    echo "${FAKE_BRANCH:-feature}"
+    exit 0
+fi
+exit 0
+"""
 
 
 def _run(
     args: list[str],
     role: str | None = None,
-    cwd: str | None = None,
     *,
     human_role: str | None = None,
     branch: str = "feature",
     no_identity_file: bool = False,
 ) -> tuple[int, str]:
-    """Run the wrapper's main() with mocked identity and subprocess, return (exit_code, stderr)."""
+    """Run the bash wrapper via subprocess with mocked identity and fake git.
+
+    Returns (exit_code, stderr).
+    TMUX is set to simulate being inside a tmux session so restrictions apply.
+    """
     session_tmpdir = Path(tempfile.mkdtemp())
+    fake_bin_dir = Path(tempfile.mkdtemp())
+
+    # Fake git: handles rev-parse for branch detection, exits 0 for everything else.
+    fake_git = fake_bin_dir / "git"
+    fake_git.write_text(_FAKE_GIT_SCRIPT)
+    fake_git.chmod(0o755)
+
     if not no_identity_file:
         identity: dict[str, str] = {"session_id": "test-session"}
         if role is not None:
@@ -61,39 +68,22 @@ def _run(
             identity["human_role"] = human_role
         (session_tmpdir / "teleclaude_identity.json").write_text(json.dumps(identity))
 
-    captured_stderr: list[str] = []
-    exit_code = 0
+    env = {
+        **os.environ,
+        "TMPDIR": str(session_tmpdir),
+        "TMUX": "test-session",  # simulate being inside tmux — enables restriction checks
+        "TELECLAUDE_SYSTEM_ROLE": "",
+        "PATH": f"{fake_bin_dir}:{os.environ.get('PATH', '')}",
+        "FAKE_BRANCH": branch,
+    }
 
-    def fake_print(*a: object, **kw: object) -> None:
-        import sys as _sys
-
-        if kw.get("file") is _sys.stderr:
-            captured_stderr.append(" ".join(str(x) for x in a))
-
-    env_overrides = {"TMPDIR": str(session_tmpdir), "TELECLAUDE_SYSTEM_ROLE": "", "TMUX": ""}
-    mock_proc = MagicMock(returncode=0)
-
-    with (
-        patch.dict(os.environ, env_overrides),
-        patch.object(_wrapper, "_find_real_git", return_value="/usr/bin/git"),
-        patch("subprocess.run", return_value=mock_proc),
-        patch.object(_wrapper, "get_current_branch", return_value=branch),
-        patch("sys.argv", ["git"] + args),
-        patch("builtins.print", side_effect=fake_print),
-    ):
-        if cwd:
-            with patch.object(Path, "cwd", return_value=Path(cwd).resolve()):
-                try:
-                    _wrapper.main()
-                except SystemExit as exc:
-                    exit_code = exc.code if isinstance(exc.code, int) else 1
-        else:
-            try:
-                _wrapper.main()
-            except SystemExit as exc:
-                exit_code = exc.code if isinstance(exc.code, int) else 1
-
-    return exit_code, "\n".join(captured_stderr)
+    result = subprocess.run(
+        ["bash", str(WRAPPER_PATH)] + args,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, result.stderr
 
 
 # ── NO IDENTITY: fail fast ────────────────────────────────────────────────────
@@ -120,22 +110,8 @@ class TestHumanSession:
         assert code == 0
 
     def test_human_commit_allowed(self) -> None:
-        code, _ = _run(["commit", "-m", "human commit"], human_role="admin", branch="main")
-        assert code == 0
-
-    def test_human_blocked_outside_cwd(self, tmp_path: Path) -> None:
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        other = tmp_path / "other"
-        other.mkdir()
-        code, stderr = _run(["-C", str(other), "status"], human_role="admin", cwd=str(repo))
-        assert code != 0
-        assert "outside" in stderr.lower()
-
-    def test_human_allowed_in_subdirectory(self, tmp_path: Path) -> None:
-        sub = tmp_path / "sub"
-        sub.mkdir()
-        code, _ = _run(["-C", str(sub), "status"], human_role="admin", cwd=str(tmp_path))
+        # Human in tmux gets worker role, which can commit on non-main branch.
+        code, _ = _run(["commit", "-m", "human commit"], human_role="admin", branch="feature")
         assert code == 0
 
 

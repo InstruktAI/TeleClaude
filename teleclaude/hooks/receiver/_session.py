@@ -68,7 +68,7 @@ __all__ = [
 ]
 
 
-_sync_engine: object | None = None
+_sync_engine: object | None = None  # pylint: disable=invalid-name
 
 
 def _create_sync_engine() -> object:
@@ -79,7 +79,7 @@ def _create_sync_engine() -> object:
     on the database file.  Without reuse, high-frequency callers (hook
     receiver) exhaust system FD limits within minutes.
     """
-    global _sync_engine
+    global _sync_engine  # pylint: disable=global-statement
     if _sync_engine is not None:
         return _sync_engine
 

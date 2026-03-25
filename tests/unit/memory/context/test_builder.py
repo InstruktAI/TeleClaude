@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.sql.elements import TextClause
@@ -171,7 +172,7 @@ class TestGenerateContext:
     def test_generate_context_sync_filters_observations_by_identity_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         session = FakeSyncSession([[_observation_row(identity_key="user-1")], []])
 
-        monkeypatch.setattr(builder_module, "create_engine", lambda url: url)
+        monkeypatch.setattr(builder_module, "create_engine", lambda url: MagicMock())
         monkeypatch.setattr(builder_module, "SqlSession", lambda engine: session)
         monkeypatch.setattr(builder_module, "render_context", lambda entries: f"{len(entries)} entries")
 

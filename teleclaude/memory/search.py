@@ -236,14 +236,18 @@ class MemorySearch:
                 try:
                     sql = (
                         f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
-                        "WHERE id IN (SELECT rowid FROM memory_observations_fts WHERE memory_observations_fts MATCH :query)"
+                        "WHERE id IN ("
+                        "SELECT rowid FROM memory_observations_fts"
+                        " WHERE memory_observations_fts MATCH :query)"
                     )
                     params: dict[str, str | int] = {"query": query, "limit": limit}
                     if project:
                         sql += " AND project = :project"
                         params["project"] = project
                     sql += " ORDER BY created_at_epoch DESC LIMIT :limit"
-                    result = session.exec(text(sql).bindparams(**params))  # type: ignore[call-overload]    # guard: raw-sql
+                    result = session.exec(  # type: ignore[call-overload]  # guard: raw-sql
+                        text(sql).bindparams(**params)
+                    )
                     rows = result.fetchall()
                     return [_row_to_search_result(row) for row in rows]
                 except Exception:  # pylint: disable=broad-exception-caught

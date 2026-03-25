@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.sql.elements import TextClause
@@ -151,7 +152,7 @@ class TestMemorySearch:
                 [_search_row(5, "Sync fallback", narrative="Use LIKE", facts='["like"]', created_at_epoch=5)],
             ]
         )
-        monkeypatch.setattr(search_module, "create_engine", lambda url: url)
+        monkeypatch.setattr(search_module, "create_engine", lambda url: MagicMock())
         monkeypatch.setattr(search_module, "SqlSession", lambda engine: session)
 
         results = search_module.MemorySearch().search_sync("sync", project="alpha", limit=2, db_path="memory.sqlite")
