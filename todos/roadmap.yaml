@@ -55,3 +55,4 @@
 - slug: edge-session-creation
   after:
   - session-arch-cleanup
+- slug: with-session-staleness
