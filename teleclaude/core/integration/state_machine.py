@@ -25,7 +25,7 @@ from teleclaude.core.integration.checkpoint import (
     _read_checkpoint,
     _write_checkpoint,
 )
-from teleclaude.core.integration.formatters import _format_error, _format_queue_empty
+from teleclaude.core.integration.formatters import _format_autostash_orphaned, _format_error, _format_queue_empty
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
@@ -87,6 +87,9 @@ def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
     # pull, repo root diverges and cleanup commits cause merge conflicts.
     # --autostash: atomically stash dirty files, pull, pop — prevents orphaned
     # stashes that occur when agent sessions die between manual stash and pop.
+    _, stash_before_out, _ = _run_git(["stash", "list"], cwd=cwd)
+    stash_count_before = len(stash_before_out.strip().splitlines()) if stash_before_out.strip() else 0
+
     rc, _, stderr = _run_git(["pull", "--ff-only", "--autostash", "origin", "main"], cwd=cwd)
     if rc != 0:
         return _format_error(
@@ -95,6 +98,13 @@ def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
             "Repo root main has diverged from origin/main. "
             "Resolve the divergence (merge or reset to origin/main) before re-running integration.",
         )
+
+    # Detect orphaned autostash: git reports rc=0 when the pull succeeds but
+    # the autostash pop fails due to conflicts, silently leaving a stash entry.
+    _, stash_after_out, _ = _run_git(["stash", "list"], cwd=cwd)
+    stash_count_after = len(stash_after_out.strip().splitlines()) if stash_after_out.strip() else 0
+    if stash_count_after > stash_count_before:
+        return _format_autostash_orphaned(stash_after_out.strip())
 
     # Reset session-scoped counters on fresh entry so they reflect only this
     # run's work, not accumulated totals from previous integrator sessions.
