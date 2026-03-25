@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: scoped-agent-lint-test
+  date: '2026-03-25'
+  commit: 720add1fe47e
 - slug: fix-telec-todo-prepare-returns-stale-repeate
   date: '2026-03-25'
   commit: 35d29b008b24
