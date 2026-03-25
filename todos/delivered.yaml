@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: fix-work-machine-delivered-check
+  date: '2026-03-25'
+  commit: 71110254fd14
 - slug: session-arch-cleanup
   date: '2026-03-25'
   commit: 26f206a81f33
