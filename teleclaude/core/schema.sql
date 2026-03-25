@@ -110,11 +110,10 @@ CREATE TABLE IF NOT EXISTS hook_outbox (
     next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
     attempt_count INTEGER DEFAULT 0,
     last_error TEXT,
-    delivered_at TEXT,
     locked_at TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(delivered_at, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(next_attempt_at);
 
 CREATE TABLE IF NOT EXISTS notification_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -123,7 +123,6 @@ class HookOutbox(SQLModel, table=True):
     next_attempt_at: str | None = None
     attempt_count: int | None = 0
     last_error: str | None = None
-    delivered_at: str | None = None
     locked_at: str | None = None
 
 

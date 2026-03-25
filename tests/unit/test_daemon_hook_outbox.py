@@ -240,7 +240,7 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
     fresh_row = _make_outbox_row("session_start", age_seconds=2, row_id=20, session_id="sess-healthy")
     iteration_count = 0
 
-    delivered_calls: list[tuple[int, str | None]] = []
+    deleted_row_ids: list[int] = []
 
     async def fake_fetch(
         now_iso: str,
@@ -255,8 +255,8 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
         daemon_instance.shutdown_event.set()
         return []
 
-    async def fake_mark_delivered(row_id: int, error: str | None = None) -> None:
-        delivered_calls.append((row_id, error))
+    async def fake_delete(row_id: int) -> None:
+        deleted_row_ids.append(row_id)
 
     async def fake_claim_batch(row_ids: list[int], now_iso: str, lock_cutoff_iso: str) -> set[int]:
         return set(row_ids)
@@ -266,11 +266,11 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
         patch("teleclaude.daemon_hook_outbox.HOOK_OUTBOX_POLL_INTERVAL_S", 0),
     ):
         mock_db.fetch_hook_outbox_batch = fake_fetch
-        mock_db.mark_hook_outbox_delivered = fake_mark_delivered
+        mock_db.delete_hook_outbox_row = fake_delete
         mock_db.claim_hook_outbox_batch = fake_claim_batch
         # Stub enqueue to avoid real session worker spawning.
         daemon_instance._enqueue_session_outbox_item = AsyncMock()
         await daemon_instance._hook_outbox_worker()
 
-    assert (10, "stale:user_prompt_submit") in delivered_calls
+    assert 10 in deleted_row_ids
     assert daemon_instance._hook_outbox_stale_dropped_count == 1

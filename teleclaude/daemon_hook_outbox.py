@@ -663,7 +663,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
                             event_type=event_type,
                             session_id=str(stale_row.get("session_id") or ""),
                         )
-                        await db.mark_hook_outbox_delivered(stale_id, error=f"stale:{event_type}")
+                        await db.delete_hook_outbox_row(stale_id)
                     self._hook_outbox_stale_dropped_count += len(stale_row_ids)  # pylint: disable=no-member
 
                 # Defense-in-depth: re-check pause state for rows that passed the DB
@@ -795,17 +795,13 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
     async def _mark_dropped_outbox_rows(
         self,
         dropped_rows: list[HookOutboxRow],
-        event_type: str,
     ) -> None:
-        """Mark coalesced rows as delivered in durable storage."""
+        """Delete coalesced rows from durable storage."""
         if not dropped_rows:
             return
         self._hook_outbox_coalesced_count += len(dropped_rows)  # pylint: disable=no-member
         for dropped in dropped_rows:
-            await db.mark_hook_outbox_delivered(
-                dropped["id"],
-                error=f"coalesced:{event_type or 'unknown'}",
-            )
+            await db.delete_hook_outbox_row(dropped["id"])
 
     async def _requeue_critical_outbox_row(
         self,
@@ -891,7 +887,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
             if enqueued:
                 queue_state.notify.set()
 
-        await self._mark_dropped_outbox_rows(dropped_rows, event_type)
+        await self._mark_dropped_outbox_rows(dropped_rows)
 
         if requeue_claimed_critical and not duplicate_claimed_row:
             await self._requeue_critical_outbox_row(session_id, row, row_id, queue_depth)
@@ -957,14 +953,14 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
             )
         except json.JSONDecodeError as exc:
             logger.error("Hook outbox payload invalid", row_id=row_id, error=str(exc))
-            await db.mark_hook_outbox_delivered(row_id, error=str(exc))
+            await db.delete_hook_outbox_row(row_id)
             self._hook_outbox_processed_count += 1  # pylint: disable=no-member
             self._record_hook_lag_sample(row)
             return
 
         try:
             await self._dispatch_hook_event(str(row["session_id"]), str(row["event_type"]), payload)
-            await db.mark_hook_outbox_delivered(row_id)
+            await db.delete_hook_outbox_row(row_id)
             self._hook_outbox_processed_count += 1  # pylint: disable=no-member
             self._record_hook_lag_sample(row)
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -977,7 +973,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
                     attempt=attempt,
                     error=error_str,
                 )
-                await db.mark_hook_outbox_delivered(row_id, error=error_str)
+                await db.delete_hook_outbox_row(row_id)
                 self._hook_outbox_processed_count += 1  # pylint: disable=no-member
                 self._record_hook_lag_sample(row)
                 return

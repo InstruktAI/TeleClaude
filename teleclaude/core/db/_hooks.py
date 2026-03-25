@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import and_, or_, update
+from sqlalchemy import and_, delete, or_, update
 from sqlmodel import select
 
 from .. import db_models
@@ -219,7 +219,6 @@ class DbHooksMixin:
         """Fetch a batch of due hook events."""
         stmt = (
             select(db_models.HookOutbox)
-            .where(db_models.HookOutbox.delivered_at.is_(None))
             .where(db_models.HookOutbox.next_attempt_at <= now_iso)
             .where((db_models.HookOutbox.locked_at.is_(None)) | (db_models.HookOutbox.locked_at <= lock_cutoff_iso))
         )
@@ -247,7 +246,6 @@ class DbHooksMixin:
             update(db_models.HookOutbox)
             .where(
                 db_models.HookOutbox.id == row_id,
-                db_models.HookOutbox.delivered_at.is_(None),
                 or_(
                     db_models.HookOutbox.locked_at.is_(None),
                     db_models.HookOutbox.locked_at <= lock_cutoff_iso,
@@ -272,7 +270,6 @@ class DbHooksMixin:
             update(db_models.HookOutbox)
             .where(
                 db_models.HookOutbox.id.in_(row_ids),
-                db_models.HookOutbox.delivered_at.is_(None),
                 or_(
                     db_models.HookOutbox.locked_at.is_(None),
                     db_models.HookOutbox.locked_at <= lock_cutoff_iso,
@@ -298,14 +295,9 @@ class DbHooksMixin:
             result = await db_session.exec(stmt_check)
             return {int(row_id) for row_id in result.all()}
 
-    async def mark_hook_outbox_delivered(self, row_id: int, error: str | None = None) -> None:
-        """Mark a hook outbox row delivered (optionally capturing last error)."""
-        now = datetime.now(UTC).isoformat()
-        stmt = (
-            update(db_models.HookOutbox)
-            .where(db_models.HookOutbox.id == row_id)
-            .values(delivered_at=now, last_error=error, locked_at=None)
-        )
+    async def delete_hook_outbox_row(self, row_id: int) -> None:
+        """Delete a processed hook outbox row."""
+        stmt = delete(db_models.HookOutbox).where(db_models.HookOutbox.id == row_id)
         async with self._session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()

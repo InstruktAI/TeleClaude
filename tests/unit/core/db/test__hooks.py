@@ -106,7 +106,7 @@ async def test_hook_outbox_batch_claim_retry_and_delivery_follow_persisted_state
     )
 
     await db.mark_hook_outbox_failed(first_id, attempt_count=2, next_attempt_at=future, error="timeout")
-    await db.mark_hook_outbox_delivered(second_id, error="prior-failure")
+    await db.delete_hook_outbox_row(second_id)
 
     retry_batch = await db.fetch_hook_outbox_batch(
         now_iso=(datetime.now(UTC) + timedelta(minutes=11)).isoformat(),
@@ -126,12 +126,11 @@ async def test_hook_outbox_batch_claim_retry_and_delivery_follow_persisted_state
         }
     ]
 
+    # Delivered rows are hard-deleted, not soft-marked.
     async with db._session() as session:
         delivered = await session.get(db_models.HookOutbox, second_id)
 
-    assert delivered is not None
-    assert delivered.delivered_at is not None
-    assert delivered.last_error == "prior-failure"
+    assert delivered is None
     assert DbHooksMixin._parse_iso_datetime("not-an-iso-string") is None
 
 
