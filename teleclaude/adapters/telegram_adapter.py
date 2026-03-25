@@ -156,13 +156,17 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
     async def _store_output_message_id(self, session: Session, message_id: str) -> None:
         tg = self._tg(session)
         tg.output_message_id = message_id
-        await db.update_origin_metadata(session.session_id, "telegram", tg.to_dict())
+        section = tg.to_dict()
+        await db.update_origin_metadata(session.session_id, "telegram", section)
+        session.origin_metadata["telegram"] = section
         logger.debug("Stored telegram output_message_id: session=%s message_id=%s", session.session_id, message_id)
 
     async def _clear_output_message_id(self, session: Session) -> None:
         tg = self._tg(session)
         tg.output_message_id = None
-        await db.update_origin_metadata(session.session_id, "telegram", tg.to_dict())
+        section = tg.to_dict()
+        await db.update_origin_metadata(session.session_id, "telegram", section)
+        session.origin_metadata["telegram"] = section
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Update Telegram topic footer with canonical lifecycle status and fire typing on active."""

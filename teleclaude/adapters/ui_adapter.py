@@ -164,6 +164,8 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         section = session.get_origin_section(self.ADAPTER_KEY)
         section.update(fields)
         await db.update_origin_metadata(session.session_id, self.ADAPTER_KEY, section)
+        # Keep in-memory session consistent for subsequent reads within the same request
+        session.origin_metadata[self.ADAPTER_KEY] = section
 
     async def _get_footer_message_id(self, session: Session) -> str | None:
         """Get threaded footer message id from adapter namespace."""

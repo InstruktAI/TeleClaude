@@ -193,13 +193,17 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     async def _store_output_message_id(self, session: Session, message_id: str) -> None:
         dc = self._dc(session)
         dc.output_message_id = message_id
-        await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
+        section = dc.to_dict()
+        await db.update_origin_metadata(session.session_id, "discord", section)
+        session.origin_metadata["discord"] = section
         logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id, message_id)
 
     async def _clear_output_message_id(self, session: Session) -> None:
         dc = self._dc(session)
         dc.output_message_id = None
-        await db.update_origin_metadata(session.session_id, "discord", dc.to_dict())
+        section = dc.to_dict()
+        await db.update_origin_metadata(session.session_id, "discord", section)
+        session.origin_metadata["discord"] = section
         logger.debug("Cleared discord output_message_id: session=%s", session.session_id)
 
     async def send_typing_indicator(self, session: Session) -> None:

@@ -112,12 +112,16 @@ class WhatsAppAdapter(UiAdapter):
     async def _store_output_message_id(self, session: Session, message_id: str) -> None:
         wa = self._wa(session)
         wa.output_message_id = message_id
-        await db.update_origin_metadata(session.session_id, "whatsapp", wa.to_dict())
+        section = wa.to_dict()
+        await db.update_origin_metadata(session.session_id, "whatsapp", section)
+        session.origin_metadata["whatsapp"] = section
 
     async def _clear_output_message_id(self, session: Session) -> None:
         wa = self._wa(session)
         wa.output_message_id = None
-        await db.update_origin_metadata(session.session_id, "whatsapp", wa.to_dict())
+        section = wa.to_dict()
+        await db.update_origin_metadata(session.session_id, "whatsapp", section)
+        session.origin_metadata["whatsapp"] = section
 
     async def _post_json(
         self,
