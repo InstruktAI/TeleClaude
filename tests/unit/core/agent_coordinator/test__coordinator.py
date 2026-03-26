@@ -592,8 +592,10 @@ class TestHandleAgentStop:
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
+        # last_tool_done_at is no longer cleared at agent_stop — the cadence
+        # loop owns the cursor and nulling it caused duplicate turn breaks.
         update_calls = mock_db.update_session.call_args_list
-        assert any(c[1].get("last_tool_done_at") is None for c in update_calls)
+        assert not any(c[1].get("last_tool_done_at") is None for c in update_calls)
 
 
 class TestHandleToolUse:

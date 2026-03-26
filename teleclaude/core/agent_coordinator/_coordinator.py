@@ -401,9 +401,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         session = await db.get_session(session_id)
         if session:
             await self.client.break_threaded_turn(session)
-
-        # Clear turn-specific cursor at turn completion
-        await db.update_session(session_id, last_tool_done_at=None)
         await self._finalize_agent_stop(session_id, session, payload, link_output, source_computer)
 
     async def _record_agent_stop_input(
