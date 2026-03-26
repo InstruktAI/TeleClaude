@@ -10,14 +10,23 @@ pytestmark = pytest.mark.unit
 
 
 class TestExtractCodexReasoningText:
-    def test_deduplicates_chunks_while_preserving_source_order(self) -> None:
+    def test_extracts_text_and_content_skipping_summary(self) -> None:
         payload = {
-            "summary": [{"text": "First"}, "Second", {"text": "First"}],
-            "text": "Second",
-            "content": [{"text": "Third"}, {"text": "First"}],
+            "summary": [{"text": "Summary noise"}, "More noise"],
+            "text": "Direct text",
+            "content": [{"text": "Content block"}],
         }
 
-        assert transcript_parsers._extract_codex_reasoning_text(payload) == "First\n\nSecond\n\nThird"
+        # Summary is skipped; only text and content are extracted.
+        assert transcript_parsers._extract_codex_reasoning_text(payload) == "Direct text\n\nContent block"
+
+    def test_deduplicates_chunks_while_preserving_source_order(self) -> None:
+        payload = {
+            "text": "Second",
+            "content": [{"text": "Third"}, {"text": "Second"}],
+        }
+
+        assert transcript_parsers._extract_codex_reasoning_text(payload) == "Second\n\nThird"
 
 
 class TestNormalizeTranscriptEntryMessage:
@@ -26,13 +35,19 @@ class TestNormalizeTranscriptEntryMessage:
 
         assert transcript_parsers.normalize_transcript_entry_message(entry) == entry["message"]
 
-    def test_maps_reasoning_payload_to_assistant_thinking_block(self) -> None:
-        entry = {"type": "response_item", "payload": {"type": "reasoning", "summary": [{"text": "Plan"}]}}
+    def test_maps_reasoning_with_text_to_thinking_block(self) -> None:
+        entry = {"type": "response_item", "payload": {"type": "reasoning", "text": "Plan"}}
 
         assert transcript_parsers.normalize_transcript_entry_message(entry) == {
             "role": "assistant",
             "content": [{"type": "thinking", "thinking": "Plan"}],
         }
+
+    def test_reasoning_with_only_summary_returns_none(self) -> None:
+        """Summary-only reasoning payloads are noise — no displayable text."""
+        entry = {"type": "response_item", "payload": {"type": "reasoning", "summary": [{"text": "Plan"}]}}
+
+        assert transcript_parsers.normalize_transcript_entry_message(entry) is None
 
     def test_accepts_message_like_payloads_without_explicit_message_type(self) -> None:
         payload = {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}
@@ -43,7 +58,7 @@ class TestNormalizeTranscriptEntryMessage:
         )
 
     def test_returns_none_for_empty_reasoning_or_unknown_entries(self) -> None:
-        empty_reasoning = {"type": "response_item", "payload": {"type": "reasoning", "summary": []}}
+        empty_reasoning = {"type": "response_item", "payload": {"type": "reasoning"}}
         unknown = {"type": "response_item", "payload": {"type": "other"}}
 
         assert transcript_parsers.normalize_transcript_entry_message(empty_reasoning) is None

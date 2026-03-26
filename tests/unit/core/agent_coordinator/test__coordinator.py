@@ -16,6 +16,7 @@ from teleclaude.core.models import Session
 def _make_coordinator() -> AgentCoordinator:
     client = MagicMock()
     client.break_threaded_turn = AsyncMock()
+    client.force_session_output_pull = AsyncMock()
     tts_manager = MagicMock()
     return AgentCoordinator(
         client=client,

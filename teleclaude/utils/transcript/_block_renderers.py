@@ -246,7 +246,7 @@ def _extract_tool_subject(block: dict[str, object]) -> str | None:  # guard: loo
             return val.strip()
 
     # Priority 2: Shell/Execution (commands)
-    for key in ("command", "script"):
+    for key in ("command", "cmd", "script"):
         val = input_data.get(key)
         if isinstance(val, str) and val.strip():
             return val.strip().split("\n")[0]  # First line only
@@ -301,7 +301,6 @@ def _process_tool_use_block(
     else:
         content = formatted_name
 
-    lines.append("")
     lines.append(f"{prefix}{content}")
     return "tool_use"
 

@@ -73,7 +73,7 @@ class TestRenderCleanAgentOutput:
                 },
             },
         ]
-        monkeypatch.setattr(transcript_rendering, "_get_entries_for_agent", lambda transcript_path, agent_name: entries)
+        monkeypatch.setattr(transcript_rendering, "_get_entries_for_agent", lambda transcript_path, agent_name: entries)  # pyright: ignore[reportUnknownLambdaType]
 
         rendered, last_entry_dt = transcript_rendering.render_clean_agent_output("/tmp/demo.jsonl", AgentName.CLAUDE)
 
@@ -109,7 +109,7 @@ class TestRenderAgentOutput:
                 },
             },
         ]
-        monkeypatch.setattr(transcript_rendering, "_get_entries_for_agent", lambda transcript_path, agent_name: entries)
+        monkeypatch.setattr(transcript_rendering, "_get_entries_for_agent", lambda transcript_path, agent_name: entries)  # pyright: ignore[reportUnknownLambdaType]
 
         rendered, last_entry_dt = transcript_rendering.render_agent_output(
             "/tmp/demo.jsonl",

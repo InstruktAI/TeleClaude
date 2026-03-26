@@ -23,6 +23,9 @@ class _FakeAdapter:
     def __init__(self) -> None:
         self.clear_turn_state = AsyncMock()
         self.send_threaded_output = AsyncMock(return_value="msg-1")
+        self.ensure_channel = AsyncMock(side_effect=lambda session: session)  # pyright: ignore[reportUnknownLambdaType]
+        self.send_message = AsyncMock(return_value="reflected-msg")
+        self._clear_output_message_id = AsyncMock()
 
 
 def _make_session(**kwargs: object) -> Session:

@@ -187,6 +187,56 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return message_id
 
+    async def broadcast_user_input(  # pylint: disable=too-many-arguments  # Reflection payload is adapter-facing API.
+        self,
+        session: "Session",
+        text: str,
+        source: str,
+        *,
+        actor_id: str | None = None,
+        actor_name: str | None = None,
+        actor_avatar_url: str | None = None,
+    ) -> None:
+        """Reflect user input to all UI adapters.
+
+        Core sends raw text + metadata to every adapter. Each adapter owns
+        suppression (own-user echo) and presentation (headers, formatting).
+        """
+        if not source:
+            raise ValueError("broadcast_user_input requires a non-empty source")
+        fresh_session = await db.get_session(session.session_id)
+        session_to_use = fresh_session or session
+
+        from teleclaude.core.identity import get_identity_resolver  # pylint: disable=import-outside-toplevel
+
+        identity = get_identity_resolver().resolve(source, session_to_use.get_origin_section(source))
+        normalized_actor_name = (actor_name or "").strip() or identity.display_name
+
+        reflection_origin = source.strip().lower()
+        reflection_metadata = MessageMetadata(
+            parse_mode=None,
+            reflection_actor_id=(actor_id or "").strip() or None,
+            reflection_actor_name=normalized_actor_name,
+            reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
+            reflection_origin=reflection_origin,
+        )
+
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(
+                Awaitable[object],
+                adapter.send_message(
+                    lane_session,
+                    text,
+                    metadata=reflection_metadata,
+                ),
+            )
+
+        await self._broadcast_to_ui_adapters(
+            session_to_use,
+            "send_user_input_reflection",
+            make_task,
+        )
+
     async def force_session_output_pull(self, session: "Session") -> None:
         """Trigger immediate output pull on all UI adapters before session termination.
 

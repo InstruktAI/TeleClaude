@@ -30,6 +30,18 @@ class IdentityContext:
     platform: str | None = None
     platform_user_id: str | None = None
 
+    @property
+    def display_name(self) -> str:
+        """Best available human-readable name: person_name → person_email → platform_user_id."""
+        result = (
+            (self.person_name or "").strip()
+            or (self.person_email or "").strip()
+            or (self.platform_user_id or "").strip()
+        )
+        if not result:
+            raise ValueError(f"Invalid IdentityContext — no resolvable display name: {self}")
+        return result
+
 
 _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
 _PEOPLE_DIR = Path("~/.teleclaude/people").expanduser()

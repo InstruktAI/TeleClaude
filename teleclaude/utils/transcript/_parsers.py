@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import cast
 
@@ -9,18 +10,12 @@ from typing import cast
 def _extract_codex_reasoning_text(  # pylint: disable=too-many-branches
     payload: Mapping[str, object],  # guard: loose-dict - External payload
 ) -> str:
-    """Extract displayable reasoning text from a Codex reasoning payload."""
-    chunks: list[str] = []
+    """Extract displayable reasoning text from a Codex reasoning payload.
 
-    summary = payload.get("summary")
-    if isinstance(summary, list):
-        for item in summary:
-            if isinstance(item, dict):
-                text = item.get("text")
-                if isinstance(text, str) and text.strip():
-                    chunks.append(text.strip())
-            elif isinstance(item, str) and item.strip():
-                chunks.append(item.strip())
+    Skips summary-level text (verbose chain-of-thought noise); only extracts
+    direct text and content blocks which carry actual thinking.
+    """
+    chunks: list[str] = []
 
     direct_text = payload.get("text")
     if isinstance(direct_text, str) and direct_text.strip():
@@ -78,6 +73,36 @@ def normalize_transcript_entry_message(  # pylint: disable=too-many-return-state
         return {
             "role": "assistant",
             "content": [{"type": "thinking", "thinking": reasoning_text}],
+        }
+
+    if payload_type == "function_call":
+        name = str(payload.get("name", "unknown"))
+        arguments = payload.get("arguments", "")
+        input_data: dict[str, object] = {}  # guard: loose-dict
+        if isinstance(arguments, str):
+            try:
+                input_data = json.loads(arguments)
+            except (json.JSONDecodeError, TypeError):
+                input_data = {"raw": arguments}
+        # Codex wraps everything in exec_command — use the actual command as the tool name.
+        if name == "exec_command" and isinstance(input_data.get("cmd"), str):
+            name = str(input_data["cmd"]).split("\n", maxsplit=1)[0]
+        return {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "name": name, "id": payload.get("call_id", ""), "input": input_data}],
+        }
+
+    if payload_type == "function_call_output":
+        output = payload.get("output", "")
+        return {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": payload.get("call_id", ""),
+                    "content": [{"type": "text", "text": str(output)}],
+                }
+            ],
         }
 
     if payload_type == "message" or (isinstance(payload.get("role"), str) and "content" in payload):

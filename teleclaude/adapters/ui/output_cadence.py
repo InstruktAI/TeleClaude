@@ -72,6 +72,37 @@ class OutputCadenceLoop:
         """Force an immediate output pull for one session outside the cadence schedule."""
         await self._pull_session_output(session)
 
+    async def _reflect_user_input(self, session: Session, user_text: str) -> None:
+        """Reflect user input to this adapter's channel.
+
+        Each adapter independently reflects user input it detects in the
+        transcript. The originating adapter suppresses its own echo via
+        reflection_origin matching.
+        """
+        from teleclaude.core.identity import get_identity_resolver  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
+
+        try:
+            input_origin = session.last_input_origin or ""
+            resolver = get_identity_resolver()
+            identity = resolver.resolve(input_origin, session.get_origin_section(input_origin))
+            if not identity.person_name and session.human_email:
+                identity = resolver.resolve_by_email(session.human_email)
+
+            metadata = MessageMetadata(
+                parse_mode=None,
+                reflection_origin=input_origin,
+                reflection_actor_name=identity.display_name,
+            )
+            await self._adapter.send_message(session, user_text, metadata=metadata)
+        except Exception:  # pylint: disable=broad-exception-caught  # Reflection is non-critical.
+            logger.debug(
+                "User input reflection failed: session=%s adapter=%s",
+                session.session_id,
+                self._adapter.ADAPTER_KEY,
+                exc_info=True,
+            )
+
     async def _run(self) -> None:
         """Main cadence loop — runs until cancelled."""
         adapter_key = self._adapter.ADAPTER_KEY
@@ -94,6 +125,7 @@ class OutputCadenceLoop:
             if not session.native_log_file or not session.active_agent:
                 continue
             try:
+                session = await self._adapter.ensure_channel(session)
                 await self._pull_session_output(session)
             except Exception:  # pylint: disable=broad-exception-caught
                 logger.warning(
@@ -142,7 +174,7 @@ class OutputCadenceLoop:
         if await _has_active_output_message(session):
             user_msg = extract_last_user_message_with_timestamp(transcript_path, agent_name)
             if user_msg:
-                _, user_ts = user_msg
+                user_text, user_ts = user_msg
                 if user_ts and (turn_cursor is None or user_ts > turn_cursor):
                     logger.info(
                         "Turn break: session=%s adapter=%s user_ts=%s cursor=%s cursor_is_none=%s",
@@ -152,6 +184,8 @@ class OutputCadenceLoop:
                         turn_cursor.isoformat() if turn_cursor else "None",
                         turn_cursor is None,
                     )
+                    # Reflect user input before clearing turn state.
+                    await self._reflect_user_input(session, user_text)
                     await self._adapter.clear_turn_state(session)
                     await self._adapter._clear_output_message_id(session)  # pylint: disable=protected-access
                     await db.update_session(session_id, last_tool_done_at=user_ts.isoformat())

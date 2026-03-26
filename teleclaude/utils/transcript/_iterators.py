@@ -151,6 +151,15 @@ def _load_gemini_document(path: Path) -> JsonDict:
 def _normalize_gemini_user_entry(message: JsonDict) -> JsonDict:
     """Normalize a Gemini user message into transcript entry shape."""
     content_value = message.get("content", "")
+    # Gemini stores user content as [{"text": "..."}] — extract the text.
+    if isinstance(content_value, list):
+        parts = []
+        for item in content_value:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        content_value = "\n".join(parts) if parts else str(content_value)
     return {
         "type": "user",
         "timestamp": message.get("timestamp"),

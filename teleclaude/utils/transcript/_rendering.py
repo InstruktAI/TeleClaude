@@ -172,10 +172,9 @@ def _append_clean_tool_use_block(
     """Append a single clean-render tool_use block."""
     tool_name = str(block.get("name", "unknown"))
     tool_name_safe = tool_name.split("\n", maxsplit=1)[0].split("(")[0].split("{")[0].strip()
-
-    formatted_name = f"**`{tool_name_safe}`**"
     subject = _extract_tool_subject(block)  # type: ignore[arg-type]
 
+    formatted_name = f"**`{tool_name_safe}`**"
     base_len = len(tool_name_safe)
     if subject:
         base_len += 2
@@ -188,8 +187,6 @@ def _append_clean_tool_use_block(
     else:
         block_content = formatted_name
 
-    if lines:
-        lines.append("")
     lines.append(block_content)
 
 
@@ -202,8 +199,6 @@ def _append_clean_render_block(
     if block_type == "text":
         text = block.get("text", "")
         if text:
-            if lines:
-                lines.append("")
             lines.append(str(text))
             return True
         return False
@@ -211,8 +206,6 @@ def _append_clean_render_block(
     if block_type == "thinking":
         thinking = block.get("thinking", "")
         if thinking:
-            if lines:
-                lines.append("")
             lines.append(_format_thinking(str(thinking)))
             return True
         return False
@@ -234,8 +227,6 @@ def _append_standard_render_block(  # pylint: disable=too-many-return-statements
     if block_type == "text":
         text = block.get("text", "")
         if text:
-            if lines:
-                lines.append("")
             lines.append(f"{time_prefix}{text}")
             return True
         return False
@@ -243,19 +234,15 @@ def _append_standard_render_block(  # pylint: disable=too-many-return-statements
     if block_type == "thinking":
         thinking = block.get("thinking", "")
         if thinking:
-            if lines:
-                lines.append("")
             lines.append(f"{time_prefix}{_format_thinking(str(thinking))}")
             return True
         return False
 
     if block_type == "tool_use":
-        lines.append("")
         _process_tool_use_block(block, time_prefix, lines)  # type: ignore[arg-type]
         return True
 
     if block_type == "tool_result":
-        lines.append("")
         _process_tool_result_block(
             block,  # type: ignore[arg-type]
             time_prefix,
@@ -315,6 +302,7 @@ def render_clean_agent_output(
     lines: list[str] = []
     emitted = False
     last_entry_dt: datetime | None = None
+    last_block_is_tool = False
 
     for pb in project_entries(assistant_entries, THREADED_CLEAN_POLICY):
         if pb.role != "assistant":
@@ -325,8 +313,13 @@ def render_clean_agent_output(
             if entry_dt:
                 last_entry_dt = entry_dt
 
+        current_is_tool = pb.block_type == "tool_use"
+        if lines and (current_is_tool != last_block_is_tool):
+            lines.append("")
+
         if _append_clean_render_block(pb.block, pb.block_type, lines):
             emitted = True
+            last_block_is_tool = current_is_tool
         # tool_result: suppressed by THREADED_CLEAN_POLICY (include_tool_results=False)
 
     if not emitted:
@@ -450,6 +443,7 @@ def render_agent_output(  # pylint: disable=too-many-locals,too-many-arguments,t
     lines: list[str] = []
     emitted = False
     last_entry_dt: datetime | None = None
+    last_block_is_tool = False
 
     for pb in project_entries(assistant_entries, render_policy):
         if pb.role != "assistant":
@@ -464,8 +458,13 @@ def render_agent_output(  # pylint: disable=too-many-locals,too-many-arguments,t
         if include_timestamps and last_entry_dt:
             time_prefix = f"[{last_entry_dt.strftime('%H:%M:%S')}] "
 
+        current_is_tool = pb.block_type in ("tool_use", "tool_result")
+        if lines and (current_is_tool != last_block_is_tool):
+            lines.append("")
+
         if _append_standard_render_block(pb.block, pb.block_type, time_prefix, lines):
             emitted = True
+            last_block_is_tool = current_is_tool
 
     if not emitted:
         return None, last_entry_dt

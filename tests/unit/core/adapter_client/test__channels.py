@@ -33,7 +33,7 @@ def _make_session(
 
 def _make_ui_adapter() -> MagicMock:
     adapter = MagicMock(spec=UiAdapter)
-    adapter.ensure_channel = AsyncMock(side_effect=lambda session: session)
+    adapter.ensure_channel = AsyncMock(side_effect=lambda session: session)  # pyright: ignore[reportUnknownLambdaType]
     adapter.create_channel = AsyncMock(return_value="channel-id")
     adapter.send_message = AsyncMock(return_value="msg-id")
     adapter.send_general_message = AsyncMock(return_value="general-msg")
@@ -50,7 +50,7 @@ def _make_base_adapter() -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
-def _display_title() -> object:
+def _display_title() -> object:  # pyright: ignore[reportUnusedFunction]
     with patch(
         "teleclaude.core.adapter_client._channels.get_display_title_for_session",
         AsyncMock(return_value="Session"),

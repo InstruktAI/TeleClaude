@@ -338,6 +338,19 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 }
             )
 
+        # Terminal input bypasses the command pipeline — set origin here.
+        # UI adapter input already set last_input_origin AND last_message_sent
+        # at the edge via deliver_inbound. If the prompt matches what was already
+        # persisted, a UI adapter handled it — don't overwrite.
+        from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
+
+        existing_msg = (session.last_message_sent or "").strip()
+        is_terminal_input = not existing_msg or existing_msg != prompt_text.strip()[:200]
+        if is_terminal_input:
+            update_kwargs["last_input_origin"] = InputOrigin.TERMINAL.value
+            # Reset cadence cursor so adapters re-render including the user message.
+            update_kwargs["last_tool_done_at"] = None
+
         # Track what triggered this turn for echo suppression in handle_agent_stop.
         _linked_prefix_check = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
         update_kwargs["turn_triggered_by_linked_output"] = prompt_text.strip().startswith(_linked_prefix_check)
@@ -360,6 +373,12 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         # Reset threaded output state on user input.
         await self.client.break_threaded_turn(session)
+
+        # Force output pull so adapters render immediately (terminal input
+        # resets the cursor — the pull re-renders with the updated origin).
+        fresh = await db.get_session(session_id)
+        if fresh:
+            await self.client.force_session_output_pull(fresh)
 
         # Emit activity event for all sessions
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)

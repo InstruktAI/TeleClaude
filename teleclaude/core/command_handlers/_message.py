@@ -247,6 +247,21 @@ async def deliver_inbound(
 
     active_agent = session.active_agent
 
+    async def _broadcast() -> None:
+        if not row["origin"]:
+            return
+        try:
+            await client.broadcast_user_input(
+                session,
+                message_text,
+                row["origin"],
+                actor_id=row["actor_id"],
+                actor_name=row["actor_name"],
+                actor_avatar_url=row["actor_avatar_url"],
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # UI reflection failures are non-fatal here.
+            logger.warning("broadcast_user_input failed (non-fatal): session=%s error=%s", session_id, exc)
+
     async def _break_turn() -> None:
         try:
             await client.break_threaded_turn(session)
@@ -266,7 +281,7 @@ async def deliver_inbound(
             active_agent=active_agent,
         )
 
-    results = await asyncio.gather(_tmux_inject(), _break_turn(), return_exceptions=True)
+    results = await asyncio.gather(_tmux_inject(), _broadcast(), _break_turn(), return_exceptions=True)
     tmux_result = results[0]
     if isinstance(tmux_result, Exception):
         raise tmux_result
