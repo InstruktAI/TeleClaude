@@ -56,3 +56,4 @@
   after:
   - session-arch-cleanup
 - slug: with-session-staleness
+- slug: config-independent-schemas
