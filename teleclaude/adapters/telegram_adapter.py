@@ -161,11 +161,7 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         logger.debug("Stored telegram output_message_id: session=%s message_id=%s", session.session_id, message_id)
 
     async def _clear_output_message_id(self, session: Session) -> None:
-        tg = self._tg(session)
-        tg.output_message_id = None
-        section = tg.to_dict()
-        await db.update_origin_metadata(session.session_id, "telegram", section)
-        session.origin_metadata["telegram"] = section
+        await self._set_origin_field(session, output_message_id=None)
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Telegram topic."""

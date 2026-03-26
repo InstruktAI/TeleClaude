@@ -24,7 +24,6 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
-from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.tts.manager import TTSManager
@@ -336,7 +335,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 {
                     "last_message_sent": prompt_text[:200],
                     "last_message_sent_at": now.isoformat(),
-                    "last_input_origin": InputOrigin.TERMINAL.value,
                 }
             )
 

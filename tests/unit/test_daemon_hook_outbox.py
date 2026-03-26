@@ -22,7 +22,7 @@ class _FakeRedisTransport(RedisTransport):
 
 class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
     def __init__(self) -> None:
-        self.shutdown_event = None
+        self.shutdown_event = None  # pyright: ignore[reportAttributeAccessIssue]
         self._background_tasks = set()
         self._session_outbox_queues: dict[str, daemon_hook_outbox._HookOutboxSessionQueue] = {}
         self._session_outbox_workers = {}
@@ -34,7 +34,7 @@ class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
         self._hook_outbox_last_backlog_warn_at: dict[str, float] = {}
         self._hook_outbox_last_lag_warn_at: dict[str, float] = {}
         self._hook_outbox_claim_paused_sessions: set[str] = set()
-        self.cache = None
+        self.cache = None  # pyright: ignore[reportAttributeAccessIssue]
 
     def _queue_background_task(
         self,
@@ -76,7 +76,7 @@ def test_make_stale_read_callback_requests_refresh_only_for_remote_redis() -> No
     def request_refresh(computer: str, resource_type: str, reason: str) -> None:
         refresh_calls.append((computer, resource_type, reason))
 
-    adapter.request_refresh = request_refresh
+    adapter.request_refresh = request_refresh  # pyright: ignore[reportAttributeAccessIssue]
     callback = daemon_hook_outbox._DaemonHookOutboxMixin._make_stale_read_callback(
         local_computer_name="workstation",
         get_adapter=lambda: adapter,

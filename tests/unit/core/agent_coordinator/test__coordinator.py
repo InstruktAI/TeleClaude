@@ -446,7 +446,7 @@ class TestHandleUserPromptSubmit:
 
         def _close_coro(coro: object, label: str) -> None:
             if hasattr(coro, "close"):
-                coro.close()
+                coro.close()  # pyright: ignore[reportAttributeAccessIssue]
 
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
@@ -478,7 +478,7 @@ class TestHandleUserPromptSubmit:
 
         def _close_coro(coro: object, label: str) -> None:
             if hasattr(coro, "close"):
-                coro.close()
+                coro.close()  # pyright: ignore[reportAttributeAccessIssue]
 
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
@@ -518,7 +518,7 @@ class TestHandleAgentStop:
             coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_incremental_output = AsyncMock(return_value=False)
+            coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -541,7 +541,7 @@ class TestHandleAgentStop:
             coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_incremental_output = AsyncMock(return_value=False)
+            coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -564,7 +564,7 @@ class TestHandleAgentStop:
             coord._record_agent_stop_output = AsyncMock(return_value=(None, "Summary text"))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_incremental_output = AsyncMock(return_value=False)
+            coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -588,7 +588,7 @@ class TestHandleAgentStop:
             coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_incremental_output = AsyncMock(return_value=False)
+            coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -614,7 +614,7 @@ class TestHandleToolUse:
             mock_db.update_session = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._clear_tool_use_skip = MagicMock()
+            coord._clear_tool_use_skip = MagicMock()  # pyright: ignore[reportAttributeAccessIssue]
             await coord.handle_tool_use(context)
 
         coord._emit_activity_event.assert_called_once_with(
@@ -638,7 +638,7 @@ class TestHandleToolUse:
             mock_db.update_session = AsyncMock()
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._clear_tool_use_skip = MagicMock()
+            coord._clear_tool_use_skip = MagicMock()  # pyright: ignore[reportAttributeAccessIssue]
             await coord.handle_tool_use(context)
 
         called_statuses = [c[0][1] for c in coord._emit_status_event.call_args_list]

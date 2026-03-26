@@ -53,13 +53,19 @@ async def test_store_and_clear_output_message_id_update_origin_metadata() -> Non
     adapter = _make_adapter()
     session = _make_session()
 
-    with patch("teleclaude.adapters.discord_adapter.db") as mock_db:
-        mock_db.update_origin_metadata = AsyncMock()
+    with (
+        patch("teleclaude.adapters.discord_adapter.db") as mock_discord_db,
+        patch("teleclaude.adapters.ui_adapter.db") as mock_ui_db,
+    ):
+        mock_discord_db.update_origin_metadata = AsyncMock()
+        mock_ui_db.update_origin_metadata = AsyncMock()
 
         await adapter._store_output_message_id(session, "discord-message-1")
-        await adapter._clear_output_message_id(session)
+        assert mock_discord_db.update_origin_metadata.await_count == 1
 
-    assert mock_db.update_origin_metadata.await_count == 2
+        # _clear uses _set_origin_field (from UiAdapter) which calls ui_adapter.db
+        await adapter._clear_output_message_id(session)
+        assert mock_ui_db.update_origin_metadata.await_count == 1
 
 
 @pytest.mark.asyncio
