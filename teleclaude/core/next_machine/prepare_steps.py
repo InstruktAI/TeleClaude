@@ -30,7 +30,7 @@ from teleclaude.core.next_machine.prepare_events import (
     _has_test_spec_artifacts,
 )
 from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
-from teleclaude.core.next_machine.state_io import write_phase_state
+from teleclaude.core.next_machine.state_io import _resolve_state_cwd, write_phase_state
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 logger = get_logger(__name__)
@@ -72,7 +72,7 @@ async def _prepare_step_input_assessment(
     _now = datetime.now(UTC).isoformat()
     stamp_audit(state, "input_assessment", "started_at", _now)
 
-    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
+    has_requirements = check_file_has_content(_resolve_state_cwd(cwd, slug), f"todos/{slug}/requirements.md")
     if has_requirements:
         # Emit input_consumed event before transitioning (R13)
         await asyncio.to_thread(record_input_consumed, cwd, slug)
@@ -107,7 +107,7 @@ async def _prepare_step_triangulation(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TRIANGULATION: requirements.md still needs discovery or revision."""
-    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
+    has_requirements = check_file_has_content(_resolve_state_cwd(cwd, slug), f"todos/{slug}/requirements.md")
     if has_requirements:
         # Transition to REQUIREMENTS_REVIEW
         state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
@@ -380,7 +380,7 @@ async def _prepare_step_plan_drafting(
     """PLAN_DRAFTING: implementation-plan.md needed."""
     stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
-    has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
+    has_plan = check_file_has_content(_resolve_state_cwd(cwd, slug), f"todos/{slug}/implementation-plan.md")
     if has_plan:
         stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.PLAN_REVIEW.value

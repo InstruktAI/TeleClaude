@@ -30,6 +30,7 @@ def _write_state(todo_dir: Path, state: dict[object, object]) -> None:
 
 
 def test_prepare_step_grounding_check_first_pass_captures_baseline_and_marks_prepared(tmp_path: Path) -> None:
+    """First grounding check stamps baseline SHA and input digest, then marks prepared."""
     todo_dir = tmp_path / "todos" / "slug-a"
     todo_dir.mkdir(parents=True)
     (todo_dir / "input.md").write_text("hello", encoding="utf-8")
@@ -53,6 +54,7 @@ def test_prepare_step_grounding_check_first_pass_captures_baseline_and_marks_pre
 
 
 def test_prepare_step_grounding_check_invalidates_when_input_digest_changes(tmp_path: Path) -> None:
+    """Grounding check transitions to RE_GROUNDING when input.md digest changes."""
     todo_dir = tmp_path / "todos" / "slug-b"
     todo_dir.mkdir(parents=True)
     (todo_dir / "input.md").write_text("changed", encoding="utf-8")
@@ -82,6 +84,7 @@ def test_prepare_step_grounding_check_invalidates_when_input_digest_changes(tmp_
 
 @pytest.mark.asyncio
 async def test_prepare_step_re_grounding_resets_plan_review_and_dispatches_redraft(tmp_path: Path) -> None:
+    """Re-grounding clears plan_review verdict and dispatches a re-draft worker."""
     todo_dir = tmp_path / "todos" / "slug-c"
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {
@@ -108,6 +111,7 @@ async def test_prepare_step_re_grounding_resets_plan_review_and_dispatches_redra
 
 @pytest.mark.asyncio
 async def test_prepare_dispatch_returns_blocked_message_for_blocked_phase() -> None:
+    """BLOCKED phase returns a message identifying the slug and invalidation reason."""
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_dispatch(
             db=AsyncMock(),
@@ -125,6 +129,7 @@ async def test_prepare_dispatch_returns_blocked_message_for_blocked_phase() -> N
 
 @pytest.mark.asyncio
 async def test_prepare_dispatch_advances_approved_spec_review_to_plan_drafting(tmp_path: Path) -> None:
+    """Approved test spec review transitions state to PLAN_DRAFTING."""
     todo_dir = tmp_path / "todos" / "slug-e"
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {"test_spec_review": {"verdict": "approve"}}
@@ -147,6 +152,7 @@ async def test_prepare_dispatch_advances_approved_spec_review_to_plan_drafting(t
 
 @pytest.mark.asyncio
 async def test_prepare_dispatch_advances_approved_plan_review_to_gate(tmp_path: Path) -> None:
+    """Approved plan review transitions state to GATE."""
     todo_dir = tmp_path / "todos" / "slug-f"
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {"plan_review": {"verdict": "approve"}}
@@ -169,6 +175,7 @@ async def test_prepare_dispatch_advances_approved_plan_review_to_gate(tmp_path: 
 
 @pytest.mark.asyncio
 async def test_prepare_dispatch_records_baseline_and_dispatches_plan_review(tmp_path: Path) -> None:
+    """Plan review without a verdict stamps baseline SHA and dispatches the review worker."""
     todo_dir = tmp_path / "todos" / "slug-g"
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {}
@@ -196,6 +203,7 @@ async def test_prepare_dispatch_records_baseline_and_dispatches_plan_review(tmp_
 
 @pytest.mark.asyncio
 async def test_prepare_dispatch_advances_gate_to_grounding_check_when_dor_is_ready(tmp_path: Path) -> None:
+    """GATE phase with DOR score at threshold transitions to GROUNDING_CHECK."""
     todo_dir = tmp_path / "todos" / "slug-h"
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {"dor": {"score": DOR_READY_THRESHOLD}}
@@ -217,6 +225,7 @@ async def test_prepare_dispatch_advances_gate_to_grounding_check_when_dor_is_rea
 
 @pytest.mark.asyncio
 async def test_prepare_dispatch_requests_gate_worker_when_dor_is_below_threshold(tmp_path: Path) -> None:
+    """GATE phase with DOR score below threshold dispatches a gate worker."""
     state: dict[str, StateValue] = {"dor": {"score": DOR_READY_THRESHOLD - 1}}
 
     with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"):
@@ -326,6 +335,84 @@ async def test_plan_on_disk_advances_plan_drafting_v2(tmp_path: Path) -> None:
     }
 
     keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), "slug-plan1", str(tmp_path), state)
+
+    assert keep_going is True
+    assert instruction == ""
+    assert state["current"] == PreparePhase.PLAN_REVIEW.value
+
+
+@pytest.mark.asyncio
+async def test_requirements_in_worktree_advances_input_assessment(tmp_path: Path) -> None:
+    """Regression: check_file_has_content must resolve to worktree, not repo root."""
+    slug = "slug-wt-ia"
+    worktree_todos = tmp_path / "trees" / slug / "todos" / slug
+    worktree_todos.mkdir(parents=True)
+    (worktree_todos / "requirements.md").write_text(
+        "Authored requirements long enough to pass the scaffold check gate.\n",
+        encoding="utf-8",
+    )
+    todo_dir = tmp_path / "todos" / slug
+    todo_dir.mkdir(parents=True)
+    _write_state(todo_dir, {})
+    state: dict[str, StateValue] = {
+        "schema_version": 2,
+        "current": "input_assessment",
+        "artifacts": {"requirements": {"digest": "", "produced_at": "", "stale": False}},
+    }
+
+    keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), slug, str(tmp_path), state)
+
+    assert keep_going is True
+    assert instruction == ""
+    assert state["current"] == PreparePhase.REQUIREMENTS_REVIEW.value
+
+
+@pytest.mark.asyncio
+async def test_requirements_in_worktree_advances_triangulation(tmp_path: Path) -> None:
+    """Regression: check_file_has_content must resolve to worktree, not repo root."""
+    slug = "slug-wt-tri"
+    worktree_todos = tmp_path / "trees" / slug / "todos" / slug
+    worktree_todos.mkdir(parents=True)
+    (worktree_todos / "requirements.md").write_text(
+        "Authored requirements long enough to pass the scaffold check gate.\n",
+        encoding="utf-8",
+    )
+    todo_dir = tmp_path / "todos" / slug
+    todo_dir.mkdir(parents=True)
+    _write_state(todo_dir, {})
+    state: dict[str, StateValue] = {
+        "schema_version": 2,
+        "current": "triangulation",
+        "artifacts": {"requirements": {"digest": "", "produced_at": "", "stale": False}},
+    }
+
+    keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), slug, str(tmp_path), state)
+
+    assert keep_going is True
+    assert instruction == ""
+    assert state["current"] == PreparePhase.REQUIREMENTS_REVIEW.value
+
+
+@pytest.mark.asyncio
+async def test_plan_in_worktree_advances_plan_drafting(tmp_path: Path) -> None:
+    """Regression: check_file_has_content must resolve to worktree, not repo root."""
+    slug = "slug-wt-plan"
+    worktree_todos = tmp_path / "trees" / slug / "todos" / slug
+    worktree_todos.mkdir(parents=True)
+    (worktree_todos / "implementation-plan.md").write_text(
+        "Authored plan long enough to pass the scaffold check gate.\n",
+        encoding="utf-8",
+    )
+    todo_dir = tmp_path / "todos" / slug
+    todo_dir.mkdir(parents=True)
+    _write_state(todo_dir, {})
+    state: dict[str, StateValue] = {
+        "schema_version": 2,
+        "current": "plan_drafting",
+        "artifacts": {"implementation_plan": {"digest": "", "produced_at": "", "stale": False}},
+    }
+
+    keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), slug, str(tmp_path), state)
 
     assert keep_going is True
     assert instruction == ""
