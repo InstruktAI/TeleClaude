@@ -22,11 +22,8 @@ class _ThreadedHost(ThreadedOutputMixin):
 
     def __init__(self):
         self.client = MagicMock()
-        self.client.send_message = AsyncMock(return_value="badge-msg")
         self._char_offset: int = 0
         self._output_message_id: str | None = None
-        self._badge_sent: bool = False
-        self._footer_cleaned: bool = False
         self._output_delivery_locks: dict[str, asyncio.Lock] = {}
 
         # Mocked methods
@@ -52,15 +49,6 @@ class _ThreadedHost(ThreadedOutputMixin):
     async def _clear_output_message_id(self, session: Session) -> None:
         self._output_message_id = None
 
-    async def _cleanup_footer_if_present(self, session: Session) -> None:
-        self._footer_cleaned = True
-
-    async def _get_badge_sent(self, session: Session) -> bool:
-        return self._badge_sent
-
-    async def _set_badge_sent(self, session: Session, value: bool) -> None:
-        self._badge_sent = value
-
     def _build_metadata_for_thread(self) -> MessageMetadata:
         return MessageMetadata(parse_mode=None)  # No MarkdownV2 by default
 
@@ -85,9 +73,6 @@ class _ThreadedHost(ThreadedOutputMixin):
             return False
         return await self.edit_message(session, self._output_message_id, text, metadata=metadata)
 
-    def _build_session_id_lines(self, session: Session) -> str:
-        return f"📋 tc: {session.session_id}"
-
     def _convert_markdown_for_platform(self, text: str) -> str:
         return text
 
@@ -108,52 +93,6 @@ def host() -> _ThreadedHost:
 
 
 # ---------------------------------------------------------------------------
-# Badge emission
-# ---------------------------------------------------------------------------
-
-
-class TestBadgeEmission:
-    @pytest.mark.unit
-    async def test_badge_sent_on_first_call(self, host: _ThreadedHost) -> None:
-        session = _make_session()
-        host._badge_sent = False
-        host.client.send_message = AsyncMock(return_value="badge-msg")
-
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=None)
-            await host.send_threaded_output(session, "some text")
-
-        host.client.send_message.assert_called()
-        assert host._badge_sent is True
-
-    @pytest.mark.unit
-    async def test_badge_not_sent_again_when_already_sent(self, host: _ThreadedHost) -> None:
-        session = _make_session()
-        host._badge_sent = True
-        host.client.send_message = AsyncMock(return_value="irrelevant")
-
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=None)
-            await host.send_threaded_output(session, "text")
-
-        host.client.send_message.assert_not_called()
-
-    @pytest.mark.unit
-    async def test_discord_adapter_skips_badge(self) -> None:
-        host = _ThreadedHost()
-        host.ADAPTER_KEY = "discord"
-        session = _make_session()
-        host._badge_sent = False
-        host.client.send_message = AsyncMock(return_value="irrelevant")
-
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=None)
-            await host.send_threaded_output(session, "text")
-
-        host.client.send_message.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
 # Char offset management
 # ---------------------------------------------------------------------------
 
@@ -162,7 +101,6 @@ class TestCharOffsetManagement:
     @pytest.mark.unit
     async def test_offset_resets_when_text_shorter_than_offset(self, host: _ThreadedHost) -> None:
         session = _make_session()
-        host._badge_sent = True
         host._char_offset = 100  # More than text length
 
         with patch("teleclaude.core.db.db") as mock_db:
@@ -174,7 +112,6 @@ class TestCharOffsetManagement:
     @pytest.mark.unit
     async def test_no_active_text_with_existing_message_returns_id(self, host: _ThreadedHost) -> None:
         session = _make_session()
-        host._badge_sent = True
         host._char_offset = 5
         host._output_message_id = "existing-id"
 
@@ -195,7 +132,6 @@ class TestOverflowPagination:
     async def test_long_text_triggers_pagination(self, host: _ThreadedHost) -> None:
         host.max_message_size = 20
         session = _make_session()
-        host._badge_sent = True
         long_text = "a" * 100
 
         with patch("teleclaude.core.db.db") as mock_db:
@@ -208,7 +144,6 @@ class TestOverflowPagination:
     @pytest.mark.unit
     async def test_short_text_within_limit_delivered_directly(self, host: _ThreadedHost) -> None:
         session = _make_session()
-        host._badge_sent = True
         short_text = "hi"
 
         with patch("teleclaude.core.db.db") as mock_db:

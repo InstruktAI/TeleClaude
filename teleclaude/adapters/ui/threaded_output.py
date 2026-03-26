@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, cast
 from instrukt_ai_logging import get_logger
 
 import teleclaude.core.db as core_db
-from teleclaude.core.models import CleanupTrigger, MessageMetadata
+from teleclaude.core.models import MessageMetadata
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
     MarkdownV2State,
@@ -38,15 +38,11 @@ if TYPE_CHECKING:
         client: AdapterClient
         _get_output_delivery_lock: Callable[[str], asyncio.Lock]
         _convert_markdown_for_platform: Callable[[str], str]
-        _cleanup_footer_if_present: Callable[[Session], Awaitable[None]]
         _get_output_message_id: Callable[[Session], Awaitable[str | None]]
         _store_output_message_id: Callable[[Session, str], Awaitable[None]]
         _clear_output_message_id: Callable[[Session], Awaitable[None]]
         _get_char_offset: Callable[[Session], int]
         _set_char_offset: Callable[[Session, int], Awaitable[None]]
-        _get_badge_sent: Callable[[Session], Awaitable[bool]]
-        _set_badge_sent: Callable[[Session, bool], Awaitable[None]]
-        _build_session_id_lines: Callable[[Session], str]
         _build_metadata_for_thread: Callable[[], MessageMetadata]
         _try_edit_output_message: Callable[[Session, str, MessageMetadata], Awaitable[bool]]
         _deliver_output_unlocked: Callable[..., Awaitable[str | None]]
@@ -97,15 +93,11 @@ class ThreadedOutputMixin:
     - _get_output_message_id(session) -> str | None
     - _store_output_message_id(session, message_id) -> None
     - _clear_output_message_id(session) -> None
-    - _cleanup_footer_if_present(session) -> None
-    - _get_badge_sent(session) -> bool
-    - _set_badge_sent(session, value) -> None
     - _build_metadata_for_thread() -> MessageMetadata
     - _deliver_output_unlocked(session, text, metadata, ...) -> str | None
     - _try_edit_output_message(session, text, metadata) -> bool
     - send_message(session, text, metadata, ...) -> str | None
     - _get_output_delivery_lock(session_id) -> asyncio.Lock
-    - _build_session_id_lines(session) -> str
     """
 
     ADAPTER_KEY: str
@@ -161,8 +153,6 @@ class ThreadedOutputMixin:
     ) -> str | None:
         """Threaded-output core logic. Caller must hold the session output lock."""
         host = cast("_ThreadedOutputHost", self)
-        # HARD CLEANUP: Ensure no footer exists in threaded mode.
-        await host._cleanup_footer_if_present(session)
 
         # 1. Get current offset and ID.
         char_offset = await self._normalize_char_offset(session, text)
@@ -182,10 +172,7 @@ class ThreadedOutputMixin:
             # No new text, nothing to do
             return output_message_id
 
-        # 3. Session Badge (Header)
-        await self._emit_thread_badge_if_needed(session)
-
-        # 4. Add continuity markers
+        # 3. Add continuity markers
         is_markup_v2, continuation_prefix, display_text = self._build_thread_body(active_text, _continuation_state)
 
         # 5. Check for overflow
@@ -245,25 +232,6 @@ class ThreadedOutputMixin:
             await host._set_char_offset(session, 0)
             return 0
         return char_offset
-
-    async def _emit_thread_badge_if_needed(self, session: Session) -> None:
-        """Emit the session badge exactly once for adapters that use it."""
-        host = cast("_ThreadedOutputHost", self)
-        if self.ADAPTER_KEY == "discord" or await host._get_badge_sent(session):
-            return
-
-        badge_text = host._build_session_id_lines(session)
-        if not badge_text:
-            return
-
-        await self.client.send_message(
-            session,
-            badge_text,
-            metadata=MessageMetadata(parse_mode=None),
-            cleanup_trigger=CleanupTrigger.NEXT_TURN,
-            ephemeral=False,
-        )
-        await host._set_badge_sent(session, True)
 
     def _build_thread_body(
         self,

@@ -26,7 +26,7 @@ def _make_adapter() -> DiscordAdapter:
     return object.__new__(DiscordAdapter)
 
 
-async def _sample_async_callable() -> str:
+async def _sample_async_callable() -> str:  # pyright: ignore[reportUnusedFunction]
     return "ok"
 
 

@@ -29,7 +29,6 @@ from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import telegram_policy
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.events import SessionStatusContext
 from teleclaude.core.models import (
     ChannelMetadata,
     MessageMetadata,
@@ -45,7 +44,7 @@ from .telegram.input_handlers import InputHandlersMixin
 from .telegram.lifecycle import LifecycleMixin, TelegramApp
 from .telegram.message_ops import EditContext, MessageOperationsMixin
 from .telegram.private_handlers import PrivateHandlersMixin
-from .ui_adapter import UiAdapter, _OutputUpdateRequest
+from .ui_adapter import UiAdapter
 
 logger = get_logger(__name__)
 
@@ -167,27 +166,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         section = tg.to_dict()
         await db.update_origin_metadata(session.session_id, "telegram", section)
         session.origin_metadata["telegram"] = section
-
-    async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
-        """Update Telegram topic footer with canonical lifecycle status and fire typing on active."""
-        # Base class fires typing indicator on active/accepted
-        await super()._handle_session_status(_event, context)
-
-        session = await db.get_session(context.session_id)
-        if not session:
-            return
-        tg = self._tg(session)
-        if not tg.topic_id:
-            return  # No Telegram topic for this session
-        status_line = self._format_lifecycle_status(context.status)
-        try:
-            await self._send_footer(session, status_line=status_line)
-        except Exception as exc:
-            logger.debug(
-                "Telegram status footer update failed for session %s: %s",
-                context.session_id,
-                exc,
-            )
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Telegram topic."""
@@ -391,25 +369,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
             display_output = truncate_markdown_v2(display_output, self.max_message_size, "")
         return display_output
 
-    def _build_output_metadata(self, _session: Session, _is_truncated: bool) -> MessageMetadata:
-        """Build Telegram output metadata with MarkdownV2 parse_mode."""
-        return MessageMetadata(parse_mode="MarkdownV2")
-
-    def _build_footer_metadata(self, session: Session) -> MessageMetadata:
-        """Build Telegram footer metadata with download button when applicable."""
-        metadata = MessageMetadata(parse_mode=None)
-        if session.native_log_file:
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "📎 Download Agent session",
-                        callback_data=f"download_full:{session.session_id}",
-                    )
-                ]
-            ]
-            metadata.reply_markup = InlineKeyboardMarkup(keyboard)
-        return metadata
-
     async def _pre_handle_user_input(self, session: Session) -> None:
         """UI adapter pre-handler: Delete ephemeral messages from previous interaction.
 
@@ -462,39 +421,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         )
 
     # ==================== Output QoS Integration ====================
-
-    async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
-        self,
-        session: Session,
-        output: str,
-        started_at: float,
-        last_output_changed_at: float,
-        is_final: bool = False,
-        exit_code: int | None = None,
-        render_markdown: bool = False,
-    ) -> str | None:
-        """Route Telegram output update through the QoS scheduler.
-
-        When QoS is off, delegates directly to the parent implementation.
-        When QoS is active, enqueues the payload for paced dispatch and returns None
-        immediately. The scheduler's background loop calls the parent at the computed
-        cadence, storing the output_message_id via _store_output_message_id as usual.
-
-        Final (is_final=True) payloads are placed in the priority queue and dispatched
-        in the next available scheduler slot without bypassing ordering invariants.
-        """
-        return await self._send_output_update_via_qos(
-            self._qos_scheduler,
-            _OutputUpdateRequest(
-                session=session,
-                output=output,
-                started_at=started_at,
-                last_output_changed_at=last_output_changed_at,
-                is_final=is_final,
-                exit_code=exit_code,
-                render_markdown=render_markdown,
-            ),
-        )
 
     async def send_threaded_output(  # type: ignore[override]  # pylint: disable=arguments-differ
         self,

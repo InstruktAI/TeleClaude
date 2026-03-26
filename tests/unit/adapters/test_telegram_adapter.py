@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from teleclaude.adapters.telegram.callback_handlers import CallbackAction
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.core.models import MessageMetadata, Session
 
@@ -204,48 +203,6 @@ def test_build_metadata_for_thread_returns_markdownv2_parse_mode(adapter: Telegr
     meta = adapter._build_metadata_for_thread()
     assert isinstance(meta, MessageMetadata)
     assert meta.parse_mode == "MarkdownV2"
-
-
-# ---------------------------------------------------------------------------
-# _build_output_metadata
-# ---------------------------------------------------------------------------
-
-
-def test_build_output_metadata_returns_markdownv2_parse_mode(adapter: TelegramAdapter) -> None:
-    session = MagicMock()
-    meta = adapter._build_output_metadata(session, False)
-    assert isinstance(meta, MessageMetadata)
-    assert meta.parse_mode == "MarkdownV2"
-
-
-# ---------------------------------------------------------------------------
-# _build_footer_metadata
-# ---------------------------------------------------------------------------
-
-
-def test_build_footer_metadata_has_no_parse_mode(adapter: TelegramAdapter) -> None:
-    session = MagicMock()
-    session.native_log_file = None
-    meta = adapter._build_footer_metadata(session)
-    assert meta.parse_mode is None
-
-
-def test_build_footer_metadata_adds_keyboard_when_log_file_present(adapter: TelegramAdapter) -> None:
-    session = MagicMock()
-    session.native_log_file = "/tmp/session.log"
-    session.session_id = "sess-1"
-    meta = adapter._build_footer_metadata(session)
-    assert meta.reply_markup is not None
-
-
-def test_build_footer_metadata_keyboard_has_download_button(adapter: TelegramAdapter) -> None:
-    session = MagicMock()
-    session.native_log_file = "/tmp/session.log"
-    session.session_id = "sess-42"
-    meta = adapter._build_footer_metadata(session)
-    # Keyboard should contain a download_full callback
-    keyboard_data = str(meta.reply_markup)
-    assert CallbackAction.DOWNLOAD_FULL.value in keyboard_data
 
 
 # ---------------------------------------------------------------------------

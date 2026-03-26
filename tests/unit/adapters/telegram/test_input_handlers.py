@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from unittest.mock import MagicMock
 
@@ -22,7 +23,7 @@ class _StubInputHandlers(InputHandlersMixin):
         self.client = MagicMock()
         self.user_whitelist = {7}
         self._processed_voice_messages: set[str] = set()
-        self._topic_ready_events: dict[int, object] = {}
+        self._topic_ready_events: dict[int, asyncio.Event] = {}
         self._topic_ready_cache: set[int] = set()
         self.sent_messages: list[tuple[int | None, str, str | None, object | None]] = []
 

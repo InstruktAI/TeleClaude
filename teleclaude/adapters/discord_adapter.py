@@ -232,6 +232,9 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
                 session.session_id,
             )
 
+    async def _send_session_badge(self, session: Session) -> None:
+        """No-op — Discord sends thread topper at channel creation."""
+
     # send_threaded_output: inherited from UiAdapter base class.
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:

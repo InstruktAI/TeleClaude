@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from teleclaude.adapters.ui.output_delivery import OutputDeliveryMixin
-from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
+from teleclaude.core.models import MessageMetadata, Session
 
 # ---------------------------------------------------------------------------
 # Minimal concrete host that satisfies the mixin's TYPE_CHECKING contract
@@ -23,7 +23,6 @@ class _FakeHost(OutputDeliveryMixin):
     def __init__(self):
         self.client = MagicMock()
         self._output_message_id: str | None = None
-        self._footer_message_id: str | None = None
         self._last_edit_result = True
         self.send_message = AsyncMock(return_value="msg-new")
         self.edit_message = AsyncMock(return_value=True)
@@ -43,23 +42,8 @@ class _FakeHost(OutputDeliveryMixin):
     async def _clear_output_message_id(self, session: Session) -> None:
         self._output_message_id = None
 
-    async def _get_footer_message_id(self, session: Session) -> str | None:
-        return self._footer_message_id
-
-    async def _store_footer_message_id(self, session: Session, message_id: str) -> None:
-        self._footer_message_id = message_id
-
-    async def _clear_footer_message_id(self, session: Session) -> None:
-        self._footer_message_id = None
-
-    async def _cleanup_footer_if_present(self, session: Session) -> None:
-        self._footer_message_id = None
-
     def _convert_markdown_for_platform(self, text: str) -> str:
         return text
-
-    def _fit_output_to_limit(self, tmux_output: str) -> str:
-        return self.format_output(tmux_output)
 
     def _build_session_id_lines(self, session: Session) -> str:
         return f"📋 tc: {session.session_id}"
@@ -84,23 +68,11 @@ def host() -> _FakeHost:
 
 
 # ---------------------------------------------------------------------------
-# _build_output_metadata and _build_footer_metadata defaults
+# _build_metadata_for_thread
 # ---------------------------------------------------------------------------
 
 
 class TestBuildMetadataDefaults:
-    @pytest.mark.unit
-    def test_output_metadata_returns_message_metadata(self, host: _FakeHost) -> None:
-        session = _make_session()
-        result = host._build_output_metadata(session, False)
-        assert isinstance(result, MessageMetadata)
-
-    @pytest.mark.unit
-    def test_footer_metadata_returns_message_metadata(self, host: _FakeHost) -> None:
-        session = _make_session()
-        result = host._build_footer_metadata(session)
-        assert isinstance(result, MessageMetadata)
-
     @pytest.mark.unit
     def test_build_metadata_for_thread_returns_message_metadata(self, host: _FakeHost) -> None:
         result = host._build_metadata_for_thread()
@@ -194,17 +166,16 @@ class TestSendErrorFeedback:
     @pytest.mark.unit
     async def test_sends_feedback_message_when_session_exists(self, host: _FakeHost) -> None:
         session = _make_session()
-        host.client.send_message = AsyncMock(return_value="msg-err")
+        host.send_message = AsyncMock(return_value="msg-err")
 
         with patch("teleclaude.core.db.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
             await host.send_error_feedback(session.session_id, "something failed")
 
-        host.client.send_message.assert_awaited_once()
-        delivered_session, delivered_text = host.client.send_message.await_args.args
+        host.send_message.assert_awaited_once()
+        delivered_session, delivered_text = host.send_message.await_args.args
         assert delivered_session is session
         assert isinstance(delivered_text, str)
-        assert host.client.send_message.await_args.kwargs["cleanup_trigger"] is CleanupTrigger.NEXT_NOTICE
 
     @pytest.mark.unit
     async def test_missing_session_does_not_raise(self, host: _FakeHost) -> None:
@@ -212,45 +183,3 @@ class TestSendErrorFeedback:
             mock_db.get_session = AsyncMock(return_value=None)
             # Should not raise
             await host.send_error_feedback("nonexistent-sess", "error")
-
-
-# ---------------------------------------------------------------------------
-# _send_footer
-# ---------------------------------------------------------------------------
-
-
-class TestSendFooter:
-    @pytest.mark.unit
-    async def test_footer_always_returns_none(self, host: _FakeHost) -> None:
-        """All adapters use threaded output — footer is suppressed."""
-        session = _make_session()
-        result = await host._send_footer(session)
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
-# Public boundary: send_output_update
-# ---------------------------------------------------------------------------
-
-
-class TestSendOutputUpdate:
-    @pytest.mark.unit
-    async def test_send_output_update_always_returns_none(self, host: _FakeHost) -> None:
-        """All adapters use threaded output — edit-in-place is suppressed."""
-        session = _make_session()
-        result = await host.send_output_update(session, "output", 0.0, 0.0)
-        assert result is None
-
-    @pytest.mark.unit
-    async def test_final_output_returns_none(self, host: _FakeHost) -> None:
-        """Edit-in-place removed; send_output_update is suppressed for all adapters."""
-        session = _make_session()
-        result = await host.send_output_update(session, "output", 0.0, 0.0, is_final=True, exit_code=0)
-        assert result is None
-
-    @pytest.mark.unit
-    async def test_active_output_returns_none(self, host: _FakeHost) -> None:
-        """Edit-in-place removed; send_output_update is suppressed for all adapters."""
-        session = _make_session()
-        result = await host.send_output_update(session, "output", 0.0, 0.0, is_final=False)
-        assert result is None

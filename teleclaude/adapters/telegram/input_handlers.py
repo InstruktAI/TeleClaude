@@ -26,7 +26,7 @@ from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents, UiCommands
-from teleclaude.core.models import CleanupTrigger, MessageMetadata
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
 
@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         _topic_ready_events: dict[int, asyncio.Event]
         _topic_ready_cache: set[int]
         _metadata: Callable[..., MessageMetadata]
+        send_message: Callable[..., Awaitable[str | None]]
         _get_session_from_topic: Callable[[Update], Awaitable[Session | None]]
         _topic_owned_by_this_bot: Callable[[Update, int], bool]
         _delete_orphan_topic: Callable[[int], Awaitable[None]]
@@ -350,11 +351,11 @@ Usage:
         except (OSError, RuntimeError, TypeError, ValueError) as error:
             error_msg = str(error) if str(error).strip() else "Unknown error"
             logger.error("Failed to download voice message: %s", error_msg)
-            await self.client.send_message(
+            host = cast("_InputHandlersHost", self)
+            await host.send_message(
                 session,
                 f"❌ Failed to download voice message: {error_msg}",
                 metadata=MessageMetadata(parse_mode=None),
-                cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
             )
 
     async def _handle_file_attachment(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -427,7 +428,7 @@ Usage:
             logger.error("Failed to download %s: %s", file_type, str(e))
 
             # Send user-friendly error message
-            message_id = await self.client.send_message(
+            message_id = await host.send_message(
                 session,
                 f"❌ Failed to upload {file_type}",
                 metadata=host._metadata(),

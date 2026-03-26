@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,7 +17,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.ui.output_cadence import OutputCadenceLoop
 from teleclaude.adapters.ui.output_delivery import OutputDeliveryMixin
 from teleclaude.adapters.ui.threaded_output import ThreadedOutputMixin
@@ -38,19 +36,6 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
-
-
-@dataclass(frozen=True)
-class _OutputUpdateRequest:
-    """Normalized output-update payload routed through QoS."""
-
-    session: Session
-    output: str
-    started_at: float
-    last_output_changed_at: float
-    is_final: bool = False
-    exit_code: int | None = None
-    render_markdown: bool = False
 
 
 class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
@@ -182,36 +167,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         # Keep in-memory session consistent for subsequent reads within the same request
         session.origin_metadata[self.ADAPTER_KEY] = section
 
-    async def _get_footer_message_id(self, session: Session) -> str | None:
-        """Get threaded footer message id from adapter namespace."""
-        val = self._origin_field(session, "footer_message_id")
-        return str(val) if val else None
-
-    async def _store_footer_message_id(self, session: Session, message_id: str) -> None:
-        """Store threaded footer message id in adapter namespace."""
-        await self._set_origin_field(session, footer_message_id=message_id)
-        logger.debug(
-            "Stored footer_message_id: session=%s message_id=%s",
-            session.session_id,
-            message_id,
-        )
-
-    async def _clear_footer_message_id(self, session: Session) -> None:
-        """Clear threaded footer message id from adapter namespace."""
-        await self._set_origin_field(session, footer_message_id=None)
-        logger.debug("Cleared footer_message_id: session=%s", session.session_id)
-
-    async def _get_badge_sent(self, session: Session) -> bool:
-        """Check if session badge has been sent."""
-        fresh = await db.get_session(session.session_id)
-        if fresh:
-            session.origin_metadata = fresh.origin_metadata
-        return bool(self._origin_field(session, "badge_sent", False))
-
-    async def _set_badge_sent(self, session: Session, value: bool) -> None:
-        """Update session badge sent status."""
-        await self._set_origin_field(session, badge_sent=value)
-
     def _get_char_offset(self, session: Session) -> int:
         """Get adapter-specific char offset."""
         raw = self._origin_field(session, "char_offset", 0)
@@ -221,34 +176,12 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Set adapter-specific char offset."""
         await self._set_origin_field(session, char_offset=value)
 
-    async def _cleanup_footer_if_present(self, session: Session) -> None:
-        """Delete and clear any tracked threaded footer message."""
-        previous_footer_id = await self._get_footer_message_id(session)
-        if not previous_footer_id:
-            return
-        try:
-            await self.delete_message(session, previous_footer_id)
-        except (OSError, RuntimeError, ValueError) as exc:
-            logger.debug(
-                "Best-effort stale threaded footer delete failed: session=%s message_id=%s err=%s",
-                session.session_id,
-                previous_footer_id,
-                exc,
-            )
-        finally:
-            await self._clear_footer_message_id(session)
-
     def drop_pending_output(self, session_id: str) -> int:  # pylint: disable=unused-argument
         """Drop pending QoS output for a session. Override in subclasses with a QoS scheduler.
 
         Returns the number of dropped items (0 by default).
         """
         return 0
-
-    async def move_badge_to_bottom(self, session: Session) -> None:
-        """Move the session badge to the absolute bottom of the thread."""
-        await self._cleanup_footer_if_present(session)
-        await self._send_footer(session)
 
     async def clear_turn_state(self, session: Session) -> None:
         """Reset per-turn output state (output_message_id, char_offset, cadence digest)."""
@@ -261,39 +194,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Trigger an immediate output pull for a session outside the cadence schedule."""
         if self._output_cadence is not None:
             await self._output_cadence.pull_session(session)
-
-    async def _send_output_update_via_qos(
-        self,
-        scheduler: OutputQoSScheduler,
-        request: _OutputUpdateRequest,
-    ) -> str | None:
-        """Send immediately or enqueue an output update through the QoS scheduler."""
-        if scheduler._policy.mode == "off":  # pylint: disable=protected-access
-            return await UiAdapter.send_output_update(
-                self,
-                request.session,
-                request.output,
-                request.started_at,
-                request.last_output_changed_at,
-                request.is_final,
-                request.exit_code,
-                request.render_markdown,
-            )
-
-        async def _dispatch() -> str | None:
-            return await UiAdapter.send_output_update(
-                self,
-                request.session,
-                request.output,
-                request.started_at,
-                request.last_output_changed_at,
-                request.is_final,
-                request.exit_code,
-                request.render_markdown,
-            )
-
-        scheduler.enqueue(request.session.session_id, _dispatch, is_final=request.is_final)
-        return None
 
     async def _clear_output_message_id(self, session: Session) -> None:
         """Clear output_message_id in dedicated DB column.
@@ -331,10 +231,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     def _convert_markdown_for_platform(self, text: str) -> str:
         """Convert markdown to platform-specific format. Override for platform escaping."""
         return text
-
-    def _fit_output_to_limit(self, tmux_output: str) -> str:
-        """Build output message within platform limits. Override for platform-specific fitting."""
-        return self.format_output(tmux_output)
 
     @staticmethod
     def _fits_budget(text: str, max_bytes: int) -> bool:
@@ -447,7 +343,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             if not session:
                 logger.warning("Session %s not found for message", sid)
                 return None
-            return await self.client.send_message(
+            return await self.send_message(
                 session,
                 message,
                 metadata=metadata,
@@ -513,13 +409,18 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
     # ==================== Event Handlers ====================
 
+    async def _send_session_badge(self, session: Session) -> None:
+        """Send session identification badge. Called once on session acceptance."""
+        badge_text = self._build_session_id_lines(session)
+        if badge_text:
+            await self.send_message(session, badge_text, metadata=MessageMetadata(parse_mode=None))
+
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Handle lifecycle status transitions.
 
-        Fires typing indicator on 'accepted' (prompt received), 'active'
-        (session confirmed), and 'active_output' (tool use observed) to keep
-        the indicator alive during long tool-use sequences.
-        Platform adapters override for additional decoration (footer, badges).
+        Fires typing indicator and session badge on 'accepted', typing indicator
+        on 'active' and 'active_output' to keep the indicator alive during long
+        tool-use sequences.
         """
         if context.status in ("active", "accepted", "active_output"):
             session = await db.get_session(context.session_id)
@@ -538,6 +439,14 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                         context.session_id,
                         context.status,
                     )
+                if context.status == "accepted":
+                    try:
+                        await self._send_session_badge(session)
+                    except (OSError, RuntimeError, ValueError):
+                        logger.debug(
+                            "Session badge failed for session %s",
+                            context.session_id,
+                        )
             else:
                 logger.debug(
                     "Typing skipped: session=%s found=%s lifecycle=%s",
@@ -545,20 +454,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                     session is not None,
                     getattr(session, "lifecycle_status", None),
                 )
-
-    @staticmethod
-    def _format_lifecycle_status(status: str) -> str:
-        """Format a lifecycle status string for platform display."""
-        emoji: dict[str, str] = {
-            "accepted": "⏱",
-            "active": "💬",
-            "active_output": "🔄",
-            "completed": "✅",
-            "error": "❌",
-            "closed": "🔒",
-        }
-        icon = emoji.get(status, "❓")
-        return f"{icon} {status.replace('_', ' ')}"
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Handle session_updated event - update channel title when fields change.

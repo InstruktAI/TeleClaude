@@ -30,7 +30,7 @@ def _make_session(
 
 def _make_ui_adapter() -> MagicMock:
     adapter = MagicMock(spec=UiAdapter)
-    adapter.ensure_channel = AsyncMock(side_effect=lambda session: session)
+    adapter.ensure_channel = AsyncMock(side_effect=lambda session: session)  # pyright: ignore[reportUnknownLambdaType]
     adapter.send_error_feedback = AsyncMock()
     adapter.send_message = AsyncMock(return_value="message-id")
     adapter.delete_message = AsyncMock(return_value=True)
@@ -40,7 +40,6 @@ def _make_ui_adapter() -> MagicMock:
     adapter.send_threaded_output = AsyncMock(return_value="thread-msg")
     adapter.update_channel_title = AsyncMock(return_value=True)
     adapter.delete_channel = AsyncMock(return_value=True)
-    adapter.move_badge_to_bottom = AsyncMock()
     adapter.clear_turn_state = AsyncMock()
     adapter.drop_pending_output = MagicMock(return_value=0)
     return adapter
@@ -51,7 +50,7 @@ def _make_base_adapter() -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
-def _display_title() -> object:
+def _display_title() -> object:  # pyright: ignore[reportUnusedFunction]
     with patch(
         "teleclaude.core.adapter_client._channels.get_display_title_for_session",
         AsyncMock(return_value="Session"),
@@ -255,22 +254,7 @@ class TestSendMessage:
         )
 
 
-class TestMoveBadgeAndThreadState:
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_move_badge_to_bottom_calls_each_ui_adapter(self):
-        client = AdapterClient()
-        session = _make_session()
-        telegram = _make_ui_adapter()
-        discord = _make_ui_adapter()
-        client.register_adapter("telegram", telegram)
-        client.register_adapter("discord", discord)
-
-        await client.move_badge_to_bottom(session)
-
-        telegram.move_badge_to_bottom.assert_awaited_once_with(session)
-        discord.move_badge_to_bottom.assert_awaited_once_with(session)
-
+class TestThreadState:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_break_threaded_turn_drops_pending_output_and_clears_turn_state(self):

@@ -44,7 +44,7 @@ class _ConcreteAdapter(UiAdapter):
     async def delete_channel(self, session: Session) -> bool:
         return True
 
-    async def send_message(
+    async def send_message(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         session: Session,
         text: str,
@@ -95,9 +95,6 @@ class _ConcreteAdapter(UiAdapter):
         yield ""  # pragma: no cover
 
     def _metadata(self, **kwargs: Any) -> MessageMetadata:
-        return MessageMetadata()
-
-    def _build_footer_metadata(self, session: Session) -> MessageMetadata:
         return MessageMetadata()
 
 
@@ -248,22 +245,33 @@ class TestGetCharOffset:
 
 
 # ---------------------------------------------------------------------------
-# Public boundary: move_badge_to_bottom
+# Session badge on accepted
 # ---------------------------------------------------------------------------
 
 
-class TestMoveBadgeToBottom:
+class TestSendSessionBadge:
     @pytest.mark.unit
-    async def test_cleans_footer_then_sends_new(self, adapter: _ConcreteAdapter) -> None:
+    async def test_badge_sends_session_id_lines(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        with patch.object(adapter, "send_message", AsyncMock(return_value="badge-msg")) as send_msg:
+            await adapter._send_session_badge(session)
+
+        send_msg.assert_awaited_once()
+        call_args = send_msg.await_args
+        assert call_args is not None
+        assert session.session_id in call_args.args[1]
+        assert call_args.kwargs["metadata"].parse_mode is None
+
+    @pytest.mark.unit
+    async def test_badge_skips_when_no_session_id_lines(self, adapter: _ConcreteAdapter) -> None:
         session = _make_session()
         with (
-            patch.object(adapter, "_cleanup_footer_if_present", AsyncMock()) as cleanup_footer,
-            patch.object(adapter, "_send_footer", AsyncMock(return_value="footer-id")) as send_footer,
+            patch.object(adapter, "_build_session_id_lines", return_value=""),
+            patch.object(adapter, "send_message", AsyncMock()) as send_msg,
         ):
-            await adapter.move_badge_to_bottom(session)
+            await adapter._send_session_badge(session)
 
-        cleanup_footer.assert_awaited_once_with(session)
-        send_footer.assert_awaited_once_with(session)
+        send_msg.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

@@ -187,10 +187,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return message_id
 
-    async def move_badge_to_bottom(self, session: "Session") -> None:
-        """Atomic-like move of the Session Badge to the absolute bottom on all UI adapters."""
-        await self._broadcast_to_ui_adapters(session, "move_badge", lambda adapter, s: adapter.move_badge_to_bottom(s))
-
     async def force_session_output_pull(self, session: "Session") -> None:
         """Trigger immediate output pull on all UI adapters before session termination.
 

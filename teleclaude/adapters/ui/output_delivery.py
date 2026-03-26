@@ -1,7 +1,6 @@
 """Output delivery mixin for UI adapters.
 
-Handles threaded output delivery, footer management, error feedback,
-and output formatting helpers.
+Handles threaded output delivery, error feedback, and edit/send logic.
 """
 # pylint: disable=protected-access
 
@@ -15,7 +14,7 @@ from typing import TYPE_CHECKING, cast
 from instrukt_ai_logging import get_logger
 
 import teleclaude.core.db as core_db
-from teleclaude.core.models import CleanupTrigger, MessageMetadata
+from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
     import asyncio  # pylint: disable=import-outside-toplevel
@@ -29,30 +28,23 @@ if TYPE_CHECKING:
         ADAPTER_KEY: str
         max_message_size: int
         _convert_markdown_for_platform: Callable[[str], str]
-        _fit_output_to_limit: Callable[[str], str]
         _get_output_delivery_lock: Callable[[str], asyncio.Lock]
         _get_output_message_id: Callable[[Session], Awaitable[str | None]]
         _store_output_message_id: Callable[[Session, str], Awaitable[None]]
         _clear_output_message_id: Callable[[Session], Awaitable[None]]
-        _get_footer_message_id: Callable[[Session], Awaitable[str | None]]
-        _store_footer_message_id: Callable[[Session, str], Awaitable[None]]
-        _clear_footer_message_id: Callable[[Session], Awaitable[None]]
-        _cleanup_footer_if_present: Callable[[Session], Awaitable[None]]
         send_message: Callable[..., Awaitable[str | None]]
         edit_message: Callable[..., Awaitable[bool]]
         _metadata: Callable[..., MessageMetadata]
-        _build_session_id_lines: Callable[[Session], str]
 
 
 logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
-class DeliveryOptions:
+class DeliveryOptions:  # pylint: disable=too-few-public-methods
     """Delivery flags shared between the lock wrapper and unlocked implementation."""
 
     multi_message: bool = False
-    status_line: str = ""
     dedupe_by_digest: bool = True
 
 
@@ -63,12 +55,11 @@ def _delivery_options_from_kwargs(delivery_kwargs: MutableMapping[str, object]) 
         return options
     return DeliveryOptions(
         multi_message=bool(delivery_kwargs.get("multi_message", False)),
-        status_line=str(delivery_kwargs.get("status_line", "")),
         dedupe_by_digest=bool(delivery_kwargs.get("dedupe_by_digest", True)),
     )
 
 
-class OutputDeliveryMixin:
+class OutputDeliveryMixin:  # pylint: disable=too-few-public-methods
     """Mixin providing output delivery for UiAdapter.
 
     Required from host class:
@@ -78,15 +69,9 @@ class OutputDeliveryMixin:
     - _get_output_message_id(session) -> str | None
     - _store_output_message_id(session, message_id) -> None
     - _clear_output_message_id(session) -> None
-    - _get_footer_message_id(session) -> str | None
-    - _store_footer_message_id(session, message_id) -> None
-    - _clear_footer_message_id(session) -> None
-    - _cleanup_footer_if_present(session) -> None
     - send_message(session, text, metadata, ...) -> str | None
     - edit_message(session, message_id, text, metadata) -> bool
-    - delete_message(session, message_id) -> bool
     - _convert_markdown_for_platform(text) -> str
-    - _fit_output_to_limit(tmux_output) -> str
     """
 
     client: AdapterClient
@@ -97,20 +82,6 @@ class OutputDeliveryMixin:
         """Build metadata for threaded content messages. Override for platform-specific parse mode."""
         return MessageMetadata()
 
-    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-        self,
-        session: Session,
-        output: str,
-        started_at: float,
-        last_output_changed_at: float,
-        is_final: bool = False,
-        exit_code: int | None = None,
-        render_markdown: bool = False,
-    ) -> str | None:
-        """No-op — all adapters use adapter-owned cadence-driven threaded output."""
-        _ = (session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown)
-        return None
-
     async def _deliver_output(
         self,
         session: Session,
@@ -118,7 +89,7 @@ class OutputDeliveryMixin:
         metadata: MessageMetadata,
         **delivery_kwargs: object,
     ) -> str | None:
-        """Unified output delivery: dedup, edit/send, footer management."""
+        """Unified output delivery: dedup, edit/send."""
         options = _delivery_options_from_kwargs(delivery_kwargs)
         host = cast("_OutputDeliveryHost", self)
         lock = host._get_output_delivery_lock(session.session_id)
@@ -147,17 +118,15 @@ class OutputDeliveryMixin:
         if edited:
             logger.debug("[DELIVER] Edited existing: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
             await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
-            await self._send_footer(session, status_line=options.status_line)
             return await host._get_output_message_id(session)
 
-        # 3. Edit failed → cleanup footer, send new, send footer below
+        # 3. Edit failed → send new
         logger.debug(
             "[DELIVER] Edit failed, sending new: adapter=%s session=%s text_len=%d",
             self.ADAPTER_KEY,
             session.session_id,
             len(text),
         )
-        await host._cleanup_footer_if_present(session)
         new_id = await host.send_message(
             session,
             text,
@@ -173,7 +142,6 @@ class OutputDeliveryMixin:
         if new_id:
             await host._store_output_message_id(session, new_id)
             await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
-            await self._send_footer(session, status_line=options.status_line)
         return new_id
 
     async def _try_edit_output_message(self, session: Session, text: str, metadata: MessageMetadata) -> bool:
@@ -219,57 +187,10 @@ class OutputDeliveryMixin:
             session = await core_db.db.get_session(session_id)
             if session:
                 host = cast("_OutputDeliveryHost", self)
-                await self.client.send_message(
+                await host.send_message(
                     session,
                     f"❌ {error_message}",
                     metadata=host._metadata(),
-                    cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )
         except (AttributeError, RuntimeError, TypeError, ValueError) as error:
             logger.error("Failed to send error feedback for session %s: %s", session_id, error)
-
-    async def _send_footer(self, session: Session, status_line: str = "") -> str | None:
-        """No-op — footer replaced by threaded output with header-embedded session badge."""
-        _ = (session, status_line)
-        return None
-
-    def _build_footer_text(self, session: Session, status_line: str = "") -> str:
-        """Build footer text with session IDs first and status line last."""
-        host = cast("_OutputDeliveryHost", self)
-        parts: list[str] = []
-        session_lines = host._build_session_id_lines(session)
-        if session_lines:
-            parts.append(session_lines)
-        if status_line:
-            parts.append(status_line)
-        return "\n".join(parts) if parts else "📋 session metadata unavailable"
-
-    def format_output(self, tmux_output: str) -> str:
-        """Format tmux output for the output message (no status line — that goes in the footer).
-
-        Override in subclasses for platform-specific escaping.
-        """
-        if tmux_output:
-            return f"```\n{tmux_output}\n```"
-        return ""
-
-    def _build_output_metadata(self, _session: Session, _is_truncated: bool) -> MessageMetadata:
-        """Build platform-specific metadata for output messages.
-
-        Override in subclasses to add inline keyboards, buttons, etc.
-
-        Args:
-            session: Session object
-            is_truncated: Whether output was truncated
-
-        Returns:
-            Platform-specific MessageMetadata
-        """
-        return MessageMetadata()  # Default: no extra metadata
-
-    def _build_footer_metadata(self, _session: Session) -> MessageMetadata:
-        """Build platform-specific metadata for footer messages.
-
-        Override in subclasses to add download buttons, etc.
-        """
-        return MessageMetadata()
