@@ -58,3 +58,4 @@
 - slug: with-session-staleness
 - slug: config-independent-schemas
 - slug: identity-origin-cleanup
+- slug: os-managed-todo-watchers
