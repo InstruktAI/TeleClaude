@@ -75,6 +75,11 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
         super().__init__(client)
         self.client = client
         self.task_registry = task_registry
+        # Discord-specific: refresh thread topper on native_session_id changes.
+        from teleclaude.core.event_bus import event_bus  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.events import TeleClaudeEvents  # pylint: disable=import-outside-toplevel
+
+        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
         self._discord: ModuleType = importlib.import_module("discord")
         configured_token = config.discord.token.strip() if config.discord.token else ""
         self._token = configured_token or os.getenv("DISCORD_BOT_TOKEN", "").strip()
@@ -217,9 +222,7 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     # send_threaded_output: inherited from UiAdapter base class.
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
-        """Handle generic updates plus Discord topper refresh on native ID binding."""
-        await super()._handle_session_updated(_event, context)
-
+        """Refresh Discord thread topper when native session ID is bound."""
         updated_fields = context.updated_fields or {}
         if "native_session_id" not in updated_fields:
             return

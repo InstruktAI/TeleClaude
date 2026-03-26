@@ -23,12 +23,9 @@ from teleclaude.adapters.ui.threaded_output import ThreadedOutputMixin
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents, UiCommands
-from teleclaude.core.models import (
-    MessageMetadata,
-    SessionField,
-)
-from teleclaude.core.session_utils import get_display_title_for_session, get_output_file
+from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.models import MessageMetadata
+from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
 
 if TYPE_CHECKING:
@@ -94,7 +91,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             self._output_cadence = OutputCadenceLoop(self, self.OUTPUT_CADENCE_SECONDS)
 
         # Register event listeners
-        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
         event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
 
     def start_output_cadence(self) -> None:
@@ -459,40 +455,3 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                     session is not None,
                     getattr(session, "lifecycle_status", None),
                 )
-
-    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
-        """Handle session_updated event - update channel title when fields change.
-
-        Handles:
-        - title: Direct title update (from summary) → rebuild display title
-        - project_path/subdir: Path change → rebuild display title
-        - active_agent/thinking_mode: Agent change → rebuild display title
-
-        The database stores only the description; UI adapters construct the
-        full display title (with agent/computer prefix) via get_display_title().
-
-        Args:
-            event: Event type
-            context: Typed session updated context
-        """
-        session_id = context.session_id
-        updated_fields = context.updated_fields or {}
-
-        # Get session (already updated in DB)
-        session = await db.get_session(session_id)
-        if not session:
-            return
-
-        # Rebuild display title when any title-affecting field changes
-        title_affecting_fields = {
-            SessionField.TITLE.value,
-            SessionField.PROJECT_PATH.value,
-            SessionField.SUBDIR.value,
-            "active_agent",
-            "thinking_mode",
-        }
-
-        if updated_fields.keys() & title_affecting_fields:
-            display_title = await get_display_title_for_session(session)
-            await self.client.update_channel_title(session, display_title)
-            logger.info("Synced display title to UiAdapters for session %s: %s", session_id, display_title)

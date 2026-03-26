@@ -53,6 +53,7 @@ class AdapterClient(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         self.task_registry = task_registry
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
         self.is_shutting_down = False
+        self.subscribe_session_events()
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
         self.agent_event_handler: Callable[[AgentEventContext], Awaitable[None]] | None = None
         self.agent_coordinator: AgentCoordinator | None = None

@@ -9,7 +9,9 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, MessageMetadata
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, SessionField
 from teleclaude.core.session_utils import get_display_title_for_session
 
 if TYPE_CHECKING:
@@ -22,6 +24,38 @@ _TERMINAL_SESSION_STATUSES = frozenset({"closing", "closed"})
 
 class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     """Channel provisioning, command handlers, and UI lane operations."""
+
+    _session_updated_subscribed: bool = False
+
+    def subscribe_session_events(self) -> None:
+        """Subscribe to session lifecycle events. Call once after init."""
+        if self._session_updated_subscribed:
+            return
+        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)  # type: ignore[arg-type]
+        self._session_updated_subscribed = True
+
+    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
+        """Handle session_updated — rebuild and sync display title when fields change."""
+        updated_fields = context.updated_fields or {}
+
+        title_affecting_fields = {
+            SessionField.TITLE.value,
+            SessionField.PROJECT_PATH.value,
+            SessionField.SUBDIR.value,
+            "active_agent",
+            "thinking_mode",
+        }
+
+        if not updated_fields.keys() & title_affecting_fields:
+            return
+
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+
+        display_title = await get_display_title_for_session(session)
+        await self.update_channel_title(session, display_title)  # type: ignore[attr-defined]
+        logger.info("Synced display title for session %s: %s", context.session_id, display_title)
 
     if TYPE_CHECKING:
         adapters: dict[str, BaseAdapter]

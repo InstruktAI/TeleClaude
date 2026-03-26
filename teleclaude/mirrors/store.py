@@ -496,7 +496,7 @@ def get_session_context(
 
     try:
         conn_fn = _connect_ro if db is not None else _connect_main_ro
-        with conn_fn(db) if db is not None else conn_fn() as conn:
+        with conn_fn(db) if db is not None else conn_fn() as conn:  # type: ignore[call-arg]
             row = conn.execute(sql, params).fetchone()
     except sqlite3.OperationalError as exc:
         if "no such table" in str(exc).lower():
