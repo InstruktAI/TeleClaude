@@ -626,17 +626,12 @@ def validate_all_todos(project_root: Path) -> list[str]:
         # simple regex to extract slugs from markdown table
         delivered = set(re.findall(r"\|\s*([a-z0-9-]+)\s*\|", delivered_path.read_text(encoding="utf-8")))
 
-    icebox = set()
-    icebox_path = todos_root / "icebox.md"
-    if icebox_path.exists():
-        icebox = set(re.findall(r"\|\s*([a-z0-9-]+)\s*\|", icebox_path.read_text(encoding="utf-8")))
-
     errors = []
     if not todos_root.exists():
         return []
 
     for entry in todos_root.iterdir():
-        if entry.is_dir() and entry.name not in delivered and entry.name not in icebox:
+        if entry.is_dir() and entry.name not in delivered:
             # Skip hidden dirs, __pycache__, and the _icebox subfolder
             if entry.name.startswith(".") or entry.name == "__pycache__" or entry.name == "_icebox":
                 continue

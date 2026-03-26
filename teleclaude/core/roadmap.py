@@ -18,7 +18,7 @@ from teleclaude.core.next_machine.core import load_delivered, load_icebox, load_
 logger = get_logger(__name__)
 
 
-def _slugify_heading(value: str) -> str:
+def _slugify_heading(value: str) -> str:  # pyright: ignore[reportUnusedFunction]
     """Normalize a todo title heading into a filesystem-style slug."""
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
@@ -26,7 +26,6 @@ def _slugify_heading(value: str) -> str:
 def _load_icebox_data(
     todos_root: Path,
     icebox_root: Path,
-    icebox_path: Path,
 ) -> tuple[list[RoadmapEntry], set[str], set[str]]:
     icebox_entries: list[RoadmapEntry] = []
     icebox_slugs: set[str] = set()
@@ -36,25 +35,6 @@ def _load_icebox_data(
         icebox_entries = load_icebox(str(todos_root.parent))
         icebox_slugs = {entry.slug for entry in icebox_entries}
         icebox_groups = {entry.group for entry in icebox_entries if entry.group}
-        return icebox_entries, icebox_slugs, icebox_groups
-    if not icebox_path.exists():
-        return icebox_entries, icebox_slugs, icebox_groups
-
-    heading_pattern = re.compile(r"^\s*#+\s+(.*)\s*$")
-    table_pattern = re.compile(r"\|\s*([a-z0-9-]+)\s*\|")
-    try:
-        for line in icebox_path.read_text(encoding="utf-8").splitlines():
-            heading_match = heading_pattern.match(line)
-            if heading_match:
-                heading = heading_match.group(1).strip()
-                if heading and heading.lower() != "icebox":
-                    icebox_slugs.add(_slugify_heading(heading))
-                continue
-            table_match = table_pattern.search(line)
-            if table_match and table_match.group(1) != "slug":
-                icebox_slugs.add(table_match.group(1))
-    except OSError:
-        pass
     return icebox_entries, icebox_slugs, icebox_groups
 
 
@@ -450,7 +430,6 @@ def assemble_roadmap(
 
     todos_root = Path(project_path) / "todos"
     icebox_root = todos_root / "_icebox"
-    icebox_path = todos_root / "icebox.md"  # Legacy fallback
 
     todos: list[TodoInfo] = []
     seen_slugs: set[str] = set()
@@ -458,7 +437,7 @@ def assemble_roadmap(
     if not todos_root.exists():
         return []
 
-    icebox_entries, icebox_slugs, icebox_groups = _load_icebox_data(todos_root, icebox_root, icebox_path)
+    icebox_entries, icebox_slugs, icebox_groups = _load_icebox_data(todos_root, icebox_root)
 
     # 1. Load active roadmap items
     if not icebox_only and not delivered_only:

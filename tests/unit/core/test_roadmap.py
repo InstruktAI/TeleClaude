@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -14,7 +15,14 @@ from teleclaude.core.models import TodoInfo
 from teleclaude.core.roadmap import _derive_phase_status, _slugify_heading, assemble_roadmap
 
 
-def _scaffold_todo(tmp_path, slug, *, roadmap=True, state_yaml="", files=None):
+def _scaffold_todo(
+    tmp_path: Path,
+    slug: str,
+    *,
+    roadmap: bool = True,
+    state_yaml: str = "",
+    files: list[str] | None = None,
+) -> Path:
     """Create a minimal todo structure on the main branch."""
     todos = tmp_path / "todos"
     todos.mkdir(exist_ok=True)
@@ -30,7 +38,13 @@ def _scaffold_todo(tmp_path, slug, *, roadmap=True, state_yaml="", files=None):
     return slug_dir
 
 
-def _scaffold_worktree_todo(tmp_path, slug, *, state_yaml="", files=None):
+def _scaffold_worktree_todo(
+    tmp_path: Path,
+    slug: str,
+    *,
+    state_yaml: str = "",
+    files: list[str] | None = None,
+) -> Path:
     """Create a todo structure in the worktree for the given slug."""
     wt_todo = tmp_path / WORKTREE_DIR / slug / "todos" / slug
     wt_todo.mkdir(parents=True, exist_ok=True)
@@ -43,18 +57,18 @@ def _scaffold_worktree_todo(tmp_path, slug, *, state_yaml="", files=None):
 
 class TestAssembleRoadmap:
     @pytest.mark.unit
-    def test_missing_todos_dir_returns_empty(self, tmp_path):
+    def test_missing_todos_dir_returns_empty(self, tmp_path: Path) -> None:
         result = assemble_roadmap(str(tmp_path))
         assert result == []
 
     @pytest.mark.unit
-    def test_empty_todos_dir_returns_empty(self, tmp_path):
+    def test_empty_todos_dir_returns_empty(self, tmp_path: Path) -> None:
         (tmp_path / "todos").mkdir()
         result = assemble_roadmap(str(tmp_path))
         assert result == []
 
     @pytest.mark.unit
-    def test_roadmap_with_one_entry_returns_one_item(self, tmp_path):
+    def test_roadmap_with_one_entry_returns_one_item(self, tmp_path: Path) -> None:
         todos = tmp_path / "todos"
         todos.mkdir()
         (todos / "roadmap.yaml").write_text("- slug: my-feature\n  description: My feature\n")
@@ -70,7 +84,7 @@ class TestWorktreeResolution:
     """Worktree todo directories take precedence over main branch."""
 
     @pytest.mark.unit
-    def test_worktree_files_win_over_main(self, tmp_path):
+    def test_worktree_files_win_over_main(self, tmp_path: Path) -> None:
         _scaffold_todo(tmp_path, "feat", files=["input.md", "state.yaml"])
         _scaffold_worktree_todo(tmp_path, "feat", files=["input.md", "requirements.md", "implementation-plan.md"])
 
@@ -83,7 +97,7 @@ class TestWorktreeResolution:
         assert todo.has_impl_plan is True
 
     @pytest.mark.unit
-    def test_worktree_state_wins_over_main(self, tmp_path):
+    def test_worktree_state_wins_over_main(self, tmp_path: Path) -> None:
         main_state = textwrap.dedent("""\
             schema_version: 2
             phase: pending
@@ -101,7 +115,7 @@ class TestWorktreeResolution:
         assert result[0].prepare_phase == "plan_drafting"
 
     @pytest.mark.unit
-    def test_todo_path_points_to_worktree_when_exists(self, tmp_path):
+    def test_todo_path_points_to_worktree_when_exists(self, tmp_path: Path) -> None:
         _scaffold_todo(tmp_path, "feat")
         wt_dir = _scaffold_worktree_todo(tmp_path, "feat")
 
@@ -109,14 +123,14 @@ class TestWorktreeResolution:
         assert result[0].todo_path == str(wt_dir)
 
     @pytest.mark.unit
-    def test_todo_path_points_to_main_when_no_worktree(self, tmp_path):
+    def test_todo_path_points_to_main_when_no_worktree(self, tmp_path: Path) -> None:
         main_dir = _scaffold_todo(tmp_path, "feat")
 
         result = assemble_roadmap(str(tmp_path))
         assert result[0].todo_path == str(main_dir)
 
     @pytest.mark.unit
-    def test_main_used_when_no_worktree_exists(self, tmp_path):
+    def test_main_used_when_no_worktree_exists(self, tmp_path: Path) -> None:
         _scaffold_todo(tmp_path, "feat", files=["input.md", "requirements.md"])
 
         result = assemble_roadmap(str(tmp_path))
@@ -125,7 +139,7 @@ class TestWorktreeResolution:
         assert todo.has_requirements is True
 
     @pytest.mark.unit
-    def test_worktree_has_requirements_false_when_main_has_it(self, tmp_path):
+    def test_worktree_has_requirements_false_when_main_has_it(self, tmp_path: Path) -> None:
         """Worktree wins even when it lacks files that main has."""
         _scaffold_todo(tmp_path, "feat", files=["requirements.md"])
         _scaffold_worktree_todo(tmp_path, "feat", files=["input.md"])
