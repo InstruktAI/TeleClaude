@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: prepare-file-check-cwd
+  date: '2026-03-26'
+  commit: ea1e7f2a6a71
 - slug: output-delivery-redesign
   date: '2026-03-25'
   commit: 1c4925323b14
