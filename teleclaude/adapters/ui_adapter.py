@@ -57,6 +57,10 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     # Optional command handler overrides: command -> handler method name
     COMMAND_HANDLER_OVERRIDES: dict[str, str] = {}
 
+    # Platform API property name for the message ID (e.g. "id" for Discord/WhatsApp,
+    # "message_id" for Telegram). Used when constructing platform API calls.
+    OUTPUT_MESSAGE_ID_FIELD: str = "id"
+
     # Platform message size limit (subclasses can override)
     max_message_size: int = UI_MESSAGE_MAX_CHARS
     # Keep small Markdown entities (e.g. links) atomic across chunk boundaries.
@@ -128,29 +132,27 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         raise error
 
     async def _get_output_message_id(self, session: Session) -> str | None:
-        """Get output_message_id from top-level DB column.
-
-        Always re-reads from DB to prevent stale in-memory values when
-        concurrent UI lanes deliver output for the same session.
-
-        Returns:
-            message_id or None if not set
-        """
+        """Get output message ID from this adapter's origin_metadata section."""
         fresh = await db.get_session(session.session_id)
         if fresh:
-            session.output_message_id = fresh.output_message_id
-        return session.output_message_id
+            session.origin_metadata = fresh.origin_metadata
+        raw = self._origin_field(session, "output_message_id")
+        result = str(raw) if raw else None
+        logger.debug(
+            "_get_output_message_id: adapter=%s session=%s raw=%s section_keys=%s",
+            self.ADAPTER_KEY,
+            session.session_id,
+            raw,
+            list(session.get_origin_section(self.ADAPTER_KEY).keys()),
+        )
+        return result
 
     async def _store_output_message_id(self, session: Session, message_id: str) -> None:
-        """Store output_message_id in dedicated DB column.
-
-        Uses atomic column write (not adapter_metadata blob) to prevent
-        concurrent adapter_metadata writes from clobbering the value.
-        """
-        await db.set_output_message_id(session.session_id, message_id)
-        session.output_message_id = message_id  # Keep in-memory session consistent
+        """Store output message ID in this adapter's origin_metadata section."""
+        await self._set_origin_field(session, output_message_id=message_id)
         logger.debug(
-            "Stored output_message_id: session=%s message_id=%s",
+            "Stored output_message_id: adapter=%s session=%s message_id=%s",
+            self.ADAPTER_KEY,
             session.session_id,
             message_id,
         )
@@ -163,6 +165,14 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Write fields to this adapter's origin_metadata section (merge-write)."""
         section = session.get_origin_section(self.ADAPTER_KEY)
         section.update(fields)
+        if "output_message_id" in fields:
+            logger.debug(
+                "_set_origin_field WRITE: adapter=%s session=%s output_message_id=%s section_keys=%s",
+                self.ADAPTER_KEY,
+                session.session_id,
+                fields.get("output_message_id"),
+                list(section.keys()),
+            )
         await db.update_origin_metadata(session.session_id, self.ADAPTER_KEY, section)
         # Keep in-memory session consistent for subsequent reads within the same request
         session.origin_metadata[self.ADAPTER_KEY] = section
@@ -184,10 +194,15 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         return 0
 
     async def clear_turn_state(self, session: Session) -> None:
-        """Reset per-turn output state (output_message_id, char_offset, cadence digest)."""
+        """Reset per-turn output state (char_offset, cadence digest).
+
+        Clears char_offset and render digest so the next render starts fresh.
+        Does NOT clear output_message_id — the existing message is reused
+        (edited with new content). New messages are created by the overflow
+        mechanism when content exceeds max_message_size.
+        """
         if self._output_cadence is not None:
             self._output_cadence.clear_session(session.session_id)
-        await self._clear_output_message_id(session)
         await self._set_char_offset(session, 0)
 
     async def force_output_pull(self, session: Session) -> None:
@@ -196,17 +211,9 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             await self._output_cadence.pull_session(session)
 
     async def _clear_output_message_id(self, session: Session) -> None:
-        """Clear output_message_id in dedicated DB column.
-
-        Uses atomic column write (not adapter_metadata blob) to prevent
-        concurrent adapter_metadata writes from clobbering the value.
-        """
-        await db.set_output_message_id(session.session_id, None)
-        session.output_message_id = None  # Keep in-memory session consistent
-        logger.debug(
-            "Cleared output_message_id: session=%s",
-            session.session_id,
-        )
+        """Clear output message ID in this adapter's origin_metadata section."""
+        await self._set_origin_field(session, output_message_id=None)
+        logger.debug("Cleared output_message_id: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
 
     # === Command Registration ===
 

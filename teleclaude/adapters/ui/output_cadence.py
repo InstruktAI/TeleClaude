@@ -145,11 +145,15 @@ class OutputCadenceLoop:
                 _, user_ts = user_msg
                 if user_ts and (turn_cursor is None or user_ts > turn_cursor):
                     logger.info(
-                        "Turn break detected in transcript for %s on %s",
+                        "Turn break: session=%s adapter=%s user_ts=%s cursor=%s cursor_is_none=%s",
                         session_id,
                         self._adapter.ADAPTER_KEY,
+                        user_ts.isoformat() if user_ts else "None",
+                        turn_cursor.isoformat() if turn_cursor else "None",
+                        turn_cursor is None,
                     )
                     await self._adapter.clear_turn_state(session)
+                    await self._adapter._clear_output_message_id(session)  # pylint: disable=protected-access
                     await db.update_session(session_id, last_tool_done_at=user_ts.isoformat())
                     turn_cursor = user_ts
                     # Refresh session after state change.

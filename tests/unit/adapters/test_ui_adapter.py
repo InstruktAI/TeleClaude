@@ -281,7 +281,7 @@ class TestSendSessionBadge:
 
 class TestClearTurnState:
     @pytest.mark.unit
-    async def test_clears_output_message_id_and_resets_char_offset(self, adapter: _ConcreteAdapter) -> None:
+    async def test_resets_char_offset_without_clearing_output_message_id(self, adapter: _ConcreteAdapter) -> None:
         session = _make_session()
         with (
             patch.object(adapter, "_clear_output_message_id", AsyncMock()) as clear_output,
@@ -289,5 +289,5 @@ class TestClearTurnState:
         ):
             await adapter.clear_turn_state(session)
 
-        clear_output.assert_awaited_once_with(session)
+        clear_output.assert_not_awaited()
         set_char_offset.assert_awaited_once_with(session, 0)

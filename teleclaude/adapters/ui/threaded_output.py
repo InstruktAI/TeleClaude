@@ -221,7 +221,6 @@ class ThreadedOutputMixin:
         fresh = await core_db.db.get_session(session.session_id)
         if fresh:
             session.origin_metadata = fresh.origin_metadata
-            session.output_message_id = fresh.output_message_id
             session.last_output_digest = fresh.last_output_digest
 
     async def _normalize_char_offset(self, session: Session, text: str) -> int:

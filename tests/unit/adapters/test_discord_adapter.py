@@ -49,43 +49,31 @@ async def test_get_enabled_agents_returns_agent_names() -> None:
 
 
 @pytest.mark.asyncio
-async def test_store_and_clear_output_message_id_update_origin_metadata() -> None:
+async def test_store_and_clear_output_message_id_use_origin_metadata() -> None:
     adapter = _make_adapter()
     session = _make_session()
 
-    with (
-        patch("teleclaude.adapters.discord_adapter.db") as mock_discord_db,
-        patch("teleclaude.adapters.ui_adapter.db") as mock_ui_db,
-    ):
-        mock_discord_db.update_origin_metadata = AsyncMock()
-        mock_ui_db.update_origin_metadata = AsyncMock()
+    with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
+        mock_db.update_origin_metadata = AsyncMock()
 
         await adapter._store_output_message_id(session, "discord-message-1")
-        assert mock_discord_db.update_origin_metadata.await_count == 1
+        assert mock_db.update_origin_metadata.await_count == 1
 
-        # _clear uses _set_origin_field (from UiAdapter) which calls ui_adapter.db
         await adapter._clear_output_message_id(session)
-        assert mock_ui_db.update_origin_metadata.await_count == 1
+        assert mock_db.update_origin_metadata.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_get_output_message_id_prefers_fresh_db_session_before_fallback() -> None:
+async def test_get_output_message_id_reads_from_origin_metadata() -> None:
     adapter = _make_adapter()
-    stale_session = _make_session(output_message_id="stale-message")
+    session = _make_session()
+    session.origin_metadata["discord"] = {"output_message_id": "fresh-discord-msg"}
 
-    fresh_session = _make_session(output_message_id="fresh-message")
+    fresh_session = _make_session()
+    fresh_session.origin_metadata["discord"] = {"output_message_id": "fresh-discord-msg"}
 
-    with patch("teleclaude.adapters.discord_adapter.db") as mock_db:
+    with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=fresh_session)
+        result = await adapter._get_output_message_id(session)
 
-        fresh_result = await adapter._get_output_message_id(stale_session)
-
-    assert fresh_result == "fresh-message"
-    mock_db.get_session.assert_awaited_once_with("session-1")
-
-    with patch("teleclaude.adapters.discord_adapter.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=None)
-
-        fallback_result = await adapter._get_output_message_id(stale_session)
-
-    assert fallback_result == "stale-message"
+    assert result == "fresh-discord-msg"

@@ -62,6 +62,8 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
+    OUTPUT_MESSAGE_ID_FIELD = "message_id"
+
     COMMAND_HANDLER_OVERRIDES = {
         "agent_resume": "_handle_agent_resume_command",
         "cancel": "_handle_cancel_command",
@@ -145,23 +147,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
     def _tg(session: Session) -> TelegramAdapterMetadata:
         """Read Telegram section from origin_metadata."""
         return TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
-
-    async def _get_output_message_id(self, session: Session) -> str | None:
-        fresh = await db.get_session(session.session_id)
-        if fresh:
-            return self._tg(fresh).output_message_id
-        return self._tg(session).output_message_id
-
-    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
-        tg = self._tg(session)
-        tg.output_message_id = message_id
-        section = tg.to_dict()
-        await db.update_origin_metadata(session.session_id, "telegram", section)
-        session.origin_metadata["telegram"] = section
-        logger.debug("Stored telegram output_message_id: session=%s message_id=%s", session.session_id, message_id)
-
-    async def _clear_output_message_id(self, session: Session) -> None:
-        await self._set_origin_field(session, output_message_id=None)
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Telegram topic."""

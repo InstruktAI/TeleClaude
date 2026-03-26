@@ -66,6 +66,7 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     """Discord bot adapter using discord.py."""
 
     ADAPTER_KEY = "discord"
+    OUTPUT_MESSAGE_ID_FIELD = "id"
     OUTPUT_CADENCE_SECONDS = 1.0
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
@@ -186,24 +187,6 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     def _dc(session: Session) -> DiscordAdapterMetadata:
         """Read Discord section from origin_metadata."""
         return DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
-
-    async def _get_output_message_id(self, session: Session) -> str | None:
-        fresh = await db.get_session(session.session_id)
-        if fresh:
-            return self._dc(fresh).output_message_id
-        return self._dc(session).output_message_id
-
-    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
-        dc = self._dc(session)
-        dc.output_message_id = message_id
-        section = dc.to_dict()
-        await db.update_origin_metadata(session.session_id, "discord", section)
-        session.origin_metadata["discord"] = section
-        logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id, message_id)
-
-    async def _clear_output_message_id(self, session: Session) -> None:
-        await self._set_origin_field(session, output_message_id=None)
-        logger.debug("Cleared discord output_message_id: session=%s", session.session_id)
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Discord thread."""

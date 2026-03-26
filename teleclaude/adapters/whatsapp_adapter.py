@@ -29,6 +29,7 @@ class WhatsAppAdapter(UiAdapter):
     """UI adapter for WhatsApp Business Cloud API."""
 
     ADAPTER_KEY = "whatsapp"
+    OUTPUT_MESSAGE_ID_FIELD = "id"
     max_message_size = 4096
     _CAPTION_MAX_CHARS = 1024
     _MAX_429_RETRIES = 3
@@ -102,26 +103,6 @@ class WhatsAppAdapter(UiAdapter):
         if session.human_role != "customer":
             return session
         return session
-
-    async def _get_output_message_id(self, session: Session) -> str | None:
-        fresh = await db.get_session(session.session_id)
-        if fresh:
-            return self._wa(fresh).output_message_id
-        return self._wa(session).output_message_id
-
-    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
-        wa = self._wa(session)
-        wa.output_message_id = message_id
-        section = wa.to_dict()
-        await db.update_origin_metadata(session.session_id, "whatsapp", section)
-        session.origin_metadata["whatsapp"] = section
-
-    async def _clear_output_message_id(self, session: Session) -> None:
-        wa = self._wa(session)
-        wa.output_message_id = None
-        section = wa.to_dict()
-        await db.update_origin_metadata(session.session_id, "whatsapp", section)
-        session.origin_metadata["whatsapp"] = section
 
     async def _post_json(
         self,
@@ -374,6 +355,7 @@ class WhatsAppAdapter(UiAdapter):
         return MessageMetadata(parse_mode=None)
 
     def format_output(self, tmux_output: str) -> str:
+        """Format output with WhatsApp markdown conventions."""
         return self._convert_markdown_for_platform(tmux_output)
 
     async def send_typing_indicator(self, session: Session) -> None:
