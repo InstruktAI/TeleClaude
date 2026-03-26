@@ -153,6 +153,9 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
         if not principal and parent_session.principal:
             principal = parent_session.principal
 
+    if not human_role and not cmd_system_role:
+        raise ValueError(f"Session creation failed: no identity resolved and no system_role (origin={origin})")
+
     # System-role sessions (workers, orchestrators, integrators) are trusted
     # internal principals — they bypass help-desk routing entirely.
     system_role = cmd_system_role

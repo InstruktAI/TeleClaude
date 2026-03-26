@@ -266,7 +266,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
                         platform_user_id=normalized_phone,
                     )
 
-        return IdentityContext(person_role=HUMAN_ROLE_CUSTOMER)
+        return IdentityContext()
 
 
 def derive_identity_key(origin_metadata: dict[str, object]) -> str | None:  # guard: loose-dict
