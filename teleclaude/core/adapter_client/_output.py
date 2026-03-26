@@ -270,7 +270,11 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         adapter_type,
                     )
 
-        await self._broadcast_to_ui_adapters(session, "break_turn", lambda adapter, s: adapter.clear_turn_state(s))
+        async def _break(adapter: UiAdapter, s: "Session") -> None:
+            await adapter.clear_turn_state(s)
+            await adapter._clear_output_message_id(s)  # pylint: disable=protected-access
+
+        await self._broadcast_to_ui_adapters(session, "break_turn", _break)
 
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in all UI adapters.
