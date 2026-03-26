@@ -194,15 +194,13 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         return 0
 
     async def clear_turn_state(self, session: Session) -> None:
-        """Reset per-turn output state (char_offset, cadence digest).
+        """Reset per-turn output state (char_offset only).
 
-        Clears char_offset and render digest so the next render starts fresh.
-        Does NOT clear output_message_id — the existing message is reused
-        (edited with new content). New messages are created by the overflow
-        mechanism when content exceeds max_message_size.
+        Does NOT clear delivery timestamp — that persists in origin_metadata
+        and prevents re-sending content that was already delivered.
+        Does NOT clear output_message_id — cleared separately by
+        break_threaded_turn or the cadence loop's turn break.
         """
-        if self._output_cadence is not None:
-            self._output_cadence.clear_session(session.session_id)
         await self._set_char_offset(session, 0)
 
     async def force_output_pull(self, session: Session) -> None:

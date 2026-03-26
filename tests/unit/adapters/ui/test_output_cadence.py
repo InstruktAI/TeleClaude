@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from hashlib import sha256
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,6 +25,10 @@ class _FakeAdapter:
         self.ensure_channel = AsyncMock(side_effect=lambda session: session)  # pyright: ignore[reportUnknownLambdaType]
         self.send_message = AsyncMock(return_value="reflected-msg")
         self._clear_output_message_id = AsyncMock()
+        self._set_origin_field = AsyncMock()
+
+    def _origin_field(self, session: Session, field: str, default: object = None) -> object:
+        return session.get_origin_section(self.ADAPTER_KEY).get(field, default)
 
 
 def _make_session(**kwargs: object) -> Session:
@@ -109,21 +112,21 @@ class TestPerSessionLocking:
 # ---------------------------------------------------------------------------
 
 
-class TestContentHashDedup:
+class TestDeliveryTimestampDedup:
     @pytest.mark.unit
-    async def test_skips_send_when_digest_unchanged(
+    async def test_skips_send_when_already_delivered(
         self, cadence_loop: OutputCadenceLoop, adapter: _FakeAdapter
     ) -> None:
-        message = "same content"
-        digest = sha256(message.encode("utf-8")).hexdigest()
+        last_ts = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
         session = _make_session(native_log_file="/tmp/log.jsonl", active_agent="claude")
-        cadence_loop._render_digests[session.session_id] = digest
+        # Simulate already delivered at this timestamp via origin_metadata.
+        session.origin_metadata["discord"] = {"last_delivered_at": last_ts.isoformat()}
 
         with (
             patch("teleclaude.adapters.ui.output_cadence.db") as mock_db,
             patch("teleclaude.adapters.ui.output_cadence.get_assistant_messages_since", return_value=["msg"]),
             patch("teleclaude.adapters.ui.output_cadence.count_renderable_assistant_blocks", return_value=1),
-            patch("teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=(message, None)),
+            patch("teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=("content", last_ts)),
             patch(
                 "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
                 new=AsyncMock(return_value=False),
@@ -135,26 +138,31 @@ class TestContentHashDedup:
         adapter.send_threaded_output.assert_not_called()
 
     @pytest.mark.unit
-    async def test_sends_when_digest_changes(self, cadence_loop: OutputCadenceLoop, adapter: _FakeAdapter) -> None:
+    async def test_sends_when_newer_content_available(
+        self, cadence_loop: OutputCadenceLoop, adapter: _FakeAdapter
+    ) -> None:
+        old_ts = datetime(2024, 6, 1, 11, 0, 0, tzinfo=UTC)
+        new_ts = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
         session = _make_session(native_log_file="/tmp/log.jsonl", active_agent="claude")
-        new_message = "new content"
-        cadence_loop._render_digests[session.session_id] = "stale-digest"
+        session.origin_metadata["discord"] = {"last_delivered_at": old_ts.isoformat()}
 
         with (
             patch("teleclaude.adapters.ui.output_cadence.db") as mock_db,
             patch("teleclaude.adapters.ui.output_cadence.get_assistant_messages_since", return_value=["msg"]),
             patch("teleclaude.adapters.ui.output_cadence.count_renderable_assistant_blocks", return_value=1),
-            patch("teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=(new_message, None)),
+            patch(
+                "teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=("new content", new_ts)
+            ),
             patch(
                 "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
                 new=AsyncMock(return_value=False),
             ),
         ):
             mock_db.get_sessions_active_since = AsyncMock(return_value=[session])
+            mock_db.update_origin_metadata = AsyncMock()
             await cadence_loop._tick()
 
         adapter.send_threaded_output.assert_called_once()
-        assert cadence_loop._render_digests[session.session_id] == sha256(new_message.encode()).hexdigest()
 
     @pytest.mark.unit
     async def test_skips_send_when_no_assistant_messages(
@@ -269,6 +277,7 @@ class TestCursorUpdate:
             mock_db.get_sessions_active_since = AsyncMock(return_value=[session])
             mock_db.get_session = AsyncMock(return_value=fresh_session)
             mock_db.update_session = AsyncMock()
+            mock_db.update_origin_metadata = AsyncMock()
             await cadence_loop._tick()
 
         mock_db.update_session.assert_called_once()

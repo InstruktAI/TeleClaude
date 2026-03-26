@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -43,8 +42,6 @@ class OutputCadenceLoop:
         self._adapter = adapter
         self._interval = interval_seconds
         self._task: asyncio.Task[None] | None = None
-        # Per-session render digest for deduplication.
-        self._render_digests: dict[str, str] = {}
         # Per-session output lock to prevent concurrent renders.
         self._locks: dict[str, asyncio.Lock] = {}
 
@@ -63,10 +60,6 @@ class OutputCadenceLoop:
             except asyncio.CancelledError:
                 pass
             self._task = None
-
-    def clear_session(self, session_id: str) -> None:
-        """Clear cached state for a session (e.g. on turn break)."""
-        self._render_digests.pop(session_id, None)
 
     async def pull_session(self, session: Session) -> None:
         """Force an immediate output pull for one session outside the cadence schedule."""
@@ -224,13 +217,17 @@ class OutputCadenceLoop:
         else:
             message, last_ts = render_clean_agent_output(transcript_path, agent_name, since_timestamp=turn_cursor)
 
-        if not message:
+        if not message or not last_ts:
             return
 
-        # Deduplicate by content hash.
-        display_digest = sha256(message.encode("utf-8")).hexdigest()
-        if self._render_digests.get(session_id) == display_digest:
-            return
+        # Deduplicate by delivery timestamp (persisted in origin_metadata).
+        last_delivered_raw = self._adapter._origin_field(session, "last_delivered_at")  # pylint: disable=protected-access
+        if isinstance(last_delivered_raw, str):
+            from teleclaude.utils.transcript._utils import _parse_timestamp  # pylint: disable=import-outside-toplevel
+
+            last_delivered = _parse_timestamp(last_delivered_raw)
+            if last_delivered and last_ts <= last_delivered:
+                return
 
         # Send via adapter's threaded output method.
         logger.debug(
@@ -241,7 +238,7 @@ class OutputCadenceLoop:
             is_multi,
         )
         await self._adapter.send_threaded_output(session, message, multi_message=is_multi)
-        self._render_digests[session_id] = display_digest
+        await self._adapter._set_origin_field(session, last_delivered_at=last_ts.isoformat())  # pylint: disable=protected-access
 
         # Update cursor if no adapter is actively tracking an output message for this session.
         if last_ts:
