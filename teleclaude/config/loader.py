@@ -1,12 +1,13 @@
 """Configuration file loading and validation."""
 
+import os
 from pathlib import Path
 
 import yaml
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
-from teleclaude.config.schema import GlobalConfig, PersonConfig, ProjectConfig
+from teleclaude.config.schema import AppConfig, GlobalConfig, PersonConfig, ProjectConfig
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -64,6 +65,22 @@ def load_project_config(path: Path) -> ProjectConfig:
     return load_config(path, ProjectConfig)
 
 
+def save_project_config(path: Path, config: ProjectConfig) -> None:
+    """Save project config to disk using atomic write (temp + rename)."""
+    data = config.model_dump(mode="json", exclude_defaults=True)
+    tmp_path = path.with_suffix(".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
+
+
 def load_global_config(path: Path | None = None) -> GlobalConfig:
     """Load global-level configuration."""
     if path is None:
@@ -74,6 +91,33 @@ def load_global_config(path: Path | None = None) -> GlobalConfig:
 def load_person_config(path: Path) -> PersonConfig:
     """Load per-person configuration."""
     return load_config(path, PersonConfig)
+
+
+def _is_person_workspace(workspace: Path) -> bool:
+    """Check if workspace is a person directory under <base>/.teleclaude/people/."""
+    return workspace.parent.name == "people" and workspace.parent.parent.name == ".teleclaude"
+
+
+def load_app_config(workspace: Path) -> AppConfig:
+    """Load composed app config for the given workspace.
+
+    Determines workspace type (person vs. project) and loads the appropriate
+    config layers. No fallback for unrecognized paths — returns global-only.
+    """
+    global_config = load_global_config()
+    person_config: PersonConfig | None = None
+    project_config: ProjectConfig | None = None
+
+    if _is_person_workspace(workspace):
+        teleclaude_yml = workspace / "teleclaude.yml"
+        if teleclaude_yml.exists():
+            person_config = load_person_config(teleclaude_yml)
+    else:
+        teleclaude_yml = workspace / "teleclaude.yml"
+        if teleclaude_yml.exists():
+            project_config = load_project_config(teleclaude_yml)
+
+    return AppConfig(global_=global_config, project=project_config, person=person_config)
 
 
 def validate_config(path: Path, level: str) -> BaseModel:

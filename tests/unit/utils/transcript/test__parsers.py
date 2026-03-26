@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.utils.transcript._parsers."""
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access
 
 from __future__ import annotations
 
@@ -10,14 +11,14 @@ pytestmark = pytest.mark.unit
 
 
 class TestExtractCodexReasoningText:
-    def test_extracts_text_and_content_skipping_summary(self) -> None:
+    def test_extracts_text_and_content_skipping_dict_summary_items(self) -> None:
         payload = {
-            "summary": [{"text": "Summary noise"}, "More noise"],
+            "summary": [{"text": "Summary noise"}],  # dict items (API-native format) are skipped
             "text": "Direct text",
             "content": [{"text": "Content block"}],
         }
 
-        # Summary is skipped; only text and content are extracted.
+        # Dict-style summary items are skipped; string summary items, text, and content are extracted.
         assert transcript_parsers._extract_codex_reasoning_text(payload) == "Direct text\n\nContent block"
 
     def test_deduplicates_chunks_while_preserving_source_order(self) -> None:

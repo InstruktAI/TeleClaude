@@ -84,7 +84,7 @@ def _ensure_repo(repo_url: str, repo_path: Path) -> tuple[list[str], list[str]]:
 
 def _load_checkout_root() -> Path:
     config = load_global_config()
-    root = config.git.checkout_root
+    root = config.checkout_root
     if not root:
         return DEFAULT_CHECKOUT_ROOT
     return Path(root).expanduser()

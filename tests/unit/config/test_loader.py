@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.config.loader."""
+# pylint: disable=missing-class-docstring,missing-function-docstring
 
 from __future__ import annotations
 
@@ -52,10 +53,11 @@ class TestLoadConfig:
         with patch("teleclaude.config.loader.logger.warning") as warning:
             result = load_project_config(config_path)
 
-        assert result.git.checkout_root == "/srv/work/checkouts"
+        assert result.git.checkout_root == "/srv/work/checkouts"  # pyright: ignore[reportAttributeAccessIssue]
         assert warning.call_args_list == [
             call("Unknown keys in %s at %s: %s", "root", config_path, ["unknown_root"]),
             call("Unknown keys in %s at %s: %s", "root.jobs.nightly", config_path, ["extra_job"]),
+            call("Unknown keys in %s at %s: %s", "root.git", config_path, ["checkout_root"]),
         ]
 
     @pytest.mark.unit

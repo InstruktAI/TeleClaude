@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.context_selector."""
+# pylint: disable=missing-function-docstring,protected-access,consider-using-from-import
 
 from __future__ import annotations
 
@@ -136,8 +137,16 @@ def test_build_context_output_emits_requested_public_body_and_denied_private_sni
     )
 
     monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_docs)
-    monkeypatch.setattr(context_selector, "_load_manifest_by_name", lambda: {})
-    monkeypatch.setattr(context_selector, "get_project_name", lambda _root: "Alpha")
+    monkeypatch.setattr(
+        context_selector,
+        "_load_manifest_by_name",
+        lambda: {},  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(
+        context_selector,
+        "get_project_name",
+        lambda _root: "Alpha",  # pyright: ignore[reportUnknownLambdaType]
+    )
 
     output = context_selector.build_context_output(
         areas=[],

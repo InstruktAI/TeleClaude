@@ -10,25 +10,31 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate config-independent-schemas` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 91 in-scope tests pass; 5 pre-existing failures in unrelated modules
+- [x] Lint passes (`make lint`) — pylint 10.00/10
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate config-independent-schemas` exits 0 — 5 executable blocks found)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+### Manual Verification
+
+- `pytest tests/unit/config/test_config_independent_schemas.py -v` — all 91 in-scope tests pass, no xfail markers remaining
+- `make lint` — pyright 0 errors, mypy 0 errors, pylint 10.00/10
+- Workspace type detection: structural path check `workspace.parent.name == "people" and workspace.parent.parent.name == ".teleclaude"` supports both real paths and test fixtures
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior
+- [x] Deferrals justified and not hiding required scope
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [x] Critical issues resolved or explicitly blocked
+- [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
 

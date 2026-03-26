@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.helpers.git_repo_helper."""
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods,unused-argument
 
 from __future__ import annotations
 
@@ -41,8 +42,16 @@ class TestEnsureRepo:
         repo_path = tmp_path / "repo"
         (repo_path / ".git").mkdir(parents=True)
         mock_repo = MagicMock()
-        monkeypatch.setattr(git_repo_helper, "_ensure_on_branch", lambda repo: None)
-        monkeypatch.setattr(git_repo_helper, "_dirty_worktree", lambda repo: [" M tracked.txt"])
+        monkeypatch.setattr(
+            git_repo_helper,
+            "_ensure_on_branch",
+            lambda _repo: None,  # pyright: ignore[reportUnknownLambdaType]
+        )
+        monkeypatch.setattr(
+            git_repo_helper,
+            "_dirty_worktree",
+            lambda _repo: [" M tracked.txt"],  # pyright: ignore[reportUnknownLambdaType]
+        )
 
         with patch.object(git_repo_helper, "Repo", return_value=mock_repo):
             changes, dirty = git_repo_helper._ensure_repo("https://github.com/openai/repo.git", repo_path)
@@ -68,7 +77,7 @@ class TestLoadCheckoutRoot:
         monkeypatch.setattr(
             git_repo_helper,
             "load_global_config",
-            lambda: SimpleNamespace(git=SimpleNamespace(checkout_root=None)),
+            lambda: SimpleNamespace(checkout_root=None),
         )
 
         assert git_repo_helper._load_checkout_root() == git_repo_helper.DEFAULT_CHECKOUT_ROOT

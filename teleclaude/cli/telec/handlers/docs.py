@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from teleclaude.cli.telec.help import _usage
+from teleclaude.config.loader import load_app_config
 from teleclaude.context_selector import build_context_output
 from teleclaude.core.identity import get_identity_resolver
 
@@ -76,6 +77,7 @@ def _handle_docs_index(args: list[str]) -> None:
             raise SystemExit(1)
 
     effective_role = get_identity_resolver().resolve_from_terminal().person_role
+    config = load_app_config(project_root)
     output = build_context_output(
         areas=areas,
         project_root=project_root,
@@ -84,6 +86,7 @@ def _handle_docs_index(args: list[str]) -> None:
         include_third_party=third_party,
         domains=domains,
         effective_human_role=effective_role,
+        config=config,
     )
     print(output)
 
@@ -112,6 +115,7 @@ def _handle_docs_get(args: list[str]) -> None:
         raise SystemExit(1)
 
     effective_role = get_identity_resolver().resolve_from_terminal().person_role
+    config = load_app_config(project_root)
     output = build_context_output(
         areas=[],
         project_root=project_root,
@@ -120,5 +124,6 @@ def _handle_docs_get(args: list[str]) -> None:
         include_third_party=False,
         domains=None,
         effective_human_role=effective_role,
+        config=config,
     )
     print(output)

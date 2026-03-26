@@ -12,6 +12,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
+from teleclaude.config.schema import AppConfig
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL
 from teleclaude.docs_index import extract_required_reads, get_project_name
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
@@ -153,6 +154,22 @@ def _domain_for_snippet(snippet: SnippetMeta, *, project_domains: dict[str, Path
     return snippet_id.split("/", 1)[0] if "/" in snippet_id else snippet_id
 
 
+def _resolve_domain_paths(domains: dict[str, str], project_root: Path) -> dict[str, Path]:
+    """Convert domain string paths to resolved absolute Paths."""
+    if not domains:
+        return {"software-development": project_root / "docs"}
+    clean_map: dict[str, Path] = {}
+    for key, value in domains.items():
+        if not key.strip():
+            continue
+        if value.strip():
+            candidate = (project_root / value).resolve()
+        else:
+            candidate = (project_root / "docs").resolve()
+        clean_map[key] = candidate
+    return clean_map or {"software-development": project_root / "docs"}
+
+
 def _load_project_domains(project_root: Path) -> dict[str, Path]:
     config_path = resolve_project_config_path(project_root)
     if not config_path.exists():
@@ -165,19 +182,7 @@ def _load_project_domains(project_root: Path) -> dict[str, Path]:
         logger.error("project config validation failed", path=str(config_path), error=str(e))
         raise
 
-    if not domains:
-        return {"software-development": project_root / "docs"}
-
-    clean_map: dict[str, Path] = {}
-    for key, value in domains.items():
-        if not key.strip():
-            continue
-        if value.strip():
-            candidate = (project_root / value).resolve()
-        else:
-            candidate = (project_root / "docs").resolve()
-        clean_map[key] = candidate
-    return clean_map or {"software-development": project_root / "docs"}
+    return _resolve_domain_paths(domains, project_root)
 
 
 def _output_scope(snippet: SnippetMeta, *, global_snippets_root: Path) -> str:
@@ -706,7 +711,7 @@ def _read_selected_snippet_body(
         return None
 
 
-def build_context_output(  # pylint: disable=missing-function-docstring,too-many-arguments,too-many-branches,too-many-locals,too-many-statements
+def build_context_output(  # pylint: disable=missing-function-docstring,too-many-arguments,too-many-branches,too-many-locals,too-many-statements  # noqa: C901
     *,
     areas: list[str],
     project_root: Path,
@@ -717,6 +722,7 @@ def build_context_output(  # pylint: disable=missing-function-docstring,too-many
     list_projects: bool = False,
     projects: list[str] | None = None,
     effective_human_role: str | None = None,
+    config: AppConfig | None = None,
     test_agent: str | None = None,
     test_mode: str | None = None,
     test_request: str | None = None,
@@ -729,7 +735,16 @@ def build_context_output(  # pylint: disable=missing-function-docstring,too-many
     global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
     global_root = GLOBAL_SNIPPETS_DIR.parent.parent
     global_snippets_root = GLOBAL_SNIPPETS_DIR
-    current_project_name = get_project_name(project_root)
+
+    # Resolve project name from config when available (avoids interior config loading)
+    if config is not None:
+        if config.project is not None:
+            current_project_name = config.project.project_name or project_root.name
+        else:
+            current_project_name = project_root.name
+    else:
+        current_project_name = get_project_name(project_root)
+
     manifest_projects = _load_manifest_by_name() if (projects or snippet_ids) else {}
 
     # Third-party indexes (separate from taxonomy)
@@ -759,9 +774,13 @@ def build_context_output(  # pylint: disable=missing-function-docstring,too-many
         third_party_entries.extend(_load_third_party_index(global_third_party_index))
         third_party_entries.extend(_load_third_party_index(project_third_party_index))
 
-    # Use explicit domains if provided, otherwise load from project config
+    # Use explicit domains if provided; else use config when available; else load from project config
     if domains:
         domain_config = {d: project_root / "docs" for d in domains}
+    elif config is not None and config.project is not None:
+        domain_config = _resolve_domain_paths(config.project.business.domains, project_root)
+    elif config is not None and config.project is None:
+        domain_config = {"software-development": project_root / "docs"}
     else:
         domain_config = _load_project_domains(project_root)
     project_domain_roots = {d: p for d, p in domain_config.items() if p.exists()}

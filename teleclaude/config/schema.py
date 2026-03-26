@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -111,7 +112,6 @@ class GitConfig(BaseModel):
     """Git repository configuration."""
 
     model_config = ConfigDict(extra="allow")
-    checkout_root: str | None = None
 
 
 class IntegratorCutoverConfig(BaseModel):
@@ -321,13 +321,15 @@ class ProjectConfig(BaseModel):
         return data
 
 
-class GlobalConfig(ProjectConfig):
-    """Global-level configuration extending project config."""
+class GlobalConfig(BaseModel):
+    """Global-level configuration."""
 
+    model_config = ConfigDict(extra="allow")
     people: list[PersonEntry] = []
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
     event_domains: DomainsConfig | None = None
+    checkout_root: str | None = None
 
     @field_validator("interests", mode="before")
     @classmethod
@@ -336,6 +338,18 @@ class GlobalConfig(ProjectConfig):
         if isinstance(v, dict) and "tags" in v:
             return v["tags"]
         return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_git_checkout_root(cls, data: Any) -> Any:
+        """Migrate git.checkout_root from legacy YAML path to top-level checkout_root."""
+        if not isinstance(data, dict):
+            return data
+        git = data.get("git")
+        if isinstance(git, dict) and "checkout_root" in git and "checkout_root" not in data:
+            data = dict(data)
+            data["checkout_root"] = git["checkout_root"]
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -378,3 +392,12 @@ class PersonConfig(BaseModel):
         if present:
             raise ValueError(f"Keys not allowed at per-person level: {', '.join(present)}")
         return data
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    """Composed application config — global always present; project and person optional."""
+
+    global_: GlobalConfig
+    project: ProjectConfig | None = None
+    person: PersonConfig | None = None

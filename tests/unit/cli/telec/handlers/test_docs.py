@@ -1,3 +1,5 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,missing-class-docstring,protected-access
+
 from __future__ import annotations
 
 import importlib
@@ -6,6 +8,8 @@ from types import SimpleNamespace
 from typing import TypedDict
 
 import pytest
+
+from teleclaude.config.schema import AppConfig, GlobalConfig
 
 docs = importlib.import_module("teleclaude.cli.telec.handlers.docs")
 
@@ -18,10 +22,15 @@ class ContextCall(TypedDict):
     include_third_party: bool
     domains: list[str] | None
     effective_human_role: str
+    config: AppConfig
 
 
 def test_handle_docs_help_prints_usage(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(docs, "_usage", lambda *args: f"usage:{'/'.join(args)}")
+    monkeypatch.setattr(
+        docs,
+        "_usage",
+        lambda *args: f"usage:{'/'.join(args)}",  # pyright: ignore[reportUnknownLambdaType]
+    )
 
     docs._handle_docs(["--help"])
 
@@ -32,9 +41,19 @@ def test_handle_docs_index_builds_context_with_filters(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     received: list[ContextCall] = []
+    mock_config = AppConfig(global_=GlobalConfig())
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(docs, "build_context_output", lambda **kwargs: received.append(kwargs) or "INDEX")
+    monkeypatch.setattr(
+        docs,
+        "build_context_output",
+        lambda **kwargs: received.append(kwargs) or "INDEX",  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(
+        docs,
+        "load_app_config",
+        lambda _path: mock_config,  # pyright: ignore[reportUnknownLambdaType]
+    )
     mock_resolver = SimpleNamespace(resolve_from_terminal=lambda: SimpleNamespace(person_role="member"))
     monkeypatch.setattr(docs, "get_identity_resolver", lambda: mock_resolver)
 
@@ -51,6 +70,7 @@ def test_handle_docs_index_builds_context_with_filters(
             "include_third_party": True,
             "domains": ["software-development"],
             "effective_human_role": "member",
+            "config": mock_config,
         }
     ]
     assert capsys.readouterr().out == "INDEX\n"
@@ -62,7 +82,16 @@ def test_handle_docs_get_splits_snippet_ids(
     received: list[ContextCall] = []
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(docs, "build_context_output", lambda **kwargs: received.append(kwargs) or "GET")
+    monkeypatch.setattr(
+        docs,
+        "build_context_output",
+        lambda **kwargs: received.append(kwargs) or "GET",  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(
+        docs,
+        "load_app_config",
+        lambda _path: AppConfig(global_=GlobalConfig()),  # pyright: ignore[reportUnknownLambdaType]
+    )
     mock_resolver = SimpleNamespace(resolve_from_terminal=lambda: SimpleNamespace(person_role="member"))
     monkeypatch.setattr(docs, "get_identity_resolver", lambda: mock_resolver)
 
@@ -76,7 +105,11 @@ def test_handle_docs_get_splits_snippet_ids(
 def test_handle_docs_get_requires_at_least_one_id(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(docs, "_usage", lambda *args: f"usage:{'/'.join(args)}")
+    monkeypatch.setattr(
+        docs,
+        "_usage",
+        lambda *args: f"usage:{'/'.join(args)}",  # pyright: ignore[reportUnknownLambdaType]
+    )
 
     with pytest.raises(SystemExit) as exc_info:
         docs._handle_docs_get([])
