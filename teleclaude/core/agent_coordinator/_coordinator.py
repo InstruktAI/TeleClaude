@@ -396,11 +396,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         # Immediate headless pull on stop — final output must be captured.
         await self._signal_headless_activity(session_id)
 
-        # Output delivery is adapter-owned — adapters pull on their own cadence.
-        # Break threaded turn state so adapters know the turn boundary.
         session = await db.get_session(session_id)
-        if session:
-            await self.client.break_threaded_turn(session)
         await self._finalize_agent_stop(session_id, session, payload, link_output, source_computer)
 
     async def _record_agent_stop_input(
