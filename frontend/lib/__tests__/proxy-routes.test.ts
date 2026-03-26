@@ -50,7 +50,7 @@ function makeSession(overrides?: Record<string, unknown>) {
 }
 
 function makeRequest(url: string, method = "GET", body?: unknown): NextRequest {
-  const init: RequestInit = { method };
+  const init: ConstructorParameters<typeof NextRequest>[1] = { method };
   if (body) {
     init.body = JSON.stringify(body);
     init.headers = { "Content-Type": "application/json" };
@@ -69,7 +69,7 @@ beforeEach(() => {
 
 describe("GET /api/computers", () => {
   it("returns 401 if unauthenticated", async () => {
-    mockAuth.mockResolvedValue(null);
+    mockAuth.mockResolvedValue(null as never);
     const { GET } = await import("@/app/api/computers/route");
     const res = await GET();
     expect(res.status).toBe(401);
@@ -180,7 +180,7 @@ describe("POST /api/sessions/[id]/agent-restart", () => {
 
 describe("DELETE /api/sessions/[id]", () => {
   it("returns 401 if unauthenticated", async () => {
-    mockAuth.mockResolvedValue(null);
+    mockAuth.mockResolvedValue(null as never);
     const { DELETE } = await import("@/app/api/sessions/[id]/route");
     const req = makeRequest(
       "http://localhost:3000/api/sessions/abc",

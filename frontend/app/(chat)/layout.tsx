@@ -2,6 +2,7 @@ import { QueryProvider } from "@/lib/query/QueryProvider";
 import { WebSocketProvider } from "@/lib/ws/WebSocketProvider";
 import { CacheInvalidation } from "@/lib/ws/CacheInvalidation";
 import { SidebarProvider } from "@/components/sidebar/SidebarProvider";
+import { Toaster } from "@/components/ui/toaster";
 
 export default function ChatLayout({
   children,
@@ -15,6 +16,7 @@ export default function ChatLayout({
         <SidebarProvider>
           <div className="flex h-screen">{children}</div>
         </SidebarProvider>
+        <Toaster />
       </WebSocketProvider>
     </QueryProvider>
   );

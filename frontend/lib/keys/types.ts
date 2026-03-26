@@ -8,7 +8,12 @@
 /**
  * View context where a key binding is active
  */
-export type ViewContext = 'global' | 'sessions' | 'preparation' | 'configuration'
+export type ViewContext =
+  | 'global'
+  | 'sessions'
+  | 'preparation'
+  | 'configuration'
+  | 'jobs'
 
 /**
  * A single keyboard binding definition

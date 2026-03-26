@@ -99,10 +99,6 @@ export function MyRuntimeProvider({ sessionId, children }: Props) {
     setError(err.message || "An error occurred with the chat stream");
   }, []);
 
-  useEffect(() => {
-    setError(null);
-  }, [sessionId]);
-
   const transport = useMemo(
     () =>
       new AssistantChatTransport({

@@ -37,7 +37,7 @@ class TestIdentityContext:
 
 class TestIdentityResolver:
     @pytest.mark.unit
-    def test_unknown_origin_returns_customer_role(self):
+    def test_unknown_origin_returns_empty_context(self):
         with (
             patch("teleclaude.core.identity.load_global_config") as mock_cfg,
             patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
@@ -46,7 +46,7 @@ class TestIdentityResolver:
             mock_dir.glob.return_value = []
             resolver = IdentityResolver()
             ctx = resolver.resolve("unknown_origin", {})
-        assert ctx.person_role == "customer"
+        assert ctx.person_role is None
 
     @pytest.mark.unit
     def test_discord_origin_unknown_user_returns_customer(self):
@@ -62,7 +62,7 @@ class TestIdentityResolver:
         assert ctx.platform == "discord"
 
     @pytest.mark.unit
-    def test_empty_metadata_returns_customer(self):
+    def test_empty_metadata_returns_empty_context(self):
         with (
             patch("teleclaude.core.identity.load_global_config") as mock_cfg,
             patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
@@ -71,7 +71,7 @@ class TestIdentityResolver:
             mock_dir.glob.return_value = []
             resolver = IdentityResolver()
             ctx = resolver.resolve("telegram", {})
-        assert ctx.person_role == "customer"
+        assert ctx.person_role is None
 
 
 class TestResolveByEmail:
@@ -148,7 +148,7 @@ class TestResolveTerminalOrigin:
         assert ctx.platform_user_id == "carol@example.com"
 
     @pytest.mark.unit
-    def test_terminal_origin_with_unrecognized_email_falls_through_to_customer(self):
+    def test_terminal_origin_with_unrecognized_email_returns_empty_context(self):
         with (
             patch("teleclaude.core.identity.load_global_config") as mock_cfg,
             patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
@@ -157,10 +157,10 @@ class TestResolveTerminalOrigin:
             mock_dir.glob.return_value = []
             resolver = IdentityResolver()
             ctx = resolver.resolve("terminal", {"email": "unknown@example.com"})
-        assert ctx.person_role == "customer"
+        assert ctx.person_role is None
 
     @pytest.mark.unit
-    def test_terminal_origin_with_no_email_falls_through_to_customer(self):
+    def test_terminal_origin_with_no_email_returns_empty_context(self):
         with (
             patch("teleclaude.core.identity.load_global_config") as mock_cfg,
             patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
@@ -169,7 +169,7 @@ class TestResolveTerminalOrigin:
             mock_dir.glob.return_value = []
             resolver = IdentityResolver()
             ctx = resolver.resolve("terminal", {})
-        assert ctx.person_role == "customer"
+        assert ctx.person_role is None
 
 
 class TestGetIdentityResolver:

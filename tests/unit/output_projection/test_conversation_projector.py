@@ -126,7 +126,7 @@ class TestProjectEntries:
             ("thinking", "assistant", "2024-01-01T00:00:03Z", 3, 2),
         ]
         assert blocks[0].block == {"type": "compaction", "text": "Context compacted"}
-        assert blocks[1].block == {"type": "thinking", "thinking": "step one\n\nstep two"}
+        assert blocks[1].block == {"type": "thinking", "thinking": "step two"}
 
 
 class TestProjectConversationChain:

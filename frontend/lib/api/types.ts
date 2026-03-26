@@ -142,6 +142,14 @@ export interface TodoInfo {
   files: string[];
 }
 
+export interface JobInfo {
+  name: string;
+  type: "agent" | "script";
+  schedule: string | null;
+  last_run: string | null;
+  status: string;
+}
+
 export interface ProjectWithTodosInfo extends ProjectInfo {
   todos: TodoInfo[];
   has_roadmap?: boolean;

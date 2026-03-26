@@ -12,7 +12,7 @@
  * colors via the engine's getCurrentPalette method.
  */
 
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { AnimationEngine } from '@/lib/animation/engine'
 import { AnimationTarget, parseColorKey } from '@/lib/animation/types'
 import { BIG_BANNER_TARGET } from '@/lib/animation/pixel-map'
@@ -49,16 +49,10 @@ export function CanvasAnimation({
   glow = true,
 }: CanvasAnimationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
   // Calculate canvas dimensions based on target and pixelSize
   const canvasWidth = target.width * pixelSize
   const canvasHeight = target.height * pixelSize
-
-  // Update dimensions when target or pixelSize changes
-  useEffect(() => {
-    setDimensions({ width: canvasWidth, height: canvasHeight })
-  }, [canvasWidth, canvasHeight])
 
   // Main rendering loop
   useEffect(() => {
@@ -138,8 +132,8 @@ export function CanvasAnimation({
   return (
     <canvas
       ref={canvasRef}
-      width={dimensions.width}
-      height={dimensions.height}
+      width={canvasWidth}
+      height={canvasHeight}
       className={className}
       style={{
         imageRendering: 'pixelated',

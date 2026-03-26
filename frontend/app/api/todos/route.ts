@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { daemonRequest, normalizeUpstreamError } from "@/lib/proxy/daemon-client";
 import { buildIdentityHeaders } from "@/lib/proxy/identity-headers";
+import { validateWorkItemSlug } from "@/lib/work-items/validation";
 
 export async function GET(request: NextRequest) {
   const session = await auth();
@@ -38,6 +39,69 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     console.error("[api/todos GET] daemon unreachable:", (err as Error).message);
+    return NextResponse.json(
+      { error: "Service unavailable" },
+      { status: 503 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const session = await auth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON in request body" },
+      { status: 400 },
+    );
+  }
+
+  const slug = typeof body === "object" && body !== null && "slug" in body
+    ? body.slug
+    : undefined;
+
+  if (typeof slug !== "string") {
+    return NextResponse.json(
+      { error: "A slug is required" },
+      { status: 400 },
+    );
+  }
+
+  const validation = validateWorkItemSlug(slug);
+  if (!validation.ok) {
+    return NextResponse.json(
+      { error: "Slug must use lowercase letters, numbers, and hyphens only" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const res = await daemonRequest({
+      method: "POST",
+      path: "/todos/create",
+      body: { slug: validation.slug },
+      headers: buildIdentityHeaders(session),
+    });
+
+    if (res.status >= 400) {
+      return NextResponse.json(
+        normalizeUpstreamError(res.status, res.body),
+        { status: res.status },
+      );
+    }
+
+    return new NextResponse(res.body, {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[api/todos POST] daemon unreachable:", (err as Error).message);
     return NextResponse.json(
       { error: "Service unavailable" },
       { status: 503 },

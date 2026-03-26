@@ -48,6 +48,12 @@ export const BINDINGS: KeyBinding[] = [
     context: 'global',
   },
   {
+    key: '4',
+    description: 'Jobs tab',
+    action: 'switch_to_jobs',
+    context: 'global',
+  },
+  {
     key: 'r',
     description: 'Refresh',
     action: 'refresh_data',
@@ -105,13 +111,6 @@ export const BINDINGS: KeyBinding[] = [
     description: 'Navigate up',
     action: 'navigate_up',
     context: 'sessions',
-  },
-  {
-    key: 'k',
-    description: 'Navigate up',
-    action: 'navigate_up',
-    context: 'sessions',
-    hidden: true, // Vi-style, same as upArrow
   },
   {
     key: 'downArrow',
@@ -237,6 +236,18 @@ export const BINDINGS: KeyBinding[] = [
     context: 'preparation',
   },
   {
+    key: 'n',
+    description: 'New todo',
+    action: 'new_todo',
+    context: 'preparation',
+  },
+  {
+    key: 'b',
+    description: 'New bug',
+    action: 'new_bug',
+    context: 'preparation',
+  },
+  {
     key: 's',
     description: 'Start work',
     action: 'start_work',
@@ -246,6 +257,39 @@ export const BINDINGS: KeyBinding[] = [
     key: 'p',
     description: 'Prepare todo',
     action: 'prepare_todo',
+    context: 'preparation',
+  },
+  {
+    key: 'r',
+    description: 'Refine input',
+    action: 'refine_input',
+    context: 'preparation',
+  },
+  {
+    key: 'R',
+    shift: true,
+    description: 'Remove todo',
+    action: 'remove_todo',
+    context: 'preparation',
+  },
+  {
+    key: 'f',
+    description: 'Freeze todo',
+    action: 'freeze_todo',
+    context: 'preparation',
+  },
+  {
+    key: 'upArrow',
+    shift: true,
+    description: 'Move todo up',
+    action: 'move_todo_up',
+    context: 'preparation',
+  },
+  {
+    key: 'downArrow',
+    shift: true,
+    description: 'Move todo down',
+    action: 'move_todo_down',
     context: 'preparation',
   },
   {
@@ -353,6 +397,42 @@ export const BINDINGS: KeyBinding[] = [
     action: 'prev_tab',
     context: 'configuration',
   },
+
+  // ========================================================================
+  // JOBS VIEW BINDINGS
+  // ========================================================================
+  {
+    key: 'upArrow',
+    description: 'Navigate up',
+    action: 'navigate_up',
+    context: 'jobs',
+  },
+  {
+    key: 'k',
+    description: 'Navigate up',
+    action: 'navigate_up',
+    context: 'jobs',
+    hidden: true,
+  },
+  {
+    key: 'downArrow',
+    description: 'Navigate down',
+    action: 'navigate_down',
+    context: 'jobs',
+  },
+  {
+    key: 'j',
+    description: 'Navigate down',
+    action: 'navigate_down',
+    context: 'jobs',
+    hidden: true,
+  },
+  {
+    key: 'return',
+    description: 'Run job',
+    action: 'run_job',
+    context: 'jobs',
+  },
 ]
 
 /**
@@ -367,24 +447,39 @@ export function getBindingsForContext(context: ViewContext): KeyBinding[] {
 /**
  * Find a binding that matches the key and modifiers in a specific context
  */
+const BROWSER_KEY_MAP: Record<string, string> = {
+  ArrowUp: 'upArrow',
+  ArrowDown: 'downArrow',
+  ArrowLeft: 'leftArrow',
+  ArrowRight: 'rightArrow',
+  Enter: 'return',
+  Escape: 'escape',
+  Tab: 'tab',
+  PageUp: 'pageUp',
+  PageDown: 'pageDown',
+}
+
 export function findBinding(
   key: string,
   modifiers: KeyModifiers,
   context: ViewContext
 ): KeyBinding | undefined {
-  const contextBindings = getBindingsForContext(context)
+  const normalizedKey = BROWSER_KEY_MAP[key] ?? key
 
-  return contextBindings.find((binding) => {
-    // Key must match exactly
-    if (binding.key !== key) return false
+  const matches = (binding: KeyBinding): boolean => {
+    if (binding.key !== normalizedKey) return false
 
-    // Check modifiers (undefined/false are equivalent)
     const ctrlMatch = (binding.ctrl ?? false) === (modifiers.ctrl ?? false)
     const shiftMatch = (binding.shift ?? false) === (modifiers.shift ?? false)
     const metaMatch = (binding.meta ?? false) === (modifiers.meta ?? false)
 
     return ctrlMatch && shiftMatch && metaMatch
-  })
+  }
+
+  return (
+    BINDINGS.find((binding) => binding.context === context && matches(binding))
+    ?? BINDINGS.find((binding) => binding.context === 'global' && matches(binding))
+  )
 }
 
 /**

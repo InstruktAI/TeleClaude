@@ -1,35 +1,117 @@
 schema_version: 2
-phase: pending
+phase: in_progress
 kind: todo
-current: input_assessment
-history: []
+current: finalize_ready
+history:
+- source: prepared
+  target: build_started
+  by: mark-phase
+  at: '2026-03-26T17:55:43.347887+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-26T18:37:36.402129+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-26T18:37:57.158885+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-26T18:43:49.082978+00:00'
+  metadata: {}
+- source: build_complete
+  target: review_changes_requested
+  by: mark-phase
+  at: '2026-03-26T18:54:58.402634+00:00'
+  metadata: {}
+- source: review_changes_requested
+  target: review_pending
+  by: mark-phase
+  at: '2026-03-26T19:13:24.933308+00:00'
+  metadata: {}
+- source: review_pending
+  target: review_approved
+  by: mark-phase
+  at: '2026-03-26T19:21:35.372646+00:00'
+  metadata: {}
+- source: review_approved
+  target: finalize_ready
+  by: mark-phase
+  at: '2026-03-26T19:23:31.497336+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
-  status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
+  status: ready
+  branch: web-tui-panels
+  sha: f1af2e55487941ab435088bb66f4f589311e7e97
+  ready_at: '2026-03-26T19:23:33.692748+00:00'
+  worker_session_id: mark-phase
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: 86da626ab19654b2efd4a2d670dcaec22ab05764
 unresolved_findings: []
 resolved_findings: []
 grounding:
-  valid: false
-  base_sha: ''
-  input_digest: ''
-  referenced_paths: []
-  last_grounded_at: ''
+  valid: true
+  base_sha: 7c6669d637c73d810145d7610d480fea91bd6e56
+  input_digest: f2d829f04ebd0c9f64aef8e4818271648f8d9674aeeda7d33fde6647e1c01540
+  referenced_paths:
+  - frontend/lib/keys/bindings.ts
+  - frontend/lib/keys/types.ts
+  - frontend/lib/api/types.ts
+  - frontend/app/api/todos/route.ts
+  - frontend/app/api/settings/route.ts
+  - frontend/app/api/people/route.ts
+  - frontend/app/api/projects/route.ts
+  - frontend/lib/proxy/auth-guards.ts
+  - frontend/lib/proxy/daemon-client.ts
+  - frontend/lib/proxy/identity-headers.ts
+  - frontend/lib/hooks/useTodos.ts
+  - frontend/lib/hooks/useProjects.ts
+  - frontend/lib/hooks/useComputers.ts
+  - frontend/lib/hooks/useSettings.ts
+  - frontend/lib/ws/CacheInvalidation.tsx
+  - frontend/lib/ws/useCacheInvalidation.ts
+  - frontend/app/(chat)/layout.tsx
+  - frontend/app/(chat)/page.tsx
+  - frontend/components/sidebar/NewSessionDialog.tsx
+  - frontend/lib/__tests__/proxy-routes.test.ts
+  - frontend/app/api/todos/create/route.ts
+  - frontend/app/api/todos/[slug]/prepare/route.ts
+  - frontend/app/api/todos/[slug]/work/route.ts
+  - frontend/app/api/todos/[slug]/refine/route.ts
+  - frontend/app/api/jobs/route.ts
+  - frontend/app/api/jobs/[name]/run/route.ts
+  - frontend/lib/hooks/useJobs.ts
+  - frontend/lib/hooks/usePeople.ts
+  - frontend/lib/hooks/useToast.ts
+  - frontend/components/ui/toaster.tsx
+  - frontend/components/tabs/TabBar.tsx
+  - frontend/components/tabs/useActiveView.ts
+  - frontend/components/preparation/PreparationView.tsx
+  - frontend/components/preparation/TreeNode.tsx
+  - frontend/components/preparation/useTreeState.ts
+  - frontend/components/preparation/NewTodoModal.tsx
+  - frontend/components/preparation/NewBugModal.tsx
+  - frontend/components/configuration/ConfigView.tsx
+  - frontend/components/configuration/AdaptersTab.tsx
+  - frontend/components/configuration/PeopleTab.tsx
+  - frontend/components/configuration/NotificationsTab.tsx
+  - frontend/components/configuration/EnvironmentTab.tsx
+  - frontend/components/configuration/ValidateTab.tsx
+  - frontend/components/jobs/JobsView.tsx
+  last_grounded_at: '2026-03-25T03:44:38.717142+00:00'
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
-  verdict: ''
+  verdict: approve
   reviewed_at: ''
   findings_count: 0
   rounds: 0
@@ -41,7 +123,7 @@ test_spec_review:
   findings_count: 0
   rounds: 0
 plan_review:
-  verdict: ''
+  verdict: approve
   reviewed_at: ''
   findings_count: 0
   rounds: 0
@@ -53,16 +135,16 @@ artifacts:
     produced_at: ''
     stale: false
   requirements:
-    digest: ''
-    produced_at: ''
+    digest: d26d9b7bfc4c8004c3cc0dd51f20d79d821504ecbabc85a919b20f417b80457f
+    produced_at: '2026-03-25T02:58:55.579883+00:00'
     stale: false
   test_specs:
     digest: ''
     produced_at: ''
     stale: false
   implementation_plan:
-    digest: ''
-    produced_at: ''
+    digest: bc261efc611e5941964e8e738969d3e4fe802762bfd26c89a4d44ca024c4fb7b
+    produced_at: '2026-03-25T03:33:56.382587+00:00'
     stale: false
 audit:
   input_assessment:
@@ -79,23 +161,27 @@ audit:
     rounds: 0
     findings: []
   plan_drafting:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-25T03:35:23.605430+00:00'
+    completed_at: '2026-03-25T03:35:23.606284+00:00'
   plan_review:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-25T03:38:07.418542+00:00'
+    completed_at: '2026-03-25T03:38:07.418888+00:00'
     baseline_commit: ''
-    verdict: ''
+    verdict: approve
     rounds: 0
     findings: []
   gate:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-25T09:00:00Z'
+    completed_at: '2026-03-25T09:00:00Z'
 dor:
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-03-25T09:00:00Z'
+  score: 8
+  status: pass
   schema_version: 1
-  blockers: []
+  blockers:
+  - 'Test specs not pre-delivered: add it.todo() stubs for proxy route test cases
+    (POST /api/todos/create, GET /api/jobs, POST /api/jobs/[name]/run) to frontend/lib/__tests__/proxy-routes.test.ts
+    before implementing the routes.'
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
