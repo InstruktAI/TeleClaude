@@ -339,13 +339,13 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             )
 
         # Terminal input bypasses the command pipeline — set origin here.
-        # UI adapter input already set last_input_origin AND last_message_sent
-        # at the edge via deliver_inbound. If the prompt matches what was already
-        # persisted, a UI adapter handled it — don't overwrite.
+        # UI adapter edge handlers set last_input_origin at dispatch time,
+        # before the hook fires. Re-read to see the current value.
         from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
 
-        existing_msg = (session.last_message_sent or "").strip()
-        is_terminal_input = not existing_msg or existing_msg != prompt_text.strip()[:200]
+        fresh_origin = await db.get_session(session_id)
+        current_origin = (fresh_origin.last_input_origin if fresh_origin else session.last_input_origin) or ""
+        is_terminal_input = current_origin == InputOrigin.TERMINAL.value or not current_origin
         if is_terminal_input:
             update_kwargs["last_input_origin"] = InputOrigin.TERMINAL.value
             # Reset cadence cursor so adapters re-render including the user message.
