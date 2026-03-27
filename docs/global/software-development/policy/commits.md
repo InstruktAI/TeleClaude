@@ -37,13 +37,13 @@ All Committizen types are allowed.
 
 - One logical change per commit
 - Keep commits small and focused
-- **Inspect before committing.** Run `git diff --staged` (or `git status`) and review the changeset. In a worktree, all files belong to the task — commit everything. On repo root main, verify every file belongs to the current task before staging.
+- **Inspect before committing.** Run `git diff --staged` (or `git status`) and review the changeset. In a worktree, all files belong to the task — commit everything. On repo root main, verify every file belongs to the current task before staging. Generated artifacts produced by tools run during the task (index files from `telec sync`, `AGENTS.md` from inflation) are part of the task — commit them as-is even when they contain content beyond the task's direct scope.
 - Commit message explains WHY, not WHAT (code shows what)
 - Never commit broken code
 - Never use `--no-verify` to bypass hooks unless asked to do so
 - Update or add tests when behavior changes.
 - Include migration notes when schema or data shape changes.
-- Avoid committing generated artifacts unless explicitly required.
+- Avoid committing generated artifacts (compiled binaries, bundled assets) unless explicitly required. Doc indexes, `AGENTS.md`, and other toolchain outputs from `telec sync` are explicitly required — always commit them.
 - Squash noisy fixups before merge to keep history readable.
 - **`[skip ci]` for automation bookkeeping.** Any commit pushed to origin/main that contains only scaffolding, roadmap updates, or other non-code bookkeeping MUST include `[skip ci]` in the commit subject line. CI runs are reserved for actual code delivery. The integration push from `trees/_integration/` is the only push that should trigger CI.
 

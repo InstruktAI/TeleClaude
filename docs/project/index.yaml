@@ -518,6 +518,14 @@ snippets:
   path: docs/project/procedure/host-health-checks.md
   visibility: internal
   source_project: TeleClaude
+- id: project/procedure/init-extensions
+  description: "TeleClaude-specific init extensions \u2014 help desk bootstrap and\
+    \ macOS launcher installation with permissions probe."
+  type: procedure
+  scope: project
+  path: docs/project/procedure/init-extensions.md
+  visibility: internal
+  source_project: TeleClaude
 - id: project/procedure/member-onboarding
   description: Invite a new member by email with deep links to their personal AI assistant
     on Telegram, Discord, or WhatsApp.

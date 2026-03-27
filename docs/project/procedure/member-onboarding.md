@@ -60,6 +60,16 @@ telec config invite "John Doe"
 
 For existing people who lost their email or need a fresh link. Generates a new token (invalidating the old one), sends the email again.
 
+### 1c. Expertise assessment
+
+Before or shortly after sending the invite, the admin assesses the new member's expertise across the taxonomy domains and sets it in their profile:
+
+```bash
+telec config people edit "John Doe" --expertise '{"software-development": {"python": "advanced", "typescript": "intermediate"}, "creative": "novice", "marketing": "novice", "customer-relations": "intermediate"}'
+```
+
+This enables calibrated agent communication from the first session — the personal assistant adjusts its register per domain based on the member's expertise signal. See the expertise taxonomy spec for valid domains, subdivisions, and the JSON shape.
+
 ### 2. Person clicks a link
 
 The person opens their email, picks a platform, clicks the link. This lands them in a **private chat** with the bot.
@@ -156,3 +166,7 @@ Telegram + email only. Discord and WhatsApp links are generated in the email but
 - If person clicks expired/invalid link: bot responds with "I don't recognize this invite. Please contact your admin."
 - If person already onboarded: clicking the link again resumes their existing session.
 - If bot username resolution fails (token invalid): command fails with clear error before sending email.
+
+## See Also
+
+- docs/global/general/spec/expertise-taxonomy.md — domain taxonomy and JSON shape for the expertise assessment step.

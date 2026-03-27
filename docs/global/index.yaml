@@ -1,5 +1,5 @@
-project_root: /Users/Morriz/.teleclaude
-snippets_root: /Users/Morriz/.teleclaude/docs
+project_root: ~/.teleclaude
+snippets_root: ~/.teleclaude/docs
 snippets:
 - id: creative/concept/image-generation
   description: "Image generation capability \u2014 text-to-image, editing, and iteration.\
@@ -96,6 +96,14 @@ snippets:
   path: docs/general/concept/ai-to-ai-coordination.md
   visibility: internal
   source_project: TeleClaude
+- id: general/concept/company-knowledge
+  description: "Company knowledge layer \u2014 organizational policies, procedures,\
+    \ and domain context available to all projects belonging to a company."
+  type: concept
+  scope: global
+  path: docs/general/concept/company-knowledge.md
+  visibility: internal
+  source_project: TeleClaude
 - id: general/concept/documentation-snippets
   description: Modular documentation system for selective context delivery to AI agents.
   type: concept
@@ -133,6 +141,14 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/skill-taxonomy.md
+  visibility: internal
+  source_project: TeleClaude
+- id: general/design/company-knowledge-layer
+  description: "Architecture of the company knowledge layer \u2014 storage, context\
+    \ selection, project linking, and multi-company isolation."
+  type: design
+  scope: global
+  path: docs/general/design/company-knowledge-layer.md
   visibility: internal
   source_project: TeleClaude
 - id: general/policy/ai-agent-security
@@ -366,11 +382,28 @@ snippets:
   path: docs/general/procedure/brainstorming.md
   visibility: internal
   source_project: TeleClaude
+- id: general/procedure/company-onboarding
+  description: "Complete telec companies onboard flow \u2014 inbox processing, organizational\
+    \ analysis, company doc snippet generation, and project linking."
+  type: procedure
+  scope: global
+  path: docs/general/procedure/company-onboarding.md
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/doc-snippet-authoring
   description: Author documentation snippets according to the taxonomy and schema.
   type: procedure
   scope: global
   path: docs/general/procedure/doc-snippet-authoring.md
+  visibility: internal
+  source_project: TeleClaude
+- id: general/procedure/firecrawl-web-scraping
+  description: Last-resort web scraping via Firecrawl MCP tools when built-in web
+    search and consolidated docs are insufficient. JavaScript-rendered SPAs, structured
+    data extraction, and multi-page crawling.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/firecrawl-web-scraping.md
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/gathering
@@ -379,6 +412,15 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/gathering.md
+  visibility: internal
+  source_project: TeleClaude
+- id: general/procedure/git-repo-ingestion
+  description: Ingest Git repositories for analysis. Clone or pull into a checkout
+    root, produce durable index and history artifacts, and reuse prior work across
+    requests.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/git-repo-ingestion.md
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/job-authoring
@@ -413,6 +455,15 @@ snippets:
   path: docs/general/procedure/peer-discussion.md
   visibility: internal
   source_project: TeleClaude
+- id: general/procedure/project-initialization
+  description: "Complete telec init pipeline \u2014 agent hooks, git plumbing, artifact\
+    \ sync, event domain seeding, file watchers, release channel, and optional AI\
+    \ enrichment."
+  type: procedure
+  scope: global
+  path: docs/general/procedure/project-initialization.md
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/skill-authoring
   description: "Gate and create skills. A skill is warranted only when it carries\
     \ scripts \u2014 deterministic tooling a model cannot generate on demand."
@@ -443,6 +494,23 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/agent-artifacts.md
+  visibility: internal
+  source_project: TeleClaude
+- id: general/spec/company-scaffolding
+  description: 'Schema contract for company onboarding output: discovery-to-taxonomy
+    mapping, snippet ID conventions, file placement, inbox processing, and merge rules
+    for re-onboarding.'
+  type: spec
+  scope: global
+  path: docs/general/spec/company-scaffolding.md
+  visibility: internal
+  source_project: TeleClaude
+- id: general/spec/expertise-taxonomy
+  description: "Fixed domain taxonomy for PersonEntry.expertise \u2014 domains, subdivisions,\
+    \ proficiency levels, and extension policy."
+  type: spec
+  scope: global
+  path: docs/general/spec/expertise-taxonomy.md
   visibility: internal
   source_project: TeleClaude
 - id: general/spec/history-log

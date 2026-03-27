@@ -34,7 +34,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 6. Add all required sections for the taxonomy type.
 7. Organize content inside those valid sections. Use subordinate headings such as `###` when they improve readability; do not flatten useful structure just to avoid internal headings.
 8. If validation rejects a heading, first ask whether it should be downgraded under an existing schema section rather than deleted or flattened.
-9. After any doc change, run `telec sync` to deploy all artifacts.
+9. After any doc change, run `telec sync` to deploy all artifacts. Commit the regenerated index files as part of the task — they are build outputs of the sync step and reflect the current truth of the docs directory.
 10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
 11. Avoid creating index.md files; only baseline.md manifests are allowed.
 
