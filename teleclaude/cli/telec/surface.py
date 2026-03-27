@@ -785,7 +785,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     (
                         "To edit people's subscriptions, modify the person config: "
                         "~/.teleclaude/people/{name}/teleclaude.yml"
-                    )
+                    ),
+                    (
+                        '--expertise JSON shape: {"<domain>": "<level>", "<domain>": '
+                        '{"<sub-area>": "<level>"}}. '
+                        'Levels: novice, intermediate, advanced, expert. '
+                        'Example: \'{"python": "expert", "typescript": '
+                        '{"backend": "advanced", "frontend": "intermediate"}}\''
+                    ),
                 ],
             ),
             "env": CommandDef(
