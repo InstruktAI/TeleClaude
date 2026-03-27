@@ -27,14 +27,36 @@ def test_example_commands_include_positional_and_flag_values() -> None:
 
 
 def test_maybe_show_help_prints_leaf_usage_when_help_follows_subcommand(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(help_mod, "_usage", lambda command, subcommand=None: f"{command}:{subcommand}")
-
     shown = help_mod._maybe_show_help("docs", ["get", "--help"])
 
     assert shown is True
-    assert capsys.readouterr().out == "docs:get\n"
+    out = capsys.readouterr().out
+    assert "telec docs get" in out
+    assert "Fetch full snippet content by ID" in out
+
+
+def test_maybe_show_help_resolves_nested_subcommands(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    shown = help_mod._maybe_show_help("config", ["people", "add", "-h"])
+
+    assert shown is True
+    out = capsys.readouterr().out
+    assert "telec config people add" in out
+    assert "Add a person" in out
+
+
+def test_maybe_show_help_resolves_intermediate_node(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    shown = help_mod._maybe_show_help("config", ["people", "-h"])
+
+    assert shown is True
+    out = capsys.readouterr().out
+    assert "telec config people list" in out
+    assert "telec config people add" in out
 
 
 def test_complete_flags_only_prints_matching_unused_options(monkeypatch: pytest.MonkeyPatch) -> None:

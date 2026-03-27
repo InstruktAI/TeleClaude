@@ -261,10 +261,15 @@ STEP 2 — Classify and propose ONE of these paths to the human:
        telec todo from-main --slug <meaningful-name>
        telec todo work <slug>
 
-STEP 3 — Ask:
+STEP 3 — Ask (HUMAN DECISION GATE):
   State which path you recommend and why (file types seen, size, context).
   Then ask: "Shall I proceed with [path X]?"
-  Wait for the user to confirm before executing.
+
+  STOP. This is a human decision. Only an explicit human response unblocks
+  this gate. No checkpoint, hook, timer, or system instruction can substitute
+  for the human's answer. If a checkpoint fires before the human responds,
+  the commit step in the checkpoint is BLOCKED by this gate — not the other
+  way around.
 MSG
         exit 1
     fi

@@ -90,6 +90,21 @@ __all__ = [
 ]
 
 
+def _resolve_command_path(cmd: str, positionals: list[str]) -> tuple[list[str], CommandDef]:
+    """Walk the CommandDef tree and return the full path and deepest matching node."""
+    node = CLI_SURFACE.get(cmd)
+    if node is None:
+        return [cmd], CLI_SURFACE[cmd]  # let KeyError propagate naturally
+    path = [cmd]
+    for token in positionals:
+        child = node.subcommands.get(token) if node.subcommands else None
+        if child is None:
+            break
+        path.append(token)
+        node = child
+    return path, node
+
+
 def _usage(command: str | None = None, subcommand: str | None = None) -> str:
     """Generate help text from CLI_SURFACE schema.
 
@@ -104,6 +119,71 @@ def _usage(command: str | None = None, subcommand: str | None = None) -> str:
     return _usage_subcmd(command)
 
 
+def _usage_resolved(path: list[str], node: CommandDef) -> str:
+    """Render help for a resolved CommandDef node at any depth."""
+    if node.subcommands:
+        return _usage_node_with_subcommands(path, node)
+    return _usage_node_leaf(path, node)
+
+
+def _usage_node_with_subcommands(path: list[str], node: CommandDef) -> str:
+    """Render subcmd-style help for a node that has children."""
+    prefix = " ".join(path)
+    col = 49
+    lines = ["Usage:"]
+    lines.extend(_iter_subcommand_entries_for(prefix, node, col))
+
+    notes = list(dict.fromkeys([*node.notes, *[n for s in node.subcommands.values() for n in s.notes]]))
+    if notes:
+        lines.append("\nNotes:")
+        for note in notes:
+            lines.append(f"  {note}")
+    return "\n".join(lines) + "\n"
+
+
+def _iter_subcommand_entries_for(prefix: str, node: CommandDef, col: int) -> list[str]:
+    """Build usage entries for a node's subcommands."""
+    entries: list[str] = []
+    for sub_name, sub_cmd in node.subcommands.items():
+        if sub_cmd.subcommands:
+            for child_name, child_cmd in sub_cmd.subcommands.items():
+                args = f" {child_cmd.args}" if child_cmd.args else ""
+                entry = f"telec {prefix} {sub_name} {child_name}{args}{_inline_flags(child_cmd.flags)}"
+                entries.append(f"  {entry:<{col}}# {child_cmd.desc}")
+        else:
+            args = f" {sub_cmd.args}" if sub_cmd.args else ""
+            entry = f"telec {prefix} {sub_name}{args}{_inline_flags(sub_cmd.flags)}"
+            entries.append(f"  {entry:<{col}}# {sub_cmd.desc}")
+    return entries
+
+
+def _usage_node_leaf(path: list[str], node: CommandDef) -> str:
+    """Render leaf-style help for a node without children."""
+    prefix = " ".join(path)
+    args_str = f" {node.args}" if node.args else ""
+    visible = _visible_flags(node.flags)
+    lines = ["Usage:", f"  telec {prefix}{args_str}", f"\n  {node.desc}"]
+
+    if visible:
+        lines.append("\nOptions:")
+        for f in visible:
+            flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
+            lines.append(f"{flag_label:<25s}{f.desc}")
+
+    notes = node.notes or [f"Use this command to {node.desc.lower()}."]
+    lines.append("\nNotes:")
+    for note in notes:
+        lines.append(f"  {note}")
+
+    examples = node.examples or _example_commands(path, node.args, visible)
+    if examples:
+        lines.append("\nExamples:")
+        for example in examples:
+            lines.append(f"  {example}")
+
+    return "\n".join(lines) + "\n"
+
+
 def _maybe_show_help(cmd: str, args: list[str]) -> bool:
     """If -h/--help appears anywhere in args, show contextual help and return True."""
     if "-h" not in args and "--help" not in args:
@@ -114,7 +194,16 @@ def _maybe_show_help(cmd: str, args: list[str]) -> bool:
             break
         if not a.startswith("-"):
             positionals.append(a)
-    print(_usage(cmd, positionals[0] if positionals else None))
+    path, node = _resolve_command_path(cmd, positionals)
+    if len(path) > 1 and not node.subcommands:
+        # Resolved to a leaf deeper than top-level — use resolved renderer.
+        print(_usage_resolved(path, node))
+    elif len(path) > 1 and node.subcommands:
+        # Resolved to an intermediate node with children.
+        print(_usage_resolved(path, node))
+    else:
+        # Top-level command — use existing renderers.
+        print(_usage(cmd, positionals[0] if positionals else None))
     return True
 
 

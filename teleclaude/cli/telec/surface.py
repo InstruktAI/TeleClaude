@@ -759,14 +759,25 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "add": CommandDef(
                         desc="Add a person",
+                        args=(
+                            "<name> --email <email> --role <role>"
+                            " [--expertise '<json>']"
+                            " [--telegram-user <user>] [--telegram-id <id>]"
+                        ),
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                     "edit": CommandDef(
                         desc="Edit a person",
+                        args=(
+                            "<name> [--email <email>] [--role <role>]"
+                            " [--expertise '<json>']"
+                            " [--telegram-user <user>] [--telegram-id <id>]"
+                        ),
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                     "remove": CommandDef(
                         desc="Remove a person",
+                        args="<name>",
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                 },
