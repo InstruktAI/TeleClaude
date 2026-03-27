@@ -62,3 +62,4 @@
 - slug: identity-origin-cleanup-task-8
   description: Refactor daemon headless session creation via command pipeline
 - slug: companies-onboard
+- slug: activation-trigger
