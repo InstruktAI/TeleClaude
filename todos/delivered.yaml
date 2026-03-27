@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: web-tui-shell
+  date: '2026-03-27'
+  commit: cdb2746810f2
 - slug: config-independent-schemas
   date: '2026-03-26'
   commit: 4eadaab8a3cb

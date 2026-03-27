@@ -50,7 +50,6 @@
 - slug: chip-tunes-regression
 - slug: history-role-aware
 - slug: session-memory-extraction
-- slug: web-tui-shell
 - slug: edge-session-creation
   after:
   - session-arch-cleanup
