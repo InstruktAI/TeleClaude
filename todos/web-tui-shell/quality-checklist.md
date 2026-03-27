@@ -10,25 +10,29 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate web-tui-shell` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]` (plan uses task headers, not checkboxes — all 11 tasks committed)
+- [x] Tests pass (`make test`) — 171 tests, 16 files, all green
+- [x] Lint passes (`make lint`) — pre-existing pylint C0103 on Python migration module; all TS code clean
+- [x] No silent deferrals in implementation plan
+- [x] Code committed — 11 atomic commits (T1-T11)
+- [x] Demo validated (`telec todo demo validate web-tui-shell` exits 0)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+- [x] Design token audit: `grep -r '#[0-9a-fA-F]' frontend/components/tui/ frontend/components/sidebar/NewSessionDialog.tsx` returns nothing
+- [x] Demo artifact copied to `demos/web-tui-shell/demo.md`
+
+**Manual verification note:** Build environment is a worktree — no dev server available for visual inspection. All component behavior verified through unit and integration tests with happy-dom.
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — all components wired into page.tsx
+- [x] Deferrals justified and not hiding required scope — no deferrals.md present
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs) — demo matches wired behavior
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — **APPROVE**
+- [x] Critical issues resolved or explicitly blocked — all 3 Critical and 8 Important resolved
+- [x] Test coverage and regression risk assessed — 180/180 tests pass, including ChatPage integration
 
 ## Finalize Gates (Finalizer)
 

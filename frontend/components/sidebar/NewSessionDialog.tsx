@@ -3,6 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogDescription,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import type {
   ComputerInfo,
   ProjectInfo,
@@ -10,12 +18,18 @@ import type {
   ThinkingMode,
 } from "@/lib/api/types";
 
+interface Prefill {
+  computer?: string;
+  project?: string;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  prefill?: Prefill;
 }
 
-export function NewSessionDialog({ open, onOpenChange }: Props) {
+export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -23,14 +37,22 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState(false);
-  const [computer, setComputer] = useState("");
-  const [projectPath, setProjectPath] = useState("");
+  const [computer, setComputer] = useState(prefill?.computer ?? "");
+  const [projectPath, setProjectPath] = useState(prefill?.project ?? "");
   const [agent, setAgent] = useState<AgentName>("claude");
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>("med");
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
+  const [nativeSessionId, setNativeSessionId] = useState("");
+  const [subdir, setSubdir] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Apply prefill when prop changes
+  useEffect(() => {
+    if (prefill?.computer) setComputer(prefill.computer);
+    if (prefill?.project) setProjectPath(prefill.project);
+  }, [prefill]);
 
   // Fetch computers on open
   useEffect(() => {
@@ -56,7 +78,7 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
   useEffect(() => {
     if (!computer) return;
     setProjects([]);
-    setProjectPath("");
+    if (!prefill?.project) setProjectPath("");
     setProjectsLoading(true);
     setProjectsError(false);
     const controller = new AbortController();
@@ -64,7 +86,10 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: ProjectInfo[]) => {
         setProjects(data);
-        if (data.length > 0) setProjectPath(data[0].path);
+        setProjectPath((prev) => {
+          if (prev || data.length === 0) return prev;
+          return data[0].path;
+        });
         setProjectsLoading(false);
       })
       .catch((err) => {
@@ -79,6 +104,8 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
   function reset() {
     setTitle("");
     setMessage("");
+    setNativeSessionId("");
+    setSubdir("");
     setError(null);
     setSubmitting(false);
   }
@@ -100,6 +127,9 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
         title: title || null,
         message: message || null,
       };
+
+      if (nativeSessionId) body.native_session_id = nativeSessionId;
+      if (subdir) body.subdir = subdir;
 
       const res = await fetch("/api/sessions", {
         method: "POST",
@@ -124,26 +154,18 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
     }
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="fixed inset-0 bg-black/50"
-        onClick={() => {
-          onOpenChange(false);
-          reset();
-        }}
-      />
-      <div className="relative z-10 w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
-        <h2 className="text-lg font-semibold">New Session</h2>
+      <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>New Session</DialogTitle>
+          <DialogDescription>Create or resume a TeleClaude session.</DialogDescription>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {/* Computer */}
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Computer
-            </span>
+            <span className="text-xs font-medium text-muted-foreground">Computer</span>
             <select
               value={computer}
               onChange={(e) => setComputer(e.target.value)}
@@ -159,9 +181,7 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
 
           {/* Project */}
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Project
-            </span>
+            <span className="text-xs font-medium text-muted-foreground">Project</span>
             <select
               value={projectPath}
               onChange={(e) => setProjectPath(e.target.value)}
@@ -183,9 +203,7 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
 
           {/* Agent */}
           <fieldset className="flex flex-col gap-1">
-            <legend className="text-xs font-medium text-muted-foreground">
-              Agent
-            </legend>
+            <legend className="text-xs font-medium text-muted-foreground">Agent</legend>
             <div className="flex gap-2">
               {(["claude", "gemini", "codex"] as AgentName[]).map((a) => (
                 <label
@@ -214,9 +232,7 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
 
           {/* Thinking mode */}
           <fieldset className="flex flex-col gap-1">
-            <legend className="text-xs font-medium text-muted-foreground">
-              Thinking Mode
-            </legend>
+            <legend className="text-xs font-medium text-muted-foreground">Thinking Mode</legend>
             <div className="flex gap-2">
               {(["fast", "med", "slow"] as ThinkingMode[]).map((m) => (
                 <label
@@ -243,9 +259,7 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
 
           {/* Title */}
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Title (optional)
-            </span>
+            <span className="text-xs font-medium text-muted-foreground">Title (optional)</span>
             <input
               type="text"
               value={title}
@@ -257,9 +271,7 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
 
           {/* Initial message */}
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Initial Message (optional)
-            </span>
+            <span className="text-xs font-medium text-muted-foreground">Initial Message (optional)</span>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -269,18 +281,36 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
             />
           </label>
 
-          {error && (
-            <p className="text-xs text-destructive">{error}</p>
-          )}
+          {/* Native session ID */}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Native Session ID (optional)</span>
+            <input
+              type="text"
+              value={nativeSessionId}
+              onChange={(e) => setNativeSessionId(e.target.value)}
+              placeholder="Native session ID"
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+            />
+          </label>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2">
+          {/* Subdir */}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Subdirectory (optional)</span>
+            <input
+              type="text"
+              value={subdir}
+              onChange={(e) => setSubdir(e.target.value)}
+              placeholder="Subdirectory"
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+            />
+          </label>
+
+          {error && <p className="text-xs text-destructive">{error}</p>}
+
+          <DialogFooter>
             <button
               type="button"
-              onClick={() => {
-                onOpenChange(false);
-                reset();
-              }}
+              onClick={() => { onOpenChange(false); reset(); }}
               className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-accent"
             >
               Cancel
@@ -292,9 +322,9 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
             >
               {submitting ? "Creating..." : "Create Session"}
             </button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

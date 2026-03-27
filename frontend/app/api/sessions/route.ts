@@ -58,22 +58,26 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { computer, project_path, agent, thinking_mode, launch_kind, title, message } = body;
+    const { computer, project_path, agent, thinking_mode, launch_kind, title, message, native_session_id, subdir } = body;
+
+    const upstreamBody: Record<string, unknown> = {
+      computer,
+      project_path,
+      agent,
+      thinking_mode,
+      launch_kind,
+      title,
+      message,
+      human_email: session.user.email,
+      human_role: session.user.role,
+    };
+    if (native_session_id) upstreamBody.native_session_id = native_session_id;
+    if (subdir) upstreamBody.subdir = subdir;
 
     const res = await daemonRequest({
       method: "POST",
       path: "/sessions",
-      body: {
-        computer,
-        project_path,
-        agent,
-        thinking_mode,
-        launch_kind,
-        title,
-        message,
-        human_email: session.user.email,
-        human_role: session.user.role,
-      },
+      body: upstreamBody,
       headers: buildIdentityHeaders(session),
     });
 

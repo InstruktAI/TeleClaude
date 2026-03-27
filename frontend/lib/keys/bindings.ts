@@ -16,6 +16,12 @@
 
 import { KeyBinding, ViewContext, KeyModifiers } from './types'
 
+export interface FooterHint {
+  action: string
+  key: string
+  description: string
+}
+
 /**
  * All keyboard bindings in the application
  */
@@ -112,6 +118,7 @@ export const BINDINGS: KeyBinding[] = [
     action: 'navigate_up',
     context: 'sessions',
   },
+  // k in sessions context is kill_session (below), not navigate_up — use upArrow for nav
   {
     key: 'downArrow',
     description: 'Navigate down',
@@ -487,7 +494,7 @@ export function findBinding(
  */
 export function getFooterHints(
   context: ViewContext
-): Array<{ key: string; description: string }> {
+): FooterHint[] {
   const contextBindings = getBindingsForContext(context)
 
   // Filter out hidden bindings and format for footer display
@@ -515,6 +522,7 @@ export function getFooterHints(
       displayKey = keyMap[displayKey] ?? displayKey
 
       return {
+        action: binding.action,
         key: displayKey,
         description: binding.description,
       }
