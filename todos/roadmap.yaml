@@ -54,17 +54,11 @@
   after:
   - session-arch-cleanup
 - slug: with-session-staleness
-- slug: identity-origin-cleanup
 - slug: os-managed-todo-watchers
 - slug: identity-origin-cleanup-task-6b
-  after:
-  - identity-origin-cleanup
-  description: Convert MessageMetadata per-message channel_metadata dicts to typed metadata
+  description: Convert MessageMetadata per-message channel_metadata dicts to typed
+    metadata
 - slug: identity-origin-cleanup-task-7
-  after:
-  - identity-origin-cleanup
   description: Promote target_computer and actor context to named fields in MessageMetadata
 - slug: identity-origin-cleanup-task-8
-  after:
-  - identity-origin-cleanup
   description: Refactor daemon headless session creation via command pipeline
