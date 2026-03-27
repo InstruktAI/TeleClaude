@@ -185,11 +185,13 @@ async def _run_remote_searches(
     return await asyncio.gather(*tasks, return_exceptions=True)
 
 
-def display_combined_history(
+def display_combined_history(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     agents: list[AgentName],
     search_term: str = "",
     limit: int = 20,
     computers: Sequence[str] | None = None,
+    caller_email: str | None = None,
+    caller_role: str | None = None,
 ) -> None:
     """Display session history using local mirrors or remote daemon search."""
     if computers:
@@ -225,7 +227,12 @@ def display_combined_history(
         _print_results(search_term, results, show_computer=True, limit=limit)
         return
 
-    local_results = [_local_result_to_entry(result) for result in search_mirrors(search_term, agents, limit=limit)]
+    local_results = [
+        _local_result_to_entry(result)
+        for result in search_mirrors(
+            search_term, agents, limit=limit, caller_email=caller_email, caller_role=caller_role
+        )
+    ]
     if not local_results:
         print(f"No conversations found matching '{search_term}' across {', '.join(agent.value for agent in agents)}")
         return
@@ -239,6 +246,8 @@ def show_transcript(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     include_thinking: bool = False,
     raw: bool = False,
     computers: Sequence[str] | None = None,
+    caller_email: str | None = None,
+    caller_role: str | None = None,
 ) -> None:
     """Show a mirror or raw transcript for a local or remote session."""
     if computers:
@@ -282,7 +291,7 @@ def show_transcript(  # pylint: disable=too-many-arguments,too-many-locals,too-m
         print(_mirror_to_display(mirror, tail_chars=tail_chars))
         return
 
-    mirror = get_mirror(session_id)
+    mirror = get_mirror(session_id, caller_email=caller_email, caller_role=caller_role)
     if mirror and not raw:
         print(_mirror_to_display(mirror, tail_chars=tail_chars))
         return

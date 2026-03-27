@@ -75,6 +75,7 @@ Common gaps:
 
 - Requirement implies CLI changes → help text and config surface updates.
 - Requirement implies new behavior → test expectations.
+- Requirement implies browser-based frontend or web UI behavior → Playwright smoke verification in build and review.
 - Requirement implies new config → config wizard, sample, and spec updates.
 - Requirement implies security boundaries → validation and auth expectations.
 - Requirement implies documentation changes → doc update expectations.

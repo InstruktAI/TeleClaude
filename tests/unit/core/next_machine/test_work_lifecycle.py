@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.state_machine import TargetContext
 from teleclaude.core.next_machine.work_lifecycle import (
     _on_enter_finalize_handoff,
@@ -15,6 +16,8 @@ from teleclaude.core.next_machine.work_lifecycle import (
     _on_enter_review_approved,
     _on_enter_review_changes,
 )
+
+StateData = dict[str, StateValue]
 
 
 def _ctx(tmp_path: Path, slug: str = "test-slug") -> TargetContext:
@@ -137,7 +140,7 @@ def test_finalize_ready_happy_path_writes_finalize_dict(tmp_path: Path) -> None:
 
 def test_finalize_handoff_raises_when_finalize_not_ready(tmp_path: Path) -> None:
     """Raises ValueError when finalize.status is not 'ready'."""
-    state: dict = {"finalize": {"status": "pending"}}
+    state: StateData = {"finalize": {"status": "pending"}}
     with pytest.raises(ValueError, match=r"finalize state.*is not ready"):
         _on_enter_finalize_handoff(state, _ctx(tmp_path))
 
@@ -150,7 +153,7 @@ def test_finalize_handoff_raises_when_finalize_absent(tmp_path: Path) -> None:
 
 def test_finalize_handoff_happy_path_writes_handed_off(tmp_path: Path) -> None:
     """Happy path: transitions finalize.status from ready → handed_off."""
-    state: dict = {
+    state: StateData = {
         "finalize": {
             "status": "ready",
             "sha": "abc123",
@@ -179,7 +182,7 @@ _REVIEW_MODULE = "teleclaude.core.next_machine.work_lifecycle"
 
 def test_review_changes_happy_path(tmp_path: Path) -> None:
     """Happy path: increments review_round, stamps baseline from worktree HEAD, extracts findings."""
-    state: dict = {
+    state: StateData = {
         "review_round": 1,
         "resolved_findings": ["R1-F1"],
     }
@@ -203,7 +206,7 @@ def test_review_changes_happy_path(tmp_path: Path) -> None:
 
 def test_review_changes_empty_head_logs_warning(tmp_path: Path) -> None:
     """When get_head_commit returns empty, review_baseline_commit is not stamped and warning is logged."""
-    state: dict = {"review_round": 0, "resolved_findings": []}
+    state: StateData = {"review_round": 0, "resolved_findings": []}
 
     with (
         patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
@@ -220,7 +223,7 @@ def test_review_changes_empty_head_logs_warning(tmp_path: Path) -> None:
 
 def test_review_changes_defaults_non_int_round_to_zero(tmp_path: Path) -> None:
     """When review_round is not an int, defaults to 0 and increments to 1."""
-    state: dict = {"review_round": "garbage", "resolved_findings": []}
+    state: StateData = {"review_round": "garbage", "resolved_findings": []}
 
     with (
         patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
@@ -239,7 +242,7 @@ def test_review_changes_defaults_non_int_round_to_zero(tmp_path: Path) -> None:
 
 def test_review_approved_happy_path_merges_findings(tmp_path: Path) -> None:
     """Happy path: increments round, stamps baseline, merges unresolved into resolved."""
-    state: dict = {
+    state: StateData = {
         "review_round": 1,
         "unresolved_findings": ["R2-F1", "R2-F2"],
         "resolved_findings": ["R1-F1"],
@@ -266,7 +269,7 @@ def test_review_approved_happy_path_merges_findings(tmp_path: Path) -> None:
 
 def test_review_approved_empty_head_logs_warning(tmp_path: Path) -> None:
     """When get_head_commit returns empty, review_baseline_commit is not stamped and warning is logged."""
-    state: dict = {"review_round": 0, "unresolved_findings": [], "resolved_findings": []}
+    state: StateData = {"review_round": 0, "unresolved_findings": [], "resolved_findings": []}
 
     with (
         patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
@@ -282,7 +285,7 @@ def test_review_approved_empty_head_logs_warning(tmp_path: Path) -> None:
 
 def test_review_approved_deduplicates_merged_findings(tmp_path: Path) -> None:
     """Duplicate findings across resolved and unresolved are deduplicated in the merge."""
-    state: dict = {
+    state: StateData = {
         "review_round": 0,
         "unresolved_findings": ["R1-F1", "R2-F1"],
         "resolved_findings": ["R1-F1"],
@@ -308,7 +311,7 @@ def test_review_approved_deduplicates_merged_findings(tmp_path: Path) -> None:
 
 def test_finalize_ready_raises_when_already_handed_off(tmp_path: Path) -> None:
     """Raises ValueError when finalize.status is 'handed_off' — prevents state regression."""
-    state: dict = {
+    state: StateData = {
         "finalize": {
             "status": "handed_off",
             "sha": "abc123",

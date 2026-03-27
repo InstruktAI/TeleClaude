@@ -138,11 +138,13 @@ This lane fires **always**, not only when test files changed. The absence of tes
 - Every assertion from the spec commit must still exist. Removed or weakened assertion = **Critical** finding.
 - New functionality must have corresponding tests.
 - Edge cases and error paths must have coverage.
+- Browser-based frontend or web UI changes must include Playwright smoke verification evidence from build.
 - Tests must verify behavior, not implementation details.
 - Reject tests that lock narrative documentation wording or style.
 - Allow exact-string assertions only for execution-significant tokens/contracts.
 
 Missing tests for new behavior are **Important** findings.
+Missing browser-smoke verification for browser-based frontend changes is an **Important** finding.
 
 #### Demo artifact review
 
@@ -189,14 +191,20 @@ If a review produces 0 Important or higher findings across all lanes, include a 
 
 A review with 0 findings and no justification is incomplete.
 
-#### Manual verification evidence
+#### User-facing verification evidence
 
 For deliveries with user-facing changes (UI, CLI output, interactive behavior), document:
 
-1. What was tested manually (or what could not be tested and why).
-2. Observable behavior that confirms the requirement is met.
+1. What observable behavior was verified (or what could not be tested and why).
+2. What evidence confirms the requirement is met.
 
-If manual verification is not possible, note the gap as a finding.
+For browser-based frontend or web UI changes, the reviewer must also:
+
+1. Inspect the builder's recorded Playwright smoke path and result.
+2. Follow the same Playwright smoke path during review when the environment allows it.
+3. Record what the reviewer observed, or record the verification gap as a finding.
+
+If user-facing verification is not possible, note the gap as a finding.
 
 #### Reviewer auto-remediation
 

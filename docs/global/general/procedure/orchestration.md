@@ -37,6 +37,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
    - Stop and wait
 4. When notification arrives OR timer expires:
    - Follow POST_COMPLETION steps
+   - Execute any durable bookkeeping transition emitted there before advancing
    - Invoke the work state machine again
 5. Repeat until exit condition.
 
@@ -60,7 +61,7 @@ to the dispatch time. All session inspection follows this protocol:
 2. **Codex false-notification guard.** Codex emits turn-complete notifications for internal sub-agent completions, not only when the main session finishes. When the worker is Codex, do not act on the notification immediately. Tail the session with `--since <marker>` and check whether the new output contains a final deliverable (commit, verdict, or completion report matching the expected outcome). If not, update the marker, reset the heartbeat timer, and continue waiting. A Codex worker may only be considered complete after two consecutive tails (across two heartbeats) confirm no new output and the last output contains the expected deliverable. This guard does not apply to Claude or Gemini workers, whose notifications reliably indicate session completion.
 3. **(Claude/Gemini only)** Tail the session with `--since <marker>` to retrieve the final output. Verify it matches the intended outcome.
 4. Execute POST_COMPLETION steps (orchestrator responsibility):
-   - Mark phase status using `telec todo mark-phase ...` if applicable
+   - Persist any durable state transition emitted by the instruction block before calling the state machine again. This is often a `telec todo mark-phase ...` command, but the exact transition is phase-specific and owned by the state machine output.
    - **Terminate worker session** — unless the outcome requires a follow-up dispatch to the same worker (e.g. `needs_work` → fix cycle). End idle workers: `telec sessions end <session_id> --computer <computer>` ← ORCHESTRATOR OWNS THIS
    - Execute any phase-specific cleanup from the state machine instruction
 5. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`).

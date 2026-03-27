@@ -17,6 +17,8 @@ Ownership:
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
 - [ ] Demo validated (`telec todo demo validate {slug}` exits 0, or exception noted)
+- [ ] User-facing verification evidence recorded
+- [ ] Browser-based frontend or web UI changes smoke-tested with Playwright
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 
@@ -29,6 +31,8 @@ Ownership:
 - [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
 - [ ] Critical issues resolved or explicitly blocked
 - [ ] Test coverage and regression risk assessed
+- [ ] User-facing verification evidence reviewed
+- [ ] Browser-based frontend or web UI changes verified with Playwright during review, or gap recorded as a finding
 
 ## Finalize Gates (Finalizer)
 

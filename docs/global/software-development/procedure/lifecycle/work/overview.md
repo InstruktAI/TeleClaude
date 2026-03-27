@@ -35,11 +35,26 @@ The state machine dispatches a builder worker via `next-build`. The builder:
 - Validates demo artifacts
 - Reports BUILD COMPLETE when done
 
+When the builder reports success, the orchestrator persists the build transition
+before advancing — normally `telec todo mark-phase {slug} --phase build --status complete`.
+Only after that bookkeeping step does it call `telec todo work [slug]` again.
+If build gates fail, the orchestrator keeps the builder session alive, sends the
+gate failures back to the builder, and retries the same post-completion loop.
+
 ### 3. Review
 
 After build completes, the state machine dispatches a reviewer via `next-review-build`.
 The reviewer runs parallel review lanes (scope, code, principles, security, tests,
 errors, types, comments, demo, docs) and delivers a verdict.
+
+The orchestrator persists the review transition before advancing:
+
+- APPROVE → `telec todo mark-phase {slug} --target review_approved`
+- REQUEST CHANGES → `telec todo mark-phase {slug} --target review_changes_requested`
+
+On approval it ends the reviewer session and calls `telec todo work [slug]` again.
+On requested changes it keeps the reviewer alive, dispatches a fixer, and follows
+the fix/re-review loop.
 
 ### 4. Fix (if needed)
 
@@ -47,12 +62,20 @@ On REQUEST CHANGES, the state machine dispatches a fixer via `next-fix-review`.
 The fixer addresses Critical and Important findings minimally. The cycle returns
 to Review. Review/fix loops are capped by `max_review_rounds` (default 3).
 
+When the fixer reports completion, the orchestrator ends the fixer session, marks
+the review as pending again via `telec todo mark-phase {slug} --target review_pending`,
+and re-enters `telec todo work [slug]`.
+
 ### 5. Finalize
 
 On APPROVE, the state machine dispatches a finalizer via `next-finalize`. The
 finalizer integrates latest main into the worktree, resolves conflicts, pushes
 the branch, and reports FINALIZE_READY. The orchestrator records durable finalize
 state and hands off to integration.
+
+The finalize handoff is also persisted before re-entry:
+`telec todo mark-phase {slug} --target finalize_ready`, then the finalizer session
+is ended and `telec todo work [slug]` is called again.
 
 ### 6. Deferrals
 
@@ -68,6 +91,10 @@ after merge on main. Demo presentation happens via `next-demo`.
 
 For bug-type work items, the state machine dispatches `next-bugs-fix` instead of
 the standard build flow. The bug fixer follows systematic debugging methodology.
+
+Its post-completion bookkeeping matches the normal build path: persist the build
+completion transition first, then re-enter `telec todo work [slug]`, and loop on
+build-gate failures until they pass or a blocker remains.
 
 ## Outputs
 

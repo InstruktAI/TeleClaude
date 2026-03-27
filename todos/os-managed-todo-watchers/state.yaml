@@ -29,12 +29,16 @@ grounding:
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
-  verdict: ''
-  reviewed_at: ''
-  findings_count: 0
-  rounds: 0
+  verdict: needs_work
+  reviewed_at: '2026-03-26T00:00:00Z'
+  findings_count: 1
+  rounds: 1
   baseline_commit: ''
-  findings: []
+  findings:
+  - id: F1
+    severity: Critical
+    status: unresolved
+    summary: Requirements document is an unfilled template — no content derived from input.md
 test_spec_review:
   verdict: ''
   reviewed_at: ''

@@ -19,6 +19,7 @@ from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, is_internal_user_text
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
+from teleclaude.core.codex_transcript import should_persist_codex_native_metadata
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import JsonDict
@@ -237,6 +238,7 @@ def _maybe_checkpoint_output(
         transcript_path=transcript_path,
         agent_name=_resolve_agent_enum(agent),
         project_path=project_path,
+        native_session_id=getattr(row, "native_session_id", None),
         working_slug=working_slug,
         elapsed_since_turn_start_s=elapsed,
     )
@@ -792,7 +794,14 @@ def main() -> None:
     if raw_native_log_file:
         data["native_log_file"] = raw_native_log_file
 
-    if raw_native_session_id or raw_native_log_file:
+    should_persist_native_metadata = True
+    if args.agent == AgentName.CODEX.value:
+        should_persist_native_metadata = should_persist_codex_native_metadata(
+            native_log_file=raw_native_log_file,
+            native_session_id=raw_native_session_id,
+        )
+
+    if (raw_native_session_id or raw_native_log_file) and should_persist_native_metadata:
         try:
             _persist_native_metadata(
                 session_id=teleclaude_session_id,
@@ -809,6 +818,14 @@ def main() -> None:
                 agent=args.agent,
                 error=str(exc),
             )
+    elif raw_native_session_id or raw_native_log_file:
+        logger.debug(
+            "Skipping native metadata persist for Codex subagent hook",
+            event_type=event_type,
+            session_id=teleclaude_session_id,
+            native_session_id=(raw_native_session_id or ""),
+            raw_transcript_path=(raw_native_log_file or ""),
+        )
 
     cwd = getattr(args, "cwd", None)
     if isinstance(cwd, str) and cwd:

@@ -2,13 +2,33 @@
 
 from __future__ import annotations
 
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _usage
 
 __all__ = [
     "_handle_history",
+    "_handle_history_list",
     "_handle_history_search",
     "_handle_history_show",
 ]
+
+
+def resolve_cli_caller_role() -> str | None:
+    """Resolve the caller's role from terminal auth email via people config."""
+    email = read_current_session_email()
+    if not email:
+        return None
+    try:
+        import importlib  # pylint: disable=import-outside-toplevel
+
+        global_cfg = importlib.import_module("teleclaude.config.loader").load_global_config()
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        return None
+    normalized = email.strip().lower()
+    for person in global_cfg.people:
+        if person.email.strip().lower() == normalized:
+            return str(person.role)
+    return None
 
 
 def _handle_history(args: list[str]) -> None:
@@ -21,7 +41,9 @@ def _handle_history(args: list[str]) -> None:
         return
 
     subcommand = args[0]
-    if subcommand == "search":
+    if subcommand == "list":
+        _handle_history_list(args[1:])
+    elif subcommand == "search":
         _handle_history_search(args[1:])
     elif subcommand == "show":
         _handle_history_show(args[1:])
@@ -31,7 +53,81 @@ def _handle_history(args: list[str]) -> None:
         raise SystemExit(1)
 
 
-def _handle_history_search(args: list[str]) -> None:  # pylint: disable=too-many-branches
+def _handle_history_list(args: list[str]) -> None:  # pylint: disable=too-many-branches,too-many-statements
+    """Handle telec history list."""
+    from teleclaude.mirrors.store import list_mirrors  # pylint: disable=import-outside-toplevel
+
+    identity: str | None = None
+    project: str | None = None
+    limit = 20
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-h", "--help"):
+            print(_usage("history", "list"))
+            return
+        if arg == "--identity" and i + 1 < len(args):
+            identity = args[i + 1]
+            i += 2
+        elif arg == "--identity":
+            print("Missing value for --identity.")
+            print(_usage("history", "list"))
+            raise SystemExit(1)
+        elif arg == "--project" and i + 1 < len(args):
+            project = args[i + 1]
+            i += 2
+        elif arg == "--project":
+            print("Missing value for --project.")
+            print(_usage("history", "list"))
+            raise SystemExit(1)
+        elif arg == "--limit" and i + 1 < len(args):
+            try:
+                limit = int(args[i + 1])
+            except ValueError as exc:
+                print(f"Invalid value for --limit: {args[i + 1]}")
+                raise SystemExit(1) from exc
+            i += 2
+        elif arg == "--limit":
+            print("Missing value for --limit.")
+            print(_usage("history", "list"))
+            raise SystemExit(1)
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("history", "list"))
+            raise SystemExit(1)
+        else:
+            print(f"Unexpected positional argument: {arg}")
+            print(_usage("history", "list"))
+            raise SystemExit(1)
+
+    caller_email = read_current_session_email()
+    caller_role = resolve_cli_caller_role()
+
+    records = list_mirrors(
+        identity=identity,
+        project=project,
+        limit=limit,
+        caller_email=caller_email,
+        caller_role=caller_role,
+    )
+
+    if not records:
+        print("No session mirrors found.")
+        return
+
+    for record in records:
+        origin = record.metadata.get("origin_channel", "")
+        summary = record.summary or record.title or ""
+        if len(summary) > 80:
+            summary = summary[:77].rstrip() + "..."
+        print(
+            f"{record.session_id}\t{record.title}\t{record.timestamp_start or ''}\t"
+            f"{record.timestamp_end or ''}\t{origin}\t{summary}\t{record.message_count}"
+        )
+
+
+def _handle_history_search(args: list[str]) -> None:  # pylint: disable=too-many-branches,too-many-statements
     """Handle telec history search."""
     from teleclaude.history.search import (  # pylint: disable=import-outside-toplevel
         display_combined_history,
@@ -89,8 +185,17 @@ def _handle_history_search(args: list[str]) -> None:  # pylint: disable=too-many
         print(_usage("history", "search"))
         raise SystemExit(1)
 
+    caller_email = read_current_session_email()
+    caller_role = resolve_cli_caller_role()
     agents = parse_agents(agent_arg)
-    display_combined_history(agents, search_term=" ".join(terms), limit=limit, computers=computers or None)
+    display_combined_history(
+        agents,
+        search_term=" ".join(terms),
+        limit=limit,
+        computers=computers or None,
+        caller_email=caller_email,
+        caller_role=caller_role,
+    )
 
 
 def _handle_history_show(args: list[str]) -> None:  # pylint: disable=too-many-branches,too-many-statements
@@ -164,5 +269,16 @@ def _handle_history_show(args: list[str]) -> None:  # pylint: disable=too-many-b
         print(_usage("history", "show"))
         raise SystemExit(1)
 
+    caller_email = read_current_session_email()
+    caller_role = resolve_cli_caller_role()
     agents = parse_agents(agent_arg)
-    show_transcript(agents, session_id, tail_chars=tail, include_thinking=thinking, raw=raw, computers=computers)
+    show_transcript(
+        agents,
+        session_id,
+        tail_chars=tail,
+        include_thinking=thinking,
+        raw=raw,
+        computers=computers,
+        caller_email=caller_email,
+        caller_role=caller_role,
+    )

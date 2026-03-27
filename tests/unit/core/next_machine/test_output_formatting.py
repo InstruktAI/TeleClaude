@@ -95,6 +95,44 @@ def test_format_tool_call_for_build_specs_stamps_test_specs_before_next_call() -
     assert "Call telec todo prepare slug-e" in output
 
 
+def test_format_tool_call_for_build_stamps_build_before_next_call() -> None:
+    output = format_tool_call(
+        ToolCallRequest(
+            command="next-build",
+            args="slug-f",
+            project="/repo",
+            guidance="guidance block",
+            subfolder="trees/slug-f",
+            next_call="telec todo work slug-f",
+        )
+    )
+
+    assert "telec todo mark-phase slug-f --phase build --status complete" in output
+    assert "Call telec todo work slug-f" in output
+    assert output.index("telec todo mark-phase slug-f --phase build --status complete") < output.index(
+        "Call telec todo work slug-f"
+    )
+
+
+def test_format_tool_call_for_bug_fix_stamps_build_before_next_call() -> None:
+    output = format_tool_call(
+        ToolCallRequest(
+            command="next-bugs-fix",
+            args="slug-g",
+            project="/repo",
+            guidance="guidance block",
+            subfolder="trees/slug-g",
+            next_call="telec todo work slug-g",
+        )
+    )
+
+    assert "telec todo mark-phase slug-g --phase build --status complete" in output
+    assert "Call telec todo work slug-g" in output
+    assert output.index("telec todo mark-phase slug-g --phase build --status complete") < output.index(
+        "Call telec todo work slug-g"
+    )
+
+
 def test_format_finalize_handoff_complete_lists_child_session_cleanup_commands() -> None:
     output = format_finalize_handoff_complete("slug-c", "telec todo work", ["child-1", "child-2"])
 

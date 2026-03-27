@@ -1,3 +1,4 @@
+# pyright: reportUnknownLambdaType=false
 """Characterization tests for teleclaude.utils.transcript._tool_calls."""
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ import pytest
 
 import teleclaude.utils.transcript._tool_calls as transcript_tool_calls
 from teleclaude.core.agents import AgentName
+from teleclaude.core.codex_transcript import CodexTranscriptMeta
 
 pytestmark = pytest.mark.unit
 
@@ -132,6 +134,141 @@ class TestCurrentTurnExtraction:
         timeline = transcript_tool_calls.extract_tool_calls_current_turn("/tmp/demo.jsonl", AgentName.CODEX)
 
         assert timeline == transcript_tool_calls.TurnTimeline(tool_calls=[], has_data=False)
+
+
+class TestEffectiveToolCallExtraction:
+    def test_extract_effective_tool_calls_unions_codex_family_for_session_scope(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        parent_meta = CodexTranscriptMeta(
+            transcript_path="/tmp/parent.jsonl",
+            thread_id="parent-thread",
+            parent_thread_id=None,
+            session_started_at=datetime(2026, 3, 20, 7, 0, tzinfo=UTC),
+        )
+        child_meta = CodexTranscriptMeta(
+            transcript_path="/tmp/child.jsonl",
+            thread_id="child-thread",
+            parent_thread_id="parent-thread",
+            session_started_at=datetime(2026, 3, 20, 7, 1, tzinfo=UTC),
+        )
+
+        timelines = {
+            ("/tmp/parent.jsonl", True): transcript_tool_calls.TurnTimeline(
+                tool_calls=[
+                    transcript_tool_calls.ToolCallRecord(
+                        tool_name="read_file",
+                        input_data={"path": "parent.py"},
+                        timestamp=datetime(2026, 3, 20, 7, 0, 10, tzinfo=UTC),
+                    )
+                ],
+                has_data=True,
+            ),
+            ("/tmp/child.jsonl", True): transcript_tool_calls.TurnTimeline(
+                tool_calls=[
+                    transcript_tool_calls.ToolCallRecord(
+                        tool_name="apply_patch",
+                        input_data={"path": "child.py"},
+                        timestamp=datetime(2026, 3, 20, 7, 1, 10, tzinfo=UTC),
+                    )
+                ],
+                has_data=True,
+            ),
+        }
+
+        monkeypatch.setattr(
+            transcript_tool_calls,
+            "discover_codex_transcript_family_meta",
+            lambda **kwargs: [parent_meta, child_meta],
+        )
+        monkeypatch.setattr(
+            transcript_tool_calls,
+            "_extract_tool_calls_for_scope",
+            lambda transcript_path, agent_name, full_session=False: timelines[(transcript_path, full_session)],
+        )
+
+        timeline = transcript_tool_calls.extract_effective_tool_calls(
+            "/tmp/parent.jsonl",
+            AgentName.CODEX,
+            native_session_id="parent-thread",
+            scope="session",
+        )
+
+        assert [record.input_data for record in timeline.tool_calls] == [{"path": "parent.py"}, {"path": "child.py"}]
+        assert timeline.has_data is True
+
+    def test_extract_effective_tool_calls_filters_codex_children_before_parent_turn(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        parent_turn_start = datetime(2026, 3, 20, 7, 5, tzinfo=UTC)
+        parent_meta = CodexTranscriptMeta(
+            transcript_path="/tmp/parent.jsonl",
+            thread_id="parent-thread",
+            parent_thread_id=None,
+            session_started_at=datetime(2026, 3, 20, 7, 0, tzinfo=UTC),
+        )
+        old_child_meta = CodexTranscriptMeta(
+            transcript_path="/tmp/old-child.jsonl",
+            thread_id="old-child-thread",
+            parent_thread_id="parent-thread",
+            session_started_at=datetime(2026, 3, 20, 7, 4, 59, tzinfo=UTC),
+        )
+        new_child_meta = CodexTranscriptMeta(
+            transcript_path="/tmp/new-child.jsonl",
+            thread_id="new-child-thread",
+            parent_thread_id="parent-thread",
+            session_started_at=datetime(2026, 3, 20, 7, 5, 1, tzinfo=UTC),
+        )
+
+        timelines = {
+            ("/tmp/parent.jsonl", False): transcript_tool_calls.TurnTimeline(
+                tool_calls=[
+                    transcript_tool_calls.ToolCallRecord(
+                        tool_name="spawn_agent",
+                        input_data={"path": "parent.py"},
+                        timestamp=datetime(2026, 3, 20, 7, 5, 2, tzinfo=UTC),
+                    )
+                ],
+                has_data=True,
+                turn_start_at=parent_turn_start,
+            ),
+            ("/tmp/new-child.jsonl", True): transcript_tool_calls.TurnTimeline(
+                tool_calls=[
+                    transcript_tool_calls.ToolCallRecord(
+                        tool_name="apply_patch",
+                        input_data={"path": "new-child.py"},
+                        timestamp=datetime(2026, 3, 20, 7, 5, 3, tzinfo=UTC),
+                    )
+                ],
+                has_data=True,
+            ),
+        }
+
+        monkeypatch.setattr(
+            transcript_tool_calls,
+            "discover_codex_transcript_family_meta",
+            lambda **kwargs: [parent_meta, old_child_meta, new_child_meta],
+        )
+        monkeypatch.setattr(
+            transcript_tool_calls,
+            "_extract_tool_calls_for_scope",
+            lambda transcript_path, agent_name, full_session=False: timelines[(transcript_path, full_session)],
+        )
+
+        timeline = transcript_tool_calls.extract_effective_tool_calls(
+            "/tmp/parent.jsonl",
+            AgentName.CODEX,
+            native_session_id="parent-thread",
+            scope="turn",
+        )
+
+        assert [record.input_data for record in timeline.tool_calls] == [
+            {"path": "parent.py"},
+            {"path": "new-child.py"},
+        ]
+        assert timeline.turn_start_at == parent_turn_start
 
 
 class TestStructuredMessageExtraction:

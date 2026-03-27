@@ -6,11 +6,12 @@ import json
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import cast
+from datetime import UTC, datetime
+from typing import Literal, cast
 
 from teleclaude.constants import CHECKPOINT_RESULT_SNIPPET_MAX_CHARS
 from teleclaude.core.agents import AgentName
+from teleclaude.core.codex_transcript import CodexTranscriptMeta, discover_codex_transcript_family_meta
 from teleclaude.core.models import JsonDict
 
 from ._iterators import _get_entries_for_agent
@@ -42,6 +43,7 @@ class TurnTimeline:
 
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     has_data: bool = True
+    turn_start_at: datetime | None = None
 
 
 @dataclass
@@ -141,6 +143,28 @@ def _find_turn_start_idx(entries: list[JsonDict], full_session: bool) -> int:
                 continue
             return i + 1
     return 0
+
+
+def _resolve_turn_start_timestamp(
+    entries: list[JsonDict],
+    turn_start_idx: int,
+    full_session: bool,
+) -> datetime | None:
+    """Resolve the effective start timestamp for the selected transcript slice."""
+    if full_session or not entries:
+        return None
+
+    candidate_indexes: list[int] = []
+    if turn_start_idx > 0:
+        candidate_indexes.append(turn_start_idx - 1)
+    if turn_start_idx < len(entries):
+        candidate_indexes.append(turn_start_idx)
+
+    for entry_index in candidate_indexes:
+        entry_dt = _entry_timestamp(entries[entry_index])
+        if entry_dt is not None:
+            return entry_dt
+    return None
 
 
 def _entry_timestamp(entry: Mapping[str, object]) -> datetime | None:
@@ -331,6 +355,130 @@ def _process_entry_message_blocks(
             _complete_pending_tool_result(block, state)
 
 
+def _extract_tool_calls_for_scope(
+    transcript_path: str,
+    agent_name: AgentName,
+    *,
+    full_session: bool = False,
+) -> TurnTimeline:
+    """Extract tool calls and expose the effective turn boundary timestamp."""
+    try:
+        tail_entries = _tool_call_tail_entries(agent_name, full_session)
+        entries = _get_entries_for_agent(transcript_path, agent_name, tail_entries=tail_entries)
+        if entries is None:
+            return TurnTimeline(tool_calls=[], has_data=False)
+
+        turn_start_idx = _find_turn_start_idx(entries, full_session)
+        turn_start_at = _resolve_turn_start_timestamp(entries, turn_start_idx, full_session)
+
+        state = _ToolCallExtractionState()
+        for entry in entries[turn_start_idx:]:
+            entry_dt = _entry_timestamp(entry)
+            if _handle_response_item_entry(entry, entry_dt, state):
+                continue
+            _process_entry_message_blocks(entry, entry_dt, state)
+
+        _flush_pending_record(state)
+        if state.pending_function_calls:
+            state.records.extend(state.pending_function_calls.values())
+
+        return TurnTimeline(tool_calls=state.records, has_data=True, turn_start_at=turn_start_at)
+
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.debug("Tool-call extraction failed (fail-open)", exc_info=True)
+        return TurnTimeline(tool_calls=[], has_data=False)
+
+
+def _record_sort_key(
+    effective_timestamp: datetime | None,
+    source_index: int,
+    record_index: int,
+) -> tuple[int, float, int, int]:
+    """Provide deterministic ordering for merged tool-call timelines."""
+    if effective_timestamp is None:
+        return (1, 0.0, source_index, record_index)
+
+    normalized = effective_timestamp if effective_timestamp.tzinfo else effective_timestamp.replace(tzinfo=UTC)
+    return (0, normalized.astimezone(UTC).timestamp(), source_index, record_index)
+
+
+def _merge_timelines(
+    timeline_sources: list[tuple[CodexTranscriptMeta | None, TurnTimeline]],
+    *,
+    turn_start_at: datetime | None = None,
+) -> TurnTimeline:
+    """Merge multiple transcript timelines into one deterministic ordered view."""
+    merged_records: list[tuple[tuple[int, float, int, int], ToolCallRecord]] = []
+    has_data = False
+
+    for source_index, (meta, timeline) in enumerate(timeline_sources):
+        has_data = has_data or timeline.has_data
+        fallback_timestamp = meta.session_started_at if meta is not None else None
+        for record_index, record in enumerate(timeline.tool_calls):
+            effective_timestamp = record.timestamp or fallback_timestamp
+            merged_records.append((_record_sort_key(effective_timestamp, source_index, record_index), record))
+
+    merged_records.sort(key=lambda item: item[0])
+    return TurnTimeline(
+        tool_calls=[record for _key, record in merged_records],
+        has_data=has_data,
+        turn_start_at=turn_start_at,
+    )
+
+
+def extract_effective_tool_calls(  # pylint: disable=too-many-return-statements
+    transcript_path: str | None,
+    agent_name: AgentName,
+    *,
+    native_session_id: str | None = None,
+    scope: Literal["turn", "session"] = "turn",
+) -> TurnTimeline:
+    """Extract the effective tool timeline for a session, flattening Codex descendants."""
+    full_session = scope == "session"
+    if not transcript_path:
+        if agent_name != AgentName.CODEX or not native_session_id:
+            return TurnTimeline(tool_calls=[], has_data=False)
+        family_meta = discover_codex_transcript_family_meta(root_thread_id=native_session_id)
+        if not family_meta:
+            return TurnTimeline(tool_calls=[], has_data=False)
+    elif agent_name == AgentName.CODEX:
+        family_meta = discover_codex_transcript_family_meta(
+            root_transcript_path=transcript_path,
+            root_thread_id=native_session_id,
+        )
+    else:
+        family_meta = []
+
+    if agent_name != AgentName.CODEX:
+        return _extract_tool_calls_for_scope(transcript_path, agent_name, full_session=full_session)
+
+    if not family_meta:
+        return _extract_tool_calls_for_scope(transcript_path, agent_name, full_session=full_session)
+
+    parent_meta = family_meta[0]
+    parent_timeline = _extract_tool_calls_for_scope(parent_meta.transcript_path, agent_name, full_session=full_session)
+    timeline_sources: list[tuple[CodexTranscriptMeta | None, TurnTimeline]] = [(parent_meta, parent_timeline)]
+
+    if scope == "turn" and parent_timeline.turn_start_at is None:
+        return parent_timeline
+
+    for child_meta in family_meta[1:]:
+        if scope == "turn":
+            if (
+                child_meta.session_started_at is None
+                or parent_timeline.turn_start_at is None
+                or child_meta.session_started_at < parent_timeline.turn_start_at
+            ):
+                continue
+        child_timeline = _extract_tool_calls_for_scope(child_meta.transcript_path, agent_name, full_session=True)
+        timeline_sources.append((child_meta, child_timeline))
+
+    if len(timeline_sources) == 1:
+        return parent_timeline
+
+    return _merge_timelines(timeline_sources, turn_start_at=parent_timeline.turn_start_at)
+
+
 def extract_tool_calls_current_turn(  # pylint: disable=too-many-arguments
     transcript_path: str,
     agent_name: AgentName,
@@ -350,29 +498,7 @@ def extract_tool_calls_current_turn(  # pylint: disable=too-many-arguments
 
     Fails open: returns TurnTimeline(tool_calls=[], has_data=False) on any error.
     """
-    try:
-        tail_entries = _tool_call_tail_entries(agent_name, full_session)
-        entries = _get_entries_for_agent(transcript_path, agent_name, tail_entries=tail_entries)
-        if entries is None:
-            return TurnTimeline(tool_calls=[], has_data=False)
-
-        turn_start_idx = _find_turn_start_idx(entries, full_session)
-        state = _ToolCallExtractionState()
-        for entry in entries[turn_start_idx:]:
-            entry_dt = _entry_timestamp(entry)
-            if _handle_response_item_entry(entry, entry_dt, state):
-                continue
-            _process_entry_message_blocks(entry, entry_dt, state)
-
-        _flush_pending_record(state)
-        if state.pending_function_calls:
-            state.records.extend(state.pending_function_calls.values())
-
-        return TurnTimeline(tool_calls=state.records, has_data=True)
-
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.debug("Tool-call extraction failed (fail-open)", exc_info=True)
-        return TurnTimeline(tool_calls=[], has_data=False)
+    return _extract_tool_calls_for_scope(transcript_path, agent_name, full_session=full_session)
 
 
 # ---------------------------------------------------------------------------

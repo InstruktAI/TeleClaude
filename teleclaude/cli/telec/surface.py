@@ -803,6 +803,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "history": CommandDef(
         desc="Search and view agent session history",
         subcommands={
+            "list": CommandDef(
+                desc="List session summaries from mirrors",
+                flags=[
+                    _H,
+                    Flag("--identity", desc="Filter by human identity (email or key)"),
+                    Flag("--project", desc="Filter by project name"),
+                    Flag("--limit", desc="Max results (default: 20)"),
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
             "search": CommandDef(
                 desc="Search agent session transcripts",
                 args="[terms...]",

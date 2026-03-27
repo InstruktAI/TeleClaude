@@ -91,6 +91,7 @@ without findings:
 
 - **Tests**: does every plan task reference specific expected-failure tests it makes GREEN?
   Do referenced test names match actual test specs in the worktree?
+  If the delivery changes browser-based frontend or web UI behavior, does the plan include Playwright smoke verification and evidence capture for build and review?
 - **Security**: does the plan address input validation, auth checks, and
   secret handling where applicable?
 - **Documentation**: does the plan include help text, config surface, and

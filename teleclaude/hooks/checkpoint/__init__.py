@@ -60,7 +60,7 @@ from teleclaude.hooks.checkpoint._models import (
     CheckpointResult,
     TranscriptObservability,
 )
-from teleclaude.utils.transcript import TurnTimeline, extract_tool_calls_current_turn
+from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
 logger = logging.getLogger(__name__)
 
@@ -280,10 +280,11 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 # ---------------------------------------------------------------------------
 
 
-def get_checkpoint_content(
+def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     transcript_path: str | None,
     agent_name: AgentName,
     project_path: str,
+    native_session_id: str | None = None,
     working_slug: str | None = None,
     elapsed_since_turn_start_s: float | None = None,
 ) -> str | None:
@@ -323,10 +324,12 @@ def get_checkpoint_content(
             )
             return CHECKPOINT_MESSAGE  # git unavailable — fall back to generic
 
-        if transcript_path:
-            timeline = extract_tool_calls_current_turn(transcript_path, agent_name)
-        else:
-            timeline = TurnTimeline(tool_calls=[], has_data=False)
+        timeline = extract_effective_tool_calls(
+            transcript_path,
+            agent_name,
+            native_session_id=native_session_id,
+            scope="turn",
+        )
 
         effective_git_files = _scope_git_files_to_current_turn(
             git_files,

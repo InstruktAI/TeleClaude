@@ -2,26 +2,18 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from pathlib import Path
-from typing import TypedDict
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
-from teleclaude.core.next_machine.state_io import (
-    mark_phase,
-    read_phase_state,
-    stamp_artifact,
-    stamp_verdict,
-)
+from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.next_machine.state_io import mark_phase, read_phase_state, stamp_artifact, stamp_verdict
 
-
-class _GroundingState(TypedDict, total=False):
-    valid: bool
-    base_sha: str
-    input_digest: str
-    last_grounded_at: str
+StateData = dict[str, StateValue]
 
 
 def _write_state(todo_dir: Path, state: dict[object, object]) -> None:
@@ -29,27 +21,16 @@ def _write_state(todo_dir: Path, state: dict[object, object]) -> None:
     (todo_dir / "state.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
 
 
-def _mock_target(target_name: str) -> MagicMock:
-    """Create a mock machine whose target() sets current to the given name."""
-
-    def _target_side_effect(snapshot: dict, name: str, ctx: object) -> dict:
-        result = dict(snapshot)
-        result["current"] = name
-        result.setdefault("history", [])
-        return result
-
-    machine = MagicMock()
-    machine.target.side_effect = _target_side_effect
-    return machine
+def _identity_path(path: str) -> str:
+    return path
 
 
-def _patch_mark_phase_deps(mock_machine: MagicMock):  # type: ignore[no-untyped-def]
+def _patch_mark_phase_deps(mock_machine: MagicMock) -> ExitStack:
     """Return a context manager that patches mark_phase dependencies."""
-    from contextlib import ExitStack
 
     stack = ExitStack()
     stack.enter_context(
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x)
+        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path)
     )
     stack.enter_context(
         patch("teleclaude.core.next_machine.work_lifecycle.build_lifecycle_machine", return_value=mock_machine)
@@ -88,7 +69,7 @@ def test_mark_phase_changes_requested_records_round_baseline_and_finding_ids(tmp
     mock_machine = MagicMock()
 
     # on_enter for review_changes_requested is in the lifecycle — we test via the real machine
-    def _target_side_effect(snapshot: dict, name: str, ctx: object) -> dict:
+    def _target_side_effect(snapshot: StateData, name: str, ctx: object) -> StateData:
         result = dict(snapshot)
         result["current"] = name
         result.setdefault("history", [])
@@ -127,15 +108,15 @@ def test_mark_phase_approved_merges_unresolved_findings_into_resolved_ids(tmp_pa
 
     mock_machine = MagicMock()
 
-    def _target_side_effect(snapshot: dict, name: str, ctx: object) -> dict:
+    def _target_side_effect(snapshot: StateData, name: str, ctx: object) -> StateData:
         result = dict(snapshot)
         result["current"] = name
         result.setdefault("history", [])
         if name == "review_approved":
             result["review_round"] = 1
             result["review_baseline_commit"] = "cafebabe"
-            unresolved = list(result.get("unresolved_findings", []))
-            resolved = list(result.get("resolved_findings", []))
+            unresolved = list(cast(list[object], result.get("unresolved_findings", [])))
+            resolved = list(cast(list[object], result.get("resolved_findings", [])))
             merged = list(dict.fromkeys([*[str(i) for i in resolved], *[str(i) for i in unresolved]]))
             result["resolved_findings"] = merged
             result["unresolved_findings"] = []
@@ -164,7 +145,9 @@ def test_mark_phase_prepared_stamps_grounding(tmp_path: Path) -> None:
 
     # Use the real lifecycle machine for on_enter
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
         patch("teleclaude.core.next_machine.work_lifecycle.run_git_command", return_value=(0, "headsha\n", "")),
     ):
@@ -176,6 +159,10 @@ def test_mark_phase_prepared_stamps_grounding(tmp_path: Path) -> None:
     assert state["dor"]["score"] == 8  # type: ignore[index]
     assert grounding["base_sha"] == "headsha"
     assert (todo_dir / "quality-checklist.md").exists()
+    checklist = (todo_dir / "quality-checklist.md").read_text(encoding="utf-8")
+    assert "Browser-based frontend or web UI changes smoke-tested with Playwright" in checklist
+    assert "Browser-based frontend or web UI changes verified with Playwright during review" in checklist
+    assert "## Finalize Gates (Finalizer)" in checklist
 
 
 def test_stamp_artifact_stamps_produced_at_for_test_specs(tmp_path: Path) -> None:
@@ -284,7 +271,9 @@ def test_stamp_verdict_raises_on_invalid_verdict(tmp_path: Path) -> None:
 def test_mark_phase_prepared_raises_when_todo_dir_missing(tmp_path: Path) -> None:
     """prepared transition raises ValueError when the todo directory does not exist."""
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
     ):
         with pytest.raises(ValueError, match="Todo directory not found"):
@@ -298,7 +287,9 @@ def test_mark_phase_prepared_raises_when_requirements_missing(tmp_path: Path) ->
     (todo_dir / "implementation-plan.md").write_text("Real plan content.\n", encoding="utf-8")
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
     ):
         with pytest.raises(ValueError, match=r"Missing requirements\.md"):
@@ -312,7 +303,9 @@ def test_mark_phase_prepared_raises_when_plan_missing(tmp_path: Path) -> None:
     (todo_dir / "requirements.md").write_text("Real requirements content.\n", encoding="utf-8")
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
     ):
         with pytest.raises(ValueError, match=r"Missing implementation-plan\.md"):
@@ -341,7 +334,9 @@ def test_mark_phase_finalize_ready_raises_when_worktree_missing(tmp_path: Path) 
     _write_state(todo_dir, {"schema_version": 2, "current": "review_approved", "history": []})
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
     ):
         with pytest.raises(ValueError, match="worktree not found"):
@@ -353,7 +348,9 @@ def test_mark_phase_finalize_ready_raises_on_uncommitted_changes(tmp_path: Path)
     _write_finalize_ready_state(tmp_path, "slug-fr2")
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=True),
     ):
@@ -366,7 +363,9 @@ def test_mark_phase_finalize_ready_raises_on_head_mismatch(tmp_path: Path) -> No
     _write_finalize_ready_state(tmp_path, "slug-fr3")
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="worktree-head"),
@@ -381,7 +380,9 @@ def test_mark_phase_finalize_ready_raises_when_remote_missing(tmp_path: Path) ->
     _write_finalize_ready_state(tmp_path, "slug-fr4")
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="abc123"),
@@ -397,7 +398,9 @@ def test_mark_phase_finalize_ready_raises_when_remote_mismatches(tmp_path: Path)
     _write_finalize_ready_state(tmp_path, "slug-fr5")
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="abc123"),
@@ -413,7 +416,9 @@ def test_mark_phase_finalize_ready_happy_path(tmp_path: Path) -> None:
     _write_finalize_ready_state(tmp_path, "slug-fr6")
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="worker-sess-1"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="abc123"),
@@ -454,7 +459,9 @@ def test_mark_phase_finalize_handoff_raises_when_not_ready(tmp_path: Path) -> No
     )
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
     ):
         with pytest.raises(ValueError, match="not ready"):
@@ -484,7 +491,9 @@ def test_mark_phase_finalize_handoff_happy_path(tmp_path: Path) -> None:
     )
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=lambda x: x),
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
         patch("teleclaude.session_identity.get_session_id", return_value="integrator-sess"),
     ):
         state = mark_phase(str(tmp_path), "slug-fh2", "finalize_handed_off")

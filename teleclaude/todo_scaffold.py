@@ -532,7 +532,9 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
     """Extract files touched by the current agent session from its transcript.
 
     Uses the same transcript parsing as the checkpoint system to determine
-    which files this session actually mutated.
+    which files this session actually mutated. Codex sessions aggregate the
+    parent transcript plus any descendant subagent transcripts so attribution
+    matches the effective work owned by the parent session.
 
     Raises:
         ValueError: If session ID is missing, transcript is unavailable,
@@ -542,9 +544,13 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
 
     from teleclaude.core import db_models  # pylint: disable=import-outside-toplevel
     from teleclaude.core.agents import AgentName, get_default_agent  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.codex_transcript import (  # pylint: disable=import-outside-toplevel
+        discover_codex_transcript_path,
+        discover_current_codex_transcript_path,
+    )
     from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals  # pylint: disable=import-outside-toplevel
     from teleclaude.hooks.receiver._session import _create_sync_engine  # pylint: disable=import-outside-toplevel
-    from teleclaude.utils.transcript import extract_tool_calls_current_turn  # pylint: disable=import-outside-toplevel
+    from teleclaude.utils.transcript import extract_effective_tool_calls  # pylint: disable=import-outside-toplevel
 
     session_id = _get_session_id()
     if not session_id:
@@ -556,26 +562,50 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
     if not row:
         raise ValueError(f"Session {session_id} not found in database")
 
-    transcript_path = row.native_log_file
-    if not transcript_path:
-        raise ValueError(f"No transcript found for session {session_id}")
-
     try:
-        agent_name = AgentName.from_str(get_default_agent())
+        agent_name = AgentName.from_str(getattr(row, "active_agent", None) or get_default_agent())
     except ValueError:
         agent_name = AgentName.CLAUDE
 
-    timeline = extract_tool_calls_current_turn(transcript_path, agent_name, full_session=True)
-    touched_files, _saw_mutation = _extract_turn_file_signals(timeline, project_path)
+    transcript_candidates: list[str] = []
+    native_log_file = getattr(row, "native_log_file", None)
+    native_session_id = getattr(row, "native_session_id", None)
+    if native_log_file:
+        transcript_candidates.append(native_log_file)
+    if not transcript_candidates and agent_name == AgentName.CODEX and native_session_id:
+        discovered_path = discover_codex_transcript_path(native_session_id)
+        if discovered_path:
+            transcript_candidates.append(discovered_path)
+    if not transcript_candidates:
+        raise ValueError(f"No transcript found for session {session_id}")
 
-    if not touched_files:
-        raise ValueError(
-            f"Could not determine session-touched files from transcript.\n"
-            f"Session: {session_id}, transcript: {transcript_path}"
+    if agent_name == AgentName.CODEX:
+        current_transcript_path = discover_current_codex_transcript_path()
+        if current_transcript_path and current_transcript_path not in transcript_candidates:
+            transcript_candidates.insert(0, current_transcript_path)
+
+    attempted_transcripts: list[str] = []
+    for transcript_path in transcript_candidates:
+        attempted_transcripts.append(transcript_path)
+        timeline = extract_effective_tool_calls(
+            transcript_path,
+            agent_name,
+            native_session_id=native_session_id,
+            scope="session",
         )
+        touched_files, _saw_mutation = _extract_turn_file_signals(timeline, project_path)
 
-    _scaffold_logger.debug("Session %s touched %d files: %s", session_id, len(touched_files), sorted(touched_files))
-    return touched_files
+        if touched_files:
+            _scaffold_logger.debug(
+                "Session %s touched %d files: %s", session_id, len(touched_files), sorted(touched_files)
+            )
+            return touched_files
+
+    attempted = ", ".join(attempted_transcripts) if attempted_transcripts else "<none>"
+    raise ValueError(
+        f"Could not determine session-touched files from transcript.\n"
+        f"Session: {session_id}, attempted transcripts: {attempted}"
+    )
 
 
 def create_from_main_skeleton(  # pylint: disable=too-many-locals

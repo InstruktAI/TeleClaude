@@ -1,7 +1,10 @@
+# pyright: reportUnknownLambdaType=false, reportTypedDictNotRequiredAccess=false
+# pyright: reportAttributeAccessIssue=false
 from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, TypedDict, cast
 
 import pytest
 
@@ -9,6 +12,12 @@ from teleclaude.mirrors import processors as processors_module
 from teleclaude.mirrors.store import SessionMirrorContext
 
 pytestmark = pytest.mark.unit
+
+
+class GenerateMirrorKwargs(TypedDict, total=False):
+    human_email: str | None
+    visibility: str | None
+    last_input_origin: str | None
 
 
 class TestProcessorRegistry:
@@ -56,6 +65,7 @@ class TestProcessMirrorEvent:
             computer: str,
             project: str,
             db: object | None,
+            **kwargs: object,
         ) -> None:
             generated_calls.append((session_id, source_identity, transcript_path, agent_name.value, computer, project))
 
@@ -100,3 +110,39 @@ class TestProcessMirrorEvent:
         )
 
         assert warnings == ["unknown"]
+
+    async def test_process_mirror_event_passes_expanded_session_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        generated_calls: list[tuple[object, ...]] = []
+
+        monkeypatch.setattr(processors_module, "resolve_db_path", lambda: "mirrors.sqlite")
+        monkeypatch.setattr(
+            processors_module,
+            "get_session_context",
+            lambda session_id=None, transcript_path=None, db=None: cast(Any, SessionMirrorContext)(
+                session_id="session-1",
+                computer="mac",
+                agent="claude",
+                project="alpha",
+                transcript_path="/tmp/transcript.jsonl",
+                human_email="customer@example.com",
+                visibility="shared",
+                last_input_origin="telegram",
+                adapter_metadata_json='{"telegram":{"user_id":1285425702}}',
+            ),
+        )
+        monkeypatch.setattr(processors_module, "in_session_root", lambda path, agent: True)
+
+        async def fake_generate_mirror(*args: object, **kwargs: object) -> None:
+            generated_calls.append((args, cast(GenerateMirrorKwargs, kwargs)))
+
+        monkeypatch.setattr(processors_module, "generate_mirror", fake_generate_mirror)
+
+        await processors_module.process_mirror_event(
+            processors_module.MirrorEvent(session_id="session-1", transcript_path="/tmp/transcript.jsonl")
+        )
+
+        assert generated_calls
+        kwargs = cast(GenerateMirrorKwargs, generated_calls[0][1])
+        assert kwargs["human_email"] == "customer@example.com"
+        assert kwargs["visibility"] == "shared"
+        assert kwargs["last_input_origin"] == "telegram"

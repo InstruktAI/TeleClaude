@@ -1,13 +1,23 @@
+# pyright: reportUnknownLambdaType=false
 from __future__ import annotations
 
 import importlib
 import sys
 from types import SimpleNamespace
+from typing import TypedDict, cast
 from unittest.mock import patch
 
 import pytest
 
 history = importlib.import_module("teleclaude.cli.telec.handlers.history")
+
+
+class ListMirrorsCall(TypedDict):
+    identity: str | None
+    project: str | None
+    limit: int
+    caller_email: str | None
+    caller_role: str | None
 
 
 def test_handle_history_without_args_prints_usage(
@@ -39,15 +49,17 @@ def test_handle_history_search_parses_flags_and_delegates() -> None:
 
     fake_search = SimpleNamespace(
         parse_agents=lambda agent_arg: ["parsed", agent_arg],
-        display_combined_history=lambda agents, *, search_term, limit, computers: calls.append(
+        display_combined_history=lambda agents, *, search_term, limit, computers, **kwargs: calls.append(
             (agents, search_term, limit, computers)
         ),
     )
 
     with patch.dict(sys.modules, {"teleclaude.history.search": fake_search}):
-        history._handle_history_search(
-            ["error", "budget", "--agent", "claude,codex", "--limit", "15", "--computer", "work", "home"]
-        )
+        with patch.object(history, "read_current_session_email", return_value=None):
+            with patch.object(history, "resolve_cli_caller_role", return_value=None):
+                history._handle_history_search(
+                    ["error", "budget", "--agent", "claude,codex", "--limit", "15", "--computer", "work", "home"]
+                )
 
     assert calls == [(["parsed", "claude,codex"], "error budget", 15, ["work", "home"])]
 
@@ -78,15 +90,27 @@ def test_handle_history_show_parses_flags_and_delegates() -> None:
 
     fake_search = SimpleNamespace(
         parse_agents=lambda agent_arg: ["parsed", agent_arg],
-        show_transcript=lambda agents, session_id, *, tail_chars, include_thinking, raw, computers: calls.append(
-            (agents, session_id, tail_chars, include_thinking, raw, computers)
+        show_transcript=lambda agents, session_id, *, tail_chars, include_thinking, raw, computers, **kwargs: (
+            calls.append((agents, session_id, tail_chars, include_thinking, raw, computers))
         ),
     )
 
     with patch.dict(sys.modules, {"teleclaude.history.search": fake_search}):
-        history._handle_history_show(
-            ["session-123", "--agent", "codex", "--thinking", "--raw", "--tail", "120", "--computer", "workstation"]
-        )
+        with patch.object(history, "read_current_session_email", return_value=None):
+            with patch.object(history, "resolve_cli_caller_role", return_value=None):
+                history._handle_history_show(
+                    [
+                        "session-123",
+                        "--agent",
+                        "codex",
+                        "--thinking",
+                        "--raw",
+                        "--tail",
+                        "120",
+                        "--computer",
+                        "workstation",
+                    ]
+                )
 
     assert calls == [(["parsed", "codex"], "session-123", 120, True, True, ["workstation"])]
 
@@ -148,3 +172,28 @@ def test_handle_history_show_rejects_invalid_tail(capsys: pytest.CaptureFixture[
 
     assert exc_info.value.code == 1
     assert "Invalid value for --tail: oops" in capsys.readouterr().out
+
+
+def test_handle_history_list_parses_filters_and_delegates() -> None:
+    calls: list[ListMirrorsCall] = []
+
+    fake_store = SimpleNamespace(
+        list_mirrors=lambda **kwargs: calls.append(cast(ListMirrorsCall, kwargs)) or [],
+    )
+
+    with patch.dict(sys.modules, {"teleclaude.mirrors.store": fake_store}):
+        with patch.object(history, "read_current_session_email", return_value="member@example.com"):
+            with patch.object(history, "resolve_cli_caller_role", return_value="member"):
+                history._handle_history_list(
+                    ["--identity", "telegram:1285425702", "--project", "alpha", "--limit", "5"]
+                )
+
+    assert calls == [
+        {
+            "identity": "telegram:1285425702",
+            "project": "alpha",
+            "limit": 5,
+            "caller_email": "member@example.com",
+            "caller_role": "member",
+        }
+    ]

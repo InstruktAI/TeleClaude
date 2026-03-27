@@ -54,6 +54,16 @@ Fields that must be explained:
 - native session id (if present),
 - native transcript/log path (if present),
 - mapping record location/reference.
+- distinction between `channel_metadata` and `origin_metadata`, and how each is used.
+
+### Origin Data Model
+
+Two related but distinct concepts carry origin information:
+
+- **`channel_metadata`**: per-request dict assembled by the edge layer from platform-specific signals (user_id, email, phone_number). Used for identity resolution at request time. Transient — lives on the command, not persisted directly.
+- **`origin_metadata`**: per-session JSON column on the sessions table. The accumulated merge of all `channel_metadata` received during the session's lifetime. Persisted via `update_origin_metadata` (merge-on-write). Carries the `platform` key (last input origin) plus all platform sections.
+
+Identity resolution reads from `channel_metadata`. Long-term identity derivation (e.g. `derive_identity_key`) reads from `origin_metadata`.
 
 ## Allowed values
 
@@ -72,15 +82,6 @@ Recovery outcome:
 - `mint-new`
 - `tmux-contract-violation`
 - `identity-contract-violation`
-
-## Origin data model
-
-Two related but distinct concepts carry origin information:
-
-- **`channel_metadata`**: per-request dict assembled by the edge layer from platform-specific signals (user_id, email, phone_number). Used for identity resolution at request time. Transient — lives on the command, not persisted directly.
-- **`origin_metadata`**: per-session JSON column on the sessions table. The accumulated merge of all `channel_metadata` received during the session's lifetime. Persisted via `update_origin_metadata` (merge-on-write). Carries the `platform` key (last input origin) plus all platform sections.
-
-Identity resolution reads from `channel_metadata`. Long-term identity derivation (e.g. `derive_identity_key`) reads from `origin_metadata`.
 
 ## Known caveats
 

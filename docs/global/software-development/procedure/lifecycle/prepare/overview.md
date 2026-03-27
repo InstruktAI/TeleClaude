@@ -51,7 +51,9 @@ The discovery worker owns requirements production. It decides whether solo disco
 is enough or whether to triangulate with a complementary partner. Both paths converge
 to the same output: `requirements.md`.
 
-After requirements are written or revised, call `telec todo prepare [slug]` again.
+After requirements are written or revised, the orchestrator persists the artifact
+transition with `telec todo mark-phase {slug} --phase requirements --status complete`,
+ends the worker session, and calls `telec todo prepare [slug]` again.
 
 #### REQUIREMENTS REVIEW REQUIRED
 
@@ -59,7 +61,14 @@ After requirements are written or revised, call `telec todo prepare [slug]` agai
 validate requirements against the quality standard (completeness, testability,
 grounding, review-awareness). The reviewer writes a verdict to `state.yaml`.
 
-After review, call `telec todo prepare [slug]` again.
+The orchestrator persists the review transition before advancing:
+
+- APPROVE → `telec todo mark-phase {slug} --phase requirements_review --status approve`
+- NEEDS WORK → `telec todo mark-phase {slug} --phase requirements_review --status needs_work`
+
+On approval it ends the reviewer session and calls `telec todo prepare [slug]` again.
+On NEEDS WORK it keeps the reviewer alive, dispatches the fixer flow, and when the
+fixer reports done it marks `requirements` complete before calling again.
 
 #### TEST SPECIFICATION REQUIRED
 
@@ -68,7 +77,9 @@ Dispatch `next-prepare-test-spec` to a worker session. The test spec worker
 writes expected-failure-marked tests encoding the behavioral requirements.
 These test specs define the contract the builder must satisfy.
 
-After test specs are written, call `telec todo prepare [slug]` again.
+After test specs are written, the orchestrator persists the artifact transition
+with `telec todo mark-phase {slug} --phase test_specs --status complete`, ends
+the worker session, and calls `telec todo prepare [slug]` again.
 
 #### TEST SPEC REVIEW REQUIRED
 
@@ -76,7 +87,14 @@ Test specifications exist but are not yet approved. Dispatch a reviewer to
 validate test specs for behavioral focus, convention compliance, and no
 implementation leakage. The reviewer writes a verdict to `state.yaml`.
 
-After review, call `telec todo prepare [slug]` again.
+The orchestrator persists the review transition before advancing:
+
+- APPROVE → `telec todo mark-phase {slug} --phase test_spec_review --status approve`
+- NEEDS WORK → `telec todo mark-phase {slug} --phase test_spec_review --status needs_work`
+
+On approval it ends the reviewer session and calls `telec todo prepare [slug]` again.
+On NEEDS WORK it keeps the reviewer alive, dispatches the fixer flow, and when the
+fixer reports done it marks `test_specs` complete before calling again.
 
 #### PLAN DRAFTING REQUIRED
 
@@ -88,7 +106,8 @@ approved requirements and test specs, decides whether the work is atomic, and ei
 - splits the todo into dependent child work items and updates the holder breakdown.
 
 After the plan is written or the split is materialized, call
-`telec todo prepare [slug]` again.
+`telec todo mark-phase {slug} --phase implementation_plan --status complete`,
+end the worker session, and then call `telec todo prepare [slug]` again.
 
 #### PLAN REVIEW REQUIRED
 
@@ -96,7 +115,14 @@ After the plan is written or the split is materialized, call
 to validate the plan against policies, DoD gates, and review lane expectations.
 The reviewer writes a verdict to `state.yaml`.
 
-After review, call `telec todo prepare [slug]` again.
+The orchestrator persists the review transition before advancing:
+
+- APPROVE → `telec todo mark-phase {slug} --phase plan_review --status approve`
+- NEEDS WORK → `telec todo mark-phase {slug} --phase plan_review --status needs_work`
+
+On approval it ends the reviewer session and calls `telec todo prepare [slug]` again.
+On NEEDS WORK it keeps the reviewer alive, dispatches the fixer flow, and when the
+fixer reports done it marks `implementation_plan` complete before calling again.
 
 #### GROUNDING CHECK
 
@@ -130,6 +156,7 @@ After dispatching a worker:
 1. Set a heartbeat timer.
 2. Wait for the worker notification.
 3. On notification: call `telec todo prepare [slug]` again to advance.
+   Only do this after executing any emitted `telec todo mark-phase ...` transition.
 4. If the worker stalls (heartbeat fires with no progress), open a direct
    conversation to resolve. If still stuck after two iterations, record
    blockers and stop.

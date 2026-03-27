@@ -23,27 +23,29 @@ __all__ = [
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. Call {next_call}
-3. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
+2. telec todo mark-phase {args} --phase build --status complete
+3. Call {next_call}
+4. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
    - Send the failure details to the builder (do NOT end the session)
    - Wait for builder to report completion again
    - Repeat from step 2
-4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. Call {next_call}
-3. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
+2. telec todo mark-phase {args} --phase build --status complete
+3. Call {next_call}
+4. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
    - Send the failure details to the builder (do NOT end the session)
    - Wait for builder to report completion again
    - Repeat from step 2
-4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict

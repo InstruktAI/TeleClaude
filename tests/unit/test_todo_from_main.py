@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -31,10 +31,13 @@ def _make_repo_ns(
     def update_environment(**kwargs: str) -> dict[str, str]:
         return {}
 
+    def show_ref(ref: str) -> str:
+        return f"clean-content-of-{ref}"
+
     git = SimpleNamespace(
         status=MagicMock(return_value=status),
         diff=MagicMock(return_value=diff_stat),
-        show=MagicMock(side_effect=lambda ref: f"clean-content-of-{ref}"),
+        show=MagicMock(side_effect=show_ref),
         checkout=MagicMock(),
         reset=MagicMock(),
         update_environment=update_environment,
@@ -361,7 +364,9 @@ class TestCollectSessionTouchedFiles:
     _DB_MODELS = "teleclaude.core.db_models"
     _GET_AGENT = "teleclaude.core.agents.get_default_agent"
     _AGENT_NAME = "teleclaude.core.agents.AgentName"
-    _EXTRACT_TURNS = "teleclaude.utils.transcript.extract_tool_calls_current_turn"
+    _CURRENT_CODEX_TRANSCRIPT = "teleclaude.core.codex_transcript.discover_current_codex_transcript_path"
+    _DISCOVER_CODEX_TRANSCRIPT = "teleclaude.core.codex_transcript.discover_codex_transcript_path"
+    _EXTRACT_EFFECTIVE_TURNS = "teleclaude.utils.transcript.extract_effective_tool_calls"
     _EXTRACT_SIGNALS = "teleclaude.hooks.checkpoint._git._extract_turn_file_signals"
 
     def test_happy_path_returns_touched_files(self) -> None:
@@ -381,7 +386,7 @@ class TestCollectSessionTouchedFiles:
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
             patch(self._AGENT_NAME) as mock_agent_name,
-            patch(self._EXTRACT_TURNS, return_value=mock_timeline),
+            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline),
             patch(self._EXTRACT_SIGNALS, return_value=(expected_files, True)),
         ):
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
@@ -455,7 +460,7 @@ class TestCollectSessionTouchedFiles:
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
             patch(self._AGENT_NAME) as mock_agent_name,
-            patch(self._EXTRACT_TURNS, return_value=mock_timeline),
+            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline),
             patch(self._EXTRACT_SIGNALS, return_value=(set(), False)),
             pytest.raises(ValueError, match="Could not determine session-touched files"),
         ):
@@ -481,7 +486,7 @@ class TestCollectSessionTouchedFiles:
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
             patch(self._AGENT_NAME) as mock_agent_name,
-            patch(self._EXTRACT_TURNS, return_value=mock_timeline),
+            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline),
             patch(self._EXTRACT_SIGNALS, return_value=(set(), False)),
             pytest.raises(ValueError, match="Could not determine session-touched files"),
         ):
@@ -490,6 +495,114 @@ class TestCollectSessionTouchedFiles:
             mock_agent_name.from_str.return_value = mock_agent_name.CLAUDE
 
             _collect_session_touched_files("/project")
+
+    def test_codex_prefers_live_thread_transcript_when_db_points_to_stale_subagent(self) -> None:
+        """Codex sessions recover from stale DB transcript pointers using CODEX_THREAD_ID."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        mock_row = SimpleNamespace(
+            active_agent="codex",
+            native_log_file="/tmp/stale-subagent.jsonl",
+            native_session_id="native-stale",
+        )
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_row
+
+        stale_timeline = SimpleNamespace(has_data=True, tool_calls=[])
+        live_timeline = SimpleNamespace(has_data=True, tool_calls=[])
+        expected_files = {"teleclaude/daemon_hook_outbox.py"}
+
+        with (
+            patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-codex"),
+            patch(self._SYNC_ENGINE, return_value=MagicMock()),
+            patch(self._SQL_SESSION) as mock_session_cls,
+            patch(self._CURRENT_CODEX_TRANSCRIPT, return_value="/tmp/live-parent.jsonl"),
+            patch(self._EXTRACT_EFFECTIVE_TURNS, side_effect=[live_timeline, stale_timeline]),
+            patch(self._EXTRACT_SIGNALS, side_effect=[(expected_files, True), (set(), True)]),
+        ):
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = _collect_session_touched_files("/project")
+
+        assert result == expected_files
+
+    def test_codex_discovers_transcript_from_native_session_id_when_log_is_missing(self) -> None:
+        """Codex sessions fall back to transcript discovery when native_log_file is empty."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        mock_row = SimpleNamespace(active_agent="codex", native_log_file=None, native_session_id="native-parent")
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_row
+
+        mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
+        expected_files = {"teleclaude/todo_scaffold.py"}
+
+        with (
+            patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-codex"),
+            patch(self._SYNC_ENGINE, return_value=MagicMock()),
+            patch(self._SQL_SESSION) as mock_session_cls,
+            patch(self._DISCOVER_CODEX_TRANSCRIPT, return_value="/tmp/discovered-parent.jsonl"),
+            patch(self._CURRENT_CODEX_TRANSCRIPT, return_value=None),
+            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline),
+            patch(self._EXTRACT_SIGNALS, return_value=(expected_files, True)),
+        ):
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = _collect_session_touched_files("/project")
+
+        assert result == expected_files
+
+    def test_codex_uses_effective_timeline_union_for_touched_files(self) -> None:
+        """Codex sessions consume the shared effective timeline abstraction."""
+        from teleclaude.todo_scaffold import _collect_session_touched_files
+
+        mock_row = SimpleNamespace(
+            active_agent="codex",
+            native_log_file="/tmp/parent.jsonl",
+            native_session_id="parent-thread",
+        )
+        mock_db = MagicMock()
+        mock_db.get.return_value = mock_row
+
+        mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
+
+        with (
+            patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-codex"),
+            patch(self._SYNC_ENGINE, return_value=MagicMock()),
+            patch(self._SQL_SESSION) as mock_session_cls,
+            patch(self._CURRENT_CODEX_TRANSCRIPT, return_value="/tmp/parent.jsonl"),
+            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline) as extract_effective_mock,
+            patch(
+                self._EXTRACT_SIGNALS,
+                return_value=(
+                    {
+                        "teleclaude/todo_scaffold.py",
+                        "teleclaude/core/codex_transcript.py",
+                        "tests/unit/core/test_codex_transcript.py",
+                    },
+                    True,
+                ),
+            ),
+        ):
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = _collect_session_touched_files("/project")
+
+        extract_effective_mock.assert_called_once_with(
+            "/tmp/parent.jsonl",
+            ANY,
+            native_session_id="parent-thread",
+            scope="session",
+        )
+
+        assert result == {
+            "teleclaude/todo_scaffold.py",
+            "teleclaude/core/codex_transcript.py",
+            "tests/unit/core/test_codex_transcript.py",
+        }
 
 
 class TestCreateFromMainSkeletonAllFiles:
@@ -508,6 +621,9 @@ class TestCreateFromMainSkeletonAllFiles:
         worktree_path.mkdir(parents=True)
         (worktree_path / "src").mkdir(parents=True)
 
+        def update_environment(**kwargs: str) -> dict[str, str]:
+            return {}
+
         # Status has both a modified file and an added (staged) file
         repo_ns = SimpleNamespace(
             git=SimpleNamespace(
@@ -515,7 +631,7 @@ class TestCreateFromMainSkeletonAllFiles:
                 diff=MagicMock(return_value=""),
                 checkout=MagicMock(),
                 reset=MagicMock(),
-                update_environment=lambda **kwargs: {},
+                update_environment=update_environment,
             ),
             active_branch=SimpleNamespace(name="main"),
         )

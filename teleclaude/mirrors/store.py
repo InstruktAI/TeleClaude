@@ -35,6 +35,9 @@ class MirrorSearchResult:  # pylint: disable=too-many-instance-attributes
     topic: str
     conversation_text: str
     metadata: dict[str, JsonValue]
+    human_email: str | None = None
+    visibility: str = "private"
+    source_identity: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,9 @@ class MirrorRecord:  # pylint: disable=too-many-instance-attributes
     created_at: str
     updated_at: str
     source_identity: str | None = None
+    summary: str | None = None
+    human_email: str | None = None
+    visibility: str = "private"
 
 
 @dataclass(frozen=True)
@@ -69,7 +75,7 @@ class MirrorTombstoneRecord:
 
 
 @dataclass(frozen=True)
-class SessionMirrorContext:
+class SessionMirrorContext:  # pylint: disable=too-many-instance-attributes
     """Lightweight session context looked up for mirror reconciliation."""
 
     session_id: str
@@ -77,6 +83,10 @@ class SessionMirrorContext:
     agent: str | None
     project: str
     transcript_path: str | None
+    human_email: str | None = None
+    visibility: str | None = None
+    last_input_origin: str | None = None
+    adapter_metadata_json: str | None = None
 
 
 def resolve_db_path(db: object | None = None) -> str:
@@ -100,7 +110,23 @@ def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
     if path in _schema_initialized:
         return
     conn.executescript(_MIRRORS_SCHEMA)
+    _migrate_add_mirror_columns(conn)
     _schema_initialized.add(path)
+
+
+def _migrate_add_mirror_columns(conn: sqlite3.Connection) -> None:
+    """Idempotent migration: add summary, human_email, visibility to existing mirrors tables."""
+    for stmt in (
+        "ALTER TABLE mirrors ADD COLUMN summary TEXT",
+        "ALTER TABLE mirrors ADD COLUMN human_email TEXT",
+        "ALTER TABLE mirrors ADD COLUMN visibility TEXT DEFAULT 'private'",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mirrors_human_email ON mirrors(human_email)")
 
 
 _MIRRORS_SCHEMA = """\
@@ -118,12 +144,16 @@ CREATE TABLE IF NOT EXISTS mirrors (
     message_count INTEGER NOT NULL DEFAULT 0,
     metadata TEXT DEFAULT '{}',
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    summary TEXT,
+    human_email TEXT,
+    visibility TEXT DEFAULT 'private'
 );
 CREATE INDEX IF NOT EXISTS idx_mirrors_agent ON mirrors(agent);
 CREATE INDEX IF NOT EXISTS idx_mirrors_project ON mirrors(project);
 CREATE INDEX IF NOT EXISTS idx_mirrors_timestamp ON mirrors(timestamp_start DESC);
 CREATE INDEX IF NOT EXISTS idx_mirrors_source_identity ON mirrors(source_identity);
+CREATE INDEX IF NOT EXISTS idx_mirrors_human_email ON mirrors(human_email);
 CREATE TABLE IF NOT EXISTS mirror_tombstones (
     source_identity TEXT PRIMARY KEY,
     agent TEXT NOT NULL DEFAULT '',
@@ -212,13 +242,15 @@ def _topic_for_row(row: sqlite3.Row) -> str:
     return ""
 
 
-def search_mirrors(  # pylint: disable=too-many-locals
+def search_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
     query: str,
     agents: Sequence[AgentName | str],
     *,
     limit: int = 20,
     db: object | None = None,
     computers: Sequence[str] | None = None,
+    caller_email: str | None = None,
+    caller_role: str | None = None,
 ) -> list[MirrorSearchResult]:
     """Search the local mirrors FTS table."""
     match_query = _match_query(query)
@@ -236,6 +268,7 @@ def search_mirrors(  # pylint: disable=too-many-locals
         placeholders = ", ".join("?" for _ in computers)
         clauses.append(f"mirrors.computer IN ({placeholders})")
         params.extend(computers)
+    _apply_role_filter(clauses, params, caller_email, caller_role)
     params.append(limit)
 
     sql = f"""
@@ -248,7 +281,10 @@ def search_mirrors(  # pylint: disable=too-many-locals
             COALESCE(mirrors.timestamp_start, mirrors.updated_at) AS sort_timestamp,
             snippet(mirrors_fts, 1, '', '', '…', 12) AS snippet,
             mirrors.conversation_text,
-            mirrors.metadata
+            mirrors.metadata,
+            mirrors.human_email,
+            mirrors.visibility,
+            mirrors.source_identity
         FROM mirrors_fts
         JOIN mirrors ON mirrors_fts.rowid = mirrors.id
         WHERE {" AND ".join(clauses)}
@@ -282,17 +318,22 @@ def search_mirrors(  # pylint: disable=too-many-locals
                 topic=_topic_for_row(row),
                 conversation_text=str(row["conversation_text"] or ""),
                 metadata=metadata if isinstance(metadata, dict) else {},
+                human_email=str(row["human_email"]) if row["human_email"] else None,
+                visibility=str(row["visibility"] or "private"),
+                source_identity=str(row["source_identity"]) if row["source_identity"] else None,
             )
         )
     return results
 
 
-def get_mirror(
+def get_mirror(  # pylint: disable=too-many-arguments
     session_id: str | None = None,
     *,
     db: object | None = None,
     computer: str | None = None,
     source_identity: str | None = None,
+    caller_email: str | None = None,
+    caller_role: str | None = None,
 ) -> MirrorRecord | None:
     """Fetch a mirror by exact or prefix session id."""
     clauses: list[str]
@@ -309,6 +350,8 @@ def get_mirror(
     else:
         return None
 
+    _apply_role_filter(clauses, params, caller_email, caller_role)
+
     sql = f"""
         SELECT
             session_id,
@@ -323,7 +366,10 @@ def get_mirror(
             message_count,
             metadata,
             created_at,
-            updated_at
+            updated_at,
+            summary,
+            human_email,
+            visibility
         FROM mirrors
         WHERE {" AND ".join(clauses)}
         ORDER BY
@@ -368,6 +414,9 @@ def get_mirror(
         metadata=metadata if isinstance(metadata, dict) else {},
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+        summary=str(row["summary"]) if row["summary"] else None,
+        human_email=str(row["human_email"]) if row["human_email"] else None,
+        visibility=str(row["visibility"] or "private"),
     )
 
 
@@ -377,6 +426,7 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
         msg = "MirrorRecord.source_identity is required"
         raise ValueError(msg)
 
+    metadata_json = json.dumps(record.metadata, sort_keys=True)
     payload = (
         record.session_id,
         record.source_identity,
@@ -388,9 +438,12 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
         record.timestamp_end,
         record.conversation_text,
         record.message_count,
-        json.dumps(record.metadata, sort_keys=True),
+        metadata_json,
         record.created_at,
         record.updated_at,
+        record.summary,
+        record.human_email,
+        record.visibility,
         record.session_id,
         record.computer,
         record.agent,
@@ -400,8 +453,11 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
         record.timestamp_end,
         record.conversation_text,
         record.message_count,
-        json.dumps(record.metadata, sort_keys=True),
+        metadata_json,
         record.updated_at,
+        record.summary,
+        record.human_email,
+        record.visibility,
     )
     with _connect_rw(db) as conn:
         conn.execute(
@@ -419,9 +475,12 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
                 message_count,
                 metadata,
                 created_at,
-                updated_at
+                updated_at,
+                summary,
+                human_email,
+                visibility
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(source_identity) DO UPDATE SET
                 session_id = ?,
                 computer = ?,
@@ -433,7 +492,10 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
                 conversation_text = ?,
                 message_count = ?,
                 metadata = ?,
-                updated_at = ?
+                updated_at = ?,
+                summary = ?,
+                human_email = ?,
+                visibility = ?
             """,
             payload,
         )
@@ -455,6 +517,96 @@ def delete_mirror(
         else:
             conn.execute("DELETE FROM mirrors WHERE session_id = ?", (session_id,))
         conn.commit()
+
+
+def _apply_role_filter(
+    clauses: list[str],
+    params: list[object],
+    caller_email: str | None,
+    caller_role: str | None,
+) -> None:
+    """Apply role-based WHERE clauses for history access control."""
+    if caller_role is None or caller_role == "admin":
+        return
+    if caller_role == "member":
+        clauses.append("(human_email = ? OR visibility = 'shared')")
+        params.append(caller_email)
+    else:
+        clauses.append("human_email = ?")
+        params.append(caller_email)
+
+
+def list_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
+    *,
+    limit: int = 20,
+    project: str | None = None,
+    identity: str | None = None,
+    caller_email: str | None = None,
+    caller_role: str | None = None,
+    db: object | None = None,
+) -> list[MirrorRecord]:
+    """List mirror records with optional filtering and role-based access control."""
+    clauses: list[str] = []
+    params: list[object] = []
+
+    if identity:
+        clauses.append("(human_email = ? OR source_identity = ?)")
+        params.extend([identity, identity])
+    if project:
+        clauses.append("project = ?")
+        params.append(project)
+
+    _apply_role_filter(clauses, params, caller_email, caller_role)
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+
+    sql = f"""
+        SELECT
+            session_id, source_identity, computer, agent, project, title,
+            timestamp_start, timestamp_end, conversation_text, message_count,
+            metadata, created_at, updated_at, summary, human_email, visibility
+        FROM mirrors
+        {where}
+        ORDER BY COALESCE(timestamp_start, updated_at) DESC
+        LIMIT ?
+    """
+
+    try:
+        with _connect_ro(db) as conn:
+            rows = conn.execute(sql, params).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            return []
+        raise
+
+    results: list[MirrorRecord] = []
+    for row in rows:
+        try:
+            metadata = json.loads(row["metadata"] or "{}")
+        except json.JSONDecodeError:
+            metadata = {}
+        results.append(
+            MirrorRecord(
+                session_id=str(row["session_id"]),
+                source_identity=str(row["source_identity"]) if row["source_identity"] else None,
+                computer=str(row["computer"]),
+                agent=str(row["agent"]),
+                project=str(row["project"]),
+                title=str(row["title"] or ""),
+                timestamp_start=row["timestamp_start"],
+                timestamp_end=row["timestamp_end"],
+                conversation_text=str(row["conversation_text"] or ""),
+                message_count=int(row["message_count"] or 0),
+                metadata=metadata if isinstance(metadata, dict) else {},
+                created_at=str(row["created_at"]),
+                updated_at=str(row["updated_at"]),
+                summary=str(row["summary"]) if row["summary"] else None,
+                human_email=str(row["human_email"]) if row["human_email"] else None,
+                visibility=str(row["visibility"] or "private"),
+            )
+        )
+    return results
 
 
 def _connect_main_ro() -> sqlite3.Connection:
@@ -486,7 +638,8 @@ def get_session_context(
         clauses.append("native_log_file = ?")
         params.append(transcript_path)
     sql = f"""
-        SELECT session_id, computer_name, active_agent, project_path, native_log_file
+        SELECT session_id, computer_name, active_agent, project_path, native_log_file,
+               human_email, visibility, last_input_origin, adapter_metadata
         FROM sessions
         WHERE {" OR ".join(clauses)}
         ORDER BY CASE WHEN session_id = ? THEN 0 ELSE 1 END, created_at DESC
@@ -512,6 +665,10 @@ def get_session_context(
         agent=row["active_agent"],
         project=str(row["project_path"] or ""),
         transcript_path=row["native_log_file"],
+        human_email=row["human_email"] if row["human_email"] else None,
+        visibility=row["visibility"] if row["visibility"] else None,
+        last_input_origin=row["last_input_origin"] if row["last_input_origin"] else None,
+        adapter_metadata_json=row["adapter_metadata"] if row["adapter_metadata"] else None,
     )
 
 

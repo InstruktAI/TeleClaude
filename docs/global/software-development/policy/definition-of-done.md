@@ -51,6 +51,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Tests are deterministic (no flaky tests)
 - [ ] Test names are descriptive
 - [ ] Tests verify behavior, not implementation
+- [ ] Browser-based frontend or web UI changes pass a Playwright smoke test
 
 ### 4. Linting & Type Checking
 
@@ -109,6 +110,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Verdict is APPROVE
 - [ ] No critical issues remain
 - [ ] Tests still pass
+- [ ] Browser-based frontend or web UI changes are re-verified during review, or a verification gap is recorded as a finding
 
 ### Before Finalize
 

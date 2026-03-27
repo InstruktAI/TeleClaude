@@ -32,9 +32,11 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 4. Write H1 title with correct type suffix.
 5. Add Required reads if the snippet depends on other snippets.
 6. Add all required sections for the taxonomy type.
-7. After any doc change, run `telec sync` to deploy all artifacts.
-8. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
-9. Avoid creating index.md files; only baseline.md manifests are allowed.
+7. Organize content inside those valid sections. Use subordinate headings such as `###` when they improve readability; do not flatten useful structure just to avoid internal headings.
+8. If validation rejects a heading, first ask whether it should be downgraded under an existing schema section rather than deleted or flattened.
+9. After any doc change, run `telec sync` to deploy all artifacts.
+10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
+11. Avoid creating index.md files; only baseline.md manifests are allowed.
 
 ## Outputs
 

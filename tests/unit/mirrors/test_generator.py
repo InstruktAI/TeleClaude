@@ -1,4 +1,7 @@
+# pyright: reportUnknownLambdaType=false
 from __future__ import annotations
+
+from typing import Any, cast
 
 import pytest
 
@@ -131,6 +134,7 @@ class TestGenerateMirrorSync:
         )
         monkeypatch.setattr(generator_module, "get_mirror", lambda source_identity=None, db=None: _existing_record())
         monkeypatch.setattr(generator_module, "upsert_mirror", lambda record, db=None: upserted_records.append(record))
+        monkeypatch.setattr(generator_module, "_generate_session_summary", lambda conversation_text: None)
 
         generated = generator_module.generate_mirror_sync(
             session_id="session-1",
@@ -178,3 +182,46 @@ class TestGenerateMirrorSync:
         assert thread_calls[0][0] is generator_module.generate_mirror_sync
         assert ("session_id", "session-1") in thread_calls[0][2]
         assert ("project", "alpha") in thread_calls[0][2]
+
+    async def test_generate_mirror_persists_summary_visibility_and_channel_metadata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        upserted_records: list[MirrorRecord] = []
+
+        monkeypatch.setattr(
+            generator_module,
+            "extract_structured_messages",
+            lambda *args, **kwargs: [
+                _message("user", "text", "Customer needs help", "2025-01-01T00:00:00+00:00"),
+                _message("assistant", "text", "Resolved issue", "2025-01-01T00:01:00+00:00"),
+            ],
+        )
+        monkeypatch.setattr(generator_module, "get_mirror", lambda source_identity=None, db=None: None)
+        monkeypatch.setattr(
+            generator_module,
+            "_generate_session_summary",
+            lambda conversation_text: "Customer asked for help and the issue was resolved.",
+        )
+        monkeypatch.setattr(generator_module, "upsert_mirror", lambda record, db=None: upserted_records.append(record))
+
+        generated = await cast(Any, generator_module.generate_mirror)(
+            session_id="session-1",
+            source_identity="telegram:1285425702",
+            transcript_path="/tmp/transcript.jsonl",
+            agent_name=AgentName.CLAUDE,
+            computer="mac",
+            project="alpha",
+            human_email="customer@example.com",
+            visibility="shared",
+            last_input_origin="telegram",
+            channel_identifiers={"user_id": "1285425702"},
+            db=None,
+        )
+
+        record = cast(Any, upserted_records[0])
+        assert generated is True
+        assert record.summary == "Customer asked for help and the issue was resolved."
+        assert record.human_email == "customer@example.com"
+        assert record.visibility == "shared"
+        assert record.metadata["origin_channel"] == "telegram"
+        assert record.metadata["user_id"] == "1285425702"

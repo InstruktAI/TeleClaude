@@ -1,3 +1,4 @@
+# pyright: reportAttributeAccessIssue=false, reportUnknownLambdaType=false, reportReturnType=false
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -69,7 +70,11 @@ def test_set_preview_schedules_layout_with_snapshot_state() -> None:
     bridge._preview_session_id = None
     bridge._sticky_session_ids = ["sticky-1"]
     bridge._active_doc_preview = None
+    bridge._layout_dirty = False
+    bridge._pending_focus = False
     bridge._get_computer_info = lambda name: None
+    # Mock set_timer to flush immediately (no event loop in unit tests)
+    bridge.set_timer = lambda delay, callback, **kwargs: callback()
     calls: list[_CatalogCall | _ApplyCall] = []
     bridge.pane_manager = SimpleNamespace(
         update_session_catalog=lambda sessions: calls.append(

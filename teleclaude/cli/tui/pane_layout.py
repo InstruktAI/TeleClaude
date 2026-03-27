@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui import theme
-from teleclaude.cli.tui._pane_specs import LAYOUT_SPECS, SessionPaneSpec
+from teleclaude.cli.tui._pane_specs import LAYOUT_SPECS, LayoutCell, SessionPaneSpec
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui._pane_specs import ComputerInfo, LayoutSpec
@@ -348,9 +348,9 @@ class PaneLayoutMixin:
     def _get_layout_spec(
         self,
         session_specs: list[SessionPaneSpec],
-        index: int,
+        index: LayoutCell,
     ) -> SessionPaneSpec | None:
-        if index <= 0 or index > len(session_specs):
+        if not isinstance(index, int) or index <= 0 or index > len(session_specs):
             return None
         return session_specs[index - 1]
 

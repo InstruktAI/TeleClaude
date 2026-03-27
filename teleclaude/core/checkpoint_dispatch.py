@@ -109,6 +109,7 @@ async def inject_checkpoint_if_needed(  # pylint: disable=too-many-arguments,too
         transcript_path=transcript_path,
         agent_name=agent_enum_ckpt,
         project_path=project_path,
+        native_session_id=getattr(fresh, "native_session_id", None),
         working_slug=working_slug,
         elapsed_since_turn_start_s=elapsed,
     )

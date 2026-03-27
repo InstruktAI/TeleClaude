@@ -1,9 +1,11 @@
+# pyright: reportUnknownLambdaType=false
 """Characterization tests for teleclaude.history.search."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, TypedDict, cast
 
 import pytest
 
@@ -12,6 +14,23 @@ from teleclaude.history import search
 from teleclaude.mirrors.store import MirrorRecord, MirrorSearchResult
 
 pytestmark = pytest.mark.unit
+
+
+class GetMirrorCall(TypedDict):
+    session_id: str
+    caller_email: str
+    caller_role: str
+
+
+class SearchMirrorsKwargs(TypedDict):
+    limit: int
+    caller_email: str
+    caller_role: str
+
+
+class SearchMirrorsCall(TypedDict):
+    query: str
+    kwargs: SearchMirrorsKwargs
 
 
 class TestFindTranscript:
@@ -46,7 +65,7 @@ class TestDisplayCombinedHistory:
         monkeypatch.setattr(
             search,
             "search_mirrors",
-            lambda query, agents, limit: [
+            lambda query, agents, limit=20, **kwargs: [
                 MirrorSearchResult(
                     session_id="sess-1",
                     computer="local",
@@ -87,13 +106,66 @@ class TestShowTranscript:
             created_at="",
             updated_at="",
         )
-        monkeypatch.setattr(search, "get_mirror", lambda session_id: mirror)
+        monkeypatch.setattr(search, "get_mirror", lambda session_id, **kwargs: mirror)
 
         search.show_transcript([AgentName.CLAUDE], "sess-1")
 
         output = capsys.readouterr().out
         assert "Demo Session" in output
         assert "Conversation body" in output
+
+    def test_show_transcript_passes_caller_context_to_get_mirror(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: GetMirrorCall = {"session_id": "", "caller_email": "", "caller_role": ""}
+
+        def fake_get_mirror(session_id: str, **kwargs: object) -> MirrorRecord | None:
+            captured["session_id"] = session_id
+            captured["caller_email"] = cast(str, kwargs["caller_email"])
+            captured["caller_role"] = cast(str, kwargs["caller_role"])
+            return None
+
+        monkeypatch.setattr(search, "get_mirror", fake_get_mirror)
+
+        with pytest.raises(SystemExit):
+            cast(Any, search.show_transcript)(
+                [AgentName.CLAUDE],
+                "sess-1",
+                caller_email="member@example.com",
+                caller_role="member",
+            )
+
+        assert captured["session_id"] == "sess-1"
+        assert captured["caller_email"] == "member@example.com"
+        assert captured["caller_role"] == "member"
+
+
+class TestRoleAwareHistorySpecs:
+    def test_display_combined_history_passes_caller_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: SearchMirrorsCall = {
+            "query": "",
+            "kwargs": {"limit": 0, "caller_email": "", "caller_role": ""},
+        }
+
+        def fake_search_mirrors(query: str, agents: list[AgentName], **kwargs: object) -> list[MirrorSearchResult]:
+            captured["query"] = query
+            captured["kwargs"] = {
+                "limit": cast(int, kwargs["limit"]),
+                "caller_email": cast(str, kwargs["caller_email"]),
+                "caller_role": cast(str, kwargs["caller_role"]),
+            }
+            return []
+
+        monkeypatch.setattr(search, "search_mirrors", fake_search_mirrors)
+
+        cast(Any, search.display_combined_history)(
+            [AgentName.CLAUDE],
+            search_term="topic",
+            limit=5,
+            caller_email="member@example.com",
+            caller_role="member",
+        )
+
+        assert captured["query"] == "topic"
+        assert captured["kwargs"] == {"limit": 5, "caller_email": "member@example.com", "caller_role": "member"}
 
 
 class TestParseAgents:

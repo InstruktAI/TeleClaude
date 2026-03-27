@@ -96,7 +96,7 @@ class PaneWriter:
             logger.exception("PaneWriter error")
 
 
-class PaneManagerBridge(TelecMixin, Widget):
+class PaneManagerBridge(TelecMixin, Widget):  # pylint: disable=too-many-instance-attributes
     """Invisible widget that bridges Textual messages to TmuxPaneManager.
 
     Listens for PreviewChanged, StickyChanged, and FocusPaneRequest messages
@@ -123,6 +123,8 @@ class PaneManagerBridge(TelecMixin, Widget):
         self._preview_session_id: str | None = None
         self._sticky_session_ids: list[str] = []
         self._active_doc_preview: DocPreviewState | None = None
+        self._layout_dirty: bool = False
+        self._pending_focus: bool = False
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Convert API ComputerInfo to pane_manager ComputerInfo."""
@@ -136,6 +138,29 @@ class PaneManagerBridge(TelecMixin, Widget):
             host=api_info.host,
             tmux_binary=api_info.tmux_binary,
         )
+
+    def _mark_layout_dirty(self, *, focus: bool = False) -> None:
+        """Mark layout as needing recalculation.
+
+        Multiple state changes within the same event loop iteration are
+        batched — only a single layout application runs after all pending
+        Textual messages settle.  Uses set_timer(0, ...) which schedules
+        via asyncio.call_later(0), firing after the current iteration
+        completes all ready tasks.
+        """
+        self._pending_focus = self._pending_focus or focus
+        if not self._layout_dirty:
+            self._layout_dirty = True
+            self.set_timer(0, self._flush_layout, name="layout-flush")
+
+    def _flush_layout(self) -> None:
+        """Apply the accumulated layout state after all pending messages settle."""
+        if not self._layout_dirty:
+            return
+        self._layout_dirty = False
+        focus = self._pending_focus
+        self._pending_focus = False
+        self._apply(focus=focus)
 
     def _apply(self, *, focus: bool = True) -> None:
         """Apply the current layout to the pane manager (non-blocking).
@@ -227,23 +252,25 @@ class PaneManagerBridge(TelecMixin, Widget):
         doc: DocPreviewState | None = None,
         focus: bool = True,
     ) -> None:
-        """Atomically set the single preview slot and apply layout.
+        """Set the single preview slot and mark layout dirty.
 
         Session preview and doc preview are mutually exclusive — setting one
         always clears the other.  All preview handlers funnel through here.
+        Layout is deferred until all pending messages in the current event
+        loop iteration are processed.
         """
         self._preview_session_id = session_id
         self._active_doc_preview = doc
-        self._apply(focus=focus)
+        self._mark_layout_dirty(focus=focus)
 
     def on_preview_changed(self, message: PreviewChanged) -> None:
         """Handle preview session change — update active pane."""
         self._set_preview(session_id=message.session_id, focus=message.request_focus)
 
     def on_sticky_changed(self, message: StickyChanged) -> None:
-        """Handle sticky sessions change — rebuild layout without stealing focus."""
+        """Handle sticky sessions change — mark layout dirty without stealing focus."""
         self._sticky_session_ids = message.session_ids
-        self._apply(focus=False)
+        self._mark_layout_dirty(focus=False)
 
     def on_focus_pane_request(self, message: FocusPaneRequest) -> None:
         """Handle explicit focus request (non-blocking)."""
