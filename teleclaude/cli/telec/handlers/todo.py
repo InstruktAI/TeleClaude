@@ -232,17 +232,23 @@ def _handle_todo_dump(args: list[str]) -> None:
     # Always register in roadmap (unlike create, which only registers with --after)
     after_deps = after if after is not None else []
 
-    try:
-        todo_dir = create_todo_skeleton(project_root, slug, after=after_deps)
-    except ValueError as exc:
-        print(f"Error: {exc}")
-        raise SystemExit(1) from exc
-
-    slug = todo_dir.name  # Use resolved name in case collision resolution renamed it
-
-    # Overwrite input.md with brain dump content
+    expected_input = f"# {slug} — Input\n\n{content}\n"
+    todo_dir = project_root / "todos" / slug
     input_path = todo_dir / "input.md"
-    input_path.write_text(f"# {todo_dir.name} — Input\n\n{content}\n", encoding="utf-8")
+
+    if todo_dir.exists():
+        if input_path.exists() and input_path.read_text(encoding="utf-8") == expected_input:
+            print(f"Todo '{slug}' already scaffolded with same content — retrying commit.")
+        else:
+            print(f"Error: Todo '{slug}' already exists with different content.")
+            raise SystemExit(1)
+    else:
+        try:
+            todo_dir = create_todo_skeleton(project_root, slug, after=after_deps)
+        except ValueError as exc:
+            print(f"Error: {exc}")
+            raise SystemExit(1) from exc
+        input_path.write_text(expected_input, encoding="utf-8")
 
     # Auto-commit bookkeeping on main
     from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
@@ -252,8 +258,24 @@ def _handle_todo_dump(args: list[str]) -> None:
         [f"todos/{slug}", "todos/roadmap.yaml"],
         f"chore(todos): dump {slug}",
     )
+    if not _ok and _reason == "index_locked":
+        lock_path = project_root / ".git" / "index.lock"
+        print(
+            f"Error: bookkeeping commit blocked by stale git lock.\n"
+            f"  Recovery: verify no git process is running, then:\n"
+            f"    rm {lock_path}\n"
+            f"    telec todo dump {slug} <content>\n"
+            f"  The command is idempotent — re-running is safe."
+        )
+        raise SystemExit(1)
     if not _ok and _reason in ("commit_failed", "not_a_repo"):
-        print(f"Warning: bookkeeping commit skipped ({_reason})")
+        print(
+            f"Error: bookkeeping commit failed ({_reason}).\n"
+            f"  Recovery: fix the issue and re-run:\n"
+            f"    telec todo dump {slug} <content>\n"
+            f"  The command is idempotent — re-running is safe."
+        )
+        raise SystemExit(1)
 
     # Emit planning.todo_dumped notification via daemon API
     _log = get_logger(__name__)

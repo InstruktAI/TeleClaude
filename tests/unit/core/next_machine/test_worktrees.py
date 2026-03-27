@@ -73,8 +73,8 @@ def test_ensure_todo_on_remote_main_skips_when_remote_already_has_the_todo(tmp_p
     (todo_dir / "requirements.md").write_text("content", encoding="utf-8")
     repo = SimpleNamespace(
         git=SimpleNamespace(
-            fetch=lambda *_args: None,
-            ls_tree=lambda *_args: "100644 blob abc\ttodos/slug-d/requirements.md\n",
+            fetch=lambda *_args: None,  # pyright: ignore[reportUnknownLambdaType]
+            ls_tree=lambda *_args: "100644 blob abc\ttodos/slug-d/requirements.md\n",  # pyright: ignore[reportUnknownLambdaType]
         )
     )
 
@@ -280,7 +280,7 @@ class TestBookkeepingDiagnostics:
         # The original exception object — not a string — must be passed
         mock_logger.debug.assert_any_call("First push attempt failed: %s", push_error)
 
-    def test_commit_failure_logged_at_warning(self) -> None:
+    def test_index_lock_detected_and_logged_at_error(self) -> None:
         repo = _make_bookkeeping_repo()
         commit_error = GitCommandError("commit", "index.lock exists")
         repo.git.commit.side_effect = commit_error
@@ -288,9 +288,23 @@ class TestBookkeepingDiagnostics:
             patch(_PATCH_REPO, return_value=repo),
             patch(_PATCH_LOGGER) as mock_logger,
         ):
-            commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
+            result = commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
 
+        assert result == (False, "index_locked")
+        mock_logger.error.assert_called_once()
+        error_msg = mock_logger.error.call_args[0][0]
+        assert "index.lock" in error_msg
+        assert "rm" in error_msg
+
+    def test_non_lock_commit_failure_logged_at_warning(self) -> None:
+        repo = _make_bookkeeping_repo()
+        commit_error = GitCommandError("commit", "some other error")
+        repo.git.commit.side_effect = commit_error
+        with (
+            patch(_PATCH_REPO, return_value=repo),
+            patch(_PATCH_LOGGER) as mock_logger,
+        ):
+            result = commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
+
+        assert result == (False, "commit_failed")
         mock_logger.warning.assert_called_once()
-        warning_args = mock_logger.warning.call_args[0]
-        assert "Bookkeeping commit failed" in warning_args[0]
-        assert warning_args[2] is commit_error

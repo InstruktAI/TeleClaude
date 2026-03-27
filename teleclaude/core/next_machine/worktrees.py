@@ -205,6 +205,17 @@ def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tupl
         # is already [skip ci].
         repo.git.commit("-m", msg, "--no-verify", "--only", "--", *paths)
     except GitCommandError as exc:
+        exc_str = str(exc)
+        if "index.lock" in exc_str:
+            lock_path = Path(cwd) / ".git" / "index.lock"
+            logger.error(
+                "Bookkeeping commit blocked by stale index.lock (%s). "
+                "Recovery: verify no git process is running, then "
+                "'rm %s' and re-run the command.",
+                subject_clean,
+                lock_path,
+            )
+            return False, "index_locked"
         logger.warning("Bookkeeping commit failed (%s): %s", subject_clean, exc)
         return False, "commit_failed"
 
