@@ -48,7 +48,6 @@
 - slug: ts-migration
   description: Migrate Python daemon and CLI to TypeScript/Bun
 - slug: chip-tunes-regression
-- slug: history-role-aware
 - slug: session-memory-extraction
 - slug: edge-session-creation
   after:
