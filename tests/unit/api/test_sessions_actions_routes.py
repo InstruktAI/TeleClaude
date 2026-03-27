@@ -416,16 +416,13 @@ class TestSessionsActionsRoutes:
         )
         expected_role = sessions_actions_routes.COMMAND_ROLE_MAP[sessions_actions_routes.SlashCommand.NEXT_REVIEW_BUILD]
         assert command_name == "new_session"
-        assert payload == {"skip_listener_registration": True}
+        assert payload == {"skip_listener_registration": True, "initiator_session_id": "caller-123"}
         assert isinstance(metadata, MessageMetadata)
         assert metadata.origin == InputOrigin.TERMINAL.value
         assert metadata.title == expected_title
         assert metadata.project_path == "/repo/demo"
         assert metadata.subdir == "api"
-        assert metadata.channel_metadata == {
-            "initiator_session_id": "caller-123",
-            "working_slug": "chartest-api-routes",
-        }
+        assert metadata.origin_metadata is None
         assert metadata.auto_command == f"agent_then_message codex med {shlex.quote(expected_title)}"
         assert metadata.system_role == expected_role[0]
         assert metadata.job == expected_role[1].value
@@ -508,8 +505,8 @@ class TestSessionsActionsRoutes:
         assert cmd.data["widget_data"] == request.data
 
     @pytest.mark.unit
-    def test_run_session_injects_caller_email_into_channel_metadata(self) -> None:
-        """Email from CallerIdentity is injected into channel_metadata for identity resolution."""
+    def test_run_session_injects_caller_email_into_origin_metadata(self) -> None:
+        """Email from CallerIdentity is injected into typed origin metadata for identity resolution."""
         request = RunSessionRequest(
             command="/next-build",
             args="my-slug",
@@ -523,8 +520,8 @@ class TestSessionsActionsRoutes:
             email="alice@example.com",
         )
         plan = sessions_actions_routes._prepare_run_session(request, identity)
-        assert plan.channel_metadata is not None
-        assert plan.channel_metadata["email"] == "alice@example.com"
+        assert plan.origin_metadata is not None
+        assert plan.origin_metadata["email"] == "alice@example.com"
 
     @pytest.mark.unit
     @pytest.mark.asyncio

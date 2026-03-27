@@ -321,7 +321,7 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
                 project_path=str(workspace_path),
                 title=f"Discord: {identity.person_name}",
                 origin=InputOrigin.DISCORD.value,
-                channel_metadata={
+                origin_metadata={
                     "user_id": user_id,
                     "discord_user_id": user_id,
                     "platform": "discord",
@@ -399,7 +399,7 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
             project_path=str(workspace_path),
             title=f"Discord: {person_name}",
             origin=InputOrigin.DISCORD.value,
-            channel_metadata={
+            origin_metadata={
                 "user_id": user_id,
                 "discord_user_id": user_id,
                 "platform": "discord",

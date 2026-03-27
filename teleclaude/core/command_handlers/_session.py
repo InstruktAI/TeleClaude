@@ -4,7 +4,7 @@ import asyncio
 import os
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import psutil
 from instrukt_ai_logging import get_logger
@@ -107,20 +107,13 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     session_id = str(uuid.uuid4())
     tmux_name = f"{TMUX_SESSION_PREFIX}{session_id}"
 
-    # Extract metadata from channel_metadata if present (AI-to-AI session)
     subfolder = cmd.subdir
-    working_slug = cmd.working_slug
+    working_slug: str | None = None
+    if subfolder and subfolder.startswith("trees/"):
+        working_slug = subfolder.removeprefix("trees/")
     initiator_session_id = cmd.initiator_session_id
     cmd_system_role = cmd.system_role
     cmd_job = cmd.job
-
-    if cmd.channel_metadata:
-        # subfolder/slug/initiator_id can also be in metadata, but command fields take precedence
-        subfolder = subfolder or cast(str | None, cmd.channel_metadata.get("subfolder"))
-        working_slug = working_slug or cast(str | None, cmd.channel_metadata.get("working_slug"))
-        initiator_session_id = initiator_session_id or cast(
-            str | None, cmd.channel_metadata.get("initiator_session_id")
-        )
 
     # Origin provenance must reflect the actual source of this session creation.
     # Do not inherit origin from parent sessions.
@@ -129,19 +122,16 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
 
-    # Resolve identity from origin signals or system_role.
-    # External sessions carry channel_metadata with platform identity signals.
-    # System sessions (daemon-spawned) identify via system_role instead.
+    # Resolve identity from typed origin metadata when available.
+    # Sessions without origin_metadata (e.g. telegram before adapter conversion)
+    # proceed with no identity — parent inheritance or role-based access applies.
     identity: IdentityContext | None = None
-    if cmd.channel_metadata:
-        identity = get_identity_resolver().resolve(origin, cmd.channel_metadata)
+    human_email: str | None = None
+    human_role: str | None = None
+    if cmd.origin_metadata:
+        identity = get_identity_resolver().resolve(origin, cmd.origin_metadata)
         human_email = identity.person_email
         human_role = identity.person_role
-    elif not cmd_system_role:
-        raise ValueError(f"Session creation requires origin signals or system_role (origin={origin})")
-    else:
-        human_email = None
-        human_role = None
 
     # Handle parent session identity inheritance
     principal: str | None = None
@@ -280,9 +270,9 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
             session_id,
         )
 
-    # Merge edge-assembled channel_metadata into session's origin_metadata
-    if cmd.channel_metadata:
-        await db.update_origin_metadata(session.session_id, last_input_origin, cmd.channel_metadata)
+    # Merge typed origin metadata into session's origin_metadata
+    if cmd.origin_metadata:
+        await db.update_origin_metadata(session.session_id, last_input_origin, dict(cmd.origin_metadata))
 
     # NOTE: tmux creation + auto-command execution are handled asynchronously
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes

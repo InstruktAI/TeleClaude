@@ -1,5 +1,6 @@
 """Internal command models for TeleClaude."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
@@ -62,10 +63,9 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
     origin: str
     title: str | None = None
     subdir: str | None = None
-    working_slug: str | None = None
     initiator_session_id: str | None = None
     skip_listener_registration: bool = False
-    channel_metadata: dict[str, object] | None = None
+    origin_metadata: Mapping[str, object] | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
     auto_command: str | None = None
     system_role: str | None = None
@@ -78,10 +78,9 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
         origin: str,
         title: str | None = None,
         subdir: str | None = None,
-        working_slug: str | None = None,
         initiator_session_id: str | None = None,
         skip_listener_registration: bool = False,
-        channel_metadata: dict[str, object] | None = None,
+        origin_metadata: Mapping[str, object] | None = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
         auto_command: str | None = None,
         system_role: str | None = None,
@@ -93,10 +92,9 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
         self.origin = origin
         self.title = title
         self.subdir = subdir
-        self.working_slug = working_slug
         self.initiator_session_id = initiator_session_id
         self.skip_listener_registration = skip_listener_registration
-        self.channel_metadata = channel_metadata
+        self.origin_metadata = origin_metadata
         self.launch_intent = launch_intent
         self.auto_command = auto_command
         self.system_role = system_role

@@ -40,7 +40,7 @@ async def _resolve_or_create_session(phone_number: str) -> object | None:
         project_path=config.computer.help_desk_dir,
         title=f"WhatsApp: {phone_number}",
         origin=InputOrigin.WHATSAPP.value,
-        channel_metadata={
+        origin_metadata={
             "phone_number": phone_number,
             "platform": "whatsapp",
         },

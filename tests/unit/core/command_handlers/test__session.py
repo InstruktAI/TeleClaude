@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -70,14 +71,16 @@ class TestCreateSession:
             update_origin_metadata=AsyncMock(),
             get_session=AsyncMock(return_value=None),
         )
-        identity_resolver = SimpleNamespace(
-            resolve=lambda _origin, _metadata: SimpleNamespace(
+
+        def _resolve(_origin: str, _metadata: object) -> SimpleNamespace:
+            return SimpleNamespace(
                 person_email=None,
                 person_role="member",
                 platform=None,
                 platform_user_id=None,
             )
-        )
+
+        identity_resolver = SimpleNamespace(resolve=_resolve)
 
         monkeypatch.setattr(_session, "config", config)
         monkeypatch.setattr(_session, "db", db)
@@ -87,8 +90,7 @@ class TestCreateSession:
             project_path=str(project_path),
             origin="telegram",
             subdir="feature-branch",
-            working_slug="feature-x",
-            channel_metadata={"user_id": 123, "platform": "telegram"},
+            origin_metadata={"user_id": 123, "platform": "telegram"},
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
                 agent="claude",
@@ -182,12 +184,12 @@ class TestComputerInfo:
                 available=4 * 1024**3,
                 percent=75.0,
             ),
-            disk_usage=lambda _path: SimpleNamespace(
+            disk_usage=lambda _path="": SimpleNamespace(  # pyright: ignore[reportUnknownLambdaType]
                 total=200 * 1024**3,
                 free=50 * 1024**3,
                 percent=75.0,
             ),
-            cpu_percent=lambda _interval: 12.5,
+            cpu_percent=lambda _interval=None: 12.5,  # pyright: ignore[reportUnknownLambdaType]
         )
 
         monkeypatch.setattr(_session, "config", config)
@@ -208,7 +210,10 @@ class TestGetSessionData:
     async def test_missing_session_returns_error_payload(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_session, "db", SimpleNamespace(get_session=AsyncMock(return_value=None)))
 
-        result = await _session.get_session_data(GetSessionDataCommand(session_id="missing"))
+        result = cast(
+            dict[str, object],  # guard: loose-dict — test payload assertion
+            await _session.get_session_data(GetSessionDataCommand(session_id="missing")),
+        )
 
         assert result["status"] == "error"
         assert isinstance(result["error"], str)
@@ -226,11 +231,14 @@ class TestGetSessionData:
         monkeypatch.setattr(_session, "db", db)
         monkeypatch.setattr(_session, "tmux_bridge", tmux_bridge)
 
-        result = await _session.get_session_data(GetSessionDataCommand(session_id=session.session_id, tail_chars=5))
+        result = cast(
+            dict[str, object],  # guard: loose-dict — test payload assertion
+            await _session.get_session_data(GetSessionDataCommand(session_id=session.session_id, tail_chars=5)),
+        )
 
         assert result["status"] == "success"
         assert result["messages"] == "world"
-        assert "\x1b" not in result["messages"]
+        assert "\x1b" not in str(result["messages"])
 
     @pytest.mark.unit
     async def test_existing_native_log_is_parsed_to_messages(
@@ -249,7 +257,10 @@ class TestGetSessionData:
         )
         monkeypatch.setattr(_session, "parse_session_transcript", MagicMock(return_value="# transcript"))
 
-        result = await _session.get_session_data(GetSessionDataCommand(session_id=session.session_id, tail_chars=200))
+        result = cast(
+            dict[str, object],  # guard: loose-dict — test payload assertion
+            await _session.get_session_data(GetSessionDataCommand(session_id=session.session_id, tail_chars=200)),
+        )
 
         assert result["status"] == "success"
         assert result["messages"] == "# transcript"

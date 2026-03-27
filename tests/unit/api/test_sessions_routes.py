@@ -137,12 +137,12 @@ class TestSessionsRoutes:
             response = await sessions_routes.end_session(request, "sess-1", _identity=object())
 
         mock_service.close_session.assert_awaited_once()
-        assert response.status_code == 202
+        assert response.status_code == 202  # pyright: ignore[reportAttributeAccessIssue]
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_prepare_create_session_selects_web_origin_when_human_email_provided(self) -> None:
-        """When request.human_email is set, origin becomes WEB and email is injected into channel_metadata."""
+        """When request.human_email is set, origin becomes WEB and typed origin metadata carries email."""
         request = CreateSessionRequest(
             computer="local",
             project_path="/repo/demo",
@@ -154,16 +154,18 @@ class TestSessionsRoutes:
             "teleclaude.api.sessions_routes._build_launch_intent",
             new=AsyncMock(return_value=(None, None)),
         ):
-            metadata, _title, _intent, _caller = await sessions_routes._prepare_create_session(request, identity)
+            metadata, _initiator, _title, _intent, _caller = await sessions_routes._prepare_create_session(
+                request, identity
+            )
 
         assert metadata.origin == InputOrigin.WEB.value
-        assert metadata.channel_metadata is not None
-        assert metadata.channel_metadata["email"] == "web@example.com"
+        assert metadata.origin_metadata is not None
+        assert metadata.origin_metadata["email"] == "web@example.com"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_prepare_create_session_injects_identity_email_into_channel_metadata(self) -> None:
-        """Email from CallerIdentity is injected into channel_metadata for IdentityResolver."""
+    async def test_prepare_create_session_injects_identity_email_into_origin_metadata(self) -> None:
+        """Email from CallerIdentity is injected into typed origin metadata for IdentityResolver."""
         request = CreateSessionRequest(
             computer="local",
             project_path="/repo/demo",
@@ -174,8 +176,10 @@ class TestSessionsRoutes:
             "teleclaude.api.sessions_routes._build_launch_intent",
             new=AsyncMock(return_value=(None, None)),
         ):
-            metadata, _title, _intent, _caller = await sessions_routes._prepare_create_session(request, identity)
+            metadata, _initiator, _title, _intent, _caller = await sessions_routes._prepare_create_session(
+                request, identity
+            )
 
         assert metadata.origin == InputOrigin.TERMINAL.value
-        assert metadata.channel_metadata is not None
-        assert metadata.channel_metadata["email"] == "terminal@example.com"
+        assert metadata.origin_metadata is not None
+        assert metadata.origin_metadata["email"] == "terminal@example.com"

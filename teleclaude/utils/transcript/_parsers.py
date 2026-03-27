@@ -12,15 +12,10 @@ def _extract_codex_reasoning_text(  # pylint: disable=too-many-branches
 ) -> str:
     """Extract displayable reasoning text from a Codex reasoning payload.
 
-    Includes summary items (high-level steps), then direct text and content blocks.
+    Skips summary-level text (verbose chain-of-thought noise); only extracts
+    direct text and content blocks which carry actual thinking.
     """
     chunks: list[str] = []
-
-    summary = payload.get("summary")
-    if isinstance(summary, list):
-        for item in summary:
-            if isinstance(item, str) and item.strip():
-                chunks.append(item.strip())
 
     direct_text = payload.get("text")
     if isinstance(direct_text, str) and direct_text.strip():

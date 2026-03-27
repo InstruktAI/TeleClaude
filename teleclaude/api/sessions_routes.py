@@ -42,6 +42,7 @@ from teleclaude.core.models import (
     SessionLaunchKind,
     SessionSnapshot,
 )
+from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
     close_link_for_member,
@@ -131,13 +132,11 @@ def _format_direct_conversation_intro(
     return format_system_message("Direct Conversation", body)
 
 
-def _build_channel_metadata(
+def _extract_initiator_session_id(
     request: CreateSessionRequest,
     identity: CallerIdentity,
-) -> dict[str, str] | None:
-    """Build channel metadata for session creation (adapter/platform context only)."""
-    channel_metadata: dict[str, str] | None = None
-
+) -> str | None:
+    """Extract initiator session ID from caller identity."""
     if request.direct and not identity.session_id:
         raise HTTPException(
             status_code=400,
@@ -145,10 +144,8 @@ def _build_channel_metadata(
         )
 
     if identity.session_id and not identity.session_id.startswith("web:"):
-        channel_metadata = channel_metadata or {}
-        channel_metadata["initiator_session_id"] = identity.session_id
-
-    return channel_metadata
+        return identity.session_id
+    return None
 
 
 def _extract_session_role_fields(
@@ -368,9 +365,9 @@ def _parse_list_sessions_query(
 async def _prepare_create_session(
     request: CreateSessionRequest,
     identity: CallerIdentity,
-) -> tuple[MessageMetadata, str, SessionLaunchIntent | None, Session | None]:
-    """Prepare session creation metadata and launch intent."""
-    channel_metadata = _build_channel_metadata(request, identity)
+) -> tuple[MessageMetadata, str | None, str, SessionLaunchIntent | None, Session | None]:
+    """Prepare session creation metadata, initiator ID, and launch intent."""
+    initiator_session_id = _extract_initiator_session_id(request, identity)
 
     # Determine real origin and caller email from identity context
     origin = InputOrigin.TERMINAL.value
@@ -379,11 +376,13 @@ async def _prepare_create_session(
         origin = InputOrigin.WEB.value
         caller_email = request.human_email
 
-    # Inject identity into channel_metadata — same path as adapters.
-    # The IdentityResolver resolves human_email/human_role from this.
+    # Build typed origin metadata for identity resolution
+    typed_origin: WebOriginMetadata | TerminalOriginMetadata | None = None
     if caller_email:
-        channel_metadata = channel_metadata or {}
-        channel_metadata["email"] = caller_email
+        if origin == InputOrigin.WEB.value:
+            typed_origin = WebOriginMetadata(email=caller_email)
+        else:
+            typed_origin = TerminalOriginMetadata(email=caller_email)
 
     req_system_role, req_job = _extract_session_role_fields(request.metadata)
     metadata = _build_metadata(
@@ -391,7 +390,7 @@ async def _prepare_create_session(
         title=request.title or "Untitled",
         project_path=request.project_path,
         subdir=request.subdir,
-        channel_metadata=channel_metadata,
+        origin_metadata=typed_origin,
         system_role=req_system_role,
         job=req_job,
     )
@@ -412,7 +411,7 @@ async def _prepare_create_session(
     metadata.title = title
     metadata.launch_intent = launch_intent
     metadata.auto_command = _derive_auto_command(request.auto_command, launch_intent)
-    return metadata, title, launch_intent, direct_caller_session
+    return metadata, initiator_session_id, title, launch_intent, direct_caller_session
 
 
 async def _resolve_created_session_transport(
@@ -522,7 +521,9 @@ async def create_session(
     """
     # Normalize request into internal command.
 
-    metadata, title, launch_intent, direct_caller_session = await _prepare_create_session(request, identity)
+    metadata, initiator_session_id, title, launch_intent, direct_caller_session = await _prepare_create_session(
+        request, identity
+    )
 
     auto_command_source = "request" if request.auto_command else ("derived" if launch_intent else "none")
     logger.info(
@@ -540,7 +541,10 @@ async def create_session(
 
     cmd = CommandMapper.map_api_input(
         "new_session",
-        {"skip_listener_registration": request.skip_listener_registration},
+        {
+            "skip_listener_registration": request.skip_listener_registration,
+            "initiator_session_id": initiator_session_id,
+        },
         metadata,
     )
 

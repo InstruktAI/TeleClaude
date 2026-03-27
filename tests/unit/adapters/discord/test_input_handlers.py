@@ -47,7 +47,7 @@ def test_extract_audio_attachment_returns_first_audio_content_type() -> None:
 
     attachment = adapter._extract_audio_attachment(message)
 
-    assert attachment.filename == "voice.mp3"
+    assert attachment.filename == "voice.mp3"  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_extract_file_attachments_excludes_audio_but_keeps_unknown_content_types() -> None:
@@ -62,7 +62,7 @@ def test_extract_file_attachments_excludes_audio_but_keeps_unknown_content_types
 
     attachments = adapter._extract_file_attachments(message)
 
-    assert [attachment.filename for attachment in attachments] == ["report.txt", "image.png"]
+    assert [attachment.filename for attachment in attachments] == ["report.txt", "image.png"]  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_is_thread_channel_uses_class_name_contains_thread() -> None:

@@ -406,7 +406,7 @@ class InputHandlersMixin:
             project_path=project_path,
             auto_command=f"agent {agent_name}",
             origin=InputOrigin.DISCORD.value,
-            channel_metadata={"user_id": user_id, "discord_user_id": user_id, "platform": "discord"}
+            origin_metadata={"user_id": user_id, "discord_user_id": user_id, "platform": "discord"}
             if user_id
             else None,
         )
@@ -473,7 +473,7 @@ class InputHandlersMixin:
         display_name = str(
             getattr(author, "display_name", None) or getattr(author, "name", None) or f"discord-{user_id}"
         )
-        channel_metadata: dict[str, str] = {
+        origin_metadata: dict[str, str] = {
             "user_id": user_id,
             "discord_user_id": user_id,
             "platform": "discord",
@@ -487,7 +487,7 @@ class InputHandlersMixin:
             project_path=effective_path,
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
-            channel_metadata=channel_metadata,  # type: ignore[arg-type]
+            origin_metadata=origin_metadata,
             auto_command=auto_command,
         )
         result = await get_command_service().create_session(create_cmd)

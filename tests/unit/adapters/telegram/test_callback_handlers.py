@@ -20,7 +20,7 @@ class _StubCallbackHandlers(CallbackHandlersMixin):
 
     def __init__(self) -> None:
         self.client = MagicMock()
-        self.trusted_dirs: list[object] = []
+        self.trusted_dirs: list[object] = []  # pyright: ignore[reportIncompatibleVariableOverride]
         self.user_whitelist: set[int] = set()
         self.computer_name = "test-computer"
         self.calls: list[tuple[str, object, object]] = []

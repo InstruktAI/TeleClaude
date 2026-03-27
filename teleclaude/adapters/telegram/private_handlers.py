@@ -157,7 +157,7 @@ class PrivateHandlersMixin:
             project_path=str(workspace_path),
             title=f"Telegram: {person_name}",
             origin=InputOrigin.TELEGRAM.value,
-            channel_metadata={
+            origin_metadata={
                 "user_id": int(user_id),
                 "telegram_user_id": int(user_id),
                 "platform": "telegram",
@@ -321,7 +321,7 @@ class PrivateHandlersMixin:
             project_path=str(workspace_path),
             title=f"Telegram: {person_name}",
             origin=InputOrigin.TELEGRAM.value,
-            channel_metadata={
+            origin_metadata={
                 "user_id": int(user_id),
                 "telegram_user_id": int(user_id),
                 "platform": "telegram",

@@ -13,7 +13,7 @@ class DummyGatewayHandlers(GatewayHandlersMixin):
     def __init__(self) -> None:
         self._help_desk_channel_id = 100
         self._all_sessions_channel_id = 200
-        self._project_forum_map = {"proj": 300, "unmapped": None}
+        self._project_forum_map = {"proj": 300, "unmapped": None}  # pyright: ignore[reportAttributeAccessIssue]
         self._team_channel_map = {400: "team/project"}
         self._client = SimpleNamespace(user=SimpleNamespace(id=900))
         self._parse_optional_int = lambda value: (

@@ -1,5 +1,6 @@
 """Session model and related types for TeleClaude."""
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -34,7 +35,8 @@ class MessageMetadata:  # pylint: disable=too-many-instance-attributes  # Adapte
     title: str | None = None
     project_path: str | None = None
     subdir: str | None = None
-    channel_metadata: dict[str, object] | None = None  # guard: loose-dict
+    channel_metadata: dict[str, object] | None = None  # guard: loose-dict — deprecated until Task 6b/7
+    origin_metadata: Mapping[str, object] | None = None
     system_role: str | None = None
     job: str | None = None
     auto_command: str | None = None  # legacy adapter boundary (deprecated)

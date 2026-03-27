@@ -8,6 +8,8 @@ from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
 from teleclaude.types import SystemStats
 
+# re-export for spec test access (tests import MessageMetadata from _snapshot)
+from ._session import MessageMetadata as MessageMetadata  # pylint: disable=useless-import-alias,unused-import
 from ._session import Session
 from ._types import JsonDict
 

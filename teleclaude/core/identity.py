@@ -172,20 +172,20 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
         self._reload_if_stale()
         return self._registered_people_count
 
-    def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> IdentityContext:  # pylint: disable=too-many-branches,too-many-return-statements
+    def resolve(self, origin: str, origin_metadata: Mapping[str, object]) -> IdentityContext:  # pylint: disable=too-many-branches,too-many-return-statements
         """Resolve identity from origin and metadata.
 
         Args:
             origin: Source of the session (e.g. 'telegram', 'web', 'terminal').
-            channel_metadata: Dictionary of metadata from the channel.
+            origin_metadata: Typed origin metadata or dict with identity signals.
 
         Returns:
-            IdentityContext with person_role always set. Unknown identity defaults to customer.
+            IdentityContext with resolved identity, or empty IdentityContext if no signals match.
         """
         self._reload_if_stale()
 
         if origin == "terminal":
-            email = channel_metadata.get("email")
+            email = origin_metadata.get("email")
             if isinstance(email, str):
                 person = self._by_email.get(email.lower())
                 if person:
@@ -198,7 +198,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
                     )
 
         if origin == "telegram":
-            user_id = channel_metadata.get("user_id")
+            user_id = origin_metadata.get("user_id")
             if user_id:
                 try:
                     uid_int = int(user_id)  # type: ignore[call-overload]
@@ -215,7 +215,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
                     pass
 
         if origin == "web":
-            email = channel_metadata.get("email")
+            email = origin_metadata.get("email")
             if isinstance(email, str):
                 person = self._by_email.get(email.lower())
                 if person:
@@ -228,7 +228,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
                     )
 
         if origin == "discord":
-            discord_user_id = channel_metadata.get("user_id") or channel_metadata.get("discord_user_id")
+            discord_user_id = origin_metadata.get("user_id") or origin_metadata.get("discord_user_id")
             if discord_user_id is not None:
                 discord_uid_str = str(discord_user_id)
                 person = self._by_discord_user_id.get(discord_uid_str)
@@ -247,7 +247,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
                 )
 
         if origin == "whatsapp":
-            phone_number = channel_metadata.get("phone_number")
+            phone_number = origin_metadata.get("phone_number")
             if phone_number is not None:
                 normalized_phone = self._normalize_phone_number(str(phone_number))
                 person = self._by_whatsapp_phone.get(normalized_phone)
@@ -266,7 +266,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
                         platform_user_id=normalized_phone,
                     )
 
-        return IdentityContext(person_role=HUMAN_ROLE_CUSTOMER)
+        return IdentityContext()
 
 
 def derive_identity_key(origin_metadata: dict[str, object]) -> str | None:  # guard: loose-dict

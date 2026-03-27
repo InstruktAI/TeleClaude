@@ -54,6 +54,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models._adapter import WebOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
@@ -220,7 +221,8 @@ class RunSessionPlan:
     effective_agent: str
     full_command: str
     auto_command: str
-    channel_metadata: dict[str, str] | None
+    initiator_session_id: str | None
+    origin_metadata: WebOriginMetadata | None
     system_role: str | None
     job: str | None
 
@@ -251,19 +253,14 @@ def _prepare_run_session(
         full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
     auto_command = f"agent_then_message {effective_agent} {request.thinking_mode} {shlex.quote(full_command)}"
 
-    channel_metadata: dict[str, str] | None = None
+    initiator_session_id: str | None = None
     if identity.session_id and not identity.session_id.startswith("web:"):
-        channel_metadata = {"initiator_session_id": identity.session_id}
+        initiator_session_id = identity.session_id
     if normalized_cmd in WORKER_LIFECYCLE_COMMANDS:
         if not normalized_args:
             raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
-        channel_metadata = channel_metadata or {}
-        channel_metadata["working_slug"] = normalized_args.split()[0]
 
-    # Inject identity into channel_metadata for IdentityResolver
-    if identity.email:
-        channel_metadata = channel_metadata or {}
-        channel_metadata["email"] = identity.email
+    origin_metadata = WebOriginMetadata(email=identity.email) if identity.email else None
 
     try:
         slash_cmd = SlashCommand(normalized_cmd)
@@ -274,7 +271,8 @@ def _prepare_run_session(
         effective_agent=effective_agent,
         full_command=full_command,
         auto_command=auto_command,
-        channel_metadata=channel_metadata,
+        initiator_session_id=initiator_session_id,
+        origin_metadata=origin_metadata,
         system_role=role_info[0] if role_info else None,
         job=role_info[1].value if role_info else None,
     )
@@ -536,7 +534,7 @@ async def run_session(
         title=plan.full_command,
         project_path=request.project,
         subdir=request.subfolder or None,
-        channel_metadata=plan.channel_metadata,
+        origin_metadata=plan.origin_metadata,
         system_role=plan.system_role,
         job=plan.job,
     )
@@ -544,7 +542,7 @@ async def run_session(
 
     cmd = CommandMapper.map_api_input(
         "new_session",
-        {"skip_listener_registration": request.detach},
+        {"skip_listener_registration": request.detach, "initiator_session_id": plan.initiator_session_id},
         metadata,
     )
     try:

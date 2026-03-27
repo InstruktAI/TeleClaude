@@ -55,7 +55,7 @@ class CommandMapper:
         return f"{source}:{text}"
 
     @staticmethod
-    def _extract_actor_from_channel_metadata(
+    def _extract_actor(
         channel_metadata: dict[str, object] | None, source: str
     ) -> tuple[str | None, str | None, str | None]:
         if not channel_metadata:
@@ -120,19 +120,13 @@ class CommandMapper:
                 title=metadata.title or (args[0] if args else None),
                 subdir=metadata.subdir,
                 origin=InputOrigin.TELEGRAM.value,
-                channel_metadata=metadata.channel_metadata,
+                origin_metadata=metadata.origin_metadata,
                 auto_command=metadata.auto_command,
-                working_slug=cast(str | None, metadata.channel_metadata.get("working_slug"))
-                if metadata.channel_metadata
-                else None,
-                initiator_session_id=cast(str | None, metadata.channel_metadata.get("initiator_session_id"))
-                if metadata.channel_metadata
-                else None,
             )
 
         if event == "message":
-            actor_id, actor_name, actor_avatar_url = CommandMapper._extract_actor_from_channel_metadata(
-                metadata.channel_metadata,
+            actor_id, actor_name, actor_avatar_url = CommandMapper._extract_actor(
+                metadata.channel_metadata,  # deprecated path — Task 7 promotes to named fields
                 metadata.origin or InputOrigin.TELEGRAM.value,
             )
             return ProcessMessageCommand(
@@ -202,7 +196,7 @@ class CommandMapper:
             )
 
         if cmd_name == "message":
-            actor_id, actor_name, actor_avatar_url = CommandMapper._extract_actor_from_channel_metadata(
+            actor_id, actor_name, actor_avatar_url = CommandMapper._extract_actor(
                 channel_metadata,
                 origin,
             )
@@ -253,7 +247,6 @@ class CommandMapper:
                 project_path=project_path or "",
                 title=title or (" ".join(args) if args else None),
                 origin=origin,
-                channel_metadata=channel_metadata,
                 launch_intent=launch_intent_obj,
             )
 
@@ -310,17 +303,20 @@ class CommandMapper:
             skip_listener_registration = (
                 skip_listener_registration_raw if isinstance(skip_listener_registration_raw, bool) else False
             )
+            initiator_raw = payload.get("initiator_session_id")
+            initiator_session_id = str(initiator_raw) if initiator_raw else None
             return CreateSessionCommand(
                 project_path=metadata.project_path or "",
                 title=metadata.title,
                 subdir=metadata.subdir,
                 origin=metadata.origin,
-                channel_metadata=metadata.channel_metadata,
+                origin_metadata=metadata.origin_metadata,
                 launch_intent=metadata.launch_intent,
                 auto_command=metadata.auto_command,
                 system_role=metadata.system_role,
                 job=metadata.job,
                 skip_listener_registration=skip_listener_registration,
+                initiator_session_id=initiator_session_id,
             )
 
         if command_name == "message":
@@ -330,8 +326,8 @@ class CommandMapper:
             payload_actor_id = str(payload_actor_id_obj).strip() if payload_actor_id_obj is not None else ""
             payload_actor_name = str(payload_actor_name_obj).strip() if payload_actor_name_obj is not None else ""
             payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
-            meta_actor_id, meta_actor_name, meta_actor_avatar = CommandMapper._extract_actor_from_channel_metadata(
-                metadata.channel_metadata,
+            meta_actor_id, meta_actor_name, meta_actor_avatar = CommandMapper._extract_actor(
+                None,
                 metadata.origin or _require_origin(),
             )
             return ProcessMessageCommand(
@@ -359,8 +355,8 @@ class CommandMapper:
             payload_actor_id = str(payload_actor_id_obj).strip() if payload_actor_id_obj is not None else ""
             payload_actor_name = str(payload_actor_name_obj).strip() if payload_actor_name_obj is not None else ""
             payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
-            meta_actor_id, meta_actor_name, meta_actor_avatar = CommandMapper._extract_actor_from_channel_metadata(
-                metadata.channel_metadata,
+            meta_actor_id, meta_actor_name, meta_actor_avatar = CommandMapper._extract_actor(
+                None,
                 metadata.origin or _require_origin(),
             )
             return HandleVoiceCommand(

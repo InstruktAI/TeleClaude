@@ -72,9 +72,9 @@ def test_register_simple_command_handlers_skips_already_defined():
     """Handler defined before registration must not be overwritten."""
     stub = _StubPrivateHandlers()
     original = object()
-    stub._handle_kill = original
+    stub._handle_kill = original  # pyright: ignore[reportAttributeAccessIssue]
     stub._register_simple_command_handlers()
-    assert stub._handle_kill is original
+    assert stub._handle_kill is original  # pyright: ignore[reportAttributeAccessIssue]
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ async def test_handle_cancel_command_calls_simple_command_with_cancel():
     async def _capture_simple(_upd: object, _ctx: object, evt: str) -> None:
         called_events.append(evt)
 
-    stub._handle_simple_command = _capture_simple
+    stub._handle_simple_command = _capture_simple  # pyright: ignore[reportAttributeAccessIssue]
     await stub._handle_cancel_command(update, context)
     assert called_events == ["cancel"]
 

@@ -68,8 +68,8 @@ class TestDownloadWhatsappMedia:
             "config",
             SimpleNamespace(whatsapp=SimpleNamespace(access_token="token", api_version="v21.0")),
         )
-        monkeypatch.setattr(whatsapp_handler, "get_session_output_dir", lambda _session_id: tmp_path)
-        monkeypatch.setattr(whatsapp_handler.httpx, "AsyncClient", lambda timeout: client)
+        monkeypatch.setattr(whatsapp_handler, "get_session_output_dir", lambda _session_id: tmp_path)  # pyright: ignore[reportUnknownLambdaType]
+        monkeypatch.setattr(whatsapp_handler.httpx, "AsyncClient", lambda timeout: client)  # pyright: ignore[reportUnknownLambdaType]
 
         output_path = await whatsapp_handler.download_whatsapp_media(
             "media-1234567890abcdef",
