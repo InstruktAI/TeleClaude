@@ -153,7 +153,6 @@ CREATE INDEX IF NOT EXISTS idx_mirrors_agent ON mirrors(agent);
 CREATE INDEX IF NOT EXISTS idx_mirrors_project ON mirrors(project);
 CREATE INDEX IF NOT EXISTS idx_mirrors_timestamp ON mirrors(timestamp_start DESC);
 CREATE INDEX IF NOT EXISTS idx_mirrors_source_identity ON mirrors(source_identity);
-CREATE INDEX IF NOT EXISTS idx_mirrors_human_email ON mirrors(human_email);
 CREATE TABLE IF NOT EXISTS mirror_tombstones (
     source_identity TEXT PRIMARY KEY,
     agent TEXT NOT NULL DEFAULT '',
@@ -197,8 +196,8 @@ def _connect_rw(db: object | None = None) -> sqlite3.Connection:
 
 def _connect_ro(db: object | None = None) -> sqlite3.Connection:
     path = Path(resolve_db_path(db)).expanduser().resolve()
-    # If DB doesn't exist yet, create it with schema via RW.
-    if not path.exists():
+    # Ensure schema and migrations are applied (also creates DB if missing).
+    if str(path) not in _schema_initialized:
         _connect_rw(db).close()
     uri = f"file:{quote(str(path))}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
