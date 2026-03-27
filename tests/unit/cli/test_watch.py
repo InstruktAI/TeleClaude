@@ -13,6 +13,13 @@ def _noop_sync(self: SmartWatcher) -> None:
     pass
 
 
+def _make_record_sync(calls: list[str]) -> object:
+    def _record(self: SmartWatcher) -> None:
+        calls.append("sync")
+
+    return _record
+
+
 # ---------------------------------------------------------------------------
 # SmartWatcher._is_sync_relevant (classmethod, pure logic)
 # ---------------------------------------------------------------------------
@@ -125,5 +132,58 @@ def test_trigger_sync_runs_when_debounce_expired(tmp_path: Path, monkeypatch: py
     watcher = SmartWatcher(tmp_path, debounce_seconds=0.0)
     monkeypatch.setattr(SmartWatcher, "_sync", _record_sync)
     watcher.last_run_time = 0.0  # expired
+    watcher._trigger_sync()
+    assert calls == ["sync"]
+
+
+# ---------------------------------------------------------------------------
+# SmartWatcher._trigger_sync — git lock cooldown
+# ---------------------------------------------------------------------------
+
+
+def test_trigger_sync_skips_when_index_lock_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(SmartWatcher, "_sync", _noop_sync)
+    watcher = SmartWatcher(tmp_path, debounce_seconds=0.0)
+
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "index.lock").touch()
+
+    calls: list[str] = []
+    monkeypatch.setattr(SmartWatcher, "_sync", _make_record_sync(calls))
+    watcher.last_run_time = 0.0
+    watcher._trigger_sync()
+    assert calls == []
+    assert watcher._last_git_lock_seen > 0
+
+
+def test_trigger_sync_skips_during_cooldown_after_lock_released(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(SmartWatcher, "_sync", _noop_sync)
+    watcher = SmartWatcher(tmp_path, debounce_seconds=0.0)
+
+    # Simulate: lock was seen recently but is now gone
+    import time
+
+    watcher._last_git_lock_seen = time.time()
+    watcher.last_run_time = 0.0
+
+    calls: list[str] = []
+    monkeypatch.setattr(SmartWatcher, "_sync", _make_record_sync(calls))
+    watcher._trigger_sync()
+    assert calls == []
+
+
+def test_trigger_sync_runs_after_cooldown_expires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(SmartWatcher, "_sync", _noop_sync)
+    watcher = SmartWatcher(tmp_path, debounce_seconds=0.0)
+
+    import time
+
+    # Simulate: lock was seen long ago (beyond cooldown)
+    watcher._last_git_lock_seen = time.time() - SmartWatcher._GIT_COOLDOWN_S - 1
+    watcher.last_run_time = 0.0
+
+    calls: list[str] = []
+    monkeypatch.setattr(SmartWatcher, "_sync", _make_record_sync(calls))
     watcher._trigger_sync()
     assert calls == ["sync"]

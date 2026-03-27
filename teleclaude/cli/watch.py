@@ -34,10 +34,16 @@ class SmartWatcher(FileSystemEventHandler):
     # Generated artifacts written by `telec sync`; watching them creates self-trigger loops.
     _GENERATED_SYNC_OUTPUT_GLOBS = ("docs/**/index.yaml",)
 
+    # After index.lock disappears, wait this long before allowing sync.
+    # Covers multi-step git operations (pre-commit stash/unstash, rebase)
+    # where the lock is released between steps.
+    _GIT_COOLDOWN_S = 10.0
+
     def __init__(self, project_root: Path, debounce_seconds: float = 2.0):
         self.project_root = project_root.resolve()
         self.debounce_seconds = debounce_seconds
         self.last_run_time = 0.0
+        self._last_git_lock_seen = 0.0
         self.spec = self._load_gitignore()
         self._sync()  # Initial sync on start
 
@@ -126,12 +132,19 @@ class SmartWatcher(FileSystemEventHandler):
             logger.debug("Skipping sync (debounce active)")
             return
 
-        # Git holds index.lock during commits (including pre-commit hooks).
-        # Syncing while hooks run causes race conditions where the watcher
-        # modifies files mid-commit, triggering false "files modified by hook" errors.
+        # Git holds index.lock during individual operations, but multi-step
+        # workflows (pre-commit stash/hooks/unstash) release the lock between
+        # steps.  A point-in-time check misses the gap.  Instead, track when
+        # the lock was last seen and enforce a cooldown window so the watcher
+        # stays quiet across the entire lifecycle.
         index_lock = self.project_root / ".git" / "index.lock"
         if index_lock.exists():
+            self._last_git_lock_seen = now
             logger.debug("Skipping sync (git index.lock active — commit in progress)")
+            return
+
+        if now - self._last_git_lock_seen < self._GIT_COOLDOWN_S:
+            logger.debug("Skipping sync (git cooldown — recent index.lock)")
             return
 
         # Update last run time BEFORE running to act as a naive mutex/debounce
