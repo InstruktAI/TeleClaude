@@ -170,6 +170,16 @@ def test_write_current_session_email_stores_json_with_tty_and_timestamp(
     assert "updated_at" in data
 
 
+def test_write_current_session_email_updates_global_on_tty_login(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sa, "_detect_tty", lambda: "/dev/ttys003")
+    monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)
+    write_current_session_email("tester@example.com")
+    global_data = json.loads((tmp_path / "global_identity.json").read_text())
+    assert global_data["email"] == "tester@example.com"
+
+
 def test_write_current_session_email_no_tty_writes_global(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(sa, "_detect_tty", lambda: None)
     monkeypatch.setattr(sa, "SESSION_AUTH_DIR", tmp_path)

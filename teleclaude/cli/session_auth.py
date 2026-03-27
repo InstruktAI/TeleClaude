@@ -109,8 +109,27 @@ def read_current_session_email() -> str | None:
     return _read_auth_file(_global_auth_path())
 
 
+def _write_auth_file(path: Path, payload: dict[str, str]) -> None:
+    """Atomically write a JSON auth payload to *path*."""
+    tmp_path = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as tmp:
+        json.dump(payload, tmp, sort_keys=True)
+        tmp.write("\n")
+        tmp.flush()
+        os.fsync(tmp.fileno())
+    try:
+        os.chmod(tmp_path, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp_path, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def write_current_session_email(email: str) -> TerminalAuthState:
-    """Write login email to the per-TTY identity file."""
+    """Write login email to the per-TTY identity file and global identity."""
     normalized_email = _normalize_email(email)
     if not normalized_email or "@" not in normalized_email:
         raise ValueError("A valid email address is required.")
@@ -133,21 +152,12 @@ def write_current_session_email(email: str) -> TerminalAuthState:
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     payload = {"email": normalized_email, "tty": tty, "updated_at": now}
 
-    tmp_path = auth_path.with_name(f"{auth_path.stem}.{os.getpid()}.tmp")
-    with open(tmp_path, "w", encoding="utf-8") as tmp:
-        json.dump(payload, tmp, sort_keys=True)
-        tmp.write("\n")
-        tmp.flush()
-        os.fsync(tmp.fileno())
-    try:
-        os.chmod(tmp_path, 0o600)
-    except OSError:
-        pass
-    os.replace(tmp_path, auth_path)
-    try:
-        os.chmod(auth_path, 0o600)
-    except OSError:
-        pass
+    _write_auth_file(auth_path, payload)
+
+    # Last login always wins globally — update global identity regardless of TTY.
+    global_path = _global_auth_path()
+    if auth_path != global_path:
+        _write_auth_file(global_path, payload)
 
     context = TerminalSessionContext(tty=tty, key=key, auth_path=auth_path)
     return TerminalAuthState(email=normalized_email, context=context)
