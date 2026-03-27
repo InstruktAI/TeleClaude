@@ -144,14 +144,14 @@ class PaneManagerBridge(TelecMixin, Widget):  # pylint: disable=too-many-instanc
 
         Multiple state changes within the same event loop iteration are
         batched — only a single layout application runs after all pending
-        Textual messages settle.  Uses set_timer(0, ...) which schedules
-        via asyncio.call_later(0), firing after the current iteration
-        completes all ready tasks.
+        Textual messages settle.  Uses call_later which posts a one-shot
+        CallbackMessage to this widget's pump queue, processed after the
+        current message handlers return.
         """
         self._pending_focus = self._pending_focus or focus
         if not self._layout_dirty:
             self._layout_dirty = True
-            self.set_timer(0, self._flush_layout, name="layout-flush")
+            self.call_later(self._flush_layout)
 
     def _flush_layout(self) -> None:
         """Apply the accumulated layout state after all pending messages settle."""

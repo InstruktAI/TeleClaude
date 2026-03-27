@@ -73,8 +73,8 @@ def test_set_preview_schedules_layout_with_snapshot_state() -> None:
     bridge._layout_dirty = False
     bridge._pending_focus = False
     bridge._get_computer_info = lambda name: None
-    # Mock set_timer to flush immediately (no event loop in unit tests)
-    bridge.set_timer = lambda delay, callback, **kwargs: callback()
+    # Mock call_later to flush immediately (no event loop in unit tests)
+    bridge.call_later = lambda callback, *args: callback(*args)
     calls: list[_CatalogCall | _ApplyCall] = []
     bridge.pane_manager = SimpleNamespace(
         update_session_catalog=lambda sessions: calls.append(
