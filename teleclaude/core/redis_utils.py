@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
+
+from instrukt_ai_logging import get_logger
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def scan_keys(redis: Redis, pattern: str | bytes) -> list[bytes]:

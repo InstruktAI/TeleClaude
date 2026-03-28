@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
@@ -11,13 +10,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 
 from ._parsers import normalize_transcript_entry_message
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _parse_timestamp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 __all__ = [
     "_entry_role",

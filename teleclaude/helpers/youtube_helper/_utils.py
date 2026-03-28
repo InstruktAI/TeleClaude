@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.core.models import JsonDict, JsonValue
 from teleclaude.helpers.youtube_helper._models import YouTubeBackoffError
 
@@ -79,7 +81,7 @@ log_dir = Path.home() / ".claude" / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "youtube_helper.log"
 
-log = logging.getLogger("youtube_helper")
+log = get_logger("youtube_helper")
 log.setLevel(logging.INFO)
 if not any(isinstance(handler, RotatingFileHandler) for handler in log.handlers):
     handler = RotatingFileHandler(

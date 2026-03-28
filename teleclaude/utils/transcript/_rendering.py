@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
@@ -28,7 +29,7 @@ from ._iterators import (
 from ._parsers import normalize_transcript_entry_message
 from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _format_thinking, _parse_timestamp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def parse_claude_transcript(  # pylint: disable=too-many-arguments,too-many-positional-arguments

@@ -24,9 +24,9 @@ if sys.platform == "darwin":
 
         BACKENDS["parakeet"] = MLXParakeetBackend()
     except Exception:  # pylint: disable=broad-exception-caught
-        import logging
+        from instrukt_ai_logging import get_logger
 
-        logging.getLogger(__name__).warning("Parakeet STT backend unavailable", exc_info=True)
+        get_logger(__name__).warning("Parakeet STT backend unavailable", exc_info=True)
 
 
 def get_backend(service_name: str) -> STTBackend | None:

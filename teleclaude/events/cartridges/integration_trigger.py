@@ -11,14 +11,15 @@ Other integration lifecycle events pass through for observability.
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _SPAWN_EVENT = "domain.software-development.deployment.started"
 

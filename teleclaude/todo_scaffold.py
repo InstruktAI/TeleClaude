@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.models import JsonDict
@@ -525,7 +525,7 @@ def _clean_main_working_tree(  # pylint: disable=too-many-branches
             pass
 
 
-_scaffold_logger = logging.getLogger(__name__)
+_scaffold_logger = get_logger(__name__)
 
 
 def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: disable=too-many-locals

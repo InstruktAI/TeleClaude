@@ -2,12 +2,13 @@
 
 # pylint: disable=broad-exception-caught,subprocess-run-check,too-many-return-statements,too-many-branches,too-many-nested-blocks
 
-import logging
 import re
 import shlex
 from collections.abc import Mapping
 from fnmatch import fnmatch
 from pathlib import Path
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
     CHECKPOINT_FILE_CATEGORIES,
@@ -17,7 +18,7 @@ from teleclaude.constants import (
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
 from teleclaude.utils.transcript import TurnTimeline
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 __all__ = [
     "_canonical_tool_name",

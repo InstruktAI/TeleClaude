@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from importlib import import_module
 from xml.etree import ElementTree
 
-logger = logging.getLogger(__name__)
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

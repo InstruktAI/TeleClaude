@@ -31,9 +31,10 @@ Intentionally dropped data:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable, Iterator, Mapping
 from typing import cast
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import is_internal_user_text
 from teleclaude.core.agents import AgentName
@@ -47,7 +48,7 @@ from teleclaude.utils.transcript import (
     normalize_transcript_entry_message,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _compaction_block(entry_ts: str | None, entry_idx: int, file_index: int) -> ProjectedBlock:

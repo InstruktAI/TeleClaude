@@ -8,8 +8,9 @@ read_phase_state/write_phase_state for atomicity.
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.artifacts import (
@@ -19,7 +20,7 @@ from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Canonical cascade order for staleness detection
 _ARTIFACT_CASCADE: list[tuple[str, str]] = [

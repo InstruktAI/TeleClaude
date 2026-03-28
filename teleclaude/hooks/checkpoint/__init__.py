@@ -7,7 +7,7 @@ All heuristics are deterministic pattern matching, zero LLM calls.
 
 # pylint: disable=too-many-branches,too-many-locals,broad-exception-caught
 
-import logging
+from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
     CHECKPOINT_LOG_CHECK_EVIDENCE,
@@ -62,7 +62,7 @@ from teleclaude.hooks.checkpoint._models import (
 )
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 __all__ = [
     # Public API

@@ -1,6 +1,5 @@
 """telec: TUI client for TeleClaude."""
 
-import logging
 import os
 import subprocess
 import sys
@@ -8,7 +7,7 @@ import time as _t
 from collections.abc import Callable
 from pathlib import Path
 
-from instrukt_ai_logging import get_logger
+from instrukt_ai_logging import InstruktAILogger, get_logger
 
 from teleclaude.cli.session_auth import read_current_session_email
 
@@ -322,7 +321,7 @@ def _handle_cli_argv(argv: list[str]) -> None:
     raise SystemExit(1)
 
 
-def _start_tui(logger: logging.Logger) -> None:
+def _start_tui(logger: InstruktAILogger) -> None:
     if not os.environ.get(TMUX_ENV_KEY):
         _exec_tmux_tui()
         return

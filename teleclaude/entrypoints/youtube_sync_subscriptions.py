@@ -6,7 +6,6 @@ import argparse
 import asyncio
 import csv
 import json
-import logging
 import sys
 import time
 from collections.abc import Iterable
@@ -15,7 +14,7 @@ from pathlib import Path
 from typing import cast
 
 from aiohttp import ClientSession
-from instrukt_ai_logging import configure_logging, get_logger
+from instrukt_ai_logging import InstruktAILogger, configure_logging, get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.core.models import JsonDict
@@ -149,7 +148,7 @@ def _call_agent_cli(  # pylint: disable=too-many-arguments  # Parameters are exp
     thinking_mode: str,
     prompt: str,
     schema: JsonDict,
-    logger: logging.Logger,
+    logger: InstruktAILogger,
     *,
     debug: bool = False,
     tools: str | None = None,
@@ -400,7 +399,7 @@ def _retry_single_row(  # pylint: disable=too-many-arguments,too-many-locals  # 
     schema_single: JsonDict,
     schema_batch: JsonDict,
     allowed_tags: set[str],
-    logger: logging.Logger,
+    logger: InstruktAILogger,
 ) -> list[str]:
     agent = next(rr)  # type: ignore[call-overload]
     retry_prompt = _build_web_prompt([row], tags, retry=True) if use_web else _build_prompt(row, tags, retry=True)
@@ -451,7 +450,7 @@ def _single_group_result(  # pylint: disable=too-many-arguments,too-many-locals 
     schema_single: JsonDict,
     schema_batch: JsonDict,
     allowed_tags: set[str],
-    logger: logging.Logger,
+    logger: InstruktAILogger,
 ) -> dict[str, str]:
     row = group[0]
     if args.debug:
@@ -518,7 +517,7 @@ def _batch_group_result(  # pylint: disable=too-many-arguments,too-many-locals  
     schema_single: JsonDict,
     schema_batch: JsonDict,
     allowed_tags: set[str],
-    logger: logging.Logger,
+    logger: InstruktAILogger,
 ) -> dict[str, str]:
     if args.debug:
         print(
@@ -582,7 +581,7 @@ def _process_group(  # pylint: disable=too-many-arguments  # Parameters are expl
     schema_single: JsonDict,
     schema_batch: JsonDict,
     allowed_tags: set[str],
-    logger: logging.Logger,
+    logger: InstruktAILogger,
 ) -> dict[str, str]:
     prompt_batch = max(0, int(args.prompt_batch))
     if prompt_batch == 0 or len(group) == 1:
@@ -649,7 +648,7 @@ def _run_chunks(  # pylint: disable=too-many-arguments,too-many-locals  # Parame
     schema_single: JsonDict,
     schema_batch: JsonDict,
     allowed_tags: set[str],
-    logger: logging.Logger,
+    logger: InstruktAILogger,
     all_rows: list[dict[str, str]],
     csv_path: Path,
 ) -> None:
@@ -707,7 +706,7 @@ def _run_mode_stages(  # pylint: disable=too-many-arguments  # Parameters are ex
     schema_single: JsonDict,
     schema_batch: JsonDict,
     allowed_tags: set[str],
-    logger: logging.Logger,
+    logger: InstruktAILogger,
     csv_path: Path,
 ) -> None:
     chunks = _chunk_rows(pending, batch_size)
@@ -762,7 +761,7 @@ def _run_refresh_stage(  # pylint: disable=too-many-arguments  # Parameters are 
     schema_single: JsonDict,
     schema_batch: JsonDict,
     allowed_tags: set[str],
-    logger: logging.Logger,
+    logger: InstruktAILogger,
     csv_path: Path,
 ) -> None:
     if args.debug:
@@ -820,7 +819,7 @@ def _load_row_state(
     *,
     csv_path: Path,
     allowed_tags: set[str],
-    logger: logging.Logger,
+    logger: InstruktAILogger,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
     existing = _read_csv(csv_path)
     if args.debug:

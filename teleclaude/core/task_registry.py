@@ -7,11 +7,12 @@ to prevent memory leaks from fire-and-forget asyncio.create_task() calls.
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Coroutine
 from typing import TypeVar
 
-logger = logging.getLogger(__name__)
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
 
 T = TypeVar("T")
 

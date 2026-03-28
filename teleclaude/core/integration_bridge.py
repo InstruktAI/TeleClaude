@@ -7,16 +7,17 @@ session spawn/wake helper used by the integration trigger cartridge.
 
 from __future__ import annotations
 
-import logging
 import os
 from datetime import UTC, datetime
 from typing import TypedDict
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.session_identity import get_session_id
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

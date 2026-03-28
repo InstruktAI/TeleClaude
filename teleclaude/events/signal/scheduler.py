@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, cast
+
+from instrukt_ai_logging import get_logger
 
 if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _resolve_pull(cartridge: object) -> Callable[[PipelineContext], Awaitable[int]]:

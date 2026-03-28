@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -15,7 +15,7 @@ from teleclaude.events.signal.fetch import fetch_full_content
 if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SynthesizeConfig(BaseModel):

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal, cast
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import CHECKPOINT_RESULT_SNIPPET_MAX_CHARS
 from teleclaude.core.agents import AgentName
@@ -18,7 +19,7 @@ from ._iterators import _get_entries_for_agent
 from ._parsers import normalize_transcript_entry_message
 from ._utils import CHECKPOINT_JSONL_TAIL_ENTRIES, _parse_timestamp
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

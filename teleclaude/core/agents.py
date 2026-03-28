@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 from enum import Enum
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config import AgentConfig, config
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AgentName(str, Enum):

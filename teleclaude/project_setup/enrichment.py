@@ -6,7 +6,6 @@ Handles idempotent re-analysis with human-edit preservation.
 
 from __future__ import annotations
 
-import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,10 +13,11 @@ from typing import Literal, TypedDict
 
 import frontmatter
 import yaml
+from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import TAXONOMY_TYPES
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 RefreshResult = Literal["created", "updated", "unchanged"]

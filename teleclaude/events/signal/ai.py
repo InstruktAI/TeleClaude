@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Protocol, runtime_checkable
 
+from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
 from teleclaude.events.signal.db import SignalItemPayload
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SynthesisArtifact(BaseModel):
