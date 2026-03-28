@@ -289,11 +289,21 @@ async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements 
         session.tmux_session_name,
     )
 
-    sent = await tmux_io.send_signal(session, "SIGINT")
-    if sent:
-        await asyncio.sleep(0.2)
-        await tmux_io.send_signal(session, "SIGINT")
-        await asyncio.sleep(0.5)
+    # Double C-c in a single tmux call — tmux delivers both within its event loop
+    double_cc = [
+        config.computer.tmux_binary,
+        "send-keys",
+        "-t",
+        session.tmux_session_name,
+        "C-c",
+        "C-c",
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *double_cc,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
 
     ready = await tmux_io.wait_for_shell_ready(session)
     if not ready:
