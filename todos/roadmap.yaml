@@ -63,3 +63,4 @@
   description: Refactor daemon headless session creation via command pipeline
 - slug: companies-onboard
 - slug: activation-trigger
+- slug: agent-cli-context-preservation
