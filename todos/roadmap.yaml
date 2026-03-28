@@ -65,3 +65,4 @@
 - slug: activation-trigger
 - slug: agent-cli-context-preservation
 - slug: hardcode-db-paths
+- slug: atomic-layout-messages
