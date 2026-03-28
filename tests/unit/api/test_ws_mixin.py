@@ -9,21 +9,22 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import WebSocket
 
-from teleclaude.api.ws_mixin import _WebSocketMixin
+from teleclaude.api.ws_mixin import _WebSocketMixin, _WsClientState
 from teleclaude.core.models import JsonDict
 
 if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
 
 
 class _WebSocketMixinHarness(_WebSocketMixin):
-    def __init__(self, *, cache: object | None = None) -> None:
-        self.client = SimpleNamespace(adapters={})
+    def __init__(self, *, cache: DaemonCache | None = None) -> None:
+        self.client: AdapterClient = cast("AdapterClient", SimpleNamespace(adapters={}))
         self.task_registry = None
         self._cache: DaemonCache | None = cache
         self._ws_clients: set[WebSocket] = set()
         self._client_subscriptions: dict[WebSocket, dict[str, set[str]]] = {}
-        self._ws_client_states: dict[WebSocket, object] = {}
+        self._ws_client_states: dict[WebSocket, _WsClientState] = {}
         self._previous_interest: dict[str, set[str]] = {}
         self._refresh_debounce_task = None
         self._refresh_pending_payload = None

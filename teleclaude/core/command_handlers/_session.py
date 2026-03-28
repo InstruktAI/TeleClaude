@@ -21,14 +21,12 @@ from teleclaude.core.events import (
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import (
     ComputerInfo,
     ProjectInfo,
     Session,
     SessionSnapshot,
-    ThinkingMode,
     TodoInfo,
 )
 from teleclaude.core.roadmap import assemble_roadmap
@@ -290,36 +288,8 @@ async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot
     """
     sessions = await db.list_sessions(include_headless=True, include_closed=include_closed)
 
-    results: list[SessionSnapshot] = []
     local_name = config.computer.name
-    for s in sessions:
-        results.append(
-            SessionSnapshot(
-                session_id=s.session_id,
-                last_input_origin=s.last_input_origin,
-                title=s.title,
-                project_path=s.project_path,
-                subdir=s.subdir,
-                thinking_mode=s.thinking_mode or ThinkingMode.SLOW.value,
-                active_agent=s.active_agent,
-                status=s.lifecycle_status or "active",
-                created_at=s.created_at.isoformat() if s.created_at else None,
-                last_activity=s.last_activity.isoformat() if s.last_activity else None,
-                closed_at=s.closed_at.isoformat() if s.closed_at else None,
-                last_input=s.last_message_sent,
-                last_input_at=s.last_message_sent_at.isoformat() if s.last_message_sent_at else None,
-                last_output_summary=get_last_output_summary(s),
-                last_output_summary_at=(s.last_output_at.isoformat() if s.last_output_at else None),
-                native_session_id=s.native_session_id,
-                tmux_session_name=s.tmux_session_name,
-                initiator_session_id=s.initiator_session_id,
-                computer=local_name,
-                human_email=s.human_email,
-                human_role=s.human_role,
-            )
-        )
-
-    return results
+    return [SessionSnapshot.from_db_session(s, computer=local_name) for s in sessions]
 
 
 async def list_projects() -> list[ProjectInfo]:
