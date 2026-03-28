@@ -324,9 +324,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "init": CommandDef(
-        desc="Initialize docs sync, auto-rebuild watcher, and optional project enrichment",
+        desc="Initialize docs sync, todo watcher services, and optional project enrichment",
         notes=[
-            "Sets up git hooks, syncs artifacts, installs file watchers.",
+            "Sets up git hooks, syncs artifacts, installs docs sync and todo watcher services.",
             "Optionally runs AI-driven project analysis to generate doc snippets.",
             "First init offers enrichment; re-init offers refresh of existing analysis.",
             "Prompts for release-channel enrollment (alpha/beta/stable).",
@@ -789,7 +789,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     (
                         '--expertise JSON shape: {"<domain>": "<level>", "<domain>": '
                         '{"<sub-area>": "<level>"}}. '
-                        'Levels: novice, intermediate, advanced, expert. '
+                        "Levels: novice, intermediate, advanced, expert. "
                         'Example: \'{"python": "expert", "typescript": '
                         '{"backend": "advanced", "frontend": "intermediate"}}\''
                     ),

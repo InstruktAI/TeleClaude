@@ -6,4 +6,3 @@ export interface PanelTab {
   disabled: boolean;
   active: boolean;
 }
-

@@ -28,7 +28,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import format_system_message
+from teleclaude.constants import HUMAN_ROLE_ADMIN, format_system_message
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
@@ -320,6 +320,20 @@ def _derive_auto_command(
     return None
 
 
+def _resolve_effective_human_role(
+    requested_human_role: str | None,
+    authenticated_human_role: str | None,
+) -> str | None:
+    """Reject client role escalation unless the authenticated caller is already admin."""
+    if requested_human_role is None:
+        return authenticated_human_role
+    if requested_human_role == authenticated_human_role:
+        return authenticated_human_role
+    if authenticated_human_role == HUMAN_ROLE_ADMIN:
+        return requested_human_role
+    raise HTTPException(status_code=403, detail="human_role override requires admin identity")
+
+
 async def _link_direct_sessions(
     *,
     caller_session_id: str,
@@ -392,6 +406,7 @@ async def _prepare_create_session(
     if request.human_email:
         origin = InputOrigin.WEB.value
         caller_email = request.human_email
+    effective_human_role = _resolve_effective_human_role(request.human_role, identity.human_role)
 
     # Build typed origin metadata for identity resolution
     typed_origin: WebOriginMetadata | TerminalOriginMetadata | None = None
@@ -407,6 +422,8 @@ async def _prepare_create_session(
         title=request.title or "Untitled",
         project_path=request.project_path,
         subdir=request.subdir,
+        human_email=caller_email,
+        human_role=effective_human_role,
         origin_metadata=typed_origin,
         system_role=req_system_role,
         job=req_job,

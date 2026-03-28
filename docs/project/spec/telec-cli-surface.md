@@ -92,7 +92,7 @@ subcommands:
     flags:
       --attach: 'Attach to tmux session after revive.'
   init:
-    description: 'Initialize docs sync, auto-rebuild watcher, and optional project enrichment.'
+    description: 'Initialize docs sync, todo watcher services, and optional project enrichment.'
   version:
     description: 'Print version, channel, and commit hash.'
   sync:

@@ -1,4 +1,7 @@
 """Pytest configuration for TeleClaude tests."""
+# pylint: disable=wrong-import-position,broad-exception-caught,unused-argument
+# pylint: disable=import-outside-toplevel,too-many-arguments,too-many-positional-arguments
+# Pytest fixture modules intentionally use dynamic imports and callback signatures.
 
 import logging
 import os
@@ -29,10 +32,14 @@ except Exception:
 
 
 def pytest_collection_modifyitems(config, items):
-    """Set per-marker timeouts: unit=1s, integration=5s."""
+    """Set per-marker timeouts: unit=1s, functional/integration=5s."""
     for item in items:
+        if item.get_closest_marker("timeout") is not None:
+            continue
         if "unit" in item.keywords:
             item.add_marker(pytest.mark.timeout(1))
+        elif "functional" in item.keywords:
+            item.add_marker(pytest.mark.timeout(5))
         elif "integration" in item.keywords:
             item.add_marker(pytest.mark.timeout(5))
 

@@ -33,7 +33,6 @@ from teleclaude.core.models import Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.task_registry import TaskRegistry
-from teleclaude.core.todo_watcher import TodoWatcher
 from teleclaude.daemon_event_platform import _DaemonEventPlatformMixin
 from teleclaude.daemon_hook_outbox import (
     _DaemonHookOutboxMixin,
@@ -251,7 +250,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self._event_db: EventDB | None = None
         self.mirror_worker_task: asyncio.Task[object] | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
-        self.todo_watcher_task: asyncio.Task[object] | None = None
         self.codex_transcript_watch_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
@@ -544,11 +542,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
             logger.info("WAL checkpoint task started (interval=300s)")
 
-            todo_watcher = TodoWatcher(self.cache)
-            self.todo_watcher_task = asyncio.create_task(todo_watcher.run(), name="todo-watcher")
-            self.todo_watcher_task.add_done_callback(self._log_background_task_exception("todo_watcher"))
-            logger.info("Todo watcher task started")
-
             self.monitoring_service.log_resource_snapshot("startup")
 
             if LAUNCHD_WATCH_ENABLED:
@@ -588,7 +581,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             ("channel_subscription_worker_task", "Channel subscription worker stopped"),
             ("resource_monitor_task", "Resource monitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
-            ("todo_watcher_task", "Todo watcher task stopped"),
             ("launchd_watch_task", "Launchd watch task stopped"),
             ("_ingest_scheduler_task", "IngestScheduler stopped"),
             ("_event_processor_task", "EventProcessor stopped"),

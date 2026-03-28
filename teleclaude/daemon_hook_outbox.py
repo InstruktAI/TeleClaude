@@ -166,7 +166,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         """
 
         def _on_stale_read(resource_type: str, computer: str) -> None:
-            # Local computers manage freshness via startup warming and TodoWatcher
+            # Local computers manage freshness via startup warming and todo watcher notifications
             if computer in ("local", local_computer_name, ""):
                 return
             adapter = get_adapter()

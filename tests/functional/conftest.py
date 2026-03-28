@@ -1,9 +1,11 @@
 """Functional test fixtures — real FastAPI app, real auth, real DB, no network."""
+# pylint: disable=import-outside-toplevel,too-many-locals,too-many-statements
+# pylint: disable=too-few-public-methods,too-many-arguments,too-many-positional-arguments,unused-argument
 
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -56,22 +58,25 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
             monkeypatch.setattr(mod, "db", test_db)
 
     # --- Config: single-user mode (no login required → admin) ---
-    # Mock the IdentityResolver to return admin for test@test.com
-    # and report single-user mode (no login required).
-    from teleclaude.core.identity import IdentityResolver
+    from teleclaude.api import auth as auth_mod
+    from teleclaude.core.identity import IdentityContext
 
-    mock_resolver = IdentityResolver.__new__(IdentityResolver)
-    mock_resolver._by_email = {
-        "test@test.com": type("P", (), {"name": "test", "email": "test@test.com", "role": "admin", "username": None})()
-    }
-    mock_resolver._by_username = {}
-    mock_resolver._by_telegram_user_id = {}
-    mock_resolver._by_discord_user_id = {}
-    mock_resolver._by_whatsapp_phone = {}
-    mock_resolver._registered_people_count = 1
-    mock_resolver._config_mtime_ns = 0
-    mock_resolver._people_mtime_ns = 0
-    monkeypatch.setattr("teleclaude.core.identity._resolver_instance", mock_resolver)
+    class _StubIdentityResolver:
+        registered_people_count = 1
+
+        @staticmethod
+        def resolve_by_email(email: str) -> IdentityContext:
+            """Return a stable single-user admin identity for the harness."""
+            normalized = email.strip().lower()
+            if normalized == "test@test.com":
+                return IdentityContext(person_name="test", person_email=normalized, person_role="admin")
+            return IdentityContext()
+
+    def _get_identity_resolver() -> _StubIdentityResolver:
+        """Return the functional-test identity resolver."""
+        return _StubIdentityResolver()
+
+    monkeypatch.setattr(auth_mod, "get_identity_resolver", _get_identity_resolver)
 
     # --- tmux: no-op ---
     from teleclaude.core import tmux_bridge
@@ -79,6 +84,7 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     _created = set()
 
     async def _mock_create(name, working_dir, cols=80, rows=24, session_id=None, env_vars=None):
+        """Pretend tmux session creation succeeded without shelling out."""
         _created.add(name)
         return True
 
@@ -122,7 +128,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     monkeypatch.setattr(session_handler_mod, "config", config_module.config)
 
     # --- Identity resolver: no platform identity ---
-    from teleclaude.core.identity import IdentityContext
 
     _no_identity = IdentityContext()
     _mock_resolver = SimpleNamespace(resolve=lambda _origin, _meta: _no_identity)
@@ -143,14 +148,21 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     reset_command_service()
 
     async def _noop_bootstrap(session_id, auto_command=None):
-        pass
+        """Stand in for the daemon bootstrap task during functional tests."""
+        return None
+
+    def _discard_background_task(task: Awaitable[object], _name: str | None = None) -> None:
+        """Close discarded coroutine objects so pytest does not flag them as unawaited."""
+        close = getattr(task, "close", None)
+        if callable(close):
+            close()
 
     cmd_service = CommandService(
         client=stub_client,
         start_polling=AsyncMock(),
         execute_terminal_command=AsyncMock(),
         execute_auto_command=AsyncMock(),
-        queue_background_task=lambda coro, name=None: None,
+        queue_background_task=_discard_background_task,
         bootstrap_session=_noop_bootstrap,
     )
     init_command_service(cmd_service, force=True)

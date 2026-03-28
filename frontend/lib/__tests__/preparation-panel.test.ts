@@ -118,7 +118,6 @@ describe("buildPreparationTree", () => {
     ]);
   });
 });
-
 describe("deriveTodoPhaseTags", () => {
   const phaseCases = [
     {
@@ -200,4 +199,3 @@ describe("getPreparationActionAvailability", () => {
     });
   });
 });
-

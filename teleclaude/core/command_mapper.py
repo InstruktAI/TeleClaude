@@ -309,6 +309,8 @@ class CommandMapper:
                 project_path=metadata.project_path or "",
                 title=metadata.title,
                 subdir=metadata.subdir,
+                human_email=metadata.human_email,
+                human_role=metadata.human_role,
                 origin=metadata.origin,
                 origin_metadata=metadata.origin_metadata,
                 launch_intent=metadata.launch_intent,

@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.core.command_handlers._session."""
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,too-many-arguments
 
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from teleclaude.core.models import (
     SessionLaunchIntent,
     SessionLaunchKind,
     TodoInfo,
+    _snapshot,
 )
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
 
@@ -118,7 +120,7 @@ class TestSessionListing:
 
         monkeypatch.setattr(_session, "db", db)
         monkeypatch.setattr(_session, "config", config)
-        monkeypatch.setattr(_session, "get_last_output_summary", MagicMock(return_value="summary"))
+        monkeypatch.setattr(_snapshot, "get_last_output_summary", MagicMock(return_value="summary"))
 
         result = await _session.list_sessions()
 

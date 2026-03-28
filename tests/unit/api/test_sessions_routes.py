@@ -183,3 +183,44 @@ class TestSessionsRoutes:
         assert metadata.origin == InputOrigin.TERMINAL.value
         assert metadata.origin_metadata is not None
         assert metadata.origin_metadata["email"] == "terminal@example.com"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_rejects_non_admin_human_role_override(self) -> None:
+        """Authenticated non-admin callers cannot assert a stronger human_role in the body."""
+        request = CreateSessionRequest(
+            computer="local",
+            project_path="/repo/demo",
+            human_role="admin",
+        )
+        identity = SimpleNamespace(session_id="sess-member", human_role="member", email="member@example.com")
+
+        with patch(
+            "teleclaude.api.sessions_routes._build_launch_intent",
+            new=AsyncMock(return_value=(None, None)),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await sessions_routes._prepare_create_session(request, identity)
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_allows_admin_human_role_override(self) -> None:
+        """Admin identities may explicitly create restricted-role sessions."""
+        request = CreateSessionRequest(
+            computer="local",
+            project_path="/repo/demo",
+            human_role="member",
+        )
+        identity = SimpleNamespace(session_id="sess-admin", human_role="admin", email="admin@example.com")
+
+        with patch(
+            "teleclaude.api.sessions_routes._build_launch_intent",
+            new=AsyncMock(return_value=(None, None)),
+        ):
+            metadata, _initiator, _title, _intent, _caller = await sessions_routes._prepare_create_session(
+                request, identity
+            )
+
+        assert metadata.human_role == "member"

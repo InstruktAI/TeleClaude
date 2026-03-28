@@ -55,7 +55,8 @@ async def list_projects(
     """List projects (local + cached remote projects).
 
     Serves local projects from cache when available (warmed on startup,
-    kept fresh by TodoWatcher). Falls back to filesystem on cache miss.
+    kept fresh by OS-managed todo watcher notifications). Falls back to
+    filesystem on cache miss.
     """
     try:
         computer_name = config.computer.name

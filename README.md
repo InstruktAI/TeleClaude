@@ -118,7 +118,7 @@ make init
 
 `make install` and `make init` are for this TeleClaude repo itself. They set up the development checkout, tooling, and local repo wiring.
 
-`telec init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up docs sync, hooks, local runtime integration, and optional project analysis. It is project setup, not repo installation.
+`telec init` is different. Run it inside a project you want TeleClaude to manage. It makes that project TeleClaude-aware by wiring up docs sync, todo watcher services, hooks, local runtime integration, and optional project analysis. It is project setup, not repo installation.
 
 ---
 

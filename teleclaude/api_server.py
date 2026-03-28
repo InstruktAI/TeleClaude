@@ -98,6 +98,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             sessions_actions_routes,
             sessions_routes,
             settings_routes,
+            todo_watcher_routes,
         )
 
         sessions_routes.configure(client=client, cache=cache)
@@ -106,6 +107,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         projects_routes.configure(cache=cache)
         settings_routes.configure(runtime_settings=runtime_settings)
         chiptunes_routes.configure(runtime_settings=runtime_settings)
+        todo_watcher_routes.configure(cache=cache)
         self.app.include_router(sessions_routes.router)
         self.app.include_router(sessions_actions_routes.router)
         self.app.include_router(computers_routes.router)
@@ -116,6 +118,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(chiptunes_routes.router)
         self.app.include_router(jobs_routes.router)
         self.app.include_router(notifications_routes.router)
+        self.app.include_router(todo_watcher_routes.router)
 
         from teleclaude.memory.api_routes import router as memory_router
 
@@ -220,11 +223,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             value.subscribe(self._on_cache_change)
             logger.info("API server subscribed to cache notifications")
         # Propagate to cache-dependent route modules
-        from teleclaude.api import computers_routes, projects_routes, sessions_routes
+        from teleclaude.api import computers_routes, projects_routes, sessions_routes, todo_watcher_routes
 
         sessions_routes.configure(cache=value)
         computers_routes.configure(cache=value)
         projects_routes.configure(cache=value)
+        todo_watcher_routes.configure(cache=value)
 
     async def _handle_session_updated_event(
         self,

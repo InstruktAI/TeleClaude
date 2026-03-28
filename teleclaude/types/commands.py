@@ -63,6 +63,8 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
     origin: str
     title: str | None = None
     subdir: str | None = None
+    human_email: str | None = None
+    human_role: str | None = None
     initiator_session_id: str | None = None
     skip_listener_registration: bool = False
     origin_metadata: Mapping[str, object] | None = None
@@ -78,6 +80,8 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
         origin: str,
         title: str | None = None,
         subdir: str | None = None,
+        human_email: str | None = None,
+        human_role: str | None = None,
         initiator_session_id: str | None = None,
         skip_listener_registration: bool = False,
         origin_metadata: Mapping[str, object] | None = None,
@@ -92,6 +96,8 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
         self.origin = origin
         self.title = title
         self.subdir = subdir
+        self.human_email = human_email
+        self.human_role = human_role
         self.initiator_session_id = initiator_session_id
         self.skip_listener_registration = skip_listener_registration
         self.origin_metadata = origin_metadata

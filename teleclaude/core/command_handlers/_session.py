@@ -124,12 +124,14 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     # Sessions without origin_metadata (e.g. telegram before adapter conversion)
     # proceed with no identity — parent inheritance or role-based access applies.
     identity: IdentityContext | None = None
-    human_email: str | None = None
-    human_role: str | None = None
+    human_email: str | None = cmd.human_email
+    human_role: str | None = cmd.human_role
     if cmd.origin_metadata:
         identity = get_identity_resolver().resolve(origin, cmd.origin_metadata)
-        human_email = identity.person_email
-        human_role = identity.person_role
+        if not human_email:
+            human_email = identity.person_email
+        if not human_role:
+            human_role = identity.person_role
 
     # Handle parent session identity inheritance
     principal: str | None = None
@@ -289,7 +291,13 @@ async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot
     sessions = await db.list_sessions(include_headless=True, include_closed=include_closed)
 
     local_name = config.computer.name
-    return [SessionSnapshot.from_db_session(s, computer=local_name) for s in sessions]
+    snapshots = [SessionSnapshot.from_db_session(session, computer=local_name) for session in sessions]
+    for snapshot in snapshots:
+        if not snapshot.thinking_mode:
+            snapshot.thinking_mode = "slow"
+        if not snapshot.status:
+            snapshot.status = "active"
+    return snapshots
 
 
 async def list_projects() -> list[ProjectInfo]:

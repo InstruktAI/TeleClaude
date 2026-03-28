@@ -38,4 +38,3 @@ describe("panel navigation bindings", () => {
     expect(tab).toMatchObject({ action: "next_tab", context: "configuration" });
   });
 });
-
