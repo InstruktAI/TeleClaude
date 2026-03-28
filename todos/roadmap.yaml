@@ -66,3 +66,5 @@
 - slug: agent-cli-context-preservation
 - slug: hardcode-db-paths
 - slug: atomic-layout-messages
+- slug: command-role-map-missing-specs
+- slug: identity-origin-cleanup-final
