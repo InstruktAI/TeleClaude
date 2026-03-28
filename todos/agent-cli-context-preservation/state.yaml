@@ -1,51 +1,86 @@
 schema_version: 2
-phase: pending
+phase: in_progress
 kind: todo
-current: input_assessment
-history: []
+current: review_pending
+history:
+- source: prepared
+  target: build_started
+  by: mark-phase
+  at: '2026-03-28T03:16:28.199090+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-28T04:54:43.856238+00:00'
+  metadata: {}
+- source: build_complete
+  target: build_started
+  by: mark-phase
+  at: '2026-03-28T04:55:12.331805+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-28T04:59:20.074629+00:00'
+  metadata: {}
+- source: build_complete
+  target: review_changes_requested
+  by: mark-phase
+  at: '2026-03-28T15:22:13.714719+00:00'
+  metadata: {}
+- source: review_changes_requested
+  target: review_pending
+  by: mark-phase
+  at: '2026-03-28T16:45:33.011444+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
   status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 1
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: c0a9901c50b4a1208eec045e68232793e0c6915f
 unresolved_findings: []
 resolved_findings: []
 grounding:
-  valid: false
-  base_sha: ''
-  input_digest: ''
-  referenced_paths: []
-  last_grounded_at: ''
+  valid: true
+  base_sha: 9de7e05031efa693495229ae3c6b950cb4fa6bdf
+  input_digest: 50497744adf3c375863dbeba77a75ee2a061813f1aff04d164fb03018a73e45c
+  referenced_paths:
+  - teleclaude/install/install_hooks.py
+  - bin/init/install_hooks.py
+  - bin/init/setup_agent_hooks.sh
+  - bin/init.sh
+  - teleclaude/install/settings/codex.json
+  - scripts/distribute.py
+  - teleclaude/project_setup/init_flow.py
+  - tools/lint/guardrails.py
+  - tests/unit/install/test_install_hooks.py
+  - tests/unit/install/test_configure_agent_cli.py
+  - tests/unit/scripts/test_distribute.py
+  last_grounded_at: '2026-03-28T03:04:46.878160+00:00'
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-28T13:00:00Z'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  rounds: 1
+  baseline_commit: b019ef39aa2e3fe37507941c8492e2db54d60cd7
   findings: []
 test_spec_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-28T14:45:00Z'
   findings_count: 0
-  rounds: 0
+  rounds: 2
 plan_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-28T15:30:00Z'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  rounds: 2
+  baseline_commit: 85a58b123aaaf010bab8139ec0dcbd36c7b89cfa
   findings: []
 artifacts:
   input:
@@ -53,47 +88,61 @@ artifacts:
     produced_at: ''
     stale: false
   requirements:
-    digest: ''
-    produced_at: ''
+    digest: f578d3b756c2362b6c5a436523a591d6bb17b931a7c80456fa66a8d6a4159d1f
+    produced_at: '2026-03-28T02:02:37.690416+00:00'
     stale: false
   test_specs:
     digest: ''
-    produced_at: ''
+    produced_at: '2026-03-28T02:39:54.359064+00:00'
     stale: false
   implementation_plan:
-    digest: ''
-    produced_at: ''
+    digest: 4718fe04564f3e97bd505e6b61f87dcad0fcbe5e6d62a187601da58ac8aa542c
+    produced_at: '2026-03-28T02:52:39.576415+00:00'
     stale: false
 audit:
   input_assessment:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T02:02:48.817293+00:00'
+    completed_at: '2026-03-28T02:02:48.822345+00:00'
   triangulation:
     started_at: ''
     completed_at: ''
   requirements_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
+    started_at: '2026-03-28T02:07:10.771292+00:00'
+    completed_at: '2026-03-28T02:07:10.771369+00:00'
+    baseline_commit: b019ef39aa2e3fe37507941c8492e2db54d60cd7
+    verdict: approve
+    rounds: 1
     findings: []
   plan_drafting:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T02:40:00.822620+00:00'
+    completed_at: '2026-03-28T02:40:00.823062+00:00'
   plan_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
-    findings: []
+    started_at: '2026-03-28T03:01:28.603939+00:00'
+    completed_at: '2026-03-28T03:01:28.604031+00:00'
+    baseline_commit: 85a58b123aaaf010bab8139ec0dcbd36c7b89cfa
+    verdict: approve
+    rounds: 2
+    findings:
+    - severity: Important
+      description: Plan does not include a task to populate demo.md with executable
+        verification blocks.
   gate:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T16:00:00Z'
+    completed_at: '2026-03-28T16:15:00Z'
+    verdict: pass
+    score: 9
+  test_spec_build:
+    started_at: '2026-03-28T02:30:12.228162+00:00'
+    completed_at: '2026-03-28T02:30:12.259894+00:00'
+  test_spec_review:
+    started_at: '2026-03-28T02:40:00.814976+00:00'
+    completed_at: '2026-03-28T02:40:00.814982+00:00'
+    verdict: approve
+    rounds: 2
 dor:
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-03-28T16:15:00Z'
+  score: 9
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:

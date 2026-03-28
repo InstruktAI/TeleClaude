@@ -1,17 +1,16 @@
 schema_version: 2
-phase: pending
+phase: in_progress
 kind: todo
-current: input_assessment
-history: []
+current: build_started
+history:
+- source: prepared
+  target: build_started
+  by: mark-phase
+  at: '2026-03-28T15:07:44.844228+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
   status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
@@ -21,31 +20,76 @@ review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
 grounding:
-  valid: false
-  base_sha: ''
-  input_digest: ''
-  referenced_paths: []
-  last_grounded_at: ''
-  invalidated_at: ''
-  invalidation_reason: ''
+  valid: true
+  base_sha: 5a2be31a9269983f3e8f72bcdd10cbed23040efd
+  input_digest: 15360efe58f786ec8b811e7b1db022c54e8e0d7503046d73f748d2de049838b9
+  referenced_paths:
+  - teleclaude/core/models/_session.py
+  - teleclaude/core/command_mapper.py
+  - teleclaude/adapters/telegram/input_handlers.py
+  - teleclaude/adapters/telegram/command_handlers.py
+  - teleclaude/adapters/telegram/callback_handlers.py
+  - teleclaude/adapters/telegram/private_handlers.py
+  - teleclaude/adapters/discord/gateway_handlers.py
+  - teleclaude/hooks/whatsapp_handler.py
+  - teleclaude/core/agent_coordinator/_fanout.py
+  - teleclaude/transport/redis_transport/_messaging.py
+  - teleclaude/transport/redis_transport/_request_response.py
+  - teleclaude/core/models/_snapshot.py
+  - teleclaude/core/models/_adapter.py
+  - teleclaude/daemon_hook_outbox.py
+  - teleclaude/api/sessions_actions_routes.py
+  - teleclaude/core/db/_sessions.py
+  - teleclaude/core/identity.py
+  - teleclaude/cli/telec/handlers/docs.py
+  - teleclaude/cli/config_cli.py
+  - teleclaude/cli/cartridge_cli.py
+  - teleclaude/cli/session_auth.py
+  - tests/unit/test_daemon_headless_pipeline.py
+  - tests/unit/test_adapter_actor_normalization.py
+  - tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py
+  - tests/unit/core/test_channel_metadata_cleanup.py
+  - tests/unit/adapters/telegram/test_input_handlers.py
+  - tests/unit/adapters/telegram/test_callback_handlers.py
+  - tests/unit/core/models/test__adapter.py
+  - tests/unit/mirrors/test_generator.py
+  - tests/unit/transport/redis_transport/test_target_computer_named_field.py
+  - tests/unit/transport/redis_transport/test__adapter_noop.py
+  - tests/unit/transport/redis_transport/test__messaging.py
+  - tests/unit/cli/telec/handlers/test_docs.py
+  - tests/unit/core/db/test__sessions.py
+  - docs/project/spec/session-identity-truth.md
+  - docs/project/design/architecture/session-lifecycle.md
+  - docs/project/design/architecture/layer-ownership.md
+  - demos/identity-origin-cleanup/demo.md
+  - demos/agent-session-auth/demo.md
+  - todos/edge-session-creation/input.md
+  - todos/session-memory-extraction/input.md
+  last_grounded_at: '2026-03-28T15:00:09.609281+00:00'
+  invalidated_at: '2026-03-28T05:59:24.849477+00:00'
+  invalidation_reason: files_changed
+  changed_paths:
+  - tests/unit/test_adapter_actor_normalization.py
+  - tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py
+  - tests/unit/transport/redis_transport/test_target_computer_named_field.py
 requirements_review:
-  verdict: ''
-  reviewed_at: ''
-  findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  verdict: approve
+  reviewed_at: '2026-03-28T12:05:00Z'
+  findings_count: 1
+  rounds: 1
+  baseline_commit: 15bb56e9d67cff09edbbb746e2e1faf2063a3c68
   findings: []
 test_spec_review:
-  verdict: ''
-  reviewed_at: ''
-  findings_count: 0
-  rounds: 0
+  verdict: approve
+  reviewed_at: '2026-03-28T14:20:00Z'
+  findings_count: 10
+  rounds: 2
 plan_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-28T05:58:36Z'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  rounds: 1
+  baseline_commit: ffa66687f1abf568515692463629c22302cdc266
   findings: []
 artifacts:
   input:
@@ -53,47 +97,55 @@ artifacts:
     produced_at: ''
     stale: false
   requirements:
-    digest: ''
-    produced_at: ''
+    digest: 2fe082acea599c784179971144c6828ac720d35e0865413a7a1013e093c239ed
+    produced_at: '2026-03-28T04:45:38.962459+00:00'
     stale: false
   test_specs:
     digest: ''
-    produced_at: ''
+    produced_at: '2026-03-28T05:19:32.671696+00:00'
     stale: false
   implementation_plan:
-    digest: ''
-    produced_at: ''
+    digest: e173c6f7272bd1687dc65038f7dafd09cbaeed79857ded9891f546938878b93c
+    produced_at: '2026-03-28T05:53:39.372789+00:00'
     stale: false
 audit:
   input_assessment:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T04:46:01.055627+00:00'
+    completed_at: '2026-03-28T04:46:01.061053+00:00'
   triangulation:
     started_at: ''
     completed_at: ''
   requirements_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
+    started_at: '2026-03-28T05:02:48.944056+00:00'
+    completed_at: '2026-03-28T05:02:48.944125+00:00'
+    baseline_commit: 15bb56e9d67cff09edbbb746e2e1faf2063a3c68
+    verdict: approve
+    rounds: 1
     findings: []
   plan_drafting:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T14:51:45.655386+00:00'
+    completed_at: '2026-03-28T14:51:45.658099+00:00'
   plan_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
+    started_at: '2026-03-28T15:00:09.557186+00:00'
+    completed_at: '2026-03-28T15:00:09.557262+00:00'
+    baseline_commit: ffa66687f1abf568515692463629c22302cdc266
+    verdict: approve
     rounds: 0
     findings: []
   gate:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T17:00:00Z'
+    completed_at: '2026-03-28T17:00:00Z'
+  test_spec_build:
+    started_at: '2026-03-28T05:02:48.952745+00:00'
+    completed_at: '2026-03-28T05:02:48.966525+00:00'
+  test_spec_review:
+    started_at: '2026-03-28T05:19:39.852604+00:00'
+    completed_at: '2026-03-28T05:19:39.852611+00:00'
+    verdict: approve
 dor:
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-03-28T17:00:00Z'
+  score: 9
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:

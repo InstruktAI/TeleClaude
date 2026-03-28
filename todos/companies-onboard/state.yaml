@@ -1,17 +1,11 @@
 schema_version: 2
 phase: pending
 kind: todo
-current: input_assessment
+current: plan_review
 history: []
 deferrals_processed: false
 finalize:
   status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
@@ -22,42 +16,48 @@ unresolved_findings: []
 resolved_findings: []
 grounding:
   valid: true
-  base_sha: 'bcb676da3836c61b1fcdc0002351b4aa2464f0ae'
-  input_digest: '84acbbf9b2054c7feb3947bbcc207e6df8783d030b0f54e31cd5d01e971d027e'
+  base_sha: 68d320536d9adf612c7c4d85dcbd1a99accc4c2c
+  input_digest: ''
   referenced_paths:
-    - teleclaude/config/schema.py
-    - teleclaude/constants.py
-    - teleclaude/paths.py
-    - teleclaude/cli/telec/surface.py
-    - teleclaude/cli/telec/surface_types.py
-    - teleclaude/cli/telec/__init__.py
-    - teleclaude/context_selector.py
-    - teleclaude/docs_index.py
-    - teleclaude/sync.py
-    - teleclaude/project_setup/enrichment.py
-    - teleclaude/events/domain_config.py
-    - agents/commands/telec-init-analyze.md
-  last_grounded_at: '2026-03-27T12:00:00Z'
+  - teleclaude/config/schema.py
+  - teleclaude/constants.py
+  - teleclaude.sample.yml
+  - teleclaude/enrichment_core.py
+  - teleclaude/project_setup/enrichment.py
+  - teleclaude/company_setup/__init__.py
+  - teleclaude/company_setup/bootstrap.py
+  - teleclaude/company_setup/meta.py
+  - teleclaude/company_setup/inbox.py
+  - teleclaude/company_setup/enrichment.py
+  - teleclaude/cli/telec/surface_types.py
+  - teleclaude/cli/telec/surface.py
+  - teleclaude/cli/telec/__init__.py
+  - teleclaude/cli/telec/handlers/companies.py
+  - teleclaude/context_selector.py
+  - teleclaude/docs_index.py
+  - teleclaude/sync.py
+  - agents/commands/telec-company-analyze.md
+  last_grounded_at: '2026-03-27T23:45:00+00:00'
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
-  verdict: ''
+  verdict: approve
   reviewed_at: ''
   findings_count: 0
   rounds: 0
   baseline_commit: ''
   findings: []
 test_spec_review:
-  verdict: ''
+  verdict: approve
   reviewed_at: ''
   findings_count: 0
   rounds: 0
 plan_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-28T00:35:00+00:00'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  rounds: 1
+  baseline_commit: de56e71d0a0ca1992d4532e60efc4998b0ee92cf
   findings: []
 artifacts:
   input:
@@ -65,16 +65,16 @@ artifacts:
     produced_at: ''
     stale: false
   requirements:
-    digest: ''
-    produced_at: ''
+    digest: 97d244d3279f34dfbe44f382779d1174f1e58037a639ed6c991e34eb6c4fd876
+    produced_at: '2026-03-27T22:26:23.414281+00:00'
     stale: false
   test_specs:
-    digest: ''
-    produced_at: ''
+    digest: caccd1bc5f63fe0b374992f197a3ade67a180fe47acd2e7657e34bfc82c6d080
+    produced_at: '2026-03-27T23:30:00+00:00'
     stale: false
   implementation_plan:
-    digest: ''
-    produced_at: ''
+    digest: 648aa15f0dd79a5fd84c5b021d8debeb247c54f63bf4fc4b50e0f6c3e5de126f
+    produced_at: '2026-03-27T23:31:28.026822+00:00'
     stale: false
 audit:
   input_assessment:
@@ -91,14 +91,14 @@ audit:
     rounds: 0
     findings: []
   plan_drafting:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-27T23:43:29.220051+00:00'
+    completed_at: '2026-03-27T23:43:29.220929+00:00'
   plan_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
+    started_at: '2026-03-27T22:40:35.375141+00:00'
+    completed_at: '2026-03-28T00:35:00+00:00'
+    baseline_commit: de56e71d0a0ca1992d4532e60efc4998b0ee92cf
+    verdict: approve
+    rounds: 1
     findings: []
   gate:
     started_at: ''
