@@ -27,6 +27,7 @@ from teleclaude.api_models import (
     SessionDTO,
 )
 from teleclaude.config import config
+from teleclaude.config.loader import load_global_config
 from teleclaude.constants import format_system_message
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
@@ -101,6 +102,21 @@ def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) 
 
     # Contributor/newcomer/unknown: own sessions only
     return [s for s in sessions if s.human_email == email]
+
+
+def enrich_human_names(dtos: list[SessionDTO]) -> list[SessionDTO]:
+    """Resolve human_name from people config for each DTO with a human_email."""
+    people = load_global_config().people
+    name_by_email: dict[str, str] = {}
+    for person in people:
+        if person.email:
+            name_by_email[person.email.lower()] = person.name
+    return [
+        dto.model_copy(update={"human_name": name_by_email[dto.human_email.lower()]})
+        if dto.human_email and dto.human_email.lower() in name_by_email
+        else dto
+        for dto in dtos
+    ]
 
 
 def _format_direct_conversation_intro(
@@ -496,7 +512,8 @@ async def list_sessions(
         if query.job:
             merged = [s for s in merged if s.job == query.job]
 
-        return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
+        dtos = [SessionDTO.from_core(s, computer=s.computer) for s in merged]
+        return enrich_human_names(dtos)
     except Exception as e:
         logger.error("list_sessions failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
