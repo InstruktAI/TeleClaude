@@ -110,10 +110,7 @@ def _repair_broken_docs_links(project_root: Path) -> None:
     (``baseline.md -> .../baseline.md``), which then breaks sync with
     ``Too many levels of symbolic links``.
     """
-    tracked_docs_files = (
-        "docs/global/baseline.md",
-        "docs/global/index.yaml",
-    )
+    tracked_docs_files = ("docs/global/baseline.md",)
     for rel_path in tracked_docs_files:
         file_path = project_root / rel_path
         needs_repair = False

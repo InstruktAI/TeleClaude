@@ -75,6 +75,9 @@ teleclaude.db-shm
 AGENTS.md
 CLAUDE.md
 
+# Generated build artifacts (never tracked)
+**/index.yaml
+
 # Generated diagrams (regenerated via `make diagrams`)
 docs/diagrams/
 # Local AI config artifacts

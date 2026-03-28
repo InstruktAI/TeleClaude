@@ -1,33 +1,65 @@
 schema_version: 2
-phase: pending
+phase: in_progress
 kind: todo
-current: input_assessment
-history: []
+current: finalize_ready
+history:
+- source: prepared
+  target: build_started
+  by: mark-phase
+  at: '2026-03-28T18:11:57.642443+00:00'
+  metadata: {}
+- source: build_started
+  target: build_complete
+  by: mark-phase
+  at: '2026-03-28T18:23:11.701218+00:00'
+  metadata: {}
+- source: build_complete
+  target: review_approved
+  by: mark-phase
+  at: '2026-03-28T18:31:03.598060+00:00'
+  metadata: {}
+- source: review_approved
+  target: finalize_ready
+  by: mark-phase
+  at: '2026-03-28T18:32:27.849569+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
-  status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
+  status: ready
+  branch: generated-index-yaml-bootstrap
+  sha: a5f9f2f609e2a335fedbb5176a7601f42cdfa555
+  ready_at: '2026-03-28T18:32:29.871522+00:00'
+  worker_session_id: mark-phase
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 1
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: dbbe99942aa0f270e6c756908fb195281f21dcce
 unresolved_findings: []
 resolved_findings: []
 grounding:
-  valid: false
-  base_sha: ''
-  input_digest: ''
-  referenced_paths: []
-  last_grounded_at: ''
+  valid: true
+  base_sha: 1ec4915efe63f19628565e6c230ceca048956cb0
+  input_digest: 8e0c48121e380f6eda5891f47cf98d49d750f4adfef802698925f3d9d2b4fee3
+  referenced_paths:
+  - .gitignore
+  - .gitattributes
+  - teleclaude/sync.py
+  - teleclaude/cli/watch.py
+  - teleclaude/project_setup/gitattributes.py
+  - docs/project/spec/git-docs-filter.md
+  - tests/unit/test_sync.py
+  - tests/unit/cli/test_watch.py
+  - docs/global/index.yaml
+  - docs/project/index.yaml
+  - docs/third-party/index.yaml
+  - frontend/docs/global/index.yaml
+  - scripts/distribute.py
+  last_grounded_at: '2026-03-28T17:05:09.641424+00:00'
   invalidated_at: ''
   invalidation_reason: ''
+  changed_paths: []
 requirements_review:
   verdict: ''
   reviewed_at: ''
@@ -41,11 +73,11 @@ test_spec_review:
   findings_count: 0
   rounds: 0
 plan_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: approve
+  reviewed_at: '2026-03-28T18:35:00Z'
   findings_count: 0
-  rounds: 0
-  baseline_commit: ''
+  rounds: 1
+  baseline_commit: 09b76fc96869cfba3e29a3eeb06bc9371029895a
   findings: []
 artifacts:
   input:
@@ -53,16 +85,16 @@ artifacts:
     produced_at: ''
     stale: false
   requirements:
-    digest: ''
-    produced_at: ''
+    digest: 9b6d01b40c8f6232330e64316723aa98dbd1830ae889ad19b02c1b707c37cd5a
+    produced_at: '2026-03-28T16:19:48.304777+00:00'
     stale: false
   test_specs:
     digest: ''
     produced_at: ''
     stale: false
   implementation_plan:
-    digest: ''
-    produced_at: ''
+    digest: 5ff5fdde5f90c57a8e91d074983163ae464bfe03657722999a12a01d56c125be
+    produced_at: '2026-03-28T17:02:01.159279+00:00'
     stale: false
 audit:
   input_assessment:
@@ -79,21 +111,26 @@ audit:
     rounds: 0
     findings: []
   plan_drafting:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T16:46:27.954780+00:00'
+    completed_at: '2026-03-28T16:46:27.955189+00:00'
   plan_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
+    started_at: '2026-03-28T17:05:09.607332+00:00'
+    completed_at: '2026-03-28T17:05:09.607460+00:00'
+    baseline_commit: 09b76fc96869cfba3e29a3eeb06bc9371029895a
+    verdict: approve
+    rounds: 1
     findings: []
   gate:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T18:10:00Z'
+    completed_at: '2026-03-28T18:30:00Z'
+    baseline_commit: 05ad5a33766a554262222cadd048254ab85b47f6
+    verdict: pass
+    score: 8
+    findings: []
 dor:
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-03-28T18:30:00Z'
+  score: 8
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:

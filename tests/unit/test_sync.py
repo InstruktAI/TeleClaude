@@ -69,6 +69,24 @@ class TestRepairBrokenDocsLinks:
         assert baseline_path.is_symlink() is False
         assert baseline_path.read_text(encoding="utf-8") == "restored baseline\n"
 
+    def test_repair_broken_docs_links_excludes_index_yaml_from_git_recovery(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock, patch
+
+        project_root = tmp_path
+        (project_root / "docs" / "global").mkdir(parents=True)
+        # index.yaml absent — simulates missing-file scenario that would trigger repair
+
+        mock_repo = MagicMock()
+        git_calls: list[str] = []
+        mock_repo.git.show = lambda ref: git_calls.append(ref) or ""
+
+        with patch("teleclaude.git.Repo", return_value=mock_repo):
+            sync._repair_broken_docs_links(project_root)
+
+        # After Task 2.1, index.yaml must not be in tracked_docs_files.
+        # Git show must never be called for index.yaml.
+        assert not any("index.yaml" in call for call in git_calls)
+
 
 class TestPrintWarnings:
     def test_groups_warnings_by_code_and_reason(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -84,6 +102,39 @@ class TestPrintWarnings:
         assert "Validation warnings: 2" in output
         assert "missing:" in output
         assert "missing/bad_ref:" in output
+
+
+class TestSyncBootstrapOrdering:
+    def test_build_all_indexes_called_before_run_distribute(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Pins R2: build_all_indexes must precede _run_distribute in the sync pipeline."""
+        call_order: list[str] = []
+
+        monkeypatch.setattr(sync, "validate_all_snippets", lambda _: None)
+        monkeypatch.setattr(sync, "validate_third_party_docs", lambda _: None)
+        monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
+        monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
+        monkeypatch.setattr(sync, "get_warnings", lambda: [])
+        monkeypatch.setattr(sync, "get_errors", lambda: [])
+        monkeypatch.setattr(sync, "clear_warnings", lambda: None)
+        monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _: None)
+        monkeypatch.setattr(sync, "_register_project_manifest", lambda _: None)
+
+        def fake_build_all_indexes(_: Path) -> list[Path]:
+            call_order.append("build_all_indexes")
+            return []
+
+        def fake_run_distribute(_: Path, *, warn_only: bool = False) -> None:
+            call_order.append("_run_distribute")
+
+        monkeypatch.setattr(sync, "build_all_indexes", fake_build_all_indexes)
+        monkeypatch.setattr(sync, "_run_distribute", fake_run_distribute)
+
+        result = sync.sync(tmp_path)
+
+        assert result is True
+        assert call_order.index("build_all_indexes") < call_order.index("_run_distribute")
 
 
 class TestRegisterProjectManifest:

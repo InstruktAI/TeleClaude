@@ -10,29 +10,29 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate generated-index-yaml-bootstrap` exits 0, or exception noted)
-- [ ] User-facing verification evidence recorded
-- [ ] Browser-based frontend or web UI changes smoke-tested with Playwright
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 4319 passed, 8 xfailed
+- [x] Lint passes (`make lint`) — ruff + pyright: 0 errors
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate generated-index-yaml-bootstrap` exits 0) — 6 executable blocks found
+- [x] User-facing verification evidence recorded — CLI-only change; no browser UI. `git ls-files '**/index.yaml'` returns empty; `git check-ignore docs/global/index.yaml` returns a match.
+- [x] Browser-based frontend or web UI changes smoke-tested with Playwright — N/A (no browser UI changes)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed — sync.py docstring updated; no other affected docstrings
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
-- [ ] User-facing verification evidence reviewed
-- [ ] Browser-based frontend or web UI changes verified with Playwright during review, or gap recorded as a finding
+- [x] Requirements traced to implemented behavior — all R1–R8 traced in findings
+- [x] Deferrals justified and not hiding required scope — no deferrals exist
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs) — 6 executable blocks verified
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE
+- [x] Critical issues resolved or explicitly blocked — 0 Critical findings
+- [x] Test coverage and regression risk assessed — all new tests verified for behavioral value
+- [x] User-facing verification evidence reviewed — CLI-only change, builder evidence confirmed
+- [x] Browser-based frontend or web UI changes verified with Playwright during review, or gap recorded as a finding — N/A (no browser UI changes)
 
 ## Finalize Gates (Finalizer)
 

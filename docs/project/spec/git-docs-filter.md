@@ -11,10 +11,10 @@ description: 'Git filter that expands tilde paths for agents and normalizes them
 
 The `teleclaude-docs` git filter ensures doc references and index paths work for both agents and version control:
 
-- **Smudge** (on checkout): expands `~/.teleclaude` to the local absolute path (e.g., `/Users/mo/.teleclaude`). Agents resolve absolute paths reliably; tilde paths cause lookup failures. Matches both `@` prefixed references in docs and bare paths in index.yaml files.
+- **Smudge** (on checkout): expands `~/.teleclaude` to the local absolute path (e.g., `/Users/mo/.teleclaude`). Agents resolve absolute paths reliably; tilde paths cause lookup failures. Matches `@`-prefixed references in `.md` files.
 - **Clean** (on commit): normalizes local absolute paths back to `~/.teleclaude` so commits remain portable across machines.
 
-Configured via `.gitattributes` on all `docs/**/*.md`, `agents/docs/**/*.md`, and `docs/*/index.yaml` files.
+Configured via `.gitattributes` on all `docs/**/*.md` and `agents/docs/**/*.md` files.
 
 ## Canonical fields
 

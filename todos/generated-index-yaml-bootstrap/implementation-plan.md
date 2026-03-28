@@ -2,40 +2,201 @@
 
 ## Overview
 
-- Summarize the approach and why it is appropriate.
+Transition `index.yaml` from version-controlled source to locally generated build
+artifact. The approach is surgical: untrack the files, add a gitignore rule, remove
+the only code path that restores `index.yaml` from git HEAD, clean up the inert
+`.gitattributes` filter rule, and update the one doc snippet that describes index.yaml
+as filtered. No generation logic, distribution logic, init ordering, or watcher behavior
+changes — they already work correctly with `index.yaml` as a local file.
 
-## Phase 1: Core Changes
+**R5 grounding (distribution pipeline):** `scripts/distribute.py` line 1065 includes
+`index.yaml` in a file-path-only set (`entry not in {"index.yaml", "baseline.md"}`).
+No git-tracking assumption exists; the distribution step creates a symlink to the
+locally generated file regardless of tracked status. R5 requires no code change.
 
-### Task 1.1:
+## Phase 1: Git plumbing
 
-**File(s):** ``
+### Task 1.1: Add gitignore rule for index.yaml
 
-- [ ] Complete this task
+**File(s):** `.gitignore`
 
-### Task 1.2:
+**Why:** Currently nothing prevents `index.yaml` from being accidentally re-committed.
+The gitignore rule is the durable guard that survives contributor mistakes.
 
-**File(s):** ``
+- [x] Add `**/index.yaml` to the `.gitignore` file, grouped with the existing
+      "Generated" comment section (near `AGENTS.md` / `CLAUDE.md`).
 
-- [ ] Complete this task
+**Verification:** `git check-ignore docs/global/index.yaml` returns a match.
+
+**Satisfies:** R1 (git exclusion).
+
+### Task 1.2: Untrack currently committed index.yaml files
+
+**File(s):** git index (no source file edits)
+
+**Why:** `git rm --cached` removes files from tracking without deleting the local
+copy, so existing environments keep working immediately. This is the core of R1.
+
+- [x] Run `git rm --cached` on the four tracked files:
+  - `docs/global/index.yaml`
+  - `docs/project/index.yaml`
+  - `docs/third-party/index.yaml`
+  - `frontend/docs/global/index.yaml`
+
+**Verification:** `git ls-files '**/index.yaml'` returns no results.
+
+**Satisfies:** R1 (git exclusion).
+
+### Task 1.3: Remove inert .gitattributes filter rule
+
+**File(s):** `.gitattributes`
+
+**Why:** Line 3 (`docs/*/index.yaml filter=teleclaude-docs`) applies the smudge/clean
+filter to `index.yaml`. With these files untracked, the rule is inert and misleading —
+it suggests index.yaml is still tracked. The `gitattributes.py` module (`FILTER_PATTERNS`)
+does not include this pattern, so init will not re-add it.
+
+- [x] Remove the line `docs/*/index.yaml filter=teleclaude-docs` from `.gitattributes`.
+
+**Verification:** `grep 'index.yaml' .gitattributes` returns no results.
+
+**Satisfies:** R6 (git filter cleanup).
 
 ---
 
-## Phase 2: Validation
+## Phase 2: Sync recovery
 
-### Task 2.1: Tests
+### Task 2.1: Remove index.yaml from git-HEAD recovery in sync repair
 
-- [ ] Add or update tests for the changed behavior
-- [ ] Run `make test`
+**File(s):** `teleclaude/sync.py`
 
-### Task 2.2: Quality Checks
+**Why:** `_repair_broken_docs_links()` (line 113) includes `"docs/global/index.yaml"` in
+its `tracked_docs_files` tuple and restores it from `repo.git.show(f"HEAD:{rel_path}")`.
+Once `index.yaml` is untracked, git HEAD no longer contains it — the `git show` call
+would fail silently (caught by the except clause), making the entry dead code. More
+importantly, the conceptual model changes: recovery is now regeneration via
+`build_all_indexes()`, not git retrieval. Removing the entry makes the code match the
+new model.
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Remove `"docs/global/index.yaml"` from the `tracked_docs_files` tuple in
+      `_repair_broken_docs_links()`. The function retains `"docs/global/baseline.md"`
+      which is still tracked.
+
+**Verification:** Test spec for R3 — verify `_repair_broken_docs_links` does not attempt
+git operations for `index.yaml`. The existing characterization test in
+`tests/unit/test_sync.py::TestRepairBrokenDocsLinks` tests baseline.md recovery; no
+index.yaml test exists to break.
+
+**TDD ordering:** Write the Task 4.1 xfail spec BEFORE implementing this removal. The
+test must fail (RED) because `index.yaml` is still in the tuple; only then remove it
+(this task) to make the test GREEN. Do not modify `tracked_docs_files` before the
+xfail spec is in place.
+
+**Satisfies:** R3 (recovery by regeneration).
 
 ---
 
-## Phase 3: Review Readiness
+## Phase 3: Documentation alignment
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+### Task 3.1: Update git-docs-filter spec to remove index.yaml references
+
+**File(s):** `docs/project/spec/git-docs-filter.md`
+
+**Why:** The spec describes `.gitattributes` as covering `docs/*/index.yaml` (line 17)
+and mentions index.yaml in the smudge description (line 14). With the filter rule
+removed, the spec must match the new reality. Other doc snippets already describe
+index.yaml as "auto-generated by telec sync" which is correct and needs no change.
+
+- [x] Remove the `index.yaml` mention from line 14 (smudge description) — the filter
+      now only matches `@`-prefixed references in `.md` files.
+- [x] Update line 17 to remove `docs/*/index.yaml` from the configured patterns list.
+
+**Verification:** `grep -i 'index.yaml' docs/project/spec/git-docs-filter.md` returns
+no results.
+
+**Satisfies:** R7 (process documentation alignment).
+
+---
+
+## Phase 4: Test coverage
+
+### Task 4.1: Test sync repair excludes index.yaml from git recovery
+
+**File(s):** `tests/unit/test_sync.py`
+
+**Why:** Proves that `_repair_broken_docs_links` does not invoke git operations for
+`index.yaml`, satisfying R3. The existing `TestRepairBrokenDocsLinks` class tests
+baseline.md; this test covers the complementary case.
+
+- [x] Add a test that creates a missing `docs/global/index.yaml` and verifies
+      `_repair_broken_docs_links` does NOT attempt to restore it from git (the function
+      should skip it entirely since it is no longer in the tracked files tuple).
+
+**Verification:** Test passes (GREEN). `_repair_broken_docs_links` ignores the missing
+index.yaml.
+
+**Satisfies:** R8 (test coverage — sync recovery without git fallback).
+
+### Task 4.2: Test watcher excludes index.yaml from triggering sync
+
+**File(s):** `tests/unit/cli/test_watch.py`
+
+**Why:** Proves R4 — the watcher's `_is_sync_relevant` method returns False for
+`index.yaml` paths. The existing characterization test
+`test_is_sync_relevant_returns_false_for_generated_index` (Path("docs/sub/index.yaml"))
+already covers the fnmatch exclusion via the `_GENERATED_SYNC_OUTPUT_GLOBS` pattern.
+The new tests add explicit coverage for the two production paths relevant to this change
+(`docs/global/index.yaml`, `docs/project/index.yaml`) to make the exclusion intent
+clear and to guard the specific paths referenced in the task.
+
+- [x] Add a test asserting `SmartWatcher._is_sync_relevant(Path("docs/global/index.yaml"))`
+      returns `False`.
+- [x] Add a test asserting `SmartWatcher._is_sync_relevant(Path("docs/project/index.yaml"))`
+      returns `False`.
+
+**Verification:** Tests pass (GREEN). Watcher correctly excludes generated index files.
+
+**Satisfies:** R8 (test coverage — watcher exclusion).
+
+### Task 4.3: Test bootstrap ordering — indexes generated before distribution
+
+**File(s):** `tests/unit/test_sync.py`
+
+**Why:** Proves R2 — the sync pipeline calls `build_all_indexes` before `_run_distribute`,
+so indexes exist when distribution creates symlinks. This is a characterization test
+pinning the existing correct ordering.
+
+- [x] Add a test that mocks `build_all_indexes` and `_run_distribute` on the `sync`
+      module, calls `sync.sync()`, and asserts `build_all_indexes` was called before
+      `_run_distribute` (using call ordering or a side-effect recorder).
+
+**Verification:** Test passes (GREEN). Build-before-distribute ordering is pinned.
+
+**Satisfies:** R8 (test coverage — bootstrap ordering).
+
+---
+
+## Phase 5: Quality checks
+
+### Task 5.1: Pre-commit validation
+
+- [x] Run pre-commit hooks (lint, typecheck, tests) and verify clean pass.
+- [x] Verify `git ls-files '**/index.yaml'` returns empty.
+- [x] Verify `git check-ignore docs/global/index.yaml` returns a match.
+
+---
+
+## Referenced paths
+
+| Path                                   | Action                                                            |
+| -------------------------------------- | ----------------------------------------------------------------- |
+| `.gitignore`                           | Add `**/index.yaml` rule                                          |
+| `.gitattributes`                       | Remove `docs/*/index.yaml filter=teleclaude-docs` line            |
+| `teleclaude/sync.py`                   | Remove `"docs/global/index.yaml"` from `tracked_docs_files` tuple |
+| `docs/project/spec/git-docs-filter.md` | Remove index.yaml references                                      |
+| `tests/unit/test_sync.py`              | Add R3 and R2 tests                                               |
+| `tests/unit/cli/test_watch.py`         | Add R4 tests                                                      |
+| `docs/global/index.yaml`               | `git rm --cached` (untrack)                                       |
+| `docs/project/index.yaml`              | `git rm --cached` (untrack)                                       |
+| `docs/third-party/index.yaml`          | `git rm --cached` (untrack)                                       |
+| `frontend/docs/global/index.yaml`      | `git rm --cached` (untrack)                                       |

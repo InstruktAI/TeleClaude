@@ -65,6 +65,14 @@ def test_is_sync_relevant_returns_false_for_generated_index() -> None:
     assert SmartWatcher._is_sync_relevant(Path("docs/sub/index.yaml")) is False
 
 
+def test_is_sync_relevant_returns_false_for_global_index_yaml() -> None:
+    assert SmartWatcher._is_sync_relevant(Path("docs/global/index.yaml")) is False
+
+
+def test_is_sync_relevant_returns_false_for_project_index_yaml() -> None:
+    assert SmartWatcher._is_sync_relevant(Path("docs/project/index.yaml")) is False
+
+
 def test_is_sync_relevant_returns_false_for_empty_path() -> None:
     assert SmartWatcher._is_sync_relevant(Path("")) is False
 
@@ -157,7 +165,9 @@ def test_trigger_sync_skips_when_index_lock_exists(tmp_path: Path, monkeypatch: 
     assert watcher._last_git_lock_seen > 0
 
 
-def test_trigger_sync_skips_during_cooldown_after_lock_released(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_trigger_sync_skips_during_cooldown_after_lock_released(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(SmartWatcher, "_sync", _noop_sync)
     watcher = SmartWatcher(tmp_path, debounce_seconds=0.0)
 
