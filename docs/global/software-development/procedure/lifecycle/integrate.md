@@ -109,12 +109,17 @@ logs `integration.candidate.already_merged` and moves on.
 
 ### INTEGRATION COMPLETE
 
-All candidates have been processed. Self-end: `telec sessions end self`.
+All candidates have been processed. The state machine automatically pushes any
+accumulated repo root bookkeeping commits (orchestrator dumps, `[skip ci]`
+housekeeping) to origin/main after syncing local main via pull. If the pull
+failed and the agent resolved it manually, push repo root: `git push origin main`.
+
+Self-end: `telec sessions end self`.
 
 ## Outputs
 
 - Merged candidates on canonical main (pushed from integration worktree).
-- Delivery bookkeeping (roadmap delivered) on repo root, pushed to origin/main.
+- Repo root bookkeeping pushed to origin/main (automatic after successful pull sync).
 - Cleaned worktrees and branches.
 - `integration.*` lifecycle events at each state transition.
 

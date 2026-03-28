@@ -397,6 +397,7 @@ class CommandMapper:
             return RestartAgentCommand(
                 session_id=session_id,
                 agent_name=agent_name,
+                self_restart=bool(payload.get("self_restart")),
             )
 
         if command_name == "end_session":

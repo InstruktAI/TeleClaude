@@ -376,12 +376,14 @@ class RestartAgentCommand(InternalCommand):
 
     session_id: str
     agent_name: str | None = None
+    self_restart: bool = False
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         *,
         session_id: str,
         agent_name: str | None = None,
+        self_restart: bool = False,
         request_id: str | None = None,
     ):
         super().__init__(
@@ -392,6 +394,7 @@ class RestartAgentCommand(InternalCommand):
         )
         self.session_id = session_id
         self.agent_name = agent_name
+        self.self_restart = self_restart
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = []

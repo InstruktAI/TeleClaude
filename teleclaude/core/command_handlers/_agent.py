@@ -316,18 +316,27 @@ async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements 
 
     await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
-    async def _inject_checkpoint_after_restart() -> None:
+    async def _inject_after_restart() -> None:
         await asyncio.sleep(5)
-        await inject_checkpoint_if_needed(
-            session.session_id,
-            route="restart_tmux",
-            include_elapsed_since_turn_start=False,
-            default_agent=target_agent,
-            get_session_cb=db.get_session,
-            update_session_cb=db.update_session,
-        )
+        if cmd.self_restart:
+            # Self-restart: inject minimal continuation prompt instead of full checkpoint.
+            # The agent has full context via --resume; it just needs a stimulus.
+            await tmux_bridge.send_keys_existing_tmux(
+                session_name=session.tmux_session_name or "",
+                text="Session restarted. Continue pending work or remain idle.",
+                send_enter=True,
+            )
+        else:
+            await inject_checkpoint_if_needed(
+                session.session_id,
+                route="restart_tmux",
+                include_elapsed_since_turn_start=False,
+                default_agent=target_agent,
+                get_session_cb=db.get_session,
+                update_session_cb=db.update_session,
+            )
 
-    asyncio.create_task(_inject_checkpoint_after_restart(), name="inject-checkpoint-restart")
+    asyncio.create_task(_inject_after_restart(), name="inject-checkpoint-restart")
 
     event_bus.emit(
         cmd.completion_event,  # type: ignore[arg-type]

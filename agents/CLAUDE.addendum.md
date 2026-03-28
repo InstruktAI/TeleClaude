@@ -18,6 +18,7 @@
 ## Checkpoint Compliance
 
 - Checkpoint instructions are directives, not suggestions. Execute every step exactly as stated. Never insert confirmation gates, reinterpret, or defer any checkpoint instruction.
+- Numbered checkpoint steps are strictly sequential. Never parallelize them — each step depends on the previous. Your parallelization instinct does not apply here. YOU SHALL NOT SKIP ANY STEP IN THE CHECKPOINTING PROCEDURE!!
 
 ## Use the Force
 

@@ -784,18 +784,31 @@ def _step_push_succeeded(
 
     # Best-effort sync of repo root with origin/main. Failure is logged
     # but does not block cleanup — the integration worktree already pushed.
+    warnings = checkpoint.warnings if checkpoint.warnings is not None else []
     rc, _, _ = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
     if rc != 0:
         msg = (
             f"Repo root main is behind origin/main after delivering {key.slug}. "
-            "Run: git pull --rebase origin main — "
+            "Run: git pull --rebase origin main, then git push origin main — "
             "this requires no other work in progress on repo root main. "
             "Ask the user to confirm it is safe before running."
         )
         logger.warning(msg)
-        warnings = checkpoint.warnings if checkpoint.warnings is not None else []
         warnings.append(msg)
-        checkpoint.warnings = warnings
+    else:
+        # Pull succeeded — push repo root bookkeeping if local main is ahead.
+        # After ff-only pull, local is a superset of origin: push is guaranteed fast-forward.
+        rc_ahead, stdout_ahead, _ = _run_git(["rev-list", "--count", "origin/main..HEAD"], cwd=cwd)
+        ahead_count = int(stdout_ahead.strip() or "0") if rc_ahead == 0 else 0
+        if ahead_count > 0:
+            rc_push, _, stderr_push = _run_git(["push", "origin", "main"], cwd=cwd)
+            if rc_push == 0:
+                logger.info("Pushed %d repo root bookkeeping commit(s) to origin/main", ahead_count)
+            else:
+                msg = f"Push repo root bookkeeping failed: {stderr_push.strip()}"
+                logger.warning(msg)
+                warnings.append(msg)
+    checkpoint.warnings = warnings
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)

@@ -492,7 +492,8 @@ def handle_sessions_restart(args: list[str]) -> None:
             print("Error: could not resolve 'self' — $TMPDIR/teleclaude_identity.json not found", file=sys.stderr)
             raise SystemExit(1)
 
-    data = tool_api_call("POST", f"/sessions/{session_id}/agent-restart")
+    body = {"self_restart": True} if args and args[0] == "self" else None
+    data = tool_api_call("POST", f"/sessions/{session_id}/agent-restart", json_body=body)
     print_json(data)
 
 

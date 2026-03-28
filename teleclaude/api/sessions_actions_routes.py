@@ -383,10 +383,12 @@ async def agent_restart(
             raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
         # Dispatch work asynchronously - don't await
+        body = await http_request.json() if http_request.headers.get("content-type") == "application/json" else {}
+        self_restart = bool(body.get("self_restart")) if isinstance(body, dict) else False
         metadata = _build_metadata()
         cmd = CommandMapper.map_api_input(
             "agent_restart",
-            {"session_id": session_id, "args": []},
+            {"session_id": session_id, "args": [], "self_restart": self_restart},
             metadata,
         )
         asyncio.create_task(get_command_service().restart_agent(cmd), name=f"agent-restart-{session_id}")
