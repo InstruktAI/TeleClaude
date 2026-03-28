@@ -49,6 +49,7 @@ from teleclaude.core.session_listeners import (
     close_link_for_member,
     create_or_reuse_direct_link,
     get_peer_members,
+    register_listener,
     resolve_link_for_sender_target,
     unregister_listener,
 )
@@ -912,6 +913,19 @@ async def send_message_endpoint(
         existing_link_response = await _reject_existing_direct_link(session_id, identity)
         if existing_link_response:
             return existing_link_response
+
+        # Auto-register a one-shot listener so the caller receives the response.
+        if identity.session_id and identity.session_id != session_id and identity.tmux_session_name:
+            try:
+                await register_listener(
+                    target_session_id=session_id,
+                    caller_session_id=identity.session_id,
+                    caller_tmux_session=identity.tmux_session_name,
+                )
+            except Exception:  # pylint: disable=broad-exception-caught  # Listener failures must not block message delivery.
+                logger.debug(
+                    "One-shot listener registration failed: caller=%s target=%s", identity.session_id, session_id
+                )
 
         await _process_api_message(session_id, request.message, metadata)
         return SendMessageResponseDTO(status="success", mode="work")

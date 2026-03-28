@@ -1,0 +1,9 @@
+{
+  "search.followSymlinks": false,
+  "files.exclude": {
+    "docs": true,
+    "scripts": true,
+    "bin": true,
+    ".env": true
+  }
+}
