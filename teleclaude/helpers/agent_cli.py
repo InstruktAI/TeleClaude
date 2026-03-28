@@ -171,7 +171,7 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
 
         Missing DB/table/row is treated as available to preserve standalone behavior.
         """
-        db_path = _REPO_ROOT / "teleclaude.db"
+        db_path = Path("~/.teleclaude/teleclaude.db").expanduser()
         if not db_path.exists():
             return True
 

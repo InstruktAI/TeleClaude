@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 # Check production database
-db_path = Path(__file__).parent.parent / "teleclaude.db"
+db_path = Path("~/.teleclaude/teleclaude.db").expanduser()
 if db_path.exists():
     conn = sqlite3.connect(str(db_path))
     cursor = conn.execute("SELECT COUNT(*) FROM sessions")

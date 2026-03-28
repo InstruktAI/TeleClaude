@@ -63,7 +63,8 @@ todos/.finalize-lock
 
 .playwright-mcp
 
-# TeleClaude runtime DB artifacts
+# TeleClaude runtime DB artifacts (now live under ~/.teleclaude/)
+# Kept for safety in case of accidental local creation
 teleclaude.db
 teleclaude.db-wal
 teleclaude.db-shm
