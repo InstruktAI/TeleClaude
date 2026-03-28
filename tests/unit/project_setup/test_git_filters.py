@@ -25,14 +25,14 @@ def test_setup_git_filters_configures_expected_keys_and_rechecks_docs(
     calls: list[tuple[object, str, str]] = []
     rechecked: list[tuple[object, Path]] = []
 
-    monkeypatch.setattr(
-        git_filters,
-        "_run_git_config",
-        lambda repo, key, value: calls.append((repo, key, value)),
-    )
-    monkeypatch.setattr(
-        git_filters, "_recheckout_docs", lambda repo, project_root: rechecked.append((repo, project_root))
-    )
+    def _fake_config(repo: object, key: str, value: str) -> None:
+        calls.append((repo, key, value))
+
+    def _fake_recheckout(repo: object, project_root: Path) -> None:
+        rechecked.append((repo, project_root))
+
+    monkeypatch.setattr(git_filters, "_run_git_config", _fake_config)
+    monkeypatch.setattr(git_filters, "_recheckout_docs", _fake_recheckout)
 
     mock_repo = MagicMock()
     with patch("teleclaude.project_setup.git_filters.Repo", return_value=mock_repo):
@@ -40,8 +40,8 @@ def test_setup_git_filters_configures_expected_keys_and_rechecks_docs(
 
     home = str(Path.home())
     assert [(r, k, v) for r, k, v in calls] == [
-        (mock_repo, "filter.teleclaude-docs.smudge", f'sed "s|@~/.teleclaude|@{home}/.teleclaude|g"'),
-        (mock_repo, "filter.teleclaude-docs.clean", f'sed "s|@{home}/.teleclaude|@~/.teleclaude|g"'),
+        (mock_repo, "filter.teleclaude-docs.smudge", f'sed "s|~/.teleclaude|{home}/.teleclaude|g"'),
+        (mock_repo, "filter.teleclaude-docs.clean", f'sed "s|{home}/.teleclaude|~/.teleclaude|g"'),
         (mock_repo, "filter.teleclaude-docs.required", "true"),
     ]
     assert rechecked == [(mock_repo, tmp_path)]

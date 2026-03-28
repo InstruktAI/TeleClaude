@@ -21,8 +21,8 @@ def setup_git_filters(project_root: Path) -> None:
 
     repo = Repo(project_root)
     home = str(Path.home())
-    smudge_cmd = f'sed "s|@~/.teleclaude|@{home}/.teleclaude|g"'
-    clean_cmd = f'sed "s|@{home}/.teleclaude|@~/.teleclaude|g"'
+    smudge_cmd = f'sed "s|~/.teleclaude|{home}/.teleclaude|g"'
+    clean_cmd = f'sed "s|{home}/.teleclaude|~/.teleclaude|g"'
 
     _run_git_config(repo, "filter.teleclaude-docs.smudge", smudge_cmd)
     _run_git_config(repo, "filter.teleclaude-docs.clean", clean_cmd)
