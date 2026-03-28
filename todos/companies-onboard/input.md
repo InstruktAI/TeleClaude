@@ -7,6 +7,7 @@
 Company knowledge (org structure, policies, procedures, architecture) needs to flow into all linked projects automatically. Currently, knowledge lives only at global and project scope. The new company scope sits between them: global in reach but filtered by project membership via `company: <slug>` in `teleclaude.yml`.
 
 The documentation snippets for this feature are already written and validated:
+
 - `docs/global/general/concept/company-knowledge.md`
 - `docs/global/general/spec/company-scaffolding.md`
 - `docs/global/general/procedure/company-onboarding.md`
@@ -34,6 +35,7 @@ This plan covers the full implementation: CLI surface, bootstrap logic, enrichme
   - Add `COMPANY_META_FILENAME = "meta.yaml"`
 
 ### Tests
+
 - Config validation accepts/rejects `company` field values
 - Path constants resolve correctly
 
@@ -65,10 +67,12 @@ This plan covers the full implementation: CLI surface, bootstrap logic, enrichme
   - `update_meta_after_onboard(company_dir: Path, processed: list, snippets: list) -> None`
 
 ### Existing patterns to reuse
+
 - `teleclaude/project_setup/enrichment.py:read_metadata()` / `write_metadata()` — YAML read/write pattern
 - `teleclaude/project_setup/git_repo.py:ensure_git_repo()` — git init pattern
 
 ### Tests
+
 - Bootstrap creates correct directory structure
 - Meta.yaml round-trips correctly
 - Inbox scanning detects new files, skips unchanged SHA
@@ -111,6 +115,7 @@ Extract shared merge/render utilities from `teleclaude/project_setup/enrichment.
   - `GENERATED_BY_VALUE = "telec-init"` stays here
 
 ### Tests
+
 - Shared merge logic preserves `<!-- human -->` sections
 - Company snippet ID validation accepts/rejects correctly
 - Company enrichment writer places files in correct taxonomy dirs
@@ -150,10 +155,12 @@ Extract shared merge/render utilities from `teleclaude/project_setup/enrichment.
     6. Print session ID for user to follow
 
 ### Existing patterns to reuse
+
 - `teleclaude/project_setup/init_flow.py:_launch_enrichment()` — subprocess dispatch pattern
 - `teleclaude/cli/telec/bugs.py` — CLI handler with subcommands pattern
 
 ### Tests
+
 - CLI parses `telec companies onboard "Acme Corp"` correctly
 - CLI parses `telec companies onboard --slug acme` for re-onboard
 - Handler calls bootstrap/scan/commit/dispatch in correct order
@@ -182,9 +189,11 @@ Extract shared merge/render utilities from `teleclaude/project_setup/enrichment.
   - No changes needed here
 
 ### Key constraint
+
 Company snippets are filtered by the `company` frontmatter field matching the project's declared company slug. This prevents cross-company leakage in multi-company setups.
 
 ### Tests
+
 - Company snippets appear in `telec docs index` when project has matching `company` config
 - Company snippets do NOT appear when project has no `company` config
 - Company snippets do NOT appear when project has a different `company` slug
@@ -206,6 +215,7 @@ Company snippets are filtered by the `company` frontmatter field matching the pr
   - `build_index_payload()` should already work — it takes a snippet root and scans taxonomy directories
 
 ### Tests
+
 - Index building discovers company doc directories
 - Generated `index.yaml` in company docs is well-formed
 - Empty company docs dir produces empty index (no crash)
@@ -232,6 +242,7 @@ Company snippets are filtered by the `company` frontmatter field matching the pr
   - Discipline section: concrete findings only, no generic templates, human edits survive
 
 ### Tests
+
 - Artifact passes `telec sync --validate-only`
 
 ---
@@ -264,6 +275,7 @@ Company snippets are filtered by the `company` frontmatter field matching the pr
 ## File Summary
 
 ### New files (10)
+
 1. `teleclaude/company_setup/__init__.py`
 2. `teleclaude/company_setup/bootstrap.py`
 3. `teleclaude/company_setup/inbox.py`
@@ -276,6 +288,7 @@ Company snippets are filtered by the `company` frontmatter field matching the pr
 10. `tests/test_cli/test_companies.py`
 
 ### Modified files (8)
+
 1. `teleclaude/config/schema.py` — add `company` field
 2. `teleclaude/constants.py` — add company path constants
 3. `teleclaude/cli/telec/surface_types.py` — add COMPANIES enum
@@ -286,6 +299,7 @@ Company snippets are filtered by the `company` frontmatter field matching the pr
 8. `teleclaude/docs_index.py` — company index building
 
 ### Documentation (already written)
+
 - `docs/global/general/concept/company-knowledge.md`
 - `docs/global/general/spec/company-scaffolding.md`
 - `docs/global/general/procedure/company-onboarding.md`

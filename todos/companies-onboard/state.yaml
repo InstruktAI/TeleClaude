@@ -41,14 +41,14 @@ grounding:
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
-  verdict: approve
+  verdict: ''
   reviewed_at: ''
   findings_count: 0
   rounds: 0
   baseline_commit: ''
   findings: []
 test_spec_review:
-  verdict: approve
+  verdict: ''
   reviewed_at: ''
   findings_count: 0
   rounds: 0
@@ -73,8 +73,8 @@ artifacts:
     produced_at: '2026-03-27T23:30:00+00:00'
     stale: false
   implementation_plan:
-    digest: 648aa15f0dd79a5fd84c5b021d8debeb247c54f63bf4fc4b50e0f6c3e5de126f
-    produced_at: '2026-03-27T23:31:28.026822+00:00'
+    digest: 0b427a5351f3f165316bc404f4c229a86948c865132b51f33365174af88f41cc
+    produced_at: '2026-03-27T22:39:20.974656+00:00'
     stale: false
 audit:
   input_assessment:
@@ -91,8 +91,8 @@ audit:
     rounds: 0
     findings: []
   plan_drafting:
-    started_at: '2026-03-27T23:43:29.220051+00:00'
-    completed_at: '2026-03-27T23:43:29.220929+00:00'
+    started_at: '2026-03-27T22:39:28.840974+00:00'
+    completed_at: '2026-03-27T22:39:28.841624+00:00'
   plan_review:
     started_at: '2026-03-27T22:40:35.375141+00:00'
     completed_at: '2026-03-28T00:35:00+00:00'

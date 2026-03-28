@@ -1,7 +1,7 @@
 schema_version: 2
 phase: pending
 kind: todo
-current: plan_review
+current: plan_drafting
 history: []
 deferrals_processed: false
 finalize:
@@ -28,7 +28,7 @@ grounding:
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:
-  verdict: approve
+  verdict: ''
   reviewed_at: ''
   findings_count: 0
   rounds: 0
@@ -53,15 +53,15 @@ artifacts:
     stale: false
   requirements:
     digest: e0da1164acea1d3cfa0f0d7120d0277df68fe13cc9486a2eb839188150cf5fd2
-    produced_at: '2026-03-28T18:34:28.172332+00:00'
+    produced_at: '2026-03-28T18:26:09.504750+00:00'
     stale: false
   test_specs:
     digest: ''
     produced_at: ''
     stale: false
   implementation_plan:
-    digest: 58d3fb94fd62cedbe38438adc6ba2790e3b842a44bd1bd218c2499b73f66e4f7
-    produced_at: '2026-03-28T18:32:45.754167+00:00'
+    digest: ''
+    produced_at: ''
     stale: false
 audit:
   input_assessment:
@@ -78,8 +78,8 @@ audit:
     rounds: 0
     findings: []
   plan_drafting:
-    started_at: '2026-03-28T18:35:56.926940+00:00'
-    completed_at: '2026-03-28T18:35:56.927264+00:00'
+    started_at: ''
+    completed_at: ''
   plan_review:
     started_at: ''
     completed_at: ''

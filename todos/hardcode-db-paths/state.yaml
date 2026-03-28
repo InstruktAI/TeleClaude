@@ -1,7 +1,7 @@
 schema_version: 2
 phase: pending
 kind: todo
-current: prepared
+current: gate
 history: []
 deferrals_processed: false
 finalize:
@@ -16,8 +16,8 @@ unresolved_findings: []
 resolved_findings: []
 grounding:
   valid: true
-  base_sha: 255357f833b188c22268e8c0f4e3b2973699d111
-  input_digest: cbf4cb5710f434a507eb2bc2dabb2fc8ba58d16095fd41c63ca87d7fdb7bfbf6
+  base_sha: 9de7e05031efa693495229ae3c6b950cb4fa6bdf
+  input_digest: 0e45cbad2bfad7aa4370271da2fa9ec7
   referenced_paths:
   - teleclaude/paths.py
   - teleclaude/constants.py
@@ -39,7 +39,7 @@ grounding:
   - tests/unit/mirrors/test_store.py
   - tests/unit/mirrors/test_processors.py
   - tests/unit/cli/telec/handlers/test_events_signals.py
-  last_grounded_at: '2026-03-28T03:44:38.751764+00:00'
+  last_grounded_at: '2026-03-28T14:00:00Z'
   invalidated_at: ''
   invalidation_reason: ''
 requirements_review:

@@ -53,8 +53,8 @@ artifacts:
     produced_at: ''
     stale: false
   implementation_plan:
-    digest: 9cbbf07a0ef8b21ce72f602af868b744f30aad7d5f04537d3b832b64d8ad8903
-    produced_at: '2026-03-28T17:06:07.779032+00:00'
+    digest: a85dedc67cc87c43c3db872532359f8f77e5b78332356d9ffda02540a3e458ce
+    produced_at: '2026-03-28T15:05:36.046495+00:00'
     stale: false
 audit:
   input_assessment:

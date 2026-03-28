@@ -10,17 +10,34 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate identity-origin-cleanup-final` exits 0, or exception noted)
-- [ ] User-facing verification evidence recorded
-- [ ] Browser-based frontend or web UI changes smoke-tested with Playwright
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate identity-origin-cleanup-final` exits 0, or exception noted)
+- [x] User-facing verification evidence recorded
+- [x] Browser-based frontend or web UI changes smoke-tested with Playwright
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+## Build Notes
+
+- Verification commands:
+  - `telec todo demo validate identity-origin-cleanup-final` -> PASS
+  - `make lint` -> PASS
+  - `make test` -> PASS
+- Legacy-name checks:
+  - `rg -n "channel_metadata" teleclaude tests docs demos` -> 0 hits
+  - `rg -n "resolve_from_terminal" teleclaude tests` -> 0 hits
+  - `rg -n "create_headless_session" teleclaude tests` -> 0 hits
+- User-facing verification:
+  - Exercised the updated build demo and targeted regression tests covering typed actor-field flow, Redis wire-format decoding, daemon/API headless session creation through `CreateSessionCommand`, and CLI identity resolution without the removed terminal helper.
+- Browser smoke verification:
+  - Not applicable. This delivery does not change browser-rendered UI behavior.
+- Behavior-preserving exception:
+  - `ChannelMetadata` remains as the typed carrier for `create_channel` flows. The removed surface is the per-message untyped actor bag on `MessageMetadata`; retaining the create-channel type preserves current behavior while completing the intended cleanup.
 
 ## Review Gates (Reviewer)
 

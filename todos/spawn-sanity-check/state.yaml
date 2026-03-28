@@ -1,21 +1,17 @@
 schema_version: 2
 phase: pending
 kind: todo
-current: build_complete
-history:
-- source: input_assessment
-  target: prepared
-  by: 89170f95-a136-4745-ac29-dd20d90234d6
-  at: '2026-03-27T23:37:07.347134+00:00'
-  metadata: {}
-- source: prepared
-  target: build_complete
-  by: 89170f95-a136-4745-ac29-dd20d90234d6
-  at: '2026-03-27T23:37:07.385594+00:00'
-  metadata: {}
+current: input_assessment
+history: []
 deferrals_processed: false
 finalize:
   status: pending
+  branch: ''
+  sha: ''
+  ready_at: ''
+  worker_session_id: ''
+  handed_off_at: ''
+  handoff_session_id: ''
 breakdown:
   assessed: false
   todos: []
@@ -25,27 +21,32 @@ review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
 grounding:
-  valid: true
-  base_sha: 8e866b5e19dd05e6d653a1b010dad5c53e9015e1
-  input_digest: 8b029ac15ee23fe698ed0f830e38191f1cd9ae350f7cd583412637e1a7fc818c
+  valid: false
+  base_sha: ''
+  input_digest: ''
   referenced_paths: []
-  last_grounded_at: '2026-03-27T23:37:07.347134+00:00'
+  last_grounded_at: ''
   invalidated_at: ''
   invalidation_reason: ''
-  changed_paths: []
 requirements_review:
-  verdict: approve
-  reviewed_at: '2026-03-27T23:37:07.347134+00:00'
+  verdict: ''
+  reviewed_at: ''
   findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
 test_spec_review:
   verdict: ''
   reviewed_at: ''
   findings_count: 0
   rounds: 0
 plan_review:
-  verdict: approve
-  reviewed_at: '2026-03-27T23:37:07.347134+00:00'
+  verdict: ''
+  reviewed_at: ''
   findings_count: 0
+  rounds: 0
+  baseline_commit: ''
+  findings: []
 artifacts:
   input:
     digest: ''
@@ -91,9 +92,8 @@ audit:
     started_at: ''
     completed_at: ''
 dor:
-  last_assessed_at: '2026-03-27T23:37:07.347134+00:00'
-  score: 8
-  status: pass
+  score: 0
+  status: needs_work
   schema_version: 1
   blockers: []
   actions_taken:

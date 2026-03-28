@@ -10,17 +10,28 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate activation-trigger` exits 0, or exception noted)
-- [ ] User-facing verification evidence recorded
-- [ ] Browser-based frontend or web UI changes smoke-tested with Playwright
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate activation-trigger` exits 0, or exception noted)
+- [x] User-facing verification evidence recorded
+- [x] Browser-based frontend or web UI changes smoke-tested with Playwright
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+### Build Evidence
+
+- Targeted activation-trigger spec suite passed: `.venv/bin/pytest tests/unit/resource_validation/test_unified_severity_spec.py tests/unit/resource_validation/test_activation_trigger_validation_spec.py tests/unit/test_activation_trigger_distribution_spec.py tests/unit/test_activation_trigger_content_spec.py -q` -> `49 passed`.
+- Distribution regression passed: `.venv/bin/pytest tests/unit/test_distribute.py -q` -> `1 passed`.
+- Repo gates passed: `make lint` and `make test`.
+- Sync validation passed: `.venv/bin/telec sync --validate-only` exited `0`.
+- User-facing CLI verification passed: `.venv/bin/telec sync` exited `0`; generated root `AGENTS.md` contains an `Activatable Procedures` section with 11 entries, includes the `telec docs get <id>` guidance, and excludes the 6 removed procedures from the baseline block.
+- Skill deletion verified: `agents/skills/skill-creator` no longer exists.
+- Demo validation passed: `.venv/bin/telec todo demo validate activation-trigger` found 6 executable blocks; promoted artifact to `demos/activation-trigger/demo.md`.
+- Browser smoke verification not applicable: this delivery changes CLI/distribution/docs behavior only and does not modify browser-rendered UI.
 
 ## Review Gates (Reviewer)
 
