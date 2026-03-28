@@ -11,6 +11,7 @@ import yaml
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, PreparePhase, StateValue
 from teleclaude.core.next_machine.prepare_steps import (
+    _derive_project_root,
     _prepare_dispatch,
     _prepare_step_grounding_check,
     _prepare_step_input_assessment,
@@ -343,24 +344,23 @@ async def test_plan_on_disk_advances_plan_drafting_v2(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_requirements_in_worktree_advances_input_assessment(tmp_path: Path) -> None:
-    """Regression: check_file_has_content must resolve to worktree, not repo root."""
+    """Step receives worktree-resolved cwd from dispatcher and reads artifacts from worktree."""
     slug = "slug-wt-ia"
-    worktree_todos = tmp_path / "trees" / slug / "todos" / slug
+    worktree = tmp_path / "trees" / slug
+    worktree_todos = worktree / "todos" / slug
     worktree_todos.mkdir(parents=True)
     (worktree_todos / "requirements.md").write_text(
         "Authored requirements long enough to pass the scaffold check gate.\n",
         encoding="utf-8",
     )
-    todo_dir = tmp_path / "todos" / slug
-    todo_dir.mkdir(parents=True)
-    _write_state(todo_dir, {})
+    _write_state(worktree_todos, {})
     state: dict[str, StateValue] = {
         "schema_version": 2,
         "current": "input_assessment",
         "artifacts": {"requirements": {"digest": "", "produced_at": "", "stale": False}},
     }
 
-    keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), slug, str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), slug, str(worktree), state)
 
     assert keep_going is True
     assert instruction == ""
@@ -369,24 +369,23 @@ async def test_requirements_in_worktree_advances_input_assessment(tmp_path: Path
 
 @pytest.mark.asyncio
 async def test_requirements_in_worktree_advances_triangulation(tmp_path: Path) -> None:
-    """Regression: check_file_has_content must resolve to worktree, not repo root."""
+    """Step receives worktree-resolved cwd from dispatcher and reads artifacts from worktree."""
     slug = "slug-wt-tri"
-    worktree_todos = tmp_path / "trees" / slug / "todos" / slug
+    worktree = tmp_path / "trees" / slug
+    worktree_todos = worktree / "todos" / slug
     worktree_todos.mkdir(parents=True)
     (worktree_todos / "requirements.md").write_text(
         "Authored requirements long enough to pass the scaffold check gate.\n",
         encoding="utf-8",
     )
-    todo_dir = tmp_path / "todos" / slug
-    todo_dir.mkdir(parents=True)
-    _write_state(todo_dir, {})
+    _write_state(worktree_todos, {})
     state: dict[str, StateValue] = {
         "schema_version": 2,
         "current": "triangulation",
         "artifacts": {"requirements": {"digest": "", "produced_at": "", "stale": False}},
     }
 
-    keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), slug, str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), slug, str(worktree), state)
 
     assert keep_going is True
     assert instruction == ""
@@ -395,24 +394,23 @@ async def test_requirements_in_worktree_advances_triangulation(tmp_path: Path) -
 
 @pytest.mark.asyncio
 async def test_plan_in_worktree_advances_plan_drafting(tmp_path: Path) -> None:
-    """Regression: check_file_has_content must resolve to worktree, not repo root."""
+    """Step receives worktree-resolved cwd from dispatcher and reads artifacts from worktree."""
     slug = "slug-wt-plan"
-    worktree_todos = tmp_path / "trees" / slug / "todos" / slug
+    worktree = tmp_path / "trees" / slug
+    worktree_todos = worktree / "todos" / slug
     worktree_todos.mkdir(parents=True)
     (worktree_todos / "implementation-plan.md").write_text(
         "Authored plan long enough to pass the scaffold check gate.\n",
         encoding="utf-8",
     )
-    todo_dir = tmp_path / "todos" / slug
-    todo_dir.mkdir(parents=True)
-    _write_state(todo_dir, {})
+    _write_state(worktree_todos, {})
     state: dict[str, StateValue] = {
         "schema_version": 2,
         "current": "plan_drafting",
         "artifacts": {"implementation_plan": {"digest": "", "produced_at": "", "stale": False}},
     }
 
-    keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), slug, str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), slug, str(worktree), state)
 
     assert keep_going is True
     assert instruction == ""
@@ -514,3 +512,65 @@ async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifa
     plan = artifacts["implementation_plan"]
     assert isinstance(plan, dict)
     assert plan["digest"] == new_digest
+
+
+def test_grounding_check_reads_input_from_worktree_cwd(tmp_path: Path) -> None:
+    """Grounding check reads input.md from effective cwd (worktree), not project root."""
+    slug = "slug-gc-wt"
+    worktree = tmp_path / "trees" / slug
+    worktree_todos = worktree / "todos" / slug
+    worktree_todos.mkdir(parents=True)
+    (worktree_todos / "input.md").write_text("worktree input", encoding="utf-8")
+
+    # Project root has a DIFFERENT input.md (scaffold)
+    root_todos = tmp_path / "todos" / slug
+    root_todos.mkdir(parents=True)
+    (root_todos / "input.md").write_text("scaffold", encoding="utf-8")
+
+    state: dict[str, StateValue] = {"grounding": {}}
+
+    with (
+        patch("teleclaude.core.next_machine.prepare_steps.run_git_command", return_value=(0, "abc123\n", "")),
+        patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"),
+    ):
+        keep_going, _ = _prepare_step_grounding_check(slug, str(worktree), state)
+
+    grounding = state.get("grounding")
+    assert isinstance(grounding, dict)
+    assert keep_going is True
+    # Digest must match the worktree input, not the project root scaffold
+    assert grounding["input_digest"] == hashlib.sha256(b"worktree input").hexdigest()
+
+
+def test_restamp_reads_artifact_from_worktree_cwd(tmp_path: Path) -> None:
+    """_restamp_artifact_digest reads from worktree cwd, not project root."""
+    slug = "slug-rs-wt"
+    worktree = tmp_path / "trees" / slug
+    worktree_todos = worktree / "todos" / slug
+    worktree_todos.mkdir(parents=True)
+    (worktree_todos / "requirements.md").write_text("worktree content", encoding="utf-8")
+
+    # Project root has stale content
+    root_todos = tmp_path / "todos" / slug
+    root_todos.mkdir(parents=True)
+    (root_todos / "requirements.md").write_text("scaffold", encoding="utf-8")
+
+    old_digest = hashlib.sha256(b"old").hexdigest()
+    state: dict[str, StateValue] = {
+        "artifacts": {"requirements": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00Z"}},
+    }
+
+    _restamp_artifact_digest(state, str(worktree), slug, "requirements", "requirements.md")
+
+    artifacts = state["artifacts"]
+    assert isinstance(artifacts, dict)
+    req = artifacts["requirements"]
+    assert isinstance(req, dict)
+    assert req["digest"] == hashlib.sha256(b"worktree content").hexdigest()
+
+
+def test_derive_project_root_strips_worktree_suffix() -> None:
+    """_derive_project_root extracts project root from worktree path."""
+    assert _derive_project_root("/project/trees/my-slug", "my-slug") == "/project"
+    assert _derive_project_root("/project", "my-slug") == "/project"
+    assert _derive_project_root("/a/b/c/trees/slug", "slug") == "/a/b/c"

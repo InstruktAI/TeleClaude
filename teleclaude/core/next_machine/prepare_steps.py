@@ -30,10 +30,24 @@ from teleclaude.core.next_machine.prepare_events import (
     _has_test_spec_artifacts,
 )
 from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
-from teleclaude.core.next_machine.state_io import _resolve_state_cwd, write_phase_state
+from teleclaude.core.next_machine.state_io import write_phase_state
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 logger = get_logger(__name__)
+
+
+def _derive_project_root(cwd: str, slug: str) -> str:
+    """Extract canonical project root from an effective cwd that may be a worktree.
+
+    When ``cwd`` is ``{project_root}/trees/{slug}``, returns the project root.
+    Otherwise returns ``cwd`` unchanged (already the project root).
+    Used for ToolCallRequest.project and worktree creation, which always need the
+    project root rather than the worktree path.
+    """
+    suffix = f"/{WORKTREE_DIR}/{slug}"
+    if cwd.endswith(suffix):
+        return cwd[: -len(suffix)]
+    return cwd
 
 
 def _restamp_artifact_digest(
@@ -67,12 +81,12 @@ async def _prepare_step_input_assessment(
     """INPUT_ASSESSMENT: choose requirements strategy and produce requirements."""
     # Ensure worktree exists from the very first prepare step so all phases
     # write state to the worktree, not repo root main.
-    await ensure_worktree_with_policy_async(cwd, slug)
+    await ensure_worktree_with_policy_async(_derive_project_root(cwd, slug), slug)
 
     _now = datetime.now(UTC).isoformat()
     stamp_audit(state, "input_assessment", "started_at", _now)
 
-    has_requirements = check_file_has_content(_resolve_state_cwd(cwd, slug), f"todos/{slug}/requirements.md")
+    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
     if has_requirements:
         # Emit input_consumed event before transitioning (R13)
         await asyncio.to_thread(record_input_consumed, cwd, slug)
@@ -86,7 +100,7 @@ async def _prepare_step_input_assessment(
         ToolCallRequest(
             command=SlashCommand.NEXT_PREPARE_DISCOVERY,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
@@ -107,7 +121,7 @@ async def _prepare_step_triangulation(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TRIANGULATION: requirements.md still needs discovery or revision."""
-    has_requirements = check_file_has_content(_resolve_state_cwd(cwd, slug), f"todos/{slug}/requirements.md")
+    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
     if has_requirements:
         # Transition to REQUIREMENTS_REVIEW
         state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
@@ -121,7 +135,7 @@ async def _prepare_step_triangulation(
         ToolCallRequest(
             command=SlashCommand.NEXT_PREPARE_DISCOVERY,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
@@ -227,7 +241,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
             ToolCallRequest(
                 command=SlashCommand.NEXT_PREPARE_DISCOVERY,
                 args=slug,
-                project=cwd,
+                project=_derive_project_root(cwd, slug),
                 guidance=guidance,
                 subfolder=f"{WORKTREE_DIR}/{slug}",
                 note=findings_note,
@@ -251,7 +265,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         ToolCallRequest(
             command=SlashCommand.NEXT_REVIEW_REQUIREMENTS,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=f"Review todos/{slug}/requirements.md and write verdict to state.yaml requirements_review.verdict.",
@@ -282,7 +296,7 @@ async def _prepare_step_test_spec_build(
         ToolCallRequest(
             command=SlashCommand.NEXT_BUILD_SPECS,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
@@ -345,7 +359,7 @@ async def _prepare_step_test_spec_review(
             ToolCallRequest(
                 command=SlashCommand.NEXT_BUILD_SPECS,
                 args=slug,
-                project=cwd,
+                project=_derive_project_root(cwd, slug),
                 guidance=guidance,
                 subfolder=f"{WORKTREE_DIR}/{slug}",
                 note=(
@@ -362,7 +376,7 @@ async def _prepare_step_test_spec_review(
         ToolCallRequest(
             command=SlashCommand.NEXT_REVIEW_SPECS,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and write verdict to state.yaml test_spec_review.verdict.",  # pylint: disable=line-too-long
@@ -380,7 +394,7 @@ async def _prepare_step_plan_drafting(
     """PLAN_DRAFTING: implementation-plan.md needed."""
     stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
-    has_plan = check_file_has_content(_resolve_state_cwd(cwd, slug), f"todos/{slug}/implementation-plan.md")
+    has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
     if has_plan:
         stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.PLAN_REVIEW.value
@@ -393,7 +407,7 @@ async def _prepare_step_plan_drafting(
         ToolCallRequest(
             command=SlashCommand.NEXT_PREPARE_DRAFT,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
@@ -500,7 +514,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
             ToolCallRequest(
                 command=SlashCommand.NEXT_PREPARE_DRAFT,
                 args=slug,
-                project=cwd,
+                project=_derive_project_root(cwd, slug),
                 guidance=guidance,
                 subfolder=f"{WORKTREE_DIR}/{slug}",
                 note=findings_note,
@@ -524,7 +538,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         ToolCallRequest(
             command=SlashCommand.NEXT_REVIEW_PLAN,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=f"Review todos/{slug}/implementation-plan.md and write verdict to state.yaml plan_review.verdict.",
@@ -554,7 +568,7 @@ async def _prepare_step_gate(
         ToolCallRequest(
             command=SlashCommand.NEXT_PREPARE_GATE,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
@@ -707,7 +721,7 @@ async def _prepare_step_re_grounding(
         ToolCallRequest(
             command=SlashCommand.NEXT_PREPARE_DRAFT,
             args=slug,
-            project=cwd,
+            project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=f"Update todos/{slug}/implementation-plan.md against current codebase. {changed_note}",

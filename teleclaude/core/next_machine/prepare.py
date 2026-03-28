@@ -23,7 +23,7 @@ from teleclaude.core.next_machine.slug_resolution import (
     resolve_canonical_project_root,
     resolve_holder_children,
 )
-from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+from teleclaude.core.next_machine.state_io import _resolve_state_cwd, read_phase_state, write_phase_state
 
 logger = get_logger(__name__)
 
@@ -111,12 +111,16 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
 
     # Dispatch loop
     for _iter in range(_PREPARE_LOOP_LIMIT):
-        state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+        # Resolve effective cwd: worktree if it exists, project root otherwise.
+        # Computed per iteration because the first step may create the worktree.
+        effective_cwd = _resolve_state_cwd(cwd, resolved_slug)
+
+        state = await asyncio.to_thread(read_phase_state, effective_cwd, resolved_slug)
 
         # Artifact staleness check (R6): run before routing
-        stale_artifacts = await asyncio.to_thread(check_artifact_staleness, cwd, resolved_slug)
+        stale_artifacts = await asyncio.to_thread(check_artifact_staleness, effective_cwd, resolved_slug)
         if stale_artifacts:
-            await _apply_stale_artifact_reroute(cwd, resolved_slug, state, stale_artifacts)
+            await _apply_stale_artifact_reroute(effective_cwd, resolved_slug, state, stale_artifacts)
 
         # Resolve current phase from authoritative state value
         raw_current = str(state.get("current", "")).strip()
@@ -133,7 +137,9 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             _iter,
         )
 
-        keep_going, instruction = await _prepare_dispatch(db=db, slug=resolved_slug, cwd=cwd, phase=phase, state=state)
+        keep_going, instruction = await _prepare_dispatch(
+            db=db, slug=resolved_slug, cwd=effective_cwd, phase=phase, state=state
+        )
         if not keep_going:
             return instruction
 
