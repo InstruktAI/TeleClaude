@@ -6,15 +6,11 @@ history: []
 deferrals_processed: false
 finalize:
   status: pending
-  branch: ''
-  sha: ''
-  ready_at: ''
-  worker_session_id: ''
-  handed_off_at: ''
-  handoff_session_id: ''
 breakdown:
-  assessed: false
-  todos: []
+  assessed: true
+  todos:
+  - edge-http-migration
+  - origin-metadata-rename
 review_round: 0
 max_review_rounds: 3
 review_baseline_commit: ''
@@ -33,8 +29,6 @@ requirements_review:
   reviewed_at: ''
   findings_count: 0
   rounds: 0
-  baseline_commit: ''
-  findings: []
 test_spec_review:
   verdict: ''
   reviewed_at: ''
@@ -45,24 +39,22 @@ plan_review:
   reviewed_at: ''
   findings_count: 0
   rounds: 0
-  baseline_commit: ''
-  findings: []
 artifacts:
   input:
     digest: ''
     produced_at: ''
     stale: false
   requirements:
-    digest: ''
-    produced_at: ''
+    digest: ba595e23cd7993762a20bdfe96cd39515cb25169cc39cac4ea702fa9c6f9efd1
+    produced_at: '2026-03-28T14:57:13.808506+00:00'
     stale: false
   test_specs:
     digest: ''
     produced_at: ''
     stale: false
   implementation_plan:
-    digest: ''
-    produced_at: ''
+    digest: 9cbbf07a0ef8b21ce72f602af868b744f30aad7d5f04537d3b832b64d8ad8903
+    produced_at: '2026-03-28T17:06:07.779032+00:00'
     stale: false
 audit:
   input_assessment:
@@ -79,15 +71,40 @@ audit:
     rounds: 0
     findings: []
   plan_drafting:
-    started_at: ''
-    completed_at: ''
+    started_at: '2026-03-28T16:37:47.467160+00:00'
+    completed_at: '2026-03-28T16:37:47.469147+00:00'
   plan_review:
-    started_at: ''
-    completed_at: ''
-    baseline_commit: ''
-    verdict: ''
-    rounds: 0
-    findings: []
+    started_at: '2026-03-28T16:37:47.485941+00:00'
+    completed_at: '2026-03-28T16:44:54Z'
+    baseline_commit: ffa66687f1abf568515692463629c22302cdc266
+    verdict: needs_work
+    rounds: 1
+    findings:
+    - id: plan-01
+      severity: substantive
+      summary: WhatsApp migration leaves origin propagation unresolved and claims
+        an unimplemented metadata path is viable.
+      status: open
+      resolved_at: ''
+    - id: plan-02
+      severity: substantive
+      summary: The todo combines the daemon-internal HTTP/auth migration with the
+        pipeline-wide channel_metadata rename even though the workstreams are independently
+        shippable.
+      status: open
+      resolved_at: ''
+    - id: plan-03
+      severity: substantive
+      summary: Task 3.2 understates the rename as mechanical even though channel_metadata
+        is still an active data path across adapters, Redis transport, and CommandMapper.
+      status: open
+      resolved_at: ''
+    - id: plan-04
+      severity: substantive
+      summary: Verification does not reference concrete expected-failure specs, and
+        no test-spec artifact is present in state.yaml.
+      status: open
+      resolved_at: ''
   gate:
     started_at: ''
     completed_at: ''
@@ -96,6 +113,4 @@ dor:
   status: needs_work
   schema_version: 1
   blockers: []
-  actions_taken:
-    requirements_updated: false
-    implementation_plan_updated: false
+  actions_taken: []

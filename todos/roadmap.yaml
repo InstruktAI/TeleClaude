@@ -52,6 +52,12 @@
 - slug: edge-session-creation
   after:
   - session-arch-cleanup
+- slug: edge-http-migration
+  group: edge-session-creation
+- slug: origin-metadata-rename
+  group: edge-session-creation
+  after:
+  - edge-http-migration
 - slug: with-session-staleness
 - slug: companies-onboard
 - slug: activation-trigger
