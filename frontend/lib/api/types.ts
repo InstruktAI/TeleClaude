@@ -101,6 +101,9 @@ export interface SessionInfo {
   computer?: string | null;
   human_email?: string | null;
   human_role?: string | null;
+  human_name?: string | null;
+  system_role?: string | null;
+  job?: string | null;
   visibility?: string | null;
 }
 

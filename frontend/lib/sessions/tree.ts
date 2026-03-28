@@ -8,6 +8,7 @@ export interface SessionTreeNode {
   type: 'session'
   session: SessionInfo
   index: number
+  displayIndex: string
   children: SessionTreeNode[]
 }
 
@@ -88,13 +89,19 @@ function nestChildren(
 
   topLevel.sort(sortByActivityDesc)
 
-  function buildNode(session: SessionInfo, index: number): SessionTreeNode {
+  function buildNode(
+    session: SessionInfo,
+    index: number,
+    parentDisplayIndex?: string,
+  ): SessionTreeNode {
     const kids = (childMap.get(session.session_id) ?? []).sort(sortByActivityDesc)
+    const displayIndex = parentDisplayIndex ? `${parentDisplayIndex}.${index}` : String(index)
     return {
       type: 'session',
       session,
       index,
-      children: kids.map((c, i) => buildNode(c, i + 1)),
+      displayIndex,
+      children: kids.map((c, i) => buildNode(c, i + 1, displayIndex)),
     }
   }
 
