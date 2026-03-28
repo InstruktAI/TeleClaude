@@ -40,7 +40,7 @@ def _mirror_path(source_path: str) -> str:
 def _filter_by_mode(mode: str, touched: set[str], project_root: Path) -> list[str]:
     """Filter touched files for the given mode.
 
-    lint mode: include Python source files plus their test companions for teleclaude/ sources.
+    lint mode: include Python source files that the session actually touched.
     test mode: map teleclaude/ sources to test companions; include touched test files directly.
     """
     if mode == "lint":
@@ -49,11 +49,6 @@ def _filter_by_mode(mode: str, touched: set[str], project_root: Path) -> list[st
             if f.endswith(".py") or f.endswith(".pyi"):
                 if (project_root / f).exists():
                     result_set.add(f)
-                if f.startswith("teleclaude/"):
-                    # Include test companion alongside the source file.
-                    companion = _mirror_path(f)
-                    if (project_root / companion).exists():
-                        result_set.add(companion)
         return sorted(result_set)
     # test mode
     test_set: set[str] = set()

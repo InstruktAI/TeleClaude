@@ -1,5 +1,5 @@
 {
-  "include": ["teleclaude", "scripts/diagrams"],
+  "include": ["teleclaude", "scripts/diagrams", "tests"],
   "exclude": [".venv", "venv", "**/__pycache__", ".mypy_cache", ".pytest_cache"],
   "ignore": [
     "teleclaude/core/db",
@@ -15,6 +15,25 @@
   "venv": ".venv",
   "pythonVersion": "3.12",
   "typeCheckingMode": "strict",
+  "executionEnvironments": [
+    {
+      "root": "tests",
+      "extraPaths": ["."],
+      "reportUnknownLambdaType": "none",
+      "reportAttributeAccessIssue": "none",
+      "reportMissingParameterType": "none",
+      "reportTypedDictNotRequiredAccess": "none",
+      "reportUnusedFunction": "none",
+      "reportIncompatibleMethodOverride": "none",
+      "reportMissingTypeArgument": "none",
+      "reportFunctionMemberAccess": "none",
+      "reportOperatorIssue": "none",
+      "reportGeneralTypeIssues": "none",
+      "reportUnusedClass": "none",
+      "reportUnusedVariable": "none",
+      "reportCallIssue": "none"
+    }
+  ],
   "reportOptionalSubscript": "none",
   "reportOptionalMemberAccess": "none",
   "reportOptionalCall": "none",

@@ -150,6 +150,11 @@ _filter_by_mode = _mod._filter_by_mode  # pylint: disable=protected-access
 
 def test_filter_lint_mode_includes_python_source_files(tmp_path: Path) -> None:
     """lint mode returns Python source files that were touched."""
+    (tmp_path / "teleclaude" / "foo" / "bar.py").parent.mkdir(parents=True)
+    (tmp_path / "teleclaude" / "foo" / "bar.py").touch()
+    (tmp_path / "teleclaude" / "foo" / "README.md").touch()
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "script.sh").touch()
     touched = {"teleclaude/foo/bar.py", "teleclaude/foo/README.md", "tools/script.sh"}
     result = _filter_by_mode("lint", touched, tmp_path)
     assert "teleclaude/foo/bar.py" in result
@@ -157,25 +162,18 @@ def test_filter_lint_mode_includes_python_source_files(tmp_path: Path) -> None:
     assert "tools/script.sh" not in result
 
 
-def test_filter_lint_mode_includes_test_companion_for_teleclaude_source(tmp_path: Path) -> None:
-    """lint mode includes the test companion alongside a touched teleclaude source file."""
+def test_filter_lint_mode_only_includes_touched_files(tmp_path: Path) -> None:
+    """lint mode includes only files the session actually touched, no companions."""
     companion = tmp_path / "tests" / "unit" / "foo" / "test_bar.py"
     companion.parent.mkdir(parents=True)
     companion.touch()
+    source = tmp_path / "teleclaude" / "foo" / "bar.py"
+    source.parent.mkdir(parents=True)
+    source.touch()
     touched = {"teleclaude/foo/bar.py"}
     result = _filter_by_mode("lint", touched, tmp_path)
     assert "teleclaude/foo/bar.py" in result
-    assert "tests/unit/foo/test_bar.py" in result
-
-
-def test_filter_lint_mode_skips_absent_companion(tmp_path: Path) -> None:
-    """lint mode silently omits a companion that does not exist on disk."""
-    # No companion created in tmp_path.
-    touched = {"teleclaude/foo/no_companion.py"}
-    result = _filter_by_mode("lint", touched, tmp_path)
-    assert "teleclaude/foo/no_companion.py" in result
-    # Companion path must not appear because the file was not created.
-    assert "tests/unit/foo/test_no_companion.py" not in result
+    assert "tests/unit/foo/test_bar.py" not in result
 
 
 def test_filter_test_mode_maps_teleclaude_source_to_companion(tmp_path: Path) -> None:
