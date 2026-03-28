@@ -2,20 +2,36 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
+import pytest
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
 from teleclaude.core.next_machine._types import WorktreePrepDecision
 from teleclaude.core.next_machine.worktrees import (
     _ensure_todo_on_remote_main,
     _read_worktree_prep_state,
+    _symlink_todo_dir,
     _write_worktree_prep_state,
     commit_bookkeeping_to_main,
     ensure_worktree_with_policy,
 )
+
+
+@contextmanager
+def _noop_lock() -> Generator[None, None, None]:
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _mock_main_branch_lock() -> Generator[None, None, None]:
+    """Prevent tests from touching the real flock on disk."""
+    with patch("teleclaude.core.next_machine.worktrees.main_branch_lock", _noop_lock):
+        yield
 
 
 def test_worktree_prep_state_round_trips_valid_marker(tmp_path: Path) -> None:
@@ -31,6 +47,10 @@ def test_ensure_worktree_with_policy_prepares_when_decision_requires_it(tmp_path
     decision = WorktreePrepDecision(should_prepare=True, reason="prep_state_missing", inputs_digest="abc")
 
     with (
+        patch(
+            "teleclaude.core.next_machine.worktrees._ensure_todo_on_remote_main",
+            return_value=(False, "already_on_remote"),
+        ),
         patch("teleclaude.core.next_machine.worktrees._create_or_attach_worktree", return_value=True),
         patch("teleclaude.core.next_machine.worktrees._decide_worktree_prep", return_value=decision),
         patch("teleclaude.core.next_machine.worktrees._prepare_worktree") as prepare,
@@ -49,6 +69,10 @@ def test_ensure_worktree_with_policy_skips_prep_when_inputs_are_unchanged(tmp_pa
     decision = WorktreePrepDecision(should_prepare=False, reason="unchanged_known_good", inputs_digest="abc")
 
     with (
+        patch(
+            "teleclaude.core.next_machine.worktrees._ensure_todo_on_remote_main",
+            return_value=(False, "already_on_remote"),
+        ),
         patch("teleclaude.core.next_machine.worktrees._create_or_attach_worktree", return_value=False),
         patch("teleclaude.core.next_machine.worktrees._decide_worktree_prep", return_value=decision),
         patch("teleclaude.core.next_machine.worktrees._prepare_worktree") as prepare,
@@ -242,32 +266,36 @@ class TestBookkeepingPushRecovery:
         assert repo.git.push.call_count == 2
         assert repo.git.push.call_args_list[1] == call("origin", "main")
 
-    def test_rebase_conflict_defers_push_and_aborts_rebase(self) -> None:
+    def test_rebase_conflict_fails_push_and_aborts_rebase(self) -> None:
         repo = _make_bookkeeping_repo()
         repo.git.push.side_effect = GitCommandError("push", "failed")
         repo.git.pull.side_effect = GitCommandError("pull", "conflict")
         with patch(_PATCH_REPO, return_value=repo):
             result = commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
 
-        # Committed locally (True) but push deferred
-        assert result == (True, "committed_push_deferred")
+        assert result == (False, "push_failed")
         repo.git.rebase.assert_called_once_with("--abort")
 
-    def test_rebase_abort_failure_swallowed_gracefully(self) -> None:
+    def test_rebase_abort_failure_logged_at_error(self) -> None:
         repo = _make_bookkeeping_repo()
         repo.git.push.side_effect = GitCommandError("push", "failed")
         repo.git.pull.side_effect = GitCommandError("pull", "conflict")
-        repo.git.rebase.side_effect = GitCommandError("rebase", "no rebase in progress")
-        with patch(_PATCH_REPO, return_value=repo):
+        abort_error = GitCommandError("rebase", "no rebase in progress")
+        repo.git.rebase.side_effect = abort_error
+        with (
+            patch(_PATCH_REPO, return_value=repo),
+            patch(_PATCH_LOGGER) as mock_logger,
+        ):
             result = commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
 
-        assert result == (True, "committed_push_deferred")
+        assert result == (False, "push_failed")
+        mock_logger.error.assert_any_call("Rebase abort also failed: %s", abort_error)
 
 
 class TestBookkeepingDiagnostics:
-    """Finding #3: first push error preserved at debug level."""
+    """Push failure diagnostics are logged at warning level."""
 
-    def test_first_push_error_logged_at_debug_with_original_exception(self) -> None:
+    def test_first_push_error_logged_at_warning_with_original_exception(self) -> None:
         repo = _make_bookkeeping_repo()
         push_error = GitCommandError("push", "non-fast-forward")
         repo.git.push.side_effect = [push_error, None]
@@ -277,8 +305,7 @@ class TestBookkeepingDiagnostics:
         ):
             commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
 
-        # The original exception object — not a string — must be passed
-        mock_logger.debug.assert_any_call("First push attempt failed: %s", push_error)
+        mock_logger.warning.assert_any_call("Direct push failed, attempting rebase: %s", push_error)
 
     def test_index_lock_detected_and_logged_at_error(self) -> None:
         repo = _make_bookkeeping_repo()
@@ -308,3 +335,165 @@ class TestBookkeepingDiagnostics:
 
         assert result == (False, "commit_failed")
         mock_logger.warning.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Symlink: _symlink_todo_dir
+# ---------------------------------------------------------------------------
+
+
+class TestSymlinkTodoDir:
+    """Verify symlink creation, migration, and edge cases."""
+
+    def test_creates_symlink_replacing_real_directory(self, tmp_path: Path) -> None:
+        project_todo = tmp_path / "todos" / "my-slug"
+        project_todo.mkdir(parents=True)
+        (project_todo / "state.yaml").write_text("status: pending", encoding="utf-8")
+
+        worktree = tmp_path / "trees" / "my-slug"
+        worktree_todo = worktree / "todos" / "my-slug"
+        worktree_todo.mkdir(parents=True)
+        (worktree_todo / "state.yaml").write_text("stale copy", encoding="utf-8")
+
+        _symlink_todo_dir(str(tmp_path), "my-slug", worktree)
+
+        assert worktree_todo.is_symlink()
+        assert worktree_todo.resolve() == project_todo.resolve()
+        assert (worktree_todo / "state.yaml").read_text(encoding="utf-8") == "status: pending"
+
+    def test_creates_symlink_when_worktree_todo_dir_missing(self, tmp_path: Path) -> None:
+        project_todo = tmp_path / "todos" / "my-slug"
+        project_todo.mkdir(parents=True)
+        (project_todo / "input.md").write_text("content", encoding="utf-8")
+
+        worktree = tmp_path / "trees" / "my-slug"
+        worktree.mkdir(parents=True)
+        # No todos/my-slug/ inside worktree
+
+        _symlink_todo_dir(str(tmp_path), "my-slug", worktree)
+
+        worktree_todo = worktree / "todos" / "my-slug"
+        assert worktree_todo.is_symlink()
+        assert worktree_todo.resolve() == project_todo.resolve()
+
+    def test_noop_when_symlink_already_exists(self, tmp_path: Path) -> None:
+        project_todo = tmp_path / "todos" / "my-slug"
+        project_todo.mkdir(parents=True)
+
+        worktree = tmp_path / "trees" / "my-slug"
+        worktree_todo = worktree / "todos" / "my-slug"
+        worktree_todo.parent.mkdir(parents=True)
+        worktree_todo.symlink_to(project_todo)
+
+        _symlink_todo_dir(str(tmp_path), "my-slug", worktree)
+
+        assert worktree_todo.is_symlink()
+
+    def test_noop_when_project_todo_dir_does_not_exist(self, tmp_path: Path) -> None:
+        worktree = tmp_path / "trees" / "my-slug"
+        worktree.mkdir(parents=True)
+
+        _symlink_todo_dir(str(tmp_path), "my-slug", worktree)
+
+        worktree_todo = worktree / "todos" / "my-slug"
+        assert not worktree_todo.exists()
+
+
+class TestSymlinkMigrationOnExistingWorktree:
+    """Verify _create_or_attach_worktree migrates existing worktrees."""
+
+    def test_existing_worktree_gets_symlink_on_reattach(self, tmp_path: Path) -> None:
+        """When worktree already exists, _create_or_attach_worktree still creates the symlink."""
+        from teleclaude.core.next_machine.worktrees import _create_or_attach_worktree
+
+        project_todo = tmp_path / "todos" / "my-slug"
+        project_todo.mkdir(parents=True)
+        (project_todo / "state.yaml").write_text("content", encoding="utf-8")
+
+        worktree = tmp_path / "trees" / "my-slug"
+        worktree_todo = worktree / "todos" / "my-slug"
+        worktree_todo.mkdir(parents=True)
+        (worktree_todo / "state.yaml").write_text("stale", encoding="utf-8")
+
+        created = _create_or_attach_worktree(str(tmp_path), "my-slug")
+
+        assert created is False
+        assert worktree_todo.is_symlink()
+        assert worktree_todo.resolve() == project_todo.resolve()
+
+
+# ---------------------------------------------------------------------------
+# ensure_worktree_with_policy: relaxed precondition
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureWorktreePolicyRelaxed:
+    """After symlink change, push failure warns instead of raising."""
+
+    def test_push_failure_warns_instead_of_raising(self, tmp_path: Path) -> None:
+        decision = WorktreePrepDecision(should_prepare=True, reason="worktree_created", inputs_digest="abc")
+
+        with (
+            patch(
+                "teleclaude.core.next_machine.worktrees._ensure_todo_on_remote_main",
+                return_value=(False, "push_failed"),
+            ),
+            patch("teleclaude.core.next_machine.worktrees._create_or_attach_worktree", return_value=True),
+            patch("teleclaude.core.next_machine.worktrees._decide_worktree_prep", return_value=decision),
+            patch("teleclaude.core.next_machine.worktrees._prepare_worktree"),
+            patch("teleclaude.core.next_machine.worktrees._write_worktree_prep_state"),
+            patch(_PATCH_LOGGER) as mock_logger,
+        ):
+            result = ensure_worktree_with_policy(str(tmp_path), "my-slug")
+
+        assert result.created is True
+        mock_logger.warning.assert_any_call(
+            "Todo '%s' not on origin/main (%s). Symlink provides access.", "my-slug", "push_failed"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Flock acquisition: verify main_branch_lock is called during mutations
+# ---------------------------------------------------------------------------
+
+
+class TestFlockAcquisition:
+    """Verify that commit_bookkeeping_to_main acquires the flock for mutations."""
+
+    def test_flock_acquired_during_commit_push(self) -> None:
+        repo = _make_bookkeeping_repo()
+        lock_entered = False
+
+        @contextmanager
+        def _tracking_lock() -> Generator[None, None, None]:
+            nonlocal lock_entered
+            lock_entered = True
+            yield
+
+        with (
+            patch(_PATCH_REPO, return_value=repo),
+            patch("teleclaude.core.next_machine.worktrees.main_branch_lock", _tracking_lock),
+        ):
+            result = commit_bookkeeping_to_main("/tmp", ["f"], "chore: test")
+
+        assert result == (True, "committed_and_pushed")
+        assert lock_entered, "main_branch_lock was not entered during commit+push"
+
+    def test_flock_not_acquired_for_early_returns(self) -> None:
+        lock_entered = False
+
+        @contextmanager
+        def _tracking_lock() -> Generator[None, None, None]:
+            nonlocal lock_entered
+            lock_entered = True
+            yield
+
+        repo = _make_bookkeeping_repo(branch="feature-x")
+        with (
+            patch(_PATCH_REPO, return_value=repo),
+            patch("teleclaude.core.next_machine.worktrees.main_branch_lock", _tracking_lock),
+        ):
+            result = commit_bookkeeping_to_main("/tmp", ["f"], "msg")
+
+        assert result == (False, "not_on_main")
+        assert not lock_entered, "main_branch_lock should not be entered for early returns"

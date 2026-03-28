@@ -425,7 +425,7 @@ async def _ensure_remote_artifacts(cwd: str, resolved_slug: str, phase_slug: str
     sync_ok, sync_reason = await asyncio.to_thread(_ensure_todo_on_remote_main, cwd, resolved_slug)
     sync_decision = "run" if sync_ok else "skip"
     _log_next_work_phase(phase_slug, "ensure_remote_artifacts", remote_sync_started, sync_decision, sync_reason)
-    if not sync_ok and sync_reason == "push_deferred":
+    if not sync_ok and sync_reason == "push_failed":
         return format_error(
             "REMOTE_SYNC_FAILED",
             f"Todo artifacts for {resolved_slug} could not be pushed to origin/main. "

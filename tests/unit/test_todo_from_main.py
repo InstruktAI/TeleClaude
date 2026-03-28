@@ -186,8 +186,8 @@ class TestCreateFromMainSkeleton:
         with (
             patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(False, "push_deferred")),
-            pytest.raises(RuntimeError, match="push_deferred"),
+            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(False, "push_failed")),
+            pytest.raises(RuntimeError, match="push_failed"),
         ):
             create_from_main_skeleton(str(project), "push-fail")
 

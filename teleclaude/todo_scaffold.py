@@ -413,9 +413,12 @@ def remove_todo(project_root: Path, slug: str) -> None:  # pylint: disable=too-m
     # Clean up dependency references
     clean_dependency_references(str(project_root), slug)
 
-    # Delete directory if it exists (from either location)
+    # Delete directory if it exists (symlink-safe: unlink symlink, don't rmtree through it)
     if found_directory:
-        shutil.rmtree(target_dir)
+        if target_dir.is_symlink():
+            target_dir.unlink()
+        else:
+            shutil.rmtree(target_dir)
 
     # Error only if slug is completely unknown
     if not (found_directory or found_in_roadmap or found_in_icebox or found_worktree):

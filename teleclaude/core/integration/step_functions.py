@@ -33,6 +33,7 @@ from teleclaude.core.integration.formatters import (
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.git import GitCommandError, Repo
+from teleclaude.git_lock import main_branch_lock
 
 logger = get_logger(__name__)
 
@@ -716,7 +717,9 @@ def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-stat
     checkpoint.warnings = warnings
 
     # --- Push all commits (squash + bookkeeping + cleanup) from integration worktree ---
-    rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
+    # Serialize under flock to prevent races with concurrent bookkeeping commits.
+    with main_branch_lock():
+        rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
     if rc == 0:  # pylint: disable=no-else-return
         head_sha = _get_head_sha(wt)
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
@@ -801,7 +804,8 @@ def _step_push_succeeded(
         rc_ahead, stdout_ahead, _ = _run_git(["rev-list", "--count", "origin/main..HEAD"], cwd=cwd)
         ahead_count = int(stdout_ahead.strip() or "0") if rc_ahead == 0 else 0
         if ahead_count > 0:
-            rc_push, _, stderr_push = _run_git(["push", "origin", "main"], cwd=cwd)
+            with main_branch_lock():
+                rc_push, _, stderr_push = _run_git(["push", "origin", "main"], cwd=cwd)
             if rc_push == 0:
                 logger.info("Pushed %d repo root bookkeeping commit(s) to origin/main", ahead_count)
             else:

@@ -205,9 +205,11 @@ def cleanup_delivered_slug(
     if remove_remote_branch:
         _run_git_cmd(["push", "origin", "--delete", branch], cwd=cwd, timeout=5)
 
-    # 4. Remove todo directory
+    # 4. Remove todo directory (symlink-safe: unlink symlink, don't rmtree through it)
     todo_dir = Path(cwd) / "todos" / slug
-    if todo_dir.exists():
+    if todo_dir.is_symlink():
+        todo_dir.unlink()
+    elif todo_dir.exists():
         shutil.rmtree(str(todo_dir), ignore_errors=True)
 
     # 5. Clean dependency references

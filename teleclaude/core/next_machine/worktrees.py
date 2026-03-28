@@ -28,6 +28,7 @@ from teleclaude.core.next_machine._types import (
 )
 from teleclaude.core.next_machine.state_io import _file_sha256
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, no_autostash_env
+from teleclaude.git_lock import main_branch_lock
 
 logger = get_logger(__name__)
 
@@ -69,7 +70,8 @@ def _read_worktree_prep_state(cwd: str, slug: str) -> dict[str, str] | None:
         return None
     try:
         raw = json.loads(state_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Corrupt worktree prep state at %s: %s — treating as missing, will re-prepare.", state_path, exc)
         return None
     if not isinstance(raw, dict):
         return None
@@ -107,10 +109,39 @@ def _decide_worktree_prep(cwd: str, slug: str, created: bool) -> WorktreePrepDec
     return WorktreePrepDecision(should_prepare=False, reason="unchanged_known_good", inputs_digest=inputs_digest)
 
 
+def _symlink_todo_dir(cwd: str, slug: str, worktree_path: Path) -> None:
+    """Replace todos/{slug}/ in worktree with a symlink to the project root copy.
+
+    Ensures worktree and project root always share the same todo state files.
+    Handles three cases:
+    - Worktree has a real directory → replace with symlink
+    - Worktree has no todo dir (scaffold wasn't on origin/main yet) → create symlink
+    - Symlink already exists → no-op
+    """
+    project_todo = Path(cwd) / "todos" / slug
+    worktree_todo = worktree_path / "todos" / slug
+
+    if not project_todo.is_dir():
+        return
+
+    if worktree_todo.is_symlink():
+        return
+
+    if worktree_todo.is_dir():
+        shutil.rmtree(worktree_todo)
+    else:
+        worktree_todo.parent.mkdir(parents=True, exist_ok=True)
+
+    worktree_todo.symlink_to(project_todo)
+    logger.info("Symlinked %s → %s", worktree_todo, project_todo)
+
+
 def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
     """Ensure the slug worktree path exists by creating or reattaching its branch."""
     worktree_path = Path(cwd) / WORKTREE_DIR / slug
     if worktree_path.exists():
+        # Migration: ensure symlink exists for pre-existing worktrees
+        _symlink_todo_dir(cwd, slug, worktree_path)
         return False
 
     try:
@@ -153,15 +184,22 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
             )
             raise
 
+    # Symlink todos/{slug}/ in worktree to project root so state is always shared
+    _symlink_todo_dir(cwd, slug, worktree_path)
+
     logger.info("Created worktree at %s", worktree_path)
     return True
 
 
 def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tuple[bool, str]:  # pylint: disable=too-many-return-statements
-    """Commit bookkeeping files on main and best-effort push.
+    """Commit bookkeeping files on main and push to origin.
 
     Safe to call from any context — returns early if not on the main branch.
     Bypasses the git wrapper commit/push gates (automation bookkeeping).
+
+    Push is NOT best-effort. Worktree creation branches from origin/main.
+    If the push fails, downstream worktrees will be missing these artifacts,
+    causing silent cascading failures. Push failure is reported as failure.
 
     Args:
         cwd: Project root directory.
@@ -169,7 +207,8 @@ def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tupl
         subject: Commit subject line (``[skip ci]`` is appended automatically).
 
     Returns:
-        Tuple of (action_taken, reason).
+        Tuple of (success, reason). success=False means the artifacts did NOT
+        reach origin/main — callers must surface this to the agent.
     """
     try:
         repo = Repo(cwd)
@@ -188,7 +227,8 @@ def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tupl
     if not status_output.strip():
         return False, "nothing_to_commit"
 
-    # teleclaude.git resolves the real git binary (bypasses the shell wrapper).
+    # Serialize add+commit+push under flock to prevent concurrent bookkeeping races.
+    # Validation above (not_a_repo, not_on_main, nothing_to_commit) is read-only — no contention.
     subject_clean = subject.rstrip()
     if "[skip ci]" not in subject_clean:
         subject_clean += " [skip ci]"
@@ -197,60 +237,68 @@ def commit_bookkeeping_to_main(cwd: str, paths: list[str], subject: str) -> tupl
         "\U0001f916 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
         "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
     )
-    try:
-        repo.git.add("--", *paths)
-        # --no-verify: pre-commit stash/restore conflicts with --only
-        # (index corruption). Safe to skip — these are bookkeeping artifacts
-        # (scaffolds, roadmap YAML, state files), not code, and the commit
-        # is already [skip ci].
-        repo.git.commit("-m", msg, "--no-verify", "--only", "--", *paths)
-    except GitCommandError as exc:
-        exc_str = str(exc)
-        if "index.lock" in exc_str:
-            lock_path = Path(cwd) / ".git" / "index.lock"
-            logger.error(
-                "Bookkeeping commit blocked by stale index.lock (%s). "
-                "Recovery: verify no git process is running, then "
-                "'rm %s' and re-run the command.",
-                subject_clean,
-                lock_path,
-            )
-            return False, "index_locked"
-        logger.warning("Bookkeeping commit failed (%s): %s", subject_clean, exc)
-        return False, "commit_failed"
-
-    # Best-effort push — try direct first, then reconcile with rebase
-    try:
-        repo.git.push("origin", "main")
-        logger.info("Bookkeeping committed and pushed: %s", subject_clean)
-        return True, "committed_and_pushed"
-    except GitCommandError as push_exc:
-        logger.debug("First push attempt failed: %s", push_exc)
-
-    try:
-        repo.git.pull("--rebase", "--no-autostash", "origin", "main", env=no_autostash_env())
-        repo.git.push("origin", "main")
-        logger.info("Bookkeeping rebased and pushed: %s", subject_clean)
-        return True, "rebased_and_pushed"
-    except GitCommandError as exc:
+    with main_branch_lock():
         try:
-            repo.git.rebase("--abort")
-        except GitCommandError:
-            pass
-        logger.warning("Bookkeeping push deferred (%s): %s", subject_clean, exc)
-        return True, "committed_push_deferred"
+            repo.git.add("--", *paths)
+            # --no-verify: pre-commit stash/restore conflicts with --only
+            # (index corruption). Safe to skip — these are bookkeeping artifacts
+            # (scaffolds, roadmap YAML, state files), not code, and the commit
+            # is already [skip ci].
+            repo.git.commit("-m", msg, "--no-verify", "--only", "--", *paths)
+        except GitCommandError as exc:
+            exc_str = str(exc)
+            if "index.lock" in exc_str:
+                lock_path = Path(cwd) / ".git" / "index.lock"
+                logger.error(
+                    "Bookkeeping commit blocked by stale index.lock (%s). "
+                    "Recovery: verify no git process is running, then "
+                    "'rm %s' and re-run the command.",
+                    subject_clean,
+                    lock_path,
+                )
+                return False, "index_locked"
+            logger.warning("Bookkeeping commit failed (%s): %s", subject_clean, exc)
+            return False, "commit_failed"
+
+        # Push to origin — required, not best-effort. Try direct first, then rebase.
+        try:
+            repo.git.push("origin", "main")
+            logger.info("Bookkeeping committed and pushed: %s", subject_clean)
+            return True, "committed_and_pushed"
+        except GitCommandError as push_exc:
+            logger.warning("Direct push failed, attempting rebase: %s", push_exc)
+
+        try:
+            repo.git.pull("--rebase", "--no-autostash", "origin", "main", env=no_autostash_env())
+            repo.git.push("origin", "main")
+            logger.info("Bookkeeping rebased and pushed: %s", subject_clean)
+            return True, "rebased_and_pushed"
+        except GitCommandError as exc:
+            try:
+                repo.git.rebase("--abort")
+            except GitCommandError as abort_exc:
+                logger.error("Rebase abort also failed: %s", abort_exc)
+            logger.error(
+                "Bookkeeping push FAILED (%s): %s. "
+                "Commit exists on local main but NOT on origin/main. "
+                "Worktrees created after this point will be missing these artifacts.",
+                subject_clean,
+                exc,
+            )
+            return False, "push_failed"
 
 
 def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
     """Commit and push todo artifacts to origin/main.
 
     Worktrees are created from origin/main. Todo artifacts scaffolded locally
-    (e.g. by ``telec bugs report`` or ``telec todo create``) must be committed
+    (e.g. by ``telec todo dump`` or ``telec bugs report``) must be committed
     and pushed so the worktree includes them. This is a hard prerequisite —
-    if push fails, the caller must surface the error.
+    if push fails, the caller must surface the error and abort.
 
     Returns:
-        Tuple of (action_taken, reason).
+        Tuple of (success, reason). success=False means the todo is NOT on
+        origin/main — the caller must print recovery instructions and stop.
     """
     local_todo = Path(cwd) / "todos" / slug
     if not local_todo.exists() or not any(local_todo.iterdir()):
@@ -265,16 +313,26 @@ def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
     try:
         repo.git.fetch("origin", "main")
     except GitCommandError as exc:
-        logger.warning("fetch origin main failed during todo remote sync: %s", exc)
-        return False, "fetch_skipped"
+        logger.error(
+            "fetch origin main failed during todo remote sync for %s: %s. "
+            "Cannot verify remote state — aborting to prevent stale worktrees.",
+            slug,
+            exc,
+        )
+        return False, "fetch_failed"
 
     # Check if the todo folder already exists on origin/main
     try:
         output = repo.git.ls_tree("origin/main", "--", f"todos/{slug}")
         if output.strip():
             return False, "already_on_remote"
-    except GitCommandError:
-        pass  # ls-tree errors if path doesn't exist — means not on remote
+    except GitCommandError as exc:
+        logger.error(
+            "ls-tree check failed for todos/%s on origin/main: %s. "
+            "Cannot verify remote state — treating as not on remote.",
+            slug,
+            exc,
+        )
 
     # Build path list — include roadmap.yaml if dirty
     commit_paths = [f"todos/{slug}"]
@@ -286,7 +344,18 @@ def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
 
 
 def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
-    """Ensure worktree exists and run prep only when policy says it's stale."""
+    """Ensure worktree exists and run prep only when policy says it's stale.
+
+    Before creating a new worktree, verifies the todo artifacts exist on
+    origin/main. Worktrees branch from origin/main — if artifacts are only
+    on local main, the worktree will be missing them and workers will fail.
+    """
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    if not worktree_path.exists():
+        ok, reason = _ensure_todo_on_remote_main(cwd, slug)
+        if not ok and reason not in ("already_on_remote", "nothing_to_commit", "not_on_main"):
+            logger.warning("Todo '%s' not on origin/main (%s). Symlink provides access.", slug, reason)
+
     created = _create_or_attach_worktree(cwd, slug)
     prep_decision = _decide_worktree_prep(cwd, slug, created=created)
     if prep_decision.should_prepare:
@@ -401,6 +470,7 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
 
 __all__ = [
     "_ensure_todo_on_remote_main",
+    "_symlink_todo_dir",
     "commit_bookkeeping_to_main",
     "ensure_worktree_with_policy",
     "ensure_worktree_with_policy_async",
