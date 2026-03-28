@@ -15,8 +15,8 @@ from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, PreparePhas
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
-from teleclaude.core.next_machine.prepare_helpers import check_artifact_staleness
-from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
+from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, check_artifact_staleness
+from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch, _restamp_artifact_digest
 from teleclaude.core.next_machine.roadmap import add_to_roadmap, slug_in_roadmap
 from teleclaude.core.next_machine.slug_resolution import (
     _find_next_prepare_slug,
@@ -34,7 +34,12 @@ async def _apply_stale_artifact_reroute(
     state: dict[str, StateValue],
     stale_artifacts: list[str],
 ) -> None:
-    """Reset prepare routing when tracked artifacts have gone stale."""
+    """Reset prepare routing when tracked artifacts have gone stale.
+
+    Restamps all stale artifact digests to match current file content before
+    writing state. Without this, the staleness check fires again on the next
+    loop iteration and the machine never escapes the reroute.
+    """
     earliest = stale_artifacts[0] if stale_artifacts else ""
     phase_map = {
         "input": PreparePhase.INPUT_ASSESSMENT,
@@ -43,6 +48,9 @@ async def _apply_stale_artifact_reroute(
     }
     stale_phase = phase_map.get(earliest, PreparePhase.INPUT_ASSESSMENT)
     state["current"] = stale_phase.value
+    for key, filename in _ARTIFACT_CASCADE:
+        if key in stale_artifacts:
+            _restamp_artifact_digest(state, cwd, slug, key, filename)
     await asyncio.to_thread(write_phase_state, cwd, slug, state)
     _emit_prepare_event(
         "domain.software-development.prepare.artifact_invalidated",

@@ -570,99 +570,41 @@ def test_restamp_reads_artifact_from_worktree_cwd(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_plan_drafting_restamps_digest_when_worker_modified_artifact(tmp_path: Path) -> None:
-    """Re-grounding worker modifies implementation-plan.md; plan_drafting restamps digest to prevent staleness loop."""
-    slug = "slug-reground"
+async def test_stale_artifact_reroute_restamps_all_stale_digests(tmp_path: Path) -> None:
+    """_apply_stale_artifact_reroute restamps stale artifact digests to prevent infinite staleness loops."""
+    from teleclaude.core.next_machine.prepare import _apply_stale_artifact_reroute
+
+    slug = "slug-reroute"
     todo_dir = tmp_path / "todos" / slug
     todo_dir.mkdir(parents=True)
-    plan_content = "Worker-modified implementation plan that is long enough to pass the scaffold check gate.\n"
+    req_content = "Updated requirements content.\n"
+    plan_content = "Updated plan content.\n"
+    (todo_dir / "requirements.md").write_text(req_content, encoding="utf-8")
     (todo_dir / "implementation-plan.md").write_text(plan_content, encoding="utf-8")
     _write_state(todo_dir, {})
-    stale_digest = hashlib.sha256(b"original plan content").hexdigest()
-    expected_digest = hashlib.sha256(plan_content.encode()).hexdigest()
+
+    old_req_digest = hashlib.sha256(b"old requirements").hexdigest()
+    old_plan_digest = hashlib.sha256(b"old plan").hexdigest()
     state: dict[str, StateValue] = {
         "schema_version": 2,
-        "current": "plan_drafting",
-        "artifacts": {"implementation_plan": {"digest": stale_digest, "produced_at": "2026-01-01T00:00:00Z"}},
+        "current": "plan_review",
+        "artifacts": {
+            "requirements": {"digest": old_req_digest, "produced_at": "2026-01-01T00:00:00Z"},
+            "implementation_plan": {"digest": old_plan_digest, "produced_at": "2026-01-01T00:00:00Z"},
+        },
     }
 
-    keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), slug, str(tmp_path), state)
+    await _apply_stale_artifact_reroute(str(tmp_path), slug, state, ["requirements", "implementation_plan"])
 
-    assert keep_going is True
-    assert instruction == ""
-    assert state["current"] == PreparePhase.PLAN_REVIEW.value
+    assert state["current"] == PreparePhase.PLAN_DRAFTING.value
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
+    req = artifacts["requirements"]
+    assert isinstance(req, dict)
+    assert req["digest"] == hashlib.sha256(req_content.encode()).hexdigest()
     plan = artifacts["implementation_plan"]
     assert isinstance(plan, dict)
-    assert plan["digest"] == expected_digest
-
-
-@pytest.mark.asyncio
-async def test_input_assessment_restamps_requirements_digest(tmp_path: Path) -> None:
-    """Discovery worker modifies requirements.md; input_assessment restamps digest to prevent staleness loop."""
-    slug = "slug-ia-restamp"
-    todo_dir = tmp_path / "todos" / slug
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "input.md").write_text("input", encoding="utf-8")
-    (todo_dir / "requirements.md").write_text(
-        "Worker-revised requirements that are long enough to pass the scaffold check gate.\n",
-        encoding="utf-8",
-    )
-    _write_state(todo_dir, {})
-    stale_digest = hashlib.sha256(b"old requirements").hexdigest()
-    expected_digest = hashlib.sha256(
-        b"Worker-revised requirements that are long enough to pass the scaffold check gate.\n"
-    ).hexdigest()
-    state: dict[str, StateValue] = {
-        "schema_version": 2,
-        "current": "input_assessment",
-        "artifacts": {"requirements": {"digest": stale_digest, "produced_at": "2026-01-01T00:00:00Z"}},
-    }
-
-    keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), slug, str(tmp_path), state)
-
-    assert keep_going is True
-    assert instruction == ""
-    assert state["current"] == PreparePhase.REQUIREMENTS_REVIEW.value
-    artifacts = state["artifacts"]
-    assert isinstance(artifacts, dict)
-    req = artifacts["requirements"]
-    assert isinstance(req, dict)
-    assert req["digest"] == expected_digest
-
-
-@pytest.mark.asyncio
-async def test_triangulation_restamps_requirements_digest(tmp_path: Path) -> None:
-    """Discovery worker modifies requirements.md; triangulation restamps digest to prevent staleness loop."""
-    slug = "slug-tri-restamp"
-    todo_dir = tmp_path / "todos" / slug
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text(
-        "Worker-revised requirements that are long enough to pass the scaffold check gate.\n",
-        encoding="utf-8",
-    )
-    _write_state(todo_dir, {})
-    stale_digest = hashlib.sha256(b"old requirements").hexdigest()
-    expected_digest = hashlib.sha256(
-        b"Worker-revised requirements that are long enough to pass the scaffold check gate.\n"
-    ).hexdigest()
-    state: dict[str, StateValue] = {
-        "schema_version": 2,
-        "current": "triangulation",
-        "artifacts": {"requirements": {"digest": stale_digest, "produced_at": "2026-01-01T00:00:00Z"}},
-    }
-
-    keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), slug, str(tmp_path), state)
-
-    assert keep_going is True
-    assert instruction == ""
-    assert state["current"] == PreparePhase.REQUIREMENTS_REVIEW.value
-    artifacts = state["artifacts"]
-    assert isinstance(artifacts, dict)
-    req = artifacts["requirements"]
-    assert isinstance(req, dict)
-    assert req["digest"] == expected_digest
+    assert plan["digest"] == hashlib.sha256(plan_content.encode()).hexdigest()
 
 
 def test_derive_project_root_strips_worktree_suffix() -> None:

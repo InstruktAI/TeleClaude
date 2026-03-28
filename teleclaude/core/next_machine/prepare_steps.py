@@ -88,7 +88,6 @@ async def _prepare_step_input_assessment(
 
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
     if has_requirements:
-        _restamp_artifact_digest(state, cwd, slug, "requirements", "requirements.md")
         # Emit input_consumed event before transitioning (R13)
         await asyncio.to_thread(record_input_consumed, cwd, slug)
         stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())
@@ -124,7 +123,6 @@ async def _prepare_step_triangulation(
     """TRIANGULATION: requirements.md still needs discovery or revision."""
     has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
     if has_requirements:
-        _restamp_artifact_digest(state, cwd, slug, "requirements", "requirements.md")
         # Transition to REQUIREMENTS_REVIEW
         state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
@@ -398,9 +396,6 @@ async def _prepare_step_plan_drafting(
 
     has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
     if has_plan:
-        # Restamp digest so artifact staleness check doesn't reroute back here
-        # after a re-grounding worker modifies the plan file.
-        _restamp_artifact_digest(state, cwd, slug, "implementation_plan", "implementation-plan.md")
         stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.PLAN_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
