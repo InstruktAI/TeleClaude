@@ -28,11 +28,12 @@ from teleclaude.api_models import (
 )
 from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, format_system_message
+from teleclaude.constants import HUMAN_ROLE_ADMIN, SlashCommand, format_system_message
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.db import db
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
@@ -174,6 +175,21 @@ def _extract_session_role_fields(
     system_role = str(metadata.get("system_role") or "") or None
     job = str(metadata.get("job") or "") or None
     return system_role, job
+
+
+def _infer_role_from_message(message: str | None) -> tuple[str | None, str | None]:
+    """Infer system_role and job from a slash command at the start of a message."""
+    if not message or not message.startswith("/"):
+        return None, None
+    cmd_token = message.split()[0].lstrip("/")
+    try:
+        slash_cmd = SlashCommand(cmd_token)
+    except ValueError:
+        return None, None
+    role_info = COMMAND_ROLE_MAP.get(slash_cmd)
+    if role_info:
+        return role_info[0], role_info[1].value
+    return None, None
 
 
 def _resolve_enabled_agent(requested_agent: str | None) -> str:
@@ -417,6 +433,12 @@ async def _prepare_create_session(
             typed_origin = TerminalOriginMetadata(email=caller_email)
 
     req_system_role, req_job = _extract_session_role_fields(request.metadata)
+
+    # Infer role from slash command in message when metadata doesn't carry it
+    # (TUI creates sessions via this endpoint with the command as the message).
+    if not req_system_role:
+        req_system_role, req_job = _infer_role_from_message(request.message)
+
     metadata = _build_metadata(
         origin=origin,
         title=request.title or "Untitled",

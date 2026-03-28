@@ -224,3 +224,47 @@ class TestSessionsRoutes:
             )
 
         assert metadata.human_role == "member"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_infers_role_from_slash_command_message(self) -> None:
+        """When message starts with a mapped slash command, system_role and job are inferred."""
+        request = CreateSessionRequest(
+            computer="local",
+            project_path="/repo/demo",
+            message="/next-integrate some-slug",
+        )
+        identity = SimpleNamespace(session_id=None, human_role=None, email="admin@example.com")
+
+        with patch(
+            "teleclaude.api.sessions_routes._build_launch_intent",
+            new=AsyncMock(return_value=(None, None)),
+        ):
+            metadata, _initiator, _title, _intent, _caller = await sessions_routes._prepare_create_session(
+                request, identity
+            )
+
+        assert metadata.system_role == "integrator"
+        assert metadata.job == "integrator"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_no_role_inference_for_unmapped_command(self) -> None:
+        """Slash commands not in COMMAND_ROLE_MAP leave system_role and job as None."""
+        request = CreateSessionRequest(
+            computer="local",
+            project_path="/repo/demo",
+            message="/unknown-command arg",
+        )
+        identity = SimpleNamespace(session_id=None, human_role=None, email="admin@example.com")
+
+        with patch(
+            "teleclaude.api.sessions_routes._build_launch_intent",
+            new=AsyncMock(return_value=(None, None)),
+        ):
+            metadata, _initiator, _title, _intent, _caller = await sessions_routes._prepare_create_session(
+                request, identity
+            )
+
+        assert metadata.system_role is None
+        assert metadata.job is None
