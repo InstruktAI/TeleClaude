@@ -60,6 +60,7 @@ class SessionDTOIdentityFields(BaseModel):
     initiator_session_id: str | None = None
     computer: str | None = None
     human_email: str | None = None
+    human_name: str | None = None
     human_role: str | None = None
 
 
