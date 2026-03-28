@@ -379,7 +379,7 @@ You are an orchestrator, not a micromanager. Workers have full autonomy.
 - NEVER run tests, lint, or make in/targeting worktrees
 - NEVER edit or commit files in worktrees
 - NEVER cd into worktrees — stay in the main repo root
-- ALWAYS end the worker session when its step completes — no exceptions
+- End a worker session only when it is no longer part of the active loop.
 - NEVER send no-op acknowledgements/keepalive chatter to workers
 - Trust the process gates (pre-commit hooks, mark_phase clerical checks)
 - If mark_phase rejects, the state machine routes to the fix — do NOT fix it yourself"""
