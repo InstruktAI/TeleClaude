@@ -61,3 +61,4 @@
 - slug: command-role-map-missing-specs
 - slug: identity-origin-cleanup-final
 - slug: orchestrator-heartbeat-timestamp-monitoring
+- slug: bookkeeping-push-fail-fast
