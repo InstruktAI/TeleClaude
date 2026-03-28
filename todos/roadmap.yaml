@@ -64,3 +64,4 @@
 - slug: companies-onboard
 - slug: activation-trigger
 - slug: agent-cli-context-preservation
+- slug: hardcode-db-paths
