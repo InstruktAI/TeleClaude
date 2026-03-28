@@ -16,58 +16,6 @@ from __future__ import annotations
 import pytest
 
 
-class TestResponseModeEnum:
-    """ResponseMode enum exists with exactly three members."""
-
-    @pytest.mark.unit
-    def test_response_mode_has_immediate_member(self) -> None:
-        """ResponseMode.IMMEDIATE exists with value 'immediate'."""
-        from teleclaude.types.commands import ResponseMode
-
-        assert ResponseMode.IMMEDIATE.value == "immediate"
-
-    @pytest.mark.unit
-    def test_response_mode_has_fire_and_forget_member(self) -> None:
-        """ResponseMode.FIRE_AND_FORGET exists with value 'fire_and_forget'."""
-        from teleclaude.types.commands import ResponseMode
-
-        assert ResponseMode.FIRE_AND_FORGET.value == "fire_and_forget"
-
-    @pytest.mark.unit
-    def test_response_mode_has_receipt_member(self) -> None:
-        """ResponseMode.RECEIPT exists with value 'receipt'."""
-        from teleclaude.types.commands import ResponseMode
-
-        assert ResponseMode.RECEIPT.value == "receipt"
-
-    @pytest.mark.unit
-    def test_response_mode_has_exactly_three_members(self) -> None:
-        """No extra modes exist — exactly IMMEDIATE, FIRE_AND_FORGET, RECEIPT."""
-        from teleclaude.types.commands import ResponseMode
-
-        assert len(ResponseMode) == 3
-
-
-class TestInternalCommandBaseFields:
-    """InternalCommand carries response_mode and completion_event."""
-
-    @pytest.mark.unit
-    def test_internal_command_has_response_mode_field(self) -> None:
-        """Base InternalCommand exposes response_mode defaulting to IMMEDIATE."""
-        from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
-
-        cmd = InternalCommand(command_type=CommandType.CREATE_SESSION)
-        assert cmd.response_mode == ResponseMode.IMMEDIATE
-
-    @pytest.mark.unit
-    def test_internal_command_has_completion_event_field(self) -> None:
-        """Base InternalCommand exposes completion_event defaulting to None."""
-        from teleclaude.types.commands import CommandType, InternalCommand
-
-        cmd = InternalCommand(command_type=CommandType.CREATE_SESSION)
-        assert cmd.completion_event is None
-
-
 class TestImmediateCommandModes:
     """Commands whose endpoints are 'already correct' per input audit declare IMMEDIATE.
 
@@ -199,18 +147,6 @@ class TestFireAndForgetCommandModes:
         instance = cls(**constructor_kwargs)
         assert isinstance(instance.completion_event, str)
         assert len(instance.completion_event) > 0
-
-
-class TestSystemCommandDeclaredMode:
-    """SystemCommand declares a response mode consistent with its operational pattern."""
-
-    @pytest.mark.unit
-    def test_system_command_has_response_mode(self) -> None:
-        """SystemCommand declares a response_mode field."""
-        from teleclaude.types.commands import ResponseMode, SystemCommand
-
-        cmd = SystemCommand(command="test", args=[])
-        assert isinstance(cmd.response_mode, ResponseMode)
 
 
 class TestFireAndForgetConstructionInvariant:

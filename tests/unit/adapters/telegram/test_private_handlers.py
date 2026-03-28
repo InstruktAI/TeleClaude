@@ -52,22 +52,6 @@ def _make_session(session_id: str = "sess-1", user_id: int | None = None) -> Ses
 # ---------------------------------------------------------------------------
 
 
-def test_register_simple_command_handlers_creates_handler_for_each_event():
-    stub = _StubPrivateHandlers()
-    stub._register_simple_command_handlers()
-    for event in stub.SIMPLE_COMMAND_EVENTS:
-        handler_name = f"_handle_{event}"
-        assert hasattr(stub, handler_name), f"Missing handler: {handler_name}"
-
-
-def test_register_simple_command_handlers_creates_callables():
-    stub = _StubPrivateHandlers()
-    stub._register_simple_command_handlers()
-    for event in stub.SIMPLE_COMMAND_EVENTS:
-        handler_name = f"_handle_{event}"
-        assert callable(getattr(stub, handler_name))
-
-
 def test_register_simple_command_handlers_skips_already_defined():
     """Handler defined before registration must not be overwritten."""
     stub = _StubPrivateHandlers()

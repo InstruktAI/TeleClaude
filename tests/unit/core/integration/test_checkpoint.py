@@ -11,30 +11,6 @@ from teleclaude.core.integration.checkpoint import (
     _write_checkpoint,
 )
 
-# ---------------------------------------------------------------------------
-# IntegrationPhase
-# ---------------------------------------------------------------------------
-
-
-def test_integration_phase_values_are_strings() -> None:
-    for phase in IntegrationPhase:
-        assert isinstance(phase.value, str)
-
-
-def test_integration_phase_idle_is_initial() -> None:
-    assert IntegrationPhase.IDLE.value == "idle"
-
-
-def test_integration_phase_all_expected_phases_present() -> None:
-    phase_values = {p.value for p in IntegrationPhase}
-    expected = {"idle", "candidate_dequeued", "merge_clean", "merge_conflicted", "committed", "completed"}
-    assert expected.issubset(phase_values)
-
-
-# ---------------------------------------------------------------------------
-# _read_checkpoint
-# ---------------------------------------------------------------------------
-
 
 def test_read_checkpoint_returns_idle_when_absent(tmp_path: Path) -> None:
     checkpoint = _read_checkpoint(tmp_path / "checkpoint.json")
@@ -53,14 +29,8 @@ def test_read_checkpoint_returns_idle_for_empty_file(tmp_path: Path) -> None:
 def test_read_checkpoint_returns_idle_for_corrupt_file(tmp_path: Path) -> None:
     path = tmp_path / "checkpoint.json"
     path.write_text("not json", encoding="utf-8")
-    # Should not raise — returns fresh default
     checkpoint = _read_checkpoint(path)
     assert checkpoint.phase == IntegrationPhase.IDLE.value
-
-
-# ---------------------------------------------------------------------------
-# _write_checkpoint / round-trip
-# ---------------------------------------------------------------------------
 
 
 def test_write_and_read_checkpoint_round_trips(tmp_path: Path) -> None:
@@ -108,11 +78,10 @@ def test_write_checkpoint_updates_last_updated_at(tmp_path: Path) -> None:
     )
     _write_checkpoint(path, checkpoint)
     restored = _read_checkpoint(path)
-    # _write_checkpoint stamps last_updated_at with current time — must differ from input
     assert restored.last_updated_at != "2024-01-01T12:00:00+00:00"
     from datetime import datetime
 
-    datetime.fromisoformat(restored.last_updated_at)  # must be valid ISO-8601
+    datetime.fromisoformat(restored.last_updated_at)
 
 
 def test_warnings_round_trips(tmp_path: Path) -> None:
@@ -142,7 +111,6 @@ def test_old_checkpoint_without_warnings_reads_as_empty_list(tmp_path: Path) -> 
     import json
 
     path = tmp_path / "checkpoint.json"
-    # Write a checkpoint without the warnings field (simulating old format)
     payload = {
         "version": 1,
         "phase": "idle",

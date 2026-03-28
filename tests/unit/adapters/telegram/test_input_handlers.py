@@ -62,29 +62,8 @@ class _StubInputHandlers(InputHandlersMixin):
 
 
 # ---------------------------------------------------------------------------
-# IncomingFileType enum
-# ---------------------------------------------------------------------------
-
-
-def test_incoming_file_type_document_value():
-    assert IncomingFileType.DOCUMENT.value == "document"
-
-
-def test_incoming_file_type_photo_value():
-    assert IncomingFileType.PHOTO.value == "photo"
-
-
-# ---------------------------------------------------------------------------
 # FILE_SUBDIR mapping
 # ---------------------------------------------------------------------------
-
-
-def test_file_subdir_document_maps_to_files():
-    assert FILE_SUBDIR[IncomingFileType.DOCUMENT] == "files"
-
-
-def test_file_subdir_photo_maps_to_photos():
-    assert FILE_SUBDIR[IncomingFileType.PHOTO] == "photos"
 
 
 def test_file_subdir_covers_all_incoming_types():

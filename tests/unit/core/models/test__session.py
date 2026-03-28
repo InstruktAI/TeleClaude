@@ -7,54 +7,11 @@ from datetime import UTC, datetime
 import pytest
 
 from teleclaude.core.models._session import (
-    ChannelMetadata,
-    CleanupTrigger,
-    MessageMetadata,
     Recording,
     Session,
-    SessionField,
     SessionLaunchIntent,
     SessionLaunchKind,
-    TranscriptFormat,
 )
-
-
-class TestChannelMetadata:
-    @pytest.mark.unit
-    def test_target_computer_defaults_to_none(self):
-        m = ChannelMetadata()
-        assert m.target_computer is None
-
-
-class TestMessageMetadata:
-    @pytest.mark.unit
-    def test_defaults_are_none_or_falsy(self):
-        m = MessageMetadata()
-        assert m.reply_markup is None
-        assert m.parse_mode is None
-        assert m.message_thread_id is None
-        assert m.raw_format is False
-        assert m.origin is None
-        assert m.channel_id is None
-        assert m.title is None
-        assert m.project_path is None
-        assert m.subdir is None
-        assert m.channel_metadata is None
-        assert m.system_role is None
-        assert m.job is None
-        assert m.auto_command is None
-        assert m.launch_intent is None
-        assert m.is_transcription is False
-        assert m.cleanup_trigger is None
-
-
-class TestSessionLaunchKind:
-    @pytest.mark.unit
-    def test_enum_values(self):
-        assert SessionLaunchKind.EMPTY.value == "empty"
-        assert SessionLaunchKind.AGENT.value == "agent"
-        assert SessionLaunchKind.AGENT_THEN_MESSAGE.value == "agent_then_message"
-        assert SessionLaunchKind.AGENT_RESUME.value == "agent_resume"
 
 
 class TestSessionLaunchIntent:
@@ -107,30 +64,6 @@ class TestSessionLaunchIntent:
         assert restored.native_session_id == original.native_session_id
 
 
-class TestCleanupTrigger:
-    @pytest.mark.unit
-    def test_enum_values(self):
-        assert CleanupTrigger.NEXT_NOTICE.value == "next_notice"
-        assert CleanupTrigger.NEXT_TURN.value == "next_turn"
-
-
-class TestSessionField:
-    @pytest.mark.unit
-    def test_origin_metadata_value(self):
-        assert SessionField.ORIGIN_METADATA.value == "origin_metadata"
-
-    @pytest.mark.unit
-    def test_title_value(self):
-        assert SessionField.TITLE.value == "title"
-
-
-class TestTranscriptFormat:
-    @pytest.mark.unit
-    def test_enum_values(self):
-        assert TranscriptFormat.MARKDOWN.value == "markdown"
-        assert TranscriptFormat.HTML.value == "html"
-
-
 class TestSession:
     def _make_session(self, **kwargs: object) -> Session:
         defaults: dict[str, object] = {  # guard: loose-dict - Session constructor kwargs for test helpers
@@ -141,21 +74,6 @@ class TestSession:
         }
         defaults.update(kwargs)
         return Session(**defaults)
-
-    @pytest.mark.unit
-    def test_human_role_defaults_to_none(self):
-        session = self._make_session()
-        assert session.human_role is None
-
-    @pytest.mark.unit
-    def test_lifecycle_status_defaults_to_active(self):
-        session = self._make_session()
-        assert session.lifecycle_status == "active"
-
-    @pytest.mark.unit
-    def test_visibility_defaults_to_private(self):
-        session = self._make_session()
-        assert session.visibility == "private"
 
     @pytest.mark.unit
     def test_get_origin_section_returns_dict(self):

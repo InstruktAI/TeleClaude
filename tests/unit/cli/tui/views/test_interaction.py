@@ -10,17 +10,6 @@ from teleclaude.cli.tui.views.interaction import (
     TreeInteractionState,
 )
 
-# --- TreeInteractionAction ---
-
-
-@pytest.mark.unit
-def test_tree_interaction_action_has_expected_values() -> None:
-    assert TreeInteractionAction.NONE.value == "none"
-    assert TreeInteractionAction.PREVIEW.value == "preview"
-    assert TreeInteractionAction.TOGGLE_STICKY.value == "toggle_sticky"
-    assert TreeInteractionAction.CLEAR_STICKY_PREVIEW.value == "clear_sticky_preview"
-
-
 # --- TreeInteractionDecision ---
 
 

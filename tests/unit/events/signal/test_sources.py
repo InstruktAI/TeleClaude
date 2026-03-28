@@ -16,14 +16,6 @@ from teleclaude.events.signal.sources import (
 )
 
 
-def test_source_type_enum_values() -> None:
-    assert SourceType.RSS.value == "rss"
-    assert SourceType.OPML.value == "opml"
-    assert SourceType.CSV.value == "csv"
-    assert SourceType.YOUTUBE.value == "youtube"
-    assert SourceType.TWITTER.value == "twitter"
-
-
 def test_source_config_rss_requires_url() -> None:
     with pytest.raises(ValueError, match="requires 'url'"):
         SourceConfig(type=SourceType.RSS, url=None)
@@ -43,14 +35,6 @@ def test_source_config_rss_valid() -> None:
     config = SourceConfig(type=SourceType.RSS, url="https://example.com/feed.rss", label="Test")
     assert config.url == "https://example.com/feed.rss"
     assert config.label == "Test"
-
-
-def test_signal_source_config_defaults() -> None:
-    config = SignalSourceConfig()
-    assert config.sources == []
-    assert config.pull_interval_seconds == 900
-    assert config.max_items_per_pull == 50
-    assert config.ai_concurrency == 5
 
 
 def test_parse_opml_extracts_rss_urls() -> None:

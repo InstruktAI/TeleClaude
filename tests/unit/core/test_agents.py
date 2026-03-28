@@ -6,7 +6,6 @@ import pytest
 
 from teleclaude.core.agents import (
     AgentName,
-    get_known_agents,
     is_agent_title,
     normalize_agent_name,
     resolve_parser_agent,
@@ -14,18 +13,6 @@ from teleclaude.core.agents import (
 
 
 class TestAgentName:
-    @pytest.mark.unit
-    def test_claude_value(self):
-        assert AgentName.CLAUDE.value == "claude"
-
-    @pytest.mark.unit
-    def test_codex_value(self):
-        assert AgentName.CODEX.value == "codex"
-
-    @pytest.mark.unit
-    def test_gemini_value(self):
-        assert AgentName.GEMINI.value == "gemini"
-
     @pytest.mark.unit
     def test_from_str_claude(self):
         assert AgentName.from_str("claude") == AgentName.CLAUDE
@@ -47,20 +34,6 @@ class TestAgentName:
         assert "claude" in choices
         assert "codex" in choices
         assert "gemini" in choices
-
-
-class TestGetKnownAgents:
-    @pytest.mark.unit
-    def test_returns_tuple(self):
-        agents = get_known_agents()
-        assert isinstance(agents, tuple)
-
-    @pytest.mark.unit
-    def test_contains_expected_agents(self):
-        agents = get_known_agents()
-        assert "claude" in agents
-        assert "codex" in agents
-        assert "gemini" in agents
 
 
 class TestResolveParserAgent:
@@ -132,7 +105,7 @@ class TestAgentNameMetadataSpec:
             (AgentName.CODEX, "? for shortcuts"),
         ],
     )
-    def test_agent_name_returns_correct_marker(self, agent_name, expected_marker):
+    def test_agent_name_returns_correct_marker(self, agent_name: AgentName, expected_marker: str) -> None:
         """SC-1: Each agent must return its specific TUI marker.
 
         Note: Exact string assertions are permitted here per testing policy

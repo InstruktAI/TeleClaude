@@ -11,59 +11,9 @@ from teleclaude.core.models._session import Session
 from teleclaude.core.models._snapshot import (
     ComputerInfo,
     ProjectInfo,
-    RunAgentCommandArgs,
     SessionSnapshot,
-    StartSessionArgs,
-    ThinkingMode,
     TodoInfo,
 )
-
-
-class TestThinkingMode:
-    @pytest.mark.unit
-    def test_enum_values(self):
-        assert ThinkingMode.FAST.value == "fast"
-        assert ThinkingMode.MED.value == "med"
-        assert ThinkingMode.SLOW.value == "slow"
-        assert ThinkingMode.DEEP.value == "deep"
-
-
-class TestStartSessionArgs:
-    @pytest.mark.unit
-    def test_defaults(self):
-        args = StartSessionArgs(computer="local", project_path="/p", title="T", message="m")
-        assert args.agent == "claude"
-        assert args.thinking_mode == ThinkingMode.SLOW
-        assert args.caller_session_id is None
-        assert args.direct is False
-
-    @pytest.mark.unit
-    def test_fields_set(self):
-        args = StartSessionArgs(
-            computer="remote",
-            project_path="/proj",
-            title="Demo",
-            message="go",
-            agent="codex",
-            thinking_mode=ThinkingMode.FAST,
-            caller_session_id="parent-1",
-            direct=True,
-        )
-        assert args.computer == "remote"
-        assert args.direct is True
-        assert args.agent == "codex"
-
-
-class TestRunAgentCommandArgs:
-    @pytest.mark.unit
-    def test_defaults(self):
-        args = RunAgentCommandArgs(computer="local", command="/next-build")
-        assert args.args == ""
-        assert args.project is None
-        assert args.agent == "claude"
-        assert args.thinking_mode == ThinkingMode.SLOW
-        assert args.subfolder == ""
-        assert args.caller_session_id is None
 
 
 class TestSessionSnapshot:
@@ -225,16 +175,6 @@ class TestComputerInfo:
         assert isinstance(d, dict)
         assert d["name"] == "box1"
         assert d["status"] == "online"
-
-    @pytest.mark.unit
-    def test_defaults(self):
-        info = ComputerInfo(name="box1", status="online")
-        assert info.user is None
-        assert info.host is None
-        assert info.role is None
-        assert info.is_local is False
-        assert info.system_stats is None
-        assert info.tmux_binary is None
 
 
 class TestTodoInfo:

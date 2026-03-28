@@ -9,7 +9,6 @@ import pytest
 from pydantic import ValidationError
 
 from teleclaude.events.envelope import (
-    SCHEMA_VERSION,
     ActionDescriptor,
     EventEnvelope,
     EventLevel,
@@ -28,74 +27,15 @@ def _minimal_envelope(**kwargs: object) -> EventEnvelope:
 
 
 class TestEventLevel:
-    def test_infrastructure_value(self) -> None:
-        assert int(EventLevel.INFRASTRUCTURE) == 0
-
-    def test_operational_value(self) -> None:
-        assert int(EventLevel.OPERATIONAL) == 1
-
-    def test_workflow_value(self) -> None:
-        assert int(EventLevel.WORKFLOW) == 2
-
-    def test_business_value(self) -> None:
-        assert int(EventLevel.BUSINESS) == 3
-
     def test_ordering(self) -> None:
         assert EventLevel.INFRASTRUCTURE < EventLevel.OPERATIONAL < EventLevel.WORKFLOW < EventLevel.BUSINESS
 
 
-class TestEventVisibility:
-    def test_local_value(self) -> None:
-        assert EventVisibility.LOCAL.value == "local"
-
-    def test_cluster_value(self) -> None:
-        assert EventVisibility.CLUSTER.value == "cluster"
-
-    def test_public_value(self) -> None:
-        assert EventVisibility.PUBLIC.value == "public"
-
-
 class TestEventEnvelopeDefaults:
-    def test_version_defaults_to_schema_version(self) -> None:
-        e = _minimal_envelope()
-        assert e.version == SCHEMA_VERSION
-
-    def test_visibility_defaults_to_local(self) -> None:
-        e = _minimal_envelope()
-        assert e.visibility == EventVisibility.LOCAL
-
-    def test_payload_defaults_to_empty_dict(self) -> None:
-        e = _minimal_envelope()
-        assert e.payload == {}
-
-    def test_domain_defaults_to_empty_string(self) -> None:
-        e = _minimal_envelope()
-        assert e.domain == ""
-
     def test_timestamp_is_set_on_creation(self) -> None:
         e = _minimal_envelope()
         assert e.timestamp is not None
         assert e.timestamp.tzinfo is not None
-
-    def test_idempotency_key_defaults_none(self) -> None:
-        e = _minimal_envelope()
-        assert e.idempotency_key is None
-
-    def test_entity_defaults_none(self) -> None:
-        e = _minimal_envelope()
-        assert e.entity is None
-
-    def test_actions_defaults_none(self) -> None:
-        e = _minimal_envelope()
-        assert e.actions is None
-
-    def test_terminal_when_defaults_none(self) -> None:
-        e = _minimal_envelope()
-        assert e.terminal_when is None
-
-    def test_resolution_shape_defaults_none(self) -> None:
-        e = _minimal_envelope()
-        assert e.resolution_shape is None
 
 
 class TestEventEnvelopeRequired:

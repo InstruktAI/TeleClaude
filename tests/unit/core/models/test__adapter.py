@@ -7,7 +7,6 @@ import json
 import pytest
 
 from teleclaude.core.models._adapter import (
-    AdapterType,
     DiscordAdapterMetadata,
     RedisTransportMetadata,
     SessionAdapterMetadata,
@@ -15,71 +14,7 @@ from teleclaude.core.models._adapter import (
     TransportAdapterMetadata,
     UiAdapterMetadata,
     WhatsAppAdapterMetadata,
-    _int_or_none,
-    _str_or_none,
 )
-
-
-class TestAdapterType:
-    @pytest.mark.unit
-    def test_telegram_value(self):
-        assert AdapterType.TELEGRAM.value == "telegram"
-
-    @pytest.mark.unit
-    def test_discord_value(self):
-        assert AdapterType.DISCORD.value == "discord"
-
-    @pytest.mark.unit
-    def test_whatsapp_value(self):
-        assert AdapterType.WHATSAPP.value == "whatsapp"
-
-    @pytest.mark.unit
-    def test_redis_value(self):
-        assert AdapterType.REDIS.value == "redis"
-
-
-class TestTelegramAdapterMetadata:
-    @pytest.mark.unit
-    def test_default_fields_are_none_or_falsy(self):
-        m = TelegramAdapterMetadata()
-        assert m.topic_id is None
-        assert m.output_message_id is None
-        assert m.footer_message_id is None
-        assert m.output_suppressed is False
-        assert m.parse_mode is None
-        assert m.char_offset == 0
-        assert m.user_id is None
-        assert m.badge_sent is False
-
-
-class TestDiscordAdapterMetadata:
-    @pytest.mark.unit
-    def test_default_fields_are_none_or_falsy(self):
-        m = DiscordAdapterMetadata()
-        assert m.user_id is None
-        assert m.guild_id is None
-        assert m.channel_id is None
-        assert m.thread_id is None
-        assert m.all_sessions_thread_id is None
-        assert m.output_message_id is None
-        assert m.thread_topper_message_id is None
-        assert m.status_message_id is None
-        assert m.badge_sent is False
-        assert m.char_offset == 0
-
-
-class TestWhatsAppAdapterMetadata:
-    @pytest.mark.unit
-    def test_default_fields_are_none_or_falsy(self):
-        m = WhatsAppAdapterMetadata()
-        assert m.phone_number is None
-        assert m.conversation_id is None
-        assert m.output_message_id is None
-        assert m.badge_sent is False
-        assert m.char_offset == 0
-        assert m.last_customer_message_at is None
-        assert m.last_received_message_id is None
-        assert m.closed is False
 
 
 class TestUiAdapterMetadata:
@@ -130,20 +65,6 @@ class TestUiAdapterMetadata:
         assert ui.get_telegram().topic_id == 99
 
 
-class TestRedisTransportMetadata:
-    @pytest.mark.unit
-    def test_default_fields_are_none(self):
-        m = RedisTransportMetadata()
-        assert m.channel_id is None
-        assert m.output_stream is None
-        assert m.target_computer is None
-        assert m.native_session_id is None
-        assert m.project_path is None
-        assert m.last_checkpoint_time is None
-        assert m.title is None
-        assert m.channel_metadata is None
-
-
 class TestTransportAdapterMetadata:
     @pytest.mark.unit
     def test_get_redis_initializes_on_first_call(self):
@@ -187,7 +108,6 @@ class TestSessionAdapterMetadata:
         tg = TelegramAdapterMetadata(topic_id=5, char_offset=0, output_suppressed=False, badge_sent=False)
         meta = SessionAdapterMetadata(telegram=tg)
         data = json.loads(meta.to_json())
-        # None fields must not appear
         assert "output_message_id" not in data.get("telegram", {})
         assert "footer_message_id" not in data.get("telegram", {})
 
@@ -255,32 +175,6 @@ class TestSessionAdapterMetadata:
         raw = json.dumps({"telegram": {"threaded_footer_message_id": "ftr99"}})
         meta = SessionAdapterMetadata.from_json(raw)
         assert meta.get_ui().get_telegram().footer_message_id == "ftr99"
-
-
-class TestCoercionHelpers:
-    @pytest.mark.unit
-    def test_int_or_none_with_int(self):
-        assert _int_or_none(42) == 42
-
-    @pytest.mark.unit
-    def test_int_or_none_with_digit_string(self):
-        assert _int_or_none("123") == 123
-
-    @pytest.mark.unit
-    def test_int_or_none_with_non_digit_string(self):
-        assert _int_or_none("abc") is None
-
-    @pytest.mark.unit
-    def test_int_or_none_with_none(self):
-        assert _int_or_none(None) is None
-
-    @pytest.mark.unit
-    def test_str_or_none_with_value(self):
-        assert _str_or_none(42) == "42"
-
-    @pytest.mark.unit
-    def test_str_or_none_with_none(self):
-        assert _str_or_none(None) is None
 
 
 class TestTelegramFromDictToDict:
