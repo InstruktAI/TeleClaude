@@ -203,6 +203,40 @@ async def resume_agent(
     await execute_terminal_command(session.session_id, command_str, None, True)
 
 
+async def _terminate_agent_process(tmux_session_name: str) -> None:
+    """Send SIGTERM directly to the agent process via its PID.
+
+    tmux send-keys C-c goes through the terminal layer and gets swallowed
+    when the agent is mid-tool-execution. Direct kill bypasses that.
+    """
+    logger.info("agent_restart: sending direct SIGTERM to agent in %s", tmux_session_name)
+    pane_pid = await tmux_bridge.get_pane_pid(tmux_session_name)
+    if not pane_pid:
+        return
+    child_procs = await asyncio.create_subprocess_exec(
+        "pgrep",
+        "-P",
+        str(pane_pid),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await child_procs.communicate()
+    if not stdout:
+        return
+    agent_pid = stdout.decode().strip().split("\n")[0].strip()
+    if not agent_pid.isdigit():
+        return
+    logger.info("agent_restart: killing PID %s with SIGTERM", agent_pid)
+    kill_proc = await asyncio.create_subprocess_exec(
+        "kill",
+        "-TERM",
+        agent_pid,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await kill_proc.communicate()
+
+
 @with_session
 async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements  # Restart flow is intentionally linear.
     session: Session,
@@ -289,21 +323,7 @@ async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements 
         session.tmux_session_name,
     )
 
-    # Double C-c in a single tmux call — tmux delivers both within its event loop
-    double_cc = [
-        config.computer.tmux_binary,
-        "send-keys",
-        "-t",
-        session.tmux_session_name,
-        "C-c",
-        "C-c",
-    ]
-    proc = await asyncio.create_subprocess_exec(
-        *double_cc,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await proc.communicate()
+    await _terminate_agent_process(session.tmux_session_name)
 
     ready = await tmux_io.wait_for_shell_ready(session)
     if not ready:
