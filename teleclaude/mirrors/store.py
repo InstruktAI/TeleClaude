@@ -10,14 +10,13 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from teleclaude.config import config
+from teleclaude import paths as tc_paths
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime, parse_iso_datetime
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
-_MIRRORS_DB_PATH = Path("~/.teleclaude/mirrors.db").expanduser()
 _schema_initialized: set[str] = set()
 
 
@@ -87,22 +86,6 @@ class SessionMirrorContext:  # pylint: disable=too-many-instance-attributes
     visibility: str | None = None
     last_input_origin: str | None = None
     adapter_metadata_json: str | None = None
-
-
-def resolve_db_path(db: object | None = None) -> str:
-    """Resolve mirrors database path. Defaults to ~/.teleclaude/mirrors.db."""
-    if db is None:
-        return str(_MIRRORS_DB_PATH)
-    if isinstance(db, Path):
-        return str(db.expanduser())
-    if isinstance(db, str):
-        return str(Path(db).expanduser())
-    db_path = getattr(db, "db_path", None)
-    if isinstance(db_path, str):
-        return db_path
-    if isinstance(db_path, Path):
-        return str(db_path.expanduser())
-    return str(_MIRRORS_DB_PATH)
 
 
 def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
@@ -184,8 +167,8 @@ END;
 """
 
 
-def _connect_rw(db: object | None = None) -> sqlite3.Connection:
-    path = resolve_db_path(db)
+def _connect_rw(db: str | Path | None = None) -> sqlite3.Connection:
+    path = str(Path(db).expanduser()) if db is not None else str(tc_paths.MIRRORS_DB_PATH)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -194,12 +177,12 @@ def _connect_rw(db: object | None = None) -> sqlite3.Connection:
     return conn
 
 
-def _connect_ro(db: object | None = None) -> sqlite3.Connection:
-    path = Path(resolve_db_path(db)).expanduser().resolve()
+def _connect_ro(db: str | Path | None = None) -> sqlite3.Connection:
+    resolved = Path(db).expanduser().resolve() if db is not None else tc_paths.MIRRORS_DB_PATH.resolve()
     # Ensure schema and migrations are applied (also creates DB if missing).
-    if str(path) not in _schema_initialized:
+    if str(resolved) not in _schema_initialized:
         _connect_rw(db).close()
-    uri = f"file:{quote(str(path))}?mode=ro"
+    uri = f"file:{quote(str(resolved))}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
@@ -246,7 +229,7 @@ def search_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
     agents: Sequence[AgentName | str],
     *,
     limit: int = 20,
-    db: object | None = None,
+    db: str | Path | None = None,
     computers: Sequence[str] | None = None,
     caller_email: str | None = None,
     caller_role: str | None = None,
@@ -328,7 +311,7 @@ def search_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
 def get_mirror(  # pylint: disable=too-many-arguments
     session_id: str | None = None,
     *,
-    db: object | None = None,
+    db: str | Path | None = None,
     computer: str | None = None,
     source_identity: str | None = None,
     caller_email: str | None = None,
@@ -419,7 +402,7 @@ def get_mirror(  # pylint: disable=too-many-arguments
     )
 
 
-def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
+def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None:
     """Insert or update a mirror row."""
     if not record.source_identity:
         msg = "MirrorRecord.source_identity is required"
@@ -504,7 +487,7 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
 def delete_mirror(
     session_id: str | None = None,
     *,
-    db: object | None = None,
+    db: str | Path | None = None,
     source_identity: str | None = None,
 ) -> None:
     """Delete a mirror row if it exists."""
@@ -542,7 +525,7 @@ def list_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
     identity: str | None = None,
     caller_email: str | None = None,
     caller_role: str | None = None,
-    db: object | None = None,
+    db: str | Path | None = None,
 ) -> list[MirrorRecord]:
     """List mirror records with optional filtering and role-based access control."""
     clauses: list[str] = []
@@ -610,7 +593,7 @@ def list_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
 
 def _connect_main_ro() -> sqlite3.Connection:
     """Read-only connection to the main teleclaude.db for session lookups."""
-    path = Path(config.database.path).expanduser().resolve()
+    path = tc_paths.MAIN_DB_PATH.resolve()
     uri = f"file:{quote(str(path))}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
@@ -622,7 +605,6 @@ def get_session_context(
     *,
     session_id: str | None = None,
     transcript_path: str | None = None,
-    db: object | None = None,
 ) -> SessionMirrorContext | None:
     """Look up a session row from the main DB by session id or transcript path."""
     if not session_id and not transcript_path:
@@ -647,8 +629,7 @@ def get_session_context(
     params.append(session_id or "")
 
     try:
-        conn_fn = _connect_ro if db is not None else _connect_main_ro
-        with conn_fn(db) if db is not None else conn_fn() as conn:  # type: ignore[call-arg]
+        with _connect_main_ro() as conn:
             row = conn.execute(sql, params).fetchone()
     except sqlite3.OperationalError as exc:
         if "no such table" in str(exc).lower():
@@ -671,7 +652,7 @@ def get_session_context(
     )
 
 
-def get_mirror_state_by_transcript(db: object | None = None) -> dict[str, tuple[str | None, str]]:
+def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, tuple[str | None, str]]:
     """Return transcript-path keyed mirror state for reconciliation."""
     try:
         with _connect_ro(db) as conn:
@@ -696,7 +677,7 @@ def get_mirror_state_by_transcript(db: object | None = None) -> dict[str, tuple[
     return state
 
 
-def get_mirror_tombstone(source_identity: str, *, db: object | None = None) -> MirrorTombstoneRecord | None:
+def get_mirror_tombstone(source_identity: str, *, db: str | Path | None = None) -> MirrorTombstoneRecord | None:
     """Fetch a tombstone by source identity."""
     try:
         with _connect_ro(db) as conn:
@@ -726,7 +707,7 @@ def get_mirror_tombstone(source_identity: str, *, db: object | None = None) -> M
     )
 
 
-def upsert_mirror_tombstone(record: MirrorTombstoneRecord, *, db: object | None = None) -> None:
+def upsert_mirror_tombstone(record: MirrorTombstoneRecord, *, db: str | Path | None = None) -> None:
     """Insert or update an empty-transcript tombstone."""
     with _connect_rw(db) as conn:
         conn.execute(
@@ -759,7 +740,7 @@ def upsert_mirror_tombstone(record: MirrorTombstoneRecord, *, db: object | None 
         conn.commit()
 
 
-def delete_mirror_tombstone(source_identity: str, *, db: object | None = None) -> None:
+def delete_mirror_tombstone(source_identity: str, *, db: str | Path | None = None) -> None:
     """Delete a tombstone if it exists."""
     with _connect_rw(db) as conn:
         conn.execute("DELETE FROM mirror_tombstones WHERE source_identity = ?", (source_identity,))

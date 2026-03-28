@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -60,15 +59,6 @@ def _index_mirror_for_search(path: Path, record: store_module.MirrorRecord) -> N
     _ = (path, record)
 
 
-class TestResolveDbPath:
-    def test_resolve_db_path_supports_path_string_and_db_like_objects(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "mirrors.sqlite"
-
-        assert store_module.resolve_db_path(db_path) == str(db_path)
-        assert store_module.resolve_db_path(str(db_path)) == str(db_path)
-        assert store_module.resolve_db_path(SimpleNamespace(db_path=db_path)) == str(db_path)
-
-
 class TestMirrorStore:
     def test_upsert_get_and_delete_mirror_round_trip(self, tmp_path: Path) -> None:
         db_path = tmp_path / "mirrors.sqlite"
@@ -106,7 +96,7 @@ class TestMirrorStore:
         assert results[0].metadata["transcript_path"] == record.metadata["transcript_path"]
         assert results[0].topic != ""
 
-    def test_state_tombstones_and_session_context_round_trip(self, tmp_path: Path) -> None:
+    def test_state_and_tombstones_round_trip(self, tmp_path: Path) -> None:
         db_path = tmp_path / "mirrors.sqlite"
         transcript_path = str(tmp_path / "session-1.jsonl")
         _prepare_store_db(db_path)
@@ -131,7 +121,27 @@ class TestMirrorStore:
         store_module.delete_mirror_tombstone(tombstone.source_identity, db=str(db_path))
         assert store_module.get_mirror_tombstone(tombstone.source_identity, db=str(db_path)) is None
 
-        with sqlite3.connect(db_path) as conn:
+    def test_get_session_context_reads_from_main_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        main_db_path = tmp_path / "main.db"
+        transcript_path = str(tmp_path / "session-1.jsonl")
+
+        with sqlite3.connect(main_db_path) as conn:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT,
+                    computer_name TEXT,
+                    active_agent TEXT,
+                    project_path TEXT,
+                    native_log_file TEXT,
+                    human_email TEXT,
+                    visibility TEXT,
+                    last_input_origin TEXT,
+                    adapter_metadata TEXT,
+                    created_at TEXT
+                );
+                """
+            )
             conn.execute(
                 """
                 INSERT INTO sessions (
@@ -143,7 +153,11 @@ class TestMirrorStore:
             )
             conn.commit()
 
-        context = store_module.get_session_context(session_id="session-1", db=str(db_path))
+        import teleclaude.paths as tc_paths
+
+        monkeypatch.setattr(tc_paths, "MAIN_DB_PATH", main_db_path)
+
+        context = store_module.get_session_context(session_id="session-1")
 
         assert context is not None
         assert context.computer == "mac"

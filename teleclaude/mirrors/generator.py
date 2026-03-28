@@ -6,6 +6,7 @@ import asyncio
 import re
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
@@ -95,7 +96,7 @@ def generate_mirror_sync(  # pylint: disable=too-many-arguments,too-many-positio
     agent_name: AgentName,
     computer: str,
     project: str,
-    db: object | None,
+    db: str | Path | None,
     *,
     human_email: str | None = None,
     visibility: str = "private",
@@ -157,7 +158,7 @@ async def generate_mirror(  # pylint: disable=too-many-arguments,too-many-positi
     agent_name: AgentName,
     computer: str,
     project: str,
-    db: object | None,
+    db: str | Path | None,
     *,
     human_email: str | None = None,
     visibility: str = "private",

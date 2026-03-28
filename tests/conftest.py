@@ -75,9 +75,9 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
     temp_db_path = tmp_path / "teleclaude.db"
 
     try:
-        from teleclaude.config import config as tc_config
+        import teleclaude.paths as tc_paths
 
-        monkeypatch.setattr(tc_config.database, "path", str(temp_db_path))
+        monkeypatch.setattr(tc_paths, "MAIN_DB_PATH", temp_db_path)
     except Exception:
         pass
 

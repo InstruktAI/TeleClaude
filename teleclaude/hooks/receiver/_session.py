@@ -18,10 +18,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 from sqlmodel import Session as SqlSession
 
-from teleclaude.config import config
+from teleclaude import paths as tc_paths
 from teleclaude.core import db_models
 from teleclaude.memory.context import generate_context_sync
-from teleclaude.paths import SESSION_MAP_PATH
 from teleclaude.session_identity import get_session_id
 
 try:
@@ -84,7 +83,7 @@ def _create_sync_engine() -> object:
         return _sync_engine
 
     engine = create_engine(
-        f"sqlite:///{config.database.path}",
+        f"sqlite:///{tc_paths.MAIN_DB_PATH}",
         poolclass=NullPool,
     )
 
@@ -109,14 +108,14 @@ def _get_sqlmodel_module() -> Any:
 def _get_memory_context(project_name: str, identity_key: str | None = None) -> str:
     """Fetch pre-formatted memory context from local database."""
     try:
-        db_path = str(config.database.path)
+        db_path = str(tc_paths.MAIN_DB_PATH)
         return generate_context_sync(project_name, db_path, identity_key=identity_key)
     except (OSError, RuntimeError, TypeError, ValueError):
         return ""
 
 
 def _get_session_map_path() -> Path:
-    return SESSION_MAP_PATH
+    return tc_paths.SESSION_MAP_PATH
 
 
 def _session_map_key(agent: str, native_session_id: str) -> str:

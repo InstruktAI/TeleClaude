@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
+from teleclaude.paths import MIRRORS_DB_PATH  # stable constant — not monkeypatched
 
 from ..utils.transcript_discovery import (
     TranscriptCandidate,
@@ -30,7 +31,6 @@ from .store import (
     delete_mirror_tombstone,
     get_mirror_state_by_transcript,
     get_mirror_tombstone,
-    resolve_db_path,
     upsert_mirror_tombstone,
 )
 
@@ -55,8 +55,8 @@ class ReconcileResult:
 class MirrorWorker:
     """Idempotent reconciliation loop for stale or missing mirrors."""
 
-    def __init__(self, db: object | None = None, interval_s: int = RECONCILE_INTERVAL_S) -> None:
-        self.db_path = resolve_db_path(db)
+    def __init__(self, db: str | Path | None = None, interval_s: int = RECONCILE_INTERVAL_S) -> None:
+        self.db_path = str(Path(db).expanduser()) if db is not None else str(MIRRORS_DB_PATH)
         self.interval_s = interval_s
 
     def _wal_size_kb(self) -> int:

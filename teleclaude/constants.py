@@ -6,7 +6,6 @@ This module defines shared constants to ensure consistency.
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 
 # Domain scopes (single source of truth)
 # Used for snippet validation — every docs/global/<domain>/ must be listed here
@@ -31,8 +30,6 @@ API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
 MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
 
 # Internal configuration (not user-configurable)
-DATABASE_DIR = str(Path("~/.teleclaude").expanduser())
-DATABASE_FILENAME = "teleclaude.db"
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks
 OUTPUT_CADENCE_S = 1.0
 HELP_DESK_SUBDIR = ".teleclaude/help-desk"

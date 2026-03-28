@@ -78,9 +78,9 @@ class TestMemoryAndSessionMap:
             "generate_context_sync",
             lambda project_name, db_path, identity_key=None: f"{project_name}|{db_path}|{identity_key}",
         )
-        monkeypatch.setattr(
-            session_module, "config", SimpleNamespace(database=SimpleNamespace(path=Path("/tmp/db.sqlite")))
-        )
+        import teleclaude.paths as _tc_paths
+
+        monkeypatch.setattr(_tc_paths, "MAIN_DB_PATH", Path("/tmp/db.sqlite"))
 
         assert session_module._get_memory_context("teleclaude", "user-1") == "teleclaude|/tmp/db.sqlite|user-1"
 

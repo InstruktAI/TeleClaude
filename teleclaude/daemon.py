@@ -44,7 +44,7 @@ from teleclaude.events import EventDB
 from teleclaude.logging_config import setup_logging
 from teleclaude.mirrors import MirrorWorker
 from teleclaude.mirrors.processors import register_default_processors
-from teleclaude.paths import RUNTIME_SETTINGS_PATH
+from teleclaude.paths import MAIN_DB_PATH, RUNTIME_SETTINGS_PATH
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
 from teleclaude.tts.manager import TTSManager
@@ -278,7 +278,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             start_time=self._start_time,
             resource_snapshot_interval_s=RESOURCE_SNAPSHOT_INTERVAL_S,
             launchd_watch_interval_s=LAUNCHD_WATCH_INTERVAL_S,
-            db_path=db.db_path,
+            db_path=str(MAIN_DB_PATH),
         )
 
     def _on_chiptunes_track_start(self, track_label: str, sid_path: str) -> None:
@@ -496,14 +496,10 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
 
-            mirror_db_path = getattr(getattr(config, "database", None), "path", None)
-            if isinstance(mirror_db_path, str) and mirror_db_path:
-                mirror_worker = MirrorWorker(mirror_db_path)
-                self.mirror_worker_task = asyncio.create_task(mirror_worker.run(), name="mirror-worker")
-                self._track_background_task(self.mirror_worker_task, "mirror-worker")
-                logger.info("Mirror worker started")
-            else:
-                logger.warning("Mirror worker skipped: database path unavailable")
+            mirror_worker = MirrorWorker()
+            self.mirror_worker_task = asyncio.create_task(mirror_worker.run(), name="mirror-worker")
+            self._track_background_task(self.mirror_worker_task, "mirror-worker")
+            logger.info("Mirror worker started")
 
             if CODEX_TRANSCRIPT_WATCH_INTERVAL_S > 0:
                 self.codex_transcript_watch_task = asyncio.create_task(

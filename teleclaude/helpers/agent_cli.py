@@ -34,6 +34,7 @@ from teleclaude.config import config as app_config  # pylint: disable=wrong-impo
 from teleclaude.constants import AGENT_PROTOCOL  # pylint: disable=wrong-import-position
 from teleclaude.core.agents import get_enabled_agents, is_agent_enabled  # pylint: disable=wrong-import-position
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode  # pylint: disable=wrong-import-position
+from teleclaude.paths import MAIN_DB_PATH  # pylint: disable=wrong-import-position
 from teleclaude.runtime.binaries import resolve_agent_binary  # pylint: disable=wrong-import-position
 
 logger = get_logger(__name__)
@@ -171,7 +172,7 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
 
         Missing DB/table/row is treated as available to preserve standalone behavior.
         """
-        db_path = Path("~/.teleclaude/teleclaude.db").expanduser()
+        db_path = MAIN_DB_PATH
         if not db_path.exists():
             return True
 

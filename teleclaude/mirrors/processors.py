@@ -14,7 +14,7 @@ from teleclaude.core.models._adapter import SessionAdapterMetadata
 from teleclaude.utils.transcript_discovery import build_source_identity, extract_session_id, in_session_root
 
 from .generator import generate_mirror
-from .store import get_session_context, resolve_db_path
+from .store import get_session_context
 
 logger = get_logger(__name__)
 
@@ -76,8 +76,7 @@ def get_processors() -> list[MirrorProcessor]:
 
 async def process_mirror_event(event: MirrorEvent) -> None:
     """Generate a mirror for a normalized event payload."""
-    db_path = resolve_db_path()
-    context = get_session_context(session_id=event.session_id, transcript_path=event.transcript_path, db=db_path)
+    context = get_session_context(session_id=event.session_id, transcript_path=event.transcript_path)
     if context is None:
         logger.debug("Mirror processor skipped: session context missing", session_id=event.session_id)
         return
@@ -108,7 +107,7 @@ async def process_mirror_event(event: MirrorEvent) -> None:
         agent_name=agent_name,
         computer=context.computer or config.computer.name,
         project=context.project or "",
-        db=db_path,
+        db=None,
         human_email=context.human_email,
         visibility=context.visibility or "private",
         last_input_origin=context.last_input_origin,

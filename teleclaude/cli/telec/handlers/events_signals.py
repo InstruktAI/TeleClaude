@@ -7,6 +7,7 @@ import importlib
 from typing import Any
 
 from teleclaude.cli.telec.help import _usage
+from teleclaude.paths import EVENTS_DB_PATH
 
 __all__ = [
     "_handle_events",
@@ -20,11 +21,10 @@ def _build_default_catalog() -> Any:
     return importlib.import_module("teleclaude.events").build_default_catalog()
 
 
-def _load_signal_runtime() -> tuple[Any, Any, Any]:
+def _load_signal_runtime() -> tuple[Any, Any]:
     aiosqlite = importlib.import_module("aiosqlite")
-    config = importlib.import_module("teleclaude.config").config
     signal_db = importlib.import_module("teleclaude.events.signal.db").SignalDB
-    return aiosqlite, config, signal_db
+    return aiosqlite, signal_db
 
 
 def _handle_events(args: list[str]) -> None:
@@ -95,9 +95,8 @@ def _handle_signals_status() -> None:
     """Show signal pipeline item/cluster/synthesis counts and last ingest time."""
 
     async def _query() -> None:
-        aiosqlite, config, signal_db = _load_signal_runtime()
-        db_path = config.database.path
-        async with aiosqlite.connect(db_path) as conn:
+        aiosqlite, signal_db = _load_signal_runtime()
+        async with aiosqlite.connect(str(EVENTS_DB_PATH)) as conn:
             conn.row_factory = aiosqlite.Row
             sdb = signal_db(conn)
             db_error: type[Exception] = getattr(aiosqlite, "Error", RuntimeError)

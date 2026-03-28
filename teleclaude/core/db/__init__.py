@@ -4,7 +4,7 @@ Re-exports all public names from submodules for backward compatibility.
 The Db class is assembled here via mixin inheritance.
 """
 
-from teleclaude.config import config
+from teleclaude.paths import MAIN_DB_PATH
 
 from ._base import DbBase
 from ._hooks import DbHooksMixin
@@ -42,7 +42,7 @@ class Db(  # pylint: disable=too-many-ancestors  # The DB facade is intentionall
 
 
 # Module-level singleton instance (initialized on first import)
-db = Db(config.database.path)
+db = Db(str(MAIN_DB_PATH))
 
 
 __all__ = [

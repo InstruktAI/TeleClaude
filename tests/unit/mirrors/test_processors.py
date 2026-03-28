@@ -42,11 +42,10 @@ class TestProcessMirrorEvent:
         expected_transcript_path = str(transcript_path)
         generated_calls: list[tuple[str, str, str, str, str, str]] = []
 
-        monkeypatch.setattr(processors_module, "resolve_db_path", lambda: "mirrors.sqlite")
         monkeypatch.setattr(
             processors_module,
             "get_session_context",
-            lambda session_id=None, transcript_path=None, db=None: SessionMirrorContext(
+            lambda session_id=None, transcript_path=None: SessionMirrorContext(
                 session_id="session-1",
                 computer="",
                 agent="claude",
@@ -89,11 +88,10 @@ class TestProcessMirrorEvent:
     async def test_process_mirror_event_skips_unknown_agent_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         warnings: list[str] = []
 
-        monkeypatch.setattr(processors_module, "resolve_db_path", lambda: "mirrors.sqlite")
         monkeypatch.setattr(
             processors_module,
             "get_session_context",
-            lambda session_id=None, transcript_path=None, db=None: SessionMirrorContext(
+            lambda session_id=None, transcript_path=None: SessionMirrorContext(
                 session_id="session-1",
                 computer="mac",
                 agent="unknown",
@@ -114,11 +112,10 @@ class TestProcessMirrorEvent:
     async def test_process_mirror_event_passes_expanded_session_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
         generated_calls: list[tuple[object, ...]] = []
 
-        monkeypatch.setattr(processors_module, "resolve_db_path", lambda: "mirrors.sqlite")
         monkeypatch.setattr(
             processors_module,
             "get_session_context",
-            lambda session_id=None, transcript_path=None, db=None: cast(Any, SessionMirrorContext)(
+            lambda session_id=None, transcript_path=None: cast(Any, SessionMirrorContext)(
                 session_id="session-1",
                 computer="mac",
                 agent="claude",

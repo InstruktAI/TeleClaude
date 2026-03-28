@@ -14,8 +14,6 @@ from dotenv import load_dotenv
 
 from teleclaude.constants import (
     AGENT_PROTOCOL,
-    DATABASE_DIR,
-    DATABASE_FILENAME,
     DIRECTORY_CHECK_INTERVAL,
     HELP_DESK_SUBDIR,
     OUTPUT_CADENCE_S,
@@ -57,13 +55,6 @@ class TrustedDir:
     desc: str
     path: str
     discord_forum: int | None = None
-
-
-@dataclass
-class DatabaseConfig:
-    """Database connection configuration."""
-
-    path: str
 
 
 @dataclass
@@ -330,7 +321,6 @@ class Config:
     """Top-level application configuration."""
 
     # pylint: disable=too-many-instance-attributes
-    database: DatabaseConfig
     computer: ComputerConfig
     polling: PollingConfig
     redis: RedisConfig
@@ -822,9 +812,6 @@ def _build_config(  # pylint: disable=too-many-locals,too-many-branches,too-many
     whatsapp_enabled = whatsapp_enabled_flag or bool(whatsapp_phone_number_id and whatsapp_access_token)
 
     return Config(
-        database=DatabaseConfig(
-            path=f"{DATABASE_DIR}/{DATABASE_FILENAME}",
-        ),
         computer=ComputerConfig(
             name=str(comp_raw["name"]),  # type: ignore[index]
             user=str(comp_raw["user"]),  # type: ignore[index]
