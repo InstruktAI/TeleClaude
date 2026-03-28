@@ -238,6 +238,7 @@ class SessionListenerRow(SQLModel, table=True):
     caller_session_id: str = Field(primary_key=True)
     caller_tmux_session: str
     registered_at: str
+    one_shot: bool = False
 
 
 class ConversationLinkRow(SQLModel, table=True):

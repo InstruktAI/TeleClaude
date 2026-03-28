@@ -33,6 +33,7 @@ class SessionListener:
     caller_session_id: str  # Session that wants to be notified
     caller_tmux_session: str  # Tmux session name for injection
     registered_at: datetime
+    one_shot: bool = False  # Remove after first fire
 
 
 @dataclass
@@ -115,6 +116,7 @@ async def register_listener(
     target_session_id: str,
     caller_session_id: str,
     caller_tmux_session: str,
+    one_shot: bool = False,
 ) -> bool:
     """Register a listener for a target session's Stop event.
 
@@ -135,6 +137,7 @@ async def register_listener(
         target_session_id=target_session_id,
         caller_session_id=caller_session_id,
         caller_tmux_session=caller_tmux_session,
+        one_shot=one_shot,
     )
 
     if is_new:
@@ -202,6 +205,7 @@ async def get_listeners(target_session_id: str) -> list[SessionListener]:
             caller_session_id=row.caller_session_id,
             caller_tmux_session=row.caller_tmux_session,
             registered_at=datetime.fromisoformat(row.registered_at),
+            one_shot=row.one_shot,
         )
         for row in rows
     ]
@@ -227,6 +231,7 @@ async def pop_listeners(target_session_id: str) -> list[SessionListener]:
             caller_session_id=row.caller_session_id,
             caller_tmux_session=row.caller_tmux_session,
             registered_at=datetime.fromisoformat(row.registered_at),
+            one_shot=row.one_shot,
         )
         for row in rows
     ]
@@ -276,6 +281,7 @@ async def get_all_listeners() -> dict[str, list[SessionListener]]:
             caller_session_id=row.caller_session_id,
             caller_tmux_session=row.caller_tmux_session,
             registered_at=datetime.fromisoformat(row.registered_at),
+            one_shot=row.one_shot,
         )
         result.setdefault(row.target_session_id, []).append(listener)
     return result
@@ -292,6 +298,7 @@ async def get_listeners_for_caller(caller_session_id: str) -> list[SessionListen
             caller_session_id=row.caller_session_id,
             caller_tmux_session=row.caller_tmux_session,
             registered_at=datetime.fromisoformat(row.registered_at),
+            one_shot=row.one_shot,
         )
         for row in rows
     ]
@@ -346,6 +353,7 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
     Returns:
         Number of listeners successfully notified
     """
+    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
     from teleclaude.core.tmux_delivery import deliver_listener_message  # pylint: disable=import-outside-toplevel
 
     listeners = await get_listeners(target_session_id)
@@ -372,6 +380,14 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
             success_count += 1
         else:
             logger.warning("Failed to notify caller %s", listener.caller_session_id)
+        if listener.one_shot:
+            await db.unregister_listener(
+                target_session_id=target_session_id,
+                caller_session_id=listener.caller_session_id,
+            )
+            logger.debug(
+                "One-shot listener removed: caller=%s target=%s", listener.caller_session_id, target_session_id
+            )
 
     return success_count
 

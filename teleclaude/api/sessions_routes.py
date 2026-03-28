@@ -921,6 +921,7 @@ async def send_message_endpoint(
                     target_session_id=session_id,
                     caller_session_id=identity.session_id,
                     caller_tmux_session=identity.tmux_session_name,
+                    one_shot=True,
                 )
             except Exception:  # pylint: disable=broad-exception-caught  # Listener failures must not block message delivery.
                 logger.debug(

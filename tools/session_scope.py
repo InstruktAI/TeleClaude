@@ -47,7 +47,8 @@ def _filter_by_mode(mode: str, touched: set[str], project_root: Path) -> list[st
         result_set: set[str] = set()
         for f in touched:
             if f.endswith(".py") or f.endswith(".pyi"):
-                result_set.add(f)
+                if (project_root / f).exists():
+                    result_set.add(f)
                 if f.startswith("teleclaude/"):
                     # Include test companion alongside the source file.
                     companion = _mirror_path(f)

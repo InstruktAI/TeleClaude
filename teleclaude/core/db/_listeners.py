@@ -25,6 +25,7 @@ class DbListenersMixin:
         target_session_id: str,
         caller_session_id: str,
         caller_tmux_session: str,
+        one_shot: bool = False,
     ) -> bool:
         """Upsert a listener row. Returns True if newly inserted, False if already existed."""
         now = datetime.now(UTC).isoformat()
@@ -48,6 +49,7 @@ class DbListenersMixin:
                 caller_session_id=caller_session_id,
                 caller_tmux_session=caller_tmux_session,
                 registered_at=now,
+                one_shot=one_shot,
             )
             db_session.add(row)
             try:
