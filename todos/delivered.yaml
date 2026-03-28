@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: os-managed-todo-watchers
+  date: '2026-03-28'
+  commit: edaa6fb22a13
 - slug: history-role-aware
   date: '2026-03-27'
   commit: ee71d5c58601

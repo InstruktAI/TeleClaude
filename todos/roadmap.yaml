@@ -53,7 +53,6 @@
   after:
   - session-arch-cleanup
 - slug: with-session-staleness
-- slug: os-managed-todo-watchers
 - slug: companies-onboard
 - slug: activation-trigger
 - slug: agent-cli-context-preservation
