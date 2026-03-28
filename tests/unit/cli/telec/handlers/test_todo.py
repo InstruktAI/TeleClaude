@@ -44,7 +44,10 @@ def test_handle_todo_dump_pushes_to_remote(
 
 
 def test_handle_todo_split_pushes_parent_and_children(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_ensure_pushed: MagicMock
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mock_ensure_pushed: MagicMock,
+    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     import teleclaude.todo_scaffold as scaffold
@@ -120,7 +123,10 @@ def test_handle_todo_dump_writes_input_and_emits_event(
 
 
 def test_handle_todo_split_passes_children_to_scaffold(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     created = [tmp_path / "todos" / "child-a", tmp_path / "todos" / "child-b"]
 

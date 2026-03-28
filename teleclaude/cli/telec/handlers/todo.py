@@ -258,23 +258,34 @@ def _handle_todo_dump(args: list[str]) -> None:
         [f"todos/{slug}", "todos/roadmap.yaml"],
         f"chore(todos): dump {slug}",
     )
-    if not _ok and _reason == "index_locked":
-        lock_path = project_root / ".git" / "index.lock"
-        print(
-            f"Error: bookkeeping commit blocked by stale git lock.\n"
-            f"  Recovery: verify no git process is running, then:\n"
-            f"    rm {lock_path}\n"
-            f"    telec todo dump {slug} <content>\n"
-            f"  The command is idempotent — re-running is safe."
-        )
-        raise SystemExit(1)
-    if not _ok and _reason in ("commit_failed", "not_a_repo"):
-        print(
-            f"Error: bookkeeping commit failed ({_reason}).\n"
-            f"  Recovery: fix the issue and re-run:\n"
-            f"    telec todo dump {slug} <content>\n"
-            f"  The command is idempotent — re-running is safe."
-        )
+    if not _ok:
+        if _reason == "index_locked":
+            lock_path = project_root / ".git" / "index.lock"
+            print(
+                f"Error: bookkeeping commit blocked by stale git lock.\n"
+                f"  Recovery: verify no git process is running, then:\n"
+                f"    rm {lock_path}\n"
+                f"    telec todo dump {slug} <content>\n"
+                f"  The command is idempotent — re-running is safe."
+            )
+        elif _reason == "push_failed":
+            print(
+                f"Error: bookkeeping committed locally but push to origin/main FAILED.\n"
+                f"  The todo '{slug}' exists on local main but NOT on origin/main.\n"
+                f"  Worktrees branch from origin/main — without the push, prepare will fail.\n"
+                f"  Recovery:\n"
+                f"    git push origin main\n"
+                f"    telec todo dump {slug} <content>\n"
+                f"  The command is idempotent — re-running is safe.\n"
+                f"  If push conflicts: git pull --rebase origin main && git push origin main"
+            )
+        else:
+            print(
+                f"Error: bookkeeping commit failed ({_reason}).\n"
+                f"  Recovery: fix the issue and re-run:\n"
+                f"    telec todo dump {slug} <content>\n"
+                f"  The command is idempotent — re-running is safe."
+            )
         raise SystemExit(1)
 
     # Emit planning.todo_dumped notification via daemon API
@@ -378,8 +389,23 @@ def _handle_todo_split(args: list[str]) -> None:
         commit_paths,
         f"chore(todos): split {slug}",
     )
-    if not _ok and _reason in ("commit_failed", "not_a_repo"):
-        print(f"Warning: bookkeeping commit skipped ({_reason})")
+    if not _ok:
+        if _reason == "push_failed":
+            print(
+                "Error: split committed locally but push to origin/main FAILED.\n"
+                "  Child todos exist on local main but NOT on origin/main.\n"
+                "  Recovery:\n"
+                "    git push origin main\n"
+                "  If push conflicts: git pull --rebase origin main && git push origin main"
+            )
+            raise SystemExit(1)
+        if _reason in ("commit_failed", "not_a_repo"):
+            print(
+                f"Error: bookkeeping commit failed ({_reason}).\n"
+                f"  Recovery: fix the issue and re-run:\n"
+                f"    telec todo split {slug} --into {' '.join(children)}"
+            )
+            raise SystemExit(1)
 
 
 def _handle_todo_remove(args: list[str]) -> None:

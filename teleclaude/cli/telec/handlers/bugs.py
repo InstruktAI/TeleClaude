@@ -122,8 +122,25 @@ def _handle_bugs_create(args: list[str]) -> None:
         [f"todos/{slug}", "todos/roadmap.yaml"],
         f"chore(todos): scaffold bug {slug}",
     )
-    if not _ok and _reason in ("commit_failed", "not_a_repo"):
-        print(f"Warning: bookkeeping commit skipped ({_reason})")
+    if not _ok:
+        if _reason == "push_failed":
+            print(
+                f"Error: bug scaffold committed locally but push to origin/main FAILED.\n"
+                f"  Bug '{slug}' exists on local main but NOT on origin/main.\n"
+                f"  Workers dispatched after this will operate on incomplete worktrees.\n"
+                f"  Recovery:\n"
+                f"    git push origin main\n"
+                f"    telec bugs create {slug}\n"
+                f"  If push conflicts: git pull --rebase origin main && git push origin main"
+            )
+            raise SystemExit(1)
+        if _reason in ("commit_failed", "not_a_repo"):
+            print(
+                f"Error: bookkeeping commit failed ({_reason}).\n"
+                f"  Recovery: fix the issue and re-run:\n"
+                f"    telec bugs create {slug}"
+            )
+            raise SystemExit(1)
 
 
 def _handle_bugs_report(args: list[str]) -> None:
@@ -198,8 +215,25 @@ def _handle_bugs_report(args: list[str]) -> None:
         [f"todos/{slug}", "todos/roadmap.yaml"],
         f"chore(todos): scaffold bug {slug}",
     )
-    if not _ok and _reason in ("commit_failed", "not_a_repo"):
-        print(f"Warning: bookkeeping commit skipped ({_reason})")
+    if not _ok:
+        if _reason == "push_failed":
+            print(
+                f"Error: bug scaffold committed locally but push to origin/main FAILED.\n"
+                f"  Bug '{slug}' exists on local main but NOT on origin/main.\n"
+                f"  Workers dispatched after this will operate on incomplete worktrees.\n"
+                f"  Recovery:\n"
+                f"    git push origin main\n"
+                f'    telec bugs report "{description}" --slug {slug}\n'
+                f"  If push conflicts: git pull --rebase origin main && git push origin main"
+            )
+            raise SystemExit(1)
+        if _reason in ("commit_failed", "not_a_repo"):
+            print(
+                f"Error: bookkeeping commit failed ({_reason}).\n"
+                f"  Recovery: fix the issue and re-run:\n"
+                f'    telec bugs report "{description}" --slug {slug}'
+            )
+            raise SystemExit(1)
 
     # Dispatch orchestrator on mainline — the state machine handles branches/worktrees
     async def _dispatch_bug_fix() -> CreateSessionResult:

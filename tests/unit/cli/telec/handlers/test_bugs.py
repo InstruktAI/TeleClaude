@@ -26,7 +26,10 @@ def mock_commit_bookkeeping():
 
 
 def test_handle_bugs_create_pushes_to_remote(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_ensure_pushed: MagicMock
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mock_ensure_pushed: MagicMock,
+    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(bugs, "create_bug_skeleton", lambda **kwargs: tmp_path / "todos" / "sample-bug")
@@ -76,7 +79,11 @@ def test_handle_bugs_dispatches_create(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_handle_bugs_create_scaffolds_bug(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mock_ensure_pushed: MagicMock,
+    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     created_dir = tmp_path / "todos" / "sample-bug"
 
@@ -89,7 +96,10 @@ def test_handle_bugs_create_scaffolds_bug(
 
 
 def test_handle_bugs_report_generates_slug_and_dispatches(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     todo_dir = tmp_path / "todos" / "fix-example-bug"
 
@@ -145,7 +155,10 @@ def test_resolve_project_by_name_unknown_lists_available(
 
 
 def test_handle_bugs_report_with_project_flag(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     project_path = tmp_path / "target-project"
     project_path.mkdir()
@@ -165,7 +178,11 @@ def test_handle_bugs_report_with_project_flag(
 
 
 def test_handle_bugs_create_with_project_flag(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mock_ensure_pushed: MagicMock,
+    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     project_path = tmp_path / "target-project"
     project_path.mkdir()

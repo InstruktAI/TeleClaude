@@ -16,6 +16,7 @@
 @docs/third-party/claude-code/skills.md
 @docs/third-party/claude-code/sub-agents.md
 @docs/third-party/codex-cli/commands.md
+@docs/third-party/codex-cli/configuration.md
 @docs/third-party/codex-cli/hooks.md
 @docs/third-party/codex-cli/permissions.md
 @docs/third-party/codex-cli/skills.md
