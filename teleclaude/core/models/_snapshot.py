@@ -76,6 +76,7 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
     visibility: str | None = "private"
     system_role: str | None = None
     job: str | None = None
+    agent_status: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert snapshot to a JSON-compatible dictionary."""
@@ -93,6 +94,7 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             "closed_at": self.closed_at,
             "last_input": self.last_input,
             "last_input_at": self.last_input_at,
+            "last_agent_stop_at": self.last_agent_stop_at,
             "last_output_summary": self.last_output_summary,
             "last_output_summary_at": self.last_output_summary_at,
             "last_output_digest": self.last_output_digest,
@@ -105,11 +107,15 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             "visibility": self.visibility,
             "system_role": self.system_role,
             "job": self.job,
+            "agent_status": self.agent_status,
         }
 
     @classmethod
     def from_db_session(cls, session: "Session", computer: str | None = None) -> "SessionSnapshot":
         """Create from database Session object."""
+        agent_status = "unknown"
+        if session.last_message_sent_at and session.last_agent_stop_at:
+            agent_status = "idle" if session.last_agent_stop_at >= session.last_message_sent_at else "active"
         return cls(
             session_id=session.session_id,
             last_input_origin=session.last_input_origin,
@@ -123,6 +129,7 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
             last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
+            last_agent_stop_at=session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None,
             last_output_summary=get_last_output_summary(session),
             last_output_summary_at=(session.last_output_at.isoformat() if session.last_output_at else None),
             last_output_digest=session.last_output_digest,
@@ -135,6 +142,7 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             visibility=getattr(session, "visibility", None) or "private",
             system_role=session.system_role,
             job=session.job,
+            agent_status=agent_status,
         )
 
     @classmethod
@@ -153,6 +161,7 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             last_activity=str(data.get("last_activity")) if data.get("last_activity") else None,
             last_input=str(data.get("last_input")) if data.get("last_input") else None,
             last_input_at=str(data.get("last_input_at")) if data.get("last_input_at") else None,
+            last_agent_stop_at=str(data.get("last_agent_stop_at")) if data.get("last_agent_stop_at") else None,
             last_output_summary=(
                 str(data.get("last_output_summary") or data.get("last_output"))
                 if (data.get("last_output_summary") or data.get("last_output"))
@@ -173,6 +182,7 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
             system_role=str(data.get("system_role")) if data.get("system_role") else None,
             job=str(data.get("job")) if data.get("job") else None,
+            agent_status=str(data.get("agent_status")) if data.get("agent_status") else None,
         )
 
 

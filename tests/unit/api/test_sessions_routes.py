@@ -94,6 +94,46 @@ class TestSessionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_list_sessions_returns_last_agent_stop_at_and_agent_status(self) -> None:
+        """List responses surface the deterministic turn-settled fields."""
+        request = _make_request()
+        sessions = [
+            SessionSnapshot(
+                session_id="worker-1",
+                last_input_origin=None,
+                title="Worker",
+                thinking_mode=None,
+                active_agent="codex",
+                status="active",
+                last_input_at="2025-02-01T12:00:00+00:00",
+                last_agent_stop_at="2025-02-01T12:00:05+00:00",
+                agent_status="idle",
+            )
+        ]
+
+        with (
+            patch(
+                "teleclaude.api.sessions_routes.command_handlers.list_sessions",
+                new=AsyncMock(return_value=sessions),
+            ),
+            patch.object(sessions_routes._STATE, "cache", None),
+        ):
+            response = await sessions_routes.list_sessions(
+                request,
+                query=ListSessionsQuery(
+                    computer=None,
+                    include_closed=False,
+                    all_sessions=False,
+                    job=None,
+                ),
+                _identity=object(),
+            )
+
+        assert response[0].last_agent_stop_at == "2025-02-01T12:00:05+00:00"
+        assert response[0].agent_status == "idle"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_send_message_endpoint_returns_existing_direct_link_response_without_dispatching(
         self,
     ) -> None:

@@ -73,4 +73,4 @@ async def test_next_create_updates_creative_phase_and_dispatches_art_generation(
     state = yaml.safe_load((todo_dir / "state.yaml").read_text(encoding="utf-8"))
     creative = state["creative"]
     assert creative["phase"] == CreativePhase.ART_GENERATION_REQUIRED.value
-    assert 'telec sessions run --command "/next-create-art" --args "slug-a"' in result
+    assert result

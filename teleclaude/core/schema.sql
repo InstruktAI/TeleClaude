@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_tool_done_at TEXT,
     last_tool_use_at TEXT,
     last_checkpoint_at TEXT,
+    last_agent_stop_at TEXT,
     working_slug TEXT,
     lifecycle_status TEXT DEFAULT 'active',
     human_email TEXT,

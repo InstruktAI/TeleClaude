@@ -108,6 +108,24 @@ class TestSessionSnapshot:
         assert snap.last_output_summary == "summary text"
 
     @pytest.mark.unit
+    def test_from_db_session_sets_idle_agent_status_when_stop_catches_up_to_input(self):
+        input_at = datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC)
+        stop_at = datetime(2025, 2, 1, 12, 0, 5, tzinfo=UTC)
+        session = self._make_session(last_message_sent_at=input_at, last_agent_stop_at=stop_at)
+        snap = SessionSnapshot.from_db_session(session)
+        assert snap.last_input_at == input_at.isoformat()
+        assert snap.last_agent_stop_at == stop_at.isoformat()
+        assert snap.agent_status == "idle"
+
+    @pytest.mark.unit
+    def test_from_db_session_sets_active_agent_status_when_stop_is_behind_input(self):
+        input_at = datetime(2025, 2, 1, 12, 0, 5, tzinfo=UTC)
+        stop_at = datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC)
+        session = self._make_session(last_message_sent_at=input_at, last_agent_stop_at=stop_at)
+        snap = SessionSnapshot.from_db_session(session)
+        assert snap.agent_status == "active"
+
+    @pytest.mark.unit
     def test_from_dict_restores_fields(self):
         data: dict[str, object] = {  # guard: loose-dict - from_dict test input
             "session_id": "s10",

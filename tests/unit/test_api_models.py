@@ -86,6 +86,7 @@ def _make_session_snapshot(
     snap.closed_at = None
     snap.last_input = None
     snap.last_input_at = None
+    snap.last_agent_stop_at = None
     snap.last_output_summary = None
     snap.last_output_summary_at = None
     snap.last_output_digest = None
@@ -97,6 +98,7 @@ def _make_session_snapshot(
     snap.visibility = visibility
     snap.system_role = system_role
     snap.job = job
+    snap.agent_status = None
     for k, v in kwargs.items():
         setattr(snap, k, v)
     return snap
@@ -312,6 +314,14 @@ class TestSessionDTOFromCore:
         snap = _make_session_snapshot()
         dto = SessionDTO.from_core(snap)
         assert dto.computer is None
+
+    @pytest.mark.unit
+    def test_agent_status_and_last_agent_stop_at_propagate(self):
+        """Derived session status fields are carried through from the snapshot."""
+        snap = _make_session_snapshot(last_agent_stop_at="2025-02-01T12:00:05+00:00", agent_status="idle")
+        dto = SessionDTO.from_core(snap)
+        assert dto.last_agent_stop_at == "2025-02-01T12:00:05+00:00"
+        assert dto.agent_status == "idle"
 
 
 # ---------------------------------------------------------------------------
@@ -1088,6 +1098,7 @@ class TestSessionMessagesDTO:
         dto = SessionMessagesDTO(session_id="s-1")
         assert dto.session_id == "s-1"
         assert dto.agent is None
+        assert dto.agent_status is None
         assert dto.messages == []
 
     @pytest.mark.unit

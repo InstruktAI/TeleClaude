@@ -22,7 +22,7 @@ __all__ = [
 
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
+1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase build --status complete
 3. Call {next_call}
 4. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
@@ -35,7 +35,7 @@ POST_COMPLETION: dict[str, str] = {
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
+1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase build --status complete
 3. Call {next_call}
 4. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
@@ -48,7 +48,7 @@ POST_COMPLETION: dict[str, str] = {
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-build": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data to extract verdict
+1. Inspect worker output via telec sessions tail <session_id> to extract verdict
 2. If verdict is APPROVE:
    a. telec sessions end <session_id>
    b. telec todo mark-phase {args} --target review_approved
@@ -79,7 +79,7 @@ POST_COMPLETION: dict[str, str] = {
 5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
+1. Inspect worker output via telec sessions tail <session_id>
 2. telec sessions end <session_id>
 3. telec todo mark-phase {args} --target review_pending
 4. Call {next_call}
@@ -89,7 +89,7 @@ POST_COMPLETION: dict[str, str] = {
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-defer": """WHEN WORKER COMPLETES:
-1. Read worker output. Confirm deferrals_processed in state.yaml
+1. Inspect worker output via telec sessions tail <session_id>. Confirm deferrals_processed in state.yaml
 2. telec sessions end <session_id>
 3. Call {next_call}
 4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
@@ -100,7 +100,7 @@ POST_COMPLETION: dict[str, str] = {
     "next-finalize": """# state.yaml lives in the worktree only — never commit it to main directly.
 
 WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data.
+1. Inspect worker output via telec sessions tail <session_id>.
 2. Accept completion only for the dispatched worker session `<session_id>`.
    Ignore notifications from any other session.
 3. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
@@ -114,7 +114,7 @@ WHEN WORKER COMPLETES:
 8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-prepare-discovery": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
+1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase requirements --status complete
 3. telec sessions end <session_id>
 4. Call {next_call}
@@ -124,7 +124,7 @@ WHEN WORKER COMPLETES:
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-prepare-draft": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
+1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase implementation_plan --status complete
 3. telec sessions end <session_id>
 4. Call {next_call}
@@ -134,7 +134,7 @@ WHEN WORKER COMPLETES:
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-build-specs": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data
+1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase test_specs --status complete
 3. telec sessions end <session_id>
 4. Call {next_call}
@@ -144,7 +144,7 @@ WHEN WORKER COMPLETES:
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-specs": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data to extract verdict
+1. Inspect worker output via telec sessions tail <session_id> to extract verdict
 2. If verdict is APPROVE:
    a. telec todo mark-phase {args} --phase test_spec_review --status approve
    b. telec sessions end <session_id>
@@ -170,7 +170,7 @@ WHEN WORKER COMPLETES:
 5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-requirements": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data to extract verdict
+1. Inspect worker output via telec sessions tail <session_id> to extract verdict
 2. If verdict is APPROVE:
    a. telec todo mark-phase {args} --phase requirements_review --status approve
    b. telec sessions end <session_id>
@@ -196,7 +196,7 @@ WHEN WORKER COMPLETES:
 5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-plan": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data to extract verdict
+1. Inspect worker output via telec sessions tail <session_id> to extract verdict
 2. If verdict is APPROVE:
    a. telec todo mark-phase {args} --phase plan_review --status approve
    b. telec sessions end <session_id>
@@ -314,50 +314,18 @@ When an event fires, you MUST immediately act on it — do NOT wait for user inp
 TAILING DISCIPLINE:
 - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
 - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+Each telec sessions tail response includes `last_input_at`, `last_activity`,
+`last_agent_stop_at`, and computed `agent_status`.
 
-=== IF YOU SELECTED CODEX AS THE AGENT ===
+HEARTBEAT RULE (applies to every agent):
 
-Codex emits false turn-complete notifications for internal sub-agent completions.
-You MUST use the two-heartbeat protocol. You are FORBIDDEN from acting on the
-first heartbeat or notification. Follow these steps exactly:
-
-STEP 3a - OBSERVATION HEARTBEAT (5 minutes):
-When the first timer fires OR a notification arrives:
-- Tail the session (first time: full window; subsequent: --since <marker_timestamp>).
-- Update <marker_timestamp> to the latest message timestamp.
-- Do NOT act. Do NOT proceed to WHEN WORKER COMPLETES. You are NOT ALLOWED to act.
-- Set a second timer: Bash(command="sleep 600", run_in_background=true)
-- Save the new task_id. This is the ACTION heartbeat.
-- WAIT again.
-
-STEP 3b - ACTION HEARTBEAT (10 minutes):
-When the second timer fires:
-- Tail with --since <marker_timestamp>.
-- If NO new messages since the observation tail: the worker is stable. Proceed to WHEN WORKER COMPLETES.
-- If new messages appear: the worker is still active. Update <marker_timestamp>.
-  Go back to STEP 3a (set a new 5-minute observation heartbeat, repeat the cycle).
-
-Any notification that arrives while waiting for the action heartbeat:
-- Tail with --since <marker_timestamp>. Update marker. Continue waiting for the action heartbeat.
-  Do NOT act.
-
-=== IF YOU SELECTED CLAUDE OR GEMINI AS THE AGENT ===
-
-Claude and Gemini notifications reliably indicate session completion.
-
-WHAT HAPPENS NEXT (one of these will occur):
-
-A) NOTIFICATION ARRIVES:
-   - Tail with --since <marker_timestamp>. Verify output contains expected deliverable.
-   - Proceed to WHEN WORKER COMPLETES below.
-
-B) TIMER COMPLETES (no notification after 5 minutes):
-   - Tail with --since <marker_timestamp>.
-   - If new messages: worker is progressing. Update marker, reset timer, WAIT again.
-   - If no new messages: worker may be stuck. Investigate or escalate.
-   Do NOT stop after checking — either reset the timer or execute completion steps.
-
-=== END AGENT-SPECIFIC SECTION ===
+A) NOTIFICATION ARRIVES OR TIMER COMPLETES:
+   - Tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+   - Update <marker_timestamp> to the latest message timestamp when new messages appear.
+   - Inspect `agent_status` in the JSON response.
+   - If `agent_status` is `active`: the current turn is still in progress. Reset the 5-minute timer and WAIT again.
+   - If `agent_status` is `idle`: the current turn is settled. Inspect the returned messages and proceed to WHEN WORKER COMPLETES below.
+   - If `agent_status` is `unknown`: inspect the session because input/stop timing is incomplete or startup/stop capture may have failed. Investigate or escalate before acting.
 
 C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
    - Cancel the old timer: KillShell(shell_id=<task_id>)

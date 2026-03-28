@@ -84,9 +84,10 @@ class TestSession:
     @pytest.mark.unit
     def test_to_dict_serializes_datetime_as_iso_string(self):
         now = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
-        session = self._make_session(created_at=now)
+        session = self._make_session(created_at=now, last_agent_stop_at=now)
         d = session.to_dict()
         assert d["created_at"] == now.isoformat()
+        assert d["last_agent_stop_at"] == now.isoformat()
 
     @pytest.mark.unit
     def test_to_dict_origin_metadata_included(self):
@@ -172,6 +173,19 @@ class TestSession:
         }
         session = Session.from_dict(data)
         assert session.lifecycle_status == "active"
+
+    @pytest.mark.unit
+    def test_from_dict_restores_last_agent_stop_at(self):
+        stop_at = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
+        data = {
+            "session_id": "s1",
+            "computer_name": "local",
+            "tmux_session_name": "tc-s1",
+            "title": "T",
+            "last_agent_stop_at": stop_at.isoformat(),
+        }
+        session = Session.from_dict(data)
+        assert session.last_agent_stop_at == stop_at
 
 
 class TestRecording:

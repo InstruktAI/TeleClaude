@@ -82,6 +82,7 @@ class DbBase:
             last_tool_done_at=DbBase._coerce_datetime(row.last_tool_done_at),
             last_tool_use_at=DbBase._coerce_datetime(row.last_tool_use_at),
             last_checkpoint_at=DbBase._coerce_datetime(row.last_checkpoint_at),
+            last_agent_stop_at=DbBase._coerce_datetime(row.last_agent_stop_at),
             turn_triggered_by_linked_output=bool(row.turn_triggered_by_linked_output)
             if hasattr(row, "turn_triggered_by_linked_output")
             else False,

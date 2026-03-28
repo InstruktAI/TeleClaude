@@ -10,7 +10,7 @@ from sqlmodel import SQLModel
 
 
 @dataclass(kw_only=True)
-class SessionSnapshotTimestampFields:
+class SessionSnapshotTimestampFields:  # pylint: disable=too-many-instance-attributes
     """Shared timing fields carried by session snapshots and DTOs."""
 
     created_at: str | None = None
@@ -18,6 +18,7 @@ class SessionSnapshotTimestampFields:
     closed_at: str | None = None
     last_input: str | None = None
     last_input_at: str | None = None
+    last_agent_stop_at: str | None = None
     last_output_summary: str | None = None
     last_output_summary_at: str | None = None
 
@@ -45,6 +46,7 @@ class SessionDTOTimestampFields(BaseModel):
     closed_at: str | None = None
     last_input: str | None = None
     last_input_at: str | None = None
+    last_agent_stop_at: str | None = None
     last_output_summary: str | None = None
     last_output_summary_at: str | None = None
 
@@ -83,6 +85,7 @@ class SessionRecentToolFields:
     last_tool_done_at: datetime | None = None
     last_tool_use_at: datetime | None = None
     last_checkpoint_at: datetime | None = None
+    last_agent_stop_at: datetime | None = None
     turn_triggered_by_linked_output: bool = False
     working_slug: str | None = None
 
@@ -104,5 +107,6 @@ class SessionRecentToolColumns(SQLModel):
     last_tool_done_at: datetime | None = None
     last_tool_use_at: datetime | None = None
     last_checkpoint_at: datetime | None = None
+    last_agent_stop_at: datetime | None = None
     turn_triggered_by_linked_output: bool = False
     working_slug: str | None = None

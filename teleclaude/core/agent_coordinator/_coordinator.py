@@ -402,6 +402,9 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             "db",
         )
 
+        stop_timestamp = datetime.now(UTC).isoformat()
+        await db.update_session(session_id, last_agent_stop_at=stop_timestamp)
+
         await self._record_agent_stop_input(session_id, payload, session)
         link_output, summary = await self._record_agent_stop_output(session_id, payload)
 
@@ -409,8 +412,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
 
         # Emit canonical lifecycle status: completed (R2)
-        now_ts = datetime.now(UTC).isoformat()
-        self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=now_ts)
+        self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=stop_timestamp)
 
         # Immediate headless pull on stop — final output must be captured.
         await self._signal_headless_activity(session_id)

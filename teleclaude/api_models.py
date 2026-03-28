@@ -122,6 +122,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
     visibility: str = "private"
     system_role: str | None = None
     job: str | None = None
+    agent_status: Literal["active", "idle", "unknown"] | None = None
 
     @classmethod
     def from_core(cls, session: "SessionSnapshot", computer: str | None = None) -> "SessionDTO":
@@ -142,6 +143,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
                 "closed_at": session.closed_at,
                 "last_input": session.last_input,
                 "last_input_at": session.last_input_at,
+                "last_agent_stop_at": session.last_agent_stop_at,
                 "last_output_summary": session.last_output_summary,
                 "last_output_summary_at": session.last_output_summary_at,
                 "last_output_digest": session.last_output_digest,
@@ -154,6 +156,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
                 "visibility": session.visibility,
                 "system_role": session.system_role,
                 "job": session.job,
+                "agent_status": session.agent_status,
             }
         payload = dict(payload_obj)
         payload["visibility"] = session.visibility or "private"
@@ -607,6 +610,10 @@ class SessionMessagesDTO(BaseModel):
 
     session_id: str
     agent: str | None = None
+    last_activity: str | None = None
+    last_input_at: str | None = None
+    last_agent_stop_at: str | None = None
+    agent_status: Literal["active", "idle", "unknown"] | None = None
     messages: list[MessageDTO] = Field(default_factory=list)
 
 

@@ -146,11 +146,13 @@ async def test_update_session_persists_fields_auto_timestamps_and_emits_updated_
         session_id="sess-001",
         emit_session_started=False,
     )
+    stop_at = datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC)
     with patch("teleclaude.core.db._sessions.event_bus.emit") as mock_emit:
         await db.update_session(
             "sess-001",
             last_message_sent="hello",
             last_output_raw="summary",
+            last_agent_stop_at=stop_at.isoformat(),
             invalid_field="ignored",
         )
 
@@ -161,6 +163,7 @@ async def test_update_session_persists_fields_auto_timestamps_and_emits_updated_
     assert session.last_message_sent_at is not None
     assert session.last_output_raw == "summary"
     assert session.last_output_at is not None
+    assert session.last_agent_stop_at == stop_at
     assert mock_emit.call_count == 1
     assert mock_emit.call_args.args[0] == TeleClaudeEvents.SESSION_UPDATED
     assert mock_emit.call_args.args[1].session_id == "sess-001"
@@ -169,6 +172,7 @@ async def test_update_session_persists_fields_auto_timestamps_and_emits_updated_
         SessionField.LAST_MESSAGE_SENT_AT.value,
         SessionField.LAST_OUTPUT_RAW.value,
         SessionField.LAST_OUTPUT_AT.value,
+        SessionField.LAST_AGENT_STOP_AT.value,
     }
 
 

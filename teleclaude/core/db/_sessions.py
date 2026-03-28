@@ -354,6 +354,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
                         "last_tool_done_at",
                         "last_tool_use_at",
                         "last_checkpoint_at",
+                        "last_agent_stop_at",
                     }:
                         if value is None:
                             if current_val is not None:

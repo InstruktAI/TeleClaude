@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shlex
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,7 +22,7 @@ from teleclaude.api_models import (
     SendResultRequest,
     VoiceInputRequest,
 )
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import GetSessionDataCommand
 
@@ -42,6 +43,16 @@ def _identity(
 
 
 class TestSessionsActionsRoutes:
+    def _make_session(self, **kwargs: object) -> Session:
+        defaults = {
+            "session_id": "sess-messages",
+            "computer_name": "local",
+            "tmux_session_name": "tc-sess-messages",
+            "title": "Messages",
+        }
+        defaults.update(kwargs)
+        return Session(**defaults)
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_send_keys_success_wires_command_mapper_and_service(self) -> None:
@@ -251,10 +262,13 @@ class TestSessionsActionsRoutes:
         """Structured transcript reads honor the visibility flags from query parameters."""
         http_request = SimpleNamespace(headers={})
         identity = _identity("sess-messages")
-        session = SimpleNamespace(
+        session = self._make_session(
             active_agent="claude",
             transcript_files='["/tmp/previous.jsonl"]',
             native_log_file="/tmp/current.jsonl",
+            last_activity=datetime(2025, 2, 1, 12, 0, 3, tzinfo=UTC),
+            last_message_sent_at=datetime(2025, 2, 1, 12, 0, 5, tzinfo=UTC),
+            last_agent_stop_at=datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC),
         )
         projected_block = object()
         structured_message = SimpleNamespace(
@@ -297,6 +311,10 @@ class TestSessionsActionsRoutes:
 
         assert response.session_id == "sess-messages"
         assert response.agent == "claude"
+        assert response.last_input_at == "2025-02-01T12:00:05+00:00"
+        assert response.last_agent_stop_at == "2025-02-01T12:00:00+00:00"
+        assert response.last_activity == "2025-02-01T12:00:03+00:00"
+        assert response.agent_status == "active"
         assert [message.model_dump() for message in response.messages] == [
             {
                 "role": "assistant",
@@ -325,7 +343,14 @@ class TestSessionsActionsRoutes:
         """Fallback session data becomes a single assistant text message when no structured output exists."""
         http_request = SimpleNamespace(headers={})
         identity = _identity("sess-tail")
-        session = SimpleNamespace(active_agent="claude", transcript_files="[]", native_log_file=None)
+        session = self._make_session(
+            session_id="sess-tail",
+            active_agent="claude",
+            transcript_files="[]",
+            native_log_file=None,
+            last_message_sent_at=datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC),
+            last_agent_stop_at=datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC),
+        )
         service = SimpleNamespace(get_session_data=AsyncMock(return_value={"messages": "terminal tail output"}))
 
         with (
@@ -351,6 +376,7 @@ class TestSessionsActionsRoutes:
 
         assert response.session_id == "sess-tail"
         assert response.agent == "claude"
+        assert response.agent_status == "idle"
         assert [message.model_dump() for message in response.messages] == [
             {
                 "role": "assistant",

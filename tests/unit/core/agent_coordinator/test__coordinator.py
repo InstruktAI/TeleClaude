@@ -550,6 +550,26 @@ class TestHandleAgentStop:
         assert "completed" in called_statuses
 
     @pytest.mark.unit
+    async def test_records_last_agent_stop_at(self):
+        coord = _make_coordinator()
+        context = MagicMock()
+        context.session_id = "sess-001"
+        context.data.source_computer = None
+
+        with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=_make_session())
+            mock_db.update_session = AsyncMock()
+            coord._record_agent_stop_input = AsyncMock()
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            coord._finalize_agent_stop = AsyncMock()
+            await coord.handle_agent_stop(context)
+
+        update_calls = mock_db.update_session.call_args_list
+        assert any("last_agent_stop_at" in call.kwargs for call in update_calls)
+
+    @pytest.mark.unit
     async def test_emits_activity_with_summary(self):
         coord = _make_coordinator()
         context = MagicMock()
@@ -596,7 +616,7 @@ class TestHandleAgentStop:
         # last_tool_done_at is no longer cleared at agent_stop — the cadence
         # loop owns the cursor and nulling it caused duplicate turn breaks.
         update_calls = mock_db.update_session.call_args_list
-        assert not any(c[1].get("last_tool_done_at") is None for c in update_calls)
+        assert not any("last_tool_done_at" in c.kwargs and c.kwargs["last_tool_done_at"] is None for c in update_calls)
 
 
 class TestHandleToolUse:

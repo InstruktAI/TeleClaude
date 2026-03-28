@@ -118,6 +118,7 @@ class SessionField(Enum):
     LAST_TOOL_DONE_AT = "last_tool_done_at"
     LAST_TOOL_USE_AT = "last_tool_use_at"
     LAST_CHECKPOINT_AT = "last_checkpoint_at"
+    LAST_AGENT_STOP_AT = "last_agent_stop_at"
 
 
 class TranscriptFormat(str, Enum):
@@ -192,6 +193,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             data["last_tool_use_at"] = self.last_tool_use_at.isoformat()
         if self.last_checkpoint_at:
             data["last_checkpoint_at"] = self.last_checkpoint_at.isoformat()
+        if self.last_agent_stop_at:
+            data["last_agent_stop_at"] = self.last_agent_stop_at.isoformat()
         if self.closed_at:
             data["closed_at"] = self.closed_at.isoformat()
         if self.last_memory_extraction_at:
@@ -249,6 +252,12 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             if isinstance(last_checkpoint_at_raw, str)
             else last_checkpoint_at_raw
         )
+        last_agent_stop_at_raw = data.get("last_agent_stop_at")
+        last_agent_stop_at = (
+            parse_iso_datetime(last_agent_stop_at_raw)
+            if isinstance(last_agent_stop_at_raw, str)
+            else last_agent_stop_at_raw
+        )
 
         # Parse origin_metadata from dict or keep empty
         origin_raw = data.get("origin_metadata")
@@ -303,6 +312,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             last_tool_done_at=ensure_utc(last_tool_done_at) if isinstance(last_tool_done_at, datetime) else None,
             last_tool_use_at=ensure_utc(last_tool_use_at) if isinstance(last_tool_use_at, datetime) else None,
             last_checkpoint_at=ensure_utc(last_checkpoint_at) if isinstance(last_checkpoint_at, datetime) else None,
+            last_agent_stop_at=ensure_utc(last_agent_stop_at) if isinstance(last_agent_stop_at, datetime) else None,
             last_output_summary=_get_optional_str("last_output_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),
             working_slug=_get_optional_str("working_slug"),

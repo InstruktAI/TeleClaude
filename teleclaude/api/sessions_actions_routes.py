@@ -7,6 +7,7 @@ import json
 import shlex
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -492,9 +493,25 @@ async def get_session_messages(
                     )
                 ]
 
+        last_activity_at = session.last_activity.isoformat() if isinstance(session.last_activity, datetime) else None
+        last_input_at = (
+            session.last_message_sent_at.isoformat() if isinstance(session.last_message_sent_at, datetime) else None
+        )
+        last_agent_stop_at = (
+            session.last_agent_stop_at.isoformat() if isinstance(session.last_agent_stop_at, datetime) else None
+        )
+        if isinstance(session.last_message_sent_at, datetime) and isinstance(session.last_agent_stop_at, datetime):
+            agent_status = "idle" if session.last_agent_stop_at >= session.last_message_sent_at else "active"
+        else:
+            agent_status = "unknown"
+
         return SessionMessagesDTO(
             session_id=session_id,
             agent=session.active_agent,
+            last_activity=last_activity_at,
+            last_input_at=last_input_at,
+            last_agent_stop_at=last_agent_stop_at,
+            agent_status=agent_status,
             messages=messages,
         )
     except HTTPException:
