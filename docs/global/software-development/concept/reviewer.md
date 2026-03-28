@@ -10,6 +10,7 @@ type: 'concept'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/principle/failure-modes.md
+- @~/.teleclaude/docs/software-development/policy/testing.md
 
 ## What
 
@@ -18,6 +19,7 @@ Evaluative role. Assess code against requirements and standards, produce structu
 - **Evaluate without ego** - Detached assessment of work against requirements and standards.
 - **Apply systematic thoroughness** - Check all aspects comprehensively.
 - **Verify test spec integrity** - Confirm that prepare-delivered test specifications are satisfied, not weakened or deleted. Diff spec delivery against final state to detect assertion tampering.
+- **Judge test quality, not test presence** - A test only counts when it proves behavior and can credibly catch a bug in our code.
 - **Produce actionable findings** - Structured, severity-ordered results with file:line references.
 - **Deliver decisive verdicts** - Binary APPROVE or REQUEST CHANGES decisions.
 

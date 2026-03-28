@@ -10,6 +10,7 @@ scope: 'domain'
 
 ## Required reads
 
+- @~/.teleclaude/docs/software-development/concept/reviewer.md
 - @~/.teleclaude/docs/software-development/policy/code-quality.md
 - @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/policy/linting-requirements.md
@@ -62,7 +63,7 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 | paradigm   | Always                      | _(reviewer direct)_        | Paradigm-fit assessment (see below)                               |
 | principles | Always                      | _(reviewer direct)_        | Principle violation hunt (see below)                              |
 | security   | Always                      | _(reviewer direct)_        | Check for secrets, injection, auth gaps, info leakage (see below) |
-| tests      | Always                      | next-test-analyzer         | Evaluate coverage, quality, and presence for new behavior         |
+| tests      | Always                      | next-test-analyzer         | Evaluate behavioral value, weak-test anti-patterns, and coverage  |
 | errors     | Always                      | next-silent-failure-hunter | Find silent failures                                              |
 | types      | Types added/modified        | next-type-design-analyzer  | Validate type design                                              |
 | comments   | Code changed                | next-comment-analyzer      | Check accuracy of comments on changed code                        |
@@ -131,7 +132,17 @@ Security violations are **Critical** findings.
 
 #### Test coverage check
 
-This lane fires **always**, not only when test files changed. The absence of tests for new behavior is itself a finding.
+This lane fires **always**, not only when test files changed. The absence of tests for new behavior is itself a finding. The presence of tests is **not** evidence of adequate review. Weak, tautological, prose-lock, or implementation-detail tests are findings even when coverage exists.
+
+Read the changed or newly added tests directly. Map each one to the production behavior it claims to protect. Do not infer test value from file names, coverage output, or suite counts.
+
+Before approving a changed or added test, answer all three:
+
+1. What behavior, decision, or failure path does this test pin?
+2. At what meaningful boundary is that behavior observed?
+3. What real bug in **our** code would this test catch?
+
+If you cannot answer those questions concretely, the test is weak and does not count as meaningful coverage.
 
 - Are prepare-delivered test specs satisfied? Diff the spec delivery commit against the
   final state to verify no assertions were weakened or deleted.
@@ -140,8 +151,31 @@ This lane fires **always**, not only when test files changed. The absence of tes
 - Edge cases and error paths must have coverage.
 - Browser-based frontend or web UI changes must include Playwright smoke verification evidence from build.
 - Tests must verify behavior, not implementation details.
-- Reject tests that lock narrative documentation wording or style.
+- Reject tests whose primary assertion is prose, wording, formatting, or other human-facing text unless the exact token is execution-significant.
+- Reject tests whose primary assertion is shape, signatures, keys, properties, constants, configuration echoes, or literal structure checks without proving decision logic or behavior.
+- Reject tests whose only evidence is mock or spy interaction unless the interaction itself is the contract being tested at an architectural boundary.
+- Reject tests that primarily verify framework, library, serializer, ORM, or other third-party behavior instead of our logic.
+- Reject tests that pin private helpers, internal state, or refactor-sensitive implementation details when the same behavior can be checked at a public boundary.
+- Reject characterization tests that pin observed behavior but provide no credible bug-catching value or mutation-sanity reasoning.
+- Reject truthy or non-specific assertions that a trivially wrong implementation could satisfy.
+- Reject redundant duplicate coverage across files when one test home is sufficient.
 - Allow exact-string assertions only for execution-significant tokens/contracts.
+
+Treat the following as common weak-test patterns:
+
+1. A test that only proves a string still reads the same.
+2. A test that only proves an object still has fields visible in the source literal.
+3. A test that only proves configuration or props were passed through unchanged.
+4. A test that only proves a mock was called with the same data the test itself constructed.
+5. A test that would stay green if the real branching logic were replaced with a constant.
+
+Severity guidance:
+
+- Weakening or deleting prepare-delivered spec assertions -> **Critical**.
+- Missing tests for new or changed behavior -> **Important**.
+- New or changed behavior covered only by weak tests -> **Important**.
+- A changed test that cannot answer the "what bug would this catch?" question -> **Important**.
+- Supplemental cleanup suggestions where a strong behavioral test already exists -> **Suggestion**.
 
 Missing tests for new behavior are **Important** findings.
 Missing browser-smoke verification for browser-based frontend changes is an **Important** finding.
