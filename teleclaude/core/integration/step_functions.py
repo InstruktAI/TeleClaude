@@ -45,24 +45,19 @@ _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 
 
-def _sync_db_call(coro: Any) -> Any:
-    """Run an async todos_db coroutine from sync integration code.
-
-    Uses the event loop stored in thread-local storage by the state machine entry point.
-    Returns the result synchronously by waiting on the future.
-    """
-    loop = getattr(_tls, "loop", None)
-    if loop is None or not loop.is_running():
-        raise RuntimeError("No event loop available for sync DB call")
-    future = asyncio.run_coroutine_threadsafe(coro, loop)
-    return future.result(timeout=10)
-
-
 def _get_todos_db_sync(cwd: str) -> Any:
-    """Resolve the TodosDb instance synchronously."""
-    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
+    """Resolve a TodosDb instance synchronously for the given project root.
 
-    return _sync_db_call(get_todos_db(cwd))
+    Uses sync initialization — no event loop needed. The sync methods
+    (read_state_sync, write_state_sync, deliver_sync) create their own
+    sqlite3 connections per call.
+    """
+    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
+
+    db_path = str(Path(cwd) / ".teleclaude" / "todos.db")
+    db = TodosDb(db_path)
+    db.initialize_sync()
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +292,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
             continue
 
         try:
-            state = _sync_db_call(todos_db.read_state(slug))
+            state = todos_db.read_state_sync(slug)
             if state is None:
                 continue
         except Exception:  # pylint: disable=broad-exception-caught
@@ -330,7 +325,9 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
 
         candidates.append(
             ScannedCandidate(
-                key=CandidateKey(slug=slug, branch=branch, sha=sha),                ready_at=ready_at,            )
+                key=CandidateKey(slug=slug, branch=branch, sha=sha),
+                ready_at=ready_at,
+            )
         )
 
     candidates.sort(key=lambda c: (c.ready_at, c.key.slug))
@@ -348,7 +345,7 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:  # pylin
 
     try:
         todos_db = _get_todos_db_sync(cwd)
-        state = _sync_db_call(todos_db.read_state(slug))
+        state = todos_db.read_state_sync(slug)
         if state is None:
             return None
     except Exception:  # pylint: disable=broad-exception-caught
@@ -380,7 +377,9 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:  # pylin
         return None
 
     return ScannedCandidate(
-        key=CandidateKey(slug=slug, branch=branch, sha=sha),        ready_at=ready_at,    )
+        key=CandidateKey(slug=slug, branch=branch, sha=sha),
+        ready_at=ready_at,
+    )
 
 
 def _sweep_stale_artifacts(cwd: str) -> list[str]:
@@ -665,7 +664,7 @@ def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-stat
 
     try:
         todos_db = _get_todos_db_sync(cwd)
-        delivered = _sync_db_call(todos_db.deliver(key.slug, commit=checkpoint.candidate_sha))
+        delivered = todos_db.deliver_sync(key.slug, commit=checkpoint.candidate_sha)
         if not delivered:
             msg = f"todos_db.deliver failed for {key.slug}"
             logger.warning(msg)
@@ -898,11 +897,11 @@ def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
     """
     try:
         todos_db = _get_todos_db_sync(cwd)
-        state = _sync_db_call(todos_db.read_state(slug))
+        state = todos_db.read_state_sync(slug)
         if state is None:
             state = {}
         state["integration_phase"] = phase
-        _sync_db_call(todos_db.write_state(slug, state))
+        todos_db.write_state_sync(slug, state)
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("_mirror_integration_phase failed for %s phase=%s: %s", slug, phase, exc)
 

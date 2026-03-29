@@ -291,3 +291,28 @@ class TodosDbRoadmapMixin:
         )
         await self.conn.commit()
         return True
+
+    # --- Sync methods for integration thread ---
+
+    def deliver_sync(
+        self,
+        slug: str,
+        *,
+        commit: str | None = None,
+        children: list[str] | None = None,
+    ) -> bool:
+        """Sync version of deliver for use from worker threads."""
+        now = datetime.now(UTC).isoformat()
+        children_json = json.dumps(children) if children else None
+        conn = self._sync_conn()  # type: ignore[attr-defined]
+        try:
+            cursor = conn.execute(
+                "UPDATE roadmap SET status = 'delivered', delivered_at = ?, "  # guard: raw-sql
+                "delivered_commit = ?, children = ?, updated_at = ? WHERE slug = ?",
+                (now, commit, children_json, now, slug),
+            )
+            conn.commit()
+            delivered: bool = cursor.rowcount > 0
+            return delivered
+        finally:
+            conn.close()

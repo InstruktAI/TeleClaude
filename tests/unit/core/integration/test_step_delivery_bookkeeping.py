@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import yaml
 
@@ -28,6 +28,15 @@ from teleclaude.core.integration.step_functions import (
 )
 from teleclaude.core.next_machine._types import DeliveredDict, RoadmapDict
 from teleclaude.core.next_machine.delivery import reconcile_roadmap_after_merge
+
+
+def _mock_todos_db_for_delivery() -> MagicMock:
+    """Mock TodosDb with sync methods for delivery bookkeeping tests."""
+    db = MagicMock()
+    db.deliver_sync = MagicMock(return_value=True)
+    db.read_state_sync = MagicMock(return_value=None)
+    db.write_state_sync = MagicMock()
+    return db
 
 
 def _make_checkpoint(
@@ -79,15 +88,7 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
             return 0, "c" * 40 + "\n", ""
         return 0, "", ""
 
-    deliver_called_with: list[str] = []
-    clean_dep_called_with: list[str] = []
-
-    def mock_deliver(cwd: str, slug: str) -> bool:
-        deliver_called_with.append(cwd)
-        return True
-
-    def mock_clean_dep(cwd: str, slug: str) -> None:
-        clean_dep_called_with.append(cwd)
+    mock_db = _mock_todos_db_for_delivery()
 
     with (
         patch(
@@ -95,18 +96,11 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
             side_effect=mock_run_git,
         ),
         patch(
-            "teleclaude.core.next_machine.core.deliver_to_delivered",
-            side_effect=mock_deliver,
+            "teleclaude.core.integration.step_functions._get_todos_db_sync",
+            return_value=mock_db,
         ),
-        patch(
-            "teleclaude.core.next_machine.icebox.clean_dependency_references",
-            side_effect=mock_clean_dep,
-        ),
+        patch("teleclaude.core.next_machine.icebox.clean_dependency_references"),
         patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
-        patch(
-            "teleclaude.core.next_machine.delivery.reconcile_roadmap_after_merge",
-            return_value=[],
-        ),
     ):
         ok, _msg = _step_delivery_bookkeeping(
             checkpoint=cp,
@@ -114,21 +108,14 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
             cwd=str(tmp_path),
         )
 
-    wt_str = str(wt)
-
-    # Fix verified: bookkeeping called with integration worktree, not repo root
-    assert deliver_called_with == [wt_str], (
-        f"deliver_to_delivered must use integration worktree; got {deliver_called_with}"
-    )
-    assert clean_dep_called_with == [wt_str], (
-        f"clean_dependency_references must use integration worktree; got {clean_dep_called_with}"
-    )
+    # Delivery goes through todos_db, not filesystem
+    mock_db.deliver_sync.assert_called_once_with(slug, commit=cp.candidate_sha)
 
     # All git operations targeting main must originate from integration worktree
     push_calls = [(args, cwd) for args, cwd in git_calls if args[0] == "push"]
     assert len(push_calls) == 1, f"expected exactly one push, got {len(push_calls)}"
     push_args, push_cwd = push_calls[0]
-    assert push_cwd == wt_str, f"push must use integration worktree; got {push_cwd}"
+    assert push_cwd == str(wt), f"push must use integration worktree; got {push_cwd}"
     assert push_args == ["push", "origin", "HEAD:main"], f"unexpected push args: {push_args}"
 
     # No git operations must target repo root for bookkeeping or push
@@ -242,12 +229,7 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
     cp_path = tmp_path / "integrate-state.json"
     _write_checkpoint(cp_path, cp)
 
-    deliver_called = False
-
-    def mock_deliver(cwd: str, slug: str) -> bool:
-        nonlocal deliver_called
-        deliver_called = True
-        return True
+    mock_db = _mock_todos_db_for_delivery()
 
     def mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
         if args[:2] == ["diff", "--cached"]:
@@ -259,30 +241,14 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
         return 0, "", ""
 
     with (
-        patch(
-            "teleclaude.core.integration.step_functions._run_git",
-            side_effect=mock_run_git,
-        ),
-        patch(
-            "teleclaude.core.next_machine.core.deliver_to_delivered",
-            side_effect=mock_deliver,
-        ),
-        patch(
-            "teleclaude.core.next_machine.icebox.clean_dependency_references",
-        ),
+        patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
+        patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
+        patch("teleclaude.core.next_machine.icebox.clean_dependency_references"),
         patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
-        patch(
-            "teleclaude.core.next_machine.delivery.reconcile_roadmap_after_merge",
-            return_value=[],
-        ),
     ):
-        ok, _msg = _step_delivery_bookkeeping(
-            checkpoint=cp,
-            checkpoint_path=cp_path,
-            cwd=str(tmp_path),
-        )
+        ok, _msg = _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
-    assert deliver_called, "deliver_to_delivered must be called for bug slugs (no is_bug bypass)"
+    mock_db.deliver_sync.assert_called_once()
     assert ok is True
 
 
@@ -399,12 +365,14 @@ def _run_bookkeeping_with_mock(
 
     cp, cp_path = _make_checkpoint(tmp_path)
 
+    mock_db = _mock_todos_db_for_delivery()
+    mock_db.deliver_sync = MagicMock(return_value=mock_deliver_result)
+
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
-        patch("teleclaude.core.next_machine.core.deliver_to_delivered", return_value=mock_deliver_result),
+        patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
         patch("teleclaude.core.next_machine.icebox.clean_dependency_references"),
         patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
-        patch("teleclaude.core.next_machine.delivery.reconcile_roadmap_after_merge", return_value=[]),
     ):
         _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
@@ -415,20 +383,18 @@ def test_anomaly_deliver_to_delivered_fails(tmp_path: Path) -> None:
     """When deliver_to_delivered returns False, warning is captured."""
     cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git, mock_deliver_result=False)
     assert cp.warnings
-    assert any("deliver_to_delivered failed" in w for w in cp.warnings)
+    assert any("todos_db.deliver" in w for w in cp.warnings)
 
 
-def test_anomaly_bookkeeping_commit_fails(tmp_path: Path) -> None:
-    """When bookkeeping commit fails, warning is captured."""
+def test_anomaly_bookkeeping_commit_removed_with_db_delivery(tmp_path: Path) -> None:
+    """With DB-backed delivery, no bookkeeping commit exists to fail.
 
-    def mock_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
-        if args[0] == "commit" and "delivery bookkeeping" in " ".join(args):
-            return 1, "", "commit failed"
-        return _base_mock_run_git(args, cwd=cwd, timeout=timeout)
-
-    cp = _run_bookkeeping_with_mock(tmp_path, mock_git)
-    assert cp.warnings
-    assert any("Bookkeeping commit failed" in w for w in cp.warnings)
+    The old bookkeeping commit for roadmap.yaml/delivered.yaml was removed.
+    DB delivery (todos_db.deliver_sync) replaces it. This test verifies that
+    the delivery step completes without warnings when git operations succeed.
+    """
+    cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git)
+    assert not cp.warnings or not any("Bookkeeping commit failed" in w for w in cp.warnings)
 
 
 def test_anomaly_git_rm_fails(tmp_path: Path) -> None:

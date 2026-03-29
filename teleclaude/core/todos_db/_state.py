@@ -77,3 +77,37 @@ class TodosDbStateMixin:
             return False
         exists: bool = await self.artifact_exists(slug, "deferrals")  # type: ignore[attr-defined]
         return exists
+
+    # --- Sync methods for integration thread ---
+
+    def read_state_sync(self, slug: str) -> dict[str, StateValue] | None:
+        """Sync version of read_state for use from worker threads."""
+        conn = self._sync_conn()  # type: ignore[attr-defined]
+        try:
+            cursor = conn.execute(
+                "SELECT state FROM todo_state WHERE slug = ?",  # guard: raw-sql
+                (slug,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            result: dict[str, StateValue] = json.loads(row[0])
+            return result
+        finally:
+            conn.close()
+
+    def write_state_sync(self, slug: str, state: dict[str, StateValue]) -> None:
+        """Sync version of write_state for use from worker threads."""
+        now = datetime.now(UTC).isoformat()
+        state_json = json.dumps(state, default=str)
+        conn = self._sync_conn()  # type: ignore[attr-defined]
+        try:
+            conn.execute(
+                "INSERT INTO todo_state (slug, state, created_at, updated_at) "  # guard: raw-sql
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(slug) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
+                (slug, state_json, now, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
