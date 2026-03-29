@@ -234,7 +234,7 @@ async def _resolve_explicit_work_slug(
 
     holder_error = None
     if not is_bug:
-        slug, holder_error = await _resolve_holder_slug(todos_db, cwd, slug, deps, phase_slug, slug_resolution_started)
+        slug, holder_error = await _resolve_holder_slug(cwd, slug, deps, phase_slug, slug_resolution_started)
         if holder_error is not None:
             return "", holder_error
 
@@ -244,7 +244,7 @@ async def _resolve_explicit_work_slug(
 
     phase = await asyncio.to_thread(get_item_phase, state_cwd, slug)
     readiness_error = await _validate_explicit_slug_readiness(
-        todos_db, state_cwd, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
+        state_cwd, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
     )
     if readiness_error is not None:
         return "", readiness_error
@@ -252,7 +252,6 @@ async def _resolve_explicit_work_slug(
 
 
 async def _resolve_holder_slug(
-    todos_db: TodosDb,
     cwd: str,
     slug: str,
     deps: object,
@@ -338,7 +337,7 @@ async def _validate_work_preconditions(todos_db: TodosDb, cwd: str, resolved_slu
     _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "run", "validated")
 
     freshness_error = await _validate_preparation_freshness(
-        todos_db, cwd, resolved_slug, phase_slug, is_bug, preconditions_started
+        todos_db, resolved_slug, phase_slug, is_bug, preconditions_started
     )
     if freshness_error is not None:
         return freshness_error
@@ -388,7 +387,6 @@ def _validate_required_artifacts(precondition_root: str, resolved_slug: str, is_
 
 async def _validate_preparation_freshness(
     todos_db: TodosDb,
-    cwd: str,
     resolved_slug: str,
     phase_slug: str,
     is_bug: bool,
@@ -430,7 +428,7 @@ async def _ensure_remote_artifacts(cwd: str, resolved_slug: str, phase_slug: str
     remote_sync_started = perf_counter()
     sync_ok, sync_reason = await asyncio.to_thread(
         _ensure_todo_on_remote_main, cwd, resolved_slug
-    )  # TODO: remove when scaffold eliminated
+    )  # Scaffold push still needed until todos.db migration is complete
     sync_decision = "run" if sync_ok else "skip"
     _log_next_work_phase(phase_slug, "ensure_remote_artifacts", remote_sync_started, sync_decision, sync_reason)
     if not sync_ok and sync_reason == "push_failed":
@@ -500,7 +498,7 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
     return worktree_cwd, None
 
 
-async def _dispatch_next_work(
+async def _dispatch_next_work(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db, todos_db: TodosDb, cwd: str, worktree_cwd: str, resolved_slug: str, phase_slug: str
 ) -> str:  # pylint: disable=too-many-arguments,too-many-positional-arguments
     """Dispatch the appropriate next-work tool call from worktree-owned state."""
@@ -515,11 +513,11 @@ async def _dispatch_next_work(
             db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
         )
     return await _dispatch_pre_review(
-        db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
+        db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
     )
 
 
-async def _prepare_dispatch_state(
+async def _prepare_dispatch_state(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     todos_db: TodosDb,
     cwd: str,
     worktree_cwd: str,
@@ -571,7 +569,7 @@ async def _repair_stale_review_approval(  # pylint: disable=too-many-arguments,t
         return review_status
 
     repair_started = perf_counter()
-    await asyncio.to_thread(mark_phase, cwd, resolved_slug, "review_pending")
+    await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "review_pending")
     _log_next_work_phase(phase_slug, "state_repair", repair_started, "run", "review_approval_stale_baseline")
     return PhaseStatus.PENDING.value
 
@@ -590,15 +588,14 @@ async def _dispatch_pre_review(  # pylint: disable=too-many-arguments,too-many-p
     if dispatch_state.review_status == PhaseStatus.CHANGES_REQUESTED.value:
         return await _dispatch_fix_review(db, cwd, resolved_slug, phase_slug, dispatch_started)
     if dispatch_state.build_status != PhaseStatus.COMPLETE.value:
-        return await _dispatch_build_phase(db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started)
+        return await _dispatch_build_phase(db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started)
     return await _dispatch_review_phase(
-        db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state
+        db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state
     )
 
 
 async def _dispatch_fix_review(
     db: Db,
-    todos_db: TodosDb,
     cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -682,7 +679,7 @@ async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-
     )
 
 
-async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     db: Db,
     todos_db: TodosDb,
     cwd: str,
@@ -696,7 +693,7 @@ async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many
     review_round_raw = state.get("review_round")
     review_round = review_round_raw if isinstance(review_round_raw, int) else 0
 
-    gate_error = await _run_review_gates(cwd, worktree_cwd, resolved_slug, phase_slug, review_round)
+    gate_error = await _run_review_gates(todos_db, worktree_cwd, resolved_slug, phase_slug, review_round)
     if gate_error is not None:
         return gate_error
 
@@ -736,7 +733,7 @@ async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many
 
 
 async def _run_review_gates(
-    cwd: str,
+    todos_db: TodosDb,
     worktree_cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -789,7 +786,7 @@ async def _handle_gate_failure(  # pylint: disable=too-many-arguments,too-many-p
     """Apply retry-state bookkeeping after a failed build/review gate."""
     _log_next_work_phase(phase_slug, "gate_execution", started_at, "error", log_detail)
     if review_round == 0:
-        await asyncio.to_thread(mark_phase, cwd, resolved_slug, "build_started")
+        await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "build_started")
     return format_build_gate_failure(resolved_slug, gate_output, f"telec todo work {resolved_slug}")
 
 
@@ -814,16 +811,17 @@ async def _dispatch_review_approved(  # pylint: disable=too-many-arguments,too-m
         )
     if finalize_status == "ready":
         return await _dispatch_finalize_handoff(
-            db, todos_db, worktree_cwd, resolved_slug, phase_slug, dispatch_state.finalize_state
+            db, worktree_cwd, resolved_slug, phase_slug, dispatch_state.finalize_state
         )
     if await todos_db.has_pending_deferrals(resolved_slug):
         return await _dispatch_deferrals(db, cwd, resolved_slug, phase_slug, dispatch_started)
-    return await _dispatch_finalize_prepare(db, cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state)
+    return await _dispatch_finalize_prepare(
+        db, todos_db, cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state
+    )
 
 
 async def _dispatch_finalize_handoff(
     db: Db,
-    todos_db: TodosDb,
     worktree_cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -858,7 +856,7 @@ async def _dispatch_finalize_handoff(
             orchestrator_session_id=session_id,
             ready_at=finalize_state.get("ready_at"),
         )
-        await asyncio.to_thread(mark_phase, cwd, resolved_slug, "finalize_handed_off")
+        await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "finalize_handed_off")
     except Exception as exc:  # pylint: disable=broad-exception-caught
         _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "error", "finalize_handoff_failed")
         return format_error(
@@ -886,7 +884,6 @@ async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
 
 async def _dispatch_deferrals(
     db: Db,
-    todos_db: TodosDb,
     cwd: str,
     resolved_slug: str,
     phase_slug: str,

@@ -75,4 +75,5 @@ class TodosDbStateMixin:
             return False
         if state.get("deferrals_processed") is True:
             return False
-        return await self.artifact_exists(slug, "deferrals")  # type: ignore[attr-defined]
+        exists: bool = await self.artifact_exists(slug, "deferrals")  # type: ignore[attr-defined]
+        return exists
