@@ -60,3 +60,19 @@ class TodosDbStateMixin:
         ) as cursor:
             rows = await cursor.fetchall()
         return [row[0] for row in rows]
+
+    async def is_bug_todo(self, slug: str) -> bool:
+        """Check if a todo has kind='bug'."""
+        state = await self.read_state(slug)
+        if state is None:
+            return False
+        return state.get("kind") == "bug"
+
+    async def has_pending_deferrals(self, slug: str) -> bool:
+        """Check if deferrals artifact exists and deferrals_processed is not True."""
+        state = await self.read_state(slug)
+        if state is None:
+            return False
+        if state.get("deferrals_processed") is True:
+            return False
+        return await self.artifact_exists(slug, "deferrals")  # type: ignore[attr-defined]

@@ -9,6 +9,7 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -50,10 +51,7 @@ from teleclaude.core.next_machine.output_formatting import (
 )
 from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
-    add_to_roadmap,
     check_dependencies_satisfied,
-    load_roadmap_deps,
-    slug_in_roadmap,
 )
 from teleclaude.core.next_machine.slug_resolution import (
     get_item_phase,
@@ -67,16 +65,16 @@ from teleclaude.core.next_machine.state_io import (
     _is_review_round_limit_reached,
     _normalize_finalize_state,
     _review_scope_note,
-    has_pending_deferrals,
-    is_bug_todo,
     mark_phase,
-    read_phase_state,
 )
 from teleclaude.core.next_machine.worktrees import (
     _ensure_todo_on_remote_main,
     ensure_worktree_with_policy_async,
 )
 from teleclaude.session_identity import get_session_id
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -135,7 +133,7 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         logger.debug("Operation progress emission skipped", exc_info=True)
 
 
-async def next_work(db: Db, slug: str | None, cwd: str) -> str:
+async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disable=too-many-locals
     """Phase B state machine for deterministic builder work.
 
     Executes the build/review/fix/finalize cycle on prepared work items.
@@ -149,16 +147,19 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     Returns:
         Plain text instructions for the orchestrator to execute
     """
+    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
+
     cwd = await _normalize_next_work_cwd(cwd)
+    todos_db = await get_todos_db(cwd)
     await asyncio.to_thread(sweep_completed_groups, cwd)
 
     phase_slug = slug or "<auto>"
-    resolved_slug, slug_error = await _resolve_work_slug(cwd, slug, phase_slug)
+    resolved_slug, slug_error = await _resolve_work_slug(todos_db, cwd, slug, phase_slug)
     if slug_error is not None:
         return slug_error
 
     phase_slug = resolved_slug
-    precondition_error = await _validate_work_preconditions(cwd, resolved_slug, phase_slug)
+    precondition_error = await _validate_work_preconditions(todos_db, cwd, resolved_slug, phase_slug)
     if precondition_error is not None:
         return precondition_error
 
@@ -166,7 +167,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if ensure_error is not None:
         return ensure_error
 
-    return await _dispatch_next_work(db, cwd, worktree_cwd, resolved_slug, phase_slug)
+    return await _dispatch_next_work(db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug)
 
 
 async def _normalize_next_work_cwd(cwd: str) -> str:
@@ -179,17 +180,19 @@ async def _normalize_next_work_cwd(cwd: str) -> str:
     return canonical_cwd
 
 
-async def _resolve_work_slug(cwd: str, slug: str | None, phase_slug: str) -> tuple[str, str | None]:
+async def _resolve_work_slug(todos_db: TodosDb, cwd: str, slug: str | None, phase_slug: str) -> tuple[str, str | None]:
     """Resolve the target slug or return a formatted early-exit message."""
     slug_resolution_started = perf_counter()
     if slug is not None:
-        resolved_slug, error = await _resolve_explicit_work_slug(cwd, slug, phase_slug, slug_resolution_started)
+        resolved_slug, error = await _resolve_explicit_work_slug(
+            todos_db, cwd, slug, phase_slug, slug_resolution_started
+        )
         if error is not None:
             return "", error
         _log_next_work_phase(resolved_slug, "slug_resolution", slug_resolution_started, "run", "resolved")
         return resolved_slug, None
 
-    deps = await asyncio.to_thread(load_roadmap_deps, cwd)
+    deps = await todos_db.load_deps()
     found_slug, _, _ = await resolve_slug_async(cwd, None, True, deps)
     if found_slug:
         _log_next_work_phase(found_slug, "slug_resolution", slug_resolution_started, "run", "resolved")
@@ -215,22 +218,23 @@ async def _resolve_work_slug(cwd: str, slug: str | None, phase_slug: str) -> tup
 
 
 async def _resolve_explicit_work_slug(
+    todos_db: TodosDb,
     cwd: str,
     slug: str,
     phase_slug: str,
     slug_resolution_started: float,
 ) -> tuple[str, str | None]:
     """Resolve and validate an explicitly requested slug."""
-    deps = await asyncio.to_thread(load_roadmap_deps, cwd)
-    is_bug = await asyncio.to_thread(is_bug_todo, cwd, slug)
-    if not is_bug and not await asyncio.to_thread(slug_in_roadmap, cwd, slug):
-        await asyncio.to_thread(add_to_roadmap, cwd, slug)
+    deps = await todos_db.load_deps()
+    is_bug = await todos_db.is_bug_todo(slug)
+    if not is_bug and not await todos_db.slug_in_roadmap(slug):
+        await todos_db.add_to_roadmap(slug)
         logger.info("AUTO_ROADMAP_ADD slug=%s machine=work", slug)
-        deps = await asyncio.to_thread(load_roadmap_deps, cwd)
+        deps = await todos_db.load_deps()
 
     holder_error = None
     if not is_bug:
-        slug, holder_error = await _resolve_holder_slug(cwd, slug, deps, phase_slug, slug_resolution_started)
+        slug, holder_error = await _resolve_holder_slug(todos_db, cwd, slug, deps, phase_slug, slug_resolution_started)
         if holder_error is not None:
             return "", holder_error
 
@@ -240,7 +244,7 @@ async def _resolve_explicit_work_slug(
 
     phase = await asyncio.to_thread(get_item_phase, state_cwd, slug)
     readiness_error = await _validate_explicit_slug_readiness(
-        state_cwd, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
+        todos_db, state_cwd, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
     )
     if readiness_error is not None:
         return "", readiness_error
@@ -248,6 +252,7 @@ async def _resolve_explicit_work_slug(
 
 
 async def _resolve_holder_slug(
+    todos_db: TodosDb,
     cwd: str,
     slug: str,
     deps: object,
@@ -315,7 +320,7 @@ async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-argumen
     )
 
 
-async def _validate_work_preconditions(cwd: str, resolved_slug: str, phase_slug: str) -> str | None:
+async def _validate_work_preconditions(todos_db: TodosDb, cwd: str, resolved_slug: str, phase_slug: str) -> str | None:
     """Validate orchestration preconditions before worktree setup."""
     preconditions_started = perf_counter()
     stash_entries = await asyncio.to_thread(get_stash_entries, cwd)
@@ -323,7 +328,7 @@ async def _validate_work_preconditions(cwd: str, resolved_slug: str, phase_slug:
         _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stash_debt")
         return format_stash_debt(resolved_slug, len(stash_entries))
 
-    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
+    is_bug = await todos_db.is_bug_todo(resolved_slug)
     precondition_root = _select_precondition_root(cwd, resolved_slug, is_bug)
     missing_artifacts_error = _validate_required_artifacts(precondition_root, resolved_slug, is_bug)
     if missing_artifacts_error is not None:
@@ -333,7 +338,7 @@ async def _validate_work_preconditions(cwd: str, resolved_slug: str, phase_slug:
     _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "run", "validated")
 
     freshness_error = await _validate_preparation_freshness(
-        cwd, resolved_slug, phase_slug, is_bug, preconditions_started
+        todos_db, cwd, resolved_slug, phase_slug, is_bug, preconditions_started
     )
     if freshness_error is not None:
         return freshness_error
@@ -382,6 +387,7 @@ def _validate_required_artifacts(precondition_root: str, resolved_slug: str, is_
 
 
 async def _validate_preparation_freshness(
+    todos_db: TodosDb,
     cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -391,7 +397,7 @@ async def _validate_preparation_freshness(
     """Reject stale or invalidated preparation before build work begins."""
     if is_bug:
         return None
-    prep_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+    prep_state = await todos_db.read_state(resolved_slug)
     current_val = str(prep_state.get("current", "")).strip()
     grounding = prep_state.get("grounding", {})
     grounding_valid = isinstance(grounding, dict) and grounding.get("valid") is True
@@ -422,7 +428,9 @@ async def _validate_preparation_freshness(
 async def _ensure_remote_artifacts(cwd: str, resolved_slug: str, phase_slug: str) -> str | None:
     """Ensure todo artifacts are present on origin/main before worktree creation."""
     remote_sync_started = perf_counter()
-    sync_ok, sync_reason = await asyncio.to_thread(_ensure_todo_on_remote_main, cwd, resolved_slug)
+    sync_ok, sync_reason = await asyncio.to_thread(
+        _ensure_todo_on_remote_main, cwd, resolved_slug
+    )  # TODO: remove when scaffold eliminated
     sync_decision = "run" if sync_ok else "skip"
     _log_next_work_phase(phase_slug, "ensure_remote_artifacts", remote_sync_started, sync_decision, sync_reason)
     if not sync_ok and sync_reason == "push_failed":
@@ -492,17 +500,19 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
     return worktree_cwd, None
 
 
-async def _dispatch_next_work(db: Db, cwd: str, worktree_cwd: str, resolved_slug: str, phase_slug: str) -> str:
+async def _dispatch_next_work(
+    db: Db, todos_db: TodosDb, cwd: str, worktree_cwd: str, resolved_slug: str, phase_slug: str
+) -> str:  # pylint: disable=too-many-arguments,too-many-positional-arguments
     """Dispatch the appropriate next-work tool call from worktree-owned state."""
     dispatch_started = perf_counter()
     dispatch_state, state_error = await _prepare_dispatch_state(
-        cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started
+        todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started
     )
     if state_error is not None:
         return state_error
     if dispatch_state.review_status == PhaseStatus.APPROVED.value:
         return await _dispatch_review_approved(
-            db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
+            db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
         )
     return await _dispatch_pre_review(
         db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
@@ -510,6 +520,7 @@ async def _dispatch_next_work(db: Db, cwd: str, worktree_cwd: str, resolved_slug
 
 
 async def _prepare_dispatch_state(
+    todos_db: TodosDb,
     cwd: str,
     worktree_cwd: str,
     resolved_slug: str,
@@ -525,7 +536,7 @@ async def _prepare_dispatch_state(
     if current_phase == ItemPhase.PENDING.value:
         await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
-    state = await asyncio.to_thread(read_phase_state, worktree_cwd, resolved_slug)
+    state = await todos_db.read_state(resolved_slug)
     current = str(state.get("current", ""))
 
     # Derive build/review status from authoritative current value
@@ -560,13 +571,14 @@ async def _repair_stale_review_approval(  # pylint: disable=too-many-arguments,t
         return review_status
 
     repair_started = perf_counter()
-    await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "review_pending")
+    await asyncio.to_thread(mark_phase, cwd, resolved_slug, "review_pending")
     _log_next_work_phase(phase_slug, "state_repair", repair_started, "run", "review_approval_stale_baseline")
     return PhaseStatus.PENDING.value
 
 
 async def _dispatch_pre_review(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
+    todos_db: TodosDb,
     cwd: str,
     worktree_cwd: str,
     resolved_slug: str,
@@ -586,6 +598,7 @@ async def _dispatch_pre_review(  # pylint: disable=too-many-arguments,too-many-p
 
 async def _dispatch_fix_review(
     db: Db,
+    todos_db: TodosDb,
     cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -620,6 +633,7 @@ async def _dispatch_fix_review(
 
 async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
+    todos_db: TodosDb,
     cwd: str,
     worktree_cwd: str,
     resolved_slug: str,
@@ -639,7 +653,7 @@ async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-
         return format_error("NO_AGENTS", str(exc))
 
     pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started"
-    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
+    is_bug = await todos_db.is_bug_todo(resolved_slug)
     if is_bug:
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
         return format_tool_call(
@@ -670,6 +684,7 @@ async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-
 
 async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
+    todos_db: TodosDb,
     cwd: str,
     worktree_cwd: str,
     resolved_slug: str,
@@ -685,7 +700,7 @@ async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many
     if gate_error is not None:
         return gate_error
 
-    limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)
+    limit_reached, current_round, max_rounds = _is_review_round_limit_reached(cwd, resolved_slug)
     if limit_reached:
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "review_round_limit")
         return format_error(
@@ -715,7 +730,7 @@ async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
-            note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
+            note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(cwd, resolved_slug)}",
         )
     )
 
@@ -743,7 +758,7 @@ async def _run_review_gates(
     _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
 
     verify_started = perf_counter()
-    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
+    is_bug = await todos_db.is_bug_todo(resolved_slug)
     artifacts_passed, artifacts_output = await asyncio.to_thread(
         verify_artifacts, worktree_cwd, resolved_slug, PhaseName.BUILD.value, is_bug=is_bug
     )
@@ -774,12 +789,13 @@ async def _handle_gate_failure(  # pylint: disable=too-many-arguments,too-many-p
     """Apply retry-state bookkeeping after a failed build/review gate."""
     _log_next_work_phase(phase_slug, "gate_execution", started_at, "error", log_detail)
     if review_round == 0:
-        await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "build_started")
+        await asyncio.to_thread(mark_phase, cwd, resolved_slug, "build_started")
     return format_build_gate_failure(resolved_slug, gate_output, f"telec todo work {resolved_slug}")
 
 
 async def _dispatch_review_approved(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
+    todos_db: TodosDb,
     cwd: str,
     worktree_cwd: str,
     resolved_slug: str,
@@ -798,15 +814,16 @@ async def _dispatch_review_approved(  # pylint: disable=too-many-arguments,too-m
         )
     if finalize_status == "ready":
         return await _dispatch_finalize_handoff(
-            db, worktree_cwd, resolved_slug, phase_slug, dispatch_state.finalize_state
+            db, todos_db, worktree_cwd, resolved_slug, phase_slug, dispatch_state.finalize_state
         )
-    if await asyncio.to_thread(has_pending_deferrals, worktree_cwd, resolved_slug):
+    if await todos_db.has_pending_deferrals(resolved_slug):
         return await _dispatch_deferrals(db, cwd, resolved_slug, phase_slug, dispatch_started)
     return await _dispatch_finalize_prepare(db, cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state)
 
 
 async def _dispatch_finalize_handoff(
     db: Db,
+    todos_db: TodosDb,
     worktree_cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -841,7 +858,7 @@ async def _dispatch_finalize_handoff(
             orchestrator_session_id=session_id,
             ready_at=finalize_state.get("ready_at"),
         )
-        await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "finalize_handed_off")
+        await asyncio.to_thread(mark_phase, cwd, resolved_slug, "finalize_handed_off")
     except Exception as exc:  # pylint: disable=broad-exception-caught
         _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "error", "finalize_handoff_failed")
         return format_error(
@@ -869,6 +886,7 @@ async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
 
 async def _dispatch_deferrals(
     db: Db,
+    todos_db: TodosDb,
     cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -895,6 +913,7 @@ async def _dispatch_deferrals(
 
 async def _dispatch_finalize_prepare(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     db: Db,
+    todos_db: TodosDb,
     cwd: str,
     resolved_slug: str,
     phase_slug: str,
@@ -919,7 +938,7 @@ async def _dispatch_finalize_prepare(  # pylint: disable=too-many-arguments,too-
     except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
 
-    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
+    is_bug = await todos_db.is_bug_todo(resolved_slug)
     note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
     return format_tool_call(
