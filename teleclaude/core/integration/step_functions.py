@@ -45,6 +45,26 @@ _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 
 
+def _sync_db_call(coro: Any) -> Any:
+    """Run an async todos_db coroutine from sync integration code.
+
+    Uses the event loop stored in thread-local storage by the state machine entry point.
+    Returns the result synchronously by waiting on the future.
+    """
+    loop = getattr(_tls, "loop", None)
+    if loop is None or not loop.is_running():
+        raise RuntimeError("No event loop available for sync DB call")
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result(timeout=10)
+
+
+def _get_todos_db_sync(cwd: str) -> Any:
+    """Resolve the TodosDb instance synchronously."""
+    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
+
+    return _sync_db_call(get_todos_db(cwd))
+
+
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
@@ -261,7 +281,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
 
     Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
     """
-    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
+    todos_db = _get_todos_db_sync(cwd)
 
     trees_dir = Path(cwd) / WORKTREE_DIR
     if not trees_dir.is_dir():
@@ -277,7 +297,9 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
             continue
 
         try:
-            state = read_phase_state(str(entry), slug)
+            state = _sync_db_call(todos_db.read_state(slug))
+            if state is None:
+                continue
         except Exception:  # pylint: disable=broad-exception-caught
             continue
 
@@ -302,15 +324,13 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
             continue
 
         # Verify SHA not already ancestor of main
-        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)  # type: ignore[list-item]
+        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
         if rc == 0:
             continue
 
         candidates.append(
             ScannedCandidate(
-                key=CandidateKey(slug=slug, branch=branch, sha=sha),  # type: ignore[arg-type]
-                ready_at=ready_at,  # type: ignore[arg-type]
-            )
+                key=CandidateKey(slug=slug, branch=branch, sha=sha),                ready_at=ready_at,            )
         )
 
     candidates.sort(key=lambda c: (c.ready_at, c.key.slug))
@@ -322,14 +342,15 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:  # pylin
 
     Same validations as the scanner but targeted to a single slug.
     """
-    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
-
     worktree_dir = Path(cwd) / WORKTREE_DIR / slug
     if not worktree_dir.is_dir():
         return None
 
     try:
-        state = read_phase_state(str(worktree_dir), slug)
+        todos_db = _get_todos_db_sync(cwd)
+        state = _sync_db_call(todos_db.read_state(slug))
+        if state is None:
+            return None
     except Exception:  # pylint: disable=broad-exception-caught
         return None
 
@@ -354,14 +375,12 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:  # pylin
         return None
 
     # Verify SHA not already ancestor of main
-    rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)  # type: ignore[list-item]
+    rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
     if rc == 0:
         return None
 
     return ScannedCandidate(
-        key=CandidateKey(slug=slug, branch=branch, sha=sha),  # type: ignore[arg-type]
-        ready_at=ready_at,  # type: ignore[arg-type]
-    )
+        key=CandidateKey(slug=slug, branch=branch, sha=sha),        ready_at=ready_at,    )
 
 
 def _sweep_stale_artifacts(cwd: str) -> list[str]:
@@ -641,47 +660,20 @@ def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-stat
 
     wt = str(_integration_worktree_path(cwd))
 
-    # --- Delivery bookkeeping in integration worktree ---
-    from teleclaude.core.next_machine.core import deliver_to_delivered  # pylint: disable=import-outside-toplevel
-
+    # --- Delivery bookkeeping via todos.db ---
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
 
-    if not deliver_to_delivered(wt, key.slug):
-        msg = f"deliver_to_delivered failed for {key.slug} (not in roadmap or delivered)"
-        logger.warning(msg)
-        warnings.append(msg)
-
-    # Reconcile stale entries that squash merges may re-introduce
-    from teleclaude.core.next_machine.delivery import reconcile_roadmap_after_merge  # noqa: I001  # pylint: disable=import-outside-toplevel
-
-    removed = reconcile_roadmap_after_merge(wt)
-    if removed:
-        logger.info("Reconciled stale roadmap entries after merge: %s", removed)
-
-    rc_add, _, stderr_add = _run_git(["add", "todos/roadmap.yaml", "todos/delivered.yaml"], cwd=wt)
-    if rc_add != 0:
-        msg = f"git add bookkeeping files failed for {key.slug}: {stderr_add.strip()}"
-        logger.warning(msg)
-        warnings.append(msg)
-
-    rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
-    if rc != 0:  # staged changes exist
-        rc_commit, _, stderr_commit = _run_git(
-            [
-                "commit",
-                "-m",
-                (
-                    f"chore({key.slug}): delivery bookkeeping\n\n"
-                    "🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
-                    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
-                ),
-            ],
-            cwd=wt,
-        )
-        if rc_commit != 0:
-            msg = f"Bookkeeping commit failed for {key.slug}: {stderr_commit.strip()}"
+    try:
+        todos_db = _get_todos_db_sync(cwd)
+        delivered = _sync_db_call(todos_db.deliver(key.slug, commit=checkpoint.candidate_sha))
+        if not delivered:
+            msg = f"todos_db.deliver failed for {key.slug}"
             logger.warning(msg)
             warnings.append(msg)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        msg = f"Delivery bookkeeping failed for {key.slug}: {exc}"
+        logger.warning(msg)
+        warnings.append(msg)
 
     # --- Todo cleanup in integration worktree ---
     from teleclaude.core.next_machine.icebox import clean_dependency_references  # noqa: I001  # pylint: disable=import-outside-toplevel
@@ -900,16 +892,17 @@ def _try_release_lease(lease_store: IntegrationLeaseStore, session_id: str, leas
 
 
 def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
-    """Write integration_phase into the candidate todo's per-todo state.yaml.
+    """Write integration_phase into the todo state in todos.db.
 
     Best-effort: failures are logged but do not block the integration flow.
     """
     try:
-        from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state  # noqa: I001  # pylint: disable=import-outside-toplevel
-
-        state = read_phase_state(cwd, slug)
+        todos_db = _get_todos_db_sync(cwd)
+        state = _sync_db_call(todos_db.read_state(slug))
+        if state is None:
+            state = {}
         state["integration_phase"] = phase
-        write_phase_state(cwd, slug, state)
+        _sync_db_call(todos_db.write_state(slug, state))
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("_mirror_integration_phase failed for %s phase=%s: %s", slug, phase, exc)
 
