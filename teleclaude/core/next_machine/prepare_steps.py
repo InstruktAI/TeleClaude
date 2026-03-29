@@ -30,8 +30,8 @@ from teleclaude.core.next_machine.prepare_events import (
     _has_test_spec_artifacts,
 )
 from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
-from teleclaude.core.next_machine.state_io import write_phase_state
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
+from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -72,8 +72,29 @@ def _restamp_artifact_digest(
         state["artifacts"] = artifacts
 
 
+async def _restamp_artifact_digest_db(  # pyright: ignore[reportUnusedFunction]
+    todos_db: TodosDb,
+    state: dict[str, StateValue],
+    slug: str,
+    artifact_key: str,
+) -> None:
+    """DB-backed: re-stamp an artifact digest from the todos.db artifact table."""
+    artifacts = state.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        return
+    entry = artifacts.get(artifact_key, {})
+    if not isinstance(entry, dict):
+        return
+    current = await todos_db.artifact_digest(slug, artifact_key)
+    if current and current != entry.get("digest", ""):
+        entry["digest"] = current
+        artifacts[artifact_key] = entry
+        state["artifacts"] = artifacts
+
+
 async def _prepare_step_input_assessment(
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -92,7 +113,7 @@ async def _prepare_step_input_assessment(
         await asyncio.to_thread(record_input_consumed, cwd, slug)
         stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         return True, ""  # loop
 
     guidance = await compose_agent_guidance(db)
@@ -116,6 +137,7 @@ async def _prepare_step_input_assessment(
 
 async def _prepare_step_triangulation(
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -125,7 +147,7 @@ async def _prepare_step_triangulation(
     if has_requirements:
         # Transition to REQUIREMENTS_REVIEW
         state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_drafted", {"slug": slug})
         return True, ""  # loop
 
@@ -149,6 +171,7 @@ async def _prepare_step_triangulation(
 
 async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,too-many-statements
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -167,7 +190,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "requirements_review", "verdict", "approve")
         state["current"] = PreparePhase.TEST_SPEC_BUILD.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
         return True, ""  # loop
 
@@ -177,7 +200,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         findings_list = findings if isinstance(findings, list) else []
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         state["current"] = PreparePhase.BLOCKED.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         return False, (
             f"BLOCKED: {slug} requirements have {open_count} unresolved architectural finding(s) "
             f"requiring human decision. See todos/{slug}/requirements-review-findings.md.\n\n"
@@ -197,7 +220,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["requirements_review"] = req_review
             state["current"] = PreparePhase.BLOCKED.value
-            await asyncio.to_thread(write_phase_state, cwd, slug, state)
+            await todos_db.write_state(slug, state)
             return False, (
                 f"BLOCKED: {slug} requirements review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
                 f"Manual resolution required.\n\n"
@@ -218,7 +241,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         stamp_audit(state, "requirements_review", "rounds", rounds)
         state["requirements_review"] = req_review
         state["current"] = PreparePhase.TRIANGULATION.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         # Compute diff context for re-dispatch (I-2)
         base_sha = (isinstance(req_review, dict) and req_review.get("baseline_commit")) or ""
         req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", str(base_sha))
@@ -259,7 +282,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         req_review_dict["baseline_commit"] = head_sha.strip()
         state["requirements_review"] = req_review_dict
         stamp_audit(state, "requirements_review", "baseline_commit", head_sha.strip())
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -276,6 +299,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
 
 async def _prepare_step_test_spec_build(
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -287,7 +311,7 @@ async def _prepare_step_test_spec_build(
     if has_test_specs:
         stamp_audit(state, "test_spec_build", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.TEST_SPEC_REVIEW.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_drafted", {"slug": slug})
         return True, ""  # loop
 
@@ -311,6 +335,7 @@ async def _prepare_step_test_spec_build(
 
 async def _prepare_step_test_spec_review(
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -325,7 +350,7 @@ async def _prepare_step_test_spec_review(
         stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "test_spec_review", "verdict", "approve")
         state["current"] = PreparePhase.PLAN_DRAFTING.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
         return True, ""  # loop
 
@@ -340,7 +365,7 @@ async def _prepare_step_test_spec_review(
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["test_spec_review"] = spec_review
             state["current"] = PreparePhase.BLOCKED.value
-            await asyncio.to_thread(write_phase_state, cwd, slug, state)
+            await todos_db.write_state(slug, state)
             return False, (
                 f"BLOCKED: {slug} test spec review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
                 f"Manual resolution required.\n\n"
@@ -353,7 +378,7 @@ async def _prepare_step_test_spec_review(
         stamp_audit(state, "test_spec_review", "rounds", rounds)
         state["test_spec_review"] = spec_review
         state["current"] = PreparePhase.TEST_SPEC_BUILD.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
             ToolCallRequest(
@@ -387,6 +412,7 @@ async def _prepare_step_test_spec_review(
 
 async def _prepare_step_plan_drafting(
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -398,7 +424,7 @@ async def _prepare_step_plan_drafting(
     if has_plan:
         stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.PLAN_REVIEW.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
         return True, ""  # loop
 
@@ -422,6 +448,7 @@ async def _prepare_step_plan_drafting(
 
 async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many-statements
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -440,7 +467,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "plan_review", "verdict", "approve")
         state["current"] = PreparePhase.GATE.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
         return True, ""  # loop
 
@@ -450,7 +477,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         findings_list = findings if isinstance(findings, list) else []
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         state["current"] = PreparePhase.BLOCKED.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         return False, (
             f"BLOCKED: {slug} plan has {open_count} unresolved architectural finding(s) "
             f"requiring human decision. See todos/{slug}/plan-review-findings.md.\n\n"
@@ -470,7 +497,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["plan_review"] = plan_review
             state["current"] = PreparePhase.BLOCKED.value
-            await asyncio.to_thread(write_phase_state, cwd, slug, state)
+            await todos_db.write_state(slug, state)
             return False, (
                 f"BLOCKED: {slug} plan review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
                 f"Manual resolution required.\n\n"
@@ -491,7 +518,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         stamp_audit(state, "plan_review", "rounds", rounds)
         state["plan_review"] = plan_review
         state["current"] = PreparePhase.PLAN_DRAFTING.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         # Compute diff context for re-dispatch (I-2)
         base_sha = (isinstance(plan_review, dict) and plan_review.get("baseline_commit")) or ""
         plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", str(base_sha))
@@ -532,7 +559,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         plan_review_dict["baseline_commit"] = head_sha.strip()
         state["plan_review"] = plan_review_dict
         stamp_audit(state, "plan_review", "baseline_commit", head_sha.strip())
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -549,6 +576,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
 
 async def _prepare_step_gate(
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -559,7 +587,7 @@ async def _prepare_step_gate(
 
     if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
         state["current"] = PreparePhase.GROUNDING_CHECK.value
-        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        await todos_db.write_state(slug, state)
         return True, ""  # loop
 
     # Dispatch gate worker to run DOR assessment (in worktree — test specs live there)
@@ -580,7 +608,8 @@ async def _prepare_step_gate(
     )
 
 
-def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-statements
+async def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-statements
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -615,7 +644,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
         grounding_dict["valid"] = True
         state["grounding"] = grounding_dict
         state["current"] = PreparePhase.PREPARED.value
-        write_phase_state(cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
         return True, ""  # loop to PREPARED terminal
 
@@ -629,7 +658,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
         grounding_dict["changed_paths"] = []
         state["grounding"] = grounding_dict
         state["current"] = PreparePhase.RE_GROUNDING.value
-        write_phase_state(cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event(
             "domain.software-development.prepare.grounding_invalidated",
             {"slug": slug, "reason": reason, "changed_paths": []},
@@ -672,7 +701,7 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
         grounding_dict["changed_paths"] = changed_paths  # type: ignore[assignment]  # I1: persist actual changed paths
         state["grounding"] = grounding_dict
         state["current"] = PreparePhase.RE_GROUNDING.value
-        write_phase_state(cwd, slug, state)
+        await todos_db.write_state(slug, state)
         _emit_prepare_event(
             "domain.software-development.prepare.grounding_invalidated",
             {"slug": slug, "reason": reason, "changed_paths": changed_paths},
@@ -686,13 +715,14 @@ def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-s
     grounding_dict["valid"] = True
     state["grounding"] = grounding_dict
     state["current"] = PreparePhase.PREPARED.value
-    write_phase_state(cwd, slug, state)
+    await todos_db.write_state(slug, state)
     _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
     return True, ""  # loop to PREPARED terminal
 
 
 async def _prepare_step_re_grounding(
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -713,7 +743,7 @@ async def _prepare_step_re_grounding(
     if isinstance(plan_review, dict):
         plan_review["verdict"] = ""
     state["plan_review"] = plan_review
-    await asyncio.to_thread(write_phase_state, cwd, slug, state)
+    await todos_db.write_state(slug, state)
 
     changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."  # type: ignore[arg-type]  # pylint: disable=line-too-long
     guidance = await compose_agent_guidance(db)
@@ -732,13 +762,13 @@ async def _prepare_step_re_grounding(
     return False, result
 
 
-def _prepare_step_prepared(slug: str, cwd: str, state: dict[str, StateValue]) -> tuple[bool, str]:
+async def _prepare_step_prepared(todos_db: TodosDb, slug: str, state: dict[str, StateValue]) -> tuple[bool, str]:
     """PREPARED: terminal success state. Guards against invalid DOR score."""
     dor = state.get("dor", {})
     dor_score = dor.get("score") if isinstance(dor, dict) else None
     if not (isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD):
         state["current"] = PreparePhase.GATE.value
-        write_phase_state(cwd, slug, state)
+        await todos_db.write_state(slug, state)
         return True, ""  # loop back to gate
     return False, format_prepared(slug)
 
@@ -763,9 +793,10 @@ def _prepare_step_blocked(slug: str, state: dict[str, StateValue]) -> tuple[bool
 # =============================================================================
 
 
-async def _prepare_dispatch(  # pylint: disable=too-many-return-statements
+async def _prepare_dispatch(  # pylint: disable=too-many-return-statements,too-many-arguments
     *,
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     phase: PreparePhase,
@@ -773,30 +804,33 @@ async def _prepare_dispatch(  # pylint: disable=too-many-return-statements
 ) -> tuple[bool, str]:
     """Dispatch to the appropriate phase handler. Returns (continue_loop, instruction)."""
     if phase == PreparePhase.INPUT_ASSESSMENT:
-        return await _prepare_step_input_assessment(db, slug, cwd, state)
+        return await _prepare_step_input_assessment(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.TRIANGULATION:
-        return await _prepare_step_triangulation(db, slug, cwd, state)
+        return await _prepare_step_triangulation(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.REQUIREMENTS_REVIEW:
-        return await _prepare_step_requirements_review(db, slug, cwd, state)
+        return await _prepare_step_requirements_review(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.TEST_SPEC_BUILD:
-        return await _prepare_step_test_spec_build(db, slug, cwd, state)
+        return await _prepare_step_test_spec_build(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.TEST_SPEC_REVIEW:
-        return await _prepare_step_test_spec_review(db, slug, cwd, state)
+        return await _prepare_step_test_spec_review(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.PLAN_DRAFTING:
-        return await _prepare_step_plan_drafting(db, slug, cwd, state)
+        return await _prepare_step_plan_drafting(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.PLAN_REVIEW:
-        return await _prepare_step_plan_review(db, slug, cwd, state)
+        return await _prepare_step_plan_review(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.GATE:
-        return await _prepare_step_gate(db, slug, cwd, state)
+        return await _prepare_step_gate(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.GROUNDING_CHECK:
-        return await asyncio.to_thread(_prepare_step_grounding_check, slug, cwd, state)
+        return await _prepare_step_grounding_check(todos_db, slug, cwd, state)
     if phase == PreparePhase.RE_GROUNDING:
-        return await _prepare_step_re_grounding(db, slug, cwd, state)
+        return await _prepare_step_re_grounding(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.PREPARED:
-        return _prepare_step_prepared(slug, cwd, state)
+        return await _prepare_step_prepared(todos_db, slug, state)
     if phase == PreparePhase.BLOCKED:
         return _prepare_step_blocked(slug, state)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"
+
+
+__all__ = ["_prepare_dispatch", "_restamp_artifact_digest_db"]
 
 
 __all__ = ["_prepare_dispatch"]

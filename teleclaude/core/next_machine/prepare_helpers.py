@@ -9,6 +9,7 @@ read_phase_state/write_phase_state for atomicity.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -19,6 +20,9 @@ from teleclaude.core.next_machine.artifacts import (
 from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -155,3 +159,40 @@ def record_input_consumed(cwd: str, slug: str) -> None:
         "domain.software-development.prepare.input_consumed",
         {"slug": slug, "phase": "input_assessment", "digest": digest},
     )
+
+
+# ---------------------------------------------------------------------------
+# DB-backed variants (todos.db)
+# ---------------------------------------------------------------------------
+
+
+async def check_artifact_staleness_db(todos_db: TodosDb, slug: str) -> list[str]:
+    """DB-backed artifact staleness check.
+
+    Compares stored digests in todo_state.artifacts against current
+    digests in todo_artifacts table.
+    """
+    state = await todos_db.read_state(slug)
+    if state is None:
+        return []
+    artifacts = state.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        return []
+
+    stale_from: int | None = None
+    for idx, (key, _filename) in enumerate(_ARTIFACT_CASCADE):
+        entry = artifacts.get(key, {})
+        if not isinstance(entry, dict):
+            continue
+        stored_digest = str(entry.get("digest", ""))
+        if not stored_digest:
+            continue
+        current = await todos_db.artifact_digest(slug, key)
+        if current != stored_digest:
+            stale_from = idx
+            break
+
+    if stale_from is None:
+        return []
+
+    return [key for key, _ in _ARTIFACT_CASCADE[stale_from:]]
