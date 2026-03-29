@@ -2,30 +2,28 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import dynamic from "next/dynamic";
-import { LeftPanel } from "@/components/tui/LeftPanel";
-import { SessionTree } from "@/components/tui/SessionTree";
-import { Footer } from "@/components/tui/Footer";
-import { ConfirmModal } from "@/components/tui/ConfirmModal";
+import { LeftPanel } from "@/components/LeftPanel";
+import { SessionTree } from "@/components/SessionTree";
+import { Footer } from "@/components/Footer";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { NewSessionDialog } from "@/components/sidebar/NewSessionDialog";
 import { SessionHeader } from "@/components/sidebar/SessionHeader";
 import { ThemingToggle } from "@/components/parts/ThemingToggle";
 import { DarkModeToggle } from "@/components/parts/DarkModeToggle";
-import { TabBar } from "@/components/tabs/TabBar";
-import { useActiveView } from "@/components/tabs/useActiveView";
-import type { TabValue } from "@/components/tui/TabBar";
+import type { TabValue } from "@/components/TabBar";
 import type { SessionInfo } from "@/lib/api/types";
 import type { ComputerGroup, NodeId } from "@/lib/sessions/tree";
-import type { PanelId } from "@/lib/panels/navigation";
 import { buildSessionTree, projectNodeId, sessionNodeId } from "@/lib/sessions/tree";
 import { useSessions } from "@/lib/hooks/useSessions";
 import { useComputers } from "@/lib/hooks/useComputers";
 import { useEndSession, useAgentRestart } from "@/lib/hooks/useSessionActions";
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { useSessionTree } from "@/hooks/useSessionTree";
 import { useSessionToasts } from "@/hooks/useSessionToasts";
 import { useWS } from "@/lib/ws/WebSocketProvider";
-import { findBinding } from "@/lib/keys/bindings";
 import { toast } from "sonner";
 
 const Chat = dynamic(() => import("@/components/assistant/Chat"), {
@@ -60,6 +58,8 @@ type NewSessionPrefill = {
   computer?: string;
   project?: string;
 };
+
+const CHAT_LAYOUT_STORAGE_KEY = "teleclaude.chat.layout";
 
 function findProjectPrefill(
   tree: ComputerGroup[],
@@ -125,23 +125,26 @@ function useSessionActivityMap() {
   return activityMap;
 }
 
-const VIEW_ACTIONS: Record<string, PanelId> = {
-  switch_to_sessions: "sessions",
-  switch_to_preparation: "preparation",
-  switch_to_configuration: "configuration",
-  switch_to_jobs: "jobs",
-};
 function ChatPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: authSession } = useSession();
   const sessionId = searchParams?.get("sessionId");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogPrefill, setDialogPrefill] = useState<NewSessionPrefill>();
   const [confirmEndOpen, setConfirmEndOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabValue>("sessions");
   const { refresh } = useWS();
-  const { activeView, setActiveView } = useActiveView();
+  const [layoutState, setLayoutState] = usePersistentState<{
+    activeTab: TabValue;
+    lastSessionId: string | null;
+  }>(CHAT_LAYOUT_STORAGE_KEY, {
+    activeTab: "sessions",
+    lastSessionId: null,
+  });
+  const activeTab = layoutState.activeTab;
+  const lastSessionId = layoutState.lastSessionId ?? null;
   const activityMap = useSessionActivityMap();
+  const restoredSessionIdRef = useRef<string | null>(null);
   const { data: sessions, isLoading: sessionsLoading, error: sessionsError } =
     useSessions();
   const {
@@ -166,6 +169,7 @@ function ChatPageInner() {
     toggleNode,
     expandAll,
     collapseAll,
+    revealSession,
     getNodeType,
     getSessionId,
   } = useSessionTree(tree);
@@ -173,6 +177,8 @@ function ChatPageInner() {
   const selectedNodeType =
     activeTab === "sessions" && cursorId ? getNodeType(cursorId) : null;
   const selectedSessionId = cursorId ? getSessionId(cursorId) : null;
+  const currentUserEmail =
+    typeof authSession?.user?.email === "string" ? authSession.user.email : null;
   const selectedSession = useMemo(
     () =>
       (sessions ?? []).find(
@@ -183,8 +189,30 @@ function ChatPageInner() {
 
   useEffect(() => {
     if (!sessionId) return;
-    setCursorId(sessionNodeId(sessionId));
-  }, [sessionId, setCursorId]);
+
+    restoredSessionIdRef.current = null;
+    revealSession(sessionId);
+    setLayoutState((prev) =>
+      prev.lastSessionId === sessionId
+        ? prev
+        : { ...prev, lastSessionId: sessionId },
+    );
+  }, [revealSession, sessionId, setLayoutState]);
+
+  useEffect(() => {
+    if (sessionId) return;
+    if (!lastSessionId) return;
+    if (!sessions?.some((session) => session.session_id === lastSessionId)) {
+      setLayoutState((prev) =>
+        prev.lastSessionId === null ? prev : { ...prev, lastSessionId: null },
+      );
+      return;
+    }
+    if (restoredSessionIdRef.current === lastSessionId) return;
+
+    restoredSessionIdRef.current = lastSessionId;
+    router.push(`/?sessionId=${lastSessionId}`);
+  }, [lastSessionId, router, sessionId, sessions, setLayoutState]);
 
   const closeNewSessionDialog = useCallback((open: boolean) => {
     setDialogOpen(open);
@@ -198,10 +226,21 @@ function ChatPageInner() {
 
   const handleSelectSession = useCallback(
     (nextSessionId: string) => {
-      setCursorId(sessionNodeId(nextSessionId));
+      revealSession(nextSessionId);
+      setLayoutState((prev) => ({
+        ...prev,
+        lastSessionId: nextSessionId,
+      }));
       router.push(`/?sessionId=${nextSessionId}`);
     },
-    [router, setCursorId],
+    [revealSession, router, setLayoutState],
+  );
+
+  const handleTabChange = useCallback(
+    (tab: TabValue) => {
+      setLayoutState((prev) => ({ ...prev, activeTab: tab }));
+    },
+    [setLayoutState],
   );
 
   const handleEndSelectedSession = useCallback(async () => {
@@ -214,9 +253,10 @@ function ChatPageInner() {
     setConfirmEndOpen(false);
 
     if (selectedSession.session_id === sessionId) {
+      setLayoutState((prev) => ({ ...prev, lastSessionId: null }));
       router.push("/");
     }
-  }, [endSession, router, selectedSession, sessionId]);
+  }, [endSession, router, selectedSession, sessionId, setLayoutState]);
 
   const handleRestartSelectedSession = useCallback(
     async (selectedId: string) => {
@@ -324,35 +364,10 @@ function ChatPageInner() {
 
   useKeyboardNavigation({
     activeTab,
-    onSwitchTab: setActiveTab,
+    onSwitchTab: handleTabChange,
     onEscape: handleEscape,
     onAction: handleAction,
   });
-
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      // Skip when typing in inputs
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-
-      const binding = findBinding(
-        e.key,
-        { ctrl: e.ctrlKey, shift: e.shiftKey, meta: e.metaKey },
-        activeView,
-      );
-
-      if (binding && binding.action in VIEW_ACTIONS) {
-        e.preventDefault();
-        setActiveView(VIEW_ACTIONS[binding.action]);
-      }
-    },
-    [activeView, setActiveView],
-  );
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyDown]);
 
   const sessionsContent = sessionsLoading || computersLoading ? (
     <div className="flex items-center justify-center p-6">
@@ -369,19 +384,30 @@ function ChatPageInner() {
       cursorId={cursorId}
       activeSessionId={sessionId}
       activityMap={activityMap}
+      currentUserEmail={currentUserEmail}
       onToggle={toggleNode}
       onSelectSession={handleSelectSession}
       onCursorChange={setCursorId}
     />
   );
 
+  const preparationContent = (
+    <PreparationView isActive={activeTab === "preparation"} />
+  );
+  const configurationContent = (
+    <ConfigView isActive={activeTab === "configuration"} />
+  );
+  const jobsContent = <JobsView isActive={activeTab === "jobs"} />;
+
   return (
     <>
-      {/* Left panel — 40% */}
       <LeftPanel
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
         sessionsContent={sessionsContent}
+        preparationContent={preparationContent}
+        configurationContent={configurationContent}
+        jobsContent={jobsContent}
         footer={
           <Footer
             context={activeTab}
@@ -394,10 +420,9 @@ function ChatPageInner() {
         }
       />
 
-      {/* Right panel — 60% */}
       <main className="flex min-w-0 flex-col" style={{ width: "60%" }}>
         <header className="flex items-center gap-2 border-b px-4 py-2">
-          {sessionId && activeView === "sessions" ? (
+          {sessionId ? (
             <SessionHeader sessionId={sessionId} />
           ) : (
             <h1 className="text-lg font-semibold">TeleClaude</h1>
@@ -408,51 +433,21 @@ function ChatPageInner() {
           </div>
         </header>
 
-        <TabBar activeView={activeView} onViewChange={setActiveView} />
-
-        {/* Views — all rendered simultaneously, hidden via display:none to preserve state (R1.2) */}
-        <div className="flex-1 overflow-hidden relative">
-          <div
-            className="absolute inset-0 overflow-hidden"
-            style={{ display: activeView === "sessions" ? "block" : "none" }}
-          >
-            {sessionId ? (
-              <Chat key={sessionId} sessionId={sessionId} />
-            ) : (
-              <div className="flex flex-1 items-center justify-center h-full">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">
-                    Select a session from the sidebar
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    or create a new one
-                  </p>
-                </div>
+        <div className="flex-1 overflow-hidden">
+          {sessionId ? (
+            <Chat key={sessionId} sessionId={sessionId} />
+          ) : (
+            <div className="flex h-full flex-1 items-center justify-center">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">
+                  Select a session from the sidebar
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  or create a new one
+                </p>
               </div>
-            )}
-          </div>
-          <div
-            className="absolute inset-0 overflow-auto"
-            style={{
-              display: activeView === "preparation" ? "block" : "none",
-            }}
-          >
-            <PreparationView isActive={activeView === "preparation"} />
-          </div>
-          <div
-            className="absolute inset-0 overflow-auto"
-            style={{
-              display: activeView === "configuration" ? "block" : "none",
-            }}
-          >
-            <ConfigView isActive={activeView === "configuration"} />
-          </div>
-          <div
-            className="absolute inset-0 overflow-auto"
-            style={{ display: activeView === "jobs" ? "block" : "none" }}
-          >
-            <JobsView isActive={activeView === "jobs"} />
-          </div>
+            </div>
+          )}
         </div>
       </main>
 

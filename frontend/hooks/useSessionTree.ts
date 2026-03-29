@@ -1,6 +1,13 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import {
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  type Dispatch,
+  type SetStateAction,
+} from "react"
 import {
   computerNodeId,
   projectNodeId,
@@ -9,6 +16,14 @@ import {
   type NodeId,
   type SessionTreeNode,
 } from "@/lib/sessions/tree"
+import { usePersistentState } from "@/hooks/usePersistentState"
+
+export const SESSION_TREE_STORAGE_KEY = "teleclaude.chat.session-tree"
+
+interface SessionTreePersistenceState {
+  expandedIds: NodeId[]
+  cursorId: NodeId | null
+}
 
 function collectAllNodeIds(tree: ComputerGroup[]): NodeId[] {
   const ids: NodeId[] = []
@@ -29,6 +44,17 @@ function collectSessionIds(sessions: SessionTreeNode[], ids: NodeId[]) {
       collectSessionIds(node.children, ids)
     }
   }
+}
+
+function collectDefaultExpandedIds(tree: ComputerGroup[]): NodeId[] {
+  const ids: NodeId[] = []
+  for (const computer of tree) {
+    ids.push(computerNodeId(computer.name))
+    for (const project of computer.projects) {
+      ids.push(projectNodeId(computer.name, project.path))
+    }
+  }
+  return ids
 }
 
 function flattenVisible(
@@ -65,33 +91,173 @@ function flattenSessions(
   }
 }
 
-export function useSessionTree(tree: ComputerGroup[]) {
-  const [expandedSet, setExpandedSet] = useState<Set<NodeId>>(() => {
-    const initial = new Set<NodeId>()
-    for (const computer of tree) {
-      initial.add(computerNodeId(computer.name))
-      for (const project of computer.projects) {
-        initial.add(projectNodeId(computer.name, project.path))
+function sanitizeExpandedIds(
+  expandedIds: NodeId[],
+  validNodeIds: ReadonlySet<NodeId>,
+): NodeId[] {
+  const next: NodeId[] = []
+  for (const id of expandedIds) {
+    if (!validNodeIds.has(id)) continue
+    if (next.includes(id)) continue
+    next.push(id)
+  }
+  return next
+}
+
+function sanitizeCursorId(
+  cursorId: NodeId | null,
+  validNodeIds: ReadonlySet<NodeId>,
+): NodeId | null {
+  if (!cursorId) return null
+  return validNodeIds.has(cursorId) ? cursorId : null
+}
+
+function resolveStateUpdate<T>(
+  update: SetStateAction<T>,
+  current: T,
+): T {
+  return typeof update === "function"
+    ? (update as (prev: T) => T)(current)
+    : update
+}
+
+function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false
+  return left.every((value, index) => value === right[index])
+}
+
+function findSessionAncestors(
+  tree: ComputerGroup[],
+  targetSessionId: string,
+): NodeId[] {
+  for (const computer of tree) {
+    for (const project of computer.projects) {
+      const ancestors = [
+        computerNodeId(computer.name),
+        projectNodeId(computer.name, project.path),
+      ]
+      if (projectHasSession(project.sessions, targetSessionId)) {
+        return ancestors
       }
     }
-    return initial
-  })
+  }
+  return []
+}
 
-  const [cursorId, setCursorId] = useState<NodeId | null>(null)
+function projectHasSession(
+  sessions: SessionTreeNode[],
+  targetSessionId: string,
+): boolean {
+  for (const node of sessions) {
+    if (node.session.session_id === targetSessionId) return true
+    if (projectHasSession(node.children, targetSessionId)) return true
+  }
+  return false
+}
+
+export function useSessionTree(tree: ComputerGroup[]) {
+  const defaultExpandedIds = useMemo(
+    () => collectDefaultExpandedIds(tree),
+    [tree],
+  )
+  const validNodeIds = useMemo(
+    () => new Set(collectAllNodeIds(tree)),
+    [tree],
+  )
+  const [persistedState, setPersistedState, persistence] =
+    usePersistentState<SessionTreePersistenceState>(
+      SESSION_TREE_STORAGE_KEY,
+      () => ({
+        expandedIds: defaultExpandedIds,
+        cursorId: null,
+      }),
+    )
+  const defaultsBootstrappedRef = useRef(defaultExpandedIds.length > 0)
+
+  useEffect(() => {
+    if (!persistence.isHydrated) return
+
+    setPersistedState((prev) => {
+      const expandedIds = sanitizeExpandedIds(prev.expandedIds, validNodeIds)
+      const cursorId = sanitizeCursorId(prev.cursorId, validNodeIds)
+
+      if (
+        arraysEqual(prev.expandedIds, expandedIds) &&
+        prev.cursorId === cursorId
+      ) {
+        return prev
+      }
+
+      return {
+        expandedIds,
+        cursorId,
+      }
+    })
+  }, [
+    persistence.isHydrated,
+    setPersistedState,
+    validNodeIds,
+  ])
+
+  useEffect(() => {
+    if (!persistence.isHydrated) return
+    if (persistence.hasStoredValue) {
+      defaultsBootstrappedRef.current = true
+      return
+    }
+    if (defaultsBootstrappedRef.current) return
+    if (defaultExpandedIds.length === 0) return
+
+    defaultsBootstrappedRef.current = true
+    setPersistedState((prev) => {
+      if (prev.expandedIds.length > 0) return prev
+      return {
+        ...prev,
+        expandedIds: defaultExpandedIds,
+      }
+    })
+  }, [
+    defaultExpandedIds,
+    persistence.hasStoredValue,
+    persistence.isHydrated,
+    setPersistedState,
+  ])
+
+  const expandedSet = useMemo(
+    () => new Set<NodeId>(persistedState.expandedIds),
+    [persistedState.expandedIds],
+  )
+  const cursorId = persistedState.cursorId
 
   const visibleNodeIds = useMemo(
     () => flattenVisible(tree, expandedSet),
     [tree, expandedSet],
   )
 
+  const setCursorId: Dispatch<SetStateAction<NodeId | null>> = useCallback(
+    (update) => {
+      setPersistedState((prev) => ({
+        ...prev,
+        cursorId: sanitizeCursorId(
+          resolveStateUpdate(update, prev.cursorId),
+          validNodeIds,
+        ),
+      }))
+    },
+    [setPersistedState, validNodeIds],
+  )
+
   const toggleNode = useCallback((id: NodeId) => {
-    setExpandedSet((prev) => {
-      const next = new Set(prev)
+    setPersistedState((prev) => {
+      const next = new Set(prev.expandedIds)
       if (next.has(id)) next.delete(id)
       else next.add(id)
-      return next
+      return {
+        ...prev,
+        expandedIds: sanitizeExpandedIds([...next], validNodeIds),
+      }
     })
-  }, [])
+  }, [setPersistedState, validNodeIds])
 
   const moveCursor = useCallback(
     (direction: "up" | "down") => {
@@ -115,12 +281,45 @@ export function useSessionTree(tree: ComputerGroup[]) {
   )
 
   const expandAll = useCallback(() => {
-    setExpandedSet(new Set(collectAllNodeIds(tree)))
-  }, [tree])
+    setPersistedState((prev) => ({
+      ...prev,
+      expandedIds: collectAllNodeIds(tree),
+    }))
+  }, [setPersistedState, tree])
 
   const collapseAll = useCallback(() => {
-    setExpandedSet(new Set<NodeId>())
-  }, [])
+    setPersistedState((prev) => ({
+      ...prev,
+      expandedIds: [],
+    }))
+  }, [setPersistedState])
+
+  const revealSession = useCallback(
+    (sessionId: string) => {
+      const nextCursorId = sessionNodeId(sessionId)
+      const ancestors = findSessionAncestors(tree, sessionId)
+      setPersistedState((prev) => {
+        const expandedIds = sanitizeExpandedIds(
+          [...new Set([...prev.expandedIds, ...ancestors])],
+          validNodeIds,
+        )
+        const cursorId = sanitizeCursorId(nextCursorId, validNodeIds)
+
+        if (
+          arraysEqual(prev.expandedIds, expandedIds) &&
+          prev.cursorId === cursorId
+        ) {
+          return prev
+        }
+
+        return {
+          expandedIds,
+          cursorId,
+        }
+      })
+    },
+    [setPersistedState, tree, validNodeIds],
+  )
 
   const getNodeType = useCallback(
     (id: NodeId): "computer" | "project" | "session" | null => {
@@ -149,6 +348,7 @@ export function useSessionTree(tree: ComputerGroup[]) {
     toggleNode,
     expandAll,
     collapseAll,
+    revealSession,
     getNodeType,
     getSessionId,
   }

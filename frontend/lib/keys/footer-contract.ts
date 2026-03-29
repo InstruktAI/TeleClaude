@@ -12,7 +12,7 @@ export interface FooterRows {
 }
 
 export type FooterNodeType = "computer" | "project" | "session" | null | undefined
-export type FooterContext = ViewContext | "monitoring"
+export type FooterContext = ViewContext
 
 const GLOBAL_HINTS: FooterHint[] = [
   { key: "q", description: "Quit", action: "quit" },
@@ -89,7 +89,6 @@ export function getFooterRows(
       return { contextHints: CONFIGURATION_HINTS, globalHints: GLOBAL_HINTS }
     case "jobs":
       return { contextHints: JOBS_HINTS, globalHints: GLOBAL_HINTS }
-    case "monitoring":
     case "global":
     default:
       return { contextHints: [], globalHints: GLOBAL_HINTS }

@@ -207,8 +207,10 @@ vi.mock("sonner", () => ({
 }))
 
 describe("ChatPage", () => {
+  let storage: Map<string, string>
+
   beforeEach(() => {
-    const storage = new Map<string, string>()
+    storage = new Map<string, string>()
     Object.defineProperty(window, "localStorage", {
       configurable: true,
       value: {
@@ -238,10 +240,27 @@ describe("ChatPage", () => {
 
     expect(await screen.findByTestId("computer-header-local")).toBeDefined()
     expect(screen.getByText("Session Alpha")).toBeDefined()
+    expect(screen.getAllByRole("tablist")).toHaveLength(1)
     expect(screen.getAllByTestId("footer-hint").length).toBeGreaterThan(0)
     expect(screen.queryByText("Sessions tree loading...")).toBeNull()
     expect(screen.queryByText("Press ? for help")).toBeNull()
     expect(sessionToastsMock).toHaveBeenCalled()
+  })
+
+  it("restores the persisted left tab instead of rendering the old right-pane tabs", async () => {
+    storage.set(
+      "teleclaude.chat.layout",
+      JSON.stringify({ activeTab: "preparation" }),
+    )
+
+    render(<ChatPage />)
+
+    expect(await screen.findByText("Start work")).toBeDefined()
+    expect(screen.getAllByRole("tablist")).toHaveLength(1)
+    const preparationTab = screen
+      .getAllByRole("tab")
+      .find((tab) => tab.textContent?.includes("Preparation"))
+    expect(preparationTab?.getAttribute("aria-selected")).toBe("true")
   })
 
   it("routes to the selected session when a tree row is clicked", async () => {
@@ -250,6 +269,28 @@ describe("ChatPage", () => {
     fireEvent.click(await screen.findByTestId("session-row-sess-1"))
 
     expect(pushMock).toHaveBeenCalledWith("/?sessionId=sess-1")
+    expect(storage.get("teleclaude.chat.layout")).toBe(
+      JSON.stringify({
+        activeTab: "sessions",
+        lastSessionId: "sess-1",
+      }),
+    )
+  })
+
+  it("restores the last active session when the route opens without a session id", async () => {
+    storage.set(
+      "teleclaude.chat.layout",
+      JSON.stringify({
+        activeTab: "sessions",
+        lastSessionId: "sess-2",
+      }),
+    )
+
+    render(<ChatPage />)
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/?sessionId=sess-2")
+    })
   })
 
   it("switches tabs from the keyboard and opens a prefilled new-session dialog from a project node", async () => {
@@ -257,9 +298,15 @@ describe("ChatPage", () => {
 
     fireEvent.keyDown(document, { key: "2" })
     expect(await screen.findByText("Start work")).toBeDefined()
+    expect(storage.get("teleclaude.chat.layout")).toBe(
+      JSON.stringify({ activeTab: "preparation", lastSessionId: null }),
+    )
 
     fireEvent.keyDown(document, { key: "1" })
     expect(await screen.findByTestId("computer-header-local")).toBeDefined()
+    expect(storage.get("teleclaude.chat.layout")).toBe(
+      JSON.stringify({ activeTab: "sessions", lastSessionId: null }),
+    )
 
     fireEvent.keyDown(document, { key: "ArrowDown" })
     fireEvent.keyDown(document, { key: "ArrowDown" })
@@ -269,6 +316,16 @@ describe("ChatPage", () => {
     expect(dialog.dataset.open).toBe("true")
     expect(dialog.dataset.prefillComputer).toBe("local")
     expect(dialog.dataset.prefillProject).toBe("/home/user/my-project")
+  })
+
+  it("keeps a single tab system after switching views", async () => {
+    render(<ChatPage />)
+
+    fireEvent.keyDown(document, { key: "4" })
+
+    const jobsTab = await screen.findByRole("tab", { name: /Jobs/i })
+    expect(jobsTab.getAttribute("aria-selected")).toBe("true")
+    expect(screen.getAllByRole("tablist")).toHaveLength(1)
   })
 
   it("opens the confirm modal for the selected session and restarts the session from the keyboard", async () => {

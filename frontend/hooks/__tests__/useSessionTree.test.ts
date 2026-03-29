@@ -1,8 +1,33 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import { useSessionTree } from '../useSessionTree'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { renderHook, act, waitFor } from '@testing-library/react'
+import {
+  SESSION_TREE_STORAGE_KEY,
+  useSessionTree,
+} from '../useSessionTree'
 import type { ComputerGroup } from '@/lib/sessions/tree'
+
+function installLocalStorageMock() {
+  const store = new Map<string, string>()
+
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+      clear: () => {
+        store.clear()
+      },
+    },
+  })
+
+  return store
+}
 
 function makeTree(): ComputerGroup[] {
   return [
@@ -30,6 +55,7 @@ function makeTree(): ComputerGroup[] {
                 computer: 'local',
               },
               index: 1,
+              displayIndex: '1',
               children: [
                 {
                   type: 'session',
@@ -43,6 +69,7 @@ function makeTree(): ComputerGroup[] {
                     initiator_session_id: 'sess-1',
                   },
                   index: 1,
+                  displayIndex: '1.1',
                   children: [],
                 },
               ],
@@ -58,6 +85,7 @@ function makeTree(): ComputerGroup[] {
                 computer: 'local',
               },
               index: 2,
+              displayIndex: '2',
               children: [],
             },
           ],
@@ -68,6 +96,10 @@ function makeTree(): ComputerGroup[] {
 }
 
 describe('useSessionTree', () => {
+  beforeEach(() => {
+    installLocalStorageMock()
+  })
+
   it('flattenVisibleNodes returns correct order with default expanded state', () => {
     const { result } = renderHook(() => useSessionTree(makeTree()))
     const ids = result.current.visibleNodeIds
@@ -171,5 +203,57 @@ describe('useSessionTree', () => {
     const { result } = renderHook(() => useSessionTree(makeTree()))
     expect(result.current.getSessionId('session:sess-1')).toBe('sess-1')
     expect(result.current.getSessionId('computer:local')).toBeNull()
+  })
+
+  it('restores persisted expanded nodes and cursor after hydration', async () => {
+    window.localStorage.setItem(
+      SESSION_TREE_STORAGE_KEY,
+      JSON.stringify({
+        expandedIds: ['computer:local'],
+        cursorId: 'session:sess-2',
+      }),
+    )
+
+    const { result } = renderHook(() => useSessionTree(makeTree()))
+
+    await waitFor(() => {
+      expect(result.current.expandedSet.has('computer:local')).toBe(true)
+      expect(result.current.expandedSet.has('project:local:/home/user/my-project')).toBe(false)
+      expect(result.current.cursorId).toBe('session:sess-2')
+    })
+  })
+
+  it('initializes default expansion when tree data arrives after mount', async () => {
+    const { result, rerender } = renderHook(
+      ({ tree }: { tree: ComputerGroup[] }) => useSessionTree(tree),
+      {
+        initialProps: { tree: [] as ComputerGroup[] },
+      },
+    )
+
+    rerender({ tree: makeTree() })
+
+    await waitFor(() => {
+      expect(result.current.expandedSet.has('computer:local')).toBe(true)
+      expect(result.current.expandedSet.has('project:local:/home/user/my-project')).toBe(true)
+    })
+  })
+
+  it('reveals a persisted session by expanding its ancestors', async () => {
+    const { result } = renderHook(() => useSessionTree(makeTree()))
+
+    act(() => {
+      result.current.collapseAll()
+    })
+
+    act(() => {
+      result.current.revealSession('sess-2')
+    })
+
+    await waitFor(() => {
+      expect(result.current.expandedSet.has('computer:local')).toBe(true)
+      expect(result.current.expandedSet.has('project:local:/home/user/my-project')).toBe(true)
+      expect(result.current.cursorId).toBe('session:sess-2')
+    })
   })
 })

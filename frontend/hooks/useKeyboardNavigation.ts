@@ -3,13 +3,13 @@
 import { useEffect, useCallback } from "react"
 import { findBinding } from "@/lib/keys/bindings"
 import type { ViewContext } from "@/lib/keys/types"
-import type { TabValue } from "@/components/tui/TabBar"
+import type { TabValue } from "@/components/TabBar"
 
 const TAB_ACTIONS: Record<string, TabValue> = {
   switch_to_sessions: "sessions",
   switch_to_preparation: "preparation",
   switch_to_configuration: "configuration",
-  switch_to_monitoring: "monitoring",
+  switch_to_jobs: "jobs",
 }
 
 function isTextInput(el: Element | null): boolean {

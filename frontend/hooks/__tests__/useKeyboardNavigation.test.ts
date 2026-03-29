@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useKeyboardNavigation } from '../useKeyboardNavigation'
-import type { TabValue } from '@/components/tui/TabBar'
+import type { TabValue } from '@/components/TabBar'
 
 function makeCallbacks() {
   return {
@@ -38,7 +38,7 @@ describe('useKeyboardNavigation', () => {
       ['1', 'sessions'],
       ['2', 'preparation'],
       ['3', 'configuration'],
-      ['4', 'monitoring'],
+      ['4', 'jobs'],
     ]
     for (const [key, tab] of expected) {
       fire(key)
