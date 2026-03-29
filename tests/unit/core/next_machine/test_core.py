@@ -17,6 +17,17 @@ from teleclaude.core.next_machine._types import StateValue
 _LONG = "This content is long enough to pass the scaffold content threshold check for tests."
 
 
+def _mock_todos_db() -> AsyncMock:
+    """Mock TodosDb for core tests."""
+    db = AsyncMock()
+    db.write_state = AsyncMock()
+    db.read_state = AsyncMock(return_value=None)
+    db.artifact_digest = AsyncMock(return_value="")
+    db.slug_in_roadmap = AsyncMock(return_value=True)
+    db.add_to_roadmap = AsyncMock(return_value=True)
+    return db
+
+
 def _make_todo(tmp_path: Path, slug: str = "test-slug") -> tuple[str, str]:
     todo_dir = tmp_path / "todos" / slug
     todo_dir.mkdir(parents=True)
@@ -185,7 +196,7 @@ async def test_all_findings_resolved_yields_approve(mock_emit: MagicMock, tmp_pa
     write_phase_state(cwd, slug, state)
 
     mock_db = MagicMock()
-    keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
+    keep_going, instruction = await _prepare_step_requirements_review(mock_db, _mock_todos_db(), slug, cwd, state)
 
     assert keep_going is True
     assert instruction == ""
@@ -216,7 +227,7 @@ async def test_unresolved_substantive_yields_needs_work(mock_emit: MagicMock, tm
         new_callable=AsyncMock,
         return_value="guidance",
     ):
-        keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
+        keep_going, instruction = await _prepare_step_requirements_review(mock_db, _mock_todos_db(), slug, cwd, state)
 
     assert keep_going is False
     assert instruction
@@ -241,7 +252,7 @@ async def test_unresolved_architectural_yields_blocked(mock_emit: MagicMock, tmp
     write_phase_state(cwd, slug, state)
 
     mock_db = MagicMock()
-    keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
+    keep_going, instruction = await _prepare_step_requirements_review(mock_db, _mock_todos_db(), slug, cwd, state)
 
     assert keep_going is False
     assert instruction
@@ -287,7 +298,7 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
         new_callable=AsyncMock,
         return_value="guidance",
     ):
-        keep_going, instruction = await _prepare_step_requirements_review(mock_db, slug, cwd, state)
+        keep_going, instruction = await _prepare_step_requirements_review(mock_db, _mock_todos_db(), slug, cwd, state)
 
     assert keep_going is False
     assert instruction

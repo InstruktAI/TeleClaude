@@ -47,24 +47,16 @@ def test_select_precondition_root_prefers_worktree_when_required_artifacts_are_p
     assert root == str(tmp_path / "trees" / "slug-a")
 
 
-def test_validate_required_artifacts_returns_none_for_bug_with_bug_report(tmp_path: Path) -> None:
-    bug_dir = tmp_path / "todos" / "bug-slug"
-    bug_dir.mkdir(parents=True)
-    (bug_dir / "bug.md").write_text(
-        "# Bug Report\n\nThe session fails to connect when X happens.\n\n## Steps to reproduce\n1. Start daemon\n2. Connect\n",
-        encoding="utf-8",
-    )
-
-    error = _validate_required_artifacts(str(tmp_path), "bug-slug", True)
+def test_validate_required_artifacts_returns_none_for_bug_with_bug_report() -> None:
+    with patch("teleclaude.core.next_machine.work.check_file_has_content", return_value=True):
+        error = _validate_required_artifacts("/repo", "bug-slug", True)
 
     assert error is None
 
 
-def test_validate_required_artifacts_returns_error_for_bug_without_bug_report(tmp_path: Path) -> None:
-    bug_dir = tmp_path / "todos" / "bug-slug"
-    bug_dir.mkdir(parents=True)
-
-    error = _validate_required_artifacts(str(tmp_path), "bug-slug", True)
+def test_validate_required_artifacts_returns_error_for_bug_without_bug_report() -> None:
+    with patch("teleclaude.core.next_machine.work.check_file_has_content", return_value=False):
+        error = _validate_required_artifacts("/repo", "bug-slug", True)
 
     assert error is not None
 

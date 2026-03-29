@@ -25,12 +25,22 @@ from teleclaude.core.next_machine.prepare_steps import (
 )
 
 
+def _mock_todos_db() -> AsyncMock:
+    """Mock TodosDb for prepare step tests."""
+    db = AsyncMock()
+    db.write_state = AsyncMock()
+    db.read_state = AsyncMock(return_value=None)
+    db.artifact_digest = AsyncMock(return_value="")
+    return db
+
+
 def _write_state(todo_dir: Path, state: dict[object, object]) -> None:
     todo_dir.mkdir(parents=True, exist_ok=True)
     (todo_dir / "state.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
 
 
-def test_prepare_step_grounding_check_first_pass_captures_baseline_and_marks_prepared(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_prepare_step_grounding_check_first_pass_captures_baseline_and_marks_prepared(tmp_path: Path) -> None:
     """First grounding check stamps baseline SHA and input digest, then marks prepared."""
     todo_dir = tmp_path / "todos" / "slug-a"
     todo_dir.mkdir(parents=True)
@@ -41,7 +51,7 @@ def test_prepare_step_grounding_check_first_pass_captures_baseline_and_marks_pre
         patch("teleclaude.core.next_machine.prepare_steps.run_git_command", return_value=(0, "abc123\n", "")),
         patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"),
     ):
-        keep_going, instruction = _prepare_step_grounding_check("slug-a", str(tmp_path), state)
+        keep_going, instruction = await _prepare_step_grounding_check(_mock_todos_db(), "slug-a", str(tmp_path), state)
 
     prepare_phase = state.get("current")
     grounding = state.get("grounding")
@@ -54,7 +64,8 @@ def test_prepare_step_grounding_check_first_pass_captures_baseline_and_marks_pre
     assert grounding["valid"] is True
 
 
-def test_prepare_step_grounding_check_invalidates_when_input_digest_changes(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_prepare_step_grounding_check_invalidates_when_input_digest_changes(tmp_path: Path) -> None:
     """Grounding check transitions to RE_GROUNDING when input.md digest changes."""
     todo_dir = tmp_path / "todos" / "slug-b"
     todo_dir.mkdir(parents=True)
@@ -71,7 +82,7 @@ def test_prepare_step_grounding_check_invalidates_when_input_digest_changes(tmp_
         patch("teleclaude.core.next_machine.prepare_steps.run_git_command", return_value=(0, "abc123\n", "")),
         patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"),
     ):
-        keep_going, instruction = _prepare_step_grounding_check("slug-b", str(tmp_path), state)
+        keep_going, instruction = await _prepare_step_grounding_check(_mock_todos_db(), "slug-b", str(tmp_path), state)
 
     prepare_phase = state.get("current")
     grounding = state.get("grounding")
@@ -98,7 +109,7 @@ async def test_prepare_step_re_grounding_resets_plan_review_and_dispatches_redra
         patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"),
         patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"),
     ):
-        keep_going, instruction = await _prepare_step_re_grounding(db, "slug-c", str(tmp_path), state)
+        keep_going, instruction = await _prepare_step_re_grounding(db, _mock_todos_db(), "slug-c", str(tmp_path), state)
 
     prepare_phase = state.get("current")
     plan_review = state.get("plan_review")
@@ -112,9 +123,11 @@ async def test_prepare_step_re_grounding_resets_plan_review_and_dispatches_redra
 @pytest.mark.asyncio
 async def test_prepare_dispatch_returns_blocked_message_for_blocked_phase() -> None:
     """BLOCKED phase returns a message identifying the slug and invalidation reason."""
+    todos_db = _mock_todos_db()
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_dispatch(
             db=AsyncMock(),
+            todos_db=_mock_todos_db(),
             slug="slug-d",
             cwd="/repo",
             phase=PreparePhase.BLOCKED,
@@ -135,17 +148,16 @@ async def test_prepare_dispatch_advances_approved_spec_review_to_plan_drafting(t
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_dispatch(
             db=AsyncMock(),
+            todos_db=_mock_todos_db(),
             slug="slug-e",
             cwd=str(tmp_path),
             phase=PreparePhase.TEST_SPEC_REVIEW,
             state=state,
         )
 
-    persisted = yaml.safe_load((todo_dir / "state.yaml").read_text(encoding="utf-8"))
     assert keep_going is True
     assert instruction == ""
     assert state["current"] == PreparePhase.PLAN_DRAFTING.value
-    assert persisted["current"] == PreparePhase.PLAN_DRAFTING.value
 
 
 @pytest.mark.asyncio
@@ -158,17 +170,16 @@ async def test_prepare_dispatch_advances_approved_plan_review_to_gate(tmp_path: 
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_dispatch(
             db=AsyncMock(),
+            todos_db=_mock_todos_db(),
             slug="slug-f",
             cwd=str(tmp_path),
             phase=PreparePhase.PLAN_REVIEW,
             state=state,
         )
 
-    persisted = yaml.safe_load((todo_dir / "state.yaml").read_text(encoding="utf-8"))
     assert keep_going is True
     assert instruction == ""
     assert state["current"] == PreparePhase.GATE.value
-    assert persisted["current"] == PreparePhase.GATE.value
 
 
 @pytest.mark.asyncio
@@ -184,18 +195,17 @@ async def test_prepare_dispatch_records_baseline_and_dispatches_plan_review(tmp_
     ):
         keep_going, instruction = await _prepare_dispatch(
             db=AsyncMock(),
+            todos_db=_mock_todos_db(),
             slug="slug-g",
             cwd=str(tmp_path),
             phase=PreparePhase.PLAN_REVIEW,
             state=state,
         )
 
-    persisted = yaml.safe_load((todo_dir / "state.yaml").read_text(encoding="utf-8"))
     plan_review = state.get("plan_review")
     assert isinstance(plan_review, dict)
     assert keep_going is False
     assert plan_review["baseline_commit"] == "abc123"
-    assert persisted["plan_review"]["baseline_commit"] == "abc123"
     assert instruction
 
 
@@ -208,17 +218,16 @@ async def test_prepare_dispatch_advances_gate_to_grounding_check_when_dor_is_rea
 
     keep_going, instruction = await _prepare_dispatch(
         db=AsyncMock(),
+        todos_db=_mock_todos_db(),
         slug="slug-h",
         cwd=str(tmp_path),
         phase=PreparePhase.GATE,
         state=state,
     )
 
-    persisted = yaml.safe_load((todo_dir / "state.yaml").read_text(encoding="utf-8"))
     assert keep_going is True
     assert instruction == ""
     assert state["current"] == PreparePhase.GROUNDING_CHECK.value
-    assert persisted["current"] == PreparePhase.GROUNDING_CHECK.value
 
 
 @pytest.mark.asyncio
@@ -229,6 +238,7 @@ async def test_prepare_dispatch_requests_gate_worker_when_dor_is_below_threshold
     with patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"):
         keep_going, instruction = await _prepare_dispatch(
             db=AsyncMock(),
+            todos_db=_mock_todos_db(),
             slug="slug-i",
             cwd=str(tmp_path),
             phase=PreparePhase.GATE,
@@ -258,7 +268,9 @@ async def test_requirements_on_disk_advances_input_assessment_v2(tmp_path: Path)
         },
     }
 
-    keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), "slug-req1", str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_input_assessment(
+        AsyncMock(), _mock_todos_db(), "slug-req1", str(tmp_path), state
+    )
 
     assert keep_going is True
     assert instruction == ""
@@ -283,7 +295,9 @@ async def test_requirements_on_disk_advances_triangulation_v2(tmp_path: Path) ->
         },
     }
 
-    keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), "slug-req2", str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_triangulation(
+        AsyncMock(), _mock_todos_db(), "slug-req2", str(tmp_path), state
+    )
 
     assert keep_going is True
     assert instruction == ""
@@ -306,7 +320,9 @@ async def test_test_specs_on_disk_advances_test_spec_build_v2(tmp_path: Path) ->
         },
     }
 
-    keep_going, instruction = await _prepare_step_test_spec_build(AsyncMock(), "slug-spec1", str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_test_spec_build(
+        AsyncMock(), _mock_todos_db(), "slug-spec1", str(tmp_path), state
+    )
 
     assert keep_going is True
     assert instruction == ""
@@ -331,7 +347,9 @@ async def test_plan_on_disk_advances_plan_drafting_v2(tmp_path: Path) -> None:
         },
     }
 
-    keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), "slug-plan1", str(tmp_path), state)
+    keep_going, instruction = await _prepare_step_plan_drafting(
+        AsyncMock(), _mock_todos_db(), "slug-plan1", str(tmp_path), state
+    )
 
     assert keep_going is True
     assert instruction == ""
@@ -356,7 +374,9 @@ async def test_requirements_in_worktree_advances_input_assessment(tmp_path: Path
         "artifacts": {"requirements": {"digest": "", "produced_at": "", "stale": False}},
     }
 
-    keep_going, instruction = await _prepare_step_input_assessment(AsyncMock(), slug, str(worktree), state)
+    keep_going, instruction = await _prepare_step_input_assessment(
+        AsyncMock(), _mock_todos_db(), slug, str(worktree), state
+    )
 
     assert keep_going is True
     assert instruction == ""
@@ -381,7 +401,9 @@ async def test_requirements_in_worktree_advances_triangulation(tmp_path: Path) -
         "artifacts": {"requirements": {"digest": "", "produced_at": "", "stale": False}},
     }
 
-    keep_going, instruction = await _prepare_step_triangulation(AsyncMock(), slug, str(worktree), state)
+    keep_going, instruction = await _prepare_step_triangulation(
+        AsyncMock(), _mock_todos_db(), slug, str(worktree), state
+    )
 
     assert keep_going is True
     assert instruction == ""
@@ -406,7 +428,9 @@ async def test_plan_in_worktree_advances_plan_drafting(tmp_path: Path) -> None:
         "artifacts": {"implementation_plan": {"digest": "", "produced_at": "", "stale": False}},
     }
 
-    keep_going, instruction = await _prepare_step_plan_drafting(AsyncMock(), slug, str(worktree), state)
+    keep_going, instruction = await _prepare_step_plan_drafting(
+        AsyncMock(), _mock_todos_db(), slug, str(worktree), state
+    )
 
     assert keep_going is True
     assert instruction == ""
@@ -471,7 +495,9 @@ async def test_requirements_review_approve_restamps_digest_when_reviewer_modifie
     }
 
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
-        keep_going, instruction = await _prepare_step_requirements_review(AsyncMock(), "slug-rv1", str(tmp_path), state)
+        keep_going, instruction = await _prepare_step_requirements_review(
+            AsyncMock(), _mock_todos_db(), "slug-rv1", str(tmp_path), state
+        )
 
     assert keep_going is True
     assert instruction == ""
@@ -498,7 +524,9 @@ async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifa
     }
 
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
-        keep_going, instruction = await _prepare_step_plan_review(AsyncMock(), "slug-rv2", str(tmp_path), state)
+        keep_going, instruction = await _prepare_step_plan_review(
+            AsyncMock(), _mock_todos_db(), "slug-rv2", str(tmp_path), state
+        )
 
     assert keep_going is True
     assert instruction == ""
@@ -510,7 +538,8 @@ async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifa
     assert plan["digest"] == new_digest
 
 
-def test_grounding_check_reads_input_from_worktree_cwd(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_grounding_check_reads_input_from_worktree_cwd(tmp_path: Path) -> None:
     """Grounding check reads input.md from effective cwd (worktree), not project root."""
     slug = "slug-gc-wt"
     worktree = tmp_path / "trees" / slug
@@ -529,7 +558,7 @@ def test_grounding_check_reads_input_from_worktree_cwd(tmp_path: Path) -> None:
         patch("teleclaude.core.next_machine.prepare_steps.run_git_command", return_value=(0, "abc123\n", "")),
         patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"),
     ):
-        keep_going, _ = _prepare_step_grounding_check(slug, str(worktree), state)
+        keep_going, _ = await _prepare_step_grounding_check(_mock_todos_db(), slug, str(worktree), state)
 
     grounding = state.get("grounding")
     assert isinstance(grounding, dict)
@@ -590,7 +619,14 @@ async def test_stale_artifact_reroute_restamps_all_stale_digests(tmp_path: Path)
         },
     }
 
-    await _apply_stale_artifact_reroute(str(tmp_path), slug, state, ["requirements", "implementation_plan"])
+    mock_db = _mock_todos_db()
+    mock_db.artifact_digest = AsyncMock(
+        side_effect=[
+            hashlib.sha256(req_content.encode()).hexdigest(),
+            hashlib.sha256(plan_content.encode()).hexdigest(),
+        ]
+    )
+    await _apply_stale_artifact_reroute(mock_db, slug, state, ["requirements", "implementation_plan"])
 
     assert state["current"] == PreparePhase.PLAN_DRAFTING.value
     artifacts = state["artifacts"]
