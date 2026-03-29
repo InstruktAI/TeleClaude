@@ -15,7 +15,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
-from teleclaude.core.codex_transcript import discover_codex_transcript_path
+from teleclaude.core.codex_transcript import (
+    discover_codex_transcript_path,
+    is_codex_subagent_transcript,
+)
 from teleclaude.core.db import HookOutboxRow, db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -507,6 +510,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
 
         has_transcript_path = isinstance(transcript_path, str) and bool(transcript_path)
         has_native_log = isinstance(native_log_file, str) and bool(native_log_file)
+        is_subagent = None
         if (
             not has_transcript_path
             and not has_native_log
@@ -516,7 +520,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         ):
             discovered_path = discover_codex_transcript_path(native_session_id)
             if not discovered_path:
-                logger.info(
+                logger.trace(
                     "Codex hook sub-agent probe",
                     session_id=session_id,
                     native_session_id=native_session_id,
@@ -537,28 +541,33 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
                     native_session_id=native_session_id,
                     path=discovered_path,
                 )
-                # Observability: check if this is a sub-agent notification
-                try:
-                    with open(discovered_path, encoding="utf-8") as _f:
-                        _first_line = _f.readline()
-                    _meta = json.loads(_first_line)
-                    _source = _meta.get("payload", {}).get("source")
-                    _is_subagent = isinstance(_source, dict) and "subagent" in _source
-                    logger.info(
-                        "Codex hook sub-agent probe",
-                        session_id=session_id,
-                        native_session_id=native_session_id,
-                        event_type=event_type,
-                        transcript_exists=True,
-                        is_subagent=_is_subagent,
-                        source=_source,
-                    )
-                except (OSError, json.JSONDecodeError, KeyError) as _exc:
-                    logger.debug("Codex sub-agent probe failed", error=str(_exc))
+                is_subagent = is_codex_subagent_transcript(discovered_path)
+                logger.trace(
+                    "Codex hook sub-agent probe",
+                    session_id=session_id,
+                    native_session_id=native_session_id,
+                    event_type=event_type,
+                    transcript_exists=True,
+                    is_subagent=is_subagent,
+                )
         elif not has_transcript_path and has_native_log and isinstance(native_log_file, str):
             transcript_path = native_log_file
             data["transcript_path"] = native_log_file
             has_transcript_path = True
+        elif has_transcript_path:
+            is_subagent = is_codex_subagent_transcript(str(transcript_path))
+        elif has_native_log:
+            is_subagent = is_codex_subagent_transcript(str(native_log_file))
+
+        if normalized_agent_name == AgentName.CODEX.value and event_type == AgentHookEvents.AGENT_STOP and is_subagent:
+            logger.trace(
+                "Dropping Codex subagent agent_stop notification",
+                session_id=session_id,
+                native_session_id=(native_session_id or ""),
+                event_type=event_type,
+                transcript_path=(str(transcript_path) if isinstance(transcript_path, str) else None),
+            )
+            return
 
         update_kwargs = {}
         if normalized_agent_name in AgentName.choices() and session.active_agent != normalized_agent_name:

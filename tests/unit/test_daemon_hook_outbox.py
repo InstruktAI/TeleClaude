@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Coroutine
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -274,3 +275,59 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
 
     assert 10 in deleted_row_ids
     assert daemon_instance._hook_outbox_stale_dropped_count == 1
+
+
+@pytest.mark.unit
+async def test_dispatch_hook_event_drops_codex_subagent_agent_stop() -> None:
+    daemon_instance = _TestDaemon()
+    daemon_instance.shutdown_event = asyncio.Event()
+    session = SimpleNamespace(tmux_session_name="tcx", lifecycle_status="open", active_agent="codex")
+    trace_calls: list[tuple[str, dict[str, str]]] = []
+
+    def _trace(message: str, **kwargs: str) -> None:
+        trace_calls.append((message, kwargs))
+
+    with (
+        patch("teleclaude.daemon_hook_outbox.db") as mock_db,
+        patch("teleclaude.daemon_hook_outbox.is_codex_subagent_transcript", return_value=True),
+        patch("teleclaude.daemon_hook_outbox.logger.trace", side_effect=_trace),
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        daemon_instance._handle_agent_event = AsyncMock()
+        daemon_instance._ensure_output_polling = AsyncMock()
+
+        await daemon_instance._dispatch_hook_event(
+            "sess-drop",
+            daemon_hook_outbox.AgentHookEvents.AGENT_STOP,
+            {"agent_name": "codex", "transcript_path": "/tmp/child-rollout-c3.jsonl"},
+        )
+
+    assert not daemon_instance._handle_agent_event.called
+    assert not mock_db.update_session.called
+    assert any("Dropping Codex subagent agent_stop notification" in message for message, _ in trace_calls)
+
+
+@pytest.mark.unit
+async def test_dispatch_hook_event_processes_codex_non_subagent_agent_stop() -> None:
+    daemon_instance = _TestDaemon()
+    daemon_instance.shutdown_event = asyncio.Event()
+    session = SimpleNamespace(tmux_session_name=None, lifecycle_status="open", active_agent="codex")
+
+    with (
+        patch("teleclaude.daemon_hook_outbox.db") as mock_db,
+        patch("teleclaude.daemon_hook_outbox.is_codex_subagent_transcript", return_value=False),
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        daemon_instance._handle_agent_event = AsyncMock()
+        daemon_instance._ensure_output_polling = AsyncMock()
+
+        await daemon_instance._dispatch_hook_event(
+            "sess-keep",
+            daemon_hook_outbox.AgentHookEvents.AGENT_STOP,
+            {"agent_name": "codex", "transcript_path": "/tmp/parent-rollout-c3.jsonl"},
+        )
+
+    assert daemon_instance._handle_agent_event.called
+    assert daemon_instance._handle_agent_event.call_count == 1
