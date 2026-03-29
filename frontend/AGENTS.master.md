@@ -110,14 +110,22 @@ The frontend does not communicate directly with external services. Instead, it p
 - Start with real HTTP checks against the running app:
   - `curl -I http://localhost:3000/`
   - `curl -I http://localhost:3000/login`
+- Treat curl as an availability check only. A `200` or redirect is not proof that the changed UI works.
 - For protected UI in development:
   - use the plain email login form, not `/api/people`
   - read `TEST_EMAIL` from `frontend/.env`
   - request the verification code
   - read the OTP from the running server logs; in development the server logs `[AUTH DEV] Verification code for <email>: <token>` instead of sending email
-  - paste that code into the login form and continue the browser smoke test
-- Use Playwright to smoke-test the actual changed user flow after login.
-- Keep verification proportional: targeted tests support the smoke check, but they do not replace curl + browser validation.
+  - paste that code into the login form and continue past auth into the changed feature
+- Authentication is setup, not the smoke test. Do not stop after proving that login works.
+- Use Playwright to smoke-test the actual changed user flow after login:
+  - navigate to the page or route affected by the change
+  - perform the exact interaction that was changed
+  - assert the expected visible outcome in the browser
+  - if the change is stateful, reload or restart the browser and verify the state persists or restores correctly
+  - if the change affects an error, loading, or empty state, exercise that branch too when practical
+- Do not claim frontend work is verified unless the browser smoke reaches the changed behavior itself, not just the login screen or surrounding shell.
+- Keep verification proportional: targeted tests support the smoke check, but they do not replace curl + browser validation of the changed feature.
 
 ---
 
