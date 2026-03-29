@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, TypedDict
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
@@ -41,6 +41,9 @@ from teleclaude.core.next_machine.slug_resolution import resolve_canonical_proje
 from teleclaude.core.next_machine.state_io import mark_phase, stamp_artifact, stamp_verdict
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -352,3 +355,116 @@ async def todo_set_deps(  # pyright: ignore
 
     msg = f"dependencies set for '{slug}': {', '.join(after)}" if after else f"dependencies cleared for '{slug}'"
     return {"result": f"OK: {msg}"}
+
+
+# ---------------------------------------------------------------------------
+# Artifact and stamp endpoints (todos.db backed)
+# ---------------------------------------------------------------------------
+
+
+async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
+    """Resolve the todos DB for the given project cwd."""
+    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
+
+    project_root = resolve_canonical_project_root(cwd)
+    return await get_todos_db(project_root)
+
+
+@router.get("/artifacts/{slug}/{name}")
+async def read_artifact(
+    slug: str,
+    name: str,
+    cwd: str | None = None,
+) -> dict[str, str]:
+    """Read a todo artifact by slug and name."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    content = await todos_db.read_artifact(slug, name)
+    return {"slug": slug, "name": name, "content": content}
+
+
+@router.post("/artifacts/{slug}/{name}")
+async def write_artifact(
+    slug: str,
+    name: str,
+    content: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    updated_by: Annotated[str | None, Body()] = None,
+) -> dict[str, str]:
+    """Write (create or update) a todo artifact."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    await todos_db.write_artifact(slug, name, content, updated_by=updated_by)
+    return {"status": "ok", "slug": slug, "name": name}
+
+
+@router.get("/artifacts/{slug}")
+class _ArtifactListResponse(TypedDict):
+    slug: str
+    artifacts: list[str]
+
+
+async def list_artifacts(
+    slug: str,
+    cwd: str | None = None,
+) -> _ArtifactListResponse:
+    """List artifact names for a slug."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    names = await todos_db.list_artifacts(slug)
+    return _ArtifactListResponse(slug=slug, artifacts=names)
+
+
+@router.post("/stamp/{slug}")
+async def stamp(
+    slug: str,
+    stamp_type: Annotated[str, Body()],
+    value: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+) -> dict[str, str]:
+    """Stamp a verdict, DOR, build, or grounding value into todo state."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    state = await todos_db.read_state(slug)
+    if state is None:
+        raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
+
+    if stamp_type == "verdict":
+        # Determine which review sub-phase from current state
+        current = str(state.get("current", ""))
+        phase_map = {
+            "requirements_review": "requirements_review",
+            "test_spec_review": "test_spec_review",
+            "plan_review": "plan_review",
+        }
+        review_phase = phase_map.get(current)
+        if not review_phase:
+            raise HTTPException(
+                status_code=409,
+                detail=f"current state '{current}' is not a review phase",
+            )
+        review_dict = state.get(review_phase)
+        if not isinstance(review_dict, dict):
+            review_dict = {}
+        review_dict["verdict"] = value
+        state[review_phase] = review_dict
+    elif stamp_type == "build":
+        state["current"] = f"build_{value}"
+    elif stamp_type == "grounding":
+        grounding = state.get("grounding")
+        if not isinstance(grounding, dict):
+            grounding = {}
+        grounding["valid"] = value == "valid"
+        state["grounding"] = grounding
+    elif stamp_type == "dor":
+        # value format: "score:9,status:pass"
+        dor = state.get("dor")
+        if not isinstance(dor, dict):
+            dor = {}
+        dor["status"] = value
+        state["dor"] = dor
+    else:
+        raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
+
+    await todos_db.write_state(slug, state)
+    return {"status": "ok", "slug": slug, "stamp_type": stamp_type}
