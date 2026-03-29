@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.todos_db import TodosDb
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -429,64 +430,42 @@ async def test_plan_with_empty_referenced_paths_advances_normally(
 
 
 @pytest.mark.asyncio
-@patch("teleclaude.core.next_machine.core._emit_prepare_event")
-@patch("teleclaude.core.next_machine.prepare_helpers._emit_prepare_event")
 @patch("teleclaude.core.next_machine.prepare._emit_prepare_event")
 async def test_next_prepare_staleness_triggers_artifact_invalidated(
     mock_prepare_emit: MagicMock,
-    mock_helpers_emit: MagicMock,
-    mock_core_emit: MagicMock,
-    tmp_path: Path,
+    todos_db: TodosDb,
 ) -> None:
-    """Modifying input.md after recording triggers cascade and emits artifact_invalidated."""
-    from teleclaude.core.next_machine.artifacts import record_artifact_produced
-    from teleclaude.core.next_machine.core import next_prepare, write_phase_state
+    """When artifact digest mismatches, prepare emits artifact_invalidated and reroutes."""
+    from teleclaude.core.next_machine.prepare import next_prepare
 
-    cwd, slug = _make_todo(tmp_path)
-    long_content = "This is the original content that is long enough to pass the scaffold content check in teleclaude."
-    input_file = _write_file(tmp_path / "todos" / slug, "input.md", long_content)
-    _write_file(
-        tmp_path / "todos" / slug,
-        "requirements.md",
-        "Requirements document with enough content to pass scaffold threshold for testing purposes.",
+    # Seed DB with state that has a stale input digest
+    await todos_db.write_state(
+        "my-slug",
+        {
+            "schema_version": 2,
+            "current": "requirements_review",
+            "artifacts": {
+                "input": {"digest": "old-digest", "produced_at": "2026-01-01T00:00:00Z"},
+            },
+            "requirements_review": {"verdict": "approve"},
+        },
     )
-
-    record_artifact_produced(cwd, slug, "input.md")
-    record_artifact_produced(cwd, slug, "requirements.md")
-
-    from teleclaude.core.next_machine.core import read_phase_state
-
-    state = read_phase_state(cwd, slug)
-    state["prepare_phase"] = "requirements_review"
-    state["requirements_review"] = {
-        "verdict": "approve",
-        "reviewed_at": "",
-        "findings_count": 0,
-        "rounds": 0,
-        "baseline_commit": "",
-        "findings": [],
-    }
-    write_phase_state(cwd, slug, state)
-
-    input_file.write_text("changed content")
+    # Write an artifact whose digest differs from the stored one
+    await todos_db.write_artifact("my-slug", "input", "changed content")
+    await todos_db.add_to_roadmap("my-slug")
 
     mock_db = MagicMock()
-    mock_db.scalar_one_or_none = AsyncMock(return_value=None)
 
-    with patch(
-        "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
-        new_callable=AsyncMock,
-        return_value="guidance",
+    with (
+        patch("teleclaude.core.next_machine.prepare.resolve_canonical_project_root", return_value="/repo"),
+        patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
+        patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.prepare.check_artifact_staleness_db", return_value=["input"]),
+        patch("teleclaude.core.next_machine.prepare._prepare_dispatch", return_value=(False, "dispatch")),
     ):
-        with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
-                result = await next_prepare(mock_db, slug, cwd)
+        await next_prepare(mock_db, "my-slug", "/repo")
 
-    all_calls = (
-        [c[0][0] for c in mock_core_emit.call_args_list]
-        + [c[0][0] for c in mock_helpers_emit.call_args_list]
-        + [c[0][0] for c in mock_prepare_emit.call_args_list]
-    )
+    all_calls = [c[0][0] for c in mock_prepare_emit.call_args_list]
     assert any("artifact_invalidated" in call for call in all_calls), f"Expected artifact_invalidated in {all_calls}"
 
 

@@ -47,15 +47,17 @@ def _filter_by_mode(mode: str, touched: set[str], project_root: Path) -> list[st
         result_set: set[str] = set()
         for f in touched:
             if f.endswith(".py") or f.endswith(".pyi"):
-                if (project_root / f).exists():
+                if (project_root / f).is_file():
                     result_set.add(f)
         return sorted(result_set)
     # test mode
     test_set: set[str] = set()
     for f in touched:
         if "tests/" in f:
-            # Test files included directly if they exist on disk.
-            if (project_root / f).exists():
+            # Test files included directly. Only actual test files (test_*.py),
+            # not package markers (__init__.py) or fixtures (conftest.py).
+            resolved = project_root / f
+            if resolved.is_file() and resolved.name.startswith("test_"):
                 test_set.add(f)
         elif f.startswith("teleclaude/") and (f.endswith(".py") or f.endswith(".pyi")):
             # Map source file to its test companion; silently skip missing companions.
