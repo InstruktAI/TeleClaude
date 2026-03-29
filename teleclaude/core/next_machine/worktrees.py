@@ -109,39 +109,10 @@ def _decide_worktree_prep(cwd: str, slug: str, created: bool) -> WorktreePrepDec
     return WorktreePrepDecision(should_prepare=False, reason="unchanged_known_good", inputs_digest=inputs_digest)
 
 
-def _symlink_todo_dir(cwd: str, slug: str, worktree_path: Path) -> None:
-    """Replace todos/{slug}/ in worktree with a symlink to the project root copy.
-
-    Ensures worktree and project root always share the same todo state files.
-    Handles three cases:
-    - Worktree has a real directory → replace with symlink
-    - Worktree has no todo dir (scaffold wasn't on origin/main yet) → create symlink
-    - Symlink already exists → no-op
-    """
-    project_todo = Path(cwd) / "todos" / slug
-    worktree_todo = worktree_path / "todos" / slug
-
-    if not project_todo.is_dir():
-        return
-
-    if worktree_todo.is_symlink():
-        return
-
-    if worktree_todo.is_dir():
-        shutil.rmtree(worktree_todo)
-    else:
-        worktree_todo.parent.mkdir(parents=True, exist_ok=True)
-
-    worktree_todo.symlink_to(project_todo)
-    logger.info("Symlinked %s → %s", worktree_todo, project_todo)
-
-
 def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
     """Ensure the slug worktree path exists by creating or reattaching its branch."""
     worktree_path = Path(cwd) / WORKTREE_DIR / slug
     if worktree_path.exists():
-        # Migration: ensure symlink exists for pre-existing worktrees
-        _symlink_todo_dir(cwd, slug, worktree_path)
         return False
 
     try:
@@ -183,9 +154,6 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
                 exc_info=True,
             )
             raise
-
-    # Symlink todos/{slug}/ in worktree to project root so state is always shared
-    _symlink_todo_dir(cwd, slug, worktree_path)
 
     logger.info("Created worktree at %s", worktree_path)
     return True
@@ -470,7 +438,6 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
 
 __all__ = [
     "_ensure_todo_on_remote_main",
-    "_symlink_todo_dir",
     "commit_bookkeeping_to_main",
     "ensure_worktree_with_policy",
     "ensure_worktree_with_policy_async",

@@ -15,7 +15,6 @@ from teleclaude.core.next_machine._types import WorktreePrepDecision
 from teleclaude.core.next_machine.worktrees import (
     _ensure_todo_on_remote_main,
     _read_worktree_prep_state,
-    _symlink_todo_dir,
     _write_worktree_prep_state,
     commit_bookkeeping_to_main,
     ensure_worktree_with_policy,
@@ -335,91 +334,6 @@ class TestBookkeepingDiagnostics:
 
         assert result == (False, "commit_failed")
         mock_logger.warning.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# Symlink: _symlink_todo_dir
-# ---------------------------------------------------------------------------
-
-
-class TestSymlinkTodoDir:
-    """Verify symlink creation, migration, and edge cases."""
-
-    def test_creates_symlink_replacing_real_directory(self, tmp_path: Path) -> None:
-        project_todo = tmp_path / "todos" / "my-slug"
-        project_todo.mkdir(parents=True)
-        (project_todo / "state.yaml").write_text("status: pending", encoding="utf-8")
-
-        worktree = tmp_path / "trees" / "my-slug"
-        worktree_todo = worktree / "todos" / "my-slug"
-        worktree_todo.mkdir(parents=True)
-        (worktree_todo / "state.yaml").write_text("stale copy", encoding="utf-8")
-
-        _symlink_todo_dir(str(tmp_path), "my-slug", worktree)
-
-        assert worktree_todo.is_symlink()
-        assert worktree_todo.resolve() == project_todo.resolve()
-        assert (worktree_todo / "state.yaml").read_text(encoding="utf-8") == "status: pending"
-
-    def test_creates_symlink_when_worktree_todo_dir_missing(self, tmp_path: Path) -> None:
-        project_todo = tmp_path / "todos" / "my-slug"
-        project_todo.mkdir(parents=True)
-        (project_todo / "input.md").write_text("content", encoding="utf-8")
-
-        worktree = tmp_path / "trees" / "my-slug"
-        worktree.mkdir(parents=True)
-        # No todos/my-slug/ inside worktree
-
-        _symlink_todo_dir(str(tmp_path), "my-slug", worktree)
-
-        worktree_todo = worktree / "todos" / "my-slug"
-        assert worktree_todo.is_symlink()
-        assert worktree_todo.resolve() == project_todo.resolve()
-
-    def test_noop_when_symlink_already_exists(self, tmp_path: Path) -> None:
-        project_todo = tmp_path / "todos" / "my-slug"
-        project_todo.mkdir(parents=True)
-
-        worktree = tmp_path / "trees" / "my-slug"
-        worktree_todo = worktree / "todos" / "my-slug"
-        worktree_todo.parent.mkdir(parents=True)
-        worktree_todo.symlink_to(project_todo)
-
-        _symlink_todo_dir(str(tmp_path), "my-slug", worktree)
-
-        assert worktree_todo.is_symlink()
-
-    def test_noop_when_project_todo_dir_does_not_exist(self, tmp_path: Path) -> None:
-        worktree = tmp_path / "trees" / "my-slug"
-        worktree.mkdir(parents=True)
-
-        _symlink_todo_dir(str(tmp_path), "my-slug", worktree)
-
-        worktree_todo = worktree / "todos" / "my-slug"
-        assert not worktree_todo.exists()
-
-
-class TestSymlinkMigrationOnExistingWorktree:
-    """Verify _create_or_attach_worktree migrates existing worktrees."""
-
-    def test_existing_worktree_gets_symlink_on_reattach(self, tmp_path: Path) -> None:
-        """When worktree already exists, _create_or_attach_worktree still creates the symlink."""
-        from teleclaude.core.next_machine.worktrees import _create_or_attach_worktree
-
-        project_todo = tmp_path / "todos" / "my-slug"
-        project_todo.mkdir(parents=True)
-        (project_todo / "state.yaml").write_text("content", encoding="utf-8")
-
-        worktree = tmp_path / "trees" / "my-slug"
-        worktree_todo = worktree / "todos" / "my-slug"
-        worktree_todo.mkdir(parents=True)
-        (worktree_todo / "state.yaml").write_text("stale", encoding="utf-8")
-
-        created = _create_or_attach_worktree(str(tmp_path), "my-slug")
-
-        assert created is False
-        assert worktree_todo.is_symlink()
-        assert worktree_todo.resolve() == project_todo.resolve()
 
 
 # ---------------------------------------------------------------------------
