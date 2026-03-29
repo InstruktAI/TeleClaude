@@ -398,12 +398,12 @@ async def write_artifact(
     return {"status": "ok", "slug": slug, "name": name}
 
 
-@router.get("/artifacts/{slug}")
 class _ArtifactListResponse(TypedDict):
     slug: str
     artifacts: list[str]
 
 
+@router.get("/artifacts/{slug}")
 async def list_artifacts(
     slug: str,
     cwd: str | None = None,
