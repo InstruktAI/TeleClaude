@@ -341,29 +341,18 @@ class TestBookkeepingDiagnostics:
 # ---------------------------------------------------------------------------
 
 
-class TestEnsureWorktreePolicyRelaxed:
-    """After symlink change, push failure warns instead of raising."""
+class TestEnsureWorktreePolicyPrecondition:
+    """Push failure raises RuntimeError to prevent incomplete worktrees."""
 
-    def test_push_failure_warns_instead_of_raising(self, tmp_path: Path) -> None:
-        decision = WorktreePrepDecision(should_prepare=True, reason="worktree_created", inputs_digest="abc")
-
+    def test_push_failure_raises_runtime_error(self, tmp_path: Path) -> None:
         with (
             patch(
                 "teleclaude.core.next_machine.worktrees._ensure_todo_on_remote_main",
                 return_value=(False, "push_failed"),
             ),
-            patch("teleclaude.core.next_machine.worktrees._create_or_attach_worktree", return_value=True),
-            patch("teleclaude.core.next_machine.worktrees._decide_worktree_prep", return_value=decision),
-            patch("teleclaude.core.next_machine.worktrees._prepare_worktree"),
-            patch("teleclaude.core.next_machine.worktrees._write_worktree_prep_state"),
-            patch(_PATCH_LOGGER) as mock_logger,
+            pytest.raises(RuntimeError, match="push_failed"),
         ):
-            result = ensure_worktree_with_policy(str(tmp_path), "my-slug")
-
-        assert result.created is True
-        mock_logger.warning.assert_any_call(
-            "Todo '%s' not on origin/main (%s). Symlink provides access.", "my-slug", "push_failed"
-        )
+            ensure_worktree_with_policy(str(tmp_path), "my-slug")
 
 
 # ---------------------------------------------------------------------------

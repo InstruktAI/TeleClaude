@@ -322,7 +322,18 @@ def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
     if not worktree_path.exists():
         ok, reason = _ensure_todo_on_remote_main(cwd, slug)
         if not ok and reason not in ("already_on_remote", "nothing_to_commit", "not_on_main"):
-            logger.warning("Todo '%s' not on origin/main (%s). Symlink provides access.", slug, reason)
+            msg = (
+                f"Error: todo '{slug}' is not on origin/main ({reason}).\n"
+                f"Worktrees branch from origin/main — without the todo artifacts there,\n"
+                f"workers will operate on incomplete directories.\n"
+                f"  Recovery:\n"
+                f"    git push origin main\n"
+                f"    telec todo prepare {slug}\n"
+                f"  If push conflicts, resolve and retry."
+            )
+            print(msg)
+            logger.error(msg)
+            raise RuntimeError(msg)
 
     created = _create_or_attach_worktree(cwd, slug)
     prep_decision = _decide_worktree_prep(cwd, slug, created=created)
