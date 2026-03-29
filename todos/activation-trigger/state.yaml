@@ -33,15 +33,25 @@ history:
   by: mark-phase
   at: '2026-03-29T11:21:48.640240+00:00'
   metadata: {}
+- source: review_changes_requested
+  target: review_pending
+  by: mark-phase
+  at: '2026-03-29T11:31:16.724305+00:00'
+  metadata: {}
+- source: review_pending
+  target: review_changes_requested
+  by: mark-phase
+  at: '2026-03-29T11:43:26.290570+00:00'
+  metadata: {}
 deferrals_processed: false
 finalize:
   status: pending
 breakdown:
   assessed: true
   todos: []
-review_round: 1
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: 7835543f2d61e501502c576346c0b0a2f65fa7ba
+review_baseline_commit: 311c2118be9ce05941001e83618554776d37c494
 unresolved_findings: []
 resolved_findings: []
 grounding:
