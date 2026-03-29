@@ -68,3 +68,7 @@
 - slug: identity-origin-cleanup-final
 - slug: orchestrator-heartbeat-timestamp-monitoring
 - slug: bookkeeping-push-fail-fast
+- slug: history-search-mirror-overhaul
+  after:
+  - edge-session-creation
+  - identity-origin-cleanup-final
