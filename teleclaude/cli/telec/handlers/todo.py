@@ -15,13 +15,17 @@ from teleclaude.todo_scaffold import create_todo_skeleton
 
 __all__ = [
     "_handle_todo",
+    "_handle_todo_artifacts",
     "_handle_todo_dump",
     "_handle_todo_from_main",
     "_handle_todo_mark_ready",
+    "_handle_todo_read",
     "_handle_todo_remove",
     "_handle_todo_split",
+    "_handle_todo_stamp",
     "_handle_todo_validate",
     "_handle_todo_verify_artifacts",
+    "_handle_todo_write",
 ]
 
 
@@ -102,6 +106,14 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_mark_ready(args[1:])
     elif subcommand == "from-main":
         _handle_todo_from_main(args[1:])
+    elif subcommand == "read":
+        _handle_todo_read(args[1:])
+    elif subcommand == "write":
+        _handle_todo_write(args[1:])
+    elif subcommand == "stamp":
+        _handle_todo_stamp(args[1:])
+    elif subcommand == "artifacts":
+        _handle_todo_artifacts(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -501,3 +513,159 @@ def _handle_todo_from_main(args: list[str]) -> None:
         raise SystemExit(1) from exc
 
     print(output)
+
+
+# ---------------------------------------------------------------------------
+# Artifact and stamp handlers (todos.db backed)
+# ---------------------------------------------------------------------------
+
+
+def _handle_todo_read(args: list[str]) -> None:
+    """Handle telec todo read <slug> --artifact <name>."""
+    slug: str | None = None
+    artifact_name: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--artifact" and i + 1 < len(args):
+            artifact_name = args[i + 1]
+            i += 2
+        elif not arg.startswith("-"):
+            slug = arg
+            i += 1
+        else:
+            i += 1
+
+    if not slug:
+        print("Usage: telec todo read <slug> --artifact <name>")
+        raise SystemExit(1)
+    if not artifact_name:
+        print("Missing --artifact <name>")
+        print("Usage: telec todo read <slug> --artifact <name>")
+        raise SystemExit(1)
+
+    result = tool_api_request("GET", f"/todos/artifacts/{slug}/{artifact_name}")
+    if isinstance(result, dict):
+        print(result.get("content", ""))
+    else:
+        print(result)
+
+
+def _handle_todo_write(args: list[str]) -> None:
+    """Handle telec todo write <slug> --artifact <name> [--file <path>]."""
+    slug: str | None = None
+    artifact_name: str | None = None
+    file_path: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--artifact" and i + 1 < len(args):
+            artifact_name = args[i + 1]
+            i += 2
+        elif arg == "--file" and i + 1 < len(args):
+            file_path = args[i + 1]
+            i += 2
+        elif not arg.startswith("-"):
+            slug = arg
+            i += 1
+        else:
+            i += 1
+
+    if not slug:
+        print("Usage: telec todo write <slug> --artifact <name> --file <path>")
+        raise SystemExit(1)
+    if not artifact_name:
+        print("Missing --artifact <name>")
+        print("Usage: telec todo write <slug> --artifact <name> --file <path>")
+        raise SystemExit(1)
+
+    import sys  # pylint: disable=import-outside-toplevel
+
+    if file_path:
+        try:
+            content = Path(file_path).read_text(encoding="utf-8")
+        except FileNotFoundError as exc:
+            print(f"File not found: {file_path}", file=sys.stderr)
+            raise SystemExit(1) from exc
+    else:
+        content = sys.stdin.read()
+
+    result = tool_api_request(
+        "POST",
+        f"/todos/artifacts/{slug}/{artifact_name}",
+        json_body={"content": content, "cwd": str(Path.cwd())},
+    )
+    if isinstance(result, dict) and result.get("status") == "ok":
+        print(f"Wrote {artifact_name} for {slug}")
+    else:
+        print(result)
+
+
+def _handle_todo_stamp(args: list[str]) -> None:
+    """Handle telec todo stamp <slug> --verdict|--build|--dor-score|--grounding-invalidated."""
+    slug: str | None = None
+    stamp_type: str | None = None
+    value: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--verdict" and i + 1 < len(args):
+            stamp_type = "verdict"
+            value = args[i + 1]
+            i += 2
+        elif arg == "--build" and i + 1 < len(args):
+            stamp_type = "build"
+            value = args[i + 1]
+            i += 2
+        elif arg == "--dor-status" and i + 1 < len(args):
+            stamp_type = "dor"
+            value = args[i + 1]
+            i += 2
+        elif arg == "--grounding-invalidated":
+            stamp_type = "grounding"
+            value = "invalid"
+            i += 1
+        elif not arg.startswith("-"):
+            slug = arg
+            i += 1
+        else:
+            i += 1
+
+    if not slug:
+        print("Usage: telec todo stamp <slug> --verdict approve|needs_work")
+        raise SystemExit(1)
+    if not stamp_type or not value:
+        print("Missing stamp flag (--verdict, --build, --dor-status, --grounding-invalidated)")
+        raise SystemExit(1)
+
+    result = tool_api_request(
+        "POST",
+        f"/todos/stamp/{slug}",
+        json_body={"stamp_type": stamp_type, "value": value, "cwd": str(Path.cwd())},
+    )
+    if isinstance(result, dict) and result.get("status") == "ok":
+        print(f"Stamped {stamp_type}={value} for {slug}")
+    else:
+        print(result)
+
+
+def _handle_todo_artifacts(args: list[str]) -> None:
+    """Handle telec todo artifacts <slug>."""
+    if not args or args[0].startswith("-"):
+        print("Usage: telec todo artifacts <slug>")
+        raise SystemExit(1)
+
+    slug = args[0]
+    result = tool_api_request("GET", f"/todos/artifacts/{slug}")
+    if isinstance(result, dict):
+        artifacts = result.get("artifacts", [])
+        if not artifacts:
+            print(f"No artifacts for {slug}")
+        else:
+            for name in artifacts:
+                print(f"  {name}")
+    else:
+        print(result)
