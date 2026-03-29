@@ -1,37 +1,20 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-
-interface Person {
-  name: string;
-  email?: string;
-  role: string;
-}
 
 function LoginForm() {
   const searchParams = useSearchParams();
   const isVerify = searchParams?.get("verify") === "1";
   const errorParam = searchParams?.get("error");
 
-  const [people, setPeople] = useState<Person[]>([]);
   const [selectedEmail, setSelectedEmail] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"select" | "verify">(
-    isVerify ? "verify" : "select",
+  const [step, setStep] = useState<"email" | "verify">(
+    isVerify ? "verify" : "email",
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(errorParam ? "Authentication failed" : "");
-
-  useEffect(() => {
-    fetch("/api/people")
-      .then((r) => {
-        if (r.ok) return r.json();
-        return [];
-      })
-      .then((data: Person[]) => setPeople(data))
-      .catch(() => setPeople([]));
-  }, []);
 
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -94,31 +77,21 @@ function LoginForm() {
           </div>
         )}
 
-        {step === "select" ? (
+        {step === "email" ? (
           <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="person-select"
-                className="mb-1 block text-sm font-medium"
-              >
-                Who are you?
+              <label htmlFor="login-email" className="mb-1 block text-sm font-medium">
+                Email address
               </label>
-              <select
-                id="person-select"
+              <input
+                id="login-email"
+                type="email"
                 value={selectedEmail}
                 onChange={(e) => setSelectedEmail(e.target.value)}
+                placeholder="you@example.com"
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 required
-              >
-                <option value="">Select your name...</option>
-                {people
-                  .filter((p) => p.email)
-                  .map((p) => (
-                    <option key={p.email} value={p.email!}>
-                      {p.name}
-                    </option>
-                  ))}
-              </select>
+              />
             </div>
 
             <button
@@ -164,7 +137,7 @@ function LoginForm() {
             <button
               type="button"
               onClick={() => {
-                setStep("select");
+                setStep("email");
                 setCode("");
                 setError("");
               }}

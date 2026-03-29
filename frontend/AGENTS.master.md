@@ -56,18 +56,12 @@ pnpm dev       # Start Next.js with Turbopack
 pnpm dev:ws    # Start custom server with WebSocket support
 ```
 
-### Production
-
-```bash
-pnpm build     # Build standalone Next.js bundle
-pnpm start     # Start the custom production server
-```
-
 ### Database & Auth
 
 ```bash
 pnpm db:push   # Push schema changes to SQLite (teleclaude-web.db)
 pnpm db:studio # Open Drizzle Studio to inspect data
+pnpm start     # Start the custom production server
 ```
 
 ---
@@ -107,6 +101,23 @@ The frontend does not communicate directly with external services. Instead, it p
 - **Linting:** `pnpm lint` (uses ESLint with Next.js config).
 - **Type Checking:** `npx tsc --noEmit` (ensures strict TypeScript compliance).
 - **Environment:** Secrets and local overrides should be managed in `.env` (use `.env.example` as a template).
+
+## Post-Work Verification
+
+### Verification Ladder
+
+- `pnpm build` is not a frontend smoke test and must not be used as post-work verification.
+- Start with real HTTP checks against the running app:
+  - `curl -I http://localhost:3000/`
+  - `curl -I http://localhost:3000/login`
+- For protected UI in development:
+  - use the plain email login form, not `/api/people`
+  - read `TEST_EMAIL` from `frontend/.env`
+  - request the verification code
+  - read the OTP from the running server logs; in development the server logs `[AUTH DEV] Verification code for <email>: <token>` instead of sending email
+  - paste that code into the login form and continue the browser smoke test
+- Use Playwright to smoke-test the actual changed user flow after login.
+- Keep verification proportional: targeted tests support the smoke check, but they do not replace curl + browser validation.
 
 ---
 

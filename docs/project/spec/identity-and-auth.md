@@ -112,8 +112,8 @@ session close.
 
 The Web Interface uses **NextAuth (v5 Beta)** with the following flow:
 
-1. **Selection:** User selects their name from `/api/people` (which reads from YAML).
-2. **OTP Delivery:** A 6-digit verification code is sent via `nodemailer` using the `SMTP_*` and `EMAIL_FROM` environment variables.
+1. **Email entry:** User enters their email address in the login form.
+2. **OTP Delivery:** A 6-digit verification code is sent via `nodemailer` using the `SMTP_*` and `EMAIL_FROM` environment variables in production. In development (`NODE_ENV=development`), the code is logged to server output instead of being emailed.
 3. **Verification:** `NextAuth` verifies the code.
 4. **Authorization:** The `signIn` callback ensures the email matches a `people` entry in `teleclaude.yml`.
 
