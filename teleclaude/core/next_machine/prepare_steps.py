@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -31,7 +32,9 @@ from teleclaude.core.next_machine.prepare_events import (
 )
 from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.core.todos_db import TodosDb
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 

@@ -5,6 +5,8 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import SlashCommand
@@ -18,7 +20,9 @@ from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch, _resta
 from teleclaude.core.next_machine.slug_resolution import (
     resolve_canonical_project_root,
 )
-from teleclaude.core.todos_db import TodosDb
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
