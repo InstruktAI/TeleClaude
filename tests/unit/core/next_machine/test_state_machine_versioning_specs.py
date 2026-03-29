@@ -84,20 +84,22 @@ def test_read_phase_state_keeps_existing_v2_blob_without_reintroducing_legacy_fi
 @pytest.mark.asyncio
 async def test_next_prepare_routes_from_current_without_phase_derivation() -> None:
     dispatch = AsyncMock(return_value=(False, "STATE ROUTED"))
+    todos_db = AsyncMock()
+    todos_db.slug_in_roadmap = AsyncMock(return_value=True)
+    todos_db.read_state = AsyncMock(
+        return_value={
+            "schema_version": 2,
+            "current": "plan_review",
+            "prepare_phase": "input_assessment",
+            "history": [],
+        }
+    )
 
     with (
-        patch("teleclaude.core.next_machine.prepare.resolve_holder_children", return_value=[]),
-        patch("teleclaude.core.next_machine.prepare.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.prepare.check_artifact_staleness", return_value=[]),
-        patch(
-            "teleclaude.core.next_machine.prepare.read_phase_state",
-            return_value={
-                "schema_version": 2,
-                "current": "plan_review",
-                "prepare_phase": "input_assessment",
-                "history": [],
-            },
-        ),
+        patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.prepare.resolve_canonical_project_root", return_value="/tmp/project"),
+        patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
+        patch("teleclaude.core.next_machine.prepare.check_artifact_staleness_db", return_value=[]),
         patch("teleclaude.core.next_machine.prepare._prepare_dispatch", dispatch),
     ):
         result = await next_prepare(MagicMock(), "slug-a", "/tmp/project")
