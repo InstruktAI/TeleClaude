@@ -68,7 +68,6 @@ from teleclaude.core.next_machine.state_io import (
     mark_phase,
 )
 from teleclaude.core.next_machine.worktrees import (
-    _ensure_todo_on_remote_main,
     ensure_worktree_with_policy_async,
 )
 from teleclaude.session_identity import get_session_id
@@ -342,7 +341,7 @@ async def _validate_work_preconditions(todos_db: TodosDb, cwd: str, resolved_slu
     if freshness_error is not None:
         return freshness_error
 
-    return await _ensure_remote_artifacts(cwd, resolved_slug, phase_slug)
+    return None  # No remote artifact sync — bookkeeping is in todos.db
 
 
 def _select_precondition_root(cwd: str, resolved_slug: str, is_bug: bool) -> str:
@@ -419,24 +418,6 @@ async def _validate_preparation_freshness(
             "STALE",
             f"{resolved_slug} preparation is invalidated (grounding.valid=false).",
             next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
-        )
-    return None
-
-
-async def _ensure_remote_artifacts(cwd: str, resolved_slug: str, phase_slug: str) -> str | None:
-    """Ensure todo artifacts are present on origin/main before worktree creation."""
-    remote_sync_started = perf_counter()
-    sync_ok, sync_reason = await asyncio.to_thread(
-        _ensure_todo_on_remote_main, cwd, resolved_slug
-    )  # Scaffold push still needed until todos.db migration is complete
-    sync_decision = "run" if sync_ok else "skip"
-    _log_next_work_phase(phase_slug, "ensure_remote_artifacts", remote_sync_started, sync_decision, sync_reason)
-    if not sync_ok and sync_reason == "push_failed":
-        return format_error(
-            "REMOTE_SYNC_FAILED",
-            f"Todo artifacts for {resolved_slug} could not be pushed to origin/main. "
-            "Worktrees branch from origin/main — workers won't find the artifacts.",
-            next_call="Resolve git conflicts on main, push manually, then retry.",
         )
     return None
 

@@ -646,7 +646,6 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
     from teleclaude.core.next_machine.worktrees import (  # pylint: disable=import-outside-toplevel
         _create_or_attach_worktree,
         _decide_worktree_prep,
-        _ensure_todo_on_remote_main,
         _prepare_worktree,
         _write_worktree_prep_state,
     )
@@ -699,12 +698,7 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
     _write_file(todo_dir / "quality-checklist.md", f"{from_main_marker}\n# Quality Checklist: {slug}\n")
     _write_file(todo_dir / "demo.md", f"<!-- no-demo: from-main inline work -->\n# Demo: {slug}\n")
 
-    # --- 5d. Push todo scaffold to remote ---
-    pushed, push_reason = _ensure_todo_on_remote_main(cwd, slug)
-    if not pushed and push_reason not in ("already_on_remote", "not_a_repo"):
-        raise RuntimeError(f"Failed to push todo scaffold to remote: {push_reason}")
-
-    # --- 5e. Create worktree ---
+    # --- 5d. Create worktree ---
     created = _create_or_attach_worktree(cwd, slug)
     worktree_path = project_root / WORKTREE_DIR / slug
 

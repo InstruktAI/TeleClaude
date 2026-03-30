@@ -419,7 +419,7 @@ async def list_artifacts(
 async def todo_dump(
     slug: Annotated[str, Body()],
     content: Annotated[str, Body()],
-    after: Annotated[list[str], Body()] = [],  # noqa: B006
+    after: Annotated[list[str] | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
 ) -> dict[str, str]:
     """Create a todo: state + input artifact + roadmap entry in todos.db."""
@@ -477,7 +477,7 @@ async def todo_split(
         await todos_db.add_to_roadmap(child_slug, group_slug=slug)
 
     # Update parent breakdown
-    parent_state["breakdown"] = {"assessed": True, "todos": children}
+    parent_state["breakdown"] = {"assessed": True, "todos": list(children)}  # type: ignore[dict-item]
     await todos_db.write_state(slug, parent_state)
 
     return {"status": "ok", "slug": slug, "children": ",".join(children)}

@@ -404,9 +404,6 @@ from teleclaude.core.next_machine.worktrees import (
     _decide_worktree_prep as _decide_worktree_prep,
 )
 from teleclaude.core.next_machine.worktrees import (
-    _ensure_todo_on_remote_main as _ensure_todo_on_remote_main,
-)
-from teleclaude.core.next_machine.worktrees import (
     _prepare_worktree as _prepare_worktree,
 )
 from teleclaude.core.next_machine.worktrees import (
