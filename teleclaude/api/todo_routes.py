@@ -44,6 +44,7 @@ from teleclaude.core.operations.service import SerializedOperation
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.todos_db._show import ShowPayload
 
 logger = get_logger(__name__)
 
@@ -572,3 +573,19 @@ async def stamp(  # pylint: disable=too-many-locals,too-many-branches
 
     await todos_db.write_state(slug, state)
     return {"status": "ok", "slug": slug, "stamp_type": stamp_type}
+
+
+@router.get("/{slug}/show")
+async def todo_show(
+    slug: str,
+    cwd: str | None = None,
+) -> ShowPayload:
+    """Return full show payload for a slug."""
+    from teleclaude.core.todos_db._show import assemble_show_payload  # pylint: disable=import-outside-toplevel
+
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    payload = await assemble_show_payload(todos_db, slug)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found")
+    return payload

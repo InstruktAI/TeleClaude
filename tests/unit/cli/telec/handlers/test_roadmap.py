@@ -27,7 +27,16 @@ def test_parse_roadmap_show_args_sets_requested_flags() -> None:
 def test_handle_roadmap_show_prints_json_when_requested(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    todos = [SimpleNamespace(to_dict=lambda: {"slug": "sample", "status": "ready"})]
+    todos = [
+        SimpleNamespace(
+            slug="sample",
+            status="ready",
+            description=None,
+            after=[],
+            group=None,
+            delivered_at=None,
+        )
+    ]
 
     monkeypatch.chdir(tmp_path)
     with patch("teleclaude.core.roadmap.assemble_roadmap_from_db", return_value=todos):

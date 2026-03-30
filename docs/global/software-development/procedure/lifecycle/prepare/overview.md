@@ -216,3 +216,12 @@ overlap after an integration delivery.
    Do not improvise — the machine owns sequencing.
 3. If direct conversation with a worker stalls, write blockers to `dor-report.md`
    and proceed to cleanup.
+
+## Required tools
+
+- `telec todo artifacts list <slug>`
+- `telec todo artifacts read <slug> <name>`
+- `telec todo artifacts write <slug> <name> --file <path>`
+- `telec todo stamp <slug> --verdict approve|needs_work`
+- `telec todo stamp <slug> --dor-score <n> --dor-status pass|fail`
+- `telec todo show <slug>`

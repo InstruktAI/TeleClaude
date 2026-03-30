@@ -19,6 +19,7 @@ __all__ = [
     "_handle_todo_from_main",
     "_handle_todo_mark_ready",
     "_handle_todo_remove",
+    "_handle_todo_show",
     "_handle_todo_split",
     "_handle_todo_stamp",
     "_handle_todo_validate",
@@ -107,6 +108,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_artifacts(args[1:])
     elif subcommand == "stamp":
         _handle_todo_stamp(args[1:])
+    elif subcommand == "show":
+        _handle_todo_show(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -587,5 +590,25 @@ def _handle_todo_stamp(args: list[str]) -> None:
     )
     if isinstance(result, dict) and result.get("status") == "ok":
         print(f"Stamped {stamp_type}={value} for {slug}")
+    else:
+        print(result)
+
+
+def _handle_todo_show(args: list[str]) -> None:
+    """Handle telec todo show <slug> — display full todo state payload."""
+    import json as _json  # pylint: disable=import-outside-toplevel
+
+    if not args or args[0].startswith("-"):
+        print("Usage: telec todo show <slug>")
+        raise SystemExit(1)
+
+    slug = args[0]
+    result = tool_api_request("GET", f"/todos/{slug}/show")
+
+    if isinstance(result, dict) and "slug" in result:
+        print(_json.dumps(result, indent=2))
+    elif isinstance(result, dict) and result.get("detail"):
+        print(f"Error: {result['detail']}")
+        raise SystemExit(1)
     else:
         print(result)

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from teleclaude.cli.telec.help import _usage
 from teleclaude.core.todos_db import TodosDb
@@ -82,7 +82,7 @@ def _handle_roadmap_show(args: list[str]) -> None:
         return
 
     if parsed["json_output"]:
-        print(json.dumps([t.to_dict() for t in todos], indent=2))
+        print(json.dumps([_todo_to_trimmed_dict(t) for t in todos], indent=2))
         return
 
     _print_grouped_roadmap(todos)
@@ -118,21 +118,6 @@ def _parse_roadmap_show_args(args: list[str]) -> dict[str, bool]:
     return parsed
 
 
-def _todo_extras(todo: TodoInfo) -> str:
-    extras = []
-    if todo.dor_score is not None:
-        extras.append(f"DOR:{todo.dor_score}")
-    if todo.findings_count > 0:
-        extras.append(f"Findings:{todo.findings_count}")
-    if todo.build_status and todo.build_status != "pending":
-        extras.append(f"Build:{todo.build_status}")
-    if todo.review_status and todo.review_status != "pending":
-        extras.append(f"Review:{todo.review_status}")
-    if todo.delivered_at:
-        extras.append(f"Delivered:{todo.delivered_at}")
-    return f" [{', '.join(extras)}]" if extras else ""
-
-
 def _print_grouped_roadmap(todos: list[TodoInfo]) -> None:
     groups: dict[str, list[TodoInfo]] = {}
     for todo in todos:
@@ -150,8 +135,37 @@ def _print_grouped_roadmap(todos: list[TodoInfo]) -> None:
             print()
 
         for todo in group_todos:
-            deps_str = f" (after: {', '.join(todo.after)})" if todo.after else ""
-            print(f"    {todo.slug} [{todo.status}]{_todo_extras(todo)}{deps_str}")
+            parts = [f"    {todo.slug} [{todo.status}]"]
+            if todo.description:
+                parts.append(f" {todo.description}")
+            if todo.after:
+                parts.append(f" (after: {', '.join(todo.after)})")
+            print("".join(parts))
+
+
+class _TrimmedTodoDict(TypedDict, total=False):
+    """Minimal roadmap entry for JSON output."""
+
+    slug: str
+    status: str
+    description: str
+    after: list[str]
+    group: str
+    delivered_at: str
+
+
+def _todo_to_trimmed_dict(todo: TodoInfo) -> _TrimmedTodoDict:
+    """Build a minimal dict with only meaningful fields — no null values, no empty arrays."""
+    result = _TrimmedTodoDict(slug=todo.slug, status=todo.status)
+    if todo.description:
+        result["description"] = todo.description
+    if todo.after:
+        result["after"] = todo.after
+    if todo.group:
+        result["group"] = todo.group
+    if todo.delivered_at:
+        result["delivered_at"] = todo.delivered_at
+    return result
 
 
 def _run_db(slug: str, method: str, **kwargs: object) -> object:  # pylint: disable=too-many-arguments

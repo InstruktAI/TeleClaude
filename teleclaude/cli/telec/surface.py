@@ -575,6 +575,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 },
             ),
+            "show": CommandDef(
+                desc="Show full state payload for a todo",
+                args="<slug>",
+                flags=[_H],
+                examples=["telec todo show my-slug"],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
             "stamp": CommandDef(
                 desc="Stamp a verdict, build status, or DOR result into todo state",
                 args="<slug>",

@@ -137,6 +137,11 @@ from the last persisted phase. No manual checkpoint editing is required.
 - **Push repeatedly rejected:** Fetch, rebase, resolve, push in `trees/_integration/`,
   then call `telec todo integrate`. If the problem persists, check for concurrent integrators.
 
+## Required tools
+
+- `telec todo artifacts list <slug>`
+- `telec todo show <slug>`
+
 ### Automatic crash recovery
 
 | Crash point                       | What happens on re-entry                                             |
