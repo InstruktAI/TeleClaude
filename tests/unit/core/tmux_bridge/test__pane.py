@@ -111,6 +111,58 @@ class TestCaptureAndSessionListing:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_collect_pane_snapshot_returns_required_state_from_single_tmux_call(self) -> None:
+        stdout = b"pane-output\n__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__\n0\n0\n"
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._pane.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process()),
+            ) as mock_exec,
+            patch(
+                "teleclaude.core.tmux_bridge._pane.communicate_with_timeout",
+                new=AsyncMock(return_value=(stdout, b"")),
+            ),
+        ):
+            result = await _pane.collect_pane_snapshot("tmux-alpha", capture_lines=25)
+
+        assert result == _pane.PaneSnapshot(session_exists=True, pane_dead=False, output="pane-output\n")
+        assert mock_exec.await_count == 1
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_collect_pane_snapshot_maps_missing_session_to_nonexistent_snapshot(self) -> None:
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._pane.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process(returncode=1)),
+            ),
+            patch(
+                "teleclaude.core.tmux_bridge._pane.communicate_with_timeout",
+                new=AsyncMock(return_value=(b"", b"can't find session: tmux-alpha")),
+            ),
+        ):
+            result = await _pane.collect_pane_snapshot("tmux-alpha")
+
+        assert result == _pane.PaneSnapshot(session_exists=False, pane_dead=False, output="")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_collect_pane_snapshot_raises_when_boundary_marker_is_missing(self) -> None:
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._pane.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process()),
+            ),
+            patch(
+                "teleclaude.core.tmux_bridge._pane.communicate_with_timeout",
+                new=AsyncMock(return_value=(b"pane-output-only", b"")),
+            ),
+        ):
+            with pytest.raises(ValueError, match="boundary marker"):
+                await _pane.collect_pane_snapshot("tmux-alpha")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_kill_session_returns_true_for_zero_exit(self) -> None:
         process = _completed_process()
 
@@ -345,23 +397,3 @@ class TestPaneStateAndPiping:
             result = await _pane.get_pane_title("tmux-alpha")
 
         assert result == "Agent Pane"
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(("returncode", "stdout", "expected"), [(0, b"/tmp/work\n", "/tmp/work"), (1, b"", None)])
-    async def test_get_current_directory_returns_none_on_tmux_error(
-        self, returncode: int, stdout: bytes, expected: str | None
-    ) -> None:
-        with (
-            patch(
-                "teleclaude.core.tmux_bridge._pane.asyncio.create_subprocess_exec",
-                new=AsyncMock(return_value=_completed_process(returncode=returncode)),
-            ),
-            patch(
-                "teleclaude.core.tmux_bridge._pane.communicate_with_timeout",
-                new=AsyncMock(return_value=(stdout, b"missing path")),
-            ),
-        ):
-            result = await _pane.get_current_directory("tmux-alpha")
-
-        assert result == expected

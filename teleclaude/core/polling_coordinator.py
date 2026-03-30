@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
 from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -23,12 +22,10 @@ from teleclaude.core.events import (
     AgentOutputPayload,
 )
 from teleclaude.core.output_poller import (
-    DirectoryChanged,
     OutputChanged,
     OutputPoller,
     ProcessExited,
 )
-from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.tool_activity import truncate_tool_preview
 
 if TYPE_CHECKING:
@@ -443,12 +440,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                 # Signal activity — adapters pull output on their own cadence.
                 await db.update_last_activity(event.session_id)
                 _record_output_tick(event.session_id, len(clean_output))
-
-            elif isinstance(event, DirectoryChanged):
-                # Directory changed - update session (db dispatcher handles title update)
-                trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
-                project_path, subdir = split_project_path_and_subdir(event.new_path, trusted_dirs)
-                await db.update_session(event.session_id, project_path=project_path, subdir=subdir)
 
             elif isinstance(event, ProcessExited):
                 # Process exited - output is already clean from file

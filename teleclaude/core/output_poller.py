@@ -13,7 +13,6 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import DIRECTORY_CHECK_INTERVAL
 from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 
@@ -47,14 +46,6 @@ class ProcessExited(OutputEvent):
     exit_code: int | None
     final_output: str
     started_at: float
-
-
-@dataclass
-class DirectoryChanged(OutputEvent):
-    """Directory changed event."""
-
-    new_path: str
-    old_path: str
 
 
 class OutputPoller:  # pylint: disable=too-few-public-methods
@@ -179,7 +170,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
         self,
         *,
         session_id: str,
-        tmux_session_name: str,
+        pane_dead: bool,
         current_cleaned: str,
         started_at: float,
         last_output_changed_at: float,
@@ -187,7 +178,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
         output_changed: bool,
         output_sent_at_least_once: bool,
     ) -> AsyncIterator[OutputEvent]:
-        if not await tmux_bridge.is_pane_dead(tmux_session_name):
+        if not pane_dead:
             return
         should_emit_final = pending_output or output_changed or output_sent_at_least_once
         if should_emit_final and current_cleaned.strip():
@@ -218,42 +209,12 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
                 [line[:50] for line in curr_last_lines],
             )
 
-    async def _maybe_yield_directory_change(  # pylint: disable=too-many-arguments
-        self,
-        *,
-        session_id: str,
-        tmux_session_name: str,
-        directory_check_interval: int,
-        directory_check_ticks: int,
-        last_directory: str | None,
-    ) -> tuple[int, str | None, DirectoryChanged | None]:
-        if directory_check_interval <= 0:
-            return directory_check_ticks, last_directory, None
-        directory_check_ticks += 1
-        if directory_check_ticks < directory_check_interval:
-            return directory_check_ticks, last_directory, None
-        directory_check_ticks = 0
-        current_directory = await tmux_bridge.get_current_directory(tmux_session_name)
-        if not current_directory:
-            return directory_check_ticks, last_directory, None
-        if last_directory is not None and current_directory != last_directory:
-            logger.info("Directory changed for %s: %s -> %s", session_id, last_directory, current_directory)
-            return (
-                directory_check_ticks,
-                current_directory,
-                DirectoryChanged(
-                    session_id=session_id,
-                    new_path=current_directory,
-                    old_path=last_directory,
-                ),
-            )
-        return directory_check_ticks, current_directory, None
-
     async def _check_session_presence(  # pylint: disable=too-many-arguments
         self,
         *,
         session_id: str,
-        tmux_session_name: str,
+        tmux_session_name: str,  # pylint: disable=unused-argument
+        snapshot: tmux_bridge.PaneSnapshot,
         session_existed_last_poll: bool,
         started_at: float,
         poll_iteration: int,
@@ -262,7 +223,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
         last_sent_output: str | None,
         last_output_changed_at: float,
     ) -> tuple[bool, bool, list[OutputEvent]]:
-        session_exists_now = await tmux_bridge.session_exists(tmux_session_name, log_missing=False)
+        session_exists_now = snapshot.session_exists
 
         if session_existed_last_poll and not session_exists_now:
             await self._log_watchdog_transition(
@@ -303,19 +264,16 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
             output_file: Reserved for future file-based polling; currently unused.
 
         Yields:
-            OutputEvent subclasses (OutputChanged, ProcessExited, DirectoryChanged)
+            OutputEvent subclasses (OutputChanged, ProcessExited)
         """
         # Configuration
         output_cadence_s = max(0.1, float(getattr(_CONFIG_FOR_TESTS.polling, "output_cadence_s", 1.0)))
         poll_interval = min(1.0, output_cadence_s)
-        directory_check_interval = DIRECTORY_CHECK_INTERVAL
 
         # State tracking
         idle_ticks = 0
         started_at: float | None = None
         last_output_changed_at = 0.0
-        last_directory: str | None = None
-        directory_check_ticks = 0
         poll_iteration = 0
         session_existed_last_poll = True  # Watchdog: track if session existed in previous poll
         output_sent_at_least_once = False  # Ensure user sees output before exit
@@ -361,9 +319,11 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
             while True:
                 poll_iteration += 1
 
+                snapshot = await tmux_bridge.collect_pane_snapshot(tmux_session_name)
                 session_exists_now, should_stop, missing_session_events = await self._check_session_presence(
                     session_id=session_id,
                     tmux_session_name=tmux_session_name,
+                    snapshot=snapshot,
                     session_existed_last_poll=session_existed_last_poll,
                     started_at=started_at,
                     poll_iteration=poll_iteration,
@@ -379,7 +339,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
 
                 session_existed_last_poll = session_exists_now
 
-                captured_output = await tmux_bridge.capture_pane(tmux_session_name)
+                captured_output = snapshot.output
                 output_changed = captured_output != previous_output
                 current_cleaned = captured_output
 
@@ -420,7 +380,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
                 pane_dead = False
                 async for event in self._maybe_yield_dead_pane(
                     session_id=session_id,
-                    tmux_session_name=tmux_session_name,
+                    pane_dead=snapshot.pane_dead,
                     current_cleaned=current_cleaned,
                     started_at=started_at,
                     last_output_changed_at=last_output_changed_at,
@@ -439,16 +399,6 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
                     if not did_yield:
                         suppressed_idle_ticks += 1
                         maybe_log_idle_summary()
-
-                directory_check_ticks, last_directory, directory_event = await self._maybe_yield_directory_change(
-                    session_id=session_id,
-                    tmux_session_name=tmux_session_name,
-                    directory_check_interval=directory_check_interval,
-                    directory_check_ticks=directory_check_ticks,
-                    last_directory=last_directory,
-                )
-                if directory_event is not None:
-                    yield directory_event
 
                 await asyncio.sleep(poll_interval)
 

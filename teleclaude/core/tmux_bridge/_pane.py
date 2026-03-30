@@ -4,6 +4,7 @@ import asyncio
 import os
 import pwd
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
@@ -26,6 +27,23 @@ logger = get_logger(__name__)
 _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()
 _TMUX_OPERATION_ERRORS = (OSError, ValueError, SubprocessTimeoutError)
 _TMUX_DIAGNOSTIC_ERRORS = (OSError, ValueError, TypeError, psutil.Error, SubprocessTimeoutError)
+_SNAPSHOT_MARKER = "__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__"
+
+
+@dataclass(frozen=True)
+class PaneSnapshot:
+    """Required per-tick tmux polling state.
+
+    Contract:
+    - These fields are the required polling boundary.
+    - Poller control flow must depend only on these fields.
+    - Optional enrichment must not be added here unless it comes from the same
+      tmux invocation and cannot poison the tick when unavailable.
+    """
+
+    session_exists: bool
+    pane_dead: bool
+    output: str
 
 
 async def get_pane_tty(session_name: str) -> str | None:
@@ -126,6 +144,77 @@ async def capture_pane(session_name: str, *, capture_lines: int | None = None) -
         raise
     except (OSError, ValueError) as e:
         logger.error("Exception capturing pane from session %s: %s", session_name, e)
+        raise
+
+
+def _parse_snapshot_stdout(stdout: bytes) -> tuple[str, bool]:
+    """Parse combined capture-pane/list-panes output from a single tmux call."""
+    decoded = stdout.decode("utf-8", errors="replace")
+    if _SNAPSHOT_MARKER not in decoded:
+        raise ValueError("tmux snapshot output missing required boundary marker")
+
+    output_text, pane_state_text = decoded.rsplit(_SNAPSHOT_MARKER, 1)
+    lines = pane_state_text.strip().splitlines()
+    panes = [line.strip() for line in lines if line.strip()]
+    pane_dead = bool(panes) and all(int(pane) == 1 for pane in panes if pane.isdigit())
+    return output_text, pane_dead
+
+
+async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None = None) -> PaneSnapshot:
+    """Collect required polling state in one tmux subprocess.
+
+    This is the hot polling boundary. The snapshot must remain narrow and
+    stable: liveness plus pane output only.
+    """
+
+    window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else UI_MESSAGE_MAX_CHARS
+    cmd = [
+        config.computer.tmux_binary,
+        "capture-pane",
+        "-t",
+        session_name,
+        "-p",
+        "-J",
+        "-e",
+        "-S",
+        f"-{window_lines}",
+        ";",
+        "display-message",
+        "-p",
+        _SNAPSHOT_MARKER,
+        ";",
+        "list-panes",
+        "-t",
+        session_name,
+        "-F",
+        "#{pane_dead}",
+    ]
+
+    try:
+        result = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+        if result.returncode != 0:
+            stderr_text = stderr.decode().strip()
+            if "can't find" in stderr_text.lower() or "no such" in stderr_text.lower():
+                return PaneSnapshot(session_exists=False, pane_dead=False, output="")
+            logger.warning(
+                "Failed to collect pane snapshot for session %s: returncode=%d, stderr=%s",
+                session_name,
+                result.returncode,
+                stderr_text,
+            )
+            raise ValueError(f"tmux snapshot failed for {session_name}: {stderr_text}")
+
+        output_text, pane_dead = _parse_snapshot_stdout(stdout)
+        return PaneSnapshot(session_exists=True, pane_dead=pane_dead, output=output_text)
+
+    except SubprocessTimeoutError as e:
+        logger.error("Timeout collecting pane snapshot for session %s: %s", session_name, e)
+        raise
+    except (OSError, ValueError) as e:
+        logger.error("Exception collecting pane snapshot for session %s: %s", session_name, e)
         raise
 
 
@@ -429,39 +518,4 @@ async def get_pane_title(session_name: str) -> str | None:
 
     except _TMUX_OPERATION_ERRORS as e:
         logger.error("Failed to get pane title for %s: %s", session_name, e)
-        return None
-
-
-async def get_current_directory(session_name: str) -> str | None:
-    """Get the current working directory for a tmux session.
-
-    Args:
-        session_name: Session name
-
-    Returns:
-        Current directory path or None if failed
-    """
-    try:
-        cmd = [config.computer.tmux_binary, "display", "-p", "-t", session_name, "#{pane_current_path}"]
-        result = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
-
-        if result.returncode == 0:
-            current_dir: str = stdout.decode().strip()
-            return current_dir
-
-        logger.warning(
-            "Failed to get current directory for %s: returncode=%d, stderr=%s",
-            session_name,
-            result.returncode,
-            stderr.decode().strip(),
-        )
-        return None
-
-    except _TMUX_OPERATION_ERRORS as e:
-        logger.error("Exception in get_current_directory for %s: %s", session_name, e)
         return None
