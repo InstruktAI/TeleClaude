@@ -309,14 +309,11 @@ def _handle_roadmap_move(args: list[str]) -> None:
 
 def _handle_roadmap_deps(args: list[str]) -> None:
     """Handle telec roadmap deps <slug> --after dep1,dep2."""
-    from teleclaude.core.next_machine.core import load_roadmap, save_roadmap
-
     if not args:
         print(_usage("roadmap", "deps"))
         return
 
     slug: str | None = None
-    project_root = Path.cwd()
     after: list[str] | None = None
 
     i = 0
@@ -346,30 +343,11 @@ def _handle_roadmap_deps(args: list[str]) -> None:
         print(_usage("roadmap", "deps"))
         raise SystemExit(1)
 
-    cwd = str(project_root)
-    entries = load_roadmap(cwd)
-    found = False
-    for entry in entries:
-        if entry.slug == slug:
-            entry.after = after
-            found = True
-            break
-
-    if not found:
-        print(f"Slug not found in roadmap: {slug}")
-        raise SystemExit(1)
-
-    save_roadmap(cwd, entries)
+    _run_db(slug, "set_deps", after=after)
     if after:
         print(f"Set dependencies for {slug}: {', '.join(after)}")
     else:
         print(f"Cleared dependencies for {slug}.")
-
-    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
-
-    _ok, _reason = commit_bookkeeping_to_main(cwd, ["todos/roadmap.yaml"], f"chore(roadmap): deps {slug}")
-    if not _ok and _reason in ("commit_failed", "not_a_repo"):
-        print(f"Warning: bookkeeping commit skipped ({_reason})")
 
 
 def _handle_roadmap_freeze(args: list[str]) -> None:
@@ -380,7 +358,6 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
         return
 
     slug: str | None = None
-    project_root = Path.cwd()
     i = 0
     while i < len(args):
         arg = args[i]
@@ -403,15 +380,6 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
     if _run_db(slug, "freeze"):
         print(f"Froze {slug} → icebox.yaml")
 
-        from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
-
-        _ok, _reason = commit_bookkeeping_to_main(
-            str(project_root),
-            ["todos/roadmap.yaml", "todos/_icebox/"],
-            f"chore(roadmap): freeze {slug}",
-        )
-        if not _ok and _reason in ("commit_failed", "not_a_repo"):
-            print(f"Warning: bookkeeping commit skipped ({_reason})")
     else:
         print(f"Slug not found in roadmap: {slug}")
         raise SystemExit(1)
@@ -425,7 +393,6 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
         return
 
     slug: str | None = None
-    project_root = Path.cwd()
     i = 0
     while i < len(args):
         arg = args[i]
@@ -448,15 +415,6 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
     if _run_db(slug, "unfreeze"):
         print(f"Unfroze {slug} → roadmap.yaml")
 
-        from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
-
-        _ok, _reason = commit_bookkeeping_to_main(
-            str(project_root),
-            ["todos/roadmap.yaml", "todos/_icebox/"],
-            f"chore(roadmap): unfreeze {slug}",
-        )
-        if not _ok and _reason in ("commit_failed", "not_a_repo"):
-            print(f"Warning: bookkeeping commit skipped ({_reason})")
     else:
         print(f"Slug not found in icebox: {slug}")
         raise SystemExit(1)
@@ -472,16 +430,6 @@ def _handle_roadmap_migrate_icebox(args: list[str]) -> None:  # pylint: disable=
         print("Already migrated (nothing to move).")
     else:
         print(f"Migrated {count} icebox item(s) to todos/_icebox/.")
-
-        from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
-
-        _ok, _reason = commit_bookkeeping_to_main(
-            str(project_root),
-            ["todos/_icebox/", "todos/icebox.yaml"],
-            "chore(roadmap): migrate icebox to subfolder",
-        )
-        if not _ok and _reason in ("commit_failed", "not_a_repo"):
-            print(f"Warning: bookkeeping commit skipped ({_reason})")
 
 
 def _handle_roadmap_deliver(args: list[str]) -> None:
