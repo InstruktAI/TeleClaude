@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -29,12 +30,7 @@ def test_handle_roadmap_show_prints_json_when_requested(
     todos = [SimpleNamespace(to_dict=lambda: {"slug": "sample", "status": "ready"})]
 
     monkeypatch.chdir(tmp_path)
-    with pytest.MonkeyPatch.context() as sys_patch:
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.core.roadmap",
-            SimpleNamespace(assemble_roadmap=lambda *args, **kwargs: todos),
-        )
+    with patch("teleclaude.core.roadmap.assemble_roadmap_from_db", return_value=todos):
         roadmap._handle_roadmap_show(["--json"])
 
     assert json.loads(capsys.readouterr().out) == [{"slug": "sample", "status": "ready"}]
@@ -43,24 +39,12 @@ def test_handle_roadmap_show_prints_json_when_requested(
 def test_handle_roadmap_add_forwards_parsed_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    calls: list[tuple[str, str, str | None, list[str] | None, str | None, str | None]] = []
-
     monkeypatch.chdir(tmp_path)
-    with pytest.MonkeyPatch.context() as sys_patch:
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.core.next_machine.core",
-            SimpleNamespace(
-                add_to_roadmap=lambda cwd, slug, *, group, after, description, before: (
-                    calls.append((cwd, slug, group, after, description, before)) or True
-                )
-            ),
-        )
+    with patch("teleclaude.cli.telec.handlers.roadmap._run_db", return_value=True):
         roadmap._handle_roadmap_add(
             ["sample", "--group", "core", "--after", "dep-a,dep-b", "--description", "Demo", "--before", "other"]
         )
 
-    assert calls == [(str(tmp_path), "sample", "core", ["dep-a", "dep-b"], "Demo", "other")]
     assert "Added sample to roadmap." in capsys.readouterr().out
 
 

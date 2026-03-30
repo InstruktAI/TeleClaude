@@ -206,7 +206,7 @@ def _handle_todo_dump(args: list[str]) -> None:
     """
     if len(args) < 2:
         print(_usage("todo", "dump"))
-        return
+        raise SystemExit(1)
 
     slug: str | None = None
     content: str | None = None
