@@ -140,6 +140,7 @@ from teleclaude.cli.telec.surface import (  # type: ignore[attr-defined]
     Flag,
     TelecCommand,
 )
+from teleclaude.cli.tool_client import ToolAPIError
 from teleclaude.cli.tool_commands import (
     handle_agents,
     handle_channels,
@@ -274,7 +275,11 @@ def main() -> None:
         return
 
     if argv:
-        _handle_cli_argv(argv)
+        try:
+            _handle_cli_argv(argv)
+        except ToolAPIError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
         return
 
     _start_tui(logger)

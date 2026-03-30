@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.events.envelope import EventEnvelope, EventLevel
+
 __all__ = [
     "_handle_todo",
     "_handle_todo_artifacts",
@@ -251,11 +252,8 @@ def _handle_todo_dump(args: list[str]) -> None:
 
     if isinstance(result, dict) and result.get("status") == "ok":
         print(f"Dumped todo: {slug}")
-    elif isinstance(result, dict) and result.get("detail"):
-        print(f"Error: {result['detail']}")
-        raise SystemExit(1)
     else:
-        print(f"Error: {result}")
+        print(f"Error: unexpected response: {result}")
         raise SystemExit(1)
 
     # Emit planning.todo_dumped notification
@@ -577,5 +575,3 @@ def _handle_todo_stamp(args: list[str]) -> None:
         print(f"Stamped {stamp_type}={value} for {slug}")
     else:
         print(result)
-
-
