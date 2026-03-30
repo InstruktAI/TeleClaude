@@ -10,7 +10,7 @@ type: 'design'
 
 ## Purpose
 
-The Work state machine routes implementation through four sub-phases: **Build → Review → Fix → Finalize**. Unlike the Prepare machine which has an explicit phase enum, the Work machine derives its routing decision from the combination of `build` and `review` status fields in `state.yaml`.
+The Work state machine routes implementation through four sub-phases: **Build → Review → Fix → Finalize**. Unlike the Prepare machine which has an explicit phase enum, the Work machine derives its routing decision from the combination of `build` and `review` status fields in `todo state (todos.db)`.
 
 **Entry point:** `telec todo work [slug]`
 **Implementation:** [`next_work()`](../../../../teleclaude/core/next_machine/core.py)
@@ -43,21 +43,21 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 **Inputs:**
 
-- `todos/{slug}/requirements.md` — feature requirements (from Phase A)
-- `todos/{slug}/implementation-plan.md` — technical design with task checkboxes (from Phase A)
+- `telec todo artifacts read {slug} requirements` — feature requirements (from Phase A)
+- `telec todo artifacts read {slug} implementation-plan` — technical design with task checkboxes (from Phase A)
 - Test specification files — expected-failure-marked tests in the worktree (from Phase A)
-- `todos/{slug}/state.yaml` — build/review status, finalize state, review rounds
-- `todos/{slug}/quality-checklist.md` — build and review gate checkboxes
-- `todos/roadmap.yaml` — slug resolution and dependency graph
+- `todos.db` state — build/review status, finalize state, review rounds
+- `telec todo artifacts read {slug} quality-checklist` — build and review gate checkboxes
+- `todos.db` roadmap — slug resolution and dependency graph
 - Worktree at `trees/{slug}/` — isolated git branch for implementation
 
 **Outputs:**
 
 - Code changes, tests, and commits (build)
-- `todos/{slug}/review-findings.md` — structured findings with severity and verdict (review)
-- `todos/{slug}/deferrals.md` — out-of-scope work identified during build (optional)
+- `telec todo artifacts read {slug} review-findings` — structured findings with severity and verdict (review)
+- `telec todo artifacts read {slug} deferrals` — out-of-scope work identified during build (optional)
 - Integration handoff events (`branch.pushed`, `deployment.started`)
-- Updated `state.yaml` with phase progression
+- Updated `todo state (todos.db)` with phase progression
 
 ### State YAML structure
 
@@ -86,7 +86,7 @@ resolved_findings: [] # R1-F1, R1-F2, ...
 
 ## Invariants
 
-- **Routing from state**: all routing decisions derive from `build` and `review` fields in `state.yaml`. No internal state.
+- **Routing from state**: all routing decisions derive from `build` and `review` fields in `todo state (todos.db)`. No internal state.
 - **Build gates before review**: `make test` and `telec todo demo validate <slug>` must pass before dispatching a reviewer.
 - **Artifact verification**: mechanical checks at phase boundaries (tasks checked, commits exist, findings substantive).
 - **Stale approval guard**: if new commits exist between `review_baseline_commit` and current HEAD, the machine resets `review=pending` to force a fresh review.
@@ -131,12 +131,12 @@ stateDiagram-v2
 
 ### Routing logic
 
-The machine reads `state.yaml` and routes based on `build` and `review` status:
+The machine reads `todo state (todos.db)` and routes based on `build` and `review` status:
 
 ```mermaid
 flowchart TD
     Start(["telec todo work [slug]"])
-    ReadState["Read state.yaml"]
+    ReadState["Read todo state (todos.db)"]
 
     BuildCheck{"build status?"}
     ReviewCheck{"review status?"}

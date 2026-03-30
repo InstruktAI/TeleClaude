@@ -28,10 +28,10 @@ belong to the later draft phase.
 
 ## Preconditions
 
-1. `todos/{slug}/input.md` exists with human thinking to derive from.
+1. `telec todo artifacts read {slug} input` exists with human thinking to derive from.
 2. The discovery worker knows its own agent type and can select a complementary
    partner if triangulation is needed.
-3. `todos/roadmap.yaml` is readable.
+3. `todos.db` roadmap is readable.
 4. Slug is active (not icebox, not delivered).
 
 ## Steps
@@ -40,9 +40,9 @@ belong to the later draft phase.
 
 Read:
 
-- `todos/{slug}/input.md`
-- any existing `todos/{slug}/requirements-review-findings.md`
-- `todos/roadmap.yaml`
+- `telec todo artifacts read {slug} input`
+- any existing `telec todo artifacts read {slug} requirements-review-findings`
+- `todos.db` roadmap
 - the relevant code paths and adjacent patterns
 - local docs needed to understand the domain constraints
 
@@ -56,7 +56,7 @@ and review-awareness cannot be evaluated without them.
 When the dispatch note starts with "FIX MODE", this is a targeted revision, not a
 fresh derivation:
 
-- Read the existing `todos/{slug}/requirements.md` alongside the review findings.
+- Read the existing `telec todo artifacts read {slug} requirements` alongside the review findings.
 - Apply targeted fixes to address each finding. Preserve all unflagged content.
 - Do not re-derive from scratch — the existing requirements were already grounded.
 - Skip strategy selection (step 2) and triangulation (step 3); proceed directly to
@@ -120,7 +120,7 @@ Write `requirements.md`:
 - Structured per the quality standard above.
 - Inferences marked explicitly.
 
-Update `todos/{slug}/state.yaml`:
+Update `todos.db` state:
 
 ```yaml
 grounding:
@@ -145,8 +145,8 @@ If triangulation was used, end the partner session when convergence is done.
 
 ## Outputs
 
-1. `todos/{slug}/requirements.md` — grounded, review-aware requirements.
-2. `todos/{slug}/state.yaml` — grounding metadata updated.
+1. `telec todo artifacts read {slug} requirements` — grounded, review-aware requirements.
+2. `todos.db` state — grounding metadata updated.
 3. Partner session ended after convergence when triangulation was used.
 
 ## Recovery

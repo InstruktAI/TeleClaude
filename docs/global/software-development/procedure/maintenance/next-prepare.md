@@ -25,7 +25,7 @@ The orchestrator never makes routing decisions — the machine owns sequencing.
 
 ## Preconditions
 
-1. `todos/roadmap.yaml` exists.
+1. `todos.db` roadmap exists.
 2. Target slug is active (not icebox, not delivered) when slug is provided.
 
 ## Steps
@@ -58,7 +58,7 @@ Then call `telec todo prepare [slug]` again.
 
 `requirements.md` exists but is not yet approved. Dispatch a reviewer to
 validate requirements against the quality standard (completeness, testability,
-grounding, review-awareness). The reviewer writes a verdict to `state.yaml`.
+grounding, review-awareness). The reviewer writes a verdict to `todo state (todos.db)`.
 
 After review, call `telec todo prepare [slug]` again.
 
@@ -90,7 +90,7 @@ Then call `telec todo prepare [slug]` again.
 
 `implementation-plan.md` exists but is not yet approved. Dispatch a reviewer
 to validate the plan against policies, DoD gates, and review lane expectations.
-The reviewer writes a verdict to `state.yaml`.
+The reviewer writes a verdict to `todo state (todos.db)`.
 
 After review, call `telec todo prepare [slug]` again.
 
@@ -141,8 +141,8 @@ End all worker sessions and end yourself.
 The machine set `prepare_phase` to BLOCKED due to architectural findings in a review
 (`needs_decision` verdict). One or more findings in `requirements_review.findings` or
 `plan_review.findings` have `severity: "architectural"` and require human decision
-before the machine can proceed. Read `todos/{slug}/requirements-review-findings.md`
-or `todos/{slug}/plan-review-findings.md` for specifics. Surface the blocker to the
+before the machine can proceed. Read `telec todo artifacts read {slug} requirements-review-findings`
+or `telec todo artifacts read {slug} plan-review-findings` for specifics. Surface the blocker to the
 human and stop.
 
 #### BLOCKER
@@ -153,7 +153,7 @@ decision needed, superseded todo). Report the blocker and stop.
 #### SPLIT INHERITANCE
 
 When `telec todo split` creates child todos, children skip phases already approved
-by the parent. The machine records skipped phases in `state.yaml.audit` with
+by the parent. The machine records skipped phases in `todo state (todos.db).audit` with
 `status: "skipped"` and `reason: "inherited_from_parent"`. Children with
 `plan_review.verdict == "approve"` start at `prepared` — no further prepare work
 is needed; they proceed directly to build. Children with only
@@ -181,7 +181,7 @@ After dispatching a worker:
 1. Preparation artifacts produced through the state machine phases:
    `requirements.md`, `implementation-plan.md`, `demo.md`.
 2. Each artifact reviewed and approved before the next phase begins.
-3. Grounding metadata in `state.yaml` for staleness detection.
+3. Grounding metadata in `todo state (todos.db)` for staleness detection.
 4. All sessions ended on completion.
 
 ## Recovery

@@ -79,4 +79,4 @@ The `demo` field (shell command string) is deprecated. New demos use `demo.md` i
 - Breaking major version bumps disable stale demos automatically via the semver gate
 - No retroactive demo generation for past deliveries
 - Existing demos may use variant field names (`delivered_date` instead of `delivered`, etc.) — the CLI runner handles these with fallbacks
-- Delivery log is `todos/delivered.yaml`, not `delivered.md`
+- Delivery log is `todos.db` delivered entries, not `delivered.md`

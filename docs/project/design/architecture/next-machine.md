@@ -20,9 +20,9 @@ type: 'design'
 The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phase B: Build/Review/Fix, Phase C: Integrate) without maintaining internal state.
 
 1. **Statelessness**: It derives all work status from project artifacts:
-   - `roadmap.yaml` (item discovery)
+   - `roadmap (todos.db)` (item discovery)
    - `requirements.md` and `implementation-plan.md` (preparation check)
-   - `state.yaml` (build/review phase tracking)
+   - `todo state (todos.db)` (build/review phase tracking)
 2. **Phases**:
    - **Phase A (Prepare)**: Sequential artifact production with review gates. 10-state machine.
    - **Phase B (Work)**: Deterministic, autonomous implementation and verification.
@@ -51,11 +51,11 @@ stateDiagram-v2
 
 **Inputs:**
 
-- `todos/roadmap.yaml` - Work item registry with priorities
-- `todos/{slug}/requirements.md` - Feature requirements
-- `todos/{slug}/implementation-plan.md` - Technical design
-- `todos/{slug}/state.yaml` - Phase tracking (build, review)
-- `todos/{slug}/deferrals.md` - Identified technical debt
+- `todos.db` roadmap - Work item registry with priorities
+- `telec todo artifacts read {slug} requirements` - Feature requirements
+- `telec todo artifacts read {slug} implementation-plan` - Technical design
+- `todos.db` state - Phase tracking (build, review)
+- `telec todo artifacts read {slug} deferrals` - Identified technical debt
 - `config.yml` (via `app_config.agents`) - Agent availability and strengths
 
 **Outputs:**
@@ -104,7 +104,7 @@ flowchart TD
 flowchart TD
     Start[next_work called]
     ReleaseLock{Caller holds<br/>finalize lock<br/>for done item?}
-    CheckState{Read state.yaml}
+    CheckState{Read todo state (todos.db)}
     Build{Build<br/>complete?}
     Review{Review<br/>status?}
     Fix{Fix<br/>needed?}
@@ -172,7 +172,7 @@ sequenceDiagram
     participant State
 
     Orchestrator->>Machine: next_work()
-    Machine->>State: Read state.yaml
+    Machine->>State: Read todo state (todos.db)
     Machine->>State: Check dependencies
     alt All deps complete
         Machine->>Orchestrator: Dispatch build

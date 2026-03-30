@@ -42,7 +42,7 @@ context. Only the caller does.
 
 ## Implications
 
-- **Artifacts are the evidence trail.** The todo folder (`state.yaml`, `dor-report.md`,
+- **Artifacts are the evidence trail.** The todo folder (`todo state (todos.db)`, `dor-report.md`,
   `requirements.md`, `implementation-plan.md`) is the durable record. Design artifacts
   to be self-contained and readable by any future agent or human.
 - **Caller ends child, then itself.** The session that dispatched a worker is responsible

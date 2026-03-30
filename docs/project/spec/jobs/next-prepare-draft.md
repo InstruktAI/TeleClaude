@@ -25,6 +25,6 @@ It must not perform final gate decisions or readiness promotion.
 - `scope`: explicit slug or batch mode over active slugs.
 - `inputs`: active todo slugs with approved `requirements.md`; optional `input.md` for intent recall.
 - outputs per processed slug: atomic case → `implementation-plan.md`, `demo.md`,
-  grounded `state.yaml`; split case → child todos, dependency links, updated holder
+  grounded `todo state (todos.db)`; split case → child todos, dependency links, updated holder
   `breakdown`.
 - `phase_constraint`: must not transition item phase from `pending` to `ready`; leaves final readiness decision to `next-prepare-gate`.

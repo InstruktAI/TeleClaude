@@ -28,9 +28,9 @@ machine and the interactive creative process.
 
 ## Preconditions
 
-1. `todos/roadmap.yaml` exists.
+1. `todos.db` roadmap exists.
 2. Target slug is active and flagged for creative work.
-3. `todos/{slug}/input.md` exists with human thinking.
+3. `telec todo artifacts read {slug} input` exists with human thinking.
 4. The human is available for interactive participation (design spec
    confirmation, art review, and visual review require human presence).
 
@@ -51,7 +51,7 @@ discovery.
 
 **Action**: open an interactive session. This is not a background dispatch — the
 human participates directly. The creator presents reference sites, collects
-images the human provides (saved to `todos/{slug}/input/`), and facilitates
+images the human provides (saved to `{worktree}/todos/{slug}/input/` (filesystem reference images)), and facilitates
 the dialogue that produces `design-spec.md`.
 
 The creator may run this session itself (if the human is present in the
@@ -67,7 +67,7 @@ After `design-spec.md` is written, call the machine again.
 **Action**: present the design spec to the human. Highlight any `[proposed]`
 values that need their input. Ask for one of:
 
-- **Confirm**: mark `creative.design_spec.confirmed: true` in `state.yaml`.
+- **Confirm**: mark `creative.design_spec.confirmed: true` in `todo state (todos.db)`.
 - **Revise**: collect feedback, update `design-spec.md`, present again.
 
 Do not advance until the human explicitly confirms. This is a blocking gate.
@@ -96,7 +96,7 @@ The artist receives:
 - `input/` for any reference images the human provided.
 
 The artist uses the `image-generator` meta-skill to select the appropriate
-engine. Output goes to `todos/{slug}/art/`.
+engine. Output goes to `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
 
 After images are written, call the machine again.
 
@@ -116,7 +116,7 @@ Review the mood board:
 
 Collect the human's response:
 
-- **Approve**: mark `creative.art.approved: true` in `state.yaml`.
+- **Approve**: mark `creative.art.approved: true` in `todo state (todos.db)`.
 - **Iterate**: collect specific feedback, relay to the artist session.
 
 #### ART_ITERATION_REQUIRED
@@ -130,7 +130,7 @@ artist generates revised images, potentially switching engines via the
 After revision, call the machine again. The machine loops back to
 CHECK_ART_APPROVAL. The human reviews again.
 
-Track iteration count in `state.yaml` (`creative.art.iteration_count`).
+Track iteration count in `todo state (todos.db)` (`creative.art.iteration_count`).
 
 #### VISUAL_DRAFTS_REQUIRED
 
@@ -193,12 +193,12 @@ Version C (Codex):   todos/{slug}/html/codex/hero.html
 
 Collect the human's response:
 
-- **Approve**: mark `creative.visuals.approved: true` in `state.yaml`.
+- **Approve**: mark `creative.visuals.approved: true` in `todo state (todos.db)`.
   For bake-offs, record `selected_version` and promote the winner's files
   to the top-level `html/` folder.
 - **Cherry-pick** (bake-off): the human selects specific sections from
   different agents. Dispatch a frontender to merge the selected sections
-  into a cohesive set in `todos/{slug}/html/`.
+  into a cohesive set in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
 - **Iterate**: collect specific feedback and call the machine again (it
   returns VISUAL_ITERATION_REQUIRED).
 
@@ -215,7 +215,7 @@ After revision, call the machine again. The machine loops back to
 CHECK_VISUAL_APPROVAL. The human reviews again. This loop continues until
 approval.
 
-Track iteration count in `state.yaml` (`creative.visuals.iteration_count`).
+Track iteration count in `todo state (todos.db)` (`creative.visuals.iteration_count`).
 If iterations exceed 3 without convergence, surface this to the human —
 the design spec or art may need refinement rather than the visuals.
 
@@ -260,7 +260,7 @@ in the conversation.
 When the human's input arrives:
 
 1. Interpret the signal: confirm, revise, approve, iterate, or cherry-pick.
-2. Update `state.yaml` accordingly.
+2. Update `todo state (todos.db)` accordingly.
 3. Call the machine again to advance.
 
 The orchestrator never auto-advances past a human gate. No timeouts, no
@@ -276,10 +276,10 @@ defaults, no "assuming approval." The human decides.
 
 ## Outputs
 
-1. Confirmed `todos/{slug}/design-spec.md`.
-2. Approved art in `todos/{slug}/art/`.
-3. Approved visual artifacts in `todos/{slug}/html/`.
-4. Updated `state.yaml` with creative phase completion markers.
+1. Confirmed `telec todo artifacts read {slug} design-spec`.
+2. Approved art in `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+3. Approved visual artifacts in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+4. Updated `todo state (todos.db)` with creative phase completion markers.
 5. All worker sessions ended on completion.
 6. The todo is ready for the prepare machine.
 

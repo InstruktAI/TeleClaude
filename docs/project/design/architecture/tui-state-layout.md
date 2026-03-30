@@ -27,7 +27,7 @@ flowchart LR
 - Mouse/keyboard events from the TUI runtime
 - Session list updates from the API cache
 - Focus changes (computer/project)
-- Persisted sticky state from `~/.teleclaude/tui_state.yaml`
+- Persisted sticky state from `~/.teleclaude/tui_todo state (todos.db)`
 
 **Outputs:**
 

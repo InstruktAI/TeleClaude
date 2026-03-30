@@ -23,5 +23,5 @@ when a second perspective is needed, but both paths produce the same artifact.
 
 - `scope`: explicit slug or batch mode over active slugs.
 - `inputs`: active todo slugs with `input.md`; optional prior `requirements-review-findings.md`.
-- `outputs` per processed slug: `requirements.md` and any related grounding metadata in `state.yaml`.
+- `outputs` per processed slug: `requirements.md` and any related grounding metadata in `todo state (todos.db)`.
 - `phase_constraint`: must not write `implementation-plan.md`, perform todo breakdown, or promote readiness.

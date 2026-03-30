@@ -109,7 +109,7 @@ Plans must provide enough detail for a builder to execute without guessing:
   tests it makes GREEN: a test to satisfy, behavior to observe, or check to run.
 - Tasks trace to requirements. No orphan tasks (gold-plating) and no orphan
   requirements (coverage gaps).
-- Referenced file paths are listed in `state.yaml.grounding.referenced_paths`
+- Referenced file paths are listed in `todo state (todos.db).grounding.referenced_paths`
   for staleness detection.
 
 ## Rationale

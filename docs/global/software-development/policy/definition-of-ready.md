@@ -56,7 +56,7 @@ Gates (all required):
    - If no third-party dependencies exist, this gate is automatically satisfied.
    - Triggered when the change introduces or modifies third-party tooling/integrations.
 6. **Dependencies & preconditions**
-   - Prerequisite tasks are listed and blocked via `roadmap.yaml` if needed.
+   - Prerequisite tasks are listed and blocked via `roadmap (todos.db)` if needed.
    - Required configs, access, and environments are known.
    - Required external systems are reachable or stubbed.
    - If the work introduces new configuration (config keys, env vars, YAML sections), they are listed explicitly and their wizard exposure is confirmed.

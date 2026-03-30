@@ -43,18 +43,18 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 
 **Inputs:**
 
-- `todos/{slug}/input.md` — human idea or requirement (entry point)
-- `todos/{slug}/state.yaml` — durable phase tracking, review verdicts, grounding metadata
-- `todos/roadmap.yaml` — work item registry (slug resolution)
+- `telec todo artifacts read {slug} input` — human idea or requirement (entry point)
+- `todos.db` state — durable phase tracking, review verdicts, grounding metadata
+- `todos.db` roadmap — work item registry (slug resolution)
 
 **Outputs:**
 
-- `todos/{slug}/requirements.md` — triangulated, reviewed, approved requirements
+- `telec todo artifacts read {slug} requirements` — triangulated, reviewed, approved requirements
 - Test specification files — expected-failure-marked tests encoding behavioral requirements
-- `todos/{slug}/implementation-plan.md` — review-aware, rationale-rich, reviewed, approved plan
-- `todos/{slug}/demo.md` — draft demonstration plan
-- `todos/{slug}/dor-report.md` — gate assessment
-- `todos/{slug}/state.yaml` — updated with grounding metadata and DOR verdict
+- `telec todo artifacts read {slug} implementation-plan` — review-aware, rationale-rich, reviewed, approved plan
+- `telec todo artifacts read {slug} demo` — draft demonstration plan
+- `telec todo artifacts read {slug} dor-report` — gate assessment
+- `todos.db` state — updated with grounding metadata and DOR verdict
 - `prepare.*` lifecycle events at each phase transition
 
 | Artifact                 | Created by                                   | Reviewed by                                         |
@@ -69,7 +69,7 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 ## Invariants
 
 - **Sequential gating**: no artifact is produced until its predecessor is reviewed and approved.
-- **Phase derivation**: when no durable `prepare_phase` exists in `state.yaml`, the machine derives the current phase from artifact existence on disk.
+- **Phase derivation**: when no durable `prepare_phase` exists in `todo state (todos.db)`, the machine derives the current phase from artifact existence on disk.
 - **Review round limits**: both requirements and plan reviews are capped at `DEFAULT_MAX_REVIEW_ROUNDS` (3). Exceeding the limit transitions to `BLOCKED`.
 - **Grounding freshness**: preparation is only valid if referenced files and input digest have not changed since grounding. Stale preparation triggers re-grounding.
 - **Idempotent re-entry**: `telec todo prepare` is safe to call at any time — first call creates, subsequent calls verify and heal.
@@ -138,7 +138,7 @@ stateDiagram-v2
 flowchart TD
     Start(["telec todo prepare [slug]"])
 
-    DerivePhase{"Durable phase<br/>in state.yaml?"}
+    DerivePhase{"Durable phase<br/>in todo state (todos.db)?"}
     Derive["Derive phase from<br/>artifact existence"]
 
     InputAssess{"requirements.md<br/>exists?"}
@@ -286,16 +286,16 @@ sequenceDiagram
 
 Each state dispatches a specific worker command via `telec sessions run`:
 
-| State                 | Command                     | Worker Role | Thinking Mode | Output Artifact                            |
-| --------------------- | --------------------------- | ----------- | ------------- | ------------------------------------------ |
-| `TRIANGULATION`       | `/next-prepare-discovery`   | Architect   | `slow`        | `requirements.md`                          |
-| `REQUIREMENTS_REVIEW` | `/next-review-requirements` | Reviewer    | `slow`        | verdict in `state.yaml`                    |
-| `TEST_SPEC_BUILD`     | `/next-prepare-test-spec`   | Architect   | `slow`        | Test spec files (expected-failure-marked)  |
-| `TEST_SPEC_REVIEW`    | `/next-review-test-spec`    | Reviewer    | `slow`        | verdict in `state.yaml`                    |
-| `PLAN_DRAFTING`       | `/next-prepare-draft`       | Architect   | `slow`        | `implementation-plan.md`, `demo.md`        |
-| `PLAN_REVIEW`         | `/next-review-plan`         | Reviewer    | `slow`        | verdict in `state.yaml`                    |
-| `GATE`                | `/next-prepare-gate`        | Assessor    | `slow`        | `dor-report.md`, DOR score in `state.yaml` |
-| `RE_GROUNDING`        | `/next-prepare-draft`       | Architect   | `slow`        | Updated `implementation-plan.md`           |
+| State                 | Command                     | Worker Role | Thinking Mode | Output Artifact                                       |
+| --------------------- | --------------------------- | ----------- | ------------- | ----------------------------------------------------- |
+| `TRIANGULATION`       | `/next-prepare-discovery`   | Architect   | `slow`        | `requirements.md`                                     |
+| `REQUIREMENTS_REVIEW` | `/next-review-requirements` | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
+| `TEST_SPEC_BUILD`     | `/next-prepare-test-spec`   | Architect   | `slow`        | Test spec files (expected-failure-marked)             |
+| `TEST_SPEC_REVIEW`    | `/next-review-test-spec`    | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
+| `PLAN_DRAFTING`       | `/next-prepare-draft`       | Architect   | `slow`        | `implementation-plan.md`, `demo.md`                   |
+| `PLAN_REVIEW`         | `/next-review-plan`         | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
+| `GATE`                | `/next-prepare-gate`        | Assessor    | `slow`        | `dor-report.md`, DOR score in `todo state (todos.db)` |
+| `RE_GROUNDING`        | `/next-prepare-draft`       | Architect   | `slow`        | Updated `implementation-plan.md`                      |
 
 ### Grounding system
 
@@ -303,7 +303,7 @@ Grounding tracks whether the preparation artifacts are still valid relative to t
 
 ```mermaid
 flowchart LR
-    subgraph "Grounding Metadata (state.yaml)"
+    subgraph "Grounding Metadata (todo state (todos.db))"
         Valid["grounding.valid"]
         BaseSHA["grounding.base_sha"]
         InputDigest["grounding.input_digest"]

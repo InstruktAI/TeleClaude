@@ -24,8 +24,8 @@ coherent whole — not the individual artifacts (those are reviewed in earlier p
 
 ## Preconditions
 
-1. `todos/{slug}/requirements.md` exists and is approved.
-2. `todos/{slug}/implementation-plan.md` exists and is approved.
+1. `telec todo artifacts read {slug} requirements` exists and is approved.
+2. `telec todo artifacts read {slug} implementation-plan` exists and is approved.
 3. Gate worker is separate from draft/discovery workers.
 
 ## Steps
@@ -78,7 +78,7 @@ enrichment before the builder can execute safely.
 
 ### 5. Assign gate result
 
-Write to `todos/{slug}/state.yaml`:
+Write to `todos.db` state:
 
 ```yaml
 dor:
@@ -99,7 +99,7 @@ Threshold constants:
 
 ### 6. Write gate report
 
-Update `todos/{slug}/dor-report.md` with:
+Update `telec todo artifacts read {slug} dor-report` with:
 
 - Gate verdict and score.
 - Cross-artifact validation results.
@@ -123,7 +123,7 @@ changed areas rather than re-running the full gate from scratch.
 
 ## Outputs
 
-1. Finalized `state.yaml` gate verdict.
+1. Finalized `todo state (todos.db)` gate verdict.
 2. Updated `dor-report.md` with comprehensive gate assessment.
 3. All gate artifacts committed to git.
 

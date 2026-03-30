@@ -51,7 +51,7 @@ The Integration state machine is the **only role authorized to push canonical `m
 **Outputs:**
 
 - Updated `origin/main` with squash-merged feature content (pushed from `trees/_integration/`)
-- Delivery bookkeeping on repo root: `roadmap.yaml` → `delivered.yaml` transitions, demo promotion
+- Delivery bookkeeping on repo root: `roadmap (todos.db)` → `delivered.yaml` transitions, demo promotion
 - Cleanup: worktree removal, branch deletion, todo directory removal
 - `integration.*` lifecycle events at each state transition
 - Final status with metrics (`items_processed`, `items_blocked`, `duration_ms`)
@@ -452,10 +452,10 @@ flowchart TD
 
     IsBug{"Is bug slug?"}
 
-    Deliver["telec roadmap deliver slug<br/>(roadmap.yaml - delivered.yaml)"]
+    Deliver["telec roadmap deliver slug<br/>(roadmap (todos.db) - delivered.yaml)"]
     DemoCreate["telec todo demo create slug<br/>(if demo.md exists)"]
 
-    Stage["git add<br/>todos/roadmap.yaml<br/>todos/delivered.yaml"]
+    Stage["git add<br/>todos.db<br/>(roadmap + delivered)"]
     Commit["git commit<br/>'chore: deliver slug'"]
 
     Push["DELIVERY_BOOKKEEPING<br/>complete"]

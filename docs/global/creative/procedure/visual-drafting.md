@@ -27,21 +27,21 @@ guided by the compositional intent of the approved art.
 
 ## Preconditions
 
-1. `todos/{slug}/design-spec.md` exists and is confirmed by the human.
-2. `todos/{slug}/art/` contains approved mood board images.
-3. `todos/{slug}/input.md` exists with project context.
+1. `telec todo artifacts read {slug} design-spec` exists and is confirmed by the human.
+2. `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) contains approved mood board images.
+3. `telec todo artifacts read {slug} input` exists with project context.
 4. The visual artifact spec and visual constraints policy are loaded.
 
 ## Steps
 
 ### 1. Absorb the inputs
 
-**Read the approved art** in `todos/{slug}/art/`. Study the mood board images
+**Read the approved art** in `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery). Study the mood board images
 for compositional intent: layout direction, spatial rhythm, color temperature,
 visual weight distribution, and emotional register. The art is your primary
 creative reference — it shows what the human approved visually.
 
-**Read `todos/{slug}/design-spec.md`** completely. Internalize:
+**Read `telec todo artifacts read {slug} design-spec`** completely. Internalize:
 
 - The CSS custom properties you will define (colors, fonts, spacing).
 - The motion vocabulary — which animation techniques are specified, what
@@ -50,7 +50,7 @@ creative reference — it shows what the human approved visually.
 - The emotional register — this guides every micro-decision about spacing,
   contrast, and visual weight.
 
-**Read `todos/{slug}/input.md`** for the content arc — what sections exist, what
+**Read `telec todo artifacts read {slug} input`** for the content arc — what sections exist, what
 the storytelling structure is, what the human wants the viewer to experience.
 
 The art gives you the visual direction. The design spec gives you the exact values.
@@ -178,7 +178,7 @@ Before delivering, check each artifact against:
 
 ### 8. Write to the todo folder
 
-Place all artifacts in `todos/{slug}/html/`:
+Place all artifacts in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery):
 
 ```
 todos/{slug}/html/
@@ -194,7 +194,7 @@ If this is a multi-agent bake-off, place artifacts in a named subfolder:
 
 ## Outputs
 
-1. Visual artifact HTML files in `todos/{slug}/html/`.
+1. Visual artifact HTML files in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
 2. Any generated or referenced assets in `todos/{slug}/html/assets/`.
 3. All artifacts passing the self-review checklist.
 

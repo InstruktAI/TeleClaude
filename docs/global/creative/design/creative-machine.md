@@ -22,7 +22,7 @@ to signal convergence. Between those gates, it dispatches creative agents
 autonomously.
 
 Like the next-machine, the creative machine is stateless — it derives all state
-from filesystem artifacts and `state.yaml`.
+from filesystem artifacts and `todo state (todos.db)`.
 
 Three roles participate: the **Creator** (rich orchestrator — captures input,
 drives the machine, dispatches workers, manages human gates), the **Artist**
@@ -36,19 +36,19 @@ compositional intent into code).
 
 **Inputs:**
 
-- `todos/{slug}/input.md` — human thinking and project context.
-- `todos/{slug}/state.yaml` — creative phase tracking.
-- `todos/{slug}/input/` — user-provided reference images, screenshots, visual input.
-- `todos/{slug}/design-spec.md` — produced during the design discovery phase.
-- `todos/{slug}/art/` — produced during the art generation phase.
-- `todos/{slug}/html/` — produced during the visual drafting phase.
+- `telec todo artifacts read {slug} input` — human thinking and project context.
+- `todos.db` state — creative phase tracking.
+- `{worktree}/todos/{slug}/input/` (filesystem reference images) — user-provided reference images, screenshots, visual input.
+- `telec todo artifacts read {slug} design-spec` — produced during the design discovery phase.
+- `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) — produced during the art generation phase.
+- `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) — produced during the visual drafting phase.
 
 **Outputs:**
 
-- Confirmed `todos/{slug}/design-spec.md`.
-- Approved images in `todos/{slug}/art/`.
-- Approved visual artifacts in `todos/{slug}/html/`.
-- Updated `state.yaml` with creative phase completion markers.
+- Confirmed `telec todo artifacts read {slug} design-spec`.
+- Approved images in `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+- Approved visual artifacts in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+- Updated `todo state (todos.db)` with creative phase completion markers.
 - The todo is ready to enter the prepare machine.
 
 ## Invariants
@@ -67,7 +67,7 @@ compositional intent into code).
   dispatches workers or returns instructions for the orchestrator.
 - **Creative phase is optional**: not every todo requires creative work. The machine
   activates only when the todo's input indicates visual work (explicitly stated or
-  flagged in `roadmap.yaml`).
+  flagged in `roadmap (todos.db)`).
 
 ## Primary flows
 
@@ -105,7 +105,7 @@ stateDiagram-v2
 
 #### CHECK_DESIGN_SPEC
 
-Check whether `todos/{slug}/design-spec.md` exists.
+Check whether `telec todo artifacts read {slug} design-spec` exists.
 
 - Exists → transition to CHECK_DS_CONFIRMATION.
 - Missing → return `DESIGN_DISCOVERY_REQUIRED` instruction.
@@ -118,14 +118,14 @@ background worker. The orchestrator (creator) opens a session and the human
 participates directly.
 
 The creator presents reference sites, collects images the human drags in
-(saved to `todos/{slug}/input/`), and facilitates the dialogue that produces
+(saved to `{worktree}/todos/{slug}/input/` (filesystem reference images)), and facilitates the dialogue that produces
 `design-spec.md`.
 
 After `design-spec.md` is written, call the machine again.
 
 #### CHECK_DS_CONFIRMATION
 
-Check `state.yaml` for design spec confirmation:
+Check `todo state (todos.db)` for design spec confirmation:
 
 ```yaml
 creative:
@@ -144,7 +144,7 @@ The design spec exists but the human has not confirmed it. The machine
 parks. The orchestrator presents the design spec to the human and waits
 for their signal. When the human confirms:
 
-- Set `creative.design_spec.confirmed: true` in `state.yaml`.
+- Set `creative.design_spec.confirmed: true` in `todo state (todos.db)`.
 - Call the machine again.
 
 When the human requests changes:
@@ -155,7 +155,7 @@ When the human requests changes:
 
 #### CHECK_ART
 
-Check whether `todos/{slug}/art/` contains image files.
+Check whether `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) contains image files.
 
 - Contains image files (`.png`, `.jpg`, `.webp`, `.svg`) → transition to
   CHECK_ART_APPROVAL.
@@ -168,13 +168,13 @@ to generate mood board images.
 
 The artist receives:
 
-- `todos/{slug}/design-spec.md` as the constraint document.
-- `todos/{slug}/input.md` for context and content direction.
-- `todos/{slug}/input/` for any reference images the human provided.
+- `telec todo artifacts read {slug} design-spec` as the constraint document.
+- `telec todo artifacts read {slug} input` for context and content direction.
+- `{worktree}/todos/{slug}/input/` (filesystem reference images) for any reference images the human provided.
 
 The artist uses the `image-generator` meta-skill to select the appropriate
 engine based on the design spec's visual style. Output goes to
-`todos/{slug}/art/`.
+`{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
 
 The artist session stays open for iteration — it is not a fire-and-forget
 dispatch.
@@ -183,7 +183,7 @@ After images are written, call the machine again.
 
 #### CHECK_ART_APPROVAL
 
-Check `state.yaml` for art approval:
+Check `todo state (todos.db)` for art approval:
 
 ```yaml
 creative:
@@ -205,7 +205,7 @@ them via messaging (Discord/Telegram) if the human requests it.
 
 When the human approves:
 
-- Set `creative.art.approved: true` in `state.yaml`.
+- Set `creative.art.approved: true` in `todo state (todos.db)`.
 - Call the machine again.
 
 When the human requests changes:
@@ -221,11 +221,11 @@ a different style direction.
 
 After revision, call the machine again (loops back to CHECK_ART_APPROVAL).
 
-Track iteration count in `state.yaml` (`creative.art.iteration_count`).
+Track iteration count in `todo state (todos.db)` (`creative.art.iteration_count`).
 
 #### CHECK_VISUALS
 
-Check whether `todos/{slug}/html/` contains HTML files.
+Check whether `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) contains HTML files.
 
 - Contains `.html` files → transition to CHECK_VISUAL_APPROVAL.
 - Empty or missing → return `VISUAL_DRAFTS_REQUIRED`.
@@ -238,9 +238,9 @@ procedure.
 
 The frontender receives:
 
-- `todos/{slug}/design-spec.md` for exact values (colors, fonts, spacing).
-- `todos/{slug}/art/` for compositional intent (layout, mood, spatial rhythm).
-- `todos/{slug}/input.md` for content structure and storytelling arc.
+- `telec todo artifacts read {slug} design-spec` for exact values (colors, fonts, spacing).
+- `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) for compositional intent (layout, mood, spatial rhythm).
+- `telec todo artifacts read {slug} input` for content structure and storytelling arc.
 
 The frontender is multimodal — it reads the approved art images to extract
 compositional intent and translates it into HTML+CSS using exact values
@@ -248,7 +248,7 @@ from the design spec. No intermediate artifact is needed between images
 and code.
 
 **Single agent**: dispatch one frontender. Output goes to
-`todos/{slug}/html/`.
+`{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
 
 **Multi-agent bake-off**: dispatch N agents (potentially different AI models).
 Each agent's output goes to `todos/{slug}/html/{agent-name}/`. The human
@@ -258,7 +258,7 @@ After artifacts are written, call the machine again.
 
 #### CHECK_VISUAL_APPROVAL
 
-Check `state.yaml` for visual approval:
+Check `todo state (todos.db)` for visual approval:
 
 ```yaml
 creative:
@@ -280,8 +280,8 @@ and review.
 
 When the human approves:
 
-- Set `creative.visuals.approved: true` in `state.yaml`.
-- For bake-offs: promote the selected version's files to `todos/{slug}/html/`
+- Set `creative.visuals.approved: true` in `todo state (todos.db)`.
+- For bake-offs: promote the selected version's files to `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery)
   (top level) and remove the agent subfolders.
 - Call the machine again.
 
@@ -297,7 +297,7 @@ artifacts, applies the requested changes, and writes updated files.
 
 After revision, call the machine again (loops back to CHECK_VISUAL_APPROVAL).
 
-Track iteration count in `state.yaml` (`creative.visuals.iteration_count`).
+Track iteration count in `todo state (todos.db)` (`creative.visuals.iteration_count`).
 If iterations exceed 3 without convergence, surface this to the human —
 the design spec or art may need refinement rather than the visuals.
 
@@ -313,9 +313,9 @@ Terminal state. All creative artifacts are confirmed and approved.
 
 The orchestrator ends all creative worker sessions and reports completion.
 
-### State tracking in state.yaml
+### State tracking in todo state (todos.db)
 
-The creative machine reads and writes to the `creative` section of `state.yaml`:
+The creative machine reads and writes to the `creative` section of `todo state (todos.db)`:
 
 ```yaml
 creative:

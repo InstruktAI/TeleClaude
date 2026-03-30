@@ -22,7 +22,7 @@ invents colors, fonts, or motion patterns not in the design spec is violating th
 contract.
 
 In the todo workflow, a concrete design spec lives as a todo artifact
-(`todos/{slug}/design-spec.md`) alongside `input.md` and `requirements.md`.
+(`telec todo artifacts read {slug} design-spec`) alongside `input.md` and `requirements.md`.
 The design discovery procedure produces it; the builder consumes it.
 
 ## Canonical fields

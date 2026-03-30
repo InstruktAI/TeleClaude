@@ -78,7 +78,7 @@ description: 'Rules governing visual artifact production: CSS-only animations, d
 - Each agent's output goes to a named subfolder: `todos/{slug}/html/{agent}/`.
   The human reviews all versions and selects the winner or cherry-picks
   sections across versions.
-- The selected artifacts are promoted to `todos/{slug}/html/` (top level)
+- The selected artifacts are promoted to `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) (top level)
   as the canonical reference for the builder.
 
 ## Rationale
@@ -95,7 +95,7 @@ description: 'Rules governing visual artifact production: CSS-only animations, d
 ## Scope
 
 - Applies to all agents producing visual artifacts in the creative phase.
-- Applies to all visual artifact files in `todos/{slug}/html/`.
+- Applies to all visual artifact files in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
 
 ## Enforcement
 

@@ -43,7 +43,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 
 ### Container Slug Handling
 
-- If `telec todo prepare <slug>` returns `CONTAINER:` or `todos/{slug}/state.yaml` has non-empty `breakdown.todos`, treat that slug as a grouping container only.
+- If `telec todo prepare <slug>` returns `CONTAINER:` or `todos.db` state has non-empty `breakdown.todos`, treat that slug as a grouping container only.
 - Run each child slug via `telec todo work <child>` in dependency order until children complete, and do not dispatch build/review/fix/finalize directly for the container slug.
 
 ### Tailing Discipline
@@ -102,8 +102,8 @@ to the dispatch time. All session inspection follows this protocol:
 When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator must close the loop pragmatically instead of punting by default.
 
 1. Inspect current evidence before deciding:
-   - `todos/{slug}/review-findings.md`
-   - `todos/{slug}/state.yaml`
+   - `telec todo artifacts read {slug} review-findings`
+   - `todos.db` state
    - Fix commits since `review_baseline_commit`
 2. Decide and act:
    - If unresolved **Critical** findings remain, keep `review=changes_requested`, record an explicit blocker summary, and escalate with a concrete decision request.
@@ -111,7 +111,7 @@ When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator must c
 3. Always end the active worker session before applying this decision.
 4. Record rationale in todo artifacts so the closure is auditable.
 
-- Point workers to `todos/{slug}/requirements.md` or `implementation-plan.md`.
+- Point workers to `telec todo artifacts read {slug} requirements` or `implementation-plan.md`.
 - Reference project docs or standards.
 - Never dictate specific commands or code.
 

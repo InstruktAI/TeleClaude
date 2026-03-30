@@ -65,7 +65,7 @@ telec
 - The TUI is a pure UI client — it doesn't mutate daemon state directly
 - All state follows a reducer architecture: views emit intents, a central reducer updates state, layout is derived deterministically
 - Pane layout is stable across tab switches — sticky panes persist
-- State is persisted to `~/.teleclaude/tui_state.yaml` between restarts
+- State is persisted to `~/.teleclaude/tui_todo state (todos.db)` between restarts
 - The daemon runs as a launchd service and exposes a local API + WebSocket
 
 **Where to find files:**
@@ -372,23 +372,23 @@ ls todos/my-feature/
 telec roadmap list
 
 # See current state
-cat todos/my-feature/state.yaml
+cat todos/my-feature/todo state (todos.db)
 ```
 
 **Under the hood:**
 
-- `telec todo create` scaffolds the directory with `input.md` and `state.yaml`
+- `telec todo create` scaffolds the directory with `input.md` and `todo state (todos.db)`
 - The state machine tracks phases: `prepare` (discovery → draft → review → gate) and `work` (build → review → fix → finalize)
 - Each transition has formal quality gates (DOR = Definition of Ready, DOD = Definition of Done)
-- State is tracked in `state.yaml` — agents update this as they progress
-- The roadmap (`todos/roadmap.yaml`) tracks ordering, dependencies, and status across all items
+- State is tracked in `todo state (todos.db)` — agents update this as they progress
+- The roadmap (`todos.db` roadmap) tracks ordering, dependencies, and status across all items
 
 **Where to find files:**
 
 - Todo directory: [`todos/`](todos/)
-- Roadmap: [`todos/roadmap.yaml`](todos/roadmap.yaml)
+- Roadmap: [`todos.db` roadmap](todos/roadmap 'todos.db')
 - State machine: [`teleclaude/todo/`](teleclaude/todo/)
-- Delivered archive: [`todos/delivered.yaml`](todos/delivered.yaml)
+- Delivered archive: `todos.db` delivered entries
 
 ---
 
@@ -423,11 +423,11 @@ echo "Add a health check endpoint that returns service status" > todos/my-featur
 telec todo prepare my-feature
 
 # Check progress
-cat todos/my-feature/state.yaml
+cat todos/my-feature/todo state (todos.db)
 
 # See the generated artifacts
 ls todos/my-feature/
-# input.md  requirements.md  implementation-plan.md  dor-report.md  state.yaml
+# input.md  requirements.md  implementation-plan.md  dor-report.md  todo state (todos.db)
 ```
 
 **Under the hood:**
@@ -473,7 +473,7 @@ ls trees/my-feature/
 # When done, it reports back
 
 # Check build status
-cat todos/my-feature/state.yaml
+cat todos/my-feature/todo state (todos.db)
 ```
 
 **Under the hood:**
@@ -562,7 +562,7 @@ telec todo integrate my-feature
 telec roadmap deliver my-feature
 
 # See it in the delivered archive
-cat todos/delivered.yaml
+telec roadmap list --delivered-only
 ```
 
 **Under the hood:**
@@ -571,7 +571,7 @@ cat todos/delivered.yaml
 - The integrator acquires a lease (only one integration at a time)
 - It merges the feature branch into main, resolves conflicts if possible, pushes
 - After push, the feature worktree (`trees/{slug}/`) is cleaned up
-- The todo moves from `roadmap.yaml` to `delivered.yaml`
+- The todo moves from `roadmap (todos.db)` to `delivered.yaml`
 
 **Where to find files:**
 
@@ -617,7 +617,7 @@ telec roadmap unfreeze low-priority-item
 
 **Under the hood:**
 
-- `todos/roadmap.yaml` is the single source of truth
+- `todos.db` roadmap is the single source of truth
 - Each entry tracks: slug, status, DOR score, dependencies, container membership
 - Dependencies use `after:` — the item won't be started until all dependencies are delivered
 - The icebox (`todos/_icebox/`) holds frozen items that aren't on the active roadmap
@@ -626,8 +626,8 @@ telec roadmap unfreeze low-priority-item
 
 **Where to find files:**
 
-- Roadmap file: [`todos/roadmap.yaml`](todos/roadmap.yaml)
-- Delivered archive: [`todos/delivered.yaml`](todos/delivered.yaml)
+- Roadmap file: [`todos.db` roadmap](todos/roadmap 'todos.db')
+- Delivered archive: `todos.db` delivered entries
 - Icebox: [`todos/_icebox/`](todos/_icebox/)
 
 ---
@@ -771,7 +771,7 @@ telec sessions escalate --message "Need design decision on API shape"
 
 - Workers are full agent sessions with their own context and tools
 - The `--detach` flag means the spawner doesn't wait for completion
-- Agents communicate through shared files (todo artifacts), state.yaml updates, and session results
+- Agents communicate through shared files (todo artifacts), todo state (todos.db) updates, and session results
 - Escalation sends a notification to Discord/Telegram for human intervention
 - The `telec sessions result` command lets workers send structured results back to their parent
 

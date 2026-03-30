@@ -30,12 +30,12 @@ When all three phases complete (CREATIVE_COMPLETE), creative artifacts become
 preconditions for the prepare machine: `design-spec.md` constrains requirements,
 `art/` provides visual reference, `html/` provides prototypes.
 
-Work state lives in `todos/{slug}/state.yaml` under the `creative` section.
+Work state lives in `todos.db` under the todo state for the slug.
 
 ## Preconditions
 
 - `todos/{slug}/input.md` exists with human thinking.
-- Work item exists in `todos/roadmap.yaml`.
+- Work item exists in `todos.db` roadmap.
 
 ## Steps
 

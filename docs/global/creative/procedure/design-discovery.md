@@ -35,7 +35,7 @@ coherent.
 
 ### 1. Read and absorb the input
 
-Read `todos/{slug}/input.md` and any existing artifacts. Do not respond with
+Read `telec todo artifacts read {slug} input` and any existing artifacts. Do not respond with
 structure yet — absorb the intent, the energy, the aesthetic direction hinted at
 in the human's words. Identify:
 
@@ -152,7 +152,7 @@ decisions. For each section of the design spec schema:
 
 ### 5. Write the design spec
 
-Write `todos/{slug}/design-spec.md` following the design spec schema.
+Write `telec todo artifacts read {slug} design-spec` following the design spec schema.
 Every canonical section must be present. The document must:
 
 - Be self-contained: a builder reading only this document and `input.md` should
@@ -185,9 +185,9 @@ Once the design spec is confirmed:
 
 ## Outputs
 
-1. `todos/{slug}/design-spec.md` — the concrete design spec instance,
+1. `telec todo artifacts read {slug} design-spec` — the concrete design spec instance,
    following the `creative/spec/design-spec` schema.
-2. Updated `todos/{slug}/input.md` if discovery surfaced new or revised intent.
+2. Updated `telec todo artifacts read {slug} input` if discovery surfaced new or revised intent.
 3. Human confirmation that the design spec captures their vision.
 
 ## Recovery

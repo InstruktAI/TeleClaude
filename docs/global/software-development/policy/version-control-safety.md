@@ -16,7 +16,7 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 - Repo root cleanliness is not required for integration. The integrator operates in an isolated worktree (`trees/_integration/`), independent of repo root state.
 - Unrelated local changes may be reported for awareness, but they are non-blocking and must not change task execution.
 - Only treat local changes as blockers when they overlap current task scope or create a concrete data-loss risk.
-- In worktrees, all files belong to the task. Commit everything — orchestrator writes to `todos/roadmap.yaml` and `todos/{slug}/state.yaml` are part of the task context, not drift.
+- In worktrees, all files belong to the task. Commit everything — orchestrator writes to `todos.db` roadmap and `todos.db` state are part of the task context, not drift.
 - Only modify files required by the request.
 - Complete task changes in a commit before reporting done.
 - Avoid surgical staging by default; prefer straightforward task-scoped commits.

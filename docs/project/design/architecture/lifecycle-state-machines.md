@@ -39,11 +39,11 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 **Inputs:**
 
-- `todos/roadmap.yaml` — work item registry with priorities and dependency graph
-- `todos/{slug}/input.md` — human idea or requirement (Phase A entry)
-- `todos/{slug}/requirements.md` — feature requirements (Phase A output, Phase B input)
-- `todos/{slug}/implementation-plan.md` — technical design (Phase A output, Phase B input)
-- `todos/{slug}/state.yaml` — phase tracking, review verdicts, grounding metadata, finalize state
+- `todos.db` roadmap — work item registry with priorities and dependency graph
+- `telec todo artifacts read {slug} input` — human idea or requirement (Phase A entry)
+- `telec todo artifacts read {slug} requirements` — feature requirements (Phase A output, Phase B input)
+- `telec todo artifacts read {slug} implementation-plan` — technical design (Phase A output, Phase B input)
+- `todos.db` state — phase tracking, review verdicts, grounding metadata, finalize state
 - `config.yml` (via `app_config.agents`) — agent availability and strengths
 
 **Outputs:**

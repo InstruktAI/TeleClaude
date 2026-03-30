@@ -116,7 +116,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 
 - [ ] Changes merged/delivered
 - [ ] State updated
-- [ ] Delivery logged in todos/delivered.yaml
+- [ ] Delivery logged in todos.db
 - [ ] Clean working directory
 
 Work is NOT done if ANY of these are true:
