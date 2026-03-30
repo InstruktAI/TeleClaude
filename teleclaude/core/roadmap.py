@@ -4,6 +4,7 @@ Centralizes the logic for reading roadmap.yaml, icebox, and todo directories
 into a single list of rich TodoInfo objects. Used by CLI, API, and TUI.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -487,3 +488,115 @@ def assemble_roadmap(
     _inject_breakdown_relationships(todos)
 
     return todos
+
+
+def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    project_path: str,
+    include_icebox: bool = False,
+    icebox_only: bool = False,
+    include_delivered: bool = False,
+    delivered_only: bool = False,
+) -> list[TodoInfo]:
+    """Assemble roadmap from todos.db using sync methods.
+
+    DB-backed replacement for assemble_roadmap. Reads state, roadmap entries,
+    and deps from the SQLite database instead of filesystem YAML files.
+    """
+    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
+
+    db = TodosDb(str(Path(project_path) / ".teleclaude" / "todos.db"))
+    db.initialize_sync()
+
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        # Build roadmap entries
+        conditions = []
+        if delivered_only:
+            conditions.append("status = 'delivered'")
+        elif icebox_only:
+            conditions.append("status = 'icebox'")
+        else:
+            parts = ["status = 'active'"]
+            if include_icebox:
+                parts.append("status = 'icebox'")
+            if include_delivered:
+                parts.append("status = 'delivered'")
+            conditions.append(" OR ".join(parts))
+
+        where = conditions[0] if conditions else "1=1"
+        rows = conn.execute(
+            f"SELECT slug, position, group_slug, description, status, "  # guard: raw-sql
+            f"delivered_at FROM roadmap WHERE {where} ORDER BY position",
+        ).fetchall()
+
+        # Load deps
+        dep_rows = conn.execute(
+            "SELECT slug, depends_on FROM roadmap_deps",  # guard: raw-sql
+        ).fetchall()
+        deps_map: dict[str, list[str]] = {}
+        for dr in dep_rows:
+            deps_map.setdefault(dr[0], []).append(dr[1])
+
+        todos: list[TodoInfo] = []
+        for row in rows:
+            slug = row[0]
+            state_row = conn.execute(
+                "SELECT state FROM todo_state WHERE slug = ?",  # guard: raw-sql
+                (slug,),
+            ).fetchone()
+
+            state = json.loads(state_row[0]) if state_row else {}
+            current = str(state.get("current", ""))
+
+            # Derive build/review status from current
+            build_status: str | None = None
+            review_status: str | None = None
+            if current in ("build_started",):
+                build_status = "started"
+            elif current in (
+                "build_complete",
+                "review_pending",
+                "review_changes_requested",
+                "review_approved",
+                "finalize_ready",
+                "finalize_handed_off",
+            ):
+                build_status = "complete"
+            if current in ("review_pending",):
+                review_status = "pending"
+            elif current in ("review_approved", "finalize_ready", "finalize_handed_off"):
+                review_status = "approved"
+            elif current == "review_changes_requested":
+                review_status = "changes_requested"
+
+            dor = state.get("dor")
+            dor_score = dor.get("score", 0) if isinstance(dor, dict) else 0
+
+            finalize = state.get("finalize")
+            finalize_status = finalize.get("status") if isinstance(finalize, dict) else None
+
+            todo_status = row[4]  # active/icebox/delivered
+            if todo_status == "active" and build_status:
+                todo_status = "in_progress"
+            elif todo_status == "active" and current in ("prepared",):
+                todo_status = "ready"
+
+            todos.append(
+                TodoInfo(
+                    slug=slug,
+                    status=todo_status,
+                    description=row[3] or "",
+                    build_status=build_status,
+                    review_status=review_status,
+                    dor_score=dor_score if dor_score else None,
+                    after=deps_map.get(slug, []),
+                    group=row[2],
+                    delivered_at=row[5],
+                    current=current or None,
+                    finalize_status=finalize_status,
+                )
+            )
+
+        return todos
+    finally:
+        conn.close()

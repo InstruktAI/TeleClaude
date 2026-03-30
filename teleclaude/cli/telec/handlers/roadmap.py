@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from teleclaude.cli.telec.help import _usage
+from teleclaude.core.todos_db import TodosDb
 
 if TYPE_CHECKING:
     from teleclaude.core.models import TodoInfo
@@ -61,11 +62,11 @@ def _handle_roadmap_show(args: list[str]) -> None:
     """Display the roadmap grouped by group, with deps and state."""
     import json
 
-    from teleclaude.core.roadmap import assemble_roadmap
+    from teleclaude.core.roadmap import assemble_roadmap_from_db
 
     parsed = _parse_roadmap_show_args(args)
 
-    todos = assemble_roadmap(
+    todos = assemble_roadmap_from_db(
         str(Path.cwd()),
         include_icebox=parsed["include_icebox"],
         icebox_only=parsed["icebox_only"],
@@ -153,17 +154,30 @@ def _print_grouped_roadmap(todos: list[TodoInfo]) -> None:
             print(f"    {todo.slug} [{todo.status}]{_todo_extras(todo)}{deps_str}")
 
 
+def _run_db(slug: str, method: str, **kwargs: object) -> object:  # pylint: disable=too-many-arguments
+    """Run a TodosDb method synchronously via asyncio.run."""
+    import asyncio  # pylint: disable=import-outside-toplevel
+
+    async def _execute() -> object:
+        db = TodosDb(str(Path.cwd() / ".teleclaude" / "todos.db"))
+        await db.initialize()
+        try:
+            fn = getattr(db, method)
+            return await fn(slug, **kwargs)
+        finally:
+            await db.close()
+
+    return asyncio.run(_execute())
+
+
 def _handle_roadmap_add(args: list[str]) -> None:
     """Handle telec roadmap add <slug> [--group <slug>] [--after d1,d2] [--description T] [--before S]."""
-    from teleclaude.core.next_machine.core import add_to_roadmap
-    from teleclaude.core.next_machine.roadmap import RoadmapInsertion
 
     if not args:
         print(_usage("roadmap", "add"))
         return
 
     slug: str | None = None
-    project_root = Path.cwd()
     group: str | None = None
     after: list[str] | None = None
     description: str | None = None
@@ -201,31 +215,20 @@ def _handle_roadmap_add(args: list[str]) -> None:
         print(_usage("roadmap", "add"))
         raise SystemExit(1)
 
-    insertion = RoadmapInsertion(group=group, after=after, description=description, before=before)
-    if add_to_roadmap(
-        str(project_root),
-        slug,
-        group=insertion.group,
-        after=insertion.after,
-        description=insertion.description,
-        before=insertion.before,
-    ):
+    if _run_db(slug, "add_to_roadmap", group_slug=group, after=after, description=description, before=before):
         print(f"Added {slug} to roadmap.")
-
     else:
         print(f"Slug already exists in roadmap: {slug}")
 
 
 def _handle_roadmap_remove(args: list[str]) -> None:
     """Handle telec roadmap remove <slug>."""
-    from teleclaude.core.next_machine.core import remove_from_roadmap
 
     if not args:
         print(_usage("roadmap", "remove"))
         return
 
     slug: str | None = None
-    project_root = Path.cwd()
 
     i = 0
     while i < len(args):
@@ -246,9 +249,8 @@ def _handle_roadmap_remove(args: list[str]) -> None:
         print(_usage("roadmap", "remove"))
         raise SystemExit(1)
 
-    if remove_from_roadmap(str(project_root), slug):
+    if _run_db(slug, "remove_from_roadmap"):
         print(f"Removed {slug} from roadmap.")
-
     else:
         print(f"Slug not found in roadmap: {slug}")
         raise SystemExit(1)
@@ -256,14 +258,12 @@ def _handle_roadmap_remove(args: list[str]) -> None:
 
 def _handle_roadmap_move(args: list[str]) -> None:
     """Handle telec roadmap move <slug> --before <s> | --after <s>."""
-    from teleclaude.core.next_machine.core import move_in_roadmap
 
     if not args:
         print(_usage("roadmap", "move"))
         return
 
     slug: str | None = None
-    project_root = Path.cwd()
     before: str | None = None
     after: str | None = None
 
@@ -297,7 +297,7 @@ def _handle_roadmap_move(args: list[str]) -> None:
         print(_usage("roadmap", "move"))
         raise SystemExit(1)
 
-    if move_in_roadmap(str(project_root), slug, before=before, after=after):
+    if _run_db(slug, "move_in_roadmap", before=before, after=after):
         target = before or after
         direction = "before" if before else "after"
         print(f"Moved {slug} {direction} {target}.")
@@ -365,10 +365,15 @@ def _handle_roadmap_deps(args: list[str]) -> None:
     else:
         print(f"Cleared dependencies for {slug}.")
 
+    from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
+
+    _ok, _reason = commit_bookkeeping_to_main(cwd, ["todos/roadmap.yaml"], f"chore(roadmap): deps {slug}")
+    if not _ok and _reason in ("commit_failed", "not_a_repo"):
+        print(f"Warning: bookkeeping commit skipped ({_reason})")
+
 
 def _handle_roadmap_freeze(args: list[str]) -> None:
     """Handle telec roadmap freeze <slug>."""
-    from teleclaude.core.next_machine.core import freeze_to_icebox
 
     if not args:
         print(_usage("roadmap", "freeze"))
@@ -395,9 +400,18 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
         print(_usage("roadmap", "freeze"))
         raise SystemExit(1)
 
-    if freeze_to_icebox(str(project_root), slug):
+    if _run_db(slug, "freeze"):
         print(f"Froze {slug} → icebox.yaml")
 
+        from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
+
+        _ok, _reason = commit_bookkeeping_to_main(
+            str(project_root),
+            ["todos/roadmap.yaml", "todos/_icebox/"],
+            f"chore(roadmap): freeze {slug}",
+        )
+        if not _ok and _reason in ("commit_failed", "not_a_repo"):
+            print(f"Warning: bookkeeping commit skipped ({_reason})")
     else:
         print(f"Slug not found in roadmap: {slug}")
         raise SystemExit(1)
@@ -405,7 +419,6 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
 
 def _handle_roadmap_unfreeze(args: list[str]) -> None:
     """Handle telec roadmap unfreeze <slug>."""
-    from teleclaude.core.next_machine.core import unfreeze_from_icebox
 
     if not args:
         print(_usage("roadmap", "unfreeze"))
@@ -432,9 +445,18 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
         print(_usage("roadmap", "unfreeze"))
         raise SystemExit(1)
 
-    if unfreeze_from_icebox(str(project_root), slug):
+    if _run_db(slug, "unfreeze"):
         print(f"Unfroze {slug} → roadmap.yaml")
 
+        from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
+
+        _ok, _reason = commit_bookkeeping_to_main(
+            str(project_root),
+            ["todos/roadmap.yaml", "todos/_icebox/"],
+            f"chore(roadmap): unfreeze {slug}",
+        )
+        if not _ok and _reason in ("commit_failed", "not_a_repo"):
+            print(f"Warning: bookkeeping commit skipped ({_reason})")
     else:
         print(f"Slug not found in icebox: {slug}")
         raise SystemExit(1)
@@ -450,6 +472,16 @@ def _handle_roadmap_migrate_icebox(args: list[str]) -> None:  # pylint: disable=
         print("Already migrated (nothing to move).")
     else:
         print(f"Migrated {count} icebox item(s) to todos/_icebox/.")
+
+        from teleclaude.core.next_machine.worktrees import commit_bookkeeping_to_main
+
+        _ok, _reason = commit_bookkeeping_to_main(
+            str(project_root),
+            ["todos/_icebox/", "todos/icebox.yaml"],
+            "chore(roadmap): migrate icebox to subfolder",
+        )
+        if not _ok and _reason in ("commit_failed", "not_a_repo"):
+            print(f"Warning: bookkeeping commit skipped ({_reason})")
 
 
 def _handle_roadmap_deliver(args: list[str]) -> None:
