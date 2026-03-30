@@ -415,6 +415,100 @@ async def list_artifacts(
     return _ArtifactListResponse(slug=slug, artifacts=names)
 
 
+@router.post("/dump")
+async def todo_dump(
+    slug: Annotated[str, Body()],
+    content: Annotated[str, Body()],
+    after: Annotated[list[str], Body()] = [],  # noqa: B006
+    cwd: Annotated[str | None, Body()] = None,
+) -> dict[str, str]:
+    """Create a todo: state + input artifact + roadmap entry in todos.db."""
+    from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
+
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+
+    # Check if slug already exists
+    existing = await todos_db.read_state(slug)
+    if existing is not None:
+        raise HTTPException(status_code=409, detail=f"Todo '{slug}' already exists")
+
+    # Write default state
+    state = default_state()
+    await todos_db.write_state(slug, state)
+
+    # Write input artifact
+    input_content = f"# {slug} — Input\n\n{content}\n"
+    await todos_db.write_artifact(slug, "input", input_content)
+
+    # Add to roadmap
+    await todos_db.add_to_roadmap(slug, after=after if after else None)
+
+    return {"status": "ok", "slug": slug}
+
+
+@router.post("/split")
+async def todo_split(
+    slug: Annotated[str, Body()],
+    children: Annotated[list[str], Body()],
+    cwd: Annotated[str | None, Body()] = None,
+) -> dict[str, str]:
+    """Split a todo into children: create child state + roadmap entries, update parent breakdown."""
+    from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
+
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+
+    # Verify parent exists
+    parent_state = await todos_db.read_state(slug)
+    if parent_state is None:
+        raise HTTPException(status_code=404, detail=f"Parent todo '{slug}' not found")
+
+    # Create children
+    for child_slug in children:
+        existing = await todos_db.read_state(child_slug)
+        if existing is not None:
+            raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
+        await todos_db.write_state(child_slug, default_state())
+        # Copy parent input to child
+        parent_input = await todos_db.read_artifact(slug, "input")
+        if parent_input:
+            await todos_db.write_artifact(child_slug, "input", parent_input)
+        await todos_db.add_to_roadmap(child_slug, group_slug=slug)
+
+    # Update parent breakdown
+    parent_state["breakdown"] = {"assessed": True, "todos": children}
+    await todos_db.write_state(slug, parent_state)
+
+    return {"status": "ok", "slug": slug, "children": ",".join(children)}
+
+
+@router.post("/remove")
+async def todo_remove(
+    slug: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+) -> dict[str, str]:
+    """Remove a todo: delete state, artifacts, and roadmap entry from todos.db.
+
+    Also cleans up worktree and branch if they exist.
+    """
+    from teleclaude.core.next_machine.delivery import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
+
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+
+    # Delete from DB
+    await todos_db.delete_state(slug)
+    await todos_db.delete_artifacts(slug)
+    await todos_db.remove_from_roadmap(slug)
+    await todos_db.clean_dep_references(slug)
+
+    # Clean up worktree and branch (filesystem/git cleanup stays — these are code branches)
+    cleanup_delivered_slug(effective_cwd, slug)
+
+    return {"status": "ok", "slug": slug}
+
+
 @router.post("/stamp/{slug}")
 async def stamp(
     slug: str,

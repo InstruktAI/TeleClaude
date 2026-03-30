@@ -312,29 +312,7 @@ def _ensure_todo_on_remote_main(cwd: str, slug: str) -> tuple[bool, str]:
 
 
 def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
-    """Ensure worktree exists and run prep only when policy says it's stale.
-
-    Before creating a new worktree, verifies the todo artifacts exist on
-    origin/main. Worktrees branch from origin/main — if artifacts are only
-    on local main, the worktree will be missing them and workers will fail.
-    """
-    worktree_path = Path(cwd) / WORKTREE_DIR / slug
-    if not worktree_path.exists():
-        ok, reason = _ensure_todo_on_remote_main(cwd, slug)
-        if not ok and reason not in ("already_on_remote", "nothing_to_commit", "not_on_main"):
-            msg = (
-                f"Error: todo '{slug}' is not on origin/main ({reason}).\n"
-                f"Worktrees branch from origin/main — without the todo artifacts there,\n"
-                f"workers will operate on incomplete directories.\n"
-                f"  Recovery:\n"
-                f"    git push origin main\n"
-                f"    telec todo prepare {slug}\n"
-                f"  If push conflicts, resolve and retry."
-            )
-            print(msg)
-            logger.error(msg)
-            raise RuntimeError(msg)
-
+    """Ensure worktree exists and run prep only when policy says it's stale."""
     created = _create_or_attach_worktree(cwd, slug)
     prep_decision = _decide_worktree_prep(cwd, slug, created=created)
     if prep_decision.should_prepare:

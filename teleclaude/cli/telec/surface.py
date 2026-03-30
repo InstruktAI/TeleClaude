@@ -549,23 +549,31 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
-            "read": CommandDef(
-                desc="Read a todo artifact from the database",
-                args="<slug> --artifact <name>",
-                flags=[_H, Flag("--artifact", desc="Artifact name (input, requirements, implementation-plan, etc.)")],
-                examples=["telec todo read my-slug --artifact requirements"],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-            ),
-            "write": CommandDef(
-                desc="Write a todo artifact to the database",
-                args="<slug> --artifact <name> [--file <path>]",
-                flags=[
-                    _H,
-                    Flag("--artifact", desc="Artifact name"),
-                    Flag("--file", desc="Read from file (stdin default)"),
-                ],
-                examples=["telec todo write my-slug --artifact requirements --file /tmp/req.md"],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+            "artifacts": CommandDef(
+                desc="Manage todo artifacts in the database",
+                subcommands={
+                    "list": CommandDef(
+                        desc="List artifacts for a todo",
+                        args="<slug>",
+                        flags=[_H],
+                        examples=["telec todo artifacts list my-slug"],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "read": CommandDef(
+                        desc="Read a todo artifact",
+                        args="<slug> <name>",
+                        flags=[_H],
+                        examples=["telec todo artifacts read my-slug requirements"],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "write": CommandDef(
+                        desc="Write a todo artifact",
+                        args="<slug> <name> [--file <path>]",
+                        flags=[_H, Flag("--file", desc="Read from file (stdin default)")],
+                        examples=["telec todo artifacts write my-slug requirements --file /tmp/req.md"],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+                    ),
+                },
             ),
             "stamp": CommandDef(
                 desc="Stamp a verdict, build status, or DOR result into todo state",
@@ -580,13 +588,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 examples=["telec todo stamp my-slug --verdict approve"],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
-            ),
-            "artifacts": CommandDef(
-                desc="List artifacts for a todo",
-                args="<slug>",
-                flags=[_H],
-                examples=["telec todo artifacts my-slug"],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
     ),

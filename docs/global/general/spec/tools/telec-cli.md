@@ -46,3 +46,7 @@ There are many of course, but this section is now intended to reveal the full su
 ### `telec history`
 
 <!-- @exec: telec history -h -->
+
+### `telec todo artifacts`
+
+<!-- @exec: telec todo artifacts -h -->
