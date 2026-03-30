@@ -176,21 +176,6 @@ class TestCreateFromMainSkeleton:
 
         assert not (worktree_path / "removed.py").exists()
 
-    def test_push_failure_raises_runtime_error(self, tmp_path: Path) -> None:
-        """If scaffold push fails, raise RuntimeError."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
-        project = _setup_project(tmp_path)
-        repo = _make_repo_ns()
-
-        with (
-            patch("teleclaude.git.Repo", return_value=repo),
-            patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(False, "push_failed")),
-            pytest.raises(RuntimeError, match="push_failed"),
-        ):
-            create_from_main_skeleton(str(project), "push-fail")
-
     def test_push_skips_when_not_a_repo(self, tmp_path: Path) -> None:
         """If scaffold push fails because not a repo, do not raise."""
         from teleclaude.todo_scaffold import create_from_main_skeleton

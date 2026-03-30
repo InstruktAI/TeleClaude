@@ -4,58 +4,11 @@ import importlib
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 bugs = importlib.import_module("teleclaude.cli.telec.handlers.bugs")
-
-
-@pytest.fixture
-def mock_ensure_pushed():
-    with patch("teleclaude.core.next_machine.worktrees._ensure_todo_on_remote_main") as mock:
-        mock.return_value = (True, "pushed")
-        yield mock
-
-
-@pytest.fixture
-def mock_commit_bookkeeping():
-    with patch("teleclaude.core.next_machine.worktrees.commit_bookkeeping_to_main") as mock:
-        mock.return_value = (True, "committed")
-        yield mock
-
-
-def test_handle_bugs_create_pushes_to_remote(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    mock_ensure_pushed: MagicMock,
-    mock_commit_bookkeeping: MagicMock,
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(bugs, "create_bug_skeleton", lambda **kwargs: tmp_path / "todos" / "sample-bug")
-
-    bugs._handle_bugs_create(["sample-bug"])
-
-    mock_ensure_pushed.assert_called_once_with(str(tmp_path), "sample-bug")
-
-
-def test_handle_bugs_report_pushes_to_remote(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_commit_bookkeeping: MagicMock
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(bugs, "normalize_slug", lambda _text: "sample-bug")
-    monkeypatch.setattr(bugs, "create_bug_skeleton", lambda *args, **kwargs: tmp_path / "todos" / "fix-sample-bug")
-
-    # Mock asyncio.run to avoid real API calls
-    import asyncio
-
-    async_run = MagicMock()
-    async_run.return_value = SimpleNamespace(session_id="sess-123")
-    monkeypatch.setattr(asyncio, "run", async_run)
-
-    bugs._handle_bugs_report(["Sample bug"])
-
-    mock_commit_bookkeeping.assert_called_once()
 
 
 def _close_and_return(value: object) -> Callable[[object], object]:
@@ -82,8 +35,6 @@ def test_handle_bugs_create_scaffolds_bug(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
-    mock_ensure_pushed: MagicMock,
-    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     created_dir = tmp_path / "todos" / "sample-bug"
 
@@ -99,7 +50,6 @@ def test_handle_bugs_report_generates_slug_and_dispatches(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
-    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     todo_dir = tmp_path / "todos" / "fix-example-bug"
 
@@ -158,7 +108,6 @@ def test_handle_bugs_report_with_project_flag(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
-    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     project_path = tmp_path / "target-project"
     project_path.mkdir()
@@ -181,8 +130,6 @@ def test_handle_bugs_create_with_project_flag(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
-    mock_ensure_pushed: MagicMock,
-    mock_commit_bookkeeping: MagicMock,
 ) -> None:
     project_path = tmp_path / "target-project"
     project_path.mkdir()

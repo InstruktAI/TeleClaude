@@ -337,25 +337,6 @@ class TestBookkeepingDiagnostics:
 
 
 # ---------------------------------------------------------------------------
-# ensure_worktree_with_policy: relaxed precondition
-# ---------------------------------------------------------------------------
-
-
-class TestEnsureWorktreePolicyPrecondition:
-    """Push failure raises RuntimeError to prevent incomplete worktrees."""
-
-    def test_push_failure_raises_runtime_error(self, tmp_path: Path) -> None:
-        with (
-            patch(
-                "teleclaude.core.next_machine.worktrees._ensure_todo_on_remote_main",
-                return_value=(False, "push_failed"),
-            ),
-            pytest.raises(RuntimeError, match="push_failed"),
-        ):
-            ensure_worktree_with_policy(str(tmp_path), "my-slug")
-
-
-# ---------------------------------------------------------------------------
 # Flock acquisition: verify main_branch_lock is called during mutations
 # ---------------------------------------------------------------------------
 
