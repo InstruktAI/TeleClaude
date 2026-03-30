@@ -38,7 +38,8 @@ class TestHandleTodoDump:
         ):
             _handle_todo_dump(["my-slug", "content", "--after", "dep-a,dep-b"])
 
-        body = mock_api.call_args[1].get("json_body") or mock_api.call_args[0][2]
+        dump_call = mock_api.call_args_list[0]
+        body = dump_call[1].get("json_body") or dump_call[0][2]
         assert body["after"] == ["dep-a", "dep-b"]
 
 

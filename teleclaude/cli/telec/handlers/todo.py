@@ -336,7 +336,7 @@ def _handle_todo_remove(args: list[str]) -> None:
     """
     if not args:
         print(_usage("todo", "remove"))
-        return
+        raise SystemExit(1)
 
     slug: str | None = None
 
