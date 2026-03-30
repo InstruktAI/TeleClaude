@@ -151,9 +151,15 @@ class TestScheduleReconnect:
         transport._running = True
         transport._redis_ready.set()
         transport._reconnect_task = None
+
+        def _capture_task(coro: object, **_kwargs: object) -> MagicMock:
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return MagicMock(done=MagicMock(return_value=True))
+
         with patch.object(transport, "task_registry", None):
             with patch("teleclaude.transport.redis_transport._connection.asyncio.create_task") as mock_ct:
-                mock_ct.return_value = MagicMock(done=MagicMock(return_value=True))
+                mock_ct.side_effect = _capture_task
                 transport._schedule_reconnect("test-reason")
         assert not transport._redis_ready.is_set()
 
@@ -162,8 +168,14 @@ class TestScheduleReconnect:
         transport._running = True
         transport._reconnect_task = MagicMock(done=MagicMock(return_value=True))
         exc = ValueError("conn refused")
+
+        def _capture_task(coro: object, **_kwargs: object) -> MagicMock:
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return MagicMock(done=MagicMock(return_value=True))
+
         with patch("teleclaude.transport.redis_transport._connection.asyncio.create_task") as mock_ct:
-            mock_ct.return_value = MagicMock(done=MagicMock(return_value=True))
+            mock_ct.side_effect = _capture_task
             transport.task_registry = None
             transport._schedule_reconnect("error-reason", error=exc)
         assert transport._redis_last_error == "conn refused"
@@ -175,3 +187,24 @@ class TestScheduleReconnect:
         transport._schedule_reconnect("reason")
         # Event should still be set — not cleared when transport is stopped
         assert transport._redis_ready.is_set()
+
+    @pytest.mark.unit
+    def test_startup_reason_uses_info_path_not_warning_path(self, transport: RedisTransport) -> None:
+        transport._running = True
+        transport._reconnect_task = None
+
+        def _capture_task(coro: object, **_kwargs: object) -> MagicMock:
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return MagicMock(done=MagicMock(return_value=True))
+
+        with (
+            patch.object(transport, "task_registry", None),
+            patch("teleclaude.transport.redis_transport._connection.asyncio.create_task", side_effect=_capture_task),
+            patch("teleclaude.transport.redis_transport._connection.logger.info") as mock_info,
+            patch("teleclaude.transport.redis_transport._connection.logger.warning") as mock_warning,
+        ):
+            transport._schedule_reconnect("startup")
+
+        mock_info.assert_called_once()
+        mock_warning.assert_not_called()

@@ -207,7 +207,10 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable
             self._redis_last_error = str(error)
         if self._reconnect_task and not self._reconnect_task.done():
             return
-        logger.warning("Redis connection unhealthy; scheduling reconnect (reason=%s)", reason)
+        if reason == "startup":
+            logger.info("Redis startup connect scheduled")
+        else:
+            logger.warning("Redis connection unhealthy; scheduling reconnect (reason=%s)", reason)
         if self.task_registry:
             self._reconnect_task = self.task_registry.spawn(self._reconnect_loop(reason), name="redis-reconnect")
         else:
