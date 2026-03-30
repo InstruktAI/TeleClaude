@@ -301,7 +301,7 @@ Legacy dispatch marker: command="{formatted_command}" subfolder="{subfolder}"
 Save the returned session_id.
 Command metadata: command="{formatted_command}" args="{args}" subfolder="{subfolder}".
 
-STEP 2 - START BACKGROUND TIMER AND INITIALIZE MARKER:
+STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
 Bash(command="sleep 300", run_in_background=true)
 Save the returned task_id.
 Save the current time as <marker_timestamp> for the tailing discipline.
@@ -323,13 +323,13 @@ A) NOTIFICATION ARRIVES OR TIMER COMPLETES:
    - Tail the session (first time: full window; subsequent: --since <marker_timestamp>).
    - Update <marker_timestamp> to the latest message timestamp when new messages appear.
    - Inspect `agent_status` in the JSON response.
-   - If `agent_status` is `active`: the current turn is still in progress. Reset the 5-minute timer and WAIT again.
+   - If `agent_status` is `active`: the current turn is still in progress. Reset the non-blocking heartbeat timer and WAIT again.
    - If `agent_status` is `idle`: the current turn is settled. Inspect the returned messages and proceed to WHEN WORKER COMPLETES below.
    - If `agent_status` is `unknown`: inspect the session because input/stop timing is incomplete or startup/stop capture may have failed. Investigate or escalate before acting.
 
 C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
    - Cancel the old timer: KillShell(shell_id=<task_id>)
-   - Start a new 5-minute timer: Bash(command="sleep 300", run_in_background=true)
+   - Start a new non-blocking heartbeat timer: Bash(command="sleep 300", run_in_background=true)
    - Save the new task_id for the reset timer
 
 D) NO-OP SUPPRESSION (NON-CHATTY ORCHESTRATION):

@@ -9,7 +9,7 @@ description: 'Periodic self-awareness timer that keeps agents aligned during sus
 
 ## Rules
 
-- Before starting sustained work (any task expected to take more than a few tool calls), set a background timer as your first action.
+- Before starting sustained work (any task expected to take more than a few tool calls), set a NON-blocking background timer (so you stay available to input) as your first action.
 - The timer duration should match the expected scope: 5 minutes for focused tasks, 10 minutes for broader work.
 - When the timer fires, pause briefly and check: Am I still on track? Is my current direction aligned with the objective?
 - If yes, reset the timer and continue. If not, correct course or stop.

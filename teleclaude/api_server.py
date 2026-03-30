@@ -509,7 +509,9 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     def _start_watch_task(self) -> None:
         if self._watch_task and not self._watch_task.done():
             return
-        self._last_watch_tick = time.monotonic()
+        # Must use the event loop clock because _watch_loop measures elapsed time
+        # with loop.time(). Mixing clock sources produces bogus startup lag values.
+        self._last_watch_tick = asyncio.get_running_loop().time()
         self._watch_task = asyncio.create_task(self._watch_loop(), name="api-watch-loop")
 
     async def _stop_watch_task(self) -> None:

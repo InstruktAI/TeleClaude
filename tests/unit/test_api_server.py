@@ -293,3 +293,23 @@ class TestApiServerLifecycle:
         fake_modules["teleclaude.api.sessions_routes"].configure.assert_called_with(cache=new_cache)
         fake_modules["teleclaude.api.computers_routes"].configure.assert_called_with(cache=new_cache)
         fake_modules["teleclaude.api.projects_routes"].configure.assert_called_with(cache=new_cache)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_start_watch_task_uses_event_loop_clock_for_baseline(self, tmp_path):
+        with _api_server_harness(tmp_path, cache=None) as (server, _):
+            fake_loop = MagicMock()
+            fake_loop.time.return_value = 123.45
+            fake_task = MagicMock()
+
+            def _capture_task(coro, **_kwargs):
+                coro.close()
+                return fake_task
+
+            with (
+                patch("teleclaude.api_server.asyncio.get_running_loop", return_value=fake_loop),
+                patch("teleclaude.api_server.asyncio.create_task", side_effect=_capture_task),
+            ):
+                server._start_watch_task()
+
+        assert server._last_watch_tick == 123.45

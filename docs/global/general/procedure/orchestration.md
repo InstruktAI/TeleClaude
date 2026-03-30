@@ -33,7 +33,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 2. Receive instruction block.
 3. Follow instructions verbatim:
    - Dispatch worker (`telec sessions run`)
-   - Start background timer (sleep 300)
+   - Start non-blocking heartbeat timer (sleep 300)
    - Stop and wait
 4. When notification arrives OR timer expires:
    - Follow POST_COMPLETION steps
