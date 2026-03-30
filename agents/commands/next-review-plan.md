@@ -25,14 +25,14 @@ Validate `implementation-plan.md` against policies, Definition of Done gates, an
 
 ## Outputs
 
-- Verdict in `todos/{slug}/state.yaml`
+- Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work`
 - `todos/{slug}/plan-review-findings.md` if findings exist
-- All review artifacts committed to git
+- All review artifacts stored via `telec todo artifacts write`
 
 ## Steps
 
 - Follow the review-plan procedure.
-- Commit all changes. Go idle.
+- Store artifacts via `telec todo artifacts write`. Stamp verdict via `telec todo stamp`. Go idle.
 
 ## Discipline
 

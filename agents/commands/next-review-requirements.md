@@ -15,24 +15,24 @@ You are now the Architect in requirements review mode.
 
 ## Purpose
 
-Validate `requirements.md` against the requirements quality standard and write a binary verdict to `state.yaml`.
+Validate `requirements.md` against the requirements quality standard and stamp the verdict via `telec todo stamp`.
 
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/requirements.md` (the artifact under review)
-- `todos/{slug}/input.md` (the source it was derived from)
+- `telec todo artifacts read {slug} requirements` (the artifact under review)
+- `telec todo artifacts read {slug} input` (the source it was derived from)
 
 ## Outputs
 
-- Verdict in `todos/{slug}/state.yaml`
+- Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work`
 - `todos/{slug}/requirements-review-findings.md` if findings exist
-- All review artifacts committed to git
+- All review artifacts stored via `telec todo artifacts write`
 
 ## Steps
 
 - Follow the review-requirements procedure.
-- Commit all changes. Go idle.
+- Store artifacts via `telec todo artifacts write`. Stamp verdict via `telec todo stamp`. Go idle.
 
 ## Discipline
 

@@ -25,7 +25,7 @@ Drive the prepare state machine by calling `telec todo prepare` in a loop, dispa
 ## Outputs
 
 - Reviewed and approved `requirements.md` and `implementation-plan.md`
-- Gate verdict in `state.yaml`
+- Gate verdict stamped via `telec todo stamp`
 - All sessions ended on completion
 
 ## Steps

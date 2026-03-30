@@ -22,13 +22,12 @@ is needed to surface hidden assumptions, missing constraints, or unresolved tens
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/input.md` (original intent)
+- `telec todo artifacts read {slug} input` (original intent)
 - Existing `todos/{slug}/requirements-review-findings.md` when present
 
 ## Outputs
 
 - `todos/{slug}/requirements.md` — grounded, review-aware requirements
-- `todos/{slug}/state.yaml` — updated grounding metadata if touched during discovery
 
 ## Steps
 

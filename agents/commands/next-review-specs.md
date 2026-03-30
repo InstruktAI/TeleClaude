@@ -26,7 +26,7 @@ Review test specifications for behavioral coverage, rigor, and alignment with re
 ## Outputs
 
 - todos/{slug}/spec-review-findings.md
-- Verdict in state.yaml: test_spec_review.verdict = approve | needs_work
+- Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work`
 
 ## Steps
 

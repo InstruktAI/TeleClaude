@@ -26,14 +26,14 @@ Run formal DOR validation on the complete preparation artifact set and write the
 
 ## Outputs
 
-- Gate verdict in `state.yaml`
+- Gate verdict stamped via `telec todo stamp`
 - `todos/{slug}/dor-report.md` with comprehensive assessment
-- All gate artifacts committed to git
+- All gate artifacts stored via `telec todo artifacts write`
 
 ## Steps
 
 - Follow the gate procedure.
-- Commit all changes. Go idle.
+- Store artifacts via `telec todo artifacts write`. Stamp verdict via `telec todo stamp`. Go idle.
 
 ## Discipline
 
