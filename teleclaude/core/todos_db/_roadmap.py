@@ -149,10 +149,11 @@ class TodosDbRoadmapMixin:
         *,
         commit: str | None = None,
         children: list[str] | None = None,
+        delivered_at: str | None = None,
     ) -> bool:
         """Mark a slug as delivered. Returns False if not found."""
         assert self.conn is not None
-        now = datetime.now(UTC).isoformat()
+        now = delivered_at or datetime.now(UTC).isoformat()
         children_json = json.dumps(children) if children else None
         result = await self.conn.execute(
             "UPDATE roadmap SET status = 'delivered', delivered_at = ?, "  # guard: raw-sql

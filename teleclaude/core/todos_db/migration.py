@@ -86,12 +86,14 @@ async def _import_delivered(delivered_path: Path, todos_db: TodosDb) -> None:
         if await todos_db.slug_in_roadmap(slug):
             continue
 
-        # Add to roadmap first, then deliver
+        # Add to roadmap first, then deliver with original date
         children = entry.get("children")
+        original_date = str(entry.get("date", ""))
         await todos_db.add_to_roadmap(slug)
         await todos_db.deliver(
             slug,
             commit=entry.get("commit"),
+            delivered_at=original_date or None,
             children=children if isinstance(children, list) else None,
         )
     logger.info("Imported %d delivered entries", len(raw))
