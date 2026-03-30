@@ -101,7 +101,6 @@ class TestCreateFromMainSkeleton:
         with (
             patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
                 f"{_WT}._decide_worktree_prep",
@@ -164,7 +163,6 @@ class TestCreateFromMainSkeleton:
         with (
             patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"removed.py"}),
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
                 f"{_WT}._decide_worktree_prep",
@@ -186,7 +184,6 @@ class TestCreateFromMainSkeleton:
         with (
             patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(False, "not_a_repo")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
                 f"{_WT}._decide_worktree_prep",
@@ -209,7 +206,6 @@ class TestCreateFromMainSkeleton:
         with (
             patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
                 f"{_WT}._decide_worktree_prep",
@@ -241,7 +237,6 @@ class TestCreateFromMainSkeleton:
         with (
             patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
                 f"{_WT}._decide_worktree_prep",
@@ -304,7 +299,6 @@ class TestCreateFromMainSkeleton:
         with (
             patch("teleclaude.git.Repo", return_value=repo),
             patch(_COLLECT) as mock_collect,
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
                 f"{_WT}._decide_worktree_prep",
@@ -625,7 +619,6 @@ class TestCreateFromMainSkeletonAllFiles:
         with (
             patch("teleclaude.git.Repo", return_value=repo_ns),
             patch(_COLLECT, collect_mock),
-            patch(f"{_WT}._ensure_todo_on_remote_main", return_value=(True, "committed_and_pushed")),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
                 f"{_WT}._decide_worktree_prep",
