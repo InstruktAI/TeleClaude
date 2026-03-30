@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/review-requirements'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Requirements review phase. Validate requirements.md against quality standard and write verdict to state.yaml.'
+description: 'Requirements review phase. Validate requirements.md against quality standard and write verdict to todo state (todos.db).'
 ---
 
 # Review Requirements — Procedure
@@ -16,20 +16,20 @@ description: 'Requirements review phase. Validate requirements.md against qualit
 
 ## Goal
 
-Validate `requirements.md` against the requirements quality standard and write a binary verdict to `state.yaml`. This is a preparation review, not a code review.
+Validate `requirements.md` against the requirements quality standard and write a binary verdict to `todo state (todos.db)`. This is a preparation review, not a code review.
 
 ## Preconditions
 
-- `todos/{slug}/requirements.md` exists.
-- `todos/{slug}/input.md` exists (the source the requirements were derived from).
+- `telec todo artifacts read {slug} requirements` exists.
+- `telec todo artifacts read {slug} input` exists (the source the requirements were derived from).
 
 ## Steps
 
 ### 1. Read context
 
-- `todos/{slug}/requirements.md` — the artifact under review.
-- `todos/{slug}/input.md` — the original human thinking.
-- `todos/roadmap.yaml` — the slug's description.
+- `telec todo artifacts read {slug} requirements` — the artifact under review.
+- `telec todo artifacts read {slug} input` — the original human thinking.
+- `todos.db` roadmap — the slug's description.
 - Relevant codebase files referenced in the requirements.
 - Apply the domain-context loading rule from the preparation artifact quality
   policy: identify which specs the requirements touch and load them before
@@ -104,7 +104,7 @@ the requirements cover.
 
 ### 4. Write verdict
 
-Update `todos/{slug}/state.yaml`:
+Update `todos.db` state:
 
 ```yaml
 requirements_review:
@@ -120,7 +120,7 @@ Verdict rules:
 - Suggestion findings may remain unresolved under `approve`.
 
 If unresolved findings exist, write them to
-`todos/{slug}/requirements-review-findings.md` with severity levels
+`telec todo artifacts read {slug} requirements-review-findings` with severity levels
 (Critical, Important, Suggestion) following the same format as code review findings.
 
 If no unresolved findings remain, remove stale `requirements-review-findings.md`
@@ -139,8 +139,8 @@ Findings: {count}
 
 ## Outputs
 
-- Verdict in `todos/{slug}/state.yaml`.
-- `todos/{slug}/requirements-review-findings.md` if findings exist.
+- Verdict in `todos.db` state.
+- `telec todo artifacts read {slug} requirements-review-findings` if findings exist.
 - Commit containing review artifacts.
 
 ## Recovery

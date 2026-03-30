@@ -510,7 +510,7 @@ async def todo_remove(
 
 
 @router.post("/stamp/{slug}")
-async def stamp(
+async def stamp(  # pylint: disable=too-many-locals,too-many-branches
     slug: str,
     stamp_type: Annotated[str, Body()],
     value: Annotated[str, Body()],
@@ -551,11 +551,21 @@ async def stamp(
         grounding["valid"] = value == "valid"
         state["grounding"] = grounding
     elif stamp_type == "dor":
-        # value format: "score:9,status:pass"
+        # value format: "score:9,status:pass" or plain status like "pass"
         dor = state.get("dor")
         if not isinstance(dor, dict):
             dor = {}
-        dor["status"] = value
+        # Parse compound format: "score:9,status:pass"
+        if "," in value and ":" in value:
+            for part in value.split(","):
+                k, _, v = part.partition(":")
+                k, v = k.strip(), v.strip()
+                if k == "score":
+                    dor["score"] = int(v)
+                elif k == "status":
+                    dor["status"] = v
+        else:
+            dor["status"] = value
         state["dor"] = dor
     else:
         raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")

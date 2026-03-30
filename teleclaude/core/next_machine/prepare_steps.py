@@ -30,7 +30,7 @@ from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event,
     _has_test_spec_artifacts,
 )
-from teleclaude.core.next_machine.prepare_helpers import record_input_consumed, stamp_audit
+from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, record_input_consumed, stamp_audit
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
@@ -88,7 +88,13 @@ async def _restamp_artifact_digest_db(  # pyright: ignore[reportUnusedFunction]
     entry = artifacts.get(artifact_key, {})
     if not isinstance(entry, dict):
         return
-    current = await todos_db.artifact_digest(slug, artifact_key)
+    # Resolve DB artifact name: cascade maps state key to filename, strip .md for DB name
+    db_name = artifact_key
+    for key, filename in _ARTIFACT_CASCADE:
+        if key == artifact_key:
+            db_name = filename.removesuffix(".md") if filename.endswith(".md") else key
+            break
+    current = await todos_db.artifact_digest(slug, db_name)
     if current and current != entry.get("digest", ""):
         entry["digest"] = current
         artifacts[artifact_key] = entry

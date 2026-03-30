@@ -14,7 +14,7 @@ scope: 'domain'
 
 ## Goal
 
-Read `todos/{slug}/review-findings.md`.
+Read `telec todo artifacts read {slug} review-findings`.
 
 - If missing: stop and report.
 - If verdict already APPROVE: stop and report.
@@ -43,7 +43,7 @@ Report summary and readiness for re-review.
 
 ## Preconditions
 
-- `todos/{slug}/review-findings.md` exists with a non-APPROVE verdict.
+- `telec todo artifacts read {slug} review-findings` exists with a non-APPROVE verdict.
 
 ## Steps
 

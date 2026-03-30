@@ -29,7 +29,7 @@ sequential phases, each producing one artifact that is reviewed before the next 
 
 ## Preconditions
 
-1. `todos/roadmap.yaml` exists and is readable.
+1. `todos.db` roadmap exists and is readable.
 2. Target slug is active (not icebox, not delivered) when slug is provided.
 
 ## Steps
@@ -59,7 +59,7 @@ ends the worker session, and calls `telec todo prepare [slug]` again.
 
 `requirements.md` exists but is not yet approved. Dispatch a reviewer to
 validate requirements against the quality standard (completeness, testability,
-grounding, review-awareness). The reviewer writes a verdict to `state.yaml`.
+grounding, review-awareness). The reviewer writes a verdict to `todo state (todos.db)`.
 
 The orchestrator persists the review transition before advancing:
 
@@ -85,7 +85,7 @@ the worker session, and calls `telec todo prepare [slug]` again.
 
 Test specifications exist but are not yet approved. Dispatch a reviewer to
 validate test specs for behavioral focus, convention compliance, and no
-implementation leakage. The reviewer writes a verdict to `state.yaml`.
+implementation leakage. The reviewer writes a verdict to `todo state (todos.db)`.
 
 The orchestrator persists the review transition before advancing:
 
@@ -113,7 +113,7 @@ end the worker session, and then call `telec todo prepare [slug]` again.
 
 `implementation-plan.md` exists but is not yet approved. Dispatch a reviewer
 to validate the plan against policies, DoD gates, and review lane expectations.
-The reviewer writes a verdict to `state.yaml`.
+The reviewer writes a verdict to `todo state (todos.db)`.
 
 The orchestrator persists the review transition before advancing:
 
@@ -205,7 +205,7 @@ overlap after an integration delivery.
    `requirements.md`, test specification files (expected-failure-marked),
    `implementation-plan.md`, `demo.md`.
 2. Each artifact reviewed and approved before the next phase begins.
-3. Grounding metadata in `state.yaml` for staleness detection.
+3. Grounding metadata in `todo state (todos.db)` for staleness detection.
 4. All sessions ended on completion.
 
 ## Recovery

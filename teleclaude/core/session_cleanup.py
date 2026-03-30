@@ -304,7 +304,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
             return False
 
     # Headless sessions have no tmux — they are never "stale" by tmux check;
-    # they get cleaned up by the 72h inactivity sweep instead.
+    # they get cleaned up only when explicitly closed by user or agent.
     if not session.tmux_session_name:
         return False
 

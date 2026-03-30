@@ -19,11 +19,11 @@ Process deferrals, decide outcomes, and create new todos as needed.
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/deferrals.md`
+- `telec todo artifacts read {slug} deferrals`
 
 ## Outputs
 
-- Updated `todos/{slug}/deferrals.md`
+- Updated `telec todo artifacts read {slug} deferrals`
 - New todos in the roadmap (if needed)
 - Report format:
 
@@ -38,7 +38,7 @@ Process deferrals, decide outcomes, and create new todos as needed.
 
 ## Steps
 
-- Read `todos/{slug}/deferrals.md`.
+- Read `telec todo artifacts read {slug} deferrals`.
 - For each deferral: decide NEW_TODO or NOOP.
 - Create new todos in the roadmap if needed.
 - Mark deferrals as processed.

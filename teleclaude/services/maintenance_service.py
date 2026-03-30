@@ -185,7 +185,7 @@ class MaintenanceService:
             )
 
     async def _cleanup_inactive_sessions(self) -> None:
-        cutoff_time = datetime.now(UTC) - timedelta(hours=72)
+        cutoff_time = datetime.now(UTC) - timedelta(days=7)
         sessions = await db.list_sessions(include_closed=True, include_headless=True)
 
         for session in sessions:
@@ -198,7 +198,7 @@ class MaintenanceService:
                 # Normalize once and skip repeated cleanup/deletion attempts.
                 if session.lifecycle_status != "closed":
                     await db.update_session(session.session_id, lifecycle_status="closed")
-                # Purge closed sessions older than the 72h cutoff.
+                # Purge closed sessions older than the 7-day cutoff.
                 if session.closed_at < cutoff_time:
                     logger.info(
                         "Purging old closed session %s (closed %s ago)",
@@ -215,19 +215,8 @@ class MaintenanceService:
                     )
                 continue
 
-            if session.last_activity < cutoff_time:
-                logger.info(
-                    "Cleaning up inactive session %s (inactive for %s)",
-                    session.session_id,
-                    datetime.now(UTC) - session.last_activity,
-                )
-                await session_cleanup.terminate_session(
-                    session.session_id,
-                    self._client,
-                    reason="inactive_72h",
-                    session=session,
-                )
-                logger.info("Session %s cleaned up (72h lifecycle)", session.session_id)
+            # Open sessions are never auto-closed. Users and agents close them explicitly.
+            # The cleanup routine only purges closed sessions past the retention window.
 
     async def _check_idle_compaction(self) -> None:
         """Detect idle long-lived sessions and mark them for memory extraction.

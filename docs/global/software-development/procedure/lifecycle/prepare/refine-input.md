@@ -14,7 +14,7 @@ Capture the human's evolving thinking about a todo and produce a coherent, integ
 
 ## Preconditions
 
-- Slug is provided and exists in `todos/roadmap.yaml`.
+- Slug is provided and exists in `todos.db` roadmap.
 - Human is present and ready to share thinking.
 
 ## Steps
@@ -23,9 +23,9 @@ Capture the human's evolving thinking about a todo and produce a coherent, integ
 
 Read the existing state of the todo:
 
-- `todos/{slug}/input.md` — current brain dump (may not exist yet).
-- `todos/{slug}/requirements.md` — what has already been derived (if exists). This tells you what the system already understands, so you can focus the conversation on what's new or changed.
-- `todos/roadmap.yaml` — the slug's description and position.
+- `telec todo artifacts read {slug} input` — current brain dump (may not exist yet).
+- `telec todo artifacts read {slug} requirements` — what has already been derived (if exists). This tells you what the system already understands, so you can focus the conversation on what's new or changed.
+- `todos.db` roadmap — the slug's description and position.
 
 ### 2. Listen and clarify
 
@@ -45,11 +45,11 @@ When the human signals readiness (or the conversation naturally converges):
 2. Write a new `input.md` that integrates the old content with the new thinking. This is a rewrite, not an append — produce a coherent document, not a log.
 3. Preserve the human's language and framing where possible. Do not over-formalize their raw thinking into sterile requirements language. The brain dump should read like a person thinking, not a spec sheet.
 4. Structure the document for clarity without losing voice: group related thoughts, surface implicit assumptions explicitly, mark open questions as open.
-5. Use `telec todo dump` to write the content, or write `todos/{slug}/input.md` directly.
+5. Use `telec todo dump` to write the content, or write `telec todo artifacts read {slug} input` directly.
 
 ### 4. Invalidate grounding and emit event
 
-Update `todos/{slug}/state.yaml` to signal that preparation artifacts need reconciliation:
+Update `todos.db` state to signal that preparation artifacts need reconciliation:
 
 ```yaml
 grounding:
@@ -58,7 +58,7 @@ grounding:
   invalidation_reason: 'input_updated'
 ```
 
-If the `grounding` section does not exist yet, create it. Do not modify other sections of state.yaml.
+If the `grounding` section does not exist yet, create it. Do not modify other sections of todo state (todos.db).
 
 After writing, call `telec todo dump {slug} --update` to emit the `prepare.input_refined` event. This enables automation to react to the change (e.g., downstream invalidation of dependent todos).
 
@@ -75,8 +75,8 @@ Grounding: invalidated — next prepare call will reconcile.
 
 ## Outputs
 
-- Rewritten `todos/{slug}/input.md` with integrated thinking.
-- `todos/{slug}/state.yaml` with `grounding.valid: false`.
+- Rewritten `telec todo artifacts read {slug} input` with integrated thinking.
+- `todos.db` state with `grounding.valid: false`.
 
 ## Recovery
 

@@ -24,16 +24,16 @@ it without guessing and a reviewer finds no surprises.
 
 ## Preconditions
 
-- `todos/{slug}/implementation-plan.md` exists.
-- `todos/{slug}/requirements.md` exists and is approved.
+- `telec todo artifacts read {slug} implementation-plan` exists.
+- `telec todo artifacts read {slug} requirements` exists and is approved.
 
 ## Steps
 
 ### 1. Read context
 
-- `todos/{slug}/implementation-plan.md` — the artifact under review.
-- `todos/{slug}/requirements.md` — the approved requirements it must satisfy.
-- `todos/{slug}/input.md` — original human thinking.
+- `telec todo artifacts read {slug} implementation-plan` — the artifact under review.
+- `telec todo artifacts read {slug} requirements` — the approved requirements it must satisfy.
+- `telec todo artifacts read {slug} input` — original human thinking.
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
 - Apply the domain-context loading rule from the preparation artifact quality
@@ -72,7 +72,7 @@ policy:
   loaded domain specs -> Critical.
 - Every task has a verification step. Task with no verification -> Important.
   Verification that doesn't prove the task is done -> Important.
-- Referenced file paths are listed in `state.yaml.grounding.referenced_paths`.
+- Referenced file paths are listed in `todo state (todos.db).grounding.referenced_paths`.
   Missing or incomplete -> Important.
 
 ### 5. Grounding
@@ -135,7 +135,7 @@ Not allowed — route via `needs_work` instead:
 
 ### 9. Write verdict
 
-Update `todos/{slug}/state.yaml`:
+Update `todos.db` state:
 
 ```yaml
 plan_review:
@@ -150,7 +150,7 @@ Verdict rules:
 - `needs_work` when any unresolved Critical or Important finding remains.
 - Suggestion findings may remain unresolved under `approve`.
 
-If unresolved findings exist, write them to `todos/{slug}/plan-review-findings.md`
+If unresolved findings exist, write them to `telec todo artifacts read {slug} plan-review-findings`
 with severity levels (Critical, Important, Suggestion) following the same format
 as code review findings.
 
@@ -169,8 +169,8 @@ Findings: {count}
 
 ## Outputs
 
-- Verdict in `todos/{slug}/state.yaml`.
-- `todos/{slug}/plan-review-findings.md` if findings exist.
+- Verdict in `todos.db` state.
+- `telec todo artifacts read {slug} plan-review-findings` if findings exist.
 - Commit containing review artifacts.
 
 ## Recovery

@@ -17,7 +17,7 @@ calls it in a loop and dispatches what is requested.
 
 ## Preconditions
 
-- `todos/roadmap.yaml` exists and is readable.
+- `todos.db` roadmap exists and is readable.
 - Target slug is active (not icebox, not delivered).
 
 ## Steps
@@ -25,7 +25,7 @@ calls it in a loop and dispatches what is requested.
 ### 1. Input refinement (human-driven, optional)
 
 The human refines their thinking via `next-refine-input`, which rewrites
-`todos/{slug}/input.md` and invalidates grounding.
+`telec todo artifacts read {slug} input` and invalidates grounding.
 
 ### 2. Discovery (solo or triangulated)
 
@@ -63,7 +63,7 @@ can authorize readiness transition.
 
 ### 7. Artifact staleness cascade (idempotent)
 
-The machine tracks artifact digests in `state.yaml.artifacts` for `input`, `requirements`,
+The machine tracks artifact digests in `todo state (todos.db).artifacts` for `input`, `requirements`,
 and `implementation_plan`. On every invocation, it checks:
 
 - If `input.md` changed since last recorded digest → cascade: both `requirements` and
@@ -93,17 +93,17 @@ approved prepare phase:
   ready for build) with both artifacts copied and both verdicts inherited.
 - Parent with no approvals → child starts at discovery (normal flow).
 
-Skipped phases are recorded in `state.yaml.audit.<phase>` with
+Skipped phases are recorded in `todo state (todos.db).audit.<phase>` with
 `status: "skipped"` and `reason: "inherited_from_parent"`. Events `prepare.split_inherited`
 and `prepare.phase_skipped` are emitted per child.
 
 ## Outputs
 
-- `todos/{slug}/requirements.md` — triangulated, reviewed, approved.
-- `todos/{slug}/implementation-plan.md` — review-aware, rationale-rich, reviewed, approved.
-- `todos/{slug}/demo.md` — draft demonstration plan.
-- `todos/{slug}/dor-report.md` — gate assessment.
-- `todos/{slug}/state.yaml` — grounding metadata and DOR verdict.
+- `telec todo artifacts read {slug} requirements` — triangulated, reviewed, approved.
+- `telec todo artifacts read {slug} implementation-plan` — review-aware, rationale-rich, reviewed, approved.
+- `telec todo artifacts read {slug} demo` — draft demonstration plan.
+- `telec todo artifacts read {slug} dor-report` — gate assessment.
+- `todos.db` state — grounding metadata and DOR verdict.
 - Events emitted at each phase transition (see below).
 
 ### Events

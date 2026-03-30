@@ -22,13 +22,13 @@ Generate mood board images for the slug and stay in session for iteration.
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/design-spec.md` — confirmed design spec (constraint document)
-- `todos/{slug}/input.md` — project context and content direction
-- `todos/{slug}/input/` — optional reference images from the human
+- `telec todo artifacts read {slug} design-spec` — confirmed design spec (constraint document)
+- `telec todo artifacts read {slug} input` — project context and content direction
+- `todos/{slug}/input/` (filesystem, not DB-backed) — optional reference images from the human
 
 ## Outputs
 
-- Images in `todos/{slug}/art/`
+- Images in `todos/{slug}/art/` (filesystem, not DB-backed)
 - Report format:
 
   ```
@@ -46,7 +46,7 @@ Generate mood board images for the slug and stay in session for iteration.
 - Read `design-spec.md`, `input.md`, and any images in `input/`.
 - Use the Nano Banana helper script (`nano_banana_helper.py`) for ALL image generation. Do NOT write custom scripts or use other APIs. The procedure is in your required reads.
 - Generate mood board images using `nano_banana_helper.py generate` with prompts derived from the design spec's emotional register, color palette, and visual identity.
-- Save all images to `todos/{slug}/art/`.
+- Save all images to `todos/{slug}/art/` (filesystem, not DB-backed).
 - For iteration, use `nano_banana_helper.py edit` with the previous image as input.
 - Report completion and wait for feedback. Do not end the session — the orchestrator may relay iteration requests.
 

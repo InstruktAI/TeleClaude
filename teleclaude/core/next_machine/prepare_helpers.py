@@ -180,14 +180,16 @@ async def check_artifact_staleness_db(todos_db: TodosDb, slug: str) -> list[str]
         return []
 
     stale_from: int | None = None
-    for idx, (key, _filename) in enumerate(_ARTIFACT_CASCADE):
+    for idx, (key, filename) in enumerate(_ARTIFACT_CASCADE):
         entry = artifacts.get(key, {})
         if not isinstance(entry, dict):
             continue
         stored_digest = str(entry.get("digest", ""))
         if not stored_digest:
             continue
-        current = await todos_db.artifact_digest(slug, key)
+        # DB artifact name is the filename without .md extension (e.g. "implementation-plan")
+        db_name = filename.removesuffix(".md") if filename.endswith(".md") else key
+        current = await todos_db.artifact_digest(slug, db_name)
         if current != stored_digest:
             stale_from = idx
             break

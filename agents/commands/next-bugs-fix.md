@@ -24,7 +24,7 @@ Investigate a bug, apply a fix, and document findings in bug.md.
 
 - Slug: "$ARGUMENTS"
 - Worktree for the slug
-- `todos/{slug}/bug.md` as the requirement source
+- `telec todo artifacts read {slug} bug` as the requirement source
 
 ## Outputs
 
@@ -46,7 +46,7 @@ Investigate a bug, apply a fix, and document findings in bug.md.
 
 ## Steps
 
-- **Input gate (mandatory, before anything else):** Read `todos/{slug}/bug.md`. If the file
+- **Input gate (mandatory, before anything else):** Read `telec todo artifacts read {slug} bug`. If the file
   does not exist or the `## Symptom` section is empty, STOP IMMEDIATELY. Report
   `FATAL: bug.md missing or empty for {slug} — cannot proceed without bug description.`
   Do not investigate, do not write code, do not improvise work. A bug fixer without a bug

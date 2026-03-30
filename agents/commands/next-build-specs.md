@@ -21,7 +21,7 @@ Write executable test specifications (expected-failure-marked tests) from approv
 
 - Slug: "$ARGUMENTS"
 - Worktree for the slug
-- todos/{slug}/requirements.md
+- Requirements: `telec todo artifacts read {slug} requirements`
 
 ## Outputs
 

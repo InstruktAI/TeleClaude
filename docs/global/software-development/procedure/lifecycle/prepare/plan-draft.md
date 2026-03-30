@@ -27,8 +27,8 @@ for one builder session, this phase owns the split.
 
 ## Preconditions
 
-1. `todos/{slug}/requirements.md` exists and is approved (review verdict in state.yaml).
-2. `todos/roadmap.yaml` is readable.
+1. `telec todo artifacts read {slug} requirements` exists and is approved (review verdict in todo state (todos.db)).
+2. `todos.db` roadmap is readable.
 3. Slug is active (not icebox, not delivered).
 
 ## Steps
@@ -37,8 +37,8 @@ for one builder session, this phase owns the split.
 
 Read the full context before writing anything:
 
-- `todos/{slug}/requirements.md` — the approved requirements.
-- `todos/{slug}/input.md` — the original human thinking (for intent).
+- `telec todo artifacts read {slug} requirements` — the approved requirements.
+- `telec todo artifacts read {slug} input` — the original human thinking (for intent).
 - Test specification files in the worktree — expected-failure-marked tests delivered during
   the prepare phase. These define the behavioral contract the builder must satisfy.
 - The codebase: files that will be affected, adjacent patterns, existing implementations
@@ -55,7 +55,7 @@ review-awareness cannot be evaluated without them.
 When the dispatch note starts with "FIX MODE", this is a targeted revision, not a
 fresh draft:
 
-- Read the existing `todos/{slug}/implementation-plan.md` alongside the review findings.
+- Read the existing `telec todo artifacts read {slug} implementation-plan` alongside the review findings.
 - Apply targeted fixes to address each finding. Preserve all unflagged content.
 - Do not re-draft from scratch — the existing plan was already grounded and approved.
 - Skip the atomicity decision (step 2); proceed directly to updating the plan tasks
@@ -80,8 +80,8 @@ work that will fail gate validation. Split first:
 
 - create focused child todos
 - seed them from the approved parent requirements
-- add dependency ordering in `todos/roadmap.yaml`
-- update the holder `todos/{slug}/state.yaml` `breakdown.todos`
+- add dependency ordering in `todos.db` roadmap
+- update the holder `todos.db` state `breakdown.todos`
 - stop treating the parent as directly builder-ready
 
 If the work passes the scope/size gate, continue to plan drafting.
@@ -100,7 +100,7 @@ policy. Structure the plan as an ordered task list. Each task must include:
   GREEN. The builder's first action per task is removing the expected-failure marker and
   writing the implementation that makes the test pass.
 - **Referenced files**: exact file paths that will be created or modified. These are
-  extracted into `state.yaml.grounding.referenced_paths` for staleness detection.
+  extracted into `todo state (todos.db).grounding.referenced_paths` for staleness detection.
 
 Verify plan tasks against the domain specs loaded in step 1. Plans that reference
 non-existent APIs, wrong schema fields, or incorrect directory structures are
@@ -120,13 +120,13 @@ more to fix than they cost to prevent.
 
 If the todo stays atomic, write (using approved requirements and test spec files as inputs):
 
-- `todos/{slug}/implementation-plan.md` — the full plan with tasks, rationale, and verification.
+- `telec todo artifacts read {slug} implementation-plan` — the full plan with tasks, rationale, and verification.
   Each task must reference which expected-failure test specifications it satisfies.
-- `todos/{slug}/demo.md` — draft demonstration plan: what medium (CLI, TUI, web, API),
+- `telec todo artifacts read {slug} demo` — draft demonstration plan: what medium (CLI, TUI, web, API),
   what the user observes, what commands validate it works. The draft doesn't need to be
   perfect — the builder refines it with real implementation knowledge.
 
-Update `todos/{slug}/state.yaml`:
+Update `todos.db` state:
 
 - Set `grounding.referenced_paths` to the list of file paths from the plan.
 - Update `grounding.base_sha` to current HEAD.
@@ -147,8 +147,8 @@ If the todo is split instead:
 ## Outputs
 
 1. Atomic case:
-   `todos/{slug}/implementation-plan.md`, `todos/{slug}/demo.md`, and updated
-   `todos/{slug}/state.yaml`.
+   `telec todo artifacts read {slug} implementation-plan`, `telec todo artifacts read {slug} demo`, and updated
+   `todos.db` state.
 2. Split case:
    child todos, dependency links, and updated holder `breakdown`.
 

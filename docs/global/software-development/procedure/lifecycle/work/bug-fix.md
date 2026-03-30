@@ -15,12 +15,12 @@ findings in `bug.md` for reviewer verification.
 
 ## Preconditions
 
-- `todos/{slug}/bug.md` exists with symptom and discovery context.
+- `telec todo artifacts read {slug} bug` exists with symptom and discovery context.
 - Worktree is available for the slug.
 
 ## Steps
 
-1. Read `todos/{slug}/bug.md` to understand the symptom and discovery context.
+1. Read `telec todo artifacts read {slug} bug` to understand the symptom and discovery context.
 2. Follow the systematic debugging procedure before making changes — reproduce first,
    then bisect and isolate the root cause.
 3. Encode the reproduction as a failing test. Write a test that triggers the bug.

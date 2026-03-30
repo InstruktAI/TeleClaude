@@ -21,21 +21,21 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 ## Preconditions
 
-- `todos/{slug}/requirements.md` exists (or `bug.md` for bug fixes). For ad-hoc items created via `telec todo from-main`, requirements and implementation plan are stubs — see "Ad-hoc items" below.
-- `todos/{slug}/implementation-plan.md` exists (unless bug fix or ad-hoc item).
-- `todos/{slug}/quality-checklist.md` exists and includes Build/Review sections (unless bug fix).
+- `telec todo artifacts read {slug} requirements` exists (or `bug.md` for bug fixes). For ad-hoc items created via `telec todo from-main`, requirements and implementation plan are stubs — see "Ad-hoc items" below.
+- `telec todo artifacts read {slug} implementation-plan` exists (unless bug fix or ad-hoc item).
+- `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections (unless bug fix).
 - Build phase completed for the slug.
 
 ## Steps
 
 ### 1. Establish review scope
 
-If no slug provided, select the first item with phase `active` in `state.yaml` that lacks `review-findings.md`.
+If no slug provided, select the first item with phase `active` in `todo state (todos.db)` that lacks `review-findings.md`.
 
 Read:
 
-- `todos/{slug}/requirements.md` (or `bug.md` for bug fixes)
-- `todos/{slug}/implementation-plan.md`
+- `telec todo artifacts read {slug} requirements` (or `bug.md` for bug fixes)
+- `telec todo artifacts read {slug} implementation-plan`
 - `README.md`, `AGENTS.md`, and `docs/*` for project patterns
 
 Use merge-base to focus the diff:
@@ -45,7 +45,7 @@ git diff $(git merge-base HEAD main)..HEAD --name-only
 git diff $(git merge-base HEAD main)..HEAD
 ```
 
-Orchestrator-managed files (`todos/roadmap.yaml`, `todos/{slug}/state.yaml`) are part of the task context. Do not raise findings for changes in these files unless review scope explicitly includes planning/state edits.
+Orchestrator-managed files (`todos.db` roadmap, `todos.db` state) are part of the task context. Do not raise findings for changes in these files unless review scope explicitly includes planning/state edits.
 
 ### 2. Completeness checks
 
@@ -182,7 +182,7 @@ Missing browser-smoke verification for browser-based frontend changes is an **Im
 
 #### Demo artifact review
 
-Read `todos/{slug}/demo.md` (or `demos/{slug}/demo.md`). For each executable bash block, cross-check against the actual implementation:
+Read `telec todo artifacts read {slug} demo` (or `demos/{slug}/demo.md`). For each executable bash block, cross-check against the actual implementation:
 
 - Do the commands, flags, and subcommands actually exist in the codebase?
 - Does expected output match what the code would produce?
@@ -267,7 +267,7 @@ changes.
 
 #### Bug fix review
 
-When `todos/{slug}/bug.md` exists, use it as the requirement source instead of `requirements.md`. Verify:
+When `telec todo artifacts read {slug} bug` exists, use it as the requirement source instead of `requirements.md`. Verify:
 
 1. Fix addresses the symptom described in `bug.md`.
 2. Root cause analysis is sound.
@@ -280,7 +280,7 @@ Missing reproduction test for a bug fix is a **Critical** finding. All other rev
 
 ### 6. Write and commit findings
 
-Write unresolved findings to `todos/{slug}/review-findings.md`.
+Write unresolved findings to `telec todo artifacts read {slug} review-findings`.
 
 Verdict rules — **verdict is arithmetic, not judgement:**
 
@@ -297,7 +297,7 @@ Verdict rules — **verdict is arithmetic, not judgement:**
 If all findings were remediated inline, record a short "Resolved During Review"
 section so the caller can trace what changed.
 
-Commit all files in the worktree. Do not edit `state.yaml` in the reviewer session
+Commit all files in the worktree. Do not edit `todo state (todos.db)` in the reviewer session
 (the orchestrator records the verdict), but do commit any orchestrator-written
 changes alongside review findings. Report summary and verdict to the caller.
 
@@ -320,7 +320,7 @@ Verdict: APPROVE | REQUEST CHANGES
 
 ## Outputs
 
-- `todos/{slug}/review-findings.md` with structured severity sections.
+- `telec todo artifacts read {slug} review-findings` with structured severity sections.
 - A commit containing review findings (and any allowed checklist updates).
 - Verdict reported to orchestrator for phase-state recording.
 

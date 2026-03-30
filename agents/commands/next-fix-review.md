@@ -20,7 +20,7 @@ Address review findings and prepare the work for re-review.
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/review-findings.md`
+- `telec todo artifacts read {slug} review-findings`
 
 ## Outputs
 

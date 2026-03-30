@@ -30,7 +30,7 @@ Review code changes against requirements and architecture and produce a verdict.
 
 ## Outputs
 
-- `todos/{slug}/review-findings.md`
+- `telec todo artifacts read {slug} review-findings`
 - Verdict: APPROVE or REQUEST CHANGES
 - Report format:
 
@@ -43,7 +43,7 @@ Review code changes against requirements and architecture and produce a verdict.
 
 ## Steps
 
-- Read `todos/{slug}/requirements.md`, `implementation-plan.md`, and the diff against main.
+- Read `telec todo artifacts read {slug} requirements`, `implementation-plan.md`, and the diff against main.
 
 - **Ad-hoc item detection:** If `requirements.md` contains the marker text `telec todo from-main`,
   this is an ad-hoc submission (code committed directly, no formal requirements or planning).

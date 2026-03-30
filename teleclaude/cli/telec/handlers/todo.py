@@ -529,10 +529,12 @@ def _handle_artifacts_write(args: list[str]) -> None:
 
 
 def _handle_todo_stamp(args: list[str]) -> None:
-    """Handle telec todo stamp <slug> --verdict|--build|--dor-score|--grounding-invalidated."""
+    """Handle telec todo stamp <slug> --verdict|--build|--dor-score|--dor-status|--grounding-invalidated."""
     slug: str | None = None
     stamp_type: str | None = None
     value: str | None = None
+    dor_score: str | None = None
+    dor_status: str | None = None
 
     i = 0
     while i < len(args):
@@ -545,9 +547,11 @@ def _handle_todo_stamp(args: list[str]) -> None:
             stamp_type = "build"
             value = args[i + 1]
             i += 2
+        elif arg == "--dor-score" and i + 1 < len(args):
+            dor_score = args[i + 1]
+            i += 2
         elif arg == "--dor-status" and i + 1 < len(args):
-            stamp_type = "dor"
-            value = args[i + 1]
+            dor_status = args[i + 1]
             i += 2
         elif arg == "--grounding-invalidated":
             stamp_type = "grounding"
@@ -559,11 +563,21 @@ def _handle_todo_stamp(args: list[str]) -> None:
         else:
             i += 1
 
+    # Build compound DOR value from --dor-score and/or --dor-status
+    if dor_score is not None or dor_status is not None:
+        stamp_type = "dor"
+        parts: list[str] = []
+        if dor_score is not None:
+            parts.append(f"score:{dor_score}")
+        if dor_status is not None:
+            parts.append(f"status:{dor_status}")
+        value = ",".join(parts)
+
     if not slug:
         print("Usage: telec todo stamp <slug> --verdict approve|needs_work")
         raise SystemExit(1)
     if not stamp_type or not value:
-        print("Missing stamp flag (--verdict, --build, --dor-status, --grounding-invalidated)")
+        print("Missing stamp flag (--verdict, --build, --dor-score, --dor-status, --grounding-invalidated)")
         raise SystemExit(1)
 
     result = tool_api_request(

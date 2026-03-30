@@ -19,13 +19,13 @@ Capture the human's evolving thinking about a todo and crystallize it into input
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/input.md` (may or may not exist)
-- `todos/{slug}/requirements.md` (if exists, informs what's already derived)
+- `telec todo artifacts read {slug} input` (may or may not exist)
+- `telec todo artifacts read {slug} requirements` (if exists, informs what's already derived)
 
 ## Outputs
 
-- Rewritten `todos/{slug}/input.md` integrating old and new thinking
-- `todos/{slug}/state.yaml` with grounding invalidated
+- Rewritten `telec todo artifacts read {slug} input` integrating old and new thinking
+- Grounding invalidated via `telec todo stamp {slug} --grounding-invalidated`
 - Report format:
 
   ```

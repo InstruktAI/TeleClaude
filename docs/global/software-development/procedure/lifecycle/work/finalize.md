@@ -18,15 +18,15 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
 
 ## Preconditions
 
-- `todos/{slug}/review-findings.md` exists with verdict APPROVE.
-- `todos/{slug}/quality-checklist.md` exists.
+- `telec todo artifacts read {slug} review-findings` exists with verdict APPROVE.
+- `telec todo artifacts read {slug} quality-checklist` exists.
 - No unresolved deferrals.
 
 ## Steps
 
 ### Stage A — Worker: finalize-prepare (worktree)
 
-1. Read `todos/{slug}/review-findings.md` and confirm verdict APPROVE.
+1. Read `telec todo artifacts read {slug} review-findings` and confirm verdict APPROVE.
 2. Integrate latest main inside the worktree:
 
    ```bash

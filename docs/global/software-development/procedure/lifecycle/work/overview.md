@@ -17,7 +17,7 @@ instructed by the state machine and supervises their progress.
 ## Preconditions
 
 - Target slug has completed preparation (state: PREPARED).
-- `todos/{slug}/requirements.md` and `todos/{slug}/implementation-plan.md` exist and are approved.
+- `telec todo artifacts read {slug} requirements` and `telec todo artifacts read {slug} implementation-plan` exist and are approved.
 - Worktree is available or can be created for the slug.
 
 ## Steps

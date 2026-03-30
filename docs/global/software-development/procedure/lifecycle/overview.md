@@ -56,11 +56,11 @@ Merge candidates to canonical main:
 - **No micromanagement**: orchestrator dispatches and monitors; workers implement autonomously
 - **Quality gates**: pre-commit hooks enforce standards; review validates completeness
 
-Work state lives in `todos/{slug}/state.yaml`.
+Work state lives in `todos.db` state.
 
 ## Preconditions
 
-- Work item exists in `todos/roadmap.yaml`.
+- Work item exists in `todos.db` roadmap.
 
 ## Steps
 

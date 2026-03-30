@@ -2,7 +2,7 @@
 id: 'software-development/procedure/lifecycle/review-requirements'
 type: 'procedure'
 scope: 'domain'
-description: 'Requirements review phase. Validate requirements.md against quality standard and write verdict to state.yaml.'
+description: 'Requirements review phase. Validate requirements.md against quality standard and write verdict to todo state (todos.db).'
 ---
 
 # Review Requirements — Procedure
@@ -15,20 +15,20 @@ description: 'Requirements review phase. Validate requirements.md against qualit
 
 ## Goal
 
-Validate `requirements.md` against the requirements quality standard and write a binary verdict to `state.yaml`. This is a preparation review, not a code review.
+Validate `requirements.md` against the requirements quality standard and write a binary verdict to `todo state (todos.db)`. This is a preparation review, not a code review.
 
 ## Preconditions
 
-- `todos/{slug}/requirements.md` exists.
-- `todos/{slug}/input.md` exists (the source the requirements were derived from).
+- `telec todo artifacts read {slug} requirements` exists.
+- `telec todo artifacts read {slug} input` exists (the source the requirements were derived from).
 
 ## Steps
 
 ### 1. Read context
 
-- `todos/{slug}/requirements.md` — the artifact under review.
-- `todos/{slug}/input.md` — the original human thinking.
-- `todos/roadmap.yaml` — the slug's description.
+- `telec todo artifacts read {slug} requirements` — the artifact under review.
+- `telec todo artifacts read {slug} input` — the original human thinking.
+- `todos.db` roadmap — the slug's description.
 - Relevant codebase files referenced in the requirements.
 - Apply the domain-context loading rule from the preparation artifact quality
   policy: identify which specs the requirements touch and load them before
@@ -87,7 +87,7 @@ Assign each finding a severity level before routing:
 - **architectural** — unresolved design decision or systemic contradiction requiring human
   input before the work can proceed. Routes to `needs_decision` and blocks the machine.
 
-Record findings in `state.yaml` under `requirements_review.findings`:
+Record findings in `todo state (todos.db)` under `requirements_review.findings`:
 
 ```yaml
 findings:
@@ -98,8 +98,8 @@ findings:
     resolved_at: ''
 ```
 
-The `findings` list in `state.yaml` is the authoritative record. The markdown file
-`todos/{slug}/requirements-review-findings.md` is the human-readable reference — write it
+The `findings` list in `todo state (todos.db)` is the authoritative record. The markdown file
+`telec todo artifacts read {slug} requirements-review-findings` is the human-readable reference — write it
 when unresolved findings exist, remove it when all are resolved.
 
 ### 4. Auto-remediate trivial findings
@@ -131,7 +131,7 @@ the requirements cover.
 
 ### 5. Write verdict
 
-Update `todos/{slug}/state.yaml`:
+Update `todos.db` state:
 
 ```yaml
 requirements_review:
@@ -162,8 +162,8 @@ Findings: {count}
 
 ## Outputs
 
-- Verdict in `todos/{slug}/state.yaml`.
-- `todos/{slug}/requirements-review-findings.md` if findings exist.
+- Verdict in `todos.db` state.
+- `telec todo artifacts read {slug} requirements-review-findings` if findings exist.
 - Commit containing review artifacts.
 
 ## Recovery
