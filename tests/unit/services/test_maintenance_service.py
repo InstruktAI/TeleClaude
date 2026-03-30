@@ -168,17 +168,18 @@ class TestMaintenanceService:
         )
         purge_closed = _make_session(
             "purge",
-            last_activity=now - timedelta(hours=80),
-            closed_at=now - timedelta(hours=80),
+            last_activity=now - timedelta(days=10),
+            closed_at=now - timedelta(days=10),
             lifecycle_status="closed",
         )
-        purge_inactive = _make_session("inactive", last_activity=now - timedelta(hours=80))
+        # Open inactive sessions are NOT auto-closed
+        open_inactive = _make_session("inactive", last_activity=now - timedelta(days=10))
         service = _make_service()
 
         with (
             patch(
                 "teleclaude.services.maintenance_service.db.list_sessions",
-                new=AsyncMock(return_value=[normalize_only, purge_closed, purge_inactive]),
+                new=AsyncMock(return_value=[normalize_only, purge_closed, open_inactive]),
             ),
             patch("teleclaude.services.maintenance_service.db.update_session", new=AsyncMock()) as update_mock,
             patch("teleclaude.services.maintenance_service.session_cleanup.terminate_session", new=AsyncMock()) as term,
@@ -186,11 +187,11 @@ class TestMaintenanceService:
             await service._cleanup_inactive_sessions()
 
         update_mock.assert_awaited_once_with("normalize", lifecycle_status="closed")
-        assert term.await_count == 2
+        # Only the closed session past 7 days gets purged; open sessions are left alone
+        assert term.await_count == 1
         assert term.await_args_list[0].kwargs["reason"] == "closed_expired"
         assert term.await_args_list[0].kwargs["kill_tmux"] is False
         assert term.await_args_list[0].kwargs["delete_db"] is True
-        assert term.await_args_list[1].kwargs["reason"] == "inactive_72h"
 
     @pytest.mark.unit
     async def test_check_idle_compaction_marks_only_eligible_sessions(self) -> None:
