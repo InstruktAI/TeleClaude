@@ -29,6 +29,7 @@ class WhatsAppAdapter(UiAdapter):
     """UI adapter for WhatsApp Business Cloud API."""
 
     ADAPTER_KEY = "whatsapp"
+    MARKDOWN_FLAVOR = "plain"  # WA converts markdown before sending; word-boundary split is correct
     OUTPUT_MESSAGE_ID_FIELD = "id"
     max_message_size = 4096
     _CAPTION_MAX_CHARS = 1024
@@ -347,14 +348,6 @@ class WhatsAppAdapter(UiAdapter):
         converted = re.sub(r"~~(.+?)~~", r"~\1~", converted)
         converted = re.sub(r"`([^`\n]+)`", r"```\1```", converted)
         return converted
-
-    def _fit_output_to_limit(self, tmux_output: str) -> str:
-        converted = self._convert_markdown_for_platform(tmux_output)
-        if len(converted) <= self.max_message_size:
-            return converted
-        suffix = "\n\n[message truncated]"
-        reserve = max(self.max_message_size - len(suffix), 0)
-        return f"{converted[:reserve]}{suffix}" if reserve > 0 else converted[: self.max_message_size]
 
     def _build_output_metadata(self, _session: Session, _is_truncated: bool) -> MessageMetadata:
         return MessageMetadata(parse_mode=None)

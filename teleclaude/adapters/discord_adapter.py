@@ -66,6 +66,7 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     """Discord bot adapter using discord.py."""
 
     ADAPTER_KEY = "discord"
+    MARKDOWN_FLAVOR = "gfm"
     OUTPUT_MESSAGE_ID_FIELD = "id"
     OUTPUT_CADENCE_SECONDS = 1.0
     max_message_size = 2000

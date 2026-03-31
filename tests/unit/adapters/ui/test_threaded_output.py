@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.adapters.ui.threaded_output."""
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -17,10 +18,11 @@ from teleclaude.core.models import MessageMetadata, Session
 
 class _ThreadedHost(ThreadedOutputMixin):
     ADAPTER_KEY = "telegram"
+    MARKDOWN_FLAVOR = "plain"
     max_message_size = 50
     THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS = 50
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.client = MagicMock()
         self._char_offset: int = 0
         self._output_message_id: str | None = None
@@ -31,35 +33,35 @@ class _ThreadedHost(ThreadedOutputMixin):
         self.edit_message = AsyncMock(return_value=True)
 
     @classmethod
-    def _get_output_delivery_lock(cls, session_id: str) -> asyncio.Lock:
+    def _get_output_delivery_lock(cls, _session_id: str) -> asyncio.Lock:
         return asyncio.Lock()
 
-    def _get_char_offset(self, session: Session) -> int:
+    def _get_char_offset(self, _session: Session) -> int:
         return self._char_offset
 
-    async def _set_char_offset(self, session: Session, value: int) -> None:
+    async def _set_char_offset(self, _session: Session, value: int) -> None:
         self._char_offset = value
 
-    async def _get_output_message_id(self, session: Session) -> str | None:
+    async def _get_output_message_id(self, _session: Session) -> str | None:
         return self._output_message_id
 
-    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
+    async def _store_output_message_id(self, _session: Session, message_id: str) -> None:
         self._output_message_id = message_id
 
-    async def _clear_output_message_id(self, session: Session) -> None:
+    async def _clear_output_message_id(self, _session: Session) -> None:
         self._output_message_id = None
 
     def _build_metadata_for_thread(self) -> MessageMetadata:
         return MessageMetadata(parse_mode=None)  # No MarkdownV2 by default
 
-    async def _deliver_output_unlocked(
+    async def _deliver_output_unlocked(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         session: Session,
         text: str,
         metadata: MessageMetadata,
-        multi_message: bool = False,
-        status_line: str = "",
-        dedupe_by_digest: bool = True,
+        _multi_message: bool = False,
+        _status_line: str = "",
+        _dedupe_by_digest: bool = True,
     ) -> str | None:
         if self._output_message_id:
             return self._output_message_id
@@ -89,6 +91,7 @@ def _make_session(**kwargs: object) -> Session:
 
 @pytest.fixture
 def host() -> _ThreadedHost:
+    """Provide a minimal ThreadedOutputMixin host instance."""
     return _ThreadedHost()
 
 
@@ -98,8 +101,11 @@ def host() -> _ThreadedHost:
 
 
 class TestCharOffsetManagement:
+    """Tests for char offset tracking and reset logic."""
+
     @pytest.mark.unit
-    async def test_offset_resets_when_text_shorter_than_offset(self, host: _ThreadedHost) -> None:
+    async def test_offset_resets_when_text_shorter_than_offset(self, host: _ThreadedHost) -> None:  # pylint: disable=redefined-outer-name
+        """Offset resets to zero when text is shorter than the recorded offset."""
         session = _make_session()
         host._char_offset = 100  # More than text length
 
@@ -110,7 +116,8 @@ class TestCharOffsetManagement:
         assert host._char_offset == 0 or host._char_offset <= 5
 
     @pytest.mark.unit
-    async def test_no_active_text_with_existing_message_returns_id(self, host: _ThreadedHost) -> None:
+    async def test_no_active_text_with_existing_message_returns_id(self, host: _ThreadedHost) -> None:  # pylint: disable=redefined-outer-name
+        """Returns existing message ID when there is no new text to deliver."""
         session = _make_session()
         host._char_offset = 5
         host._output_message_id = "existing-id"
@@ -128,8 +135,11 @@ class TestCharOffsetManagement:
 
 
 class TestOverflowPagination:
+    """Tests for message overflow splitting and pagination."""
+
     @pytest.mark.unit
-    async def test_long_text_triggers_pagination(self, host: _ThreadedHost) -> None:
+    async def test_long_text_triggers_pagination(self, host: _ThreadedHost) -> None:  # pylint: disable=redefined-outer-name
+        """Long text causes the char offset to advance (pagination occurred)."""
         host.max_message_size = 20
         session = _make_session()
         long_text = "a" * 100
@@ -142,7 +152,8 @@ class TestOverflowPagination:
         assert host._char_offset > 0
 
     @pytest.mark.unit
-    async def test_short_text_within_limit_delivered_directly(self, host: _ThreadedHost) -> None:
+    async def test_short_text_within_limit_delivered_directly(self, host: _ThreadedHost) -> None:  # pylint: disable=redefined-outer-name
+        """Short text within the size limit is delivered without pagination."""
         session = _make_session()
         short_text = "hi"
 

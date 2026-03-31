@@ -534,6 +534,154 @@ def _escape_nested_backticks(text: str) -> str:
     return re.sub(r"```(\w*)\n(.*?)```", escape_nested_backticks, text, flags=re.DOTALL)
 
 
+# ===========================================================================
+# GFM (GitHub-Flavoured Markdown) state machine
+#
+# Used by Discord (raw GFM, no conversion) and any future adapter that
+# sends standard markdown.  Tracks: code-fence, inline-code, bold (``**``),
+# strikethrough (``~~``), and spoiler (``||``).  The scanner is intentionally
+# simpler than the MarkdownV2 one — GFM has no escape sequences relevant to
+# splitting and no link-text / parenthesis-depth edge cases.
+# ===========================================================================
+
+_GFM_STATE_CODE_FENCE = "gfm_code_fence"
+_GFM_STATE_INLINE_CODE = "gfm_inline_code"
+_GFM_STATE_BOLD = "gfm_bold"
+_GFM_STATE_STRIKETHROUGH = "gfm_strikethrough"
+_GFM_STATE_SPOILER = "gfm_spoiler"
+
+
+@dataclass(frozen=True)
+class GfmMarkdownState:
+    """Parser state for balanced GFM chunking.
+
+    stack:
+        Open entity markers in open order, innermost last.
+        Preserves close/reopen order across chunk boundaries.
+    """
+
+    stack: tuple[str, ...] = ()
+
+
+GFM_MARKDOWN_INITIAL_STATE = GfmMarkdownState()
+
+
+def _scan_gfm_token(text: str, index: int, stack: list[str]) -> int:  # pylint: disable=too-many-return-statements
+    """Consume one GFM token at *index*, mutating *stack*. Returns new index."""
+    in_fence = bool(stack and stack[-1] == _GFM_STATE_CODE_FENCE)
+    if in_fence:
+        if text[index : index + 3] == MARKDOWN_FENCE:
+            stack.pop()
+            return index + 3
+        return index + 1  # inside fence — skip char verbatim
+
+    in_inline = bool(stack and stack[-1] == _GFM_STATE_INLINE_CODE)
+    if in_inline:
+        if text[index] == MARKDOWN_INLINE_CODE:
+            stack.pop()
+            return index + 1
+        return index + 1  # inside inline code — skip char verbatim
+
+    # Not inside a code span — process format markers (longest match first).
+    if text[index : index + 3] == MARKDOWN_FENCE:
+        stack.append(_GFM_STATE_CODE_FENCE)
+        return index + 3
+    if text[index : index + 2] == "**":
+        _toggle_stack_marker(stack, _GFM_STATE_BOLD)
+        return index + 2
+    if text[index : index + 2] == "~~":
+        _toggle_stack_marker(stack, _GFM_STATE_STRIKETHROUGH)
+        return index + 2
+    if text[index : index + 2] == "||":
+        _toggle_stack_marker(stack, _GFM_STATE_SPOILER)
+        return index + 2
+    if text[index] == MARKDOWN_INLINE_CODE:
+        stack.append(_GFM_STATE_INLINE_CODE)
+        return index + 1
+    return index + 1  # plain character
+
+
+def scan_gfm_state(text: str, initial_state: GfmMarkdownState = GFM_MARKDOWN_INITIAL_STATE) -> GfmMarkdownState:
+    """Scan GFM text and return parser state after consuming it."""
+    stack = list(initial_state.stack)
+    i = 0
+    while i < len(text):
+        i = _scan_gfm_token(text, i, stack)
+    return GfmMarkdownState(stack=tuple(stack))
+
+
+def _gfm_opening_marker(marker: str) -> str:  # pylint: disable=too-many-return-statements
+    if marker == _GFM_STATE_CODE_FENCE:
+        return f"{MARKDOWN_FENCE}\n"
+    if marker == _GFM_STATE_INLINE_CODE:
+        return MARKDOWN_INLINE_CODE
+    if marker == _GFM_STATE_BOLD:
+        return "**"
+    if marker == _GFM_STATE_STRIKETHROUGH:
+        return "~~"
+    if marker == _GFM_STATE_SPOILER:
+        return "||"
+    return ""
+
+
+def _gfm_closing_marker(marker: str, source_text: str) -> str:
+    if marker == _GFM_STATE_CODE_FENCE:
+        prefix = "\n" if source_text and not source_text.endswith("\n") else ""
+        return f"{prefix}{MARKDOWN_FENCE}"
+    if marker == _GFM_STATE_INLINE_CODE:
+        return MARKDOWN_INLINE_CODE
+    if marker == _GFM_STATE_BOLD:
+        return "**"
+    if marker == _GFM_STATE_STRIKETHROUGH:
+        return "~~"
+    if marker == _GFM_STATE_SPOILER:
+        return "||"
+    return ""
+
+
+def continuation_prefix_for_gfm_state(state: GfmMarkdownState) -> str:
+    """Build GFM opening markers needed to continue a previously closed chunk."""
+    return "".join(_gfm_opening_marker(m) for m in state.stack)
+
+
+def _gfm_closers(text: str, state: GfmMarkdownState) -> str:
+    return "".join(_gfm_closing_marker(m, text) for m in reversed(state.stack))
+
+
+def _trim_gfm_balanced(text: str, budget: int) -> tuple[str, int]:
+    """Trim GFM text to *budget* chars while keeping markers balanced."""
+    current = text[:budget]
+    while True:
+        state = scan_gfm_state(current)
+        if not state.stack:
+            return current, len(current)
+        closers = _gfm_closers(current, state)
+        if len(current) + len(closers) <= budget:
+            return f"{current}{closers}", len(current)
+        if not current:
+            return closers[:budget], 0
+        current = current[:-1]
+
+
+def truncate_gfm_with_consumed(text: str, max_chars: int, suffix: str) -> tuple[str, int]:
+    """Truncate GFM text to *max_chars* keeping markers balanced.
+
+    Returns (truncated_text, consumed_source_chars).  The consumed count
+    excludes any balancing closers or suffix appended during truncation.
+    """
+    if max_chars <= 0:
+        return "", 0
+    if len(text) <= max_chars and not suffix:
+        return _trim_gfm_balanced(text, max_chars)
+    if len(text) <= max_chars:
+        return text, len(text)
+    if len(suffix) >= max_chars:
+        return suffix[:max_chars], 0
+    budget = max_chars - len(suffix)
+    truncated, consumed = _trim_gfm_balanced(text[:budget], budget)
+    return f"{truncated}{suffix}", consumed
+
+
 def _strip_heading_icons(text: str) -> str:
     """Remove emoji prefixes added by telegramify_markdown heading conversion."""
     heading_icons = ("\U0001f4cc", "\u270f", "\U0001f4da", "\U0001f516")

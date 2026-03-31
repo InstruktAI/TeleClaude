@@ -62,6 +62,7 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
+    MARKDOWN_FLAVOR = "markdownv2"
     OUTPUT_MESSAGE_ID_FIELD = "message_id"
 
     COMMAND_HANDLER_OVERRIDES = {

@@ -63,6 +63,11 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     max_message_size: int = UI_MESSAGE_MAX_CHARS
     # Keep small Markdown entities (e.g. links) atomic across chunk boundaries.
     THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS = 50
+    # Markdown dialect used by this adapter for split-boundary marker tracking.
+    # "markdownv2" — Telegram MarkdownV2 (state machine with escaping).
+    # "gfm"        — GitHub-Flavoured Markdown (Discord, raw output).
+    # "plain"      — no markdown tracking; word-boundary splits only.
+    MARKDOWN_FLAVOR: str = "plain"
 
     # Per-session lock to serialize output delivery and prevent concurrent
     # lanes from racing on output_message_id reads/writes.

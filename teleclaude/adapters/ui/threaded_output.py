@@ -1,7 +1,18 @@
 """Threaded output mixin for UI adapters.
 
 Handles append-only threaded message delivery with smart pagination,
-continuation markers, and MarkdownV2 overflow splitting.
+continuation markers, and markdown-aware overflow splitting.
+
+Markdown flavors
+----------------
+Each adapter declares ``MARKDOWN_FLAVOR`` (one of ``"markdownv2"``,
+``"gfm"``, or ``"plain"``).  The mixin dispatches the overflow split
+to the matching strategy:
+
+* ``markdownv2`` — Telegram MarkdownV2 state machine (existing path).
+* ``gfm`` — GFM state machine (Discord and future GFM adapters).
+* ``plain`` — word-boundary split, no marker tracking (WhatsApp and
+  adapters that convert away all markdown before sending).
 """
 # pylint: disable=protected-access
 
@@ -9,18 +20,21 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
 
 import teleclaude.core.db as core_db
 from teleclaude.core.models import MessageMetadata
 from teleclaude.utils.markdown import (
+    GFM_MARKDOWN_INITIAL_STATE,
     MARKDOWN_V2_INITIAL_STATE,
-    MarkdownV2State,
+    continuation_prefix_for_gfm_state,
     continuation_prefix_for_markdown_v2_state,
     leading_balanced_markdown_v2_entity_span,
+    scan_gfm_state,
     scan_markdown_v2_state,
+    truncate_gfm_with_consumed,
     truncate_markdown_v2_with_consumed,
 )
 
@@ -33,6 +47,7 @@ if TYPE_CHECKING:
 
     class _ThreadedOutputHost(Protocol):  # pylint: disable=too-few-public-methods
         ADAPTER_KEY: str
+        MARKDOWN_FLAVOR: str
         max_message_size: int
         THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS: int
         client: AdapterClient
@@ -58,7 +73,7 @@ class OverflowPlan:
 
     chunk: str
     split_idx: int
-    next_state: MarkdownV2State
+    next_state: Any  # MarkdownV2State | GfmMarkdownState — opaque to the base mixin
 
 
 @dataclass(frozen=True)
@@ -66,9 +81,9 @@ class OverflowContext:
     """Inputs shared by the overflow planning helpers."""
 
     continuation_prefix: str
-    continuation_state: MarkdownV2State
+    continuation_state: Any  # MarkdownV2State | GfmMarkdownState
     available_for_content: int
-    is_markup_v2: bool
+    markdown_flavor: str  # "markdownv2" | "gfm" | "plain"
 
 
 @dataclass(frozen=True)
@@ -109,14 +124,23 @@ class ThreadedOutputMixin:
         """Public wrapper for refreshing the mutable session output state."""
         await self._sync_threaded_session_state(session)
 
+    def _initial_markdown_state(self) -> Any:
+        """Return the correct zero-state for this adapter's markdown flavor."""
+        host = cast("_ThreadedOutputHost", self)
+        if host.MARKDOWN_FLAVOR == "gfm":
+            return GFM_MARKDOWN_INITIAL_STATE
+        return MARKDOWN_V2_INITIAL_STATE  # markdownv2 and plain both start here
+
     async def send_threaded_output(
         self,
         session: Session,
         text: str,
         multi_message: bool = False,
-        _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
+        _continuation_state: Any = None,
     ) -> str | None:
         """Send or edit threaded output message with smart pagination."""
+        if _continuation_state is None:
+            _continuation_state = self._initial_markdown_state()
         host = cast("_ThreadedOutputHost", self)
         lock = host._get_output_delivery_lock(session.session_id)
         async with lock:
@@ -149,7 +173,7 @@ class ThreadedOutputMixin:
         session: Session,
         text: str,
         multi_message: bool = False,
-        _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
+        _continuation_state: Any = None,
     ) -> str | None:
         """Threaded-output core logic. Caller must hold the session output lock."""
         host = cast("_ThreadedOutputHost", self)
@@ -173,7 +197,7 @@ class ThreadedOutputMixin:
             return output_message_id
 
         # 3. Add continuity markers
-        is_markup_v2, continuation_prefix, display_text = self._build_thread_body(active_text, _continuation_state)
+        markdown_flavor, continuation_prefix, display_text = self._build_thread_body(active_text, _continuation_state)
 
         # 5. Check for overflow
         limit = self.max_message_size - 10
@@ -182,7 +206,7 @@ class ThreadedOutputMixin:
                 continuation_prefix=continuation_prefix,
                 continuation_state=_continuation_state,
                 available_for_content=max(limit, 1),
-                is_markup_v2=is_markup_v2,
+                markdown_flavor=markdown_flavor,
             )
             overflow_plan = self._plan_overflow(
                 active_text,
@@ -211,7 +235,7 @@ class ThreadedOutputMixin:
             display_text,
             ThreadDelivery(
                 output_message_id=output_message_id,
-                is_markup_v2=is_markup_v2,
+                is_markup_v2=(markdown_flavor == "markdownv2"),
                 multi_message=multi_message,
             ),
         )
@@ -235,13 +259,21 @@ class ThreadedOutputMixin:
     def _build_thread_body(
         self,
         active_text: str,
-        continuation_state: MarkdownV2State,
-    ) -> tuple[bool, str, str]:
-        """Build the rendered body text for the current threaded chunk."""
+        continuation_state: Any,
+    ) -> tuple[str, str, str]:
+        """Build the rendered body text for the current threaded chunk.
+
+        Returns (markdown_flavor, continuation_prefix, display_text).
+        """
         host = cast("_ThreadedOutputHost", self)
-        is_markup_v2 = host._build_metadata_for_thread().parse_mode == "MarkdownV2"
-        continuation_prefix = continuation_prefix_for_markdown_v2_state(continuation_state) if is_markup_v2 else ""
-        return is_markup_v2, continuation_prefix, f"{continuation_prefix}{active_text}"
+        flavor = host.MARKDOWN_FLAVOR
+        if flavor == "markdownv2":
+            continuation_prefix = continuation_prefix_for_markdown_v2_state(continuation_state)
+        elif flavor == "gfm":
+            continuation_prefix = continuation_prefix_for_gfm_state(continuation_state)
+        else:
+            continuation_prefix = ""
+        return flavor, continuation_prefix, f"{continuation_prefix}{active_text}"
 
     def _plan_overflow(
         self,
@@ -249,8 +281,10 @@ class ThreadedOutputMixin:
         overflow_context: OverflowContext,
     ) -> OverflowPlan:
         """Choose the next chunk to seal when the current display body overflows."""
-        if overflow_context.is_markup_v2:
+        if overflow_context.markdown_flavor == "markdownv2":
             return self._plan_markdown_overflow(active_text, overflow_context)
+        if overflow_context.markdown_flavor == "gfm":
+            return self._plan_gfm_overflow(active_text, overflow_context)
         return self._plan_plain_overflow(
             active_text,
             overflow_context.continuation_state,
@@ -316,10 +350,44 @@ class ThreadedOutputMixin:
             return atomic_split_idx, atomic_chunk
         return split_idx, chunk
 
+    def _plan_gfm_overflow(
+        self,
+        active_text: str,
+        overflow_context: OverflowContext,
+    ) -> OverflowPlan:
+        """Plan a GFM-safe overflow split.
+
+        Mirrors ``_plan_markdown_overflow`` but uses the GFM state machine so
+        that ``**bold**``, inline-code, and code-fence markers are closed at
+        the chunk boundary and reopened at the start of the next chunk.
+        """
+        body_text = f"{overflow_context.continuation_prefix}{active_text}"
+        chunk, consumed_display = truncate_gfm_with_consumed(
+            body_text,
+            max_chars=overflow_context.available_for_content,
+            suffix="",
+        )
+
+        consumed_prefix = min(consumed_display, len(overflow_context.continuation_prefix))
+        split_idx = consumed_display - consumed_prefix
+
+        # Ensure we always make progress (avoid infinite split at position 0).
+        if split_idx <= 0 and active_text:
+            split_idx = min(len(active_text), overflow_context.available_for_content)
+            chunk, _ = truncate_gfm_with_consumed(
+                f"{overflow_context.continuation_prefix}{active_text[:split_idx]}",
+                max_chars=overflow_context.available_for_content,
+                suffix="",
+            )
+
+        consumed_source = active_text[:split_idx]
+        next_state = scan_gfm_state(consumed_source, initial_state=overflow_context.continuation_state)
+        return OverflowPlan(chunk=chunk, split_idx=split_idx, next_state=next_state)
+
     def _plan_plain_overflow(
         self,
         active_text: str,
-        continuation_state: MarkdownV2State,
+        continuation_state: Any,
         available_for_content: int,
     ) -> OverflowPlan:
         """Plan a plain-text overflow split at a natural word boundary when possible."""
