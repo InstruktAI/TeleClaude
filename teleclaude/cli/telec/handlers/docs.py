@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _usage
 from teleclaude.config.loader import load_app_config
 from teleclaude.context_selector import build_context_output
@@ -14,6 +15,13 @@ __all__ = [
     "_handle_docs_get",
     "_handle_docs_index",
 ]
+
+
+def _current_terminal_role() -> str | None:
+    email = read_current_session_email()
+    if not email:
+        return None
+    return get_identity_resolver().resolve_by_email(email).person_role
 
 
 def _handle_docs(args: list[str]) -> None:
@@ -76,7 +84,7 @@ def _handle_docs_index(args: list[str]) -> None:
             print(_usage("docs", "index"))
             raise SystemExit(1)
 
-    effective_role = get_identity_resolver().resolve_from_terminal().person_role
+    effective_role = _current_terminal_role()
     config = load_app_config(project_root)
     output = build_context_output(
         areas=areas,
@@ -114,7 +122,7 @@ def _handle_docs_get(args: list[str]) -> None:
         print(_usage("docs", "get"))
         raise SystemExit(1)
 
-    effective_role = get_identity_resolver().resolve_from_terminal().person_role
+    effective_role = _current_terminal_role()
     config = load_app_config(project_root)
     output = build_context_output(
         areas=[],

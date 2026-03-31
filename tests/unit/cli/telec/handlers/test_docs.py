@@ -54,7 +54,8 @@ def test_handle_docs_index_builds_context_with_filters(
         "load_app_config",
         lambda _path: mock_config,  # pyright: ignore[reportUnknownLambdaType]
     )
-    mock_resolver = SimpleNamespace(resolve_from_terminal=lambda: SimpleNamespace(person_role="member"))
+    monkeypatch.setattr(docs, "read_current_session_email", lambda: "member@example.com")
+    mock_resolver = SimpleNamespace(resolve_by_email=lambda email: SimpleNamespace(person_role="member", email=email))
     monkeypatch.setattr(docs, "get_identity_resolver", lambda: mock_resolver)
 
     docs._handle_docs_index(
@@ -92,7 +93,8 @@ def test_handle_docs_get_splits_snippet_ids(
         "load_app_config",
         lambda _path: AppConfig(global_=GlobalConfig()),  # pyright: ignore[reportUnknownLambdaType]
     )
-    mock_resolver = SimpleNamespace(resolve_from_terminal=lambda: SimpleNamespace(person_role="member"))
+    monkeypatch.setattr(docs, "read_current_session_email", lambda: "member@example.com")
+    mock_resolver = SimpleNamespace(resolve_by_email=lambda email: SimpleNamespace(person_role="member", email=email))
     monkeypatch.setattr(docs, "get_identity_resolver", lambda: mock_resolver)
 
     docs._handle_docs_get(["a,b", "c"])

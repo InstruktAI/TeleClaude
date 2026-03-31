@@ -23,17 +23,17 @@ The central invariant: **downstream layers receive fully resolved inputs. They n
 
 Each layer has a defined contract for what it receives and what it produces. The direction of data flow establishes ownership.
 
-| Layer            | Receives                               | Produces                                |
-| ---------------- | -------------------------------------- | --------------------------------------- |
-| Artifact         | Nothing (static)                       | AI-facing guidance                      |
-| Injection        | Raw protocol messages + environment    | Fully resolved tool calls               |
-| Contract         | Nothing (declarative)                  | Schema that governs what AI clients see |
-| Handler          | Resolved parameters                    | Tool results                            |
-| Command Pipeline | Edge/handler outputs                   | Normalized command objects              |
-| Core Services    | Commands, events                       | State transitions, domain events        |
-| Edge             | Raw platform input (headers, webhooks, bot messages) | `channel_metadata` (per-request) + normalized commands |
-| CLI / TUI        | API responses, cache snapshots         | User-facing terminal interface          |
-| Infrastructure   | Service-layer requests                 | Storage, execution, transport           |
+| Layer            | Receives                                             | Produces                                     |
+| ---------------- | ---------------------------------------------------- | -------------------------------------------- |
+| Artifact         | Nothing (static)                                     | AI-facing guidance                           |
+| Injection        | Raw protocol messages + environment                  | Fully resolved tool calls                    |
+| Contract         | Nothing (declarative)                                | Schema that governs what AI clients see      |
+| Handler          | Resolved parameters                                  | Tool results                                 |
+| Command Pipeline | Edge/handler outputs                                 | Normalized command objects                   |
+| Core Services    | Commands, events                                     | State transitions, domain events             |
+| Edge             | Raw platform input (headers, webhooks, bot messages) | Typed request metadata + normalized commands |
+| CLI / TUI        | API responses, cache snapshots                       | User-facing terminal interface               |
+| Infrastructure   | Service-layer requests                               | Storage, execution, transport                |
 
 ## Invariants
 
@@ -68,7 +68,7 @@ Owns: session management, event bus, output polling, hook processing, coordinati
 Must never: import adapter-specific code, reference UI concepts, or know about specific transport protocols. Core defines protocols; adapters implement them.
 
 **Edge Layer**
-Owns: inbound origin handling for all platforms. Every origin — UI adapters (Telegram, Discord, WhatsApp), API origins (terminal, web), and daemon-internal origins — passes through an edge that assembles `channel_metadata` from raw platform signals (HTTP headers, webhook payloads, bot message fields). `channel_metadata` is the per-request payload carrying platform-specific identity signals (user_id, email, phone_number, platform). Identity resolution reads from this payload. The session handler merges it into the session's `origin_metadata` — the accumulated record of all `channel_metadata` received during the session's lifetime. Downstream layers never assemble origin context themselves.
+Owns: inbound origin handling for all platforms. Every origin — UI adapters (Telegram, Discord, WhatsApp), API origins (terminal, web), and daemon-internal origins — passes through an edge that normalizes raw platform signals into typed request metadata. Message flows use typed `MessageMetadata` actor fields. Session-creation flows use typed origin metadata objects such as `TerminalOriginMetadata` and `WebOriginMetadata`. Identity resolution reads those typed inputs. The session handler persists the accumulated session view in `origin_metadata`. Downstream layers never assemble origin context themselves.
 Must never: contain domain logic or make domain decisions. Edges translate inbound signals — they don't decide. Domain policies live in core. For outbound UX concerns (message rendering, channel management, platform lifecycle), see the [UI Adapter architecture](ui-adapter.md).
 
 **CLI / TUI**
@@ -104,14 +104,14 @@ Each arrow is a boundary crossing. At each crossing, the downstream layer receiv
 
 ```
 Origin (Telegram, Discord, WhatsApp, Web, Terminal, Daemon)
-  -> Edge (assemble channel_metadata from platform signals)
-    -> Identity Resolution (resolve human_email, human_role from channel_metadata)
+  -> Edge (normalize platform signals into typed request metadata)
+    -> Identity Resolution (resolve human_email, human_role from typed request metadata)
       -> Command Pipeline (normalize to command, enqueue)
-        -> Core Services (create/update session, merge channel_metadata into origin_metadata)
+        -> Core Services (create/update session, merge session origin sections into origin_metadata)
           -> UI Adapter (translate events to platform UX, where applicable)
 ```
 
-The edge assembles `channel_metadata` — a per-request dict carrying platform-specific identity signals. Identity resolution reads from this payload. Core merges it into the session's `origin_metadata` (the accumulated record across all requests). Core never knows which platform originated the request.
+The edge normalizes request-time identity into typed metadata. Identity resolution reads from that typed payload. Core persists the accumulated session view in `origin_metadata` (the record across all requests). Core never knows which platform originated the request.
 
 ## Failure modes
 

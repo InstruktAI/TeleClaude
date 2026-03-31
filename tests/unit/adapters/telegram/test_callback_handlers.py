@@ -24,24 +24,17 @@ class _StubCallbackHandlers(CallbackHandlersMixin):
     def bot(self) -> MagicMock:
         return MagicMock()
 
-    def _build_project_keyboard(self, callback_prefix: str) -> MagicMock:
+    def _build_project_keyboard(self, _callback_prefix: str) -> MagicMock:
         return MagicMock()
 
-    def _build_heartbeat_keyboard(self, bot_username: str) -> MagicMock:
+    def _build_heartbeat_keyboard(self, _bot_username: str) -> MagicMock:
         return MagicMock()
 
-    async def _send_document_with_retry(
-        self,
-        chat_id: int,
-        message_thread_id: int,
-        file_path: str,
-        filename: str,
-        caption: str | None = None,
-    ) -> MagicMock:
+    async def _send_document_with_retry(self, *_args: object, **_kwargs: object) -> MagicMock:
         return MagicMock()
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
-        return MessageMetadata(channel_metadata=dict(kwargs))
+        return MessageMetadata(**kwargs)
 
     async def _handle_download_full(self, query: object, args: list[str]) -> None:
         self.calls.append(("download_full", query, args))
@@ -68,6 +61,10 @@ class _StubCallbackHandlers(CallbackHandlersMixin):
     ) -> None:
         self.calls.append(("agent_start", query, (agent_name, is_resume, args)))
 
+    async def handle_callback_query(self, update: object, context: object) -> None:
+        """Expose the mixin boundary without calling a protected method from tests."""
+        await self._handle_callback_query(update, context)
+
 
 # ---------------------------------------------------------------------------
 # _handle_callback_query — dispatch boundary
@@ -75,54 +72,59 @@ class _StubCallbackHandlers(CallbackHandlersMixin):
 
 
 async def test_handle_callback_query_is_noop_when_callback_query_is_none():
+    """Missing callback queries are ignored."""
     handler = _StubCallbackHandlers()
     update = MagicMock()
     update.callback_query = None
-    await handler._handle_callback_query(update, MagicMock())
-    assert handler.calls == []
+    await handler.handle_callback_query(update, MagicMock())
+    assert not handler.calls
 
 
 async def test_handle_callback_query_is_noop_when_data_has_no_separator():
+    """Malformed callback payloads are ignored."""
     handler = _StubCallbackHandlers()
     query = MagicMock()
     query.data = "noseparator"
     query.answer = AsyncMock()
     update = MagicMock(callback_query=query)
-    await handler._handle_callback_query(update, MagicMock())
-    assert handler.calls == []
+    await handler.handle_callback_query(update, MagicMock())
+    assert not handler.calls
 
 
 async def test_handle_callback_query_ignores_unknown_action():
+    """Unknown callback actions are ignored."""
     handler = _StubCallbackHandlers()
     query = MagicMock()
     query.data = "unknownaction:arg"
     query.answer = AsyncMock()
     update = MagicMock(callback_query=query)
-    await handler._handle_callback_query(update, MagicMock())
-    assert handler.calls == []
+    await handler.handle_callback_query(update, MagicMock())
+    assert not handler.calls
 
 
 async def test_handle_callback_query_routes_session_select_action():
+    """Session-select payloads dispatch to the session-select handler."""
     handler = _StubCallbackHandlers()
     query = MagicMock()
     query.answer = AsyncMock()
     query.data = "ssel:ignored"
     update = MagicMock(callback_query=query)
 
-    await handler._handle_callback_query(update, MagicMock())
+    await handler.handle_callback_query(update, MagicMock())
 
     query.answer.assert_awaited_once()
     assert handler.calls == [("session_select", query, None)]
 
 
 async def test_handle_callback_query_routes_asel_with_agent_name():
+    """Agent-select payloads dispatch with resume disabled."""
     handler = _StubCallbackHandlers()
     query = MagicMock()
     query.answer = AsyncMock()
     query.data = "asel:claude"
     update = MagicMock(callback_query=query)
 
-    await handler._handle_callback_query(update, MagicMock())
+    await handler.handle_callback_query(update, MagicMock())
 
     assert handler.calls == [("agent_select", query, ("claude", False))]
 
@@ -135,7 +137,7 @@ async def test_handle_callback_query_routes_legacy_resume_select_to_gemini():
     query.data = "grsel:bot-user"
     update = MagicMock(callback_query=query)
 
-    await handler._handle_callback_query(update, MagicMock())
+    await handler.handle_callback_query(update, MagicMock())
 
     assert handler.calls == [("agent_select", query, ("gemini", True))]
 
@@ -148,7 +150,7 @@ async def test_handle_callback_query_routes_legacy_select_to_codex():
     query.data = "cxsel:bot-user"
     update = MagicMock(callback_query=query)
 
-    await handler._handle_callback_query(update, MagicMock())
+    await handler.handle_callback_query(update, MagicMock())
 
     assert handler.calls == [("agent_select", query, ("codex", False))]
 
@@ -161,6 +163,6 @@ async def test_handle_callback_query_routes_legacy_resume_start_to_codex():
     query.data = "cxr:bot-user:native-42"
     update = MagicMock(callback_query=query)
 
-    await handler._handle_callback_query(update, MagicMock())
+    await handler.handle_callback_query(update, MagicMock())
 
     assert handler.calls == [("agent_start", query, ("codex", True, ["bot-user", "native-42"]))]

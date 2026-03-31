@@ -519,22 +519,17 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
         if session.lifecycle_status == "initializing":
             return
 
-        message_id = str(getattr(message, "id", ""))
-        channel_metadata = {
-            "message_id": message_id,
-            "user_id": str(getattr(getattr(message, "author", None), "id", "")),
-            "discord_user_id": str(getattr(getattr(message, "author", None), "id", "")),
-        }
         author_obj = getattr(message, "author", None)
-        if author_obj is not None:
-            channel_metadata["user_name"] = self._discord_actor_name(
-                author_obj,
-                str(getattr(author_obj, "id", "")),
-            )
-        metadata = self._metadata(channel_metadata=channel_metadata)  # type: ignore[attr-defined]
-        actor_user_id = str(getattr(getattr(message, "author", None), "id", "")).strip() or "unknown"
-        actor_name = self._discord_actor_name(getattr(message, "author", None), actor_user_id)
-        actor_avatar_url = self._discord_actor_avatar_url(getattr(message, "author", None))
+        message_id = str(getattr(message, "id", ""))
+        actor_user_id = str(getattr(author_obj, "id", "")).strip() or "unknown"
+        actor_name = self._discord_actor_name(author_obj, actor_user_id)
+        actor_avatar_url = self._discord_actor_avatar_url(author_obj)
+        metadata = self._metadata(  # type: ignore[attr-defined]
+            platform_message_id=message_id or None,
+            actor_id=f"discord:{actor_user_id}",
+            actor_name=actor_name,
+            actor_avatar_url=actor_avatar_url,
+        )
         channel_id_str = str(getattr(getattr(message, "channel", None), "id", "")) or None
         cmd = ProcessMessageCommand(
             session_id=session.session_id,

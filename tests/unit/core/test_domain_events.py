@@ -1,3 +1,4 @@
+# pylint: disable=import-outside-toplevel,missing-function-docstring,protected-access,too-few-public-methods,too-many-locals,no-value-for-parameter
 # guard: no-companion
 """Test specifications for FR-4: Domain event emission for fire-and-forget mutations.
 
@@ -53,6 +54,13 @@ class TestAgentRestartEventEmission:
         def capture_emit(event: str, context: object) -> None:
             emitted.append((event, context))
 
+        def capture_task(coro: object, *, name: str | None = None) -> MagicMock:
+            _ = name
+            close = getattr(coro, "close", None)
+            if callable(close):
+                close()
+            return MagicMock()
+
         with (
             patch("teleclaude.core.command_handlers._utils.db") as mock_db,
             patch("teleclaude.core.command_handlers._agent.tmux_bridge") as mock_tmux_bridge,
@@ -60,11 +68,12 @@ class TestAgentRestartEventEmission:
             patch("teleclaude.core.command_handlers._agent.assert_agent_enabled", return_value="claude"),
             patch("teleclaude.core.command_handlers._agent.get_agent_command", return_value="claude resume"),
             patch("teleclaude.core.command_handlers._agent.inject_checkpoint_if_needed", new=AsyncMock()),
-            patch("asyncio.create_task"),
+            patch("asyncio.create_task", side_effect=capture_task),
             patch.object(event_bus, "emit", side_effect=capture_emit),
         ):
             mock_db.get_session = AsyncMock(return_value=mock_session)
             mock_tmux_bridge.session_exists = AsyncMock(return_value=True)
+            mock_tmux_bridge.get_pane_pid = AsyncMock(return_value=None)
             mock_tmux_io.send_signal = AsyncMock(return_value=False)
             mock_tmux_io.wait_for_shell_ready = AsyncMock(return_value=True)
             await agent_restart(cmd, client, execute_terminal_command)

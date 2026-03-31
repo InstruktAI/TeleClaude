@@ -48,6 +48,11 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 
+def _decode_redis_text(data: dict[bytes, bytes], key: bytes) -> str | None:
+    """Decode an optional UTF-8 text field from a Redis payload."""
+    return data.get(key, b"").decode("utf-8") or None
+
+
 class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Internal mixin only exposes private polling hooks.:
     """Mixin: Redis stream polling, message parsing, command dispatch."""
 
@@ -222,32 +227,30 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
                 return
 
             # Normalize via mapper
+            launch_intent_obj = None
+            if isinstance(parsed.launch_intent, dict):
+                launch_intent_obj = SessionLaunchIntent.from_dict(parsed.launch_intent)
+            metadata = MessageMetadata(
+                origin=parsed.origin,
+                actor_id=parsed.actor_id,
+                actor_name=parsed.actor_name,
+                actor_avatar_url=parsed.actor_avatar_url,
+                platform_message_id=parsed.platform_message_id,
+                project_path=parsed.project_path,
+                title=parsed.title,
+                launch_intent=launch_intent_obj,
+            )
             command = CommandMapper.map_redis_input(
                 command_str=parsed.command,
                 session_id=parsed.session_id,
                 project_path=parsed.project_path,
                 title=parsed.title,
-                channel_metadata=parsed.channel_metadata,
+                metadata=metadata,
                 launch_intent=parsed.launch_intent,
                 origin=parsed.origin,
                 initiator=parsed.initiator,
             )
             command.request_id = message_id
-
-            launch_intent_obj = None
-            if isinstance(parsed.launch_intent, dict):
-                launch_intent_obj = SessionLaunchIntent.from_dict(parsed.launch_intent)
-            metadata = MessageMetadata(
-                channel_metadata=parsed.channel_metadata,
-                project_path=parsed.project_path,
-                title=parsed.title,
-                launch_intent=launch_intent_obj,
-            )
-
-            if parsed.initiator:
-                # Ensure target_computer set for stop forwarding
-                metadata.channel_metadata = metadata.channel_metadata or {}
-                metadata.channel_metadata["target_computer"] = parsed.initiator
 
             logger.info(">>> About to call command service for: %s", command.command_type)
             result = await self._execute_command(command)
@@ -362,28 +365,14 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
 
     def _parse_redis_message(self, data: dict[bytes, bytes]) -> RedisInboundMessage:
         """Decode raw Redis stream entry into typed RedisInboundMessage."""
-        msg_type = data.get(b"type", b"").decode("utf-8")
-        session_id = data.get(b"session_id", b"").decode("utf-8") or None
-        command = data.get(b"command", b"").decode("utf-8")
-        origin_raw = data.get(b"origin", b"").decode("utf-8")
+        msg_type = _decode_redis_text(data, b"type") or ""
+        session_id = _decode_redis_text(data, b"session_id")
+        command = _decode_redis_text(data, b"command") or ""
+        origin_raw = _decode_redis_text(data, b"origin")
         if not origin_raw:
             raise ValueError("Redis inbound message missing origin field")
-        origin = origin_raw
-
-        channel_metadata: JsonDict | None = None
-        if b"channel_metadata" in data:
-            try:
-                parsed = json.loads(data[b"channel_metadata"].decode("utf-8"))
-                if isinstance(parsed, dict):
-                    channel_metadata = parsed
-            except json.JSONDecodeError:
-                logger.warning("Invalid channel_metadata JSON in message")
-
-        initiator = data.get(b"initiator", b"").decode("utf-8") or None
-        project_path = data.get(b"project_path", b"").decode("utf-8") or None
-        title = data.get(b"title", b"").decode("utf-8") or None
-        launch_intent_raw = data.get(b"launch_intent", b"").decode("utf-8") or None
         launch_intent = None
+        launch_intent_raw = _decode_redis_text(data, b"launch_intent")
         if launch_intent_raw:
             try:
                 parsed_intent = json.loads(launch_intent_raw)
@@ -396,11 +385,14 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
             msg_type=msg_type,
             session_id=session_id,
             command=command,
-            channel_metadata=channel_metadata,
-            initiator=initiator,
-            project_path=project_path,
-            title=title,
-            origin=origin,
+            actor_id=_decode_redis_text(data, b"actor_id"),
+            actor_name=_decode_redis_text(data, b"actor_name"),
+            actor_avatar_url=_decode_redis_text(data, b"actor_avatar_url"),
+            platform_message_id=_decode_redis_text(data, b"platform_message_id"),
+            initiator=_decode_redis_text(data, b"initiator"),
+            project_path=_decode_redis_text(data, b"project_path"),
+            title=_decode_redis_text(data, b"title"),
+            origin=origin_raw,
             launch_intent=launch_intent,
         )
 

@@ -48,6 +48,6 @@ Memories are cross-project (identity_key scoped to person, not session). They ge
 
 ## Dependencies and shared abstractions
 
-**Parent dependency:** `channel-metadata-redesign` — delivers channel_metadata as single merge-on-write blob with cross-platform identity and a shared identity resolution helper. This todo MUST use that helper for resolving and storing memories under all known platform identities. Do not reimplement identity resolution — `derive_identity_key()` will be superseded by the shared helper.
+**Parent dependency:** `identity-origin-cleanup` — delivers session `origin_metadata` as merge-on-write platform sections together with typed request-time actor/origin metadata and a shared identity resolution helper. This todo MUST use that helper for resolving and storing memories under all known platform identities. Do not reimplement identity resolution — `derive_identity_key()` will be superseded by the shared helper.
 
-**Constraint:** The identity lookup for memories and the identity lookup for mirrors must use the same mechanism. A customer who accessed a session from Telegram and later from Web has both identities in channel_metadata. Memory extraction must resolve ALL platform identities and store memories findable from any of them.
+**Constraint:** The identity lookup for memories and the identity lookup for mirrors must use the same mechanism. A customer who accessed a session from Telegram and later from Web has both identities recorded in the session origin sections. Memory extraction must resolve ALL platform identities and store memories findable from any of them.

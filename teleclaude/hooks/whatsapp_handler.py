@@ -146,9 +146,17 @@ async def _dispatch_whatsapp_command(
         await handler()
         return
 
+    payload_actor_id = str(payload.get("actor_id")).strip() if payload.get("actor_id") is not None else None
+    payload_actor_name = str(payload.get("actor_name")).strip() if payload.get("actor_name") is not None else None
+    payload_actor_avatar_url = (
+        str(payload.get("actor_avatar_url")).strip() if payload.get("actor_avatar_url") is not None else None
+    )
     metadata = MessageMetadata(
         origin=InputOrigin.WHATSAPP.value,
-        channel_metadata={"message_id": message_id} if message_id else None,
+        platform_message_id=message_id or None,
+        actor_id=payload_actor_id or None,
+        actor_name=payload_actor_name or None,
+        actor_avatar_url=payload_actor_avatar_url or None,
     )
     dispatch_command = adapter._dispatch_command  # pylint: disable=protected-access
     await dispatch_command(
@@ -176,8 +184,8 @@ async def _handle_text_event(
         session_id=session_id,
         text=text,
         origin=InputOrigin.WHATSAPP.value,
-        actor_id=phone_number,
-        actor_name=f"whatsapp:{phone_number}",
+        actor_id=f"whatsapp:{phone_number}",
+        actor_name=phone_number,
     )
     await _dispatch_whatsapp_command(
         session=session,
@@ -213,8 +221,8 @@ async def _handle_media_event(
             file_path=str(local_path),
             origin=InputOrigin.WHATSAPP.value,
             message_id=message_id or None,
-            actor_id=phone_number,
-            actor_name=f"whatsapp:{phone_number}",
+            actor_id=f"whatsapp:{phone_number}",
+            actor_name=phone_number,
         )
         await _dispatch_whatsapp_command(
             session=session,

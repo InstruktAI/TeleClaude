@@ -327,13 +327,8 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
                             session_id=peer.session_id,
                             metadata=MessageMetadata(
                                 origin=sender_origin,
-                                channel_metadata={
-                                    "actor_id": actor_id,
-                                    "actor_name": actor_name,
-                                    "actor_role": "system",
-                                    "actor_agent": "system",
-                                    "actor_computer": sender_computer,
-                                },
+                                actor_id=actor_id,
+                                actor_name=actor_name,
                             ),
                         )
                     delivered += 1

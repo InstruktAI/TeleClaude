@@ -49,7 +49,10 @@ class RedisInboundMessage:  # pylint: disable=too-many-instance-attributes  # Re
     msg_type: str
     session_id: str | None
     command: str
-    channel_metadata: dict[str, object] | None = None  # guard: loose-dict
+    actor_id: str | None = None
+    actor_name: str | None = None
+    actor_avatar_url: str | None = None
+    platform_message_id: str | None = None
     initiator: str | None = None
     project_path: str | None = None
     title: str | None = None

@@ -1,4 +1,5 @@
 # pyright: reportUnknownLambdaType=false
+# pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
 from __future__ import annotations
 
 from typing import Any, cast
@@ -153,8 +154,8 @@ class TestGenerateMirrorSync:
         assert record.title == "Plan the rollout"
         assert record.message_count == 2
         assert (
-            record.conversation_text
-            == "[2025-01-01T00:00:00+00:00] User: Plan the rollout\n\n[2025-01-01T00:01:00+00:00] Assistant: Here is the rollout"
+            record.conversation_text == "[2025-01-01T00:00:00+00:00] User: Plan the rollout\n\n"
+            "[2025-01-01T00:01:00+00:00] Assistant: Here is the rollout"
         )
         assert record.metadata["agent"] == "claude"
         assert record.metadata["transcript_path"] == "/tmp/transcript.jsonl"
@@ -183,7 +184,7 @@ class TestGenerateMirrorSync:
         assert ("session_id", "session-1") in thread_calls[0][2]
         assert ("project", "alpha") in thread_calls[0][2]
 
-    async def test_generate_mirror_persists_summary_visibility_and_channel_metadata(
+    async def test_generate_mirror_persists_summary_visibility_and_channel_identifiers(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         upserted_records: list[MirrorRecord] = []

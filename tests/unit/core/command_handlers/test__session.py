@@ -21,6 +21,7 @@ from teleclaude.core.models import (
     TodoInfo,
     _snapshot,
 )
+from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
 
 
@@ -109,6 +110,117 @@ class TestCreateSession:
         assert create_call.kwargs["lifecycle_status"] == "initializing"
         assert result["tmux_session_name"].startswith(_session.TMUX_SESSION_PREFIX)
 
+    @pytest.mark.unit
+    async def test_headless_commands_create_headless_rows_without_tmux_name(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        help_desk = tmp_path / "help-desk"
+
+        config = SimpleNamespace(computer=SimpleNamespace(name="local", help_desk_dir=str(help_desk)))
+        db = SimpleNamespace(
+            create_session=AsyncMock(return_value=make_session(tmux_session_name="", lifecycle_status="headless")),
+            update_origin_metadata=AsyncMock(),
+            get_session=AsyncMock(return_value=None),
+        )
+
+        def _resolve(_origin: str, _metadata: object) -> SimpleNamespace:
+            return SimpleNamespace(
+                person_email="admin@example.com",
+                person_role="admin",
+                platform="terminal",
+                platform_user_id="admin@example.com",
+            )
+
+        monkeypatch.setattr(_session, "config", config)
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_session, "get_identity_resolver", lambda: SimpleNamespace(resolve=_resolve))
+
+        cmd = CreateSessionCommand(
+            session_id="headless-001",
+            headless=True,
+            native_session_id="native-123",
+            native_log_file="/tmp/native.log",
+            project_path=str(project_path),
+            title="Headless",
+            origin="terminal",
+            origin_metadata={"email": "admin@example.com"},
+            launch_intent=SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT,
+                agent="codex",
+                native_session_id="native-123",
+            ),
+        )
+
+        result = await _session.create_session(cmd, SimpleNamespace())
+
+        create_call = db.create_session.await_args
+        assert create_call.kwargs["session_id"] == "headless-001"
+        assert create_call.kwargs["tmux_session_name"] == ""
+        assert create_call.kwargs["lifecycle_status"] == "headless"
+        assert create_call.kwargs["native_session_id"] == "native-123"
+        assert create_call.kwargs["native_log_file"] == "/tmp/native.log"
+        assert result["tmux_session_name"] == ""
+
+    @pytest.mark.unit
+    async def test_headless_terminal_customers_are_jailed_to_help_desk(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        help_desk = tmp_path / "help-desk"
+
+        config = SimpleNamespace(computer=SimpleNamespace(name="local", help_desk_dir=str(help_desk)))
+        db = SimpleNamespace(
+            create_session=AsyncMock(return_value=make_session(tmux_session_name="", lifecycle_status="headless")),
+            update_origin_metadata=AsyncMock(),
+            get_session=AsyncMock(return_value=None),
+        )
+
+        def _resolve(_origin: str, _metadata: object) -> SimpleNamespace:
+            return SimpleNamespace(
+                person_email="customer@example.com",
+                person_role="customer",
+                platform="terminal",
+                platform_user_id="customer@example.com",
+            )
+
+        monkeypatch.setattr(_session, "config", config)
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_session, "get_identity_resolver", lambda: SimpleNamespace(resolve=_resolve))
+
+        cmd = CreateSessionCommand(
+            session_id="headless-customer",
+            headless=True,
+            native_session_id="native-456",
+            project_path=str(project_path),
+            title="Headless Customer",
+            origin="terminal",
+            origin_metadata=TerminalOriginMetadata(email="customer@example.com"),
+            launch_intent=SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT,
+                agent="codex",
+                native_session_id="native-456",
+            ),
+        )
+
+        result = await _session.create_session(cmd, SimpleNamespace())
+
+        create_call = db.create_session.await_args
+        assert create_call.kwargs["project_path"] == str(help_desk)
+        assert create_call.kwargs["subdir"] is None
+        assert create_call.kwargs["working_slug"] is None
+        assert create_call.kwargs["tmux_session_name"] == ""
+        assert create_call.kwargs["lifecycle_status"] == "headless"
+        assert create_call.kwargs["system_role"] is None
+        assert create_call.kwargs["human_role"] == "customer"
+        assert result["tmux_session_name"] == ""
+
 
 class TestSessionListing:
     @pytest.mark.unit
@@ -117,7 +229,6 @@ class TestSessionListing:
         session.last_message_sent = "ping"
         db = SimpleNamespace(list_sessions=AsyncMock(return_value=[session]))
         config = SimpleNamespace(computer=SimpleNamespace(name="local"))
-
         monkeypatch.setattr(_session, "db", db)
         monkeypatch.setattr(_session, "config", config)
         monkeypatch.setattr(_snapshot, "get_last_output_summary", MagicMock(return_value="summary"))

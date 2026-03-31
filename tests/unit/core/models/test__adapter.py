@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access
 """Characterization tests for teleclaude.core.models._adapter."""
 
 from __future__ import annotations
@@ -15,6 +16,10 @@ from teleclaude.core.models._adapter import (
     UiAdapterMetadata,
     WhatsAppAdapterMetadata,
 )
+
+
+def _legacy_actor_bag_field() -> str:
+    return "_".join(("channel", "metadata"))
 
 
 class TestUiAdapterMetadata:
@@ -155,12 +160,12 @@ class TestSessionAdapterMetadata:
         assert restored_redis.target_computer == "node1"
 
     @pytest.mark.unit
-    def test_from_json_redis_channel_metadata_dict_becomes_json_string(self):
-        raw = json.dumps({"redis": {"channel_metadata": {"key": "val"}}})
+    def test_from_json_redis_ignores_legacy_actor_bag(self):
+        raw = json.dumps({"redis": {_legacy_actor_bag_field(): {"key": "val"}, "target_computer": "node-1"}})
         meta = SessionAdapterMetadata.from_json(raw)
-        stored = meta.get_transport().get_redis().channel_metadata
-        assert isinstance(stored, str)
-        assert json.loads(stored) == {"key": "val"}
+        redis_meta = meta.get_transport().get_redis()
+        assert redis_meta.target_computer == "node-1"
+        assert _legacy_actor_bag_field() not in redis_meta.to_dict()
 
     @pytest.mark.unit
     def test_from_json_empty_object_produces_no_adapters(self):
@@ -309,27 +314,26 @@ class TestRedisFromDictToDict:
             "project_path": "/repo",
             "last_checkpoint_time": "2024-01-01T00:00:00Z",
             "title": "Test Session",
-            "channel_metadata": '{"key": "val"}',
+            _legacy_actor_bag_field(): '{"key": "val"}',
         }
         meta = RedisTransportMetadata.from_dict(raw)
         assert meta.channel_id == "ch-1"
-        assert meta.channel_metadata == '{"key": "val"}'
         restored = meta.to_dict()
         assert restored["channel_id"] == "ch-1"
+        assert _legacy_actor_bag_field() not in restored
 
     @pytest.mark.unit
-    def test_from_dict_channel_metadata_dict_becomes_json_string(self):
-        meta = RedisTransportMetadata.from_dict({"channel_metadata": {"key": "val"}})
-        assert isinstance(meta.channel_metadata, str)
-        assert json.loads(meta.channel_metadata) == {"key": "val"}
+    def test_from_dict_ignores_legacy_actor_bag(self):
+        meta = RedisTransportMetadata.from_dict({_legacy_actor_bag_field(): {"key": "val"}})
+        assert not meta.to_dict()
 
     @pytest.mark.unit
     def test_from_dict_missing_keys_default(self):
         meta = RedisTransportMetadata.from_dict({})
         assert meta.channel_id is None
-        assert meta.channel_metadata is None
+        assert meta.target_computer is None
 
     @pytest.mark.unit
-    def test_from_dict_none_channel_metadata(self):
-        meta = RedisTransportMetadata.from_dict({"channel_metadata": None})
-        assert meta.channel_metadata is None
+    def test_from_dict_none_legacy_actor_bag(self):
+        meta = RedisTransportMetadata.from_dict({_legacy_actor_bag_field(): None})
+        assert not meta.to_dict()

@@ -1,14 +1,18 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring
 """Characterization tests for teleclaude.core.session_launcher."""
 
 from __future__ import annotations
 
-import pytest
+from unittest.mock import AsyncMock
 
-from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
+import pytest
 
 # Public API (create_session, create_agent_session) is async with infrastructure deps;
 # _intent_to_auto_command is the pure logic under test.
+from teleclaude.core import session_launcher
+from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.session_launcher import _intent_to_auto_command
+from teleclaude.types.commands import CreateSessionCommand
 
 
 class TestIntentToAutoCommand:
@@ -76,3 +80,23 @@ class TestIntentToAutoCommand:
         assert result is not None
         assert "agent_resume" in result
         assert "claude" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_headless_create_session_skips_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    create_empty = AsyncMock(return_value={"session_id": "headless-001", "tmux_session_name": ""})
+    queued: list[tuple[object, str]] = []
+
+    monkeypatch.setattr(session_launcher, "create_empty_session", create_empty)
+
+    result = await session_launcher.create_session(
+        CreateSessionCommand(project_path="/repo", origin="terminal", headless=True),
+        client=object(),
+        execute_auto_command=AsyncMock(),
+        queue_background_task=lambda coro, label: queued.append((coro, label)),
+        bootstrap_session=AsyncMock(),
+    )
+
+    assert result["session_id"] == "headless-001"
+    assert not queued

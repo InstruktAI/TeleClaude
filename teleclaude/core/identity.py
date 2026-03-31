@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import PersonEntry
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
@@ -157,13 +156,6 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
                 person_email=person.email,
                 person_role=self._normalize_role(person.role),
             )
-        return IdentityContext()
-
-    def resolve_from_terminal(self) -> IdentityContext:
-        """Resolve identity from terminal login state (TTY-first, global fallback)."""
-        email = read_current_session_email()
-        if email:
-            return self.resolve_by_email(email)
         return IdentityContext()
 
     @property

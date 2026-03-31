@@ -262,8 +262,7 @@ class PrivateHandlersMixin:
         metadata = host._metadata()
         # MessageMetadata from _metadata() doesn't have project_path yet,
         # but _handle_simple_command is for session-specific commands.
-        metadata.channel_metadata = metadata.channel_metadata or {}
-        metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+        metadata.platform_message_id = str(update.effective_message.message_id)
 
         # Normalize via mapper
         cmds = get_command_service()

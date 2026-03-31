@@ -14,7 +14,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 ### 1. Creation
 
 - **Ingress**: A `/new-session` command arrives via an origin (UI adapter, web, terminal, or daemon-internal).
-- **Origin assembly**: The receiving edge assembles `channel_metadata` — a per-request dict carrying platform-specific identity signals (HTTP headers, webhook fields, bot message attributes). Identity resolution reads from this payload to derive `human_email`, `human_role`, and `principal`. The session handler merges `channel_metadata` into the session's `origin_metadata` — the accumulated record of all origin signals received during the session's lifetime.
+- **Origin assembly**: The receiving edge normalizes raw platform signals into typed request metadata. Message flows use `MessageMetadata` actor fields (`actor_id`, `actor_name`, `actor_avatar_url`, `platform_message_id`). Session-creation flows use typed origin metadata objects such as `TerminalOriginMetadata` and `WebOriginMetadata`. Identity resolution reads those typed inputs to derive `human_email`, `human_role`, and `principal`, and the session handler persists the session-level view in `origin_metadata`.
 - **Queueing**: Command is persisted in the SQLite queue.
 - **Execution**: The `SessionLauncher` starts a new `tmux` session.
 - **Persistence**: Session metadata is saved in the `sessions` table.
@@ -43,7 +43,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 - **Trigger**: An agent hook fires without a TeleClaude session context (no `teleclaude_session_id` in `$TMPDIR`).
 - **Normalization**: The hook receiver normalizes payloads and enqueues them in the outbox.
 - **Metadata persistence (best-effort)**: Before enqueue, the receiver may update existing session rows with `native_session_id` and `native_log_file` when available.
-- **Creation (core-owned)**: The daemon creates a minimal session row with `lifecycle_status="headless"`, `tmux_session_name=NULL`, and `last_input_origin=InputOrigin.TERMINAL.value`.
+- **Creation (command-owned)**: The daemon dispatches `CreateSessionCommand(headless=True, ...)` through the normal command service. The session handler creates a minimal session row with `lifecycle_status="headless"`, an empty `tmux_session_name`, and `last_input_origin=InputOrigin.TERMINAL.value`.
 - **Project path**: The daemon attempts to derive `project_path` (and `subdir`) from the native transcript file before persisting the headless session.
 - **Session ID resolution uses two concrete paths**:
   - **Managed session path (tmux-backed)**:

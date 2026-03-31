@@ -116,8 +116,7 @@ class CommandHandlersMixin:
 
         # Normalize command through mapper before dispatching
         metadata = host._metadata()
-        metadata.channel_metadata = metadata.channel_metadata or {}
-        metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+        metadata.platform_message_id = str(update.effective_message.message_id)
 
         cmd = CommandMapper.map_telegram_input(
             event="agent",
@@ -150,8 +149,7 @@ class CommandHandlersMixin:
         # Agent name comes from session's active_agent in UX state (handled by daemon)
         # Normalize command through mapper before dispatching
         metadata = host._metadata()
-        metadata.channel_metadata = metadata.channel_metadata or {}
-        metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+        metadata.platform_message_id = str(update.effective_message.message_id)
 
         cmd = CommandMapper.map_telegram_input(
             event="agent_resume",
@@ -191,8 +189,7 @@ class CommandHandlersMixin:
         assert update.effective_message is not None
 
         metadata = host._metadata()
-        metadata.channel_metadata = metadata.channel_metadata or {}
-        metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+        metadata.platform_message_id = str(update.effective_message.message_id)
 
         cmd = CommandMapper.map_telegram_input(
             event="agent_restart",

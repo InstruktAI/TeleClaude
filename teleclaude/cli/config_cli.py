@@ -34,6 +34,7 @@ from teleclaude.cli.config_handlers import (
     set_invite_token,
     validate_all,
 )
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _maybe_show_help, _usage
 from teleclaude.config.schema import PersonEntry, TelegramCreds
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
@@ -60,7 +61,8 @@ class InviteResult(TypedDict):
 
 def _check_customer_guard() -> None:
     """Block customer-role sessions from mutating config commands."""
-    role = get_identity_resolver().resolve_from_terminal().person_role
+    email = read_current_session_email()
+    role = get_identity_resolver().resolve_by_email(email).person_role if email else None
     if role == HUMAN_ROLE_CUSTOMER:
         print("Error: Permission denied. This operation requires member role or higher.")
         raise SystemExit(1)

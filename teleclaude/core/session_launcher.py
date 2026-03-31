@@ -135,6 +135,9 @@ async def create_session(
     bootstrap_session: BootstrapSession,
 ) -> dict[str, str]:
     """Dispatch to the appropriate session creation intent."""
+    if cmd.headless:
+        return await create_empty_session(cmd, client)
+
     intent = cmd.launch_intent
     if not intent or intent.kind == SessionLaunchKind.EMPTY:
         auto_command = cmd.auto_command

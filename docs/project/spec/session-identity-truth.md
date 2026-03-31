@@ -54,16 +54,16 @@ Fields that must be explained:
 - native session id (if present),
 - native transcript/log path (if present),
 - mapping record location/reference.
-- distinction between `channel_metadata` and `origin_metadata`, and how each is used.
+- distinction between request-time typed metadata and `origin_metadata`, and how each is used.
 
 ### Origin Data Model
 
 Two related but distinct concepts carry origin information:
 
-- **`channel_metadata`**: per-request dict assembled by the edge layer from platform-specific signals (user_id, email, phone_number). Used for identity resolution at request time. Transient — lives on the command, not persisted directly.
-- **`origin_metadata`**: per-session JSON column on the sessions table. The accumulated merge of all `channel_metadata` received during the session's lifetime. Persisted via `update_origin_metadata` (merge-on-write). Carries the `platform` key (last input origin) plus all platform sections.
+- **Request-time typed metadata**: the edge normalizes raw platform signals into typed fields before the command enters core. Message flows use `MessageMetadata.actor_id`, `actor_name`, `actor_avatar_url`, and `platform_message_id`. Session-creation flows use typed origin metadata objects such as `TerminalOriginMetadata` or `WebOriginMetadata`. Identity resolution consumes these typed inputs at request time.
+- **`origin_metadata`**: per-session JSON column on the sessions table. It is the accumulated merge of session origin sections received during the session's lifetime. Persisted via `update_origin_metadata` (merge-on-write). Carries the `platform` key (last input origin) plus all platform sections.
 
-Identity resolution reads from `channel_metadata`. Long-term identity derivation (e.g. `derive_identity_key`) reads from `origin_metadata`.
+Identity resolution reads from the typed metadata presented on the active command. Long-term identity derivation (e.g. `derive_identity_key`) reads from `origin_metadata`.
 
 ## Allowed values
 

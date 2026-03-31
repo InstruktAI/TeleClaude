@@ -168,19 +168,10 @@ class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
     project_path: str | None = None
     last_checkpoint_time: str | None = None
     title: str | None = None
-    channel_metadata: str | None = None  # JSON string
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> "RedisTransportMetadata":  # guard: loose-dict
         """Deserialize from a dict with type coercion."""
-        channel_meta_val = raw.get("channel_metadata")
-        channel_meta_str: str | None
-        if isinstance(channel_meta_val, dict):
-            channel_meta_str = json.dumps(channel_meta_val)
-        elif channel_meta_val is not None:
-            channel_meta_str = str(channel_meta_val)
-        else:
-            channel_meta_str = None
         return cls(
             channel_id=_str_or_none(raw.get("channel_id")),
             output_stream=_str_or_none(raw.get("output_stream")),
@@ -189,7 +180,6 @@ class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
             project_path=_str_or_none(raw.get("project_path")),
             last_checkpoint_time=_str_or_none(raw.get("last_checkpoint_time")),
             title=_str_or_none(raw.get("title")),
-            channel_metadata=channel_meta_str,
         )
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output

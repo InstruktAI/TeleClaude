@@ -15,10 +15,10 @@ field is derived from the subdir convention rather than passed explicitly.
 
 ## Validation
 
-### 1. Typed origin metadata flows through the handler
+### 1. Session creation coverage runs through the handler
 
 ```bash
-pytest tests/unit/core/test_channel_metadata_cleanup.py -v
+pytest tests/unit/core/command_handlers/test__session.py tests/unit/core/test_working_slug_derivation.py -v
 ```
 
 Expected: All tests PASSED.

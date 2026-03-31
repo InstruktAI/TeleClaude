@@ -13,12 +13,15 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.config import config
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import (
     discover_codex_transcript_path,
     is_codex_subagent_transcript,
 )
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import HookOutboxRow, db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -29,19 +32,23 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     build_agent_payload,
 )
-from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.models import Session
+from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_utils import (
-    get_short_project_name,
-    split_project_path_and_subdir,
-)
+from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
 from teleclaude.transport.redis_transport import RedisTransport
+from teleclaude.types.commands import CreateSessionCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
+
+
+def _optional_str_value(data: Mapping[str, object], key: str) -> str | None:
+    """Return a non-empty string value from a loose hook payload."""
+    value = data.get(key)
+    return value if isinstance(value, str) and value else None
 
 
 # Hook outbox worker
@@ -89,13 +96,8 @@ if HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK >= HOOK_OUTBOX_SESSION_CLAIM_HIGH_WAT
     HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK = max(  # pyright: ignore[reportConstantRedefinition]
         0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK - 1
     )
-HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = max(  # pyright: ignore[reportConstantRedefinition]  # pylint: disable=invalid-name
-    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE,
-    0,
-)
 HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = min(  # pyright: ignore[reportConstantRedefinition]  # pylint: disable=invalid-name
-    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE,
-    HOOK_OUTBOX_SESSION_MAX_PENDING,
+    max(HOOK_OUTBOX_SESSION_CRITICAL_RESERVE, 0), HOOK_OUTBOX_SESSION_MAX_PENDING
 )
 
 HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
@@ -161,12 +163,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         local_computer_name: str,
         get_adapter: Callable[[], object],
     ) -> Callable[[str, str], None]:
-        """Return the on_stale_read callback for DaemonCache.
-
-        Args:
-            local_computer_name: Name of the local computer (from config).
-            get_adapter: Callable that returns the "redis" adapter (or None).
-        """
+        """Return the on_stale_read callback for DaemonCache."""
 
         def _on_stale_read(resource_type: str, computer: str) -> None:
             # Local computers manage freshness via startup warming and todo watcher notifications
@@ -404,25 +401,12 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     ) -> Session:
         """Create a headless session row for standalone hook events."""
-        native_log_file = data.get("native_log_file") or data.get("transcript_path")
-        native_session_id = data.get("native_session_id") or data.get("session_id")
-        agent_name = data.get("agent_name")
-        agent_str = str(agent_name) if isinstance(agent_name, str) and agent_name else None
-
-        workdir = None
-        raw_cwd = data.get("cwd")
-        if isinstance(raw_cwd, str) and raw_cwd:
-            workdir = raw_cwd
-
-        project_path = None
-        subdir = None
-        if workdir:
-            trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
-            project_path, subdir = split_project_path_and_subdir(workdir, trusted_dirs)
-
-        title = "Standalone"
-        if project_path:
-            title = get_short_project_name(project_path, subdir)
+        native_log_file = _optional_str_value(data, "native_log_file") or _optional_str_value(data, "transcript_path")
+        native_session_id = _optional_str_value(data, "native_session_id") or _optional_str_value(data, "session_id")
+        agent_str = _optional_str_value(data, "agent_name")
+        workdir = _optional_str_value(data, "cwd")
+        project_path, subdir = self._resolve_headless_project_context(workdir)
+        title = get_short_project_name(project_path, subdir) if project_path else "Standalone"
 
         logger.info(
             "Creating headless session",
@@ -430,27 +414,41 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
             agent=agent_str,
             project_path=project_path or "",
         )
-        caller = get_identity_resolver().resolve_from_terminal()
-        session = await db.create_headless_session(
+        caller_email = read_current_session_email()
+        cmd = CreateSessionCommand(
             session_id=session_id,
-            computer_name=config.computer.name,
-            last_input_origin=InputOrigin.TERMINAL.value,
-            title=title,
-            active_agent=agent_str,
+            headless=True,
             native_session_id=str(native_session_id) if native_session_id else None,
             native_log_file=str(native_log_file) if native_log_file else None,
-            project_path=project_path,
+            project_path=project_path or "",
+            title=title,
             subdir=subdir,
-            human_email=caller.person_email,
-            human_role=caller.person_role,
+            origin=InputOrigin.TERMINAL.value,
+            origin_metadata=TerminalOriginMetadata(email=caller_email) if caller_email else None,
+            human_role=None if caller_email else HUMAN_ROLE_CUSTOMER,
+            launch_intent=SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT,
+                agent=agent_str,
+                native_session_id=str(native_session_id) if native_session_id else None,
+            ),
         )
-
+        result = await get_command_service().create_session(cmd)
+        created_session_id = str(result.get("session_id") or session_id)
+        session = await db.get_session(created_session_id)
+        if not session:
+            raise ValueError(f"Headless session creation returned missing session: {created_session_id}")
         event_bus.emit(
             TeleClaudeEvents.SESSION_STARTED,
-            SessionLifecycleContext(session_id=session_id),
+            SessionLifecycleContext(session_id=created_session_id),
         )
-
         return session
+
+    def _resolve_headless_project_context(self, workdir: str | None) -> tuple[str | None, str | None]:
+        """Map a hook workdir onto TeleClaude project/subdir metadata."""
+        if not workdir:
+            return None, None
+        trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
+        return split_project_path_and_subdir(workdir, trusted_dirs)
 
     def _is_codex_headless_bootstrap_event(
         self,

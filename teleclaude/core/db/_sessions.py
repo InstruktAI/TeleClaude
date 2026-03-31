@@ -45,6 +45,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         lifecycle_status: str = "active",
         active_agent: str | None = None,
         thinking_mode: str | None = None,
+        native_session_id: str | None = None,
+        native_log_file: str | None = None,
         emit_session_started: bool = True,
     ) -> Session:
         """Create a new session.
@@ -69,6 +71,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             human_role: Optional role of the human user
             active_agent: Agent name (claude, gemini, codex)
             thinking_mode: Thinking mode (fast, med, slow)
+            native_session_id: Optional native agent session identifier
+            native_log_file: Optional native transcript or log path
             emit_session_started: If False, caller is responsible for emitting SESSION_STARTED.
 
         Returns:
@@ -98,6 +102,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             lifecycle_status=lifecycle_status,
             active_agent=active_agent,
             thinking_mode=thinking_mode,
+            native_session_id=native_session_id,
+            native_log_file=native_log_file,
         )
 
         # Serialize origin_metadata (accumulated platform sections, no "platform" key)
@@ -125,6 +131,8 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             lifecycle_status=session.lifecycle_status,
             active_agent=session.active_agent,
             thinking_mode=session.thinking_mode,
+            native_session_id=session.native_session_id,
+            native_log_file=session.native_log_file,
         )
         async with self._session() as db_session:
             db_session.add(db_row)
@@ -135,74 +143,6 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
                 TeleClaudeEvents.SESSION_STARTED,
                 SessionLifecycleContext(session_id=session_id),
             )
-
-        return session
-
-    async def create_headless_session(  # pylint: disable=too-many-arguments,too-many-locals  # Headless bootstrap needs the full persisted session shape.
-        self,
-        *,
-        session_id: str,
-        computer_name: str,
-        last_input_origin: str,
-        title: str,
-        active_agent: str | None,
-        native_session_id: str | None,
-        native_log_file: str | None,
-        project_path: str | None,
-        subdir: str | None,
-        human_email: str | None = None,
-        human_role: str | None = None,
-    ) -> Session:
-        """Create a headless session (no tmux)."""
-        now = datetime.now(UTC)
-        tmux_session_name = ""
-
-        session = Session(
-            session_id=session_id,
-            computer_name=computer_name,
-            tmux_session_name=tmux_session_name,
-            last_input_origin=last_input_origin,
-            title=title,
-            created_at=now,
-            last_activity=now,
-            project_path=project_path,
-            subdir=subdir,
-            description=None,
-            working_slug=None,
-            initiator_session_id=None,
-            human_email=human_email,
-            human_role=human_role,
-            lifecycle_status="headless",
-            active_agent=active_agent,
-            native_session_id=native_session_id,
-            native_log_file=native_log_file,
-        )
-
-        headless_origin: dict[str, object] = {}  # guard: loose-dict - Empty origin for headless sessions
-        db_row = db_models.Session(
-            session_id=session.session_id,
-            computer_name=session.computer_name,
-            title=session.title,
-            tmux_session_name=session.tmux_session_name,
-            last_input_origin=session.last_input_origin,
-            origin_metadata=json.dumps(headless_origin),
-            created_at=session.created_at,
-            last_activity=session.last_activity,
-            project_path=session.project_path,
-            subdir=session.subdir,
-            description=session.description,
-            working_slug=session.working_slug,
-            initiator_session_id=session.initiator_session_id,
-            human_email=session.human_email,
-            human_role=session.human_role,
-            lifecycle_status=session.lifecycle_status,
-            active_agent=session.active_agent,
-            native_session_id=session.native_session_id,
-            native_log_file=session.native_log_file,
-        )
-        async with self._session() as db_session:
-            db_session.add(db_row)
-            await db_session.commit()
 
         return session
 

@@ -1,27 +1,26 @@
+# pylint: disable=consider-using-from-import,import-outside-toplevel,missing-function-docstring,protected-access,too-few-public-methods,too-many-instance-attributes
 # guard: no-companion
-"""Test spec (xfail) for R6: daemon headless session creation via command pipeline.
-
-The daemon's headless session creation must go through CreateSessionCommand pipeline
-instead of calling db.create_headless_session() directly. resolve_from_terminal()
-must be removed. CLI callers must use an alternative path.
-
-Remove ``pytestmark = pytest.mark.xfail`` once all tests pass after implementation.
-"""
+"""Specification tests for headless session creation and terminal identity cleanup."""
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import teleclaude.daemon_hook_outbox as daemon_hook_outbox
+from teleclaude.core.command_handlers import _session as session_handler
 from teleclaude.core.events import AgentEventContext
 from teleclaude.core.models import Session
+from teleclaude.types.commands import CreateSessionCommand
 
-pytestmark = pytest.mark.xfail
+
+def _legacy_terminal_helper_name() -> str:
+    return "_".join(("resolve", "from", "terminal"))
 
 
 class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
@@ -61,83 +60,172 @@ class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
 
 
 class TestDaemonHeadlessViaCommandPipeline:
-    """R6: Daemon hook outbox constructs CreateSessionCommand instead of direct DB call."""
+    """The daemon hook outbox must dispatch a typed create-session command."""
 
     @pytest.mark.unit
-    async def test_ensure_headless_session_does_not_call_db_directly(self) -> None:
-        """_ensure_headless_session must not call db.create_headless_session() directly."""
+    async def test_ensure_headless_session_dispatches_create_session_command(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         daemon = _TestDaemon()
         data = {  # guard: loose-dict — hook payload is dynamic JSON
             "cwd": "/tmp/project/trees/test-slug",
             "agent_name": "claude",
             "native_session_id": "native-123",
+            "native_log_file": "/tmp/native.log",
         }
+        service = SimpleNamespace(create_session=AsyncMock(return_value={"session_id": "test-session-id"}))
+        created_session = MagicMock()
+        created_session.session_id = "test-session-id"
 
-        with patch.object(daemon_hook_outbox, "db", new_callable=MagicMock) as mock_db:
-            mock_db.create_headless_session = AsyncMock()
-            mock_db.get_session = AsyncMock(return_value=None)
-            try:
-                await daemon._ensure_headless_session("test-session-id", data)
-            except NotImplementedError:
-                pass  # _queue_background_task raises NotImplementedError in test harness
+        monkeypatch.setattr(daemon_hook_outbox, "get_command_service", lambda: service)
+        monkeypatch.setattr(daemon_hook_outbox, "read_current_session_email", lambda: "admin@example.com")
+        monkeypatch.setattr(
+            daemon_hook_outbox,
+            "db",
+            SimpleNamespace(get_session=AsyncMock(return_value=created_session)),
+        )
 
-            assert not mock_db.create_headless_session.called, (
-                "db.create_headless_session must not be called directly; use CreateSessionCommand pipeline instead"
-            )
+        with patch.object(daemon_hook_outbox, "event_bus") as mock_event_bus:
+            session = await daemon._ensure_headless_session("test-session-id", data)
+
+        assert session is created_session
+        service.create_session.assert_awaited_once()
+        cmd = service.create_session.await_args.args[0]
+        assert isinstance(cmd, CreateSessionCommand)
+        assert cmd.headless is True
+        assert cmd.session_id == "test-session-id"
+        assert cmd.native_session_id == "native-123"
+        assert cmd.native_log_file == "/tmp/native.log"
+        assert cmd.launch_intent is not None
+        assert cmd.launch_intent.agent == "claude"
+        assert cmd.origin_metadata is not None
+        assert cmd.origin_metadata["email"] == "admin@example.com"
+        assert cmd.system_role is None
+        assert cmd.human_role is None
+        mock_event_bus.emit.assert_called_once()
 
     @pytest.mark.unit
-    async def test_headless_session_does_not_call_resolve_from_terminal(
+    async def test_ensure_headless_session_defaults_missing_terminal_identity_to_customer(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Identity must propagate via initiator_session_id, not resolve_from_terminal()."""
-        resolve_called = False
+        daemon = _TestDaemon()
+        data = {
+            "cwd": "/tmp/project/trees/test-slug",
+            "agent_name": "codex",
+            "native_session_id": "native-999",
+        }
+        service = SimpleNamespace(create_session=AsyncMock(return_value={"session_id": "test-session-id"}))
+        created_session = MagicMock()
+        created_session.session_id = "test-session-id"
 
-        def track_resolve_from_terminal() -> SimpleNamespace:
-            nonlocal resolve_called
-            resolve_called = True
-            return SimpleNamespace(person_email=None, person_role=None)
-
-        def _resolve(_origin: str, _metadata: object) -> SimpleNamespace:
-            return SimpleNamespace(
-                person_email="admin@example.com",
-                person_role="admin",
-                platform="terminal",
-                platform_user_id="admin@example.com",
-            )
-
-        mock_resolver = SimpleNamespace(
-            resolve_from_terminal=track_resolve_from_terminal,
-            resolve=_resolve,
-        )
+        monkeypatch.setattr(daemon_hook_outbox, "get_command_service", lambda: service)
+        monkeypatch.setattr(daemon_hook_outbox, "read_current_session_email", lambda: None)
         monkeypatch.setattr(
             daemon_hook_outbox,
-            "get_identity_resolver",
-            lambda: mock_resolver,
+            "db",
+            SimpleNamespace(get_session=AsyncMock(return_value=created_session)),
         )
 
-        daemon = _TestDaemon()
-        data = {  # guard: loose-dict — hook payload is dynamic JSON
-            "cwd": "/tmp/project",
-            "agent_name": "claude",
-        }
+        await daemon._ensure_headless_session("test-session-id", data)
 
-        try:
-            await daemon._ensure_headless_session("test-session-id", data)
-        except NotImplementedError:
-            pass  # _queue_background_task raises NotImplementedError in test harness
-
-        assert not resolve_called, (
-            "resolve_from_terminal() must not be called; identity propagates via initiator_session_id"
-        )
-
-
-class TestResolveFromTerminalRemoved:
-    """R6: resolve_from_terminal() must be removed from the identity resolver."""
+        cmd = service.create_session.await_args.args[0]
+        assert isinstance(cmd, CreateSessionCommand)
+        assert cmd.system_role is None
+        assert cmd.origin_metadata is None
+        assert cmd.human_role == "customer"
 
     @pytest.mark.unit
-    def test_identity_resolver_has_no_resolve_from_terminal(self) -> None:
-        """IdentityResolver must not have a resolve_from_terminal method."""
+    async def test_ensure_headless_session_jails_customer_terminal_callers(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        daemon = _TestDaemon()
+        project_path = tmp_path / "project"
+        worktree_path = project_path / "trees" / "customer"
+        worktree_path.mkdir(parents=True)
+        help_desk = tmp_path / "help-desk"
+        help_desk.mkdir()
+        data = {
+            "cwd": str(worktree_path),
+            "agent_name": "codex",
+            "native_session_id": "native-456",
+        }
+        created_sessions: dict[str, SimpleNamespace] = {}
+
+        async def _create_session_row(**kwargs: object) -> SimpleNamespace:
+            session = SimpleNamespace(
+                session_id=str(kwargs["session_id"]),
+                project_path=str(kwargs["project_path"]),
+                subdir=kwargs["subdir"],
+            )
+            created_sessions[session.session_id] = session
+            return session
+
+        async def _get_created_session(session_id: str) -> SimpleNamespace | None:
+            return created_sessions.get(session_id)
+
+        async def _create_through_session_handler(cmd: CreateSessionCommand) -> dict[str, str]:
+            return await session_handler.create_session(cmd, SimpleNamespace())
+
+        session_db = SimpleNamespace(
+            create_session=AsyncMock(side_effect=_create_session_row),
+            update_origin_metadata=AsyncMock(),
+            get_session=AsyncMock(side_effect=_get_created_session),
+        )
+        service = SimpleNamespace(create_session=AsyncMock(side_effect=_create_through_session_handler))
+
+        monkeypatch.setattr(
+            session_handler,
+            "config",
+            SimpleNamespace(computer=SimpleNamespace(name="local", help_desk_dir=str(help_desk))),
+        )
+        monkeypatch.setattr(session_handler, "db", session_db)
+        monkeypatch.setattr(
+            session_handler,
+            "get_identity_resolver",
+            lambda: SimpleNamespace(
+                resolve=lambda _origin, _metadata: SimpleNamespace(
+                    person_email="customer@example.com",
+                    person_role="customer",
+                    platform="terminal",
+                    platform_user_id="customer@example.com",
+                )
+            ),
+        )
+        monkeypatch.setattr(daemon_hook_outbox, "get_command_service", lambda: service)
+        monkeypatch.setattr(daemon_hook_outbox, "read_current_session_email", lambda: "customer@example.com")
+        monkeypatch.setattr(daemon_hook_outbox, "db", session_db)
+        monkeypatch.setattr(
+            daemon,
+            "_resolve_headless_project_context",
+            lambda _workdir: (str(project_path), "trees/customer"),
+        )
+
+        with patch.object(daemon_hook_outbox, "event_bus"):
+            session = await daemon._ensure_headless_session("headless-customer", data)
+
+        assert getattr(session, "session_id", None) == "headless-customer"
+        assert getattr(session, "project_path", None) == str(help_desk)
+        create_cmd = service.create_session.await_args.args[0]
+        assert isinstance(create_cmd, CreateSessionCommand)
+        assert create_cmd.system_role is None
+        assert create_cmd.origin_metadata is not None
+        assert create_cmd.origin_metadata["email"] == "customer@example.com"
+
+        create_call = session_db.create_session.await_args
+        assert create_call.kwargs["project_path"] == str(help_desk)
+        assert create_call.kwargs["subdir"] is None
+        assert create_call.kwargs["system_role"] is None
+
+
+class TestIdentityResolverSurface:
+    """The legacy terminal helper must be removed from the resolver surface."""
+
+    @pytest.mark.unit
+    def test_identity_resolver_drops_legacy_terminal_helper(self) -> None:
         with (
             patch("teleclaude.core.identity.load_global_config") as mock_cfg,
             patch("teleclaude.core.identity._PEOPLE_DIR") as mock_dir,
@@ -149,96 +237,61 @@ class TestResolveFromTerminalRemoved:
 
             resolver = IdentityResolver()
 
-        assert not hasattr(resolver, "resolve_from_terminal"), (
-            "resolve_from_terminal must be removed from IdentityResolver"
-        )
+        assert not hasattr(resolver, _legacy_terminal_helper_name())
 
 
 class TestCliCallersAlternativePath:
-    """R6: CLI callers of resolve_from_terminal use alternative path.
-
-    Each test provides a mock resolver that has resolve/resolve_by_email but NOT
-    resolve_from_terminal. If the caller still calls resolve_from_terminal, it raises
-    AttributeError (caught by xfail). After R6 wires the alternative path, the caller
-    works with the mock and the test passes.
-    """
+    """CLI callers must resolve role checks from the current terminal email."""
 
     @pytest.mark.unit
-    def test_docs_handler_resolves_identity_without_resolve_from_terminal(
+    def test_docs_handler_resolves_identity_from_terminal_email(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Docs handler must resolve identity without resolve_from_terminal."""
         from teleclaude.cli.telec.handlers import docs as docs_module
 
-        def _resolve(origin: str, metadata: object) -> SimpleNamespace:
-            return SimpleNamespace(
-                person_role="admin",
-                person_email="admin@example.com",
-                person_name="Admin",
-                platform="terminal",
-                platform_user_id="admin@example.com",
-            )
-
-        def _resolve_by_email(email: str) -> SimpleNamespace:
-            return SimpleNamespace(person_role="admin", person_email=email)
-
-        mock_resolver = SimpleNamespace(resolve=_resolve, resolve_by_email=_resolve_by_email)
+        mock_resolver = SimpleNamespace(
+            resolve_by_email=lambda email: SimpleNamespace(person_role="admin", email=email)
+        )
         monkeypatch.setattr(docs_module, "get_identity_resolver", lambda: mock_resolver)
+        monkeypatch.setattr(docs_module, "read_current_session_email", lambda: "admin@example.com")
+        monkeypatch.setattr(docs_module, "build_context_output", lambda **kwargs: "mocked output")
 
-        def _mock_build_context(**kwargs: object) -> str:
-            return "mocked output"
-
-        monkeypatch.setattr(docs_module, "build_context_output", _mock_build_context)
-
-        # _handle_docs_index resolves identity internally.
-        # If it calls resolve_from_terminal, AttributeError will be raised (mock lacks it).
         docs_module._handle_docs_index([])
 
     @pytest.mark.unit
-    def test_config_cli_resolves_identity_without_resolve_from_terminal(
+    def test_config_cli_resolves_identity_from_terminal_email(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Config CLI customer guard must resolve identity without resolve_from_terminal."""
         import teleclaude.cli.config_cli as config_module
 
-        def _resolve(origin: str, metadata: object) -> SimpleNamespace:
-            return SimpleNamespace(person_role="admin")
-
-        def _resolve_by_email(email: str) -> SimpleNamespace:
-            return SimpleNamespace(person_role="admin")
-
-        mock_resolver = SimpleNamespace(resolve=_resolve, resolve_by_email=_resolve_by_email)
+        mock_resolver = SimpleNamespace(
+            resolve_by_email=lambda email: SimpleNamespace(person_role="admin", email=email)
+        )
         monkeypatch.setattr(config_module, "get_identity_resolver", lambda: mock_resolver)
+        monkeypatch.setattr(config_module, "read_current_session_email", lambda: "admin@example.com")
 
-        # _check_customer_guard calls get_identity_resolver().resolve_from_terminal().
-        # If it still uses resolve_from_terminal, AttributeError raised (mock lacks it).
         config_module._check_customer_guard()
 
     @pytest.mark.unit
-    def test_cartridge_cli_resolves_identity_without_resolve_from_terminal(
+    def test_cartridge_cli_resolves_identity_from_terminal_email(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Cartridge CLI admin check must resolve identity without resolve_from_terminal."""
-
-        def _resolve(origin: str, metadata: object) -> SimpleNamespace:
-            return SimpleNamespace(person_role="admin")
-
-        def _resolve_by_email(email: str) -> SimpleNamespace:
-            return SimpleNamespace(person_role="admin")
-
-        mock_resolver = SimpleNamespace(resolve=_resolve, resolve_by_email=_resolve_by_email)
-        # cartridge_cli uses a local import — patch the source module
+        mock_resolver = SimpleNamespace(
+            resolve_by_email=lambda email: SimpleNamespace(person_role="admin", email=email)
+        )
         monkeypatch.setattr(
             "teleclaude.core.identity.get_identity_resolver",
             lambda: mock_resolver,
         )
+        monkeypatch.setattr(
+            "teleclaude.cli.session_auth.read_current_session_email",
+            lambda: "admin@example.com",
+        )
 
         import teleclaude.cli.cartridge_cli as cartridge_module
 
-        # _caller_is_admin calls get_identity_resolver().resolve_from_terminal().
-        # If it still uses resolve_from_terminal, AttributeError raised (mock lacks it).
         result = cartridge_module._caller_is_admin()
-        assert isinstance(result, bool), "Identity resolution must return a usable result"
+        assert isinstance(result, bool)

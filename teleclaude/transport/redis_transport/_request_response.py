@@ -123,8 +123,14 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             data[b"title"] = metadata.title.encode("utf-8")
         if metadata.project_path:
             data[b"project_path"] = metadata.project_path.encode("utf-8")
-        if metadata.channel_metadata:
-            data[b"channel_metadata"] = json.dumps(metadata.channel_metadata).encode("utf-8")
+        if metadata.actor_id:
+            data[b"actor_id"] = metadata.actor_id.encode("utf-8")
+        if metadata.actor_name:
+            data[b"actor_name"] = metadata.actor_name.encode("utf-8")
+        if metadata.actor_avatar_url:
+            data[b"actor_avatar_url"] = metadata.actor_avatar_url.encode("utf-8")
+        if metadata.platform_message_id:
+            data[b"platform_message_id"] = metadata.platform_message_id.encode("utf-8")
         if metadata.launch_intent:
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
         if not metadata.origin:

@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,too-few-public-methods
 """Characterization tests for teleclaude.transport.redis_transport._adapter_noop."""
 
 from __future__ import annotations
@@ -86,20 +87,20 @@ class TestSendGeneralMessage:
 class TestCreateChannel:
     @pytest.mark.unit
     async def test_returns_empty_string(self, transport: RedisTransport, session: MagicMock) -> None:
-        channel_metadata = MagicMock()
-        channel_metadata.target_computer = None
+        metadata = MagicMock()
+        metadata.target_computer = None
         with patch("teleclaude.transport.redis_transport._adapter_noop.db") as mock_db:
             mock_db.update_session = AsyncMock()
-            result = await transport.create_channel(session, "title", channel_metadata)
+            result = await transport.create_channel(session, "title", metadata)
         assert result == ""
 
     @pytest.mark.unit
     async def test_records_target_computer_when_set(self, transport: RedisTransport, session: MagicMock) -> None:
-        channel_metadata = MagicMock()
-        channel_metadata.target_computer = "remote-computer"
+        metadata = MagicMock()
+        metadata.target_computer = "remote-computer"
         with patch("teleclaude.transport.redis_transport._adapter_noop.db") as mock_db:
             mock_db.update_origin_metadata = AsyncMock()
-            await transport.create_channel(session, "title", channel_metadata)
+            await transport.create_channel(session, "title", metadata)
         mock_db.update_origin_metadata.assert_awaited_once()
 
 

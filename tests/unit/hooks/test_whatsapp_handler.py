@@ -1,7 +1,9 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,consider-using-from-import
 """Characterization tests for teleclaude.hooks.whatsapp_handler."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -9,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import teleclaude.hooks.whatsapp_handler as whatsapp_handler
+from teleclaude.core.models import MessageMetadata
 from teleclaude.hooks.webhook_models import HookEvent
 
 
@@ -68,8 +71,16 @@ class TestDownloadWhatsappMedia:
             "config",
             SimpleNamespace(whatsapp=SimpleNamespace(access_token="token", api_version="v21.0")),
         )
-        monkeypatch.setattr(whatsapp_handler, "get_session_output_dir", lambda _session_id: tmp_path)  # pyright: ignore[reportUnknownLambdaType]
-        monkeypatch.setattr(whatsapp_handler.httpx, "AsyncClient", lambda timeout: client)  # pyright: ignore[reportUnknownLambdaType]
+        monkeypatch.setattr(
+            whatsapp_handler,
+            "get_session_output_dir",
+            lambda _session_id: tmp_path,  # pyright: ignore[reportUnknownLambdaType]
+        )
+        monkeypatch.setattr(
+            whatsapp_handler.httpx,
+            "AsyncClient",
+            lambda timeout: client,  # pyright: ignore[reportUnknownLambdaType]
+        )
 
         output_path = await whatsapp_handler.download_whatsapp_media(
             "media-1234567890abcdef",
@@ -116,8 +127,8 @@ class TestHandleWhatsappEvent:
             "session_id": "session-1",
             "text": "hello",
             "origin": "whatsapp",
-            "actor_id": "15551234567",
-            "actor_name": "whatsapp:15551234567",
+            "actor_id": "whatsapp:15551234567",
+            "actor_name": "15551234567",
         }
 
     @pytest.mark.unit
@@ -150,7 +161,7 @@ class TestHandleWhatsappEvent:
         assert kwargs["command_name"] == "handle_voice"
         assert kwargs["payload"]["file_path"] == str(audio_path)
         assert kwargs["payload"]["origin"] == "whatsapp"
-        assert kwargs["payload"]["actor_id"] == "555"
+        assert kwargs["payload"]["actor_id"] == "whatsapp:555"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -185,3 +196,50 @@ class TestHandleWhatsappEvent:
             "filename": "photo.png",
             "file_size": len(b"png-bytes"),
         }
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_dispatch_whatsapp_command_rehydrates_typed_actor_metadata(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        dispatched: list[tuple[object, str | None, MessageMetadata, str, Mapping[str, object], object]] = []
+
+        class _FakeWhatsappAdapter:
+            async def _dispatch_command(self, *args: object, **_kwargs: object) -> None:
+                session_arg, message_id, metadata, command_name, payload, handler = args
+                assert message_id is None or isinstance(message_id, str)
+                assert isinstance(metadata, MessageMetadata)
+                assert isinstance(command_name, str)
+                assert isinstance(payload, Mapping)
+                dispatched.append((session_arg, message_id, metadata, command_name, payload, handler))
+
+        adapter = _FakeWhatsappAdapter()
+        command_service = SimpleNamespace(client=SimpleNamespace(adapters={"whatsapp": adapter}))
+        monkeypatch.setattr(whatsapp_handler, "UiAdapter", _FakeWhatsappAdapter)
+        monkeypatch.setattr(whatsapp_handler, "get_command_service", lambda: command_service)
+
+        await whatsapp_handler._dispatch_whatsapp_command(
+            session=SimpleNamespace(session_id="session-4"),
+            message_id="wamid-typed",
+            command_name="process_message",
+            payload={
+                "session_id": "session-4",
+                "text": "hello",
+                "origin": "whatsapp",
+                "actor_id": "whatsapp:15551234567",
+                "actor_name": "15551234567",
+            },
+            handler=AsyncMock(),
+        )
+
+        assert len(dispatched) == 1
+        _, message_id, metadata, command_name, payload, _ = dispatched[0]
+        assert message_id == "wamid-typed"
+        assert command_name == "process_message"
+        assert metadata.origin == "whatsapp"
+        assert metadata.platform_message_id == "wamid-typed"
+        assert metadata.actor_id == "whatsapp:15551234567"
+        assert metadata.actor_name == "15551234567"
+        assert payload["actor_id"] == "whatsapp:15551234567"
+        assert payload["actor_name"] == "15551234567"

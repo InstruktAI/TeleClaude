@@ -59,10 +59,15 @@ class InternalCommand:
 class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instance-attributes
     """Intent to create a new session."""
 
+    command_type: CommandType = field(init=False, default=CommandType.CREATE_SESSION)
     project_path: str
     origin: str
+    session_id: str | None = None
     title: str | None = None
     subdir: str | None = None
+    headless: bool = False
+    native_session_id: str | None = None
+    native_log_file: str | None = None
     human_email: str | None = None
     human_role: str | None = None
     initiator_session_id: str | None = None
@@ -72,39 +77,6 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
     auto_command: str | None = None
     system_role: str | None = None
     job: str | None = None
-
-    def __init__(  # pylint: disable=too-many-arguments
-        self,
-        *,
-        project_path: str,
-        origin: str,
-        title: str | None = None,
-        subdir: str | None = None,
-        human_email: str | None = None,
-        human_role: str | None = None,
-        initiator_session_id: str | None = None,
-        skip_listener_registration: bool = False,
-        origin_metadata: Mapping[str, object] | None = None,
-        launch_intent: Optional["SessionLaunchIntent"] = None,
-        auto_command: str | None = None,
-        system_role: str | None = None,
-        job: str | None = None,
-        request_id: str | None = None,
-    ):
-        super().__init__(command_type=CommandType.CREATE_SESSION, request_id=request_id)
-        self.project_path = project_path
-        self.origin = origin
-        self.title = title
-        self.subdir = subdir
-        self.human_email = human_email
-        self.human_role = human_role
-        self.initiator_session_id = initiator_session_id
-        self.skip_listener_registration = skip_listener_registration
-        self.origin_metadata = origin_metadata
-        self.launch_intent = launch_intent
-        self.auto_command = auto_command
-        self.system_role = system_role
-        self.job = job
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = [self.title] if self.title else []

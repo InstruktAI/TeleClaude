@@ -40,7 +40,9 @@ echo "PASS: legacy names eliminated from checked scopes"
 ```bash
 pytest \
   tests/unit/test_daemon_headless_pipeline.py \
-  tests/unit/test_adapter_actor_normalization.py \
+  tests/unit/adapters/telegram/test_input_handlers.py \
+  tests/unit/adapters/discord/test_gateway_handlers.py \
+  tests/unit/hooks/test_whatsapp_handler.py \
   tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py \
   tests/unit/transport/redis_transport/test_target_computer_named_field.py \
   tests/unit/core/command_handlers/test__session.py \

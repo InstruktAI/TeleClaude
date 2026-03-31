@@ -376,8 +376,7 @@ class CallbackHandlersMixin:
         metadata = cast("_CallbackHandlersHost", self)._metadata(project_path=project_path)
         from_user = getattr(query, "from_user", None)
         if from_user and hasattr(from_user, "id"):
-            metadata.channel_metadata = metadata.channel_metadata or {}
-            metadata.channel_metadata["user_id"] = str(from_user.id)
+            metadata.actor_id = f"telegram:{from_user.id}"
         cmd = CommandMapper.map_telegram_input(
             event="new_session",
             args=[],
@@ -432,8 +431,7 @@ class CallbackHandlersMixin:
             auto_command=auto_command,
         )
         if query.from_user:
-            metadata.channel_metadata = metadata.channel_metadata or {}
-            metadata.channel_metadata["user_id"] = str(query.from_user.id)
+            metadata.actor_id = f"telegram:{query.from_user.id}"
         cmd = CommandMapper.map_telegram_input(
             event="new_session",
             args=[],

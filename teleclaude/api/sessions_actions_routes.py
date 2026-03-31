@@ -43,7 +43,7 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SlashCommand
+from teleclaude.constants import SlashCommand
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agents import (
     assert_agent_enabled,
@@ -54,15 +54,15 @@ from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata
-from teleclaude.core.models._adapter import WebOriginMetadata
+from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
 from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import VisibilityPolicy
-from teleclaude.types.commands import GetSessionDataCommand
+from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -147,19 +147,24 @@ async def _resolve_revive_session_id(
         if project_path:
             title = get_short_project_name(project_path, subdir)
 
-    await db.create_headless_session(
+    cmd = CreateSessionCommand(
         session_id=new_session_id,
-        computer_name=config.computer.name,
-        last_input_origin=InputOrigin.TERMINAL.value,
-        title=title,
-        active_agent=agent,
+        headless=True,
         native_session_id=session_id,
         native_log_file=None,
-        project_path=project_path,
+        project_path=project_path or "",
+        title=title,
         subdir=subdir,
-        human_email=identity.email,
-        human_role=identity.human_role or HUMAN_ROLE_CUSTOMER,
+        origin=InputOrigin.TERMINAL.value,
+        initiator_session_id=identity.session_id or None,
+        origin_metadata=TerminalOriginMetadata(email=identity.email) if identity.email else None,
+        launch_intent=SessionLaunchIntent(
+            kind=SessionLaunchKind.AGENT,
+            agent=agent,
+            native_session_id=session_id,
+        ),
     )
+    await get_command_service().create_session(cmd)
     return new_session_id
 
 

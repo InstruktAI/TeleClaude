@@ -49,10 +49,14 @@ def _get_lifecycle_manager() -> LifecycleManager:
 
 def _caller_is_admin() -> bool:
     """Determine if the current session caller has admin role."""
+    from teleclaude.cli.session_auth import read_current_session_email  # pylint: disable=import-outside-toplevel
     from teleclaude.constants import HUMAN_ROLE_ADMIN  # pylint: disable=import-outside-toplevel
     from teleclaude.core.identity import get_identity_resolver  # pylint: disable=import-outside-toplevel
 
-    return get_identity_resolver().resolve_from_terminal().person_role == HUMAN_ROLE_ADMIN
+    email = read_current_session_email()
+    if not email:
+        return False
+    return get_identity_resolver().resolve_by_email(email).person_role == HUMAN_ROLE_ADMIN
 
 
 def _get_sandbox_dir() -> Path:

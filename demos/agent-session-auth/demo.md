@@ -40,11 +40,12 @@ and `CallerIdentity.principal` / `principal_role` population.
 Run the inheritance tests to confirm the agent chain propagates identity.
 
 ```bash
-pytest tests/unit/test_principal_inheritance.py -v --tb=short
+pytest tests/unit/core/db/test__sync.py tests/unit/test_daemon_session.py -v --tb=short
 ```
 
-Expected: all 8 tests pass. Covers channel_metadata threading, parent session
-principal inheritance, and daemon bootstrap reuse of inherited principal.
+Expected: the selected tests pass. Covers principal inheritance in
+`resolve_session_principal()` and daemon bootstrap behavior that reuses the
+resolved principal for session auth.
 
 ---
 

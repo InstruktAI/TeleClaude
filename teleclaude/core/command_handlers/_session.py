@@ -101,9 +101,8 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     )
 
     computer_name = config.computer.name
-    # Generate tmux session name with prefix for TeleClaude ownership
-    session_id = str(uuid.uuid4())
-    tmux_name = f"{TMUX_SESSION_PREFIX}{session_id}"
+    session_id = cmd.session_id or str(uuid.uuid4())
+    tmux_name = "" if cmd.headless else f"{TMUX_SESSION_PREFIX}{session_id}"
 
     subfolder = cmd.subdir
     working_slug: str | None = None
@@ -225,11 +224,13 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
         human_email=human_email,
         human_role=human_role,
         principal=principal,
-        lifecycle_status="initializing",
+        lifecycle_status="headless" if cmd.headless else "initializing",
         system_role=cmd_system_role,
         job=cmd_job,
         active_agent=launch.agent if launch else None,
         thinking_mode=launch.thinking_mode if launch else None,
+        native_session_id=cmd.native_session_id,
+        native_log_file=cmd.native_log_file,
         emit_session_started=False,
     )
 
@@ -278,7 +279,7 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes
     # on first output.
 
-    logger.info("Created session: %s", session.session_id)
+    logger.info("Created session: %s (headless=%s)", session.session_id, cmd.headless)
     return {"session_id": session_id, "tmux_session_name": tmux_name}
 
 

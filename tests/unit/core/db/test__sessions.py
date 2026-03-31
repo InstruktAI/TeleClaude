@@ -1,8 +1,11 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,too-many-arguments,too-many-locals,import-outside-toplevel
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,6 +21,63 @@ def _section(data: dict[str, object], key: str) -> dict[str, Any]:  # guard: loo
     val = data[key]
     assert isinstance(val, dict)
     return cast(dict[str, Any], val)  # guard: loose-dict - runtime-checked above
+
+
+async def _create_headless_via_command(
+    db: Db,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    session_id: str,
+    title: str,
+    active_agent: str | None,
+    native_session_id: str | None,
+    native_log_file: str | None,
+    subdir: str | None,
+) -> str:
+    from teleclaude.core.command_handlers import _session
+    from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
+    from teleclaude.core.models._adapter import TerminalOriginMetadata
+    from teleclaude.types.commands import CreateSessionCommand
+
+    project_path = tmp_path / "project"
+    project_path.mkdir(exist_ok=True)
+    help_desk = tmp_path / "help-desk"
+
+    resolver = SimpleNamespace(
+        resolve=lambda _origin, _metadata: SimpleNamespace(
+            person_email="admin@example.com",
+            person_role="admin",
+            platform="terminal",
+            platform_user_id="admin@example.com",
+        )
+    )
+    monkeypatch.setattr(_session, "db", db)
+    monkeypatch.setattr(
+        _session,
+        "config",
+        SimpleNamespace(computer=SimpleNamespace(name="builder-mac", help_desk_dir=str(help_desk))),
+    )
+    monkeypatch.setattr(_session, "get_identity_resolver", lambda: resolver)
+
+    cmd = CreateSessionCommand(
+        session_id=session_id,
+        headless=True,
+        native_session_id=native_session_id,
+        native_log_file=native_log_file,
+        project_path=str(project_path),
+        title=title,
+        subdir=subdir,
+        origin="terminal",
+        origin_metadata=TerminalOriginMetadata(email="admin@example.com"),
+        launch_intent=SessionLaunchIntent(
+            kind=SessionLaunchKind.AGENT,
+            agent=active_agent,
+            native_session_id=native_session_id,
+        ),
+    )
+    result = await _session.create_session(cmd, MagicMock())
+    return str(result["session_id"])
 
 
 async def test_create_session_uses_default_title_and_emits_started_event(db: Db) -> None:
@@ -40,20 +100,25 @@ async def test_create_session_uses_default_title_and_emits_started_event(db: Db)
     assert mock_emit.call_args.args[1].session_id == session.session_id
 
 
-async def test_create_headless_session_persists_headless_without_emitting_started_event(db: Db) -> None:
+async def test_headless_command_path_persists_headless_without_emitting_started_event(
+    db: Db,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     with patch("teleclaude.core.db._sessions.event_bus.emit") as mock_emit:
-        session = await db.create_headless_session(
+        created_session_id = await _create_headless_via_command(
+            db,
+            monkeypatch,
+            tmp_path,
             session_id="headless-001",
-            computer_name="builder-mac",
-            last_input_origin="terminal",
             title="Headless",
             active_agent="codex",
             native_session_id="native-123",
             native_log_file="/tmp/native.log",
-            project_path="/repo",
-            subdir="worktree",
-            human_role="admin",
+            subdir=None,
         )
+        session = await db.get_session(created_session_id)
+        assert session is not None
 
     stored = await db.get_session("headless-001")
 
@@ -64,7 +129,11 @@ async def test_create_headless_session_persists_headless_without_emitting_starte
     assert mock_emit.call_count == 0
 
 
-async def test_session_queries_apply_lifecycle_filters_and_counts(db: Db) -> None:
+async def test_session_queries_apply_lifecycle_filters_and_counts(
+    db: Db,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     active = await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-active",
@@ -82,18 +151,19 @@ async def test_session_queries_apply_lifecycle_filters_and_counts(db: Db) -> Non
         lifecycle_status="initializing",
         emit_session_started=False,
     )
-    headless = await db.create_headless_session(
+    headless_session_id = await _create_headless_via_command(
+        db,
+        monkeypatch,
+        tmp_path,
         session_id="sess-headless",
-        computer_name="builder-mac",
-        last_input_origin="terminal",
         title="Headless",
         active_agent="codex",
         native_session_id="native-1",
         native_log_file="/tmp/native.log",
-        project_path="/repo",
         subdir=None,
-        human_role="admin",
     )
+    headless = await db.get_session(headless_session_id)
+    assert headless is not None
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-closed",
@@ -346,7 +416,11 @@ async def test_update_origin_metadata_on_no_prior_metadata(db: Db) -> None:
     assert _section(data, "telegram")["topic_id"] == 1
 
 
-async def test_adapter_metadata_and_title_pattern_queries_apply_current_filters(db: Db) -> None:
+async def test_adapter_metadata_and_title_pattern_queries_apply_current_filters(
+    db: Db,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-active",
@@ -368,17 +442,16 @@ async def test_adapter_metadata_and_title_pattern_queries_apply_current_filters(
     )
     await db.update_session("sess-closed", origin_metadata='{"telegram": {"topic_id": 42}}')
     await db.close_session("sess-closed")
-    await db.create_headless_session(
+    await _create_headless_via_command(
+        db,
+        monkeypatch,
+        tmp_path,
         session_id="sess-headless",
-        computer_name="builder-mac",
-        last_input_origin="terminal",
         title="Task Headless",
         active_agent="codex",
         native_session_id="native-1",
         native_log_file="/tmp/native.log",
-        project_path="/repo",
         subdir=None,
-        human_role="admin",
     )
 
     adapter_matches = await db.get_sessions_by_origin_metadata("telegram", "topic_id", 42)
