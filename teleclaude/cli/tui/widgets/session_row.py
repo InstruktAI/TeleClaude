@@ -300,7 +300,7 @@ class SessionRow(TelecMixin, Widget):
         connector_pad = " " * self._connector_col
         detail_pad = " "
         connector_style = Style(color=CONNECTOR_COLOR)
-        id_style = resolve_style(self.agent, self._tier("muted"))
+        id_style = resolve_style(self.agent, self._tier("normal"))
         created_time = format_time(getattr(self.session, "created_at", None))
         sid = self.session.session_id
         native_id = getattr(self.session, "native_session_id", None) or "-"
@@ -336,11 +336,9 @@ class SessionRow(TelecMixin, Widget):
         for summary in self._build_summary_lines():
             result.append("\n")
             result.append_text(summary)
-        if not self.collapsed:
-            # Bottom connector (skipped for last session before GroupSeparator)
-            if not self.skip_bottom_connector:
-                result.append("\n")
-                result.append_text(self._build_connector_bottom())
+        if not self.skip_bottom_connector:
+            result.append("\n")
+            result.append_text(self._build_connector_bottom())
         return result
 
     def on_click(self, event: Click) -> None:

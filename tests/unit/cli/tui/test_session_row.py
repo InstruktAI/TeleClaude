@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from teleclaude.api_models import SessionDTO
+from teleclaude.cli.tui.theme import resolve_style
 from teleclaude.cli.tui.utils.formatters import format_time
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
@@ -114,6 +115,26 @@ def test_expanded_render_places_technical_ids_before_summary_lines(monkeypatch: 
     text = row.render().plain
 
     assert text.index("test-session-id / native-session-id") < text.index("in: Run the planner")
+
+
+@pytest.mark.unit
+def test_expanded_id_detail_uses_normal_emphasis(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _make_row("Planner Session", created_at="2026-03-31T16:00:00Z")
+    monkeypatch.setattr(type(row), "_content_width", property(lambda _: 120))
+
+    line = row._build_id_detail_line()
+
+    assert line.spans[-1].style == resolve_style(row.agent, row._tier("normal"))
+
+
+@pytest.mark.unit
+def test_collapsed_render_keeps_bottom_separator(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _make_row("Planner Session")
+    monkeypatch.setattr(type(row), "_content_width", property(lambda _: 120))
+
+    text = row.render().plain
+
+    assert "├" in text
 
 
 @pytest.mark.unit
