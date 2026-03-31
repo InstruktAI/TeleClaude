@@ -119,13 +119,28 @@ class BoxTabBar(TelecMixin, Widget):
         super().__init__(**kwargs)
         self.animation_engine: AnimationEngine | None = None
         self._click_regions: list[tuple[int, int, str]] = []
+        self._cached_render: Group | None = None
+
+    def set_cached_render(self, renderable: Group | None) -> None:
+        """Store a precomputed renderable for the current animation frame."""
+        self._cached_render = renderable
+
+    def clear_cached_render(self) -> None:
+        """Discard any precomputed renderable."""
+        self._cached_render = None
 
     def render(self) -> Group:
         try:
-            return self._render_tabs()
+            if self._cached_render is not None:
+                return self._cached_render
+            return self.build_render_frame()
         except Exception:
             logger.exception("BoxTabBar render crashed")
             return Group()
+
+    def build_render_frame(self) -> Group:
+        """Build the current tab bar frame without consulting the cached widget render."""
+        return self._render_tabs()
 
     def _render_tabs(self) -> Group:
         width = self.size.width or 80
@@ -351,4 +366,5 @@ class BoxTabBar(TelecMixin, Widget):
 
     def watch_active_tab(self, _value: str) -> None:
         """Refresh when the active tab selection changes."""
+        self.clear_cached_render()
         self.refresh()

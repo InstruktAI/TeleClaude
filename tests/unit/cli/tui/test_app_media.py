@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from teleclaude.cli.tui import app_media
+from teleclaude.cli.tui.widgets.banner import Banner
+from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 
 
 class _MediaApp(app_media.TelecAppMediaMixin):
@@ -113,3 +115,29 @@ async def test_chiptunes_play_pause_toggles_local_playing_state_and_reconciles(
     assert footer.chiptunes_playing is (not playing)
     assert footer.chiptunes_pending_action == expected_action
     app._schedule_chiptunes_reconcile.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_animation_tick_precomputes_and_caches_header_frames(monkeypatch: pytest.MonkeyPatch) -> None:
+    footer = SimpleNamespace()
+    app = _MediaApp(footer)
+    banner = Banner()
+    tab_bar = BoxTabBar()
+    banner.refresh = Mock()
+    tab_bar.refresh = Mock()
+    app._animation_engine = SimpleNamespace(update=Mock(return_value=True))
+
+    sentinel_banner = object()
+    sentinel_tabs = object()
+    monkeypatch.setattr(
+        "teleclaude.cli.tui.header_frames.build_header_frames",
+        lambda *, banner, tab_bar: (sentinel_banner, sentinel_tabs),
+    )
+    app.query_one = Mock(side_effect=[banner, tab_bar])
+
+    app._animation_tick()
+
+    assert banner._cached_render is sentinel_banner
+    assert tab_bar._cached_render is sentinel_tabs
+    banner.refresh.assert_called_once()
+    tab_bar.refresh.assert_called_once()

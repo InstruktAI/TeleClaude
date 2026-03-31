@@ -346,7 +346,12 @@ class TelecAppMediaMixin:
 
         # Clear any lingering animation colors from the banner
         try:
-            self.query_one(Banner).refresh()  # type: ignore[attr-defined]
+            banner = self.query_one(Banner)  # type: ignore[attr-defined]
+            banner.clear_cached_render()
+            banner.refresh()
+            tab_bar = self.query_one(BoxTabBar)  # type: ignore[attr-defined]
+            tab_bar.clear_cached_render()
+            tab_bar.refresh()
         except Exception:
             pass
 
@@ -363,8 +368,15 @@ class TelecAppMediaMixin:
             return
         if changed:
             try:
-                self.query_one(Banner).refresh()  # type: ignore[attr-defined]
-                self.query_one(BoxTabBar).refresh()  # type: ignore[attr-defined]
+                from teleclaude.cli.tui.header_frames import build_header_frames
+
+                banner = self.query_one(Banner)  # type: ignore[attr-defined]
+                tab_bar = self.query_one(BoxTabBar)  # type: ignore[attr-defined]
+                banner_render, tab_render = build_header_frames(banner=banner, tab_bar=tab_bar)
+                banner.set_cached_render(banner_render)
+                tab_bar.set_cached_render(tab_render)
+                banner.refresh()
+                tab_bar.refresh()
             except Exception:
                 logger.exception("Header refresh failed after animation tick")
 

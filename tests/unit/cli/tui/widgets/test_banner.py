@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from rich.text import Text
 
 from teleclaude.cli.tui.widgets.banner import (
     BANNER_HEIGHT,
@@ -10,6 +11,7 @@ from teleclaude.cli.tui.widgets.banner import (
     LOGO_HEIGHT,
     LOGO_LINES,
     LOGO_WIDTH,
+    Banner,
     _apply_sky_ambient,
     _apply_sky_entity,
     _consume_sky_entity_value,
@@ -199,3 +201,14 @@ def test_consume_sky_entity_value_parses_8char_colored_entity() -> None:
     _consume_sky_entity_value(state, val, z=1, dark_mode=True)
     assert state["fg_char"] == "X"
     assert state["fg_color"] == "#FF0000"
+
+
+@pytest.mark.unit
+def test_banner_render_uses_cached_frame_when_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    banner = Banner()
+    cached = Text("cached")
+    banner.set_cached_render(cached)
+    monkeypatch.setattr(banner, "_render_banner", lambda: (_ for _ in ()).throw(AssertionError("unexpected render")))
+    monkeypatch.setattr(banner, "_render_logo", lambda: (_ for _ in ()).throw(AssertionError("unexpected render")))
+
+    assert banner.render() is cached

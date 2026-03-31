@@ -684,8 +684,10 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
 
         # Refresh Rich-based header widgets (not CSS-driven)
         for widget in self.query(Banner):
+            widget.clear_cached_render()
             widget.refresh()
         for widget in self.query(BoxTabBar):
+            widget.clear_cached_render()
             widget.refresh()
 
         # Refresh config content — its Rich styles depend on dark/light mode

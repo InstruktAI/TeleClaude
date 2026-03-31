@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from rich.console import Group
 
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar, _to_color
 
@@ -116,3 +117,13 @@ def test_tab_cell_returns_space_at_y_offset_0() -> None:
         inactive_tab_fg="#CCC",
     )
     assert char == " "
+
+
+@pytest.mark.unit
+def test_render_uses_cached_group_when_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    bar = BoxTabBar()
+    cached = Group()
+    bar.set_cached_render(cached)
+    monkeypatch.setattr(bar, "_render_tabs", lambda: (_ for _ in ()).throw(AssertionError("unexpected render")))
+
+    assert bar.render() is cached

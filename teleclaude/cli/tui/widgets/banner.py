@@ -355,6 +355,15 @@ class Banner(TelecMixin, Widget):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.animation_engine: AnimationEngine | None = None
+        self._cached_render: Text | None = None
+
+    def set_cached_render(self, renderable: Text | None) -> None:
+        """Store a precomputed renderable for the current animation frame."""
+        self._cached_render = renderable
+
+    def clear_cached_render(self) -> None:
+        """Discard any precomputed renderable."""
+        self._cached_render = None
 
     def on_click(self, event: Click) -> None:
         """Open the sprites README on GitHub when the banner plate is clicked."""
@@ -375,15 +384,22 @@ class Banner(TelecMixin, Widget):
     def watch_is_compact(self, value: bool) -> None:
         """Update widget height when compactness changes."""
         self.styles.height = LOGO_HEIGHT if value else BANNER_HEIGHT
+        self.clear_cached_render()
 
     def render(self) -> Text:
         try:
-            if self.is_compact:
-                return self._render_logo()
-            return self._render_banner()
+            if self._cached_render is not None:
+                return self._cached_render
+            return self.build_render_frame()
         except Exception:
             logger.exception("Banner render crashed")
             return Text("TELECLAUDE")
+
+    def build_render_frame(self) -> Text:
+        """Build the current banner frame without consulting the cached widget render."""
+        if self.is_compact:
+            return self._render_logo()
+        return self._render_banner()
 
     def _render_banner(self) -> Text:
         result = Text()
