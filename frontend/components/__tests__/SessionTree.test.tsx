@@ -3,6 +3,7 @@ import { useState } from "react"
 import { describe, it, expect, vi, afterEach } from "vitest"
 import { render, screen, fireEvent, cleanup } from "@testing-library/react"
 import { SessionTree } from "../SessionTree"
+import type { SessionHighlightViewState } from "@/hooks/useSessionHighlights"
 import {
   computerNodeId,
   projectNodeId,
@@ -34,6 +35,7 @@ function makeTree(): ComputerGroup[] {
                 active_agent: 'claude',
                 thinking_mode: 'med',
                 subdir: 'trees/web-tui-panels',
+                last_input: 'Run the planner',
                 project_path: '/home/user/my-project',
                 computer: 'local',
               },
@@ -260,17 +262,53 @@ describe("SessionTree", () => {
   })
 
   it("applies activity highlight background when session is active", () => {
-    const activityMap = new Map([["sess-1", "tool_use"]])
+    const sessionStateMap = new Map<string, SessionHighlightViewState>([
+      ["sess-1", { activityEvent: "tool_use", activityText: "bash: telec todo work" }],
+    ])
     render(
       <SessionTree
         tree={makeTree()}
-        activityMap={activityMap}
+        sessionStateMap={sessionStateMap}
         expandedSet={makeExpandedSet(makeTree())}
         onToggle={vi.fn()}
       />,
     )
     const row = screen.getByTestId("session-row-sess-1")
     expect(row.style.backgroundColor).toContain("var(--tc-agent-")
+  })
+
+  it("renders persisted output summaries beneath the session row", () => {
+    const sessionStateMap = new Map<string, SessionHighlightViewState>([
+      ["sess-2", { lastOutputSummary: "Build complete", highlightType: "output" }],
+    ])
+
+    render(
+      <SessionTree
+        tree={makeTree()}
+        sessionStateMap={sessionStateMap}
+        expandedSet={makeExpandedSet(makeTree())}
+        onToggle={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId("session-activity-sess-2").textContent).toContain("out: Build complete")
+  })
+
+  it("renders input activity from the session last input when highlighted", () => {
+    const sessionStateMap = new Map<string, SessionHighlightViewState>([
+      ["sess-1", { highlightType: "input", activityEvent: "user_prompt_submit" }],
+    ])
+
+    render(
+      <SessionTree
+        tree={makeTree()}
+        sessionStateMap={sessionStateMap}
+        expandedSet={makeExpandedSet(makeTree())}
+        onToggle={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId("session-activity-sess-1").textContent).toContain("in: Run the planner")
   })
 
   it("applies agent-specific cursor highlight colors when themed", () => {

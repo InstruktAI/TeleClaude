@@ -16,11 +16,12 @@ import type { TabValue } from "@/components/TabBar";
 import type { SessionInfo } from "@/lib/api/types";
 import type { ComputerGroup, NodeId } from "@/lib/sessions/tree";
 import { buildSessionTree, projectNodeId, sessionNodeId } from "@/lib/sessions/tree";
-import { useSessions } from "@/lib/hooks/useSessions";
 import { useComputers } from "@/lib/hooks/useComputers";
 import { useEndSession, useAgentRestart } from "@/lib/hooks/useSessionActions";
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation";
+import { useLiveSessions } from "@/hooks/useLiveSessions";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import { useSessionHighlights } from "@/hooks/useSessionHighlights";
 import { useSessionTree } from "@/hooks/useSessionTree";
 import { useSessionToasts } from "@/hooks/useSessionToasts";
 import { useWS } from "@/lib/ws/WebSocketProvider";
@@ -81,50 +82,6 @@ function findProjectPrefill(
   return undefined;
 }
 
-function useSessionActivityMap() {
-  const { onEvent } = useWS();
-  const [activityMap, setActivityMap] = useState<Map<string, string>>(
-    () => new Map(),
-  );
-  const timersRef = useRef<Map<string, number>>(new Map());
-
-  useEffect(() => {
-    const cleanup = onEvent("agent_activity", (event) => {
-      if (event.event !== "agent_activity") return;
-
-      setActivityMap((prev) => {
-        const next = new Map(prev);
-        next.set(event.session_id, event.type);
-        return next;
-      });
-
-      const existing = timersRef.current.get(event.session_id);
-      if (existing) window.clearTimeout(existing);
-
-      const timer = window.setTimeout(() => {
-        timersRef.current.delete(event.session_id);
-        setActivityMap((prev) => {
-          const next = new Map(prev);
-          next.delete(event.session_id);
-          return next;
-        });
-      }, 5_000);
-
-      timersRef.current.set(event.session_id, timer);
-    });
-
-    return () => {
-      cleanup();
-      for (const timer of timersRef.current.values()) {
-        window.clearTimeout(timer);
-      }
-      timersRef.current.clear();
-    };
-  }, [onEvent]);
-
-  return activityMap;
-}
-
 function ChatPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -143,10 +100,13 @@ function ChatPageInner() {
   });
   const activeTab = layoutState.activeTab;
   const lastSessionId = layoutState.lastSessionId ?? null;
-  const activityMap = useSessionActivityMap();
   const restoredSessionIdRef = useRef<string | null>(null);
-  const { data: sessions, isLoading: sessionsLoading, error: sessionsError } =
-    useSessions();
+  const {
+    data: sessions,
+    isLoading: sessionsLoading,
+    error: sessionsError,
+    refetch: refetchSessions,
+  } = useLiveSessions();
   const {
     data: computers,
     isLoading: computersLoading,
@@ -156,6 +116,8 @@ function ChatPageInner() {
   const restartAgent = useAgentRestart();
 
   useSessionToasts();
+
+  const sessionHighlights = useSessionHighlights(sessions, sessionId);
 
   const tree = useMemo(
     () => buildSessionTree(sessions ?? [], computers ?? []),
@@ -283,7 +245,10 @@ function ChatPageInner() {
   const handleAction = useCallback(
     (action: string) => {
       if (activeTab !== "sessions") {
-        if (action === "refresh_data") refresh();
+        if (action === "refresh_data") {
+          refresh();
+          void refetchSessions();
+        }
         return;
       }
 
@@ -341,6 +306,7 @@ function ChatPageInner() {
           return;
         case "refresh_data":
           refresh();
+          void refetchSessions();
           return;
       }
     },
@@ -355,6 +321,7 @@ function ChatPageInner() {
       handleSelectSession,
       moveCursor,
       openNewSessionDialog,
+      refetchSessions,
       refresh,
       selectedSessionId,
       toggleNode,
@@ -383,7 +350,7 @@ function ChatPageInner() {
       expandedSet={expandedSet}
       cursorId={cursorId}
       activeSessionId={sessionId}
-      activityMap={activityMap}
+      sessionStateMap={sessionHighlights}
       currentUserEmail={currentUserEmail}
       onToggle={toggleNode}
       onSelectSession={handleSelectSession}

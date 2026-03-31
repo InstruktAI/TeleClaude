@@ -17,13 +17,6 @@ export function useCacheInvalidation(): void {
   useEffect(() => {
     const unsub = onEvent("*", (event: WsEvent) => {
       switch (event.event) {
-        case "sessions_initial":
-        case "session_started":
-        case "session_updated":
-        case "session_closed":
-          queryClient.invalidateQueries({ queryKey: ["sessions"] });
-          break;
-
         case "projects_initial":
         case "project_updated":
         case "projects_updated":

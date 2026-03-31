@@ -53,7 +53,7 @@ async def test_validate_work_preconditions_reports_stash_debt_when_git_stash_exi
     todos_db = _mock_todos_db()
 
     with patch("teleclaude.core.next_machine.work.get_stash_entries", return_value=["stash@{0}: WIP on main"]):
-        error = await _validate_work_preconditions("/repo", "slug-stash", "slug-stash")
+        error = await _validate_work_preconditions("/repo", "slug-stash")
 
     assert error is not None
 

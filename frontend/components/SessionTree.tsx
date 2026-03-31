@@ -4,6 +4,7 @@ import type { CSSProperties } from "react"
 import { ChevronRight, ChevronDown, Brain, Sparkles, Code2, Monitor } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import type { SessionHighlightViewState } from "@/hooks/useSessionHighlights"
 import {
   computerNodeId,
   projectNodeId,
@@ -24,7 +25,7 @@ interface SessionTreeProps {
   expandedSet?: ReadonlySet<NodeId>
   cursorId?: string | null
   activeSessionId?: string | null
-  activityMap?: Map<string, string>
+  sessionStateMap?: Map<string, SessionHighlightViewState>
   isThemed?: boolean
   currentUserEmail?: string | null
   onToggle?: (nodeId: NodeId) => void
@@ -91,6 +92,46 @@ function rowOffset(depth: number): number {
 
 function normalizeSubdir(subdir: string): string {
   return subdir.startsWith("trees/") ? subdir.slice("trees/".length) : subdir
+}
+
+function sessionActivityLine(
+  session: SessionTreeNode["session"],
+  state?: SessionHighlightViewState,
+): { prefix: "in" | "out"; text: string; emphasized: boolean } | null {
+  const lastInput = session.last_input?.replace(/\n/g, " ").trim()
+  if (state?.highlightType === "input" && lastInput) {
+    return { prefix: "in", text: lastInput, emphasized: true }
+  }
+
+  if (state?.activityEvent === "tool_use" && state.activityText) {
+    return { prefix: "out", text: state.activityText, emphasized: true }
+  }
+
+  if (state?.activityEvent === "tool_done") {
+    return { prefix: "out", text: "...", emphasized: false }
+  }
+
+  if (state?.activityEvent === "user_prompt_submit") {
+    if (lastInput) {
+      return { prefix: "in", text: lastInput, emphasized: true }
+    }
+    return { prefix: "out", text: "...", emphasized: false }
+  }
+
+  if (state?.activityEvent === "agent_stop" && state.activityText) {
+    return { prefix: "out", text: state.activityText, emphasized: true }
+  }
+
+  const summary = state?.lastOutputSummary?.replace(/\n/g, " ").trim()
+  if (summary) {
+    return {
+      prefix: "out",
+      text: summary,
+      emphasized: state?.highlightType === "output",
+    }
+  }
+
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +207,7 @@ function SessionRow({
   isCursor,
   isActive,
   isThemed,
-  activityType,
+  sessionState,
   currentUserEmail,
   onSelect,
 }: {
@@ -177,7 +218,7 @@ function SessionRow({
   isCursor: boolean
   isActive: boolean
   isThemed: boolean
-  activityType?: string
+  sessionState?: SessionHighlightViewState
   currentUserEmail?: string | null
   onSelect?: () => void
 }) {
@@ -190,6 +231,7 @@ function SessionRow({
     color: palette.normal,
     paddingLeft: `${rowOffset(depth)}px`,
   }
+  const activityLine = sessionActivityLine(s, sessionState)
   const isOwnedByCurrentUser = Boolean(
     s.human_email &&
       currentUserEmail &&
@@ -211,7 +253,7 @@ function SessionRow({
     }
   }
 
-  if (activityType) {
+  if (sessionState?.highlightType || sessionState?.activityEvent === "tool_use") {
     rowStyle.backgroundColor = palette.subtleBg
   }
   if (isActive) {
@@ -279,14 +321,32 @@ function SessionRow({
           </button>
         )}
       </div>
-      {secondaryLine ? (
+      {secondaryLine || activityLine ? (
         <div
-          data-testid={`session-identity-${s.session_id}`}
-          className="truncate text-[10px]"
-          style={{ paddingLeft: `${rowOffset(depth)}px`, color: palette.muted }}
+          className="space-y-0.5"
+          style={{ paddingLeft: `${rowOffset(depth)}px` }}
         >
-          {secondaryLine.label}
-          {secondaryLine.value && <>: <span style={{ color: palette.normal }}>{secondaryLine.value}</span></>}
+          {secondaryLine ? (
+            <div
+              data-testid={`session-identity-${s.session_id}`}
+              className="truncate text-[10px]"
+              style={{ color: palette.muted }}
+            >
+              {secondaryLine.label}
+              {secondaryLine.value && <>: <span style={{ color: palette.normal }}>{secondaryLine.value}</span></>}
+            </div>
+          ) : null}
+          {activityLine ? (
+            <div
+              data-testid={`session-activity-${s.session_id}`}
+              className="truncate text-[10px]"
+              style={{
+                color: activityLine.emphasized ? palette.normal : palette.muted,
+              }}
+            >
+              {activityLine.prefix}: <span style={{ color: palette.normal }}>{activityLine.text}</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {expanded && (
@@ -305,7 +365,7 @@ export function SessionTree({
   expandedSet,
   cursorId,
   activeSessionId,
-  activityMap,
+  sessionStateMap,
   isThemed = true,
   currentUserEmail,
   onToggle,
@@ -333,7 +393,7 @@ export function SessionTree({
             isCursor={cursorId === nodeId}
             isActive={activeSessionId === node.session.session_id}
             isThemed={isThemed}
-            activityType={activityMap?.get(node.session.session_id)}
+            sessionState={sessionStateMap?.get(node.session.session_id)}
             currentUserEmail={currentUserEmail}
             onSelect={() => {
               onCursorChange?.(nodeId)

@@ -149,7 +149,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
         return slug_error
 
     phase_slug = resolved_slug
-    precondition_error = await _validate_work_preconditions(cwd, resolved_slug, phase_slug)
+    precondition_error = await _validate_work_preconditions(cwd, resolved_slug)
     if precondition_error is not None:
         return precondition_error
 
@@ -304,7 +304,7 @@ async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-argumen
     return None
 
 
-async def _validate_work_preconditions(cwd: str, resolved_slug: str, phase_slug: str) -> str | None:
+async def _validate_work_preconditions(cwd: str, resolved_slug: str) -> str | None:
     """Validate environmental preconditions only: stash debt.
 
     Per-step prerequisites (artifacts, freshness) are handled by
@@ -313,9 +313,9 @@ async def _validate_work_preconditions(cwd: str, resolved_slug: str, phase_slug:
     preconditions_started = perf_counter()
     stash_entries = await asyncio.to_thread(get_stash_entries, cwd)
     if stash_entries:
-        _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stash_debt")
+        _log_next_work_phase(resolved_slug, "preconditions", preconditions_started, "error", "stash_debt")
         return format_stash_debt(resolved_slug, len(stash_entries))
-    _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "run", "validated")
+    _log_next_work_phase(resolved_slug, "preconditions", preconditions_started, "run", "validated")
     return None
 
 

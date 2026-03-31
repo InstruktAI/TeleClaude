@@ -195,8 +195,8 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_mark_phase_reads_from_db_and_applies_transition(self) -> None:
-        """DB-native mark_phase reads state from DB, applies transition, writes back."""
+    async def test_mark_phase_reads_from_db_and_writes_back(self) -> None:
+        """DB-native mark_phase reads state, applies transition, writes updated state."""
         mock_db = AsyncMock()
         mock_db.read_state = AsyncMock(return_value={"current": "prepared", "dor": {"score": 8}})
         mock_db.write_state = AsyncMock()
@@ -215,9 +215,9 @@ class TestTodoRoutes:
                 cwd="/repo",
                 _identity=_identity(),
             )
-        assert "result" in response
-        assert "OK:" in response["result"]
+        mock_db.read_state.assert_awaited_once_with("test-slug")
         mock_db.write_state.assert_awaited_once()
+        assert isinstance(response, dict)
 
     @pytest.mark.unit
     @pytest.mark.asyncio

@@ -287,6 +287,20 @@ export interface AgentActivityEvent {
   tool_preview?: string | null;
   summary?: string | null;
   timestamp?: string | null;
+  canonical_type?: string | null;
+  message_intent?: string | null;
+  delivery_scope?: string | null;
+}
+
+export interface SessionStatusEvent {
+  event: "session_status";
+  session_id: string;
+  status: string;
+  reason: string;
+  timestamp: string;
+  last_activity_at?: string | null;
+  message_intent?: string | null;
+  delivery_scope?: string | null;
 }
 
 /** Discriminated union of all WebSocket events. Discriminator: `event` field. */
@@ -296,6 +310,7 @@ export type WsEvent =
   | SessionStartedEvent
   | SessionUpdatedEvent
   | SessionClosedEvent
+  | SessionStatusEvent
   | RefreshEvent
   | ErrorEvent
   | AgentActivityEvent;
