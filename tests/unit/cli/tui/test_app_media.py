@@ -173,3 +173,22 @@ def test_log_animation_health_reports_current_entity_count(monkeypatch: pytest.M
     app._log_animation_health(reason="tick")
 
     assert info.call_args.kwargs["header_entity_count"] == 11
+
+
+@pytest.mark.unit
+def test_record_animation_tick_emits_periodic_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    footer = SimpleNamespace()
+    app = _MediaApp(footer)
+    app._animation_perf = AnimationPerfTracker(
+        slow_frame_threshold_ms=1000.0,
+        warning_interval_ticks=9999,
+        baseline_interval_ticks=2,
+    )
+    app._header_entity_count = Mock(return_value=5)
+    info = Mock()
+    monkeypatch.setattr(app_media.logger, "info", info)
+
+    app._record_animation_tick(changed=True, total_ms=2.0, update_ms=1.0, build_ms=1.0)
+    app._record_animation_tick(changed=True, total_ms=2.0, update_ms=1.0, build_ms=1.0)
+
+    assert info.call_args.kwargs["reason"] == "baseline"

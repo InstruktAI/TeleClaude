@@ -415,6 +415,9 @@ class TelecAppMediaMixin:
         if tracker.should_warn():
             self._log_animation_health(reason="tick")
             tracker.mark_warned()
+        elif tracker.should_emit_baseline():
+            self._log_animation_health(reason="baseline")
+            tracker.mark_baseline_emitted()
 
     def _log_animation_health(self, *, reason: str) -> None:
         """Emit a bounded diagnostic snapshot for the header animation path."""

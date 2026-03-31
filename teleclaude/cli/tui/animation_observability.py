@@ -27,6 +27,7 @@ class AnimationPerfTracker:
 
     slow_frame_threshold_ms: float = 40.0
     warning_interval_ticks: int = 120
+    baseline_interval_ticks: int = 240
     _recent_total_ms: deque[float] = field(default_factory=lambda: deque(maxlen=120))
     _recent_update_ms: deque[float] = field(default_factory=lambda: deque(maxlen=120))
     _recent_build_ms: deque[float] = field(default_factory=lambda: deque(maxlen=120))
@@ -34,6 +35,7 @@ class AnimationPerfTracker:
     changed_tick_count: int = 0
     consecutive_slow_frames: int = 0
     _last_warning_tick: int = 0
+    _last_baseline_tick: int = 0
 
     def record_tick(
         self,
@@ -64,6 +66,14 @@ class AnimationPerfTracker:
     def mark_warned(self) -> None:
         """Advance the warning watermark."""
         self._last_warning_tick = self.tick_count
+
+    def should_emit_baseline(self) -> bool:
+        """Return whether it is time for a low-frequency baseline snapshot."""
+        return self.tick_count - self._last_baseline_tick >= self.baseline_interval_ticks
+
+    def mark_baseline_emitted(self) -> None:
+        """Advance the baseline watermark."""
+        self._last_baseline_tick = self.tick_count
 
     def snapshot(self, *, header_entity_count: int) -> AnimationPerfSnapshot:
         """Build a bounded summary for log emission."""
