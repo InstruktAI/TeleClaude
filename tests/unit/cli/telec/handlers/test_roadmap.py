@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -57,30 +56,13 @@ def test_handle_roadmap_add_forwards_parsed_options(
     assert "Added sample to roadmap." in capsys.readouterr().out
 
 
-def test_handle_roadmap_deliver_runs_cleanup_and_git_steps(
+def test_handle_roadmap_deliver_calls_db_and_cleanup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from unittest.mock import MagicMock
-
-    mock_index = MagicMock()
-    mock_index.diff.return_value = [MagicMock()]  # non-empty → has staged changes
-    mock_repo = MagicMock()
-    mock_repo.index = mock_index
-
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("teleclaude.git.Repo", lambda *_a, **_kw: mock_repo)
+    monkeypatch.setattr(roadmap, "_run_db", lambda slug, method, **kw: True)
 
-    with pytest.MonkeyPatch.context() as sys_patch:
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.core.next_machine.core",
-            SimpleNamespace(
-                deliver_to_delivered=lambda cwd, slug, commit=None: True,
-                cleanup_delivered_slug=lambda cwd, slug: None,
-            ),
-        )
+    with patch("teleclaude.core.next_machine.core.cleanup_delivered_slug"):
         roadmap._handle_roadmap_deliver(["sample", "--commit", "abc123"])
 
-    mock_index.add.assert_called_once()
-    mock_index.commit.assert_called_once()
     assert "Delivered sample" in capsys.readouterr().out

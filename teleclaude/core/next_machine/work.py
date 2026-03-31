@@ -32,7 +32,6 @@ from teleclaude.core.next_machine.build_gates import (
     run_build_gates,
     verify_artifacts,
 )
-from teleclaude.core.next_machine.delivery import sweep_completed_groups
 from teleclaude.core.next_machine.git_ops import (
     _has_meaningful_diff,
     _merge_origin_main_into_worktree,
@@ -145,7 +144,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
 
     cwd = await _normalize_next_work_cwd(cwd)
     todos_db = await get_todos_db(cwd)
-    await asyncio.to_thread(sweep_completed_groups, cwd)
 
     phase_slug = slug or "<auto>"
     resolved_slug, slug_error = await _resolve_work_slug(todos_db, slug, phase_slug)

@@ -681,18 +681,14 @@ def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-stat
         logger.warning(msg)
         warnings.append(msg)
 
-    # --- Todo cleanup in integration worktree ---
-    from teleclaude.core.next_machine.icebox import clean_dependency_references  # noqa: I001  # pylint: disable=import-outside-toplevel
-
-    todo_dir_wt = Path(wt) / "todos" / key.slug
-    if todo_dir_wt.exists():
-        rc_rm, _, stderr_rm = _run_git(["rm", "-r", "--force", f"todos/{key.slug}"], cwd=wt)
-        if rc_rm != 0:
-            msg = f"git rm todo dir failed for {key.slug}: {stderr_rm.strip()}"
-            logger.warning(msg)
-            warnings.append(msg)
-    clean_dependency_references(wt, key.slug)
-    _run_git(["add", "todos/"], cwd=wt)
+    # --- Clean dependency references in DB ---
+    todos_db = _get_todos_db_sync(cwd)
+    conn = todos_db._sync_conn()  # pylint: disable=protected-access
+    try:
+        conn.execute("DELETE FROM roadmap_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
+        conn.commit()
+    finally:
+        conn.close()
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if rc != 0:
         rc_cleanup, _, stderr_cleanup = _run_git(

@@ -449,16 +449,15 @@ def _handle_roadmap_migrate_icebox(args: list[str]) -> None:  # pylint: disable=
 def _handle_roadmap_deliver(args: list[str]) -> None:
     """Handle telec roadmap deliver <slug> [--commit SHA].
 
-    Full idempotent delivery: moves YAML entry, cleans up worktree/branch/todo dir, commits.
+    Marks as delivered in DB and cleans up worktree/branch.
     """
-    from teleclaude.core.next_machine.core import cleanup_delivered_slug, deliver_to_delivered
+    from teleclaude.core.next_machine.core import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
 
     if not args:
         print(_usage("roadmap", "deliver"))
         return
 
     slug: str | None = None
-    project_root = Path.cwd()
     commit: str | None = None
     i = 0
     while i < len(args):
@@ -482,26 +481,9 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
         print(_usage("roadmap", "deliver"))
         raise SystemExit(1)
 
-    cwd = str(project_root)
-
-    # 1. Move YAML entry (idempotent — returns True if already delivered)
-    if not deliver_to_delivered(cwd, slug, commit=commit):
-        print(f"Slug not found in roadmap or delivered: {slug}")
+    if not _run_db(slug, "deliver", commit=commit):
+        print(f"Slug not found in roadmap: {slug}")
         raise SystemExit(1)
 
-    # 2. Physical cleanup (idempotent — each step no-ops if already done)
-    cleanup_delivered_slug(cwd, slug)
-
-    # 3. Stage and commit all delivery artifacts
-    from teleclaude.git import GitCommandError, Repo
-
-    repo = Repo(cwd)
-    repo.index.add(["todos/roadmap.yaml", "todos/delivered.yaml", f"todos/{slug}"])
-    # Only commit if there are staged changes
-    if repo.index.diff("HEAD"):
-        try:
-            repo.index.commit(f"chore({slug}): deliver and cleanup\n\nCo-Authored-By: TeleClaude <noreply@instrukt.ai>")
-        except GitCommandError:
-            pass
-
-    print(f"Delivered {slug} → delivered.yaml (cleanup complete)")
+    cleanup_delivered_slug(str(Path.cwd()), slug)
+    print(f"Delivered {slug} (cleanup complete)")
