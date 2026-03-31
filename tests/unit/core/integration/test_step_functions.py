@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,18 +21,27 @@ from teleclaude.core.integration.step_functions import (
 # ---------------------------------------------------------------------------
 
 
+def _mock_todos_db(delivered_slugs: set[str]) -> MagicMock:
+    db = MagicMock()
+    conn = MagicMock()
+    db._sync_conn.return_value = conn
+    conn.execute.return_value.fetchall.return_value = [(s,) for s in delivered_slugs]
+    return db
+
+
 def test_sweep_stale_artifacts_returns_empty_when_no_delivered_slugs(tmp_path: Path) -> None:
-    with patch("teleclaude.core.next_machine.delivery.load_delivered_slugs", return_value=[]):
+    with patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=_mock_todos_db(set())):
         assert _sweep_stale_artifacts(str(tmp_path)) == []
 
 
 def test_sweep_stale_artifacts_returns_empty_when_no_trees_dir(tmp_path: Path) -> None:
-    with patch("teleclaude.core.next_machine.delivery.load_delivered_slugs", return_value=["slug-1"]):
+    with patch(
+        "teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=_mock_todos_db({"slug-1"})
+    ):
         assert _sweep_stale_artifacts(str(tmp_path)) == []
 
 
 def test_sweep_stale_artifacts_cleans_up_delivered_slugs(tmp_path: Path) -> None:
-    delivered = ["slug-1", "slug-2"]
     trees_dir = tmp_path / "trees"
     trees_dir.mkdir()
     (trees_dir / "slug-1").mkdir()
@@ -40,7 +49,10 @@ def test_sweep_stale_artifacts_cleans_up_delivered_slugs(tmp_path: Path) -> None
     (trees_dir / "_internal").mkdir()  # Should be ignored
 
     with (
-        patch("teleclaude.core.next_machine.delivery.load_delivered_slugs", return_value=delivered),
+        patch(
+            "teleclaude.core.integration.step_functions._get_todos_db_sync",
+            return_value=_mock_todos_db({"slug-1", "slug-2"}),
+        ),
         patch("teleclaude.core.next_machine.core.cleanup_delivered_slug") as mock_cleanup,
     ):
         swept = _sweep_stale_artifacts(str(tmp_path))

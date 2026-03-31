@@ -383,7 +383,7 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:  # pylin
 
 
 def _sweep_stale_artifacts(cwd: str) -> list[str]:
-    """Remove worktrees and branches for slugs already in delivered.yaml.
+    """Remove worktrees and branches for slugs already delivered in the DB.
 
     Returns list of swept slug names. Each step is idempotent — safe to
     call on every IDLE entry without risk of double-cleanup.

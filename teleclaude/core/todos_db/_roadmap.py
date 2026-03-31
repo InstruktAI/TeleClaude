@@ -295,6 +295,17 @@ class TodosDbRoadmapMixin:
 
     # --- Sync methods for integration thread ---
 
+    def delivered_slugs_sync(self) -> set[str]:
+        """Sync version of delivered_slugs for use from worker threads."""
+        conn = self._sync_conn()  # type: ignore[attr-defined]
+        try:
+            rows = conn.execute(
+                "SELECT slug FROM roadmap WHERE status = 'delivered'",  # guard: raw-sql
+            ).fetchall()
+            return {row[0] for row in rows}
+        finally:
+            conn.close()
+
     def deliver_sync(
         self,
         slug: str,

@@ -814,7 +814,7 @@ async def _dispatch_finalize_prepare(  # pylint: disable=too-many-arguments,too-
         logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
 
     is_bug = await todos_db.is_bug_todo(resolved_slug)
-    note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
+    note = "BUG FIX: Skip delivery bookkeeping. Delete todo directory after merge." if is_bug else ""
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
     return format_tool_call(
         ToolCallRequest(

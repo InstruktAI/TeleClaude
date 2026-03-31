@@ -220,11 +220,13 @@ def resolve_canonical_project_root(cwd: str) -> str:
 
 def get_item_phase(cwd: str, slug: str) -> str:  # pylint: disable=too-many-return-statements
     """Sync legacy: get item phase from filesystem. Use _get_item_phase_db for new code."""
-    from teleclaude.core.next_machine.delivery import load_delivered_slugs  # pylint: disable=import-outside-toplevel
     from teleclaude.core.next_machine.roadmap import slug_in_roadmap  # pylint: disable=import-outside-toplevel
     from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
 
-    is_delivered = slug in load_delivered_slugs(cwd)
+    db = TodosDb(str(Path(cwd) / ".teleclaude" / "todos.db"))
+    db.initialize_sync()
+    is_delivered = slug in db.delivered_slugs_sync()
     is_in_roadmap = slug_in_roadmap(cwd, slug)
     if is_delivered and is_in_roadmap:
         raise ValueError(f"Slug '{slug}' in both delivered and roadmap — data integrity issue")

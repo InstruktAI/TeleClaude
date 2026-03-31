@@ -5,8 +5,7 @@ Covers:
 1. Original regression: bookkeeping runs in integration worktree (not repo root)
 2. Repo root pull failure returns structured REPO ROOT SYNC BLOCKED instruction
 3. Successful pull continues to cleanup inline
-4. Bug todo slugs reach deliver_to_delivered (no is_bug bypass)
-5. reconcile_roadmap_after_merge removes ghost/orphan entries, preserves valid ones
+4. Bug todo slugs reach DB delivery (no is_bug bypass)
 """
 
 from __future__ import annotations
@@ -14,8 +13,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
-
-import yaml
 
 from teleclaude.core.integration.checkpoint import (
     IntegrationCheckpoint,
@@ -26,8 +23,6 @@ from teleclaude.core.integration.step_functions import (
     _step_delivery_bookkeeping,
     _step_push_succeeded,
 )
-from teleclaude.core.next_machine._types import DeliveredDict, RoadmapDict
-from teleclaude.core.next_machine.delivery import reconcile_roadmap_after_merge
 
 
 def _mock_todos_db_for_delivery() -> MagicMock:
@@ -249,91 +244,6 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
     assert ok is True
 
 
-# --- reconcile_roadmap_after_merge tests ---
-
-
-def _write_roadmap(cwd: Path, entries: list[RoadmapDict]) -> None:
-    path = cwd / "todos" / "roadmap.yaml"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.dump(entries, default_flow_style=False, sort_keys=False))
-
-
-def _write_delivered(cwd: Path, entries: list[DeliveredDict]) -> None:
-    path = cwd / "todos" / "delivered.yaml"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.dump(entries, default_flow_style=False, sort_keys=False))
-
-
-def _read_roadmap_slugs(cwd: Path) -> list[str]:
-    path = cwd / "todos" / "roadmap.yaml"
-    data = yaml.safe_load(path.read_text())
-    return [e["slug"] for e in (data or [])]
-
-
-def test_reconcile_removes_ghost_entries(tmp_path: Path) -> None:
-    """Ghost entries: slug in both roadmap and delivered.yaml should be removed from roadmap."""
-    _write_roadmap(
-        tmp_path,
-        [
-            {"slug": "valid-item"},
-            {"slug": "ghost-item"},
-        ],
-    )
-    _write_delivered(
-        tmp_path,
-        [
-            {"slug": "ghost-item", "date": "2026-03-13"},
-        ],
-    )
-    # valid-item has a todo directory
-    (tmp_path / "todos" / "valid-item").mkdir(parents=True, exist_ok=True)
-
-    removed = reconcile_roadmap_after_merge(str(tmp_path))
-
-    assert "ghost-item" in removed
-    assert "valid-item" not in removed
-    assert _read_roadmap_slugs(tmp_path) == ["valid-item"]
-
-
-def test_reconcile_removes_orphan_entries(tmp_path: Path) -> None:
-    """Orphan entries: slug in roadmap, no todo directory, not in delivered."""
-    _write_roadmap(
-        tmp_path,
-        [
-            {"slug": "valid-item"},
-            {"slug": "orphan-item"},
-        ],
-    )
-    _write_delivered(tmp_path, [])
-    # valid-item has a todo directory; orphan-item does not
-    (tmp_path / "todos" / "valid-item").mkdir(parents=True, exist_ok=True)
-
-    removed = reconcile_roadmap_after_merge(str(tmp_path))
-
-    assert "orphan-item" in removed
-    assert "valid-item" not in removed
-    assert _read_roadmap_slugs(tmp_path) == ["valid-item"]
-
-
-def test_reconcile_preserves_valid_entries(tmp_path: Path) -> None:
-    """Valid entries with todo directories should be preserved."""
-    _write_roadmap(
-        tmp_path,
-        [
-            {"slug": "item-a"},
-            {"slug": "item-b"},
-        ],
-    )
-    _write_delivered(tmp_path, [])
-    (tmp_path / "todos" / "item-a").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "todos" / "item-b").mkdir(parents=True, exist_ok=True)
-
-    removed = reconcile_roadmap_after_merge(str(tmp_path))
-
-    assert removed == []
-    assert _read_roadmap_slugs(tmp_path) == ["item-a", "item-b"]
-
-
 # --- Anomaly capture tests ---
 
 
@@ -392,19 +302,6 @@ def test_anomaly_bookkeeping_commit_removed_with_db_delivery(tmp_path: Path) -> 
     """
     cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git)
     assert not cp.warnings or not any("Bookkeeping commit failed" in w for w in cp.warnings)
-
-
-def test_anomaly_git_rm_fails(tmp_path: Path) -> None:
-    """When git rm todo dir fails, warning is captured."""
-
-    def mock_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
-        if args[0] == "rm":
-            return 1, "", "rm failed"
-        return _base_mock_run_git(args, cwd=cwd, timeout=timeout)
-
-    cp = _run_bookkeeping_with_mock(tmp_path, mock_git)
-    assert cp.warnings
-    assert any("git rm todo dir failed" in w for w in cp.warnings)
 
 
 def test_anomaly_cleanup_commit_fails(tmp_path: Path) -> None:

@@ -38,7 +38,6 @@ async def test_next_work_reports_no_ready_items_when_resolution_finds_nothing() 
     with (
         patch("teleclaude.core.next_machine.work._normalize_next_work_cwd", return_value="/repo"),
         patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
-        patch("teleclaude.core.next_machine.work.sweep_completed_groups"),
         patch(
             "teleclaude.core.next_machine.work.resolve_slug_async", side_effect=[(None, False, ""), (None, False, "")]
         ),

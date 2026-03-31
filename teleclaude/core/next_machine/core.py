@@ -59,12 +59,6 @@ from teleclaude.core.next_machine._types import (
     CreativePhase as CreativePhase,
 )
 from teleclaude.core.next_machine._types import (
-    DeliveredDict as DeliveredDict,
-)
-from teleclaude.core.next_machine._types import (
-    DeliveredEntry as DeliveredEntry,
-)
-from teleclaude.core.next_machine._types import (
     EnsureWorktreeResult as EnsureWorktreeResult,
 )
 from teleclaude.core.next_machine._types import (
@@ -129,28 +123,10 @@ from teleclaude.core.next_machine.create import next_create as next_create
 
 # ── delivery ───────────────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.delivery import (
-    _delivered_path as _delivered_path,
-)
-from teleclaude.core.next_machine.delivery import (
     _run_git_cmd as _run_git_cmd,
 )
 from teleclaude.core.next_machine.delivery import (
     cleanup_delivered_slug as cleanup_delivered_slug,
-)
-from teleclaude.core.next_machine.delivery import (
-    deliver_to_delivered as deliver_to_delivered,
-)
-from teleclaude.core.next_machine.delivery import (
-    load_delivered as load_delivered,
-)
-from teleclaude.core.next_machine.delivery import (
-    load_delivered_slugs as load_delivered_slugs,
-)
-from teleclaude.core.next_machine.delivery import (
-    save_delivered as save_delivered,
-)
-from teleclaude.core.next_machine.delivery import (
-    sweep_completed_groups as sweep_completed_groups,
 )
 
 # ── git operations ─────────────────────────────────────────────────────────────

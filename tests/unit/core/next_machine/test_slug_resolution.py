@@ -33,10 +33,21 @@ def test_resolve_canonical_project_root_falls_back_to_requested_cwd_on_git_error
 
 
 def test_get_item_phase_returns_done_for_delivered_slug(tmp_path: Path) -> None:
-    from teleclaude.core.next_machine._types import DeliveredEntry
-    from teleclaude.core.next_machine.delivery import save_delivered
+    from teleclaude.core.todos_db import TodosDb
 
-    save_delivered(str(tmp_path), [DeliveredEntry(slug="done-slug", date="2026-01-01")])
+    db_path = tmp_path / ".teleclaude" / "todos.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db = TodosDb(str(db_path))
+    db.initialize_sync()
+    conn = db._sync_conn()
+    try:
+        conn.execute(
+            "INSERT INTO roadmap (slug, position, status, created_at, updated_at) VALUES (?, 0, 'delivered', '', '')",
+            ("done-slug",),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     _write_state(tmp_path / "todos" / "done-slug", {"schema_version": 2, "current": "input_assessment"})
 
     assert get_item_phase(str(tmp_path), "done-slug") == "done"

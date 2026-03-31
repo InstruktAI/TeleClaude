@@ -248,34 +248,3 @@ async def _reconcile_roadmap(
         )
         counts["roadmap_added"] += 1
         logger.info("Added %s to roadmap from filesystem", slug)
-
-    # Also reconcile delivered.yaml
-    delivered_path = Path(project_root) / "todos" / "delivered.yaml"
-    if not delivered_path.exists():
-        return
-
-    try:
-        delivered_raw = yaml.safe_load(delivered_path.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
-        return
-
-    if not isinstance(delivered_raw, list):
-        return
-
-    for entry in delivered_raw:
-        if not isinstance(entry, dict) or "slug" not in entry:
-            continue
-        slug = entry["slug"]
-        if await todos_db.slug_in_roadmap(slug):
-            continue
-
-        children = entry.get("children")
-        original_date = str(entry.get("date", ""))
-        await todos_db.add_to_roadmap(slug)
-        await todos_db.deliver(
-            slug,
-            commit=entry.get("commit"),
-            delivered_at=original_date or None,
-            children=children if isinstance(children, list) else None,
-        )
-        counts["roadmap_added"] += 1

@@ -603,22 +603,18 @@ class PrepareCartridge:
 
 
 def _is_slug_delivered_or_frozen(slug: str, project_root: Path) -> bool:
-    delivered_path = project_root / "todos" / "delivered.yaml"
-    if delivered_path.exists():
-        try:
-            items = yaml.safe_load(delivered_path.read_text()) or []
-            if any(item.get("slug") == slug for item in items if isinstance(item, dict)):
-                return True
-        except (yaml.YAMLError, OSError):
-            logger.warning("prepare: cannot read delivered.yaml", path=str(delivered_path))
+    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
 
-    icebox_path = project_root / "todos" / "_icebox" / "icebox.yaml"
-    if icebox_path.exists():
-        try:
-            items = yaml.safe_load(icebox_path.read_text()) or []
-            if any(item.get("slug") == slug for item in items if isinstance(item, dict)):
-                return True
-        except (yaml.YAMLError, OSError):
-            logger.warning("prepare: cannot read icebox.yaml", path=str(icebox_path))
-
+    db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
+    db.initialize_sync()
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute(
+            "SELECT status FROM roadmap WHERE slug = ?",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+        if row and row[0] in ("delivered", "icebox"):
+            return True
+    finally:
+        conn.close()
     return False

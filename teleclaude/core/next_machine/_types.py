@@ -171,25 +171,6 @@ class RoadmapDict(TypedDict, total=False):
     description: str
 
 
-@dataclass
-class DeliveredEntry:
-    """Delivered manifest entry with delivery metadata."""
-
-    slug: str
-    date: str
-    commit: str | None = None
-    children: list[str] | None = None
-
-
-class DeliveredDict(TypedDict, total=False):
-    """Serialized delivered entry stored in ``delivered.yaml``."""
-
-    slug: str
-    date: str
-    commit: str
-    children: list[str]
-
-
 def default_state() -> dict[str, StateValue]:
     """Return a fresh default state dict from the canonical TodoState model."""
     from teleclaude.types.todos import TodoState  # pylint: disable=import-outside-toplevel
