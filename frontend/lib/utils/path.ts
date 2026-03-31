@@ -66,6 +66,38 @@ export function basename(path: string | null | undefined): string {
 }
 
 /**
+ * Replace a home-directory prefix with `~` for display.
+ *
+ * Uses the actual home directory when available and falls back to common
+ * POSIX/Windows home patterns in client-rendered contexts where HOME is not
+ * exposed.
+ */
+export function replaceHomeWithTilde(path: string | null | undefined): string {
+  if (!path || typeof path !== 'string') {
+    return '';
+  }
+
+  const homedir = getHomedir();
+  if (homedir && path.startsWith(homedir)) {
+    return `~${path.slice(homedir.length)}`;
+  }
+
+  if (/^\/Users\/[^/]+(?:\/|$)/.test(path)) {
+    return path.replace(/^\/Users\/[^/]+/, '~');
+  }
+
+  if (/^\/home\/[^/]+(?:\/|$)/.test(path)) {
+    return path.replace(/^\/home\/[^/]+/, '~');
+  }
+
+  if (/^[A-Za-z]:\\Users\\[^\\]+(?:\\|$)/.test(path)) {
+    return path.replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~');
+  }
+
+  return path;
+}
+
+/**
  * Shorten a path for display by replacing home directory and truncating middle segments
  *
  * Rules:
@@ -96,13 +128,7 @@ export function shortenPath(path: string | null | undefined, maxLen: number): st
     return '';
   }
 
-  let result = path;
-
-  // Replace home directory with ~
-  const homedir = getHomedir();
-  if (homedir && result.startsWith(homedir)) {
-    result = '~' + result.slice(homedir.length);
-  }
+  let result = replaceHomeWithTilde(path);
 
   // If path fits, return as-is
   if (result.length <= maxLen) {

@@ -15,6 +15,7 @@ import {
   type SessionTreeNode,
 } from "@/lib/sessions/tree"
 import { safeAgent } from "@/lib/theme/tokens"
+import { replaceHomeWithTilde } from "@/lib/utils/path"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -511,6 +512,7 @@ export function SessionTree({
   function renderProject(project: ProjectGroup, computer: string) {
     const nodeId = projectNodeId(computer, project.path)
     const expanded = isExpanded(nodeId)
+    const displayPath = replaceHomeWithTilde(project.path)
 
     return (
       <div key={project.path}>
@@ -530,9 +532,9 @@ export function SessionTree({
             <span className="shrink-0 font-medium">{project.name}</span>
             <span
               className="truncate text-xs text-muted-foreground"
-              title={project.path}
+              title={displayPath}
             >
-              {project.path}
+              {displayPath}
             </span>
           </div>
           <Badge variant="secondary" className="ml-auto h-4 px-1 text-[9px]">

@@ -164,7 +164,7 @@ describe("SessionTree", () => {
     const projectHeader = screen.getByTestId("project-header-/home/user/my-project")
     expect(projectHeader).toBeDefined()
     expect(projectHeader.textContent).toContain("my-project")
-    expect(projectHeader.textContent).toContain("/home/user/my-project")
+    expect(projectHeader.textContent).toContain("~/my-project")
   })
 
   it("renders session rows with titles", () => {
