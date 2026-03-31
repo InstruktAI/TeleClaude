@@ -27,6 +27,26 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
+    """Find next slug needing preparation from DB roadmap and artifact state."""
+    entries = await todos_db.list_roadmap()
+    for entry in entries:
+        slug = entry["slug"]
+        state = await todos_db.read_state(slug)
+        if state is None:
+            continue
+        phase = state.get("phase")
+        if phase == "done":
+            continue
+        has_requirements = await todos_db.artifact_exists(slug, "requirements")
+        has_impl_plan = await todos_db.artifact_exists(slug, "implementation-plan")
+        if not has_requirements or not has_impl_plan:
+            return slug
+        if phase == "pending":
+            return slug
+    return None
+
+
 async def _apply_stale_artifact_reroute(
     todos_db: TodosDb,
     slug: str,
@@ -71,8 +91,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
     the orchestrator.
     """
     from teleclaude.core.next_machine.slug_resolution import (  # pylint: disable=import-outside-toplevel
-        _find_next_prepare_slug,
-        resolve_holder_children,
+        resolve_holder_children_db,
     )
     from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
 
@@ -81,7 +100,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
 
     resolved_slug = slug
     if not resolved_slug:
-        resolved_slug = _find_next_prepare_slug(cwd)
+        resolved_slug = await _find_next_prepare_slug_db(todos_db)
 
     if not resolved_slug:
         guidance = await compose_agent_guidance(db)
@@ -97,7 +116,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
             )
         )
 
-    holder_children = resolve_holder_children(cwd, resolved_slug)
+    holder_children = await resolve_holder_children_db(todos_db, resolved_slug)
     if holder_children:
         return (
             f"SPLIT FINALIZE: {resolved_slug} was split into: {', '.join(holder_children)}. "

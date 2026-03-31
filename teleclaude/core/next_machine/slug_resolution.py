@@ -1,127 +1,175 @@
 """Slug resolution — find runnable slugs and manage item phase transitions.
 
 No imports from core.py (circular-import guard).
-Note: slug_in_roadmap lives in roadmap.py (used by check_dependencies_satisfied there).
-      is_bug_todo lives in state_io.py (avoids circular dep with build_gates).
 """
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase
-from teleclaude.core.next_machine.delivery import load_delivered_slugs
-from teleclaude.core.next_machine.path_checks import check_file_has_content
-from teleclaude.core.next_machine.roadmap import (
-    check_dependencies_satisfied,
-    load_roadmap,
-    load_roadmap_slugs,
-    slug_in_roadmap,
-)
-from teleclaude.core.next_machine.state_io import read_breakdown_state, read_phase_state, write_phase_state
 from teleclaude.git import GitCommandError, Repo
 
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
-def _find_next_prepare_slug(cwd: str) -> str | None:
-    """Find the next active slug that still needs preparation work.
 
-    Scans roadmap.yaml for slugs, then checks state.yaml phase for each.
-    Active slugs have phase pending, ready, or in_progress.
-    Returns the first slug that still needs action:
-    - requirements.md missing
-    - implementation-plan.md missing
-    - phase still pending (needs promotion to ready)
+async def resolve_slug_async(
+    todos_db: TodosDb,
+    slug: str | None,
+    ready_only: bool = False,
+    dependencies: dict[str, list[str]] | None = None,
+) -> tuple[str | None, bool, str]:
+    """Resolve slug from argument or roadmap using todos.db.
+
+    Args:
+        todos_db: Database instance for state and roadmap queries.
+        slug: Optional explicit slug.
+        ready_only: If True, only match items with current == 'prepared' (for next_work).
+        dependencies: Optional dependency graph for dependency gating.
+
+    Returns:
+        Tuple of (slug, is_ready_or_in_progress, description).
     """
-    for slug in load_roadmap_slugs(cwd):
-        phase = get_item_phase(cwd, slug)
+    if slug:
+        return slug, True, ""
 
-        # Skip done items
+    entries = await todos_db.list_roadmap()
+    delivered = await todos_db.delivered_slugs()
+
+    for entry in entries:
+        found_slug = entry["slug"]
+        phase = await _get_item_phase_db(todos_db, found_slug, delivered)
+
         if phase == ItemPhase.DONE.value:
             continue
 
-        has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
-        has_impl_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
-        if not has_requirements or not has_impl_plan:
-            return slug
+        is_ready = phase == ItemPhase.IN_PROGRESS.value or await _is_ready_for_work_db(todos_db, found_slug)
 
-        if phase == ItemPhase.PENDING.value:
-            return slug
+        if ready_only and not is_ready:
+            continue
 
-    return None
+        if ready_only and dependencies is not None:
+            slug_deps = dependencies.get(found_slug, [])
+            if slug_deps and not all(d in delivered for d in slug_deps):
+                continue
+
+        return found_slug, is_ready, entry.get("description") or ""
+
+    return None, False, ""
 
 
-def resolve_holder_children(cwd: str, holder_slug: str) -> list[str]:
-    """Resolve container/holder child slugs in deterministic order.
+async def _get_item_phase_db(
+    todos_db: TodosDb,
+    slug: str,
+    delivered: set[str] | None = None,
+) -> str:
+    """Get current phase for a work item from todos.db."""
+    if delivered is None:
+        delivered = await todos_db.delivered_slugs()
+    is_delivered = slug in delivered
+    is_in_roadmap = await todos_db.slug_in_roadmap(slug)
 
-    Resolution sources:
-    - roadmap group mapping (`group == holder_slug`)
-    - holder breakdown state (`state.yaml.breakdown.todos`)
+    if is_delivered and is_in_roadmap:
+        msg = (
+            f"Slug '{slug}' found in both delivered and active roadmap. "
+            f"This is a data integrity issue — escalate to the user to resolve."
+        )
+        raise ValueError(msg)
+    if is_delivered:
+        return ItemPhase.DONE.value
 
-    Roadmap order is authoritative when present. Breakdown-only children are
-    appended in their declared order.
-    """
-    entries = load_roadmap(cwd)
-    grouped_children = [entry.slug for entry in entries if entry.group == holder_slug]
+    state = await todos_db.read_state(slug)
+    if state is not None:
+        phase = state.get("phase")
+        if isinstance(phase, str):
+            return phase
 
-    breakdown_state = read_breakdown_state(cwd, holder_slug)
+    if is_in_roadmap:
+        return ItemPhase.PENDING.value
+
+    msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in roadmap. Cannot determine phase."
+    raise ValueError(msg)
+
+
+async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
+    """Check if item is ready for work: current == 'prepared'."""
+    state = await todos_db.read_state(slug)
+    if state is None:
+        return False
+    return state.get("current") == "prepared"
+
+
+async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
+    """Set phase for a work item in todos.db."""
+    state = await todos_db.read_state(slug)
+    if state is None:
+        state = {}
+    state["phase"] = phase
+    await todos_db.write_state(slug, state)
+
+
+async def resolve_holder_children_db(todos_db: TodosDb, holder_slug: str) -> list[str]:
+    """Resolve container/holder child slugs from DB roadmap and state."""
+    entries = await todos_db.list_roadmap()
+    grouped_children = [e["slug"] for e in entries if e.get("group_slug") == holder_slug]
+
+    state = await todos_db.read_state(holder_slug)
     breakdown_children: list[str] = []
-    if breakdown_state:
-        raw_children = breakdown_state.get("todos")
-        if isinstance(raw_children, list):
-            breakdown_children = [child for child in raw_children if child]
+    if state:
+        breakdown = state.get("breakdown")
+        if isinstance(breakdown, dict):
+            raw_children = breakdown.get("todos")
+            if isinstance(raw_children, list):
+                breakdown_children = [str(child) for child in raw_children if child]
 
     if not grouped_children and not breakdown_children:
         return []
 
-    ordered_children = list(grouped_children)
-    seen = set(ordered_children)
+    ordered = list(grouped_children)
+    seen = set(ordered)
     for child in breakdown_children:
         if child not in seen:
-            ordered_children.append(child)
+            ordered.append(child)
             seen.add(child)
-    return ordered_children
+    return ordered
 
 
-def resolve_first_runnable_holder_child(
-    cwd: str,
+async def resolve_first_runnable_holder_child_db(
+    todos_db: TodosDb,
     holder_slug: str,
     dependencies: dict[str, list[str]],
 ) -> tuple[str | None, str]:
-    """Resolve first runnable child for a holder slug.
-
-    Returns:
-        (child_slug, reason)
-        - reason == "ok" when child_slug is selected
-        - reason in {"not_holder", "children_not_in_roadmap", "complete",
-          "deps_unsatisfied", "item_not_ready"} otherwise
-    """
-    children = resolve_holder_children(cwd, holder_slug)
+    """Resolve first runnable child for a holder slug from DB."""
+    children = await resolve_holder_children_db(todos_db, holder_slug)
     reason = "not_holder"
     if not children:
         return None, reason
 
+    delivered = await todos_db.delivered_slugs()
     has_children_in_roadmap = False
     has_incomplete_children = False
     has_deps_blocked = False
     has_not_ready = False
 
     for child in children:
-        if not slug_in_roadmap(cwd, child):
+        if not await todos_db.slug_in_roadmap(child):
             continue
 
         has_children_in_roadmap = True
-        phase = get_item_phase(cwd, child)
+        phase = await _get_item_phase_db(todos_db, child, delivered)
         if phase == ItemPhase.DONE.value:
             continue
 
         has_incomplete_children = True
-        is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, child)
+        is_ready = phase == ItemPhase.IN_PROGRESS.value or await _is_ready_for_work_db(todos_db, child)
         if not is_ready:
             has_not_ready = True
             continue
 
-        if not check_dependencies_satisfied(cwd, child, dependencies):
+        child_deps = dependencies.get(child, [])
+        if child_deps and not all(d in delivered for d in child_deps):
             has_deps_blocked = True
             continue
 
@@ -136,63 +184,6 @@ def resolve_first_runnable_holder_child(
     else:
         reason = "children_not_in_roadmap"
     return None, reason
-
-
-def resolve_slug(
-    cwd: str,
-    slug: str | None,
-    ready_only: bool = False,
-    dependencies: dict[str, list[str]] | None = None,
-) -> tuple[str | None, bool, str]:
-    """Resolve slug from argument or roadmap.
-
-    Phase is derived from state.yaml for each slug.
-
-    Args:
-        cwd: Current working directory (project root)
-        slug: Optional explicit slug
-        ready_only: If True, only match items with phase "ready" (for next_work)
-        dependencies: Optional dependency graph for dependency gating (R6).
-                     If provided with ready_only=True, only returns slugs with satisfied dependencies.
-
-    Returns:
-        Tuple of (slug, is_ready_or_in_progress, description).
-        If slug provided, returns (slug, True, "").
-        If found in roadmap, returns (slug, True if ready/in_progress, False if pending, description).
-        If nothing found, returns (None, False, "").
-    """
-    resolved: tuple[str | None, bool, str] = (slug, True, "") if slug else (None, False, "")
-    if not slug:
-        entries = load_roadmap(cwd)
-        for entry in entries:
-            found_slug = entry.slug
-            phase = get_item_phase(cwd, found_slug)
-            is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, found_slug)
-            should_skip = ready_only and not is_ready
-            if not ready_only and phase == ItemPhase.DONE.value:
-                should_skip = True
-            if (
-                ready_only
-                and dependencies is not None
-                and not check_dependencies_satisfied(cwd, found_slug, dependencies)
-            ):
-                should_skip = True
-            if should_skip:
-                continue
-            resolved = (found_slug, is_ready, entry.description or "")
-            break
-
-    return resolved
-
-
-async def resolve_slug_async(
-    cwd: str,
-    slug: str | None,
-    ready_only: bool = False,
-    dependencies: dict[str, list[str]] | None = None,
-) -> tuple[str | None, bool, str]:
-    """Async wrapper for resolve_slug using a thread to avoid blocking."""
-    return await asyncio.to_thread(resolve_slug, cwd, slug, ready_only, dependencies)
 
 
 def resolve_canonical_project_root(cwd: str) -> str:
@@ -218,35 +209,19 @@ def resolve_canonical_project_root(cwd: str) -> str:
     return str((common_dir / "..").resolve())
 
 
-def get_item_phase(cwd: str, slug: str) -> str:
-    """Get current phase for a work item from state.yaml.
+# ── Legacy sync functions (retained for callers not yet migrated) ────────
 
-    Checks delivered.yaml before consulting state.yaml so delivered slugs still
-    resolve correctly after their todo folder has been cleaned up. A slug
-    present in both delivered.yaml and roadmap.yaml is a data integrity error
-    that requires human intervention.
 
-    Args:
-        cwd: Project root directory
-        slug: Work item slug to query
+def get_item_phase(cwd: str, slug: str) -> str:  # pylint: disable=too-many-return-statements
+    """Sync legacy: get item phase from filesystem. Use _get_item_phase_db for new code."""
+    from teleclaude.core.next_machine.delivery import load_delivered_slugs  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.roadmap import slug_in_roadmap  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
 
-    Returns:
-        One of "pending", "in_progress", "done"
-
-    Raises:
-        ValueError: If slug exists in both delivered.yaml and roadmap.yaml,
-            or if slug cannot be resolved from any source.
-    """
-    # Check delivered.yaml first: state.yaml default always has phase="pending",
-    # so it cannot distinguish delivered-and-cleaned-up from genuinely pending.
     is_delivered = slug in load_delivered_slugs(cwd)
     is_in_roadmap = slug_in_roadmap(cwd, slug)
     if is_delivered and is_in_roadmap:
-        msg = (
-            f"Slug '{slug}' found in both delivered.yaml and roadmap.yaml. "
-            f"This is a data integrity issue — escalate to the user to resolve."
-        )
-        raise ValueError(msg)
+        raise ValueError(f"Slug '{slug}' in both delivered and roadmap — data integrity issue")
     if is_delivered:
         return ItemPhase.DONE.value
     state = read_phase_state(cwd, slug)
@@ -255,41 +230,38 @@ def get_item_phase(cwd: str, slug: str) -> str:
         return phase
     if is_in_roadmap:
         return ItemPhase.PENDING.value
-    msg = (
-        f"Slug '{slug}' has no phase in state.yaml, is not in delivered.yaml, "
-        f"and is not in roadmap.yaml. Cannot determine phase."
-    )
-    raise ValueError(msg)
+    raise ValueError(f"Slug '{slug}' has no phase, not delivered, not in roadmap")
 
 
 def is_ready_for_work(cwd: str, slug: str) -> bool:
-    """Check if item is ready for work: current == 'prepared' means all gates passed."""
+    """Sync legacy: check if item is ready. Use _is_ready_for_work_db for new code."""
+    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
+
     state = read_phase_state(cwd, slug)
-    current = state.get("current", "")
-    return current == "prepared"
+    return state.get("current") == "prepared"
 
 
 def set_item_phase(cwd: str, slug: str, phase: str) -> None:
-    """Set phase for a work item in state.yaml.
+    """Sync legacy: set item phase on filesystem. Use set_item_phase_db for new code."""
+    from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
+        read_phase_state,
+        write_phase_state,
+    )
 
-    Args:
-        cwd: Project root directory
-        slug: Work item slug to update
-        phase: One of "pending", "in_progress", "done"
-    """
     state = read_phase_state(cwd, slug)
     state["phase"] = phase
     write_phase_state(cwd, slug, state)
 
 
 __all__ = [
-    "_find_next_prepare_slug",
+    "_get_item_phase_db",
+    "_is_ready_for_work_db",
     "get_item_phase",
     "is_ready_for_work",
     "resolve_canonical_project_root",
-    "resolve_first_runnable_holder_child",
-    "resolve_holder_children",
-    "resolve_slug",
+    "resolve_first_runnable_holder_child_db",
+    "resolve_holder_children_db",
     "resolve_slug_async",
     "set_item_phase",
+    "set_item_phase_db",
 ]

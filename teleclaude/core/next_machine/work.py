@@ -49,16 +49,12 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
     format_uncommitted_changes,
 )
-from teleclaude.core.next_machine.roadmap import (
-    check_dependencies_satisfied,
-)
 from teleclaude.core.next_machine.slug_resolution import (
-    get_item_phase,
-    is_ready_for_work,
+    _get_item_phase_db,
+    _is_ready_for_work_db,
     resolve_canonical_project_root,
-    resolve_first_runnable_holder_child,
     resolve_slug_async,
-    set_item_phase,
+    set_item_phase_db,
 )
 from teleclaude.core.next_machine.state_io import (
     _is_review_round_limit_reached,
@@ -152,7 +148,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
     await asyncio.to_thread(sweep_completed_groups, cwd)
 
     phase_slug = slug or "<auto>"
-    resolved_slug, slug_error = await _resolve_work_slug(todos_db, cwd, slug, phase_slug)
+    resolved_slug, slug_error = await _resolve_work_slug(todos_db, slug, phase_slug)
     if slug_error is not None:
         return slug_error
 
@@ -178,25 +174,23 @@ async def _normalize_next_work_cwd(cwd: str) -> str:
     return canonical_cwd
 
 
-async def _resolve_work_slug(todos_db: TodosDb, cwd: str, slug: str | None, phase_slug: str) -> tuple[str, str | None]:
+async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: str) -> tuple[str, str | None]:
     """Resolve the target slug or return a formatted early-exit message."""
     slug_resolution_started = perf_counter()
     if slug is not None:
-        resolved_slug, error = await _resolve_explicit_work_slug(
-            todos_db, cwd, slug, phase_slug, slug_resolution_started
-        )
+        resolved_slug, error = await _resolve_explicit_work_slug(todos_db, slug, phase_slug, slug_resolution_started)
         if error is not None:
             return "", error
         _log_next_work_phase(resolved_slug, "slug_resolution", slug_resolution_started, "run", "resolved")
         return resolved_slug, None
 
     deps = await todos_db.load_deps()
-    found_slug, _, _ = await resolve_slug_async(cwd, None, True, deps)
+    found_slug, _, _ = await resolve_slug_async(todos_db, None, True, deps)
     if found_slug:
         _log_next_work_phase(found_slug, "slug_resolution", slug_resolution_started, "run", "resolved")
         return found_slug, None
 
-    has_ready_items, _, _ = await resolve_slug_async(cwd, None, True)
+    has_ready_items, _, _ = await resolve_slug_async(todos_db, None, True)
     if has_ready_items:
         _log_next_work_phase(
             phase_slug, "slug_resolution", slug_resolution_started, "error", "ready_but_deps_unsatisfied"
@@ -217,7 +211,6 @@ async def _resolve_work_slug(todos_db: TodosDb, cwd: str, slug: str | None, phas
 
 async def _resolve_explicit_work_slug(
     todos_db: TodosDb,
-    cwd: str,
     slug: str,
     phase_slug: str,
     slug_resolution_started: float,
@@ -232,17 +225,13 @@ async def _resolve_explicit_work_slug(
 
     holder_error = None
     if not is_bug:
-        slug, holder_error = await _resolve_holder_slug(cwd, slug, deps, phase_slug, slug_resolution_started)
+        slug, holder_error = await _resolve_holder_slug(todos_db, slug, deps, phase_slug, slug_resolution_started)
         if holder_error is not None:
             return "", holder_error
 
-    # Prefer worktree state — the orchestrator maintains state there, not on main.
-    worktree_path = Path(cwd) / WORKTREE_DIR / slug
-    state_cwd = str(worktree_path) if worktree_path.exists() else cwd
-
-    phase = await asyncio.to_thread(get_item_phase, state_cwd, slug)
+    phase = await _get_item_phase_db(todos_db, slug)
     readiness_error = await _validate_explicit_slug_readiness(
-        state_cwd, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
+        todos_db, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
     )
     if readiness_error is not None:
         return "", readiness_error
@@ -250,14 +239,18 @@ async def _resolve_explicit_work_slug(
 
 
 async def _resolve_holder_slug(
-    cwd: str,
+    todos_db: TodosDb,
     slug: str,
-    deps: object,
+    deps: dict[str, list[str]],
     phase_slug: str,
     slug_resolution_started: float,
 ) -> tuple[str, str | None]:
     """Resolve runnable child work for holder todos."""
-    holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)  # type: ignore[arg-type]  # pylint: disable=line-too-long
+    from teleclaude.core.next_machine.slug_resolution import (  # pylint: disable=import-outside-toplevel
+        resolve_first_runnable_holder_child_db,
+    )
+
+    holder_child, holder_reason = await resolve_first_runnable_holder_child_db(todos_db, slug, deps)
     if holder_child:
         return holder_child, None
     if holder_reason == "complete":
@@ -288,16 +281,16 @@ async def _resolve_holder_slug(
 
 
 async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    cwd: str,
+    todos_db: TodosDb,
     slug: str,
     phase: str,
-    deps: object,
+    deps: dict[str, list[str]],
     is_bug: bool,
     phase_slug: str,
     slug_resolution_started: float,
 ) -> str | None:
     """Validate readiness and dependency constraints for an explicit slug."""
-    if not is_bug and phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
+    if not is_bug and phase == ItemPhase.PENDING.value and not await _is_ready_for_work_db(todos_db, slug):
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "item_not_ready")
         return format_error(
             "ITEM_NOT_READY",
@@ -307,7 +300,9 @@ async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-argumen
     if phase == ItemPhase.DONE.value:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "item_done")
         return f"COMPLETE: Item '{slug}' is already done."
-    if await asyncio.to_thread(check_dependencies_satisfied, cwd, slug, deps):  # type: ignore[arg-type]
+    delivered = await todos_db.delivered_slugs()
+    slug_deps = deps.get(slug, [])
+    if not slug_deps or all(d in delivered for d in slug_deps):
         return None
     _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "deps_unsatisfied")
     return format_error(
@@ -492,9 +487,9 @@ async def _prepare_dispatch_state(  # pylint: disable=too-many-arguments,too-man
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "uncommitted_changes")
         return _DispatchState({}, "", "", {}), format_uncommitted_changes(resolved_slug)
 
-    current_phase = await asyncio.to_thread(get_item_phase, worktree_cwd, resolved_slug)
+    current_phase = await _get_item_phase_db(todos_db, resolved_slug)
     if current_phase == ItemPhase.PENDING.value:
-        await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
+        await set_item_phase_db(todos_db, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
     state = await todos_db.read_state(resolved_slug)
     current = str(state.get("current", ""))

@@ -90,25 +90,18 @@ async def test_resolve_explicit_work_slug_prefers_worktree_state_for_readiness_c
             "teleclaude.core.next_machine.work._resolve_holder_slug",
             new=AsyncMock(return_value=("slug-review", None)),
         ),
-        patch("teleclaude.core.next_machine.work.get_item_phase", return_value="pending") as get_item_phase,
+        patch(
+            "teleclaude.core.next_machine.work._get_item_phase_db",
+            new=AsyncMock(return_value="pending"),
+        ),
         patch(
             "teleclaude.core.next_machine.work._validate_explicit_slug_readiness",
             new=AsyncMock(return_value=None),
-        ) as validate_readiness,
+        ),
     ):
-        resolved, error = await _resolve_explicit_work_slug(todos_db, str(tmp_path), "slug-review", "slug-review", 0.0)
+        resolved, error = await _resolve_explicit_work_slug(todos_db, "slug-review", "slug-review", 0.0)
 
     assert (resolved, error) == ("slug-review", None)
-    get_item_phase.assert_called_once_with(str(worktree_path), "slug-review")
-    validate_readiness.assert_awaited_once_with(
-        str(worktree_path),
-        "slug-review",
-        "pending",
-        {},
-        False,
-        "slug-review",
-        0.0,
-    )
 
 
 @pytest.mark.asyncio

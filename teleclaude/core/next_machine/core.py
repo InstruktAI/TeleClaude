@@ -303,9 +303,6 @@ from teleclaude.core.next_machine.roadmap import (
 
 # ── slug resolution ────────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.slug_resolution import (
-    _find_next_prepare_slug as _find_next_prepare_slug,
-)
-from teleclaude.core.next_machine.slug_resolution import (
     get_item_phase as get_item_phase,
 )
 from teleclaude.core.next_machine.slug_resolution import (
@@ -313,15 +310,6 @@ from teleclaude.core.next_machine.slug_resolution import (
 )
 from teleclaude.core.next_machine.slug_resolution import (
     resolve_canonical_project_root as resolve_canonical_project_root,
-)
-from teleclaude.core.next_machine.slug_resolution import (
-    resolve_first_runnable_holder_child as resolve_first_runnable_holder_child,
-)
-from teleclaude.core.next_machine.slug_resolution import (
-    resolve_holder_children as resolve_holder_children,
-)
-from teleclaude.core.next_machine.slug_resolution import (
-    resolve_slug as resolve_slug,
 )
 from teleclaude.core.next_machine.slug_resolution import (
     resolve_slug_async as resolve_slug_async,

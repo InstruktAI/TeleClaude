@@ -575,17 +575,40 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
             finalize = state.get("finalize")
             finalize_status = finalize.get("status") if isinstance(finalize, dict) else None
 
+            prepare_phase = _derive_prepare_phase_from_current(current)
+            integration_phase = _non_empty_str(state.get("integration_phase"))
+
             todo_status = row[4]  # active/icebox/delivered
             if todo_status == "active" and build_status:
                 todo_status = "in_progress"
             elif todo_status == "active" and current in ("prepared",):
                 todo_status = "ready"
+            elif todo_status == "active" and prepare_phase:
+                todo_status = "in_progress"
+
+            # Check artifact existence from DB
+            has_req_row = conn.execute(
+                "SELECT 1 FROM todo_artifacts WHERE slug = ? AND name = 'requirements'",  # guard: raw-sql
+                (slug,),
+            ).fetchone()
+            has_plan_row = conn.execute(
+                "SELECT 1 FROM todo_artifacts WHERE slug = ? AND name = 'implementation-plan'",  # guard: raw-sql
+                (slug,),
+            ).fetchone()
+
+            # List artifact names for the files field
+            artifact_rows = conn.execute(
+                "SELECT name FROM todo_artifacts WHERE slug = ? ORDER BY name",  # guard: raw-sql
+                (slug,),
+            ).fetchall()
 
             todos.append(
                 TodoInfo(
                     slug=slug,
                     status=todo_status,
                     description=row[3] or "",
+                    has_requirements=has_req_row is not None,
+                    has_impl_plan=has_plan_row is not None,
                     build_status=build_status,
                     review_status=review_status,
                     dor_score=dor_score if dor_score else None,
@@ -593,7 +616,10 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
                     group=row[2],
                     delivered_at=row[5],
                     current=current or None,
+                    prepare_phase=prepare_phase,
+                    integration_phase=integration_phase,
                     finalize_status=finalize_status,
+                    files=[ar[0] for ar in artifact_rows],
                 )
             )
 

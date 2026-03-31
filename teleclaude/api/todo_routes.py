@@ -229,7 +229,7 @@ def _auto_commit_state(effective_cwd: str, slug: str, label: str) -> None:
 
 
 @router.post("/mark-phase")
-async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals,too-many-return-statements
+async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals,too-many-return-statements,too-many-statements
     slug: Annotated[str, Body()],
     phase: Annotated[str | None, Body()] = None,
     status: Annotated[str | None, Body()] = None,
@@ -245,6 +245,14 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
+
+    _todos_db: TodosDb | None = None
+
+    async def _ensure_db() -> TodosDb:
+        nonlocal _todos_db
+        if _todos_db is None:
+            _todos_db = await _get_todos_db_from_cwd(cwd)
+        return _todos_db
 
     # New target-based path
     if target:
@@ -266,6 +274,9 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
             updated_state = mark_phase(effective_cwd, slug, target)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        await (await _ensure_db()).write_state(slug, updated_state)
+        logger.info("mark_phase synced to todos.db: slug=%s target=%s", slug, target)
 
         try:
             _auto_commit_state(effective_cwd, slug, target)
@@ -289,11 +300,15 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
                 detail=f"invalid verdict '{status}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}",
             )
         updated_state = stamp_verdict(cwd, slug, phase, status)
+        await (await _ensure_db()).write_state(slug, updated_state)
+        logger.info("stamp_verdict synced to todos.db: slug=%s phase=%s verdict=%s", slug, phase, status)
         return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(updated_state)}
 
     # Artifact stamp phases
     if phase in _PREPARE_ARTIFACT_PHASES:
         updated_state = stamp_artifact(cwd, slug, phase)
+        await (await _ensure_db()).write_state(slug, updated_state)
+        logger.info("stamp_artifact synced to todos.db: slug=%s artifact=%s", slug, phase)
         return {
             "result": f"OK: {slug} state updated - artifacts.{phase}.produced_at stamped",
             "state": str(updated_state),
@@ -308,6 +323,8 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
             )
         resolved_target = status
         updated_state = mark_phase(cwd, slug, resolved_target)
+        await (await _ensure_db()).write_state(slug, updated_state)
+        logger.info("mark_phase synced to todos.db: slug=%s prepare_phase=%s", slug, status)
         return {"result": f"OK: {slug} state updated - prepare_phase: {status}", "state": str(updated_state)}
 
     # Work phases: build/review — map to target name
@@ -334,6 +351,9 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
         updated_state = mark_phase(effective_cwd, slug, resolved_target)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    await (await _ensure_db()).write_state(slug, updated_state)
+    logger.info("mark_phase synced to todos.db: slug=%s phase=%s status=%s", slug, phase, status)
 
     try:
         _auto_commit_state(effective_cwd, slug, f"{phase}={status}")
