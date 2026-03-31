@@ -30,6 +30,7 @@ logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_engine import AnimationEngine
+    from teleclaude.cli.tui.header_frames import HeaderSceneFrame
 
 
 def _to_color(c: str | int | None) -> str | None:
@@ -138,11 +139,11 @@ class BoxTabBar(TelecMixin, Widget):
             logger.exception("BoxTabBar render crashed")
             return Group()
 
-    def build_render_frame(self) -> Group:
+    def build_render_frame(self, scene: HeaderSceneFrame | None = None) -> Group:
         """Build the current tab bar frame without consulting the cached widget render."""
-        return self._render_tabs()
+        return self._render_tabs(scene=scene)
 
-    def _render_tabs(self) -> Group:
+    def _render_tabs(self, scene: HeaderSceneFrame | None = None) -> Group:
         width = self.size.width or 80
         engine = self.animation_engine
         dark_mode = is_dark_mode()
@@ -174,6 +175,7 @@ class BoxTabBar(TelecMixin, Widget):
                 width,
                 tabs,
                 engine,
+                scene,
                 entity_z_scan,
                 sky_fallback,
                 pane_bg,
@@ -218,7 +220,16 @@ class BoxTabBar(TelecMixin, Widget):
                 return char, True, is_active, tab_bg, tab_fg
         return " ", False, False, None, None
 
-    def _sky_color(self, engine: AnimationEngine | None, x: int, global_y: int, sky_fallback: str) -> str:
+    def _sky_color(
+        self,
+        engine: AnimationEngine | None,
+        x: int,
+        global_y: int,
+        sky_fallback: str,
+        scene: HeaderSceneFrame | None = None,
+    ) -> str:
+        if scene is not None:
+            return scene.sky_background(x, global_y)
         from teleclaude.cli.tui.animations.base import Z0
 
         sky_color = engine.get_layer_color(Z0, x, global_y, target="header") if engine else None
@@ -230,6 +241,7 @@ class BoxTabBar(TelecMixin, Widget):
         width: int,
         tabs: list[tuple[int, int, str, bool, str]],
         engine: AnimationEngine | None,
+        scene: HeaderSceneFrame | None,
         entity_z_scan: list[int],
         sky_fallback: str,
         pane_bg: str,
@@ -246,15 +258,15 @@ class BoxTabBar(TelecMixin, Widget):
         global_y = 7 + y_offset
         for x in range(width):
             cell = self._tab_cell(x, y_offset, tabs, active_tab_bg, active_tab_fg, inactive_tab_bg, inactive_tab_fg)
-            sky_color = self._sky_color(engine, x, global_y, sky_fallback)
+            sky_color = self._sky_color(engine, x, global_y, sky_fallback, scene)
             if y_offset == 2:
                 self._append_transition_row(
-                    row_text, x, global_y, cell, engine, entity_z_scan, sky_color, pane_bg, z70, z80
+                    row_text, x, global_y, cell, engine, scene, entity_z_scan, sky_color, pane_bg, z70, z80
                 )
             elif y_offset == 0:
-                self._append_sky_row(row_text, x, global_y, engine, entity_z_scan, sky_color, pipe_color)
+                self._append_sky_row(row_text, x, global_y, engine, scene, entity_z_scan, sky_color, pipe_color)
             else:
-                self._append_label_row(row_text, x, global_y, cell, engine, entity_z_scan, sky_color, z60, z80)
+                self._append_label_row(row_text, x, global_y, cell, engine, scene, entity_z_scan, sky_color, z60, z80)
         return row_text
 
     def _append_transition_row(
@@ -264,6 +276,7 @@ class BoxTabBar(TelecMixin, Widget):
         global_y: int,
         cell: tuple[str, bool, bool, str | None, str | None],
         engine: AnimationEngine | None,
+        scene: HeaderSceneFrame | None,
         entity_z_scan: list[int],
         sky_color: str,
         pane_bg: str,
@@ -274,9 +287,18 @@ class BoxTabBar(TelecMixin, Widget):
         top_half = (
             tab_bg or pane_bg
             if in_tab
-            else blend_colors(self._sky_color(engine, x, global_y - 1, sky_color), "#ffffff", 0.05)
+            else blend_colors(self._sky_color(engine, x, global_y - 1, sky_color, scene), "#ffffff", 0.05)
         )
-        if engine:
+        if scene is not None:
+            hit = scene.scan_tab_entity(x, global_y, z_min=z80 if active_tab_under else z70, scene_bg=pane_bg)
+            if hit:
+                e_char, e_fg, e_bg = hit
+                if e_char is not None:
+                    row_text.append(e_char, style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or pane_bg)))
+                    return
+                if e_bg is not None:
+                    top_half = e_bg
+        elif engine:
             hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z80 if active_tab_under else z70, pane_bg)
             if hit:
                 e_char, e_fg, e_bg = hit
@@ -293,6 +315,7 @@ class BoxTabBar(TelecMixin, Widget):
         x: int,
         global_y: int,
         engine: AnimationEngine | None,
+        scene: HeaderSceneFrame | None,
         entity_z_scan: list[int],
         sky_color: str,
         pipe_color: str,
@@ -301,7 +324,20 @@ class BoxTabBar(TelecMixin, Widget):
         is_pipe = x in {13, 70}
         fg_char = "\u2551" if is_pipe else " "
         fg_color: str | None = pipe_color if is_pipe else None
-        if engine:
+        if scene is not None:
+            hit = scene.scan_tab_entity(x, global_y, z_min=0, scene_bg=sky_color)
+            if hit:
+                e_char, e_fg, e_bg = hit
+                if e_char is not None:
+                    fg_char = e_char
+                    fg_color = e_fg
+                if e_bg is not None:
+                    final_bg = e_bg
+            if engine and engine.has_active_animation and engine.is_external_light():
+                color = engine.get_color(x, global_y)
+                if color:
+                    final_bg = blend_colors(final_bg, str(color), 0.1)
+        elif engine:
             hit = _scan_entity_at(engine, entity_z_scan, x, global_y, 0, sky_color)
             if hit:
                 e_char, e_fg, e_bg = hit
@@ -323,6 +359,7 @@ class BoxTabBar(TelecMixin, Widget):
         global_y: int,
         cell: tuple[str, bool, bool, str | None, str | None],
         engine: AnimationEngine | None,
+        scene: HeaderSceneFrame | None,
         entity_z_scan: list[int],
         sky_color: str,
         z60: int,
@@ -332,7 +369,25 @@ class BoxTabBar(TelecMixin, Widget):
         final_bg = (tab_bg or sky_color) if in_tab else sky_color
         fg_char = char
         fg_color = None
-        if engine:
+        if scene is not None:
+            hit = scene.scan_tab_entity(
+                x,
+                global_y,
+                z_min=z80 if in_tab and active_tab_under else (z60 if in_tab else 0),
+                scene_bg=final_bg,
+            )
+            if hit:
+                e_char, e_fg, e_bg = hit
+                if e_char is not None:
+                    fg_char = e_char
+                    fg_color = e_fg
+                if e_bg is not None:
+                    final_bg = e_bg
+            if not in_tab and engine and engine.has_active_animation and engine.is_external_light():
+                color = engine.get_color(x, global_y)
+                if color:
+                    final_bg = blend_colors(final_bg, str(color), 0.1)
+        elif engine:
             hit = _scan_entity_at(
                 engine,
                 entity_z_scan,

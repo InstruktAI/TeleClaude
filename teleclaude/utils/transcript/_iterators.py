@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
@@ -116,6 +117,45 @@ def _iter_claude_entries(
     yield from _iter_jsonl_entries(path)
 
 
+def _is_turn_aborted_event(entry: JsonDict) -> bool:
+    """Return True when entry is a Codex turn_aborted event_msg."""
+    if entry.get("type") != "event_msg":
+        return False
+    payload = entry.get("payload")
+    return isinstance(payload, dict) and payload.get("type") == "turn_aborted"
+
+
+def _strip_turn_aborted_text(entry: JsonDict) -> JsonDict | None:
+    """Strip Codex-injected <turn_aborted> blocks from a user message.
+
+    Returns the cleaned entry, or None if the message is empty after stripping.
+    """
+    payload = entry.get("payload")
+    if not isinstance(payload, dict) or payload.get("type") != "message" or payload.get("role") != "user":
+        return entry
+
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return entry
+
+    cleaned_content: list[JsonDict] = []
+    for block_raw in content:
+        if not isinstance(block_raw, dict):
+            cleaned_content.append(block_raw)
+            continue
+        text = block_raw.get("text")
+        if not isinstance(text, str):
+            cleaned_content.append(block_raw)
+            continue
+        stripped = re.sub(r"<turn_aborted>.*?</turn_aborted>\s*", "", text, flags=re.DOTALL).strip()
+        if stripped:
+            cleaned_content.append(cast(JsonDict, {**block_raw, "text": stripped}))
+
+    if not cleaned_content:
+        return None
+    return cast(JsonDict, {**entry, "payload": {**payload, "content": cleaned_content}})
+
+
 def _iter_codex_entries(
     path: Path,
     *,
@@ -123,14 +163,34 @@ def _iter_codex_entries(
 ) -> Iterable[JsonDict]:
     """Yield entries from Codex JSONL transcripts, skipping metadata.
 
+    Buffers one entry so that when a turn_aborted event_msg is encountered,
+    the preceding Codex-injected user message can be cleaned.
+
     guard: allow-string-compare
     """
 
     source = _iter_jsonl_entries_tail(path, tail_entries) if tail_entries is not None else _iter_jsonl_entries(path)
+    pending: JsonDict | None = None
     for entry in source:
         if entry.get("type") == "session_meta":
             continue
-        yield entry
+
+        if _is_turn_aborted_event(entry):
+            # The preceding buffered entry is the synthetic user message — clean it.
+            if pending is not None:
+                cleaned = _strip_turn_aborted_text(pending)
+                if cleaned is not None:
+                    yield cleaned
+                pending = None
+            # Drop the event_msg itself.
+            continue
+
+        if pending is not None:
+            yield pending
+        pending = entry
+
+    if pending is not None:
+        yield pending
 
 
 def _coerce_dict_list(raw_items: object) -> list[JsonDict]:

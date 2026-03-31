@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_engine import AnimationEngine
+    from teleclaude.cli.tui.header_frames import HeaderSceneFrame
 
 BANNER_LINES = [
     " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2557     \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2557      \u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557   \u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557",
@@ -187,7 +188,15 @@ def _apply_sky_ambient(state: dict[str, str | bool | None], color: str) -> bool:
     return True
 
 
-def _resolve_sky_background(engine: AnimationEngine | None, x: int, y: int, sky_fallback: str) -> str:
+def _resolve_sky_background(
+    engine: AnimationEngine | None,
+    x: int,
+    y: int,
+    sky_fallback: str,
+    scene: HeaderSceneFrame | None = None,
+) -> str:
+    if scene is not None:
+        return scene.sky_background(x, y)
     from teleclaude.cli.tui.animations.base import Z0
 
     bg_color = engine.get_layer_color(Z0, x, y, target="header") if engine else None
@@ -203,6 +212,7 @@ def _render_art_content(
     target: str,
     plate_width: int,
     engine: AnimationEngine | None,
+    scene: HeaderSceneFrame | None,
     dark_mode: bool,
     plate_bg: str,
     sky_fallback: str,
@@ -222,10 +232,19 @@ def _render_art_content(
             local_x = x - pad
             is_on_plate = pad <= x < pad + plate_width
             fg_char = line[local_x] if is_on_plate and local_x < len(line) else " "
-            final_bg = plate_bg if is_on_plate else _resolve_sky_background(engine, x, y, sky_fallback)
+            final_bg = plate_bg if is_on_plate else _resolve_sky_background(engine, x, y, sky_fallback, scene)
             fg_color: str | None = None
             entity_override = False
-            if engine:
+            if scene is not None:
+                z_threshold = Z50 if is_on_plate else 0
+                ent_char, ent_fg, bg_entity_color = scene.scan_sky_entity(x, y, z_min=z_threshold)
+                if ent_char != " ":
+                    fg_char = ent_char
+                    fg_color = ent_fg
+                    entity_override = True
+                if bg_entity_color:
+                    final_bg = bg_entity_color
+            elif engine:
                 z_threshold = Z50 if is_on_plate else 0
                 ent_char, ent_fg, bg_entity_color = _scan_sky_entity(
                     engine, x, y, dark_mode, z_levels, z_min=z_threshold
@@ -310,6 +329,7 @@ def _render_pipe_row(
     total_width: int,
     y: int,
     engine: AnimationEngine | None,
+    scene: HeaderSceneFrame | None,
     dark_mode: bool,
     z_levels: list[int],
     sky_fallback: str,
@@ -318,11 +338,18 @@ def _render_pipe_row(
     z_threshold: int,
 ) -> None:
     for x in range(total_width):
-        bg = _resolve_sky_background(engine, x, y, sky_fallback)
+        bg = _resolve_sky_background(engine, x, y, sky_fallback, scene)
         is_pipe = x in pipe_positions
         fg_char = "\u2551" if is_pipe else " "
         fg_color: str | None = str(pipe_color) if is_pipe else None
-        if engine:
+        if scene is not None:
+            ent_char, ent_color, bg_ent = scene.scan_sky_entity(x, y, z_min=z_threshold if is_pipe else 0)
+            if ent_char != " ":
+                fg_char = ent_char
+                fg_color = ent_color
+            if bg_ent:
+                bg = bg_ent
+        elif engine:
             ent_char, ent_color, bg_ent = _scan_sky_entity(
                 engine,
                 x,
@@ -395,13 +422,13 @@ class Banner(TelecMixin, Widget):
             logger.exception("Banner render crashed")
             return Text("TELECLAUDE")
 
-    def build_render_frame(self) -> Text:
+    def build_render_frame(self, scene: HeaderSceneFrame | None = None) -> Text:
         """Build the current banner frame without consulting the cached widget render."""
         if self.is_compact:
-            return self._render_logo()
-        return self._render_banner()
+            return self._render_logo(scene=scene)
+        return self._render_banner(scene=scene)
 
-    def _render_banner(self) -> Text:
+    def _render_banner(self, scene: HeaderSceneFrame | None = None) -> Text:
         result = Text()
         engine = self.animation_engine
         from teleclaude.cli.tui.animations.base import Z50
@@ -427,6 +454,7 @@ class Banner(TelecMixin, Widget):
             target="banner",
             plate_width=85,
             engine=engine,
+            scene=scene,
             dark_mode=dark_mode,
             plate_bg=plate_bg,
             sky_fallback=sky_fallback,
@@ -438,6 +466,7 @@ class Banner(TelecMixin, Widget):
             total_width=total_width,
             y=len(BANNER_LINES),
             engine=engine,
+            scene=scene,
             dark_mode=dark_mode,
             z_levels=z_levels,
             sky_fallback=sky_fallback,
@@ -448,7 +477,7 @@ class Banner(TelecMixin, Widget):
 
         return result
 
-    def _render_logo(self) -> Text:
+    def _render_logo(self, scene: HeaderSceneFrame | None = None) -> Text:
         result = Text()
         engine = self.animation_engine
         from teleclaude.cli.tui.animations.base import Z50
@@ -476,6 +505,7 @@ class Banner(TelecMixin, Widget):
             target="logo",
             plate_width=width,
             engine=engine,
+            scene=scene,
             dark_mode=dark_mode,
             plate_bg=plate_bg,
             sky_fallback=sky_fallback,
@@ -487,6 +517,7 @@ class Banner(TelecMixin, Widget):
             total_width=total_width,
             y=len(LOGO_LINES),
             engine=engine,
+            scene=scene,
             dark_mode=dark_mode,
             z_levels=z_levels,
             sky_fallback=sky_fallback,
