@@ -6,6 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from teleclaude.core.todos_db._base import _generate_id
 from teleclaude.core.todos_db._rows import RoadmapRow
 
 if TYPE_CHECKING:
@@ -32,21 +33,22 @@ class TodosDbRoadmapMixin:
             conditions.append("status = 'delivered'")
         where = " OR ".join(conditions)
         async with self.conn.execute(
-            f"SELECT slug, position, group_slug, description, status, "  # guard: raw-sql
+            f"SELECT id, slug, position, group_slug, description, status, "  # guard: raw-sql
             f"delivered_at, delivered_commit, children "
             f"FROM roadmap WHERE {where} ORDER BY position",
         ) as cursor:
             rows = await cursor.fetchall()
         return [
             RoadmapRow(
-                slug=row[0],
-                position=row[1],
-                group_slug=row[2],
-                description=row[3],
-                status=row[4],
-                delivered_at=row[5],
-                delivered_commit=row[6],
-                children=json.loads(row[7]) if row[7] else None,
+                id=row[0],
+                slug=row[1],
+                position=row[2],
+                group_slug=row[3],
+                description=row[4],
+                status=row[5],
+                delivered_at=row[6],
+                delivered_commit=row[7],
+                children=json.loads(row[8]) if row[8] else None,
             )
             for row in rows
         ]
@@ -71,17 +73,18 @@ class TodosDbRoadmapMixin:
         description: str | None = None,
         before: str | None = None,
     ) -> bool:
-        """Add a slug to the roadmap. Returns False if already exists."""
+        """Add a slug to the roadmap. Returns False if an active/icebox entry already exists."""
         assert self.conn is not None
         if await self.slug_in_roadmap(slug):
             return False
 
         now = datetime.now(UTC).isoformat()
+        new_id = _generate_id()
 
         if before:
             # Insert before target: get target position, shift others down
             async with self.conn.execute(
-                "SELECT position FROM roadmap WHERE slug = ?",  # guard: raw-sql
+                "SELECT position FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
                 (before,),
             ) as cursor:
                 target_row = await cursor.fetchone()
@@ -98,9 +101,9 @@ class TodosDbRoadmapMixin:
 
         await self.conn.execute(
             "INSERT INTO roadmap "  # guard: raw-sql
-            "(slug, position, group_slug, description, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, 'active', ?, ?)",
-            (slug, position, group_slug, description, now, now),
+            "(id, slug, position, group_slug, description, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, 'active', ?, ?)",
+            (new_id, slug, position, group_slug, description, now, now),
         )
 
         if after:
@@ -114,17 +117,17 @@ class TodosDbRoadmapMixin:
         return True
 
     async def remove_from_roadmap(self, slug: str) -> bool:
-        """Remove a slug from the roadmap. Returns False if not found."""
+        """Remove an active/icebox slug from the roadmap. Returns False if not found."""
         assert self.conn is not None
         async with self.conn.execute(
-            "SELECT 1 FROM roadmap WHERE slug = ?",  # guard: raw-sql
+            "SELECT 1 FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
             (slug,),
         ) as cursor:
             if await cursor.fetchone() is None:
                 return False
 
         await self.conn.execute(
-            "DELETE FROM roadmap WHERE slug = ?",  # guard: raw-sql
+            "DELETE FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
             (slug,),
         )
         await self.conn.execute(
@@ -135,13 +138,37 @@ class TodosDbRoadmapMixin:
         return True
 
     async def slug_in_roadmap(self, slug: str) -> bool:
-        """Check if a slug exists in the roadmap."""
+        """Check if an active/icebox slug exists in the roadmap."""
         assert self.conn is not None
         async with self.conn.execute(
-            "SELECT 1 FROM roadmap WHERE slug = ?",  # guard: raw-sql
+            "SELECT 1 FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
             (slug,),
         ) as cursor:
             return await cursor.fetchone() is not None
+
+    async def resolve_id(self, slug: str) -> str | None:
+        """Resolve an active/icebox slug to its roadmap id. Returns None if not found."""
+        assert self.conn is not None
+        async with self.conn.execute(
+            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
+            (slug,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        result: str | None = row[0] if row else None
+        return result
+
+    def resolve_id_sync(self, slug: str) -> str | None:
+        """Sync version of resolve_id."""
+        conn = self._sync_conn()  # type: ignore[attr-defined]
+        try:
+            row = conn.execute(
+                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
+                (slug,),
+            ).fetchone()
+            result: str | None = row[0] if row else None
+            return result
+        finally:
+            conn.close()
 
     async def deliver(
         self,
@@ -157,7 +184,8 @@ class TodosDbRoadmapMixin:
         children_json = json.dumps(children) if children else None
         result = await self.conn.execute(
             "UPDATE roadmap SET status = 'delivered', delivered_at = ?, "  # guard: raw-sql
-            "delivered_commit = ?, children = ?, updated_at = ? WHERE slug = ?",
+            "delivered_commit = ?, children = ?, updated_at = ? "
+            "WHERE slug = ? AND status != 'delivered'",
             (now, commit, children_json, now, slug),
         )
         await self.conn.commit()
@@ -177,7 +205,8 @@ class TodosDbRoadmapMixin:
         assert self.conn is not None
         now = datetime.now(UTC).isoformat()
         result = await self.conn.execute(
-            "UPDATE roadmap SET status = 'icebox', updated_at = ? WHERE slug = ?",  # guard: raw-sql
+            "UPDATE roadmap SET status = 'icebox', updated_at = ? "  # guard: raw-sql
+            "WHERE slug = ? AND status != 'delivered'",
             (now, slug),
         )
         await self.conn.commit()
@@ -188,7 +217,8 @@ class TodosDbRoadmapMixin:
         assert self.conn is not None
         now = datetime.now(UTC).isoformat()
         result = await self.conn.execute(
-            "UPDATE roadmap SET status = 'active', updated_at = ? WHERE slug = ?",  # guard: raw-sql
+            "UPDATE roadmap SET status = 'active', updated_at = ? "  # guard: raw-sql
+            "WHERE slug = ? AND status = 'icebox'",
             (now, slug),
         )
         await self.conn.commit()
@@ -239,9 +269,9 @@ class TodosDbRoadmapMixin:
         """Reorder a slug in the roadmap. Returns False if slug or target not found."""
         assert self.conn is not None
 
-        # Get current position
+        # Get current position (active/icebox only)
         async with self.conn.execute(
-            "SELECT position FROM roadmap WHERE slug = ?",  # guard: raw-sql
+            "SELECT position FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
             (slug,),
         ) as cursor:
             source_row = await cursor.fetchone()
@@ -250,7 +280,7 @@ class TodosDbRoadmapMixin:
 
         target_slug = before or after
         async with self.conn.execute(
-            "SELECT position FROM roadmap WHERE slug = ?",  # guard: raw-sql
+            "SELECT position FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
             (target_slug,),
         ) as cursor:
             target_row = await cursor.fetchone()
@@ -264,10 +294,9 @@ class TodosDbRoadmapMixin:
             (old_pos,),
         )
 
-        # Calculate new position
         # Re-read target position after shift
         async with self.conn.execute(
-            "SELECT position FROM roadmap WHERE slug = ?",  # guard: raw-sql
+            "SELECT position FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
             (target_slug,),
         ) as cursor:
             target_row = await cursor.fetchone()
@@ -280,14 +309,16 @@ class TodosDbRoadmapMixin:
 
         # Make room at new position
         await self.conn.execute(
-            "UPDATE roadmap SET position = position + 1 WHERE position >= ? AND slug != ?",  # guard: raw-sql
+            "UPDATE roadmap SET position = position + 1 "  # guard: raw-sql
+            "WHERE position >= ? AND slug != ?",
             (new_pos, slug),
         )
 
         # Place slug at new position
         now = datetime.now(UTC).isoformat()
         await self.conn.execute(
-            "UPDATE roadmap SET position = ?, updated_at = ? WHERE slug = ?",  # guard: raw-sql
+            "UPDATE roadmap SET position = ?, updated_at = ? "  # guard: raw-sql
+            "WHERE slug = ? AND status != 'delivered'",
             (new_pos, now, slug),
         )
         await self.conn.commit()
@@ -320,7 +351,8 @@ class TodosDbRoadmapMixin:
         try:
             cursor = conn.execute(
                 "UPDATE roadmap SET status = 'delivered', delivered_at = ?, "  # guard: raw-sql
-                "delivered_commit = ?, children = ?, updated_at = ? WHERE slug = ?",
+                "delivered_commit = ?, children = ?, updated_at = ? "
+                "WHERE slug = ? AND status != 'delivered'",
                 (now, commit, children_json, now, slug),
             )
             conn.commit()

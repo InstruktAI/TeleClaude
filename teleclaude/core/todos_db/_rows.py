@@ -8,6 +8,7 @@ from typing import TypedDict
 class RoadmapRow(TypedDict):
     """A single roadmap entry as returned by list_roadmap."""
 
+    id: str
     slug: str
     position: int
     group_slug: str | None

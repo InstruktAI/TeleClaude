@@ -86,12 +86,13 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
 
     try:
         rows = conn.execute(
-            "SELECT slug, state FROM todo_state",  # guard: raw-sql
+            "SELECT id, slug, state FROM todo_state",  # guard: raw-sql
         ).fetchall()
 
         for row in rows:
-            slug = row[0]
-            state = _json.loads(row[1]) if row[1] else {}
+            state_id = row[0]
+            slug = row[1]
+            state = _json.loads(row[2]) if row[2] else {}
             grounding = state.get("grounding", {})
             if not isinstance(grounding, dict):
                 continue
@@ -114,8 +115,8 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
             state["current"] = PreparePhase.GROUNDING_CHECK.value
 
             conn.execute(
-                "UPDATE todo_state SET state = ?, updated_at = ? WHERE slug = ?",  # guard: raw-sql
-                (_json.dumps(state), now, slug),
+                "UPDATE todo_state SET state = ?, updated_at = ? WHERE id = ?",  # guard: raw-sql
+                (_json.dumps(state), now, state_id),
             )
             conn.commit()
 

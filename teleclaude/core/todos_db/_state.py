@@ -18,11 +18,29 @@ class TodosDbStateMixin:
     conn: aiosqlite.Connection | None
 
     async def read_state(self, slug: str) -> dict[str, StateValue] | None:
-        """Read state JSON for a slug. Returns None if not found."""
+        """Read state JSON for a slug (active/icebox). Returns None if not found."""
         assert self.conn is not None
+        # Resolve slug → id via roadmap (prefer active/icebox)
         async with self.conn.execute(
-            "SELECT state FROM todo_state WHERE slug = ?",  # guard: raw-sql
+            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
             (slug,),
+        ) as cursor:
+            id_row = await cursor.fetchone()
+        if id_row is None:
+            # Fallback: try direct slug lookup in todo_state (delivered items)
+            async with self.conn.execute(
+                "SELECT state FROM todo_state WHERE slug = ? ORDER BY updated_at DESC LIMIT 1",  # guard: raw-sql
+                (slug,),
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                return None
+            result: dict[str, StateValue] = json.loads(row[0])
+            return result
+
+        async with self.conn.execute(
+            "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
+            (id_row[0],),
         ) as cursor:
             row = await cursor.fetchone()
         if row is None:
@@ -35,11 +53,21 @@ class TodosDbStateMixin:
         assert self.conn is not None
         now = datetime.now(UTC).isoformat()
         state_json = json.dumps(state, default=str)
+
+        # Resolve slug → id
+        async with self.conn.execute(
+            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
+            (slug,),
+        ) as cursor:
+            id_row = await cursor.fetchone()
+
+        row_id = id_row[0] if id_row else slug  # fallback: use slug as id for orphaned state
+
         await self.conn.execute(
-            "INSERT INTO todo_state (slug, state, created_at, updated_at) "  # guard: raw-sql
-            "VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(slug) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
-            (slug, state_json, now, now),
+            "INSERT INTO todo_state (id, slug, state, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
+            (row_id, slug, state_json, now, now),
         )
         await self.conn.commit()
 
@@ -84,11 +112,26 @@ class TodosDbStateMixin:
         """Sync version of read_state for use from worker threads."""
         conn = self._sync_conn()  # type: ignore[attr-defined]
         try:
-            cursor = conn.execute(
-                "SELECT state FROM todo_state WHERE slug = ?",  # guard: raw-sql
+            # Resolve slug → id
+            id_row = conn.execute(
+                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
                 (slug,),
-            )
-            row = cursor.fetchone()
+            ).fetchone()
+            if id_row is None:
+                # Fallback: direct slug lookup
+                row = conn.execute(
+                    "SELECT state FROM todo_state WHERE slug = ? ORDER BY updated_at DESC LIMIT 1",  # guard: raw-sql
+                    (slug,),
+                ).fetchone()
+                if row is None:
+                    return None
+                fallback: dict[str, StateValue] = json.loads(row[0])
+                return fallback
+
+            row = conn.execute(
+                "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
+                (id_row[0],),
+            ).fetchone()
             if row is None:
                 return None
             result: dict[str, StateValue] = json.loads(row[0])
@@ -102,11 +145,18 @@ class TodosDbStateMixin:
         state_json = json.dumps(state, default=str)
         conn = self._sync_conn()  # type: ignore[attr-defined]
         try:
+            # Resolve slug → id
+            id_row = conn.execute(
+                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
+                (slug,),
+            ).fetchone()
+            row_id = id_row[0] if id_row else slug
+
             conn.execute(
-                "INSERT INTO todo_state (slug, state, created_at, updated_at) "  # guard: raw-sql
-                "VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(slug) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
-                (slug, state_json, now, now),
+                "INSERT INTO todo_state (id, slug, state, created_at, updated_at) "  # guard: raw-sql
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
+                (row_id, slug, state_json, now, now),
             )
             conn.commit()
         finally:

@@ -92,7 +92,7 @@ async def reconcile_filesystem_to_db(project_root: str, todos_db: TodosDb) -> di
     return counts
 
 
-async def _reconcile_slug_state(
+async def _reconcile_slug_state(  # pylint: disable=too-many-locals
     slug: str,
     dirs: list[Path],
     todos_db: TodosDb,
@@ -120,9 +120,15 @@ async def _reconcile_slug_state(
         # Get DB timestamp
         conn = todos_db._sync_conn()  # pylint: disable=protected-access
         try:
-            row = conn.execute(
-                "SELECT updated_at FROM todo_state WHERE slug = ?",  # guard: raw-sql
+            # Resolve slug to id for precise lookup
+            id_row = conn.execute(
+                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
                 (slug,),
+            ).fetchone()
+            lookup_id = id_row[0] if id_row else slug
+            row = conn.execute(
+                "SELECT updated_at FROM todo_state WHERE id = ?",  # guard: raw-sql
+                (lookup_id,),
             ).fetchone()
             db_mtime = _parse_db_timestamp(row[0]) if row else 0.0
         finally:
@@ -175,9 +181,15 @@ async def _reconcile_slug_artifacts(  # pylint: disable=too-many-locals
     # Get DB artifact timestamps
     conn = todos_db._sync_conn()  # pylint: disable=protected-access
     try:
-        db_rows = conn.execute(
-            "SELECT name, updated_at, digest FROM todo_artifacts WHERE slug = ?",  # guard: raw-sql
+        # Resolve slug to id for precise lookup
+        id_row = conn.execute(
+            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
             (slug,),
+        ).fetchone()
+        lookup_id = id_row[0] if id_row else slug
+        db_rows = conn.execute(
+            "SELECT name, updated_at, digest FROM todo_artifacts WHERE id = ?",  # guard: raw-sql
+            (lookup_id,),
         ).fetchall()
     finally:
         conn.close()
