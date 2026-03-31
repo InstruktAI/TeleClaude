@@ -31,19 +31,17 @@ def test_handle_bugs_dispatches_create(monkeypatch: pytest.MonkeyPatch) -> None:
     assert received == [["sample-bug"]]
 
 
-def test_handle_bugs_create_scaffolds_bug(
+def test_handle_bugs_create_calls_dump_api(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    created_dir = tmp_path / "todos" / "sample-bug"
-
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(bugs, "create_bug_skeleton", lambda **kwargs: created_dir)
+    monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: {"status": "ok", "slug": "sample-bug"})
 
     bugs._handle_bugs_create(["sample-bug"])
 
-    assert str(created_dir) in capsys.readouterr().out
+    assert "Created bug: sample-bug" in capsys.readouterr().out
 
 
 def test_handle_bugs_report_generates_slug_and_dispatches(
@@ -51,11 +49,9 @@ def test_handle_bugs_report_generates_slug_and_dispatches(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    todo_dir = tmp_path / "todos" / "fix-example-bug"
-
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(bugs, "normalize_slug", lambda _text: "example-bug")
-    monkeypatch.setattr(bugs, "create_bug_skeleton", lambda *args, **kwargs: todo_dir)
+    monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: {"status": "ok", "slug": "fix-example-bug"})
     monkeypatch.setattr(bugs.asyncio, "run", _close_and_return(SimpleNamespace(session_id="sess-123")))
 
     bugs._handle_bugs_report(["Example bug"])
@@ -111,10 +107,9 @@ def test_handle_bugs_report_with_project_flag(
 ) -> None:
     project_path = tmp_path / "target-project"
     project_path.mkdir()
-    todo_dir = project_path / "todos" / "fix-some-bug"
 
     monkeypatch.setattr(bugs, "normalize_slug", lambda _text: "some-bug")
-    monkeypatch.setattr(bugs, "create_bug_skeleton", lambda *args, **kwargs: todo_dir)
+    monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: {"status": "ok", "slug": "fix-some-bug"})
     monkeypatch.setattr(bugs.asyncio, "run", _close_and_return(SimpleNamespace(session_id="sess-456")))
 
     cfg = _mock_config_with_dirs([_make_trusted_dir("target", str(project_path))])
@@ -133,15 +128,14 @@ def test_handle_bugs_create_with_project_flag(
 ) -> None:
     project_path = tmp_path / "target-project"
     project_path.mkdir()
-    created_dir = project_path / "todos" / "my-bug"
 
-    monkeypatch.setattr(bugs, "create_bug_skeleton", lambda **kwargs: created_dir)
+    monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: {"status": "ok", "slug": "my-bug"})
 
     cfg = _mock_config_with_dirs([_make_trusted_dir("target", str(project_path))])
     with patch("teleclaude.config.config", cfg):
         bugs._handle_bugs_create(["my-bug", "--project", "target"])
 
-    assert str(created_dir) in capsys.readouterr().out
+    assert "Created bug: my-bug" in capsys.readouterr().out
 
 
 def test_handle_bugs_list_uses_worktree_state_when_present(

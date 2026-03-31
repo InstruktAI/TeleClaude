@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.views._footer_actions import (
     refresh_footer_bindings,
@@ -20,8 +21,7 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import SlashCommand
-from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD, freeze_to_icebox
-from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton, remove_todo
+from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
 
 if TYPE_CHECKING:
     from teleclaude.cli.models import ProjectWithTodosInfo  # pylint: disable=import-outside-toplevel,ungrouped-imports
@@ -296,34 +296,25 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
         return os.getcwd()
 
     def _create_item(self, slug: str, *, kind: str) -> None:
-        """Scaffold a todo or bug and open its primary file in the editor."""
+        """Create a todo or bug via the daemon API."""
         project_root = self._resolve_project_root()
 
+        body = {"slug": slug, "content": "", "cwd": project_root}
         if kind == "bug":
-            try:
-                todo_dir = create_bug_skeleton(Path(project_root), slug, description="")
-            except ValueError as exc:
-                self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
-                return
-            filename = "bug.md"
+            body["kind"] = "bug"
+
+        try:
+            result = tool_api_request("POST", "/todos/dump", json_body=body, timeout=10.0)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
+            return
+
+        if isinstance(result, dict) and result.get("status") == "ok":
+            self.app.notify(f"Created {slug}")  # type: ignore[attr-defined]
+        elif isinstance(result, dict) and result.get("detail"):
+            self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
         else:
-            try:
-                todo_dir = create_todo_skeleton(Path(project_root), slug)
-            except ValueError as exc:
-                self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
-                return
-            filename = "input.md"
-
-        # Bookkeeping is in todos.db — no remote push needed
-
-        filepath = str(todo_dir / filename)
-        self.post_message(  # type: ignore[attr-defined]
-            DocEditRequest(
-                doc_id=filepath,
-                command=self._editor_command(filepath),  # type: ignore[attr-defined]
-                title=f"Editing: {todo_dir.name}/{filename}",
-            )
-        )
+            self.app.notify(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
 
     def action_new_project(self) -> None:
         """n on computer header: open New Project modal."""
@@ -374,7 +365,6 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
 
     def action_remove_todo(self) -> None:
         """R: remove a todo and all its files."""
-        # Resolve slug from current row (todo or file)
         row = self._current_todo_row()  # type: ignore[attr-defined]
         slug = row.slug if row else None
         if not slug:
@@ -384,19 +374,25 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
         if not slug:
             return
 
-        # Resolve project root
         project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
         if not project_path:
             return
-        project_root = Path(project_path)
 
         def _on_confirm(confirmed: bool | None) -> None:
             if not confirmed:
                 return
             try:
-                remove_todo(project_root, slug)
-                self.app.notify(f"Removed {slug}")  # type: ignore[attr-defined]
-            except (ValueError, RuntimeError, FileNotFoundError) as exc:
+                result = tool_api_request(
+                    "POST",
+                    "/todos/remove",
+                    json_body={"slug": slug, "cwd": project_path},
+                    timeout=10.0,
+                )
+                if isinstance(result, dict) and result.get("status") == "ok":
+                    self.app.notify(f"Removed {slug}")  # type: ignore[attr-defined]
+                elif isinstance(result, dict) and result.get("detail"):
+                    self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]
@@ -479,15 +475,18 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             if not confirmed:
                 return
             try:
-                if freeze_to_icebox(project_path, slug):
+                result = tool_api_request(
+                    "POST",
+                    f"/todos/freeze/{slug}",
+                    json_body={"cwd": project_path},
+                    timeout=10.0,
+                )
+                if isinstance(result, dict) and result.get("status") == "ok":
                     self.app.notify(f"Frozen '{slug}' to icebox")  # type: ignore[attr-defined]
                     self.app._refresh_data()  # type: ignore[attr-defined]
-                else:
-                    self.app.notify(
-                        f"Failed to freeze '{slug}'",
-                        severity="error",
-                    )  # type: ignore[attr-defined]
-            except (ValueError, RuntimeError, FileNotFoundError) as exc:
+                elif isinstance(result, dict) and result.get("detail"):
+                    self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+            except Exception as exc:  # pylint: disable=broad-exception-caught
                 self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]

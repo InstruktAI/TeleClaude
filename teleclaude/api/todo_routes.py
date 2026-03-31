@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, TypedDict
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
+from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api.auth import (
     CallerIdentity,
@@ -51,6 +52,53 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+# ── Response models ─────────────────────────────────────────────────────────
+
+
+class _SlugStatusResponse(BaseModel):
+    """Standard ok response with slug."""
+
+    model_config = ConfigDict(frozen=True)
+    status: str
+    slug: str
+
+
+class _ArtifactReadResponse(BaseModel):
+    """Response from artifact read."""
+
+    model_config = ConfigDict(frozen=True)
+    slug: str
+    name: str
+    content: str
+
+
+class _ArtifactWriteResponse(BaseModel):
+    """Response from artifact write."""
+
+    model_config = ConfigDict(frozen=True)
+    status: str
+    slug: str
+    name: str
+
+
+class _SplitResponse(BaseModel):
+    """Response from todo split."""
+
+    model_config = ConfigDict(frozen=True)
+    status: str
+    slug: str
+    children: str
+
+
+class _StampResponse(BaseModel):
+    """Response from todo stamp."""
+
+    model_config = ConfigDict(frozen=True)
+    status: str
+    slug: str
+    stamp_type: str
 
 
 def _default_cwd() -> str:
@@ -376,12 +424,12 @@ async def read_artifact(
     slug: str,
     name: str,
     cwd: str | None = None,
-) -> dict[str, str]:
+) -> _ArtifactReadResponse:
     """Read a todo artifact by slug and name."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     content = await todos_db.read_artifact(slug, name)
-    return {"slug": slug, "name": name, "content": content}
+    return _ArtifactReadResponse(slug=slug, name=name, content=content)
 
 
 @router.post("/artifacts/{slug}/{name}")
@@ -391,15 +439,18 @@ async def write_artifact(
     content: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
     updated_by: Annotated[str | None, Body()] = None,
-) -> dict[str, str]:
+) -> _ArtifactWriteResponse:
     """Write (create or update) a todo artifact."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     await todos_db.write_artifact(slug, name, content, updated_by=updated_by)
-    return {"status": "ok", "slug": slug, "name": name}
+    return _ArtifactWriteResponse(status="ok", slug=slug, name=name)
 
 
-class _ArtifactListResponse(TypedDict):
+class _ArtifactListResponse(BaseModel):
+    """Response from artifact list."""
+
+    model_config = ConfigDict(frozen=True)
     slug: str
     artifacts: list[str]
 
@@ -421,31 +472,37 @@ async def todo_dump(
     slug: Annotated[str, Body()],
     content: Annotated[str, Body()],
     after: Annotated[list[str] | None, Body()] = None,
+    kind: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
-) -> dict[str, str]:
-    """Create a todo: state + input artifact + roadmap entry in todos.db."""
+) -> _SlugStatusResponse:
+    """Create a todo: state + artifact + roadmap entry in todos.db.
+
+    When kind="bug", sets state.kind and writes a "bug" artifact instead of "input".
+    """
     from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
 
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
-    # Check if slug already exists
     existing = await todos_db.read_state(slug)
     if existing is not None:
         raise HTTPException(status_code=409, detail=f"Todo '{slug}' already exists")
 
-    # Write default state
     state = default_state()
+    if kind == "bug":
+        state["kind"] = "bug"
+
     await todos_db.write_state(slug, state)
 
-    # Write input artifact
-    input_content = f"# {slug} — Input\n\n{content}\n"
-    await todos_db.write_artifact(slug, "input", input_content)
+    if kind == "bug":
+        await todos_db.write_artifact(slug, "bug", content)
+    else:
+        input_content = f"# {slug} — Input\n\n{content}\n"
+        await todos_db.write_artifact(slug, "input", input_content)
 
-    # Add to roadmap
     await todos_db.add_to_roadmap(slug, after=after if after else None)
 
-    return {"status": "ok", "slug": slug}
+    return _SlugStatusResponse(status="ok", slug=slug)
 
 
 @router.post("/split")
@@ -453,7 +510,7 @@ async def todo_split(
     slug: Annotated[str, Body()],
     children: Annotated[list[str], Body()],
     cwd: Annotated[str | None, Body()] = None,
-) -> dict[str, str]:
+) -> _SplitResponse:
     """Split a todo into children: create child state + roadmap entries, update parent breakdown."""
     from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
 
@@ -481,14 +538,14 @@ async def todo_split(
     parent_state["breakdown"] = {"assessed": True, "todos": list(children)}  # type: ignore[dict-item]
     await todos_db.write_state(slug, parent_state)
 
-    return {"status": "ok", "slug": slug, "children": ",".join(children)}
+    return _SplitResponse(status="ok", slug=slug, children=",".join(children))
 
 
 @router.post("/remove")
 async def todo_remove(
     slug: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
-) -> dict[str, str]:
+) -> _SlugStatusResponse:
     """Remove a todo: delete state, artifacts, and roadmap entry from todos.db.
 
     Also cleans up worktree and branch if they exist.
@@ -507,7 +564,20 @@ async def todo_remove(
     # Clean up worktree and branch (filesystem/git cleanup stays — these are code branches)
     cleanup_delivered_slug(effective_cwd, slug)
 
-    return {"status": "ok", "slug": slug}
+    return _SlugStatusResponse(status="ok", slug=slug)
+
+
+@router.post("/freeze/{slug}")
+async def todo_freeze(
+    slug: str,
+    cwd: Annotated[str | None, Body(embed=True)] = None,
+) -> _SlugStatusResponse:
+    """Move a todo to icebox."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    if not await todos_db.freeze(slug):
+        raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found in roadmap")
+    return _SlugStatusResponse(status="ok", slug=slug)
 
 
 @router.post("/stamp/{slug}")
@@ -516,7 +586,7 @@ async def stamp(  # pylint: disable=too-many-locals,too-many-branches
     stamp_type: Annotated[str, Body()],
     value: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
-) -> dict[str, str]:
+) -> _StampResponse:
     """Stamp a verdict, DOR, build, or grounding value into todo state."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
@@ -572,7 +642,7 @@ async def stamp(  # pylint: disable=too-many-locals,too-many-branches
         raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
 
     await todos_db.write_state(slug, state)
-    return {"status": "ok", "slug": slug, "stamp_type": stamp_type}
+    return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
 
 
 @router.get("/{slug}/show")

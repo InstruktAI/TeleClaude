@@ -10,9 +10,9 @@ from pathlib import Path
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.models import CreateSessionResult
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.slug import normalize_slug
-from teleclaude.todo_scaffold import create_bug_skeleton
 
 __all__ = [
     "_handle_bugs",
@@ -94,15 +94,19 @@ def _handle_bugs_create(args: list[str]) -> None:
         print("Usage: telec bugs create <slug>")
         raise SystemExit(1)
 
-    try:
-        bug_dir = create_bug_skeleton(
-            project_root=project_root,
-            slug=slug,
-            description="",
-        )
-        print(f"Created bug skeleton: {bug_dir}")
-    except ValueError as exc:
-        print(f"Error: {exc}")
+    result = tool_api_request(
+        "POST",
+        "/todos/dump",
+        json_body={"slug": slug, "content": "", "kind": "bug", "cwd": str(project_root)},
+        timeout=10.0,
+    )
+    if isinstance(result, dict) and result.get("status") == "ok":
+        print(f"Created bug: {slug}")
+    elif isinstance(result, dict) and result.get("detail"):
+        print(f"Error: {result['detail']}")
+        raise SystemExit(1)
+    else:
+        print(f"Error: {result}")
         raise SystemExit(1)
 
 
@@ -157,18 +161,21 @@ def _handle_bugs_report(args: list[str]) -> None:
             slug_base = slug_base[:40].rstrip("-")
         slug = f"fix-{slug_base}"
 
-    try:
-        todo_dir = create_bug_skeleton(
-            project_root,
-            slug,
-            description,
-            body=body or "",
-        )
-    except ValueError as exc:
-        print(f"Error: {exc}")
-        raise SystemExit(1) from exc
+    # Build bug content from description + body
+    bug_content = f"# {slug}\n\n**Symptom:** {description}\n"
+    if body:
+        bug_content += f"\n{body}\n"
 
-    slug = todo_dir.name
+    api_result = tool_api_request(
+        "POST",
+        "/todos/dump",
+        json_body={"slug": slug, "content": bug_content, "kind": "bug", "cwd": str(project_root)},
+        timeout=10.0,
+    )
+    if not (isinstance(api_result, dict) and api_result.get("status") == "ok"):
+        detail = api_result.get("detail", api_result) if isinstance(api_result, dict) else api_result
+        print(f"Error: {detail}")
+        raise SystemExit(1)
 
     # Dispatch orchestrator on mainline — the state machine handles branches/worktrees
     async def _dispatch_bug_fix() -> CreateSessionResult:
@@ -188,12 +195,11 @@ def _handle_bugs_report(args: list[str]) -> None:
 
     try:
         result = asyncio.run(_dispatch_bug_fix())
-        print(f"Created bug todo: {todo_dir}")
-        print(f"Bug slug: {slug}")
+        print(f"Created bug: {slug}")
         print(f"Orchestrator session: {result.session_id}")
     except Exception as exc:
         print(f"Error dispatching orchestrator: {exc}")
-        print(f"Bug scaffold created at {todo_dir}.")
+        print(f"Bug created in DB: {slug}")
         print(
             f"Start orchestrator manually: telec sessions run --command /next-work "
             f"--args {slug} --agent claude --mode slow --detach"
