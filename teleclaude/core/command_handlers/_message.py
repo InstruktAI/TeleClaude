@@ -281,7 +281,8 @@ async def deliver_inbound(
             active_agent=active_agent,
         )
 
-    results = await asyncio.gather(_tmux_inject(), _broadcast(), _break_turn(), return_exceptions=True)
+    await _break_turn()
+    results = await asyncio.gather(_tmux_inject(), _broadcast(), return_exceptions=True)
     tmux_result = results[0]
     if isinstance(tmux_result, Exception):
         raise tmux_result
