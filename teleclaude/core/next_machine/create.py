@@ -8,17 +8,18 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import SlashCommand
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import CreativePhase, ItemPhase, StateValue
+from teleclaude.core.next_machine._types import CreativePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
-from teleclaude.core.next_machine.roadmap import load_roadmap_slugs
-from teleclaude.core.next_machine.slug_resolution import get_item_phase
-from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -140,34 +141,34 @@ def _derive_creative_phase(todo_dir: Path, creative: dict[str, StateValue]) -> C
     return phase
 
 
-def _find_next_creative_slug(cwd: str) -> str | None:
-    """Find the next active slug that needs creative work.
+async def _find_next_creative_slug(todos_db: TodosDb) -> str | None:
+    """Find the next active slug that needs creative work from DB."""
+    entries = await todos_db.list_roadmap()
+    delivered = await todos_db.delivered_slugs()
 
-    Looks for items with a creative section in state.yaml that is not yet complete,
-    or items where input.md exists but creative artifacts are missing.
-    """
-    for slug in load_roadmap_slugs(cwd):
-        phase = get_item_phase(cwd, slug)
-        if phase == ItemPhase.DONE.value:
+    for entry in entries:
+        slug = entry["slug"]
+        if slug in delivered:
             continue
 
-        todo_dir = Path(cwd) / "todos" / slug
-        if not (todo_dir / "input.md").exists():
+        has_input = await todos_db.artifact_exists(slug, "input")
+        if not has_input:
             continue
 
-        state = read_phase_state(cwd, slug)
+        state = await todos_db.read_state(slug)
+        if state is None:
+            continue
+
         creative = state.get("creative")
         if not isinstance(creative, dict):
             creative = {}
 
-        # If creative section exists and has phase tracking, check if complete
         creative_phase_val = creative.get("phase", "")
         if creative_phase_val == CreativePhase.CREATIVE_COMPLETE.value:
             continue
 
-        # If any creative signal exists (creative section in state, or design-spec.md),
-        # this slug needs creative work
-        if creative or (todo_dir / "design-spec.md").exists():
+        has_design_spec = await todos_db.artifact_exists(slug, "design-spec")
+        if creative or has_design_spec:
             return slug
 
     return None
@@ -240,31 +241,30 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
 async def next_create(db: Db, slug: str | None, cwd: str) -> str:
     """Creative lifecycle state machine.
 
-    Derives creative phase from filesystem artifacts and state.yaml,
+    Derives creative phase from DB state and artifacts,
     returns plain text instructions for the orchestrator to execute.
-
-    Args:
-        db: Database instance
-        slug: Optional explicit slug (resolved from roadmap if not provided)
-        cwd: Current working directory (project root)
-
-    Returns:
-        Plain text instructions for the orchestrator to execute
     """
-    resolved_slug = slug or await asyncio.to_thread(_find_next_creative_slug, cwd)
+    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
+
+    todos_db = await get_todos_db(cwd)
+
+    resolved_slug = slug or await _find_next_creative_slug(todos_db)
     if not resolved_slug:
         return "NO_CREATIVE_ITEMS: No work items require creative work. Nothing to do."
 
-    todo_dir = Path(cwd) / "todos" / resolved_slug
-    if not (todo_dir / "input.md").exists():
+    has_input = await todos_db.artifact_exists(resolved_slug, "input")
+    if not has_input:
         return (
-            f"BLOCKED: {resolved_slug} has no input.md. "
-            f"Write todos/{resolved_slug}/input.md before starting creative work."
+            f"BLOCKED: {resolved_slug} has no input artifact. "
+            f"Use telec todo artifacts write {resolved_slug} input before starting creative work."
         )
 
-    state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+    state = await todos_db.read_state(resolved_slug)
+    if state is None:
+        state = {}
     creative = state.get("creative")
     creative_state = creative if isinstance(creative, dict) else {}
+    todo_dir = Path(cwd) / "todos" / resolved_slug
     phase = await asyncio.to_thread(_derive_creative_phase, todo_dir, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
@@ -272,7 +272,7 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
         state["creative"] = {}
     if isinstance(state["creative"], dict):
         state["creative"]["phase"] = phase.value
-        await asyncio.to_thread(write_phase_state, cwd, resolved_slug, state)
+        await todos_db.write_state(resolved_slug, state)
 
     guidance = await compose_agent_guidance(db)
     return await _creative_instruction(resolved_slug, cwd, phase, guidance)

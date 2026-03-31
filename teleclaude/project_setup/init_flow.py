@@ -18,7 +18,6 @@ from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.hooks import install_precommit_hook
 from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
 from teleclaude.project_setup.sync import install_docs_watch, sync_project_artifacts
-from teleclaude.project_setup.todo_watcher_install import install_todo_watcher
 
 logger = get_logger(__name__)
 
@@ -195,7 +194,6 @@ def init_project(project_root: Path) -> None:
 
     seed_event_domains(project_root)
     install_docs_watch(project_root)
-    install_todo_watcher(project_root)
 
     if is_macos():
         install_launchers(project_root)
