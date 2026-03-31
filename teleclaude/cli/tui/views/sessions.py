@@ -12,7 +12,7 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
+from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
 from teleclaude.cli.tui.messages import (
     PreviewChanged,
     ReviveSessionRequest,
@@ -45,7 +45,7 @@ from teleclaude.cli.tui.widgets.session_row import SessionRow
 if TYPE_CHECKING:
     from textual.timer import Timer  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
-    from teleclaude.cli.models import AgentAvailabilityInfo
+    from teleclaude.api_models import AgentAvailabilityDTO
     from teleclaude.cli.tui.tree import TreeNode
 
 
@@ -103,10 +103,10 @@ class SessionsView(  # pylint: disable=too-many-instance-attributes
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self._computers: list[ComputerInfo] = []
-        self._projects: list[ProjectInfo] = []
-        self._sessions: list[SessionInfo] = []
-        self._availability: dict[str, AgentAvailabilityInfo] = {}
+        self._computers: list[ComputerDTO] = []
+        self._projects: list[ProjectDTO] = []
+        self._sessions: list[SessionDTO] = []
+        self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._sticky_session_ids: list[str] = []
         self._input_highlights: set[str] = set()
         self._output_highlights: set[str] = set()
@@ -143,10 +143,10 @@ class SessionsView(  # pylint: disable=too-many-instance-attributes
 
     def update_data(
         self,
-        computers: list[ComputerInfo],
-        projects: list[ProjectInfo],
-        sessions: list[SessionInfo],
-        availability: dict[str, AgentAvailabilityInfo] | None = None,
+        computers: list[ComputerDTO],
+        projects: list[ProjectDTO],
+        sessions: list[SessionDTO],
+        availability: dict[str, AgentAvailabilityDTO] | None = None,
     ) -> None:
         """Update view with fresh API data. Only rebuild tree if structure changed."""
         self._logger.trace("[PERF] SessionsView.update_data called sessions=%d t=%.3f", len(sessions), time.monotonic())

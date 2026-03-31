@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich.text import Text
 from textual.widget import Widget
 
-from teleclaude.cli.models import JobInfo
+from teleclaude.api_models import JobDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.utils.formatters import format_relative_time
 
@@ -21,7 +21,7 @@ class JobRow(TelecMixin, Widget):
     }
     """
 
-    def __init__(self, job: JobInfo, **kwargs: object) -> None:
+    def __init__(self, job: JobDTO, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.job = job
 

@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,protected-access
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -5,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from teleclaude.cli.models import CreateSessionResult
+from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.tui import session_launcher
 
 
@@ -51,8 +52,8 @@ def test_attach_tmux_from_result_requires_a_tmux_session_name(monkeypatch: pytes
     attach = Mock(return_value=True)
     monkeypatch.setattr(session_launcher, "attach_tmux_session", attach)
     stdscr = Mock()
-    with_tmux = CreateSessionResult(status="success", session_id="s1", tmux_session_name="tc_demo")
-    without_tmux = CreateSessionResult(status="success", session_id="s1", tmux_session_name="")
+    with_tmux = CreateSessionResponseDTO(status="success", session_id="s1", tmux_session_name="tc_demo")
+    without_tmux = CreateSessionResponseDTO(status="success", session_id="s1", tmux_session_name="")
 
     assert session_launcher.attach_tmux_from_result(with_tmux, stdscr) is True
     assert session_launcher.attach_tmux_from_result(without_tmux, stdscr) is False

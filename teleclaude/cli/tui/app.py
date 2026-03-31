@@ -18,11 +18,8 @@ from textual.containers import Vertical
 from textual.widgets import TabbedContent, TabPane
 from textual.widgets._tabbed_content import ContentTabs
 
+from teleclaude.api_models import ComputerDTO, ProjectDTO
 from teleclaude.cli.api_client import APIError
-from teleclaude.cli.models import (
-    ComputerInfo,
-    ProjectInfo,
-)
 from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.animation_engine import AnimationEngine
 from teleclaude.cli.tui.animation_observability import AnimationPerfTracker
@@ -112,7 +109,7 @@ class _AppInitState:
 @dataclass
 class _AppRuntimeState:
     state_save_timer: object | None = None
-    computers: list[ComputerInfo] = field(default_factory=list)
+    computers: list[ComputerDTO] = field(default_factory=list)
     session_agents: dict[str, str] = field(default_factory=dict)
     tui_initiated_sessions: set[str] = field(default_factory=set)
     sky_width_timer: Timer | None = None
@@ -143,7 +140,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     _is_reload: bool
     _initial_layout_applied: bool
     _state_save_timer: Timer | None
-    _computers: list[ComputerInfo]
+    _computers: list[ComputerDTO]
     _session_agents: dict[str, str]
     _tui_initiated_sessions: set[str]
     _sky_width_timer: Timer | None
@@ -462,7 +459,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         return DataRefreshed(
             computers,
             [
-                ProjectInfo(
+                ProjectDTO(
                     computer=project.computer,
                     name=project.name,
                     path=project.path,

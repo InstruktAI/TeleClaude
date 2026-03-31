@@ -1,15 +1,16 @@
 """Characterization tests for teleclaude.cli.tui.widgets.project_header."""
 
+# pylint: disable=missing-function-docstring
 from __future__ import annotations
 
 import pytest
 
-from teleclaude.cli.models import ProjectInfo
+from teleclaude.api_models import ProjectDTO
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 
 
-def _make_project(*, name: str = "my-project", path: str = "/tmp/my-project") -> ProjectInfo:
-    return ProjectInfo(computer="local", name=name, path=path)
+def _make_project(*, name: str = "my-project", path: str = "/tmp/my-project") -> ProjectDTO:
+    return ProjectDTO(computer="local", name=name, path=path)
 
 
 @pytest.mark.unit

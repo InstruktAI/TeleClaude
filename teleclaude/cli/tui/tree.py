@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass, field
 from typing import TypeGuard
 
-from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
+from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
 from teleclaude.cli.tui.types import NodeType
 from teleclaude.constants import WORKTREE_DIR
 
@@ -13,7 +13,7 @@ from teleclaude.constants import WORKTREE_DIR
 class ComputerDisplayInfo:
     """Computer info with display-only counts."""
 
-    computer: ComputerInfo
+    computer: ComputerDTO
     session_count: int
     recent_activity: bool
 
@@ -22,7 +22,7 @@ class ComputerDisplayInfo:
 class SessionDisplayInfo:
     """Session info with display index for tree rendering."""
 
-    session: SessionInfo
+    session: SessionDTO
     display_index: str
 
 
@@ -42,7 +42,7 @@ class ProjectNode:
     """A tree node representing a project."""
 
     type: NodeType
-    data: ProjectInfo
+    data: ProjectDTO
     depth: int
     children: list["TreeNode"] = field(default_factory=list)
     parent: "TreeNode | None" = None
@@ -99,8 +99,8 @@ def _same_project(path_a: str | None, path_b: str | None) -> bool:
 
 def build_tree(  # pylint: disable=too-many-locals,too-many-branches
     computers: list[ComputerDisplayInfo],
-    projects: list[ProjectInfo],
-    sessions: list[SessionInfo],
+    projects: list[ProjectDTO],
+    sessions: list[SessionDTO],
 ) -> list[TreeNode]:
     """Build hierarchical tree for display.
 
@@ -128,7 +128,7 @@ def build_tree(  # pylint: disable=too-many-locals,too-many-branches
         known_computers.add(computer_name)
         all_computers.append(
             ComputerDisplayInfo(
-                computer=ComputerInfo(
+                computer=ComputerDTO(
                     name=computer_name,
                     status="offline",
                     user=None,
@@ -144,8 +144,8 @@ def build_tree(  # pylint: disable=too-many-locals,too-many-branches
     # Index sessions by initiator for AI-to-AI nesting.
     # Only nest when child belongs to the same project as the initiator;
     # cross-project children render as top-level nodes in their own project.
-    sessions_by_initiator: dict[str, list[SessionInfo]] = {}
-    root_sessions: list[SessionInfo] = []
+    sessions_by_initiator: dict[str, list[SessionDTO]] = {}
+    root_sessions: list[SessionDTO] = []
 
     session_lookup = {s.session_id: s for s in sessions}
     for session in sessions:
@@ -176,7 +176,7 @@ def build_tree(  # pylint: disable=too-many-locals,too-many-branches
         matched_session_ids: set[str] = set()
 
         # Match sessions to most-specific project via prefix
-        project_sessions: dict[str, list[SessionInfo]] = {p.path: [] for p in comp_projects}
+        project_sessions: dict[str, list[SessionDTO]] = {p.path: [] for p in comp_projects}
         for s in root_sessions:
             if s.computer != comp_name or not s.project_path:
                 continue
@@ -208,7 +208,7 @@ def build_tree(  # pylint: disable=too-many-locals,too-many-branches
         ]
 
         # Group orphans by their project_path to create project nodes
-        orphans_by_path: dict[str, list[SessionInfo]] = {}
+        orphans_by_path: dict[str, list[SessionDTO]] = {}
         for session in orphan_sessions:
             proj_path = session.project_path or ""
             orphans_by_path.setdefault(proj_path, []).append(session)
@@ -217,7 +217,7 @@ def build_tree(  # pylint: disable=too-many-locals,too-many-branches
         for proj_path, proj_sessions in orphans_by_path.items():
             proj_node = ProjectNode(
                 type="project",
-                data=ProjectInfo(computer=comp_name, name="", path=proj_path, description=None),
+                data=ProjectDTO(computer=comp_name, name="", path=proj_path, description=None),
                 depth=1,
                 children=[],
                 parent=comp_node,
@@ -235,11 +235,11 @@ def build_tree(  # pylint: disable=too-many-locals,too-many-branches
 
 
 def _build_session_node(
-    session: SessionInfo,
+    session: SessionDTO,
     index: int | str,
     depth: int,
     parent: TreeNode,
-    sessions_by_initiator: dict[str, list[SessionInfo]],
+    sessions_by_initiator: dict[str, list[SessionDTO]],
 ) -> TreeNode:
     """Recursively build session node with AI-to-AI children.
 

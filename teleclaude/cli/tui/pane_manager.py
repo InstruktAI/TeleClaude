@@ -24,7 +24,7 @@ from teleclaude.cli.tui.pane_theming import PaneThemingMixin
 from teleclaude.config import config
 
 if TYPE_CHECKING:
-    from teleclaude.cli.models import SessionInfo
+    from teleclaude.api_models import SessionDTO
 
 logger = get_logger(__name__)
 
@@ -84,7 +84,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self.state = PaneState()
         self._in_tmux = bool(os.environ.get("TMUX"))
         self._layout_state = _PaneLayoutState()
-        self._session_catalog: dict[str, SessionInfo] = {}
+        self._session_catalog: dict[str, SessionDTO] = {}
         self._reload_state = _ReloadPaneState()
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
@@ -272,7 +272,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                 dead_sessions,
             )
 
-    def update_session_catalog(self, sessions: list[SessionInfo]) -> None:
+    def update_session_catalog(self, sessions: list[SessionDTO]) -> None:
         """Update the session catalog used for layout lookup."""
         self._session_catalog = {session.session_id: session for session in sessions}
 
@@ -659,13 +659,13 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
     def show_sticky_sessions(
         self,
-        sticky_sessions: list[SessionInfo],
+        sticky_sessions: list[SessionDTO],
         get_computer_info: Callable[[str], ComputerInfo | None],
     ) -> None:
         """Show 1-5 sticky sessions using tmux's fixed layouts.
 
         Args:
-            sticky_sessions: List of SessionInfo objects
+            sticky_sessions: List of SessionDTO objects
             get_computer_info: Function to get ComputerInfo for a computer name
         """
         if not self._in_tmux:

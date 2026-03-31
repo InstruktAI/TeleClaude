@@ -8,7 +8,7 @@ from textual.events import Click
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.widgets._status_controls import (
@@ -45,11 +45,11 @@ class StatusBar(TelecMixin, Widget):
 
     def __init__(
         self,
-        agent_availability: dict[str, AgentAvailabilityInfo] | None = None,
+        agent_availability: dict[str, AgentAvailabilityDTO] | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        self._agent_availability: dict[str, AgentAvailabilityInfo] = agent_availability or {}
+        self._agent_availability: dict[str, AgentAvailabilityDTO] = agent_availability or {}
         # Track toggle positions for click detection (set during render)
         self._toggle_start_x: int = 0
         self._tts_start_x: int = 0
@@ -57,7 +57,7 @@ class StatusBar(TelecMixin, Widget):
         # Track agent pill positions: (start_x, end_x, agent_name)
         self._agent_regions: list[tuple[int, int, str]] = []
 
-    def update_availability(self, availability: dict[str, AgentAvailabilityInfo]) -> None:
+    def update_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
         """Replace cached agent availability data and refresh the widget."""
         self._agent_availability = availability
         self.refresh()

@@ -1,15 +1,16 @@
 """Characterization tests for teleclaude.cli.tui.widgets.job_row."""
 
+# pylint: disable=missing-function-docstring
 from __future__ import annotations
 
 import pytest
 
-from teleclaude.cli.models import JobInfo
+from teleclaude.api_models import JobDTO
 from teleclaude.cli.tui.widgets.job_row import JobRow
 
 
-def _make_job(*, name: str = "test-job", status: str = "running", job_type: str = "agent") -> JobInfo:
-    return JobInfo(name=name, type=job_type, status=status)
+def _make_job(*, name: str = "test-job", status: str = "running", job_type: str = "agent") -> JobDTO:
+    return JobDTO(name=name, type=job_type, status=status)
 
 
 @pytest.mark.unit

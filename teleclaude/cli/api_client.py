@@ -19,19 +19,22 @@ from pydantic import TypeAdapter, ValidationError
 from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import ClientConnection, unix_connect
 
-from teleclaude.api_models import RunSessionRequest, TodoDTO
+from teleclaude.api_models import (
+    AgentAvailabilityDTO,
+    ChiptunesCommandReceiptDTO,
+    ChiptunesStatusDTO,
+    ComputerDTO,
+    CreateSessionResponseDTO,
+    JobDTO,
+    ProjectDTO,
+    ProjectWithTodosDTO,
+    RunSessionRequest,
+    SessionDTO,
+    SettingsDTO,
+    SettingsPatchDTO,
+    TodoDTO,
+)
 from teleclaude.cli.models import (
-    AgentAvailabilityInfo,
-    ChiptunesCommandReceiptInfo,
-    ChiptunesStatusInfo,
-    ComputerInfo,
-    CreateSessionResult,
-    JobInfo,
-    ProjectInfo,
-    ProjectWithTodosInfo,
-    SessionInfo,
-    SettingsInfo,
-    SettingsPatchInfo,
     SubscribeData,
     SubscribeRequest,
     UnsubscribeData,
@@ -504,7 +507,7 @@ class _TelecSessionAPI:
 
     _request: Callable[..., Awaitable[httpx.Response]]
 
-    async def list_sessions(self, computer: str | None = None, *, include_closed: bool = False) -> list[SessionInfo]:
+    async def list_sessions(self, computer: str | None = None, *, include_closed: bool = False) -> list[SessionDTO]:
         """List sessions from all computers or a specific computer."""
         params: dict[str, str] = {}
         if computer:
@@ -512,20 +515,20 @@ class _TelecSessionAPI:
         if include_closed:
             params["include_closed"] = "true"
         resp = await self._request("GET", "/sessions", request_options=RequestOptions(params=params))
-        return TypeAdapter(list[SessionInfo]).validate_json(resp.text)
+        return TypeAdapter(list[SessionDTO]).validate_json(resp.text)
 
-    async def list_computers(self) -> list[ComputerInfo]:
+    async def list_computers(self) -> list[ComputerDTO]:
         """List online computers only."""
         resp = await self._request("GET", "/computers")
-        return TypeAdapter(list[ComputerInfo]).validate_json(resp.text)
+        return TypeAdapter(list[ComputerDTO]).validate_json(resp.text)
 
-    async def list_projects(self, computer: str | None = None) -> list[ProjectInfo]:
+    async def list_projects(self, computer: str | None = None) -> list[ProjectDTO]:
         """List projects from all or a specific computer."""
         params: dict[str, str] = {"computer": computer} if computer else {}
         resp = await self._request("GET", "/projects", request_options=RequestOptions(params=params))
-        return TypeAdapter(list[ProjectInfo]).validate_json(resp.text)
+        return TypeAdapter(list[ProjectDTO]).validate_json(resp.text)
 
-    async def create_session(self, **kwargs: Unpack[CreateSessionArgs]) -> CreateSessionResult:
+    async def create_session(self, **kwargs: Unpack[CreateSessionArgs]) -> CreateSessionResponseDTO:
         """Create a new session."""
         # Session creation spawns tmux + agent, needs longer timeout
         payload: JsonBody = {
@@ -551,9 +554,9 @@ class _TelecSessionAPI:
             timeout=30.0,
             request_options=RequestOptions(json_body=payload),
         )
-        return TypeAdapter(CreateSessionResult).validate_json(resp.text)
+        return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
-    async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResult:
+    async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO:
         """Run a slash command in a new session (POST /sessions/run)."""
         request = RunSessionRequest(
             command=kwargs["command"],
@@ -569,7 +572,7 @@ class _TelecSessionAPI:
             timeout=30.0,
             request_options=RequestOptions(json_body=request.model_dump()),
         )
-        return TypeAdapter(CreateSessionResult).validate_json(resp.text)
+        return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
     async def end_session(self, session_id: str, computer: str) -> bool:
         """End a session."""
@@ -612,10 +615,10 @@ class _TelecSessionAPI:
         resp = await self._request("GET", "/auth/whoami")
         return resp.json()
 
-    async def get_agent_availability(self) -> dict[str, AgentAvailabilityInfo]:
+    async def get_agent_availability(self) -> dict[str, AgentAvailabilityDTO]:
         """Get agent availability status."""
         resp = await self._request("GET", "/agents/availability")
-        return TypeAdapter(dict[str, AgentAvailabilityInfo]).validate_json(resp.text)
+        return TypeAdapter(dict[str, AgentAvailabilityDTO]).validate_json(resp.text)
 
     async def set_agent_status(
         self,
@@ -623,7 +626,7 @@ class _TelecSessionAPI:
         status: str,
         reason: str | None = None,
         duration_minutes: int = 60,
-    ) -> AgentAvailabilityInfo:
+    ) -> AgentAvailabilityDTO:
         """Set agent availability status."""
         resp = await self._request(
             "POST",
@@ -636,9 +639,9 @@ class _TelecSessionAPI:
                 }
             ),
         )
-        return TypeAdapter(AgentAvailabilityInfo).validate_json(resp.text)
+        return TypeAdapter(AgentAvailabilityDTO).validate_json(resp.text)
 
-    async def list_projects_with_todos(self) -> list[ProjectWithTodosInfo]:
+    async def list_projects_with_todos(self) -> list[ProjectWithTodosDTO]:
         """List all projects with their todos included."""
         projects, todos = await asyncio.gather(
             self.list_projects(),
@@ -654,13 +657,13 @@ class _TelecSessionAPI:
             key = (todo.computer, todo.project_path)
             todo_map.setdefault(key, []).append(todo)
 
-        result: list[ProjectWithTodosInfo] = []
+        result: list[ProjectWithTodosDTO] = []
         for project in projects:
             computer = project.computer or ""
             project_path = project.path
             todos_for_project = todo_map.get((computer, project_path), [])
             result.append(
-                ProjectWithTodosInfo(
+                ProjectWithTodosDTO(
                     computer=project.computer,
                     name=project.name,
                     path=project.path,
@@ -684,10 +687,10 @@ class _TelecSessionAPI:
         resp = await self._request("GET", "/todos", request_options=RequestOptions(params=params))
         return TypeAdapter(list[TodoDTO]).validate_json(resp.text)
 
-    async def list_jobs(self) -> list[JobInfo]:
+    async def list_jobs(self) -> list[JobDTO]:
         """List scheduled jobs."""
         resp = await self._request("GET", "/jobs")
-        return TypeAdapter(list[JobInfo]).validate_json(resp.text)
+        return TypeAdapter(list[JobDTO]).validate_json(resp.text)
 
     async def run_job(self, name: str) -> bool:
         """Run a scheduled job immediately."""
@@ -706,48 +709,48 @@ class _TelecRuntimeAPI:
 
     _request: Callable[..., Awaitable[httpx.Response]]
 
-    async def get_settings(self) -> SettingsInfo:
+    async def get_settings(self) -> SettingsDTO:
         """Get current runtime settings."""
         resp = await self._request("GET", "/settings")
-        return TypeAdapter(SettingsInfo).validate_json(resp.text)
+        return TypeAdapter(SettingsDTO).validate_json(resp.text)
 
-    async def patch_settings(self, updates: SettingsPatchInfo) -> SettingsInfo:
+    async def patch_settings(self, updates: SettingsPatchDTO) -> SettingsDTO:
         """Apply partial updates to runtime settings."""
         resp = await self._request(
             "PATCH",
             "/settings",
             request_options=RequestOptions(json_body=updates.model_dump(exclude_none=True)),
         )
-        return TypeAdapter(SettingsInfo).validate_json(resp.text)
+        return TypeAdapter(SettingsDTO).validate_json(resp.text)
 
-    async def chiptunes_next(self) -> ChiptunesCommandReceiptInfo:
+    async def chiptunes_next(self) -> ChiptunesCommandReceiptDTO:
         """Queue skip-to-next chiptunes command."""
         resp = await self._request("POST", "/api/chiptunes/next")
-        return TypeAdapter(ChiptunesCommandReceiptInfo).validate_json(resp.text)
+        return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
 
-    async def chiptunes_prev(self) -> ChiptunesCommandReceiptInfo:
+    async def chiptunes_prev(self) -> ChiptunesCommandReceiptDTO:
         """Queue previous-track chiptunes command."""
         resp = await self._request("POST", "/api/chiptunes/prev")
-        return TypeAdapter(ChiptunesCommandReceiptInfo).validate_json(resp.text)
+        return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
 
-    async def chiptunes_pause(self) -> ChiptunesCommandReceiptInfo:
+    async def chiptunes_pause(self) -> ChiptunesCommandReceiptDTO:
         """Queue pause command for chiptunes playback."""
         resp = await self._request("POST", "/api/chiptunes/pause")
-        return TypeAdapter(ChiptunesCommandReceiptInfo).validate_json(resp.text)
+        return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
 
-    async def chiptunes_resume(self) -> ChiptunesCommandReceiptInfo:
+    async def chiptunes_resume(self) -> ChiptunesCommandReceiptDTO:
         """Queue resume command for chiptunes playback."""
         resp = await self._request("POST", "/api/chiptunes/resume")
-        return TypeAdapter(ChiptunesCommandReceiptInfo).validate_json(resp.text)
+        return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
 
-    async def get_chiptunes_status(self) -> ChiptunesStatusInfo:
+    async def get_chiptunes_status(self) -> ChiptunesStatusDTO:
         """Fetch current chiptunes playback state."""
         resp = await self._request("GET", "/api/chiptunes/status")
-        return TypeAdapter(ChiptunesStatusInfo).validate_json(resp.text)
+        return TypeAdapter(ChiptunesStatusDTO).validate_json(resp.text)
 
     async def revive_session(
         self, session_id: str, *, agent: str | None = None, project: str | None = None
-    ) -> CreateSessionResult:
+    ) -> CreateSessionResponseDTO:
         """Revive a session by TeleClaude or native session ID.
 
         Without agent, session_id is a TeleClaude session ID.
@@ -764,7 +767,7 @@ class _TelecRuntimeAPI:
             timeout=30.0,
             request_options=RequestOptions(params=params),
         )
-        return TypeAdapter(CreateSessionResult).validate_json(resp.text)
+        return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
     async def memory_search(
         self,

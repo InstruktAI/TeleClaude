@@ -8,7 +8,7 @@ from textual.events import Click
 from textual.message import Message
 from textual.widget import Widget
 
-from teleclaude.cli.models import ProjectInfo
+from teleclaude.api_models import ProjectDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
 from teleclaude.cli.tui.utils.formatters import shorten_path
@@ -33,7 +33,7 @@ class ProjectHeader(TelecMixin, Widget):
     """
 
     def __init__(
-        self, project: ProjectInfo, session_count: int = 0, show_connector: bool = True, **kwargs: object
+        self, project: ProjectDTO, session_count: int = 0, show_connector: bool = True, **kwargs: object
     ) -> None:
         super().__init__(**kwargs)
         self.project = project

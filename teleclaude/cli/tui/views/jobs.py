@@ -9,7 +9,7 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.models import JobInfo
+from teleclaude.api_models import JobDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import SettingsChanged
 from teleclaude.cli.tui.widgets.job_row import JobRow
@@ -67,7 +67,7 @@ class JobsView(Widget, can_focus=True):
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self._jobs: list[JobInfo] = []
+        self._jobs: list[JobDTO] = []
         self._nav_items: list[Widget] = []
 
     def compose(self) -> ComposeResult:
@@ -75,7 +75,7 @@ class JobsView(Widget, can_focus=True):
         scroll.can_focus = False
         yield scroll
 
-    def update_data(self, jobs: list[JobInfo]) -> None:
+    def update_data(self, jobs: list[JobDTO]) -> None:
         """Update view with fresh job data."""
         self._jobs = jobs
         self._rebuild()

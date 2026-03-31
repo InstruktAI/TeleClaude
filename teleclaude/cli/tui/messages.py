@@ -6,13 +6,13 @@ from dataclasses import dataclass, field
 
 from textual.message import Message
 
-from teleclaude.cli.models import (
-    AgentAvailabilityInfo,
-    ComputerInfo,
-    JobInfo,
-    ProjectInfo,
-    ProjectWithTodosInfo,
-    SessionInfo,
+from teleclaude.api_models import (
+    AgentAvailabilityDTO,
+    ComputerDTO,
+    JobDTO,
+    ProjectDTO,
+    ProjectWithTodosDTO,
+    SessionDTO,
 )
 
 # --- Data refresh messages ---
@@ -37,12 +37,12 @@ class _ChiptunesState:
 
 @dataclass(frozen=True)
 class _RefreshPayload:
-    computers: list[ComputerInfo]
-    projects: list[ProjectInfo]
-    projects_with_todos: list[ProjectWithTodosInfo]
-    sessions: list[SessionInfo]
-    availability: dict[str, AgentAvailabilityInfo]
-    jobs: list[JobInfo]
+    computers: list[ComputerDTO]
+    projects: list[ProjectDTO]
+    projects_with_todos: list[ProjectWithTodosDTO]
+    sessions: list[SessionDTO]
+    availability: dict[str, AgentAvailabilityDTO]
+    jobs: list[JobDTO]
     tts_enabled: bool
 
 
@@ -85,32 +85,32 @@ class DataRefreshed(Message):
         return _ChiptunesState(**normalized, pending=pending)
 
     @property
-    def computers(self) -> list[ComputerInfo]:
+    def computers(self) -> list[ComputerDTO]:
         """Return the refreshed computer list."""
         return self._payload.computers
 
     @property
-    def projects(self) -> list[ProjectInfo]:
+    def projects(self) -> list[ProjectDTO]:
         """Return the refreshed project list."""
         return self._payload.projects
 
     @property
-    def projects_with_todos(self) -> list[ProjectWithTodosInfo]:
+    def projects_with_todos(self) -> list[ProjectWithTodosDTO]:
         """Return projects enriched with todo metadata."""
         return self._payload.projects_with_todos
 
     @property
-    def sessions(self) -> list[SessionInfo]:
+    def sessions(self) -> list[SessionDTO]:
         """Return the refreshed session list."""
         return self._payload.sessions
 
     @property
-    def availability(self) -> dict[str, AgentAvailabilityInfo]:
+    def availability(self) -> dict[str, AgentAvailabilityDTO]:
         """Return agent availability keyed by identifier."""
         return self._payload.availability
 
     @property
-    def jobs(self) -> list[JobInfo]:
+    def jobs(self) -> list[JobDTO]:
         """Return the refreshed job list."""
         return self._payload.jobs
 
@@ -388,7 +388,7 @@ class AgentActivity(Message):
 class SessionStarted(Message):
     """Session started event from WebSocket."""
 
-    def __init__(self, session: SessionInfo) -> None:
+    def __init__(self, session: SessionDTO) -> None:
         super().__init__()
         self.session = session
 
@@ -396,7 +396,7 @@ class SessionStarted(Message):
 class SessionUpdated(Message):
     """Session updated event from WebSocket."""
 
-    def __init__(self, session: SessionInfo) -> None:
+    def __init__(self, session: SessionDTO) -> None:
         super().__init__()
         self.session = session
 

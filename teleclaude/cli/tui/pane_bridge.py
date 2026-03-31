@@ -25,8 +25,8 @@ from teleclaude.cli.tui.state import DocPreviewState
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from teleclaude.cli.models import ComputerInfo as APIComputerInfo
-    from teleclaude.cli.models import SessionInfo
+    from teleclaude.api_models import ComputerDTO as APIComputerDTO
+    from teleclaude.api_models import SessionDTO
 
 _SENTINEL = object()
 PANE_WRITER_ERRORS = (AttributeError, LookupError, OSError, RuntimeError, TypeError, ValueError)
@@ -118,8 +118,8 @@ class PaneManagerBridge(TelecMixin, Widget):  # pylint: disable=too-many-instanc
         super().__init__(**kwargs)
         self.pane_manager = TmuxPaneManager(is_reload=is_reload)
         self._writer = PaneWriter(self.pane_manager)
-        self._computers: dict[str, APIComputerInfo] = {}
-        self._sessions: list[SessionInfo] = []
+        self._computers: dict[str, APIComputerDTO] = {}
+        self._sessions: list[SessionDTO] = []
         self._preview_session_id: str | None = None
         self._sticky_session_ids: list[str] = []
         self._active_doc_preview: DocPreviewState | None = None
@@ -127,7 +127,7 @@ class PaneManagerBridge(TelecMixin, Widget):  # pylint: disable=too-many-instanc
         self._pending_focus: bool = False
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
-        """Convert API ComputerInfo to pane_manager ComputerInfo."""
+        """Convert API ComputerDTO to pane_manager ComputerDTO."""
         api_info = self._computers.get(computer_name)
         if not api_info:
             return None
@@ -187,14 +187,14 @@ class PaneManagerBridge(TelecMixin, Widget):  # pylint: disable=too-many-instanc
 
         self._writer.schedule(_do_layout)
 
-    def update_single_session(self, session: SessionInfo) -> None:
+    def update_single_session(self, session: SessionDTO) -> None:
         """Update or add a single session in the bridge's session list and catalog.
 
         Called from on_session_started/on_session_updated so the bridge has
         current session data before any PreviewChanged layout runs.
         """
         updated = False
-        next_sessions: list[SessionInfo] = []
+        next_sessions: list[SessionDTO] = []
         for existing in self._sessions:
             if existing.session_id == session.session_id:
                 next_sessions.append(session)

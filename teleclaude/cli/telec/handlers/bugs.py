@@ -7,8 +7,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.cli.models import CreateSessionResult
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.constants import WORKTREE_DIR
@@ -178,7 +178,7 @@ def _handle_bugs_report(args: list[str]) -> None:
         raise SystemExit(1)
 
     # Dispatch orchestrator on mainline — the state machine handles branches/worktrees
-    async def _dispatch_bug_fix() -> CreateSessionResult:
+    async def _dispatch_bug_fix() -> CreateSessionResponseDTO:
         api = TelecAPIClient()
         await api.connect()
         try:

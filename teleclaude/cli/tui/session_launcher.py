@@ -6,7 +6,7 @@ import curses
 import os
 import subprocess
 
-from teleclaude.cli.models import CreateSessionResult
+from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.config import config
 
 
@@ -33,7 +33,7 @@ def attach_tmux_session(tmux_session_name: str | None, stdscr: object) -> bool:
     return True
 
 
-def attach_tmux_from_result(result: CreateSessionResult, stdscr: object) -> bool:
+def attach_tmux_from_result(result: CreateSessionResponseDTO, stdscr: object) -> bool:
     """Attach tmux session from create_session API result."""
     tmux_session_name = result.tmux_session_name
     return attach_tmux_session(tmux_session_name, stdscr) if tmux_session_name else False

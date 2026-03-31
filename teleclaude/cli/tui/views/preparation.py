@@ -11,7 +11,7 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.models import AgentAvailabilityInfo, ComputerInfo, ProjectInfo, ProjectWithTodosInfo
+from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     StateChanged,
@@ -77,12 +77,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self._projects_with_todos: list[ProjectWithTodosInfo] = []
+        self._projects_with_todos: list[ProjectWithTodosDTO] = []
         self._expanded_todos: set[str] = set()
         self._nav_items: list[Widget] = []
         self._slug_to_project_path: dict[str, str] = {}
         self._slug_to_computer: dict[str, str] = {}
-        self._availability: dict[str, AgentAvailabilityInfo] = {}
+        self._availability: dict[str, AgentAvailabilityDTO] = {}
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="preparation-scroll")
@@ -92,7 +92,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     _logger = get_logger(__name__)
 
     @staticmethod
-    def _todo_fingerprint(projects: list[ProjectWithTodosInfo]) -> tuple[tuple[str, ...], ...]:
+    def _todo_fingerprint(projects: list[ProjectWithTodosDTO]) -> tuple[tuple[str, ...], ...]:
         """Build a lightweight fingerprint of all todo data for change detection."""
         return tuple(
             (
@@ -118,8 +118,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
     def update_data(
         self,
-        projects_with_todos: list[ProjectWithTodosInfo],
-        availability: dict[str, AgentAvailabilityInfo] | None = None,
+        projects_with_todos: list[ProjectWithTodosDTO],
+        availability: dict[str, AgentAvailabilityDTO] | None = None,
     ) -> None:
         """Update view with fresh API data. Only rebuild if data changed."""
         self._logger.trace(
@@ -191,7 +191,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
         # Group projects by computer, preserving trusted_dirs order from config
         computer_order: list[str] = []
-        computer_to_projects: dict[str, list[ProjectWithTodosInfo]] = {}
+        computer_to_projects: dict[str, list[ProjectWithTodosDTO]] = {}
         for project in self._projects_with_todos:
             comp_name = project.computer or "local"
             if comp_name not in computer_to_projects:
@@ -208,7 +208,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
             # Count todos across all projects under this computer
             comp_todo_count = sum(len(p.todos or []) for p in projects_in_comp)
-            comp_info = ComputerInfo(
+            comp_info = ComputerDTO(
                 name=comp_name,
                 status="online",
                 user="",
@@ -226,7 +226,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             self._nav_items.append(comp_header)
 
             for project in projects_in_comp:
-                proj_info = ProjectInfo(
+                proj_info = ProjectDTO(
                     computer=project.computer,
                     name=project.name,
                     path=project.path,

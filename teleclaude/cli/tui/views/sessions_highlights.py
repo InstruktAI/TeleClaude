@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from teleclaude.cli.models import SessionInfo
+from teleclaude.api_models import SessionDTO
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
 # Auto-clear highlights on preview session after this many seconds
@@ -111,7 +111,7 @@ class SessionsViewHighlightsMixin:
             availability=self._availability,  # type: ignore[attr-defined]
         )
 
-    def update_session(self, session: SessionInfo) -> None:
+    def update_session(self, session: SessionDTO) -> None:
         """Update a single session row with new data."""
         if session.status in HIDDEN_SESSION_STATUSES:
             remaining = [  # type: ignore[attr-defined]
@@ -127,7 +127,7 @@ class SessionsViewHighlightsMixin:
             return
 
         updated = False
-        next_sessions: list[SessionInfo] = []
+        next_sessions: list[SessionDTO] = []
         for existing in self._sessions:  # type: ignore[attr-defined]
             if existing.session_id == session.session_id:
                 next_sessions.append(session)

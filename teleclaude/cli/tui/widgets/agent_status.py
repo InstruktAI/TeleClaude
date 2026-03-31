@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.theme import get_agent_status_color
 
 AgentStatus = Literal["available", "degraded", "unavailable"]
@@ -23,7 +23,7 @@ class AgentRenderSpec:
     status: AgentStatus
 
 
-def is_agent_degraded(info: AgentAvailabilityInfo | None) -> bool:
+def is_agent_degraded(info: AgentAvailabilityDTO | None) -> bool:
     """Return True when the agent is marked degraded."""
     if not info:
         return False
@@ -32,14 +32,14 @@ def is_agent_degraded(info: AgentAvailabilityInfo | None) -> bool:
     return isinstance(info.reason, str) and info.reason.startswith("degraded")
 
 
-def is_agent_selectable(info: AgentAvailabilityInfo | None) -> bool:
+def is_agent_selectable(info: AgentAvailabilityDTO | None) -> bool:
     """Return True when agent can be manually selected in the TUI."""
     return bool(info and info.available is True)
 
 
 def build_agent_render_spec(
     agent: str,
-    info: AgentAvailabilityInfo | None,
+    info: AgentAvailabilityDTO | None,
     *,
     unavailable_detail: str | None = None,
     show_unavailable_detail: bool = True,

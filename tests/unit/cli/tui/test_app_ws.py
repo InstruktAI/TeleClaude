@@ -1,11 +1,11 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,protected-access,too-few-public-methods,too-many-instance-attributes,use-implicit-booleaness-not-comparison,import-outside-toplevel
 from __future__ import annotations
 
 from unittest.mock import Mock
 
 import pytest
 
-from teleclaude.api_models import SessionDTO
-from teleclaude.cli.models import SessionStartedEvent
+from teleclaude.api_models import SessionDTO, SessionStartedEventDTO
 from teleclaude.cli.tui import app_ws
 from teleclaude.cli.tui.messages import AgentActivity, SessionClosed
 
@@ -89,7 +89,7 @@ def test_handle_ws_event_posts_session_started_messages() -> None:
     app = _WsApp(sessions_view, pane_bridge)
     session = SessionDTO(session_id="session-1", title="title", status="idle", computer="c1")
 
-    app._handle_ws_event(SessionStartedEvent(event="session_started", data=session))
+    app._handle_ws_event(SessionStartedEventDTO(event="session_started", data=session))
 
     assert len(app._post_messages) == 1
     assert type(app._post_messages[0]).__name__ == "SessionStarted"

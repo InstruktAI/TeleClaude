@@ -24,7 +24,7 @@ from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
 
 if TYPE_CHECKING:
-    from teleclaude.cli.models import ProjectWithTodosInfo  # pylint: disable=import-outside-toplevel,ungrouped-imports
+    from teleclaude.api_models import ProjectWithTodosDTO  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
 
 class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,protected-access
@@ -32,7 +32,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
 
     if TYPE_CHECKING:
         app: Any
-        _projects_with_todos: list[ProjectWithTodosInfo]
+        _projects_with_todos: list[ProjectWithTodosDTO]
 
     @staticmethod
     def _next_command(base: str, slug: str | None) -> str:

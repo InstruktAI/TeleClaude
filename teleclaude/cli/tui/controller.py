@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.models import SessionInfo
+from teleclaude.api_models import SessionDTO
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.state import DocPreviewState, Intent, IntentType, TuiState, reduce_state
 from teleclaude.cli.tui.state_store import save_sticky_state
@@ -42,12 +42,12 @@ class TuiController:
         self.state = state
         self.pane_manager = pane_manager
         self._get_computer_info = get_computer_info
-        self._sessions: list[SessionInfo] = []
+        self._sessions: list[SessionDTO] = []
         self._last_layout: LayoutState | None = None
         self._layout_pending = False
         self._pending_focus_session_id: str | None = None
 
-    def update_sessions(self, sessions: list[SessionInfo]) -> None:
+    def update_sessions(self, sessions: list[SessionDTO]) -> None:
         """Update session catalog used for layout derivation."""
         self._sessions = sessions
 

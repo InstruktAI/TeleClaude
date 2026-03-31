@@ -7,20 +7,20 @@ from typing import cast
 from instrukt_ai_logging import get_logger
 from textual.widgets import TabbedContent
 
-from teleclaude.cli.models import (
-    AgentActivityEvent,
-    ChiptunesStateEvent,
-    ChiptunesTrackEvent,
-    ErrorEvent,
-    ProjectsInitialEvent,
-    ProjectWithTodosInfo,
-    SessionClosedEvent,
-    SessionLifecycleStatusEvent,
-    SessionsInitialEvent,
-    SessionStartedEvent,
-    SessionUpdatedEvent,
-    WsEvent,
+from teleclaude.api_models import (
+    AgentActivityEventDTO,
+    ChiptunesStateEventDTO,
+    ChiptunesTrackEventDTO,
+    ErrorEventDTO,
+    ProjectsInitialEventDTO,
+    ProjectWithTodosDTO,
+    SessionClosedEventDTO,
+    SessionLifecycleStatusEventDTO,
+    SessionsInitialEventDTO,
+    SessionStartedEventDTO,
+    SessionUpdatedEventDTO,
 )
+from teleclaude.cli.models import WsEvent
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger
 from teleclaude.cli.tui.messages import (
     AgentActivity,
@@ -64,7 +64,7 @@ class TelecAppWsMixin:
 
     def _handle_initial_data_event(self, event: WsEvent) -> bool:
         """Handle websocket events that update cached view data."""
-        if isinstance(event, SessionsInitialEvent):
+        if isinstance(event, SessionsInitialEventDTO):
             sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
             computers, projects = self._get_sessions_view_data(sessions_view)
             sessions_view.update_data(
@@ -74,10 +74,10 @@ class TelecAppWsMixin:
             )
             return True
 
-        if isinstance(event, ProjectsInitialEvent):
+        if isinstance(event, ProjectsInitialEventDTO):
             prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
             projects_with_todos = [
-                ProjectWithTodosInfo(
+                ProjectWithTodosDTO(
                     computer=p.computer,
                     name=p.name,
                     path=p.path,
@@ -93,17 +93,17 @@ class TelecAppWsMixin:
 
     def _handle_session_event(self, event: WsEvent) -> bool:
         """Handle websocket events that become Textual session messages."""
-        if isinstance(event, SessionStartedEvent):
+        if isinstance(event, SessionStartedEventDTO):
             self.post_message(SessionStarted(event.data))  # type: ignore[attr-defined]
             return True
 
-        if isinstance(event, SessionUpdatedEvent):
+        if isinstance(event, SessionUpdatedEventDTO):
             session = event.data
             self.post_message(SessionUpdated(session))  # type: ignore[attr-defined]
             return True
 
         if getattr(event, "event", None) == "agent_activity":
-            activity_event = cast(AgentActivityEvent, event)
+            activity_event = cast(AgentActivityEventDTO, event)
             self.post_message(  # type: ignore[attr-defined]
                 AgentActivity(
                     session_id=activity_event.session_id,
@@ -118,7 +118,7 @@ class TelecAppWsMixin:
             )
             return True
 
-        if isinstance(event, SessionClosedEvent):
+        if isinstance(event, SessionClosedEventDTO):
             self.post_message(SessionClosed(event.data.session_id))  # type: ignore[attr-defined]
             return True
 
@@ -126,11 +126,11 @@ class TelecAppWsMixin:
 
     def _handle_status_event(self, event: WsEvent) -> bool:
         """Handle websocket status and error notifications."""
-        if isinstance(event, SessionLifecycleStatusEvent):
+        if isinstance(event, SessionLifecycleStatusEventDTO):
             self._notify_session_lifecycle_status(event)
             return True
 
-        if isinstance(event, ErrorEvent):
+        if isinstance(event, ErrorEventDTO):
             self.notify(event.data.message, severity="error")  # type: ignore[attr-defined]
             return True
 
@@ -138,7 +138,7 @@ class TelecAppWsMixin:
 
     def _handle_chiptunes_event(self, event: WsEvent) -> bool:
         """Handle chiptunes status updates for the footer."""
-        if isinstance(event, ChiptunesTrackEvent):
+        if isinstance(event, ChiptunesTrackEventDTO):
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
                 loaded=True,
                 playback="playing",
@@ -153,7 +153,7 @@ class TelecAppWsMixin:
                 self.notify(f"♪ Now Playing: {event.track}", timeout=4)  # type: ignore[attr-defined]
             return True
 
-        if isinstance(event, ChiptunesStateEvent):
+        if isinstance(event, ChiptunesStateEventDTO):
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
                 loaded=event.loaded,
                 playback=event.playback,
@@ -174,7 +174,7 @@ class TelecAppWsMixin:
             self._reload_computers()  # type: ignore[attr-defined]
         self._refresh_data()  # type: ignore[attr-defined]
 
-    def _notify_session_lifecycle_status(self, event: SessionLifecycleStatusEvent) -> None:
+    def _notify_session_lifecycle_status(self, event: SessionLifecycleStatusEventDTO) -> None:
         """Surface session lifecycle events as TUI notifications."""
         if event.status == "escalated":
             self.notify(  # type: ignore[attr-defined]

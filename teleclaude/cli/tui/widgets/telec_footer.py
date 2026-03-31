@@ -15,7 +15,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
-from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.theme import get_neutral_color
 from teleclaude.cli.tui.widgets._status_controls import (
@@ -180,11 +180,11 @@ class TelecFooter(Widget):
 
     def __init__(
         self,
-        agent_availability: dict[str, AgentAvailabilityInfo] | None = None,
+        agent_availability: dict[str, AgentAvailabilityDTO] | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        self._agent_availability: dict[str, AgentAvailabilityInfo] = agent_availability or {}
+        self._agent_availability: dict[str, AgentAvailabilityDTO] = agent_availability or {}
 
     def _show_transport_controls(self) -> bool:
         """Transport controls are always visible."""
@@ -222,7 +222,7 @@ class TelecFooter(Widget):
         if self.app.app_focus:
             self._refresh_hint_rows()
 
-    def update_availability(self, availability: dict[str, AgentAvailabilityInfo]) -> None:
+    def update_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
         self._agent_availability = availability
         self._refresh_controls()
 

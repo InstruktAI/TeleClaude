@@ -7,7 +7,7 @@ from typing import Protocol, TypedDict
 from rich.style import Style
 from rich.text import Text
 
-from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.theme import get_agent_color, get_agent_style, normalize_pane_theming_mode
 from teleclaude.cli.tui.utils.formatters import format_countdown
 
@@ -54,7 +54,7 @@ def build_pane_theming_cells(pane_theming_mode: str) -> list[tuple[str, Style]]:
     ]
 
 
-def build_agent_pill(agent: str, availability: AgentAvailabilityInfo | None) -> Text:
+def build_agent_pill(agent: str, availability: AgentAvailabilityDTO | None) -> Text:
     """Build the standard agent availability pill used by footer widgets."""
     available = bool(availability and availability.available)
     degraded = bool(

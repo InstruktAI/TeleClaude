@@ -84,3 +84,6 @@ docs/diagrams/
 .claude/
 .codex/
 .gemini/
+
+# Temporary backup of worktree todos folders
+.temp/

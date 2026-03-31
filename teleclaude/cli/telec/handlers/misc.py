@@ -10,8 +10,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import APIError, TelecAPIClient
-from teleclaude.cli.models import CreateSessionResult
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
 from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
@@ -185,7 +185,7 @@ def _revive_session(session_id: str, attach: bool, *, agent: str | None = None) 
         _attach_tmux_session(result.tmux_session_name)
 
 
-async def _revive_session_via_api(session_id: str, *, agent: str | None = None) -> CreateSessionResult:
+async def _revive_session_via_api(session_id: str, *, agent: str | None = None) -> CreateSessionResponseDTO:
     """Revive a session via API and return the response."""
     api = TelecAPIClient()
     await api.connect()

@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,protected-access,unused-argument
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,7 +7,7 @@ from typing import TypedDict
 import pytest
 
 from teleclaude.cli.tui import controller as controller_module
-from teleclaude.cli.tui.controller import ComputerInfo, Intent, IntentType, SessionInfo, TuiController, TuiState
+from teleclaude.cli.tui.controller import ComputerInfo, Intent, IntentType, SessionDTO, TuiController, TuiState
 
 
 class _ApplyLayoutCall(TypedDict):
@@ -36,7 +37,7 @@ class _PaneManagerStub:
 
 def _make_controller(pane_manager: _PaneManagerStub) -> TuiController:
     controller = TuiController(TuiState(), pane_manager, lambda name: ComputerInfo(name=name, is_local=True))
-    controller.update_sessions([SessionInfo(session_id="s1", title="one", status="idle", computer="c1")])
+    controller.update_sessions([SessionDTO(session_id="s1", title="one", status="idle", computer="c1")])
     return controller
 
 

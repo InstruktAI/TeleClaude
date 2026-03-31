@@ -10,7 +10,7 @@ import time
 from instrukt_ai_logging import get_logger
 from textual import work
 
-from teleclaude.cli.models import ChiptunesStatusInfo
+from teleclaude.api_models import ChiptunesStatusDTO
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
@@ -69,12 +69,12 @@ class TelecAppMediaMixin:
     @work(exclusive=True, group="settings")
     async def _toggle_tts(self) -> None:
         """Toggle TTS on/off via API."""
-        from teleclaude.cli.models import SettingsPatchInfo, TTSSettingsPatchInfo
+        from teleclaude.api_models import SettingsPatchDTO, TTSSettingsPatchDTO
 
         new_val = not self.query_one("#telec-footer", TelecFooter).tts_enabled  # type: ignore[attr-defined]
         try:
             await self.api.patch_settings(  # type: ignore[attr-defined]
-                SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=new_val)),
+                SettingsPatchDTO(tts=TTSSettingsPatchDTO(enabled=new_val)),
             )
             status_bar = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
             status_bar.tts_enabled = new_val
@@ -88,7 +88,7 @@ class TelecAppMediaMixin:
         """Play/pause toggle: resume/enable if cold or paused, else pause.
 
         Uses optimistic local updates for instant visual feedback.
-        ChiptunesStateEvent WS broadcasts correct state eventually.
+        ChiptunesStateEventDTO WS broadcasts correct state eventually.
         """
         footer = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
 
@@ -164,7 +164,7 @@ class TelecAppMediaMixin:
         footer.chiptunes_pending_action = pending_action
         footer.chiptunes_favorited = is_favorited(sid_path) if sid_path else False
 
-    def _apply_chiptunes_status(self, status: ChiptunesStatusInfo) -> None:
+    def _apply_chiptunes_status(self, status: ChiptunesStatusDTO) -> None:
         self._apply_chiptunes_footer_state(
             loaded=bool(getattr(status, "loaded", False)),
             playback=str(getattr(status, "playback", "cold")),

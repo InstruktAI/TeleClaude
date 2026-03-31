@@ -25,7 +25,7 @@ from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Button, Input, Label
 
-from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import CreateSessionRequest
 from teleclaude.cli.tui.theme import resolve_style
@@ -44,7 +44,7 @@ class NewProjectResult:
     path: str
 
 
-def _is_agent_selectable(info: AgentAvailabilityInfo | None) -> bool:
+def _is_agent_selectable(info: AgentAvailabilityDTO | None) -> bool:
     """Agent is selectable if available or degraded (manual override)."""
     if info is None:
         return True
@@ -83,7 +83,7 @@ class AgentSelector(TelecMixin, Widget, can_focus=True):
     def __init__(
         self,
         agents: tuple[str, ...],
-        availability: dict[str, AgentAvailabilityInfo],
+        availability: dict[str, AgentAvailabilityDTO],
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -359,7 +359,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         self,
         computer: str,
         project_path: str,
-        agent_availability: dict[str, AgentAvailabilityInfo] | None = None,
+        agent_availability: dict[str, AgentAvailabilityDTO] | None = None,
         default_message: str | None = None,
         path_mode: bool = False,
         **kwargs: object,

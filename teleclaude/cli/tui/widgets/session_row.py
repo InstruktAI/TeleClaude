@@ -11,7 +11,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.models import SessionInfo
+from teleclaude.api_models import SessionDTO
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import (
@@ -58,7 +58,7 @@ class SessionRow(TelecMixin, Widget):
 
     def __init__(
         self,
-        session: SessionInfo,
+        session: SessionDTO,
         display_index: str = "",
         depth: int = 0,
         **kwargs: object,
@@ -349,7 +349,7 @@ class SessionRow(TelecMixin, Widget):
         event.stop()
         self.post_message(self.Pressed(self, shift=event.shift))
 
-    def update_session(self, session: SessionInfo) -> None:
+    def update_session(self, session: SessionDTO) -> None:
         """Update the underlying session data and trigger re-render."""
         self.session = session
         self.refresh(layout=True)
