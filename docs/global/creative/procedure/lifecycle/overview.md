@@ -17,24 +17,22 @@ a precondition for requirements discovery.
 
 Not every todo requires creative work. The creative stage activates only when the todo
 involves visual or creative work — explicitly stated in `input.md` or flagged in
-`roadmap.yaml`.
+the roadmap.
 
 Governing constraints:
 
 - **Human-in-the-loop**: three blocking gates where the machine parks and waits.
-- **Stateless derivation**: all state derived from filesystem artifacts and `state.yaml`.
+- **DB-backed state**: all state and artifacts stored in `todos.db`.
 - **Artifact immutability**: the machine never modifies artifacts directly — it dispatches workers.
 - **Sequential phases**: design spec precedes art, art precedes visuals.
 
 When all three phases complete (CREATIVE_COMPLETE), creative artifacts become
-preconditions for the prepare machine: `design-spec.md` constrains requirements,
+preconditions for the prepare machine: `design-spec` constrains requirements,
 `art/` provides visual reference, `html/` provides prototypes.
-
-Work state lives in `todos.db` under the todo state for the slug.
 
 ## Preconditions
 
-- `todos/{slug}/input.md` exists with human thinking.
+- Input artifact exists in `todos.db` (`telec todo artifacts read {slug} input`).
 - Work item exists in `todos.db` roadmap.
 
 ## Steps
@@ -66,10 +64,10 @@ Work state lives in `todos.db` under the todo state for the slug.
 
 ## Outputs
 
-- Confirmed `todos/{slug}/design-spec.md`.
-- Approved images in `todos/{slug}/art/`.
-- Approved visual artifacts in `todos/{slug}/html/`.
-- Updated `state.yaml` with creative phase completion markers.
+- Confirmed `design-spec` artifact in `todos.db`.
+- Approved images archived to `~/.teleclaude/storage/{date}/{slug}/art/`.
+- Approved visual artifacts archived to `~/.teleclaude/storage/{date}/{slug}/html/`.
+- Updated state in `todos.db` with creative phase completion markers.
 
 ## Recovery
 

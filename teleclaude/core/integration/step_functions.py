@@ -389,9 +389,16 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
     call on every IDLE entry without risk of double-cleanup.
     """
     from teleclaude.core.next_machine.core import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.delivery import load_delivered_slugs  # pylint: disable=import-outside-toplevel
 
-    delivered = load_delivered_slugs(cwd)
+    todos_db = _get_todos_db_sync(cwd)
+    conn = todos_db._sync_conn()  # pylint: disable=protected-access
+    try:
+        rows = conn.execute(
+            "SELECT slug FROM roadmap WHERE status = 'delivered'",  # guard: raw-sql
+        ).fetchall()
+        delivered = {row[0] for row in rows}
+    finally:
+        conn.close()
     if not delivered:
         return []
 
