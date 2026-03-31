@@ -146,7 +146,25 @@ class TestExtractLiveThinkingText:
         assert extract_live_thinking_text(output) == "• Working"
 
     @pytest.mark.unit
-    def test_returns_none_when_interrupt_suffix_missing(self):
+    def test_matches_footer_variant_with_inline_message(self):
+        output = "• Working (7s • esc to interrupt) · 1 background terminal running · /ps to view"
+
+        assert extract_live_thinking_text(output) == "• Working"
+
+    @pytest.mark.unit
+    def test_matches_footer_variant_with_reasoning_header(self):
+        output = "• Investigating rendering code (1m 03s • esc to interrupt)"
+
+        assert extract_live_thinking_text(output) == "• Investigating rendering code"
+
+    @pytest.mark.unit
+    def test_matches_truncated_interrupt_hint_variant(self):
+        output = "• Working (7s • esc…"
+
+        assert extract_live_thinking_text(output) == "• Working"
+
+    @pytest.mark.unit
+    def test_returns_none_for_plain_agent_line_without_footer_timer(self):
         output = "• Working on changes"
 
         assert extract_live_thinking_text(output) is None

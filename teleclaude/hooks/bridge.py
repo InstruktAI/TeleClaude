@@ -9,13 +9,14 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.event_bus import EventBus
 from teleclaude.core.events import (
-    AgentActivityEvent,
     AgentEventContext,
+    BaseAgentActivityEvent,
     ErrorEventContext,
     EventContext,
     EventType,
     SessionLifecycleContext,
     TeleClaudeEvents,
+    ToolUseActivityEvent,
 )
 from teleclaude.hooks.webhook_models import HookEvent
 
@@ -83,10 +84,10 @@ class EventBusBridge:
             if hasattr(context.data, "raw"):
                 payload = dict(context.data.raw)
 
-        elif isinstance(context, AgentActivityEvent):
+        elif isinstance(context, BaseAgentActivityEvent):
             properties["session_id"] = context.session_id
             properties["agent_event_type"] = context.event_type
-            if context.tool_name:
+            if isinstance(context, ToolUseActivityEvent) and context.tool_name:
                 properties["tool_name"] = context.tool_name
             hook_type = f"agent.activity.{context.event_type}"
 

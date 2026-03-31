@@ -46,7 +46,19 @@ _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 _ANSI_BOLD_TOKEN_RE = re.compile(r"\x1b\[[0-9;]*1m([A-Za-z][A-Za-z_-]{1,40})\x1b\[[0-9;]*m")
 _ACTION_WORD_RE = re.compile(r"^([A-Za-z][A-Za-z_-]{1,40})")
 _TREE_CONTINUATION_PREFIX_RE = re.compile(r"^(?:[│┃┆┊|]+\s*|[├└]\s*)+")
-_CODEX_THINKING_SUFFIX_RE = re.compile(r"\s+\(\d+s\s+•\s+esc to interrupt\)\s*$", re.IGNORECASE)
+_CODEX_THINKING_STATUS_RE = re.compile(
+    r"""
+    ^
+    (?P<prefix>[•◦✶✦✧✴✸✹✺★☆●○◆◇]\s+.+?)
+    \s+\(
+    (?P<elapsed>\d+s|\d+m\s+\d{2}s|\d+h\s+\d{2}m\s+\d{2}s)
+    (?:\s+•\s+esc(?:\s+to\s+interrupt|…))?
+    \)?
+    (?:.*)?
+    $
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 _CODEX_TOOL_ACTION_WORDS = frozenset(
     {
@@ -262,17 +274,15 @@ def _is_live_agent_marker_line(line: str) -> bool:
 
 
 def extract_live_thinking_text(output: str) -> str | None:
-    """Extract the current visible Codex thinking line without the timer suffix."""
+    """Extract the current visible Codex footer status text without elapsed suffix."""
     lines = output.rstrip().split("\n")
-    for line in reversed(lines[-10:]):
+    for line in reversed(lines):
         clean_line = _strip_ansi(line).strip()
-        if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
+        if not clean_line:
             continue
-        if "esc to interrupt" not in clean_line.lower():
-            continue
-        cleaned = _CODEX_THINKING_SUFFIX_RE.sub("", clean_line).strip()
-        if cleaned and cleaned != clean_line:
-            return cleaned
+        match = _CODEX_THINKING_STATUS_RE.match(clean_line)
+        if match:
+            return match.group("prefix").strip()
     return None
 
 
