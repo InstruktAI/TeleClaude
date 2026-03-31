@@ -192,10 +192,7 @@ def test_repo_root_pull_success_continues_to_cleanup(tmp_path: Path) -> None:
 
     assert ok is True, "successful pull must continue to cleanup"
     assert cp.phase == IntegrationPhase.CANDIDATE_DELIVERED.value
-    # _do_cleanup must NOT call _mirror_integration_phase — the todo directory
-    # is already deleted by cleanup_delivered_slug, so mirroring would recreate
-    # an orphaned state.yaml file.
-    mock_mirror.assert_not_called()
+    mock_mirror.assert_called_with(str(tmp_path), "my-feature", IntegrationPhase.CANDIDATE_DELIVERED.value)
 
 
 def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:

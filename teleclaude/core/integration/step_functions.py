@@ -842,9 +842,6 @@ def _do_cleanup(
     cleanup_delivered_slug which handles physical artifacts (worktree
     removal, branch deletion, leftover directory removal) and also runs
     clean_dependency_references idempotently on repo root.
-
-    The worktree cleanup removes the ``state.yaml`` — that IS the
-    consumption mechanism. No separate queue bookkeeping needed.
     """
     from teleclaude.core.next_machine.core import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
 
@@ -871,9 +868,7 @@ def _do_cleanup(
     checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
     checkpoint.items_processed += 1
     _write_checkpoint(checkpoint_path, checkpoint)
-    # Do NOT mirror phase here — cleanup already deleted the todo directory.
-    # Calling _mirror_integration_phase would recreate todos/{slug}/state.yaml
-    # as an orphaned untracked file.
+    _mirror_integration_phase(cwd, key.slug, IntegrationPhase.CANDIDATE_DELIVERED.value)
     logger.info("%s slug=%s phase=CANDIDATE_DELIVERED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
     return True, ""  # loop to pop next candidate
