@@ -13,7 +13,6 @@ from teleclaude.core.next_machine.work import (
     _dispatch_review_approved,
     _DispatchState,
     _resolve_explicit_work_slug,
-    _select_precondition_root,
     _validate_required_artifacts,
     _validate_work_preconditions,
     next_work,
@@ -32,31 +31,22 @@ def _mock_todos_db(**overrides: object) -> AsyncMock:
     return db
 
 
-def test_select_precondition_root_prefers_worktree_when_required_artifacts_are_present(tmp_path: Path) -> None:
-    worktree_todo = tmp_path / "trees" / "slug-a" / "todos" / "slug-a"
-    worktree_todo.mkdir(parents=True)
-    (worktree_todo / "requirements.md").write_text(
-        "Real requirements content that passes scaffold checks.\n", encoding="utf-8"
-    )
-    (worktree_todo / "implementation-plan.md").write_text(
-        "Real implementation plan content that passes checks.\n", encoding="utf-8"
-    )
+@pytest.mark.asyncio
+async def test_validate_required_artifacts_returns_none_for_bug_with_bug_artifact() -> None:
+    todos_db = _mock_todos_db()
+    todos_db.artifact_exists = AsyncMock(return_value=True)
 
-    root = _select_precondition_root(str(tmp_path), "slug-a", False)
-
-    assert root == str(tmp_path / "trees" / "slug-a")
-
-
-def test_validate_required_artifacts_returns_none_for_bug_with_bug_report() -> None:
-    with patch("teleclaude.core.next_machine.work.check_file_has_content", return_value=True):
-        error = _validate_required_artifacts("/repo", "bug-slug", True)
+    error = await _validate_required_artifacts(todos_db, "bug-slug", True)
 
     assert error is None
 
 
-def test_validate_required_artifacts_returns_error_for_bug_without_bug_report() -> None:
-    with patch("teleclaude.core.next_machine.work.check_file_has_content", return_value=False):
-        error = _validate_required_artifacts("/repo", "bug-slug", True)
+@pytest.mark.asyncio
+async def test_validate_required_artifacts_returns_error_for_bug_without_bug_artifact() -> None:
+    todos_db = _mock_todos_db()
+    todos_db.artifact_exists = AsyncMock(return_value=False)
+
+    error = await _validate_required_artifacts(todos_db, "bug-slug", True)
 
     assert error is not None
 

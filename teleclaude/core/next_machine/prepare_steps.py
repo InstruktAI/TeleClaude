@@ -22,15 +22,14 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
-from teleclaude.core.next_machine.artifacts import artifact_digest, compute_artifact_diff, compute_todo_folder_diff
+from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
-from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event,
     _has_test_spec_artifacts,
 )
-from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, record_input_consumed, stamp_audit
+from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, stamp_audit
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
@@ -53,29 +52,7 @@ def _derive_project_root(cwd: str, slug: str) -> str:
     return cwd
 
 
-def _restamp_artifact_digest(
-    state: dict[str, StateValue], cwd: str, slug: str, artifact_key: str, filename: str
-) -> None:
-    """Re-stamp an artifact's digest after a reviewer may have modified it.
-
-    Prevents the staleness check from looping when the reviewed artifact
-    was changed by the reviewer (auto-remediation). The review is the last
-    entity to touch the file — the machine acknowledges the new state.
-    """
-    artifacts = state.get("artifacts", {})
-    if not isinstance(artifacts, dict):
-        return
-    entry = artifacts.get(artifact_key, {})
-    if not isinstance(entry, dict):
-        return
-    current = artifact_digest(cwd, slug, filename)
-    if current and current != entry.get("digest", ""):
-        entry["digest"] = current
-        artifacts[artifact_key] = entry
-        state["artifacts"] = artifacts
-
-
-async def _restamp_artifact_digest_db(  # pyright: ignore[reportUnusedFunction]
+async def _restamp_artifact_digest_db(
     todos_db: TodosDb,
     state: dict[str, StateValue],
     slug: str,
@@ -116,10 +93,14 @@ async def _prepare_step_input_assessment(
     _now = datetime.now(UTC).isoformat()
     stamp_audit(state, "input_assessment", "started_at", _now)
 
-    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
+    has_requirements = await todos_db.artifact_exists(slug, "requirements")
     if has_requirements:
-        # Emit input_consumed event before transitioning (R13)
-        await asyncio.to_thread(record_input_consumed, cwd, slug)
+        # Emit input_consumed event for observability (R13)
+        input_digest = await todos_db.artifact_digest(slug, "input")
+        _emit_prepare_event(
+            "domain.software-development.prepare.input_consumed",
+            {"slug": slug, "phase": "input_assessment", "digest": input_digest},
+        )
         stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await todos_db.write_state(slug, state)
@@ -152,9 +133,8 @@ async def _prepare_step_triangulation(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TRIANGULATION: requirements.md still needs discovery or revision."""
-    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
+    has_requirements = await todos_db.artifact_exists(slug, "requirements")
     if has_requirements:
-        # Transition to REQUIREMENTS_REVIEW
         state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_drafted", {"slug": slug})
@@ -193,7 +173,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
 
     # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
     if verdict:
-        _restamp_artifact_digest(state, cwd, slug, "requirements", "requirements.md")
+        await _restamp_artifact_digest_db(todos_db, state, slug, "requirements")
 
     if verdict == "approve":
         stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
@@ -429,7 +409,7 @@ async def _prepare_step_plan_drafting(
     """PLAN_DRAFTING: implementation-plan.md needed."""
     stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
 
-    has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
+    has_plan = await todos_db.artifact_exists(slug, "implementation-plan")
     if has_plan:
         stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.PLAN_REVIEW.value
@@ -470,7 +450,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
 
     # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
     if verdict:
-        _restamp_artifact_digest(state, cwd, slug, "implementation_plan", "implementation-plan.md")
+        await _restamp_artifact_digest_db(todos_db, state, slug, "implementation_plan")
 
     if verdict == "approve":
         stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())

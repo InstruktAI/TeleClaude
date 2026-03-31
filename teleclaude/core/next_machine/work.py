@@ -49,7 +49,6 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
     format_uncommitted_changes,
 )
-from teleclaude.core.next_machine.path_checks import check_file_has_content
 from teleclaude.core.next_machine.roadmap import (
     check_dependencies_satisfied,
 )
@@ -327,8 +326,7 @@ async def _validate_work_preconditions(todos_db: TodosDb, cwd: str, resolved_slu
         return format_stash_debt(resolved_slug, len(stash_entries))
 
     is_bug = await todos_db.is_bug_todo(resolved_slug)
-    precondition_root = _select_precondition_root(cwd, resolved_slug, is_bug)
-    missing_artifacts_error = _validate_required_artifacts(precondition_root, resolved_slug, is_bug)
+    missing_artifacts_error = await _validate_required_artifacts(todos_db, resolved_slug, is_bug)
     if missing_artifacts_error is not None:
         reason = "invalid_bug" if is_bug else "not_prepared"
         _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", reason)
@@ -344,28 +342,11 @@ async def _validate_work_preconditions(todos_db: TodosDb, cwd: str, resolved_slu
     return None  # No remote artifact sync — bookkeeping is in todos.db
 
 
-def _select_precondition_root(cwd: str, resolved_slug: str, is_bug: bool) -> str:
-    """Prefer worktree artifacts when they already contain the required files."""
-    worktree_root = Path(cwd) / WORKTREE_DIR / resolved_slug
-    if not worktree_root.exists():
-        return cwd
-    worktree_cwd = str(worktree_root)
-    if is_bug and check_file_has_content(worktree_cwd, f"todos/{resolved_slug}/bug.md"):
-        return worktree_cwd
-    if (
-        not is_bug
-        and check_file_has_content(worktree_cwd, f"todos/{resolved_slug}/requirements.md")
-        and check_file_has_content(worktree_cwd, f"todos/{resolved_slug}/implementation-plan.md")
-    ):
-        return worktree_cwd
-    return cwd
-
-
-def _validate_required_artifacts(precondition_root: str, resolved_slug: str, is_bug: bool) -> str | None:
-    """Ensure the required todo artifacts exist before build work starts."""
+async def _validate_required_artifacts(todos_db: TodosDb, resolved_slug: str, is_bug: bool) -> str | None:
+    """Ensure the required todo artifacts exist in the DB before build work starts."""
     if not is_bug:
-        has_requirements = check_file_has_content(precondition_root, f"todos/{resolved_slug}/requirements.md")
-        has_impl_plan = check_file_has_content(precondition_root, f"todos/{resolved_slug}/implementation-plan.md")
+        has_requirements = await todos_db.artifact_exists(resolved_slug, "requirements")
+        has_impl_plan = await todos_db.artifact_exists(resolved_slug, "implementation-plan")
         if has_requirements and has_impl_plan:
             return None
         return format_error(
@@ -374,7 +355,7 @@ def _validate_required_artifacts(precondition_root: str, resolved_slug: str, is_
             next_call=f"Call telec todo prepare {resolved_slug} to complete preparation.",
         )
 
-    has_bug_md = check_file_has_content(precondition_root, f"todos/{resolved_slug}/bug.md")
+    has_bug_md = await todos_db.artifact_exists(resolved_slug, "bug")
     if has_bug_md:
         return None
     return format_error(

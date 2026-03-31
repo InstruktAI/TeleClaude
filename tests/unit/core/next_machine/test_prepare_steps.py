@@ -21,7 +21,6 @@ from teleclaude.core.next_machine.prepare_steps import (
     _prepare_step_requirements_review,
     _prepare_step_test_spec_build,
     _prepare_step_triangulation,
-    _restamp_artifact_digest,
 )
 
 
@@ -437,56 +436,9 @@ async def test_plan_in_worktree_advances_plan_drafting(tmp_path: Path) -> None:
     assert state["current"] == PreparePhase.PLAN_REVIEW.value
 
 
-def test_restamp_artifact_digest_updates_when_file_changed(tmp_path: Path) -> None:
-    """Re-stamp updates the stored digest when the file on disk has changed."""
-    todo_dir = tmp_path / "todos" / "slug-rs1"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("original content", encoding="utf-8")
-    original_digest = hashlib.sha256(b"original content").hexdigest()
-    state: dict[str, StateValue] = {
-        "artifacts": {"requirements": {"digest": original_digest, "produced_at": "2026-01-01T00:00:00Z"}},
-    }
-
-    # Simulate reviewer modifying the file
-    (todo_dir / "requirements.md").write_text("reviewer-modified content", encoding="utf-8")
-    expected_digest = hashlib.sha256(b"reviewer-modified content").hexdigest()
-
-    _restamp_artifact_digest(state, str(tmp_path), "slug-rs1", "requirements", "requirements.md")
-
-    artifacts = state["artifacts"]
-    assert isinstance(artifacts, dict)
-    req = artifacts["requirements"]
-    assert isinstance(req, dict)
-    assert req["digest"] == expected_digest
-
-
-def test_restamp_artifact_digest_noop_when_unchanged(tmp_path: Path) -> None:
-    """Re-stamp is a no-op when the file digest matches the stored digest."""
-    todo_dir = tmp_path / "todos" / "slug-rs2"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("same content", encoding="utf-8")
-    same_digest = hashlib.sha256(b"same content").hexdigest()
-    state: dict[str, StateValue] = {
-        "artifacts": {"requirements": {"digest": same_digest, "produced_at": "2026-01-01T00:00:00Z"}},
-    }
-
-    _restamp_artifact_digest(state, str(tmp_path), "slug-rs2", "requirements", "requirements.md")
-
-    artifacts = state["artifacts"]
-    assert isinstance(artifacts, dict)
-    req = artifacts["requirements"]
-    assert isinstance(req, dict)
-    assert req["digest"] == same_digest
-
-
 @pytest.mark.asyncio
 async def test_requirements_review_approve_restamps_digest_when_reviewer_modified_artifact(tmp_path: Path) -> None:
-    """When reviewer modifies requirements.md and approves, the digest is updated before advancing."""
-    todo_dir = tmp_path / "todos" / "slug-rv1"
-    todo_dir.mkdir(parents=True)
-    # File on disk has been modified by reviewer
-    (todo_dir / "requirements.md").write_text("reviewer-modified requirements", encoding="utf-8")
-    _write_state(todo_dir, {})
+    """When reviewer modifies requirements and approves, the DB digest is used to restamp."""
     old_digest = hashlib.sha256(b"original requirements").hexdigest()
     new_digest = hashlib.sha256(b"reviewer-modified requirements").hexdigest()
     state: dict[str, StateValue] = {
@@ -494,9 +446,12 @@ async def test_requirements_review_approve_restamps_digest_when_reviewer_modifie
         "artifacts": {"requirements": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00Z"}},
     }
 
+    todos_db = _mock_todos_db()
+    todos_db.artifact_digest = AsyncMock(return_value=new_digest)
+
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_step_requirements_review(
-            AsyncMock(), _mock_todos_db(), "slug-rv1", str(tmp_path), state
+            AsyncMock(), todos_db, "slug-rv1", str(tmp_path), state
         )
 
     assert keep_going is True
@@ -511,11 +466,7 @@ async def test_requirements_review_approve_restamps_digest_when_reviewer_modifie
 
 @pytest.mark.asyncio
 async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifact(tmp_path: Path) -> None:
-    """When reviewer modifies implementation-plan.md and approves, the digest is updated before advancing."""
-    todo_dir = tmp_path / "todos" / "slug-rv2"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "implementation-plan.md").write_text("reviewer-modified plan", encoding="utf-8")
-    _write_state(todo_dir, {})
+    """When reviewer modifies implementation-plan and approves, the DB digest is used to restamp."""
     old_digest = hashlib.sha256(b"original plan").hexdigest()
     new_digest = hashlib.sha256(b"reviewer-modified plan").hexdigest()
     state: dict[str, StateValue] = {
@@ -523,9 +474,12 @@ async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifa
         "artifacts": {"implementation_plan": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00Z"}},
     }
 
+    todos_db = _mock_todos_db()
+    todos_db.artifact_digest = AsyncMock(return_value=new_digest)
+
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_step_plan_review(
-            AsyncMock(), _mock_todos_db(), "slug-rv2", str(tmp_path), state
+            AsyncMock(), todos_db, "slug-rv2", str(tmp_path), state
         )
 
     assert keep_going is True
@@ -565,33 +519,6 @@ async def test_grounding_check_reads_input_from_worktree_cwd(tmp_path: Path) -> 
     assert keep_going is True
     # Digest must match the worktree input, not the project root scaffold
     assert grounding["input_digest"] == hashlib.sha256(b"worktree input").hexdigest()
-
-
-def test_restamp_reads_artifact_from_worktree_cwd(tmp_path: Path) -> None:
-    """_restamp_artifact_digest reads from worktree cwd, not project root."""
-    slug = "slug-rs-wt"
-    worktree = tmp_path / "trees" / slug
-    worktree_todos = worktree / "todos" / slug
-    worktree_todos.mkdir(parents=True)
-    (worktree_todos / "requirements.md").write_text("worktree content", encoding="utf-8")
-
-    # Project root has stale content
-    root_todos = tmp_path / "todos" / slug
-    root_todos.mkdir(parents=True)
-    (root_todos / "requirements.md").write_text("scaffold", encoding="utf-8")
-
-    old_digest = hashlib.sha256(b"old").hexdigest()
-    state: dict[str, StateValue] = {
-        "artifacts": {"requirements": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00Z"}},
-    }
-
-    _restamp_artifact_digest(state, str(worktree), slug, "requirements", "requirements.md")
-
-    artifacts = state["artifacts"]
-    assert isinstance(artifacts, dict)
-    req = artifacts["requirements"]
-    assert isinstance(req, dict)
-    assert req["digest"] == hashlib.sha256(b"worktree content").hexdigest()
 
 
 @pytest.mark.asyncio
