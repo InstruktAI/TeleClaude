@@ -133,8 +133,6 @@ class SessionRow(TelecMixin, Widget):
                 bgcolor=resolve_preview_bg_hex(self.agent),
                 bold=True,
             )
-        if self.collapsed and (self.highlight_type in ("input", "output") or self.activity_event == "tool_use"):
-            return resolve_style(self.agent, self._tier("highlight"))
         return resolve_style(self.agent, self._tier("normal"))
 
     def _build_title_line(self, *, selected: bool = False, previewed: bool = False) -> Text:
@@ -228,7 +226,12 @@ class SessionRow(TelecMixin, Widget):
         has_output_highlight = self.highlight_type == "output"
         has_tool_activity = self.activity_event == "tool_use"
         input_style = highlight_style if has_input_highlight else base_style
-        output_style = highlight_style if (has_output_highlight or has_tool_activity) else base_style
+        has_active_output_placeholder = self.activity_event in ("tool_done", "user_prompt_submit")
+        output_style = (
+            highlight_style
+            if (has_output_highlight or has_tool_activity or has_active_output_placeholder)
+            else base_style
+        )
 
         owner_line = self._build_owner_line(
             connector_pad=connector_pad,

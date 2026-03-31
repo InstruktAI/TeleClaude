@@ -148,6 +148,29 @@ def test_unresolved_session_does_not_render_system_role_fallback(monkeypatch: py
 
 
 @pytest.mark.unit
+def test_title_row_does_not_highlight_from_output_activity() -> None:
+    row = _make_row("Planner Session")
+    row.highlight_type = "output"
+
+    style = row._get_row_style()
+
+    assert style == resolve_style(row.agent, row._tier("normal"))
+
+
+@pytest.mark.unit
+def test_output_placeholder_row_stays_highlighted_for_active_output() -> None:
+    row = _make_row("Planner Session")
+    row.activity_event = "tool_done"
+
+    lines = row._build_summary_lines()
+
+    assert any(
+        "out: ..." in line.plain and line.spans[-1].style == resolve_style(row.agent, row._tier("highlight"))
+        for line in lines
+    )
+
+
+@pytest.mark.unit
 def test_current_viewer_identity_line_is_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
     row = _make_row(
         "Planner Session",
