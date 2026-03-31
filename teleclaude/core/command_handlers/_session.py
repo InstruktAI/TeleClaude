@@ -29,7 +29,7 @@ from teleclaude.core.models import (
     SessionSnapshot,
     TodoInfo,
 )
-from teleclaude.core.roadmap import assemble_roadmap
+from teleclaude.core.roadmap import assemble_roadmap_from_db
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_utils import resolve_working_dir
@@ -356,7 +356,7 @@ async def list_todos(project_path: str) -> list[TodoInfo]:
     Returns:
         List of todo objects.
     """
-    return assemble_roadmap(project_path)
+    return assemble_roadmap_from_db(project_path)
 
 
 async def get_computer_info() -> ComputerInfo:

@@ -267,7 +267,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     self._nav_items.append(row)
 
                     # Collect file rows for expanded todos
-                    if node.slug in self._expanded_todos and node.todo.files:
+                    if node.slug in self._expanded_todos and node.todo.files and node.todo.todo_path:
                         # File tree_lines = parent's lines + parent's own branch continuation
                         file_tree_lines = node.tree_lines + [not is_last_sibling]
                         sorted_files = sorted(node.todo.files)
