@@ -29,6 +29,7 @@ _PREPARE_LABEL_BLOCKED = "blocked"
 _INTEGRATION_LABEL_STARTED = "started"
 _INTEGRATION_LABEL_DELIVERED = "delivered"
 _INTEGRATION_LABEL_FAILED = "failed"
+_INTEGRATION_LABEL_READY = "ready"
 _INTEGRATION_LABEL_QUEUED = "queued"
 
 _TODO_STATUS_DRAFT = "draft"
@@ -51,6 +52,7 @@ _PREPARE_PHASE_LABELS: dict[PreparePhase, str] = {
     PreparePhase.BLOCKED: _PREPARE_LABEL_BLOCKED,
 }
 
+_FINALIZE_LABEL_READY = "ready"
 _FINALIZE_LABEL_QUEUED = "handed_off"
 _INTEGRATION_CLEARANCE_PHASE = "clearance_wait"
 
@@ -112,9 +114,12 @@ def integration_phase_label(phase: str | None, finalize_status: str | None) -> t
     if phase == IntegrationPhase.PUSH_REJECTED.value:
         return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_FAILED, _gold_color()
     if not phase:
-        if finalize_status == _FINALIZE_LABEL_QUEUED:
-            return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_QUEUED, _ok_color()
-        return None
+        finalize_to_label = {
+            _FINALIZE_LABEL_QUEUED: _INTEGRATION_LABEL_QUEUED,
+            _FINALIZE_LABEL_READY: _INTEGRATION_LABEL_READY,
+        }
+        label = finalize_to_label.get(finalize_status or "")
+        return (_PHASE_PREFIX_INTEGRATION, label, _ok_color()) if label else None
 
     return None
 
