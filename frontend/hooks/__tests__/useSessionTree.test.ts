@@ -239,6 +239,77 @@ describe('useSessionTree', () => {
     })
   })
 
+  it('preserves stored expansion when tree data arrives after mount', async () => {
+    window.localStorage.setItem(
+      SESSION_TREE_STORAGE_KEY,
+      JSON.stringify({
+        expandedIds: [
+          'computer:local',
+          'project:local:/home/user/my-project',
+          'session:sess-2',
+        ],
+        cursorId: 'session:sess-2',
+      }),
+    )
+
+    const { result, rerender } = renderHook(
+      ({ tree }: { tree: ComputerGroup[] }) => useSessionTree(tree),
+      {
+        initialProps: { tree: [] as ComputerGroup[] },
+      },
+    )
+
+    rerender({ tree: makeTree() })
+
+    await waitFor(() => {
+      expect(result.current.expandedSet.has('computer:local')).toBe(true)
+      expect(result.current.expandedSet.has('project:local:/home/user/my-project')).toBe(true)
+      expect(result.current.expandedSet.has('session:sess-2')).toBe(true)
+      expect(result.current.cursorId).toBe('session:sess-2')
+    })
+  })
+
+  it('does not prune stored project/session expansion before the route data is ready', async () => {
+    window.localStorage.setItem(
+      SESSION_TREE_STORAGE_KEY,
+      JSON.stringify({
+        expandedIds: [
+          'computer:local',
+          'project:local:/home/user/my-project',
+          'session:sess-2',
+        ],
+        cursorId: 'session:sess-2',
+      }),
+    )
+
+    const partialTree: ComputerGroup[] = [
+      {
+        type: 'computer',
+        name: 'local',
+        status: 'online',
+        isLocal: true,
+        sessionCount: 0,
+        projects: [],
+      },
+    ]
+
+    const { result, rerender } = renderHook(
+      ({ tree, isReady }: { tree: ComputerGroup[]; isReady: boolean }) =>
+        useSessionTree(tree, { isReady }),
+      {
+        initialProps: { tree: partialTree, isReady: false },
+      },
+    )
+
+    rerender({ tree: makeTree(), isReady: true })
+
+    await waitFor(() => {
+      expect(result.current.expandedSet.has('computer:local')).toBe(true)
+      expect(result.current.expandedSet.has('project:local:/home/user/my-project')).toBe(true)
+      expect(result.current.expandedSet.has('session:sess-2')).toBe(true)
+    })
+  })
+
   it('reveals a persisted session by expanding its ancestors', async () => {
     const { result } = renderHook(() => useSessionTree(makeTree()))
 

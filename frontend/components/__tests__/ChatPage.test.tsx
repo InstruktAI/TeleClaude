@@ -293,6 +293,34 @@ describe("ChatPage", () => {
     })
   })
 
+  it("restores the persisted session-tree expansion state on the real route", async () => {
+    storage.set(
+      "teleclaude.chat.session-tree",
+      JSON.stringify({
+        expandedIds: [
+          "computer:local",
+          "project:local:/home/user/my-project",
+          "session:sess-2",
+        ],
+        cursorId: "session:sess-2",
+      }),
+    )
+
+    render(<ChatPage />)
+
+    expect(await screen.findByTestId("session-detail-id-sess-2")).toBeDefined()
+  })
+
+  it("persists session row expansion changes from the real route", async () => {
+    render(<ChatPage />)
+
+    fireEvent.click(await screen.findByTestId("session-toggle-sess-2"))
+
+    await waitFor(() => {
+      expect(storage.get("teleclaude.chat.session-tree")).toContain("session:sess-2")
+    })
+  })
+
   it("switches tabs from the keyboard and opens a prefilled new-session dialog from a project node", async () => {
     render(<ChatPage />)
 

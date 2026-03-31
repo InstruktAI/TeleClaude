@@ -117,6 +117,35 @@ function inputDetailLine(
   }
 }
 
+function ownerSummaryLine(
+  session: SessionTreeNode["session"],
+  currentUserEmail?: string | null,
+): { label: string; value?: string | null } | null {
+  const isOwnedByCurrentUser = Boolean(
+    session.human_email &&
+      currentUserEmail &&
+      session.human_email.toLowerCase() === currentUserEmail.toLowerCase(),
+  )
+
+  if (isOwnedByCurrentUser) return null
+
+  if (session.human_name && session.human_role) {
+    return {
+      label: session.human_role,
+      value: session.human_name,
+    }
+  }
+
+  if (session.human_role !== "customer" && session.system_role) {
+    return {
+      label: session.system_role,
+      value: session.job,
+    }
+  }
+
+  return null
+}
+
 function outputDetailLine(
   session: SessionTreeNode["session"],
   state?: SessionHighlightViewState,
@@ -198,28 +227,97 @@ function ExpandChevron({ expanded, color }: { expanded: boolean; color?: string 
 }
 
 // ---------------------------------------------------------------------------
-// Session detail lines (shown when session node expanded)
+// Session summary lines (always visible beneath the session header)
+// ---------------------------------------------------------------------------
+
+function SessionSummary({
+  session,
+  depth,
+  isThemed,
+  sessionState,
+  currentUserEmail,
+}: {
+  session: SessionTreeNode
+  depth: number
+  isThemed: boolean
+  sessionState?: SessionHighlightViewState
+  currentUserEmail?: string | null
+}) {
+  const s = session.session
+  const palette = getSessionPalette(sessionAgent(s.active_agent), isThemed)
+  const ownerLine = ownerSummaryLine(s, currentUserEmail)
+  const inputLine = inputDetailLine(s)
+  const outputLine = outputDetailLine(s, sessionState)
+  if (!ownerLine && !inputLine && !outputLine) {
+    return null
+  }
+  return (
+    <div
+      className="space-y-0.5 py-1 pl-3 text-[11px] leading-4"
+      style={{
+        marginLeft: detailOffset(depth),
+        borderLeft: `1px solid ${palette.connector}`,
+        color: palette.normal,
+      }}
+    >
+      {ownerLine ? (
+        <div
+          data-testid={`session-identity-${s.session_id}`}
+          className="truncate"
+          style={{ color: palette.muted }}
+        >
+          {ownerLine.label}
+          {ownerLine.value ? (
+            <>
+              : <span style={{ color: palette.normal }}>{ownerLine.value}</span>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {inputLine ? (
+        <div
+          data-testid={`session-summary-input-${s.session_id}`}
+          className="truncate font-mono"
+          style={{ color: sessionState?.highlightType === "input" ? palette.normal : palette.muted }}
+          title={`${inputLine.timestamp} ${inputLine.text}`}
+        >
+          {inputLine.timestamp} {inputLine.text}
+        </div>
+      ) : null}
+      {outputLine ? (
+        <div
+          data-testid={`session-summary-output-${s.session_id}`}
+          className="truncate font-mono"
+          style={{ color: outputLine.emphasized ? palette.normal : palette.muted }}
+          title={`${outputLine.timestamp} ${outputLine.text}`}
+        >
+          {outputLine.timestamp} {outputLine.text}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Session technical detail lines (shown only when session node expanded)
 // ---------------------------------------------------------------------------
 
 function SessionDetails({
   session,
   depth,
   isThemed,
-  sessionState,
 }: {
   session: SessionTreeNode
   depth: number
   isThemed: boolean
-  sessionState?: SessionHighlightViewState
 }) {
   const s = session.session
   const palette = getSessionPalette(sessionAgent(s.active_agent), isThemed)
-  const inputLine = inputDetailLine(s)
-  const outputLine = outputDetailLine(s, sessionState)
   const idLine = `${formatSessionTime(s.last_activity)} ${s.session_id} / ${s.native_session_id ?? "-"}`
+
   return (
     <div
-      className="space-y-0.5 py-1 pl-3 text-[10px]"
+      className="space-y-0.5 py-1 pl-3 text-[11px] leading-4"
       style={{
         marginLeft: detailOffset(depth),
         borderLeft: `1px solid ${palette.connector}`,
@@ -233,26 +331,6 @@ function SessionDetails({
       >
         {idLine}
       </div>
-      {inputLine ? (
-        <div
-          data-testid={`session-detail-input-${s.session_id}`}
-          className="truncate font-mono"
-          style={{ color: sessionState?.highlightType === "input" ? palette.normal : palette.muted }}
-          title={`${inputLine.timestamp} ${inputLine.text}`}
-        >
-          {inputLine.timestamp} {inputLine.text}
-        </div>
-      ) : null}
-      {outputLine ? (
-        <div
-          data-testid={`session-detail-output-${s.session_id}`}
-          className="truncate font-mono"
-          style={{ color: outputLine.emphasized ? palette.normal : palette.muted }}
-          title={`${outputLine.timestamp} ${outputLine.text}`}
-        >
-          {outputLine.timestamp} {outputLine.text}
-        </div>
-      ) : null}
     </div>
   )
 }
@@ -292,26 +370,6 @@ function SessionRow({
   const rowStyle: CSSProperties = {
     color: palette.normal,
     paddingLeft: `${rowOffset(depth)}px`,
-  }
-  const isOwnedByCurrentUser = Boolean(
-    s.human_email &&
-      currentUserEmail &&
-      s.human_email.toLowerCase() === currentUserEmail.toLowerCase(),
-  )
-
-  let secondaryLine: { label: string; value?: string | null } | null = null
-  if (!isOwnedByCurrentUser) {
-    if (s.human_name && s.human_role) {
-      secondaryLine = {
-        label: s.human_role,
-        value: s.human_name,
-      }
-    } else if (s.human_role !== "customer" && s.system_role) {
-      secondaryLine = {
-        label: s.system_role,
-        value: s.job,
-      }
-    }
   }
 
   if (sessionState?.highlightType || sessionState?.activityEvent === "tool_use") {
@@ -373,31 +431,32 @@ function SessionRow({
             {subdirLabel}
           </Badge>
         )}
-        {node.children.length > 0 && (
-          <button onClick={(e) => { e.stopPropagation(); onToggle() }} className="ml-auto">
-            <ExpandChevron
-              expanded={expanded}
-              color={isCursor || isActive ? rowStyle.color ?? palette.contrast : palette.normal}
-            />
-          </button>
-        )}
-      </div>
-      {secondaryLine ? (
-        <div
-          data-testid={`session-identity-${s.session_id}`}
-          className="truncate text-[10px]"
-          style={{ paddingLeft: `${rowOffset(depth)}px`, color: palette.muted }}
+        <button
+          data-testid={`session-toggle-${s.session_id}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggle()
+          }}
+          className="ml-auto"
         >
-          {secondaryLine.label}
-          {secondaryLine.value && <>: <span style={{ color: palette.normal }}>{secondaryLine.value}</span></>}
-        </div>
-      ) : null}
+          <ExpandChevron
+            expanded={expanded}
+            color={isCursor || isActive ? rowStyle.color ?? palette.contrast : palette.normal}
+          />
+        </button>
+      </div>
+      <SessionSummary
+        session={node}
+        depth={depth}
+        isThemed={isThemed}
+        sessionState={sessionState}
+        currentUserEmail={currentUserEmail}
+      />
       {expanded && (
         <SessionDetails
           session={node}
           depth={depth}
           isThemed={isThemed}
-          sessionState={sessionState}
         />
       )}
     </>
@@ -459,18 +518,13 @@ export function SessionTree({
   function renderProject(project: ProjectGroup, computer: string) {
     const nodeId = projectNodeId(computer, project.path)
     const expanded = isExpanded(nodeId)
-    const projectName = project.name
-    const truncatedPath =
-      project.path.length > 30
-        ? `...${project.path.slice(-27)}`
-        : project.path
 
     return (
       <div key={project.path}>
         <div
           data-testid={`project-header-${project.path}`}
           data-node-id={nodeId}
-          className={`flex items-center gap-1.5 px-4 py-1 text-xs cursor-pointer hover:bg-accent/50 ${
+          className={`flex items-start gap-1.5 px-4 py-1 text-xs cursor-pointer hover:bg-accent/50 ${
             cursorId === nodeId ? "ring-1 ring-primary" : ""
           }`}
           onClick={() => {
@@ -479,10 +533,12 @@ export function SessionTree({
           }}
         >
           <ExpandChevron expanded={expanded} />
-          <span className="font-medium">{projectName}</span>
-          <span className="truncate text-[10px] text-muted-foreground">
-            {truncatedPath}
-          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">{project.name}</div>
+            <div className="break-all text-[11px] leading-4 text-muted-foreground">
+              {project.path}
+            </div>
+          </div>
           <Badge variant="secondary" className="ml-auto h-4 px-1 text-[9px]">
             {project.sessionCount}
           </Badge>

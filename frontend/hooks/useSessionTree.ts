@@ -20,6 +20,10 @@ import { usePersistentState } from "@/hooks/usePersistentState"
 
 export const SESSION_TREE_STORAGE_KEY = "teleclaude.chat.session-tree"
 
+interface SessionTreeOptions {
+  isReady?: boolean
+}
+
 interface SessionTreePersistenceState {
   expandedIds: NodeId[]
   cursorId: NodeId | null
@@ -155,7 +159,10 @@ function projectHasSession(
   return false
 }
 
-export function useSessionTree(tree: ComputerGroup[]) {
+export function useSessionTree(
+  tree: ComputerGroup[],
+  { isReady = true }: SessionTreeOptions = {},
+) {
   const defaultExpandedIds = useMemo(
     () => collectDefaultExpandedIds(tree),
     [tree],
@@ -175,7 +182,8 @@ export function useSessionTree(tree: ComputerGroup[]) {
   const defaultsBootstrappedRef = useRef(defaultExpandedIds.length > 0)
 
   useEffect(() => {
-    if (!persistence.isHydrated) return
+    if (!persistence.isHydrated || !isReady) return
+    if (validNodeIds.size === 0) return
 
     setPersistedState((prev) => {
       const expandedIds = sanitizeExpandedIds(prev.expandedIds, validNodeIds)
@@ -194,13 +202,14 @@ export function useSessionTree(tree: ComputerGroup[]) {
       }
     })
   }, [
+    isReady,
     persistence.isHydrated,
     setPersistedState,
     validNodeIds,
   ])
 
   useEffect(() => {
-    if (!persistence.isHydrated) return
+    if (!persistence.isHydrated || !isReady) return
     if (persistence.hasStoredValue) {
       defaultsBootstrappedRef.current = true
       return
@@ -218,6 +227,7 @@ export function useSessionTree(tree: ComputerGroup[]) {
     })
   }, [
     defaultExpandedIds,
+    isReady,
     persistence.hasStoredValue,
     persistence.isHydrated,
     setPersistedState,

@@ -134,7 +134,9 @@ function ChatPageInner() {
     revealSession,
     getNodeType,
     getSessionId,
-  } = useSessionTree(tree);
+  } = useSessionTree(tree, {
+    isReady: !sessionsLoading && !computersLoading,
+  });
 
   const selectedNodeType =
     activeTab === "sessions" && cursorId ? getNodeType(cursorId) : null;

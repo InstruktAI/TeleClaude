@@ -1,5 +1,5 @@
 # guard: no-companion
-"""Reproduction tests for newline stripping in SessionRow._build_title_line."""
+"""Characterization tests for SessionRow rendering and summary hierarchy."""
 
 from __future__ import annotations
 
@@ -9,18 +9,25 @@ from teleclaude.api_models import SessionDTO
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
 
-def _make_session(title: str, subdir: str | None = None) -> SessionDTO:
+def _make_session(title: str, subdir: str | None = None, **overrides: object) -> SessionDTO:
     return SessionDTO(
         session_id="test-session-id",
         title=title,
         status="idle",
         subdir=subdir,
+        last_activity="2026-03-31T17:17:37Z",
+        last_input="Run the planner",
+        last_input_at="2026-03-31T17:13:17Z",
+        last_output_summary="Completed the requested work",
+        last_output_summary_at="2026-03-31T17:17:37Z",
+        native_session_id="native-session-id",
+        **overrides,
     )
 
 
-def _make_row(title: str, subdir: str | None = None) -> SessionRow:
+def _make_row(title: str, subdir: str | None = None, **overrides: object) -> SessionRow:
     return SessionRow(
-        session=_make_session(title, subdir=subdir),
+        session=_make_session(title, subdir=subdir, **overrides),
         display_index="1",
         depth=0,
     )
@@ -67,3 +74,49 @@ def test_title_that_is_only_newline_renders_empty_first_line(monkeypatch: pytest
     # splitlines()[0] on "\n" returns "" — document this behavior
     assert "\n" not in plain
     assert "(untitled)" not in plain
+
+
+@pytest.mark.unit
+def test_collapsed_render_shows_summary_lines_but_not_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _make_row("Planner Session", human_name="Maurice Faber", human_role="admin")
+    monkeypatch.setattr(type(row), "_content_width", property(lambda _: 120))
+    monkeypatch.setattr(
+        "teleclaude.cli.tui.widgets.session_row.read_current_session_email", lambda: "other@instrukt.ai"
+    )
+
+    text = row.render().plain
+
+    assert "admin: Maurice Faber" in text
+    assert "in: Run the planner" in text
+    assert "out: Completed the requested work" in text
+    assert "test-session-id / native-session-id" not in text
+
+
+@pytest.mark.unit
+def test_expanded_render_shows_technical_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _make_row("Planner Session")
+    row.collapsed = False
+    monkeypatch.setattr(type(row), "_content_width", property(lambda _: 120))
+
+    text = row.render().plain
+
+    assert "test-session-id / native-session-id" in text
+
+
+@pytest.mark.unit
+def test_current_viewer_identity_line_is_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _make_row(
+        "Planner Session",
+        human_name="Maurice Faber",
+        human_role="admin",
+        human_email="maurice@instrukt.ai",
+    )
+    monkeypatch.setattr(type(row), "_content_width", property(lambda _: 120))
+    monkeypatch.setattr(
+        "teleclaude.cli.tui.widgets.session_row.read_current_session_email",
+        lambda: "maurice@instrukt.ai",
+    )
+
+    text = row.render().plain
+
+    assert "admin: Maurice Faber" not in text

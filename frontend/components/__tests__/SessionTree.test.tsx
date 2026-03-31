@@ -164,6 +164,7 @@ describe("SessionTree", () => {
     const projectHeader = screen.getByTestId("project-header-/home/user/my-project")
     expect(projectHeader).toBeDefined()
     expect(projectHeader.textContent).toContain("my-project")
+    expect(projectHeader.textContent).toContain("/home/user/my-project")
   })
 
   it("renders session rows with titles", () => {
@@ -277,46 +278,7 @@ describe("SessionTree", () => {
     expect(row.style.backgroundColor).toContain("var(--tc-agent-")
   })
 
-  it("renders persisted output summaries beneath the session row", () => {
-    const sessionStateMap = new Map<string, SessionHighlightViewState>([
-      ["sess-2", { lastOutputSummary: "Build complete", highlightType: "output" }],
-    ])
-    const expandedSet = makeExpandedSet(makeTree())
-    expandedSet.add("session:sess-2")
-
-    render(
-      <SessionTree
-        tree={makeTree()}
-        sessionStateMap={sessionStateMap}
-        expandedSet={expandedSet}
-        onToggle={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByTestId("session-detail-output-sess-2").textContent).toContain("out: Build complete")
-  })
-
-  it("renders input activity from the session last input when highlighted", () => {
-    const sessionStateMap = new Map<string, SessionHighlightViewState>([
-      ["sess-1", { highlightType: "input", activityEvent: "user_prompt_submit" }],
-    ])
-    const expandedSet = makeExpandedSet(makeTree())
-    expandedSet.add("session:sess-1")
-
-    render(
-      <SessionTree
-        tree={makeTree()}
-        sessionStateMap={sessionStateMap}
-        expandedSet={expandedSet}
-        onToggle={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByTestId("session-detail-input-sess-1").textContent).toContain("in: Run the planner")
-    expect(screen.getByTestId("session-detail-output-sess-1").textContent).toContain("out: ...")
-  })
-
-  it("does not render output detail lines on collapsed session rows", () => {
+  it("renders persisted output summaries in the collapsed session summary", () => {
     const sessionStateMap = new Map<string, SessionHighlightViewState>([
       ["sess-2", { lastOutputSummary: "Build complete", highlightType: "output" }],
     ])
@@ -330,7 +292,45 @@ describe("SessionTree", () => {
       />,
     )
 
-    expect(screen.queryByTestId("session-detail-output-sess-2")).toBeNull()
+    expect(screen.getByTestId("session-summary-output-sess-2").textContent).toContain("out: Build complete")
+  })
+
+  it("renders input and output activity in the collapsed session summary", () => {
+    const sessionStateMap = new Map<string, SessionHighlightViewState>([
+      ["sess-1", { highlightType: "input", activityEvent: "user_prompt_submit" }],
+    ])
+
+    render(
+      <SessionTree
+        tree={makeTree()}
+        sessionStateMap={sessionStateMap}
+        expandedSet={makeExpandedSet(makeTree())}
+        onToggle={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId("session-summary-input-sess-1").textContent).toContain("in: Run the planner")
+    expect(screen.getByTestId("session-summary-output-sess-1").textContent).toContain("out: ...")
+  })
+
+  it("keeps technical session ids in the expanded detail block only", () => {
+    render(
+      <SessionTree
+        tree={makeTree()}
+        expandedSet={makeExpandedSet(makeTree())}
+        onToggle={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByTestId("session-detail-id-sess-2")).toBeNull()
+  })
+
+  it("expands a leaf session row through its toggle button", () => {
+    renderWithControlledExpansion()
+
+    expect(screen.queryByTestId("session-detail-id-sess-2")).toBeNull()
+    fireEvent.click(screen.getByTestId("session-toggle-sess-2"))
+    expect(screen.getByTestId("session-detail-id-sess-2").textContent).toContain("sess-2")
   })
 
   it("applies agent-specific cursor highlight colors when themed", () => {
