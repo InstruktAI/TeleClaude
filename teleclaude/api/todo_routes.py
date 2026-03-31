@@ -34,12 +34,8 @@ from teleclaude.core.next_machine.core import (
     _PREPARE_VERDICT_VALUES,
     detect_circular_dependency,
     has_uncommitted_changes,
-    load_roadmap,
-    load_roadmap_deps,
-    save_roadmap,
 )
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
-from teleclaude.core.next_machine.state_io import mark_phase, stamp_artifact, stamp_verdict
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 
@@ -214,20 +210,6 @@ def _resolve_worktree_cwd(cwd: str, slug: str, force: bool) -> str:
     raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_path}")
 
 
-def _auto_commit_state(effective_cwd: str, slug: str, label: str) -> None:
-    """Auto-commit state.yaml to keep the worktree clean."""
-    from teleclaude.git import Repo  # pylint: disable=import-outside-toplevel
-
-    repo = Repo(effective_cwd)
-    if repo.git.diff("HEAD", "--", f"todos/{slug}/state.yaml").strip():
-        repo.git.add("--", f"todos/{slug}/state.yaml")
-        # --no-verify: state.yaml is pure machine-generated data, not subject to test/lint
-        # gates. Pre-commit hooks running code checks on a bookkeeping commit would be
-        # slow, irrelevant, and would fail in environments where the test suite requires
-        # a running daemon.
-        repo.git.commit("-m", f"chore(todo): {slug} {label}", "--no-verify", "--only", "--", f"todos/{slug}/state.yaml")
-
-
 @router.post("/mark-phase")
 async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals,too-many-return-statements,too-many-statements
     slug: Annotated[str, Body()],
@@ -242,102 +224,91 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
 
     Supports both the new `target` param (direct state name) and the legacy
     `phase`/`status` pair. When `target` is provided, it takes precedence.
+
+    DB-native: reads state from todos.db, applies transition via the pure
+    lifecycle machine, writes result back to todos.db. No filesystem I/O.
     """
+    from datetime import UTC  # pylint: disable=import-outside-toplevel
+    from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
+
+    from teleclaude.core.next_machine.state_machine import TargetContext  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
+        build_lifecycle_machine,
+    )
+    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
+
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
 
-    _todos_db: TodosDb | None = None
+    resolved_target: str | None = target
 
-    async def _ensure_db() -> TodosDb:
-        nonlocal _todos_db
-        if _todos_db is None:
-            _todos_db = await _get_todos_db_from_cwd(cwd)
-        return _todos_db
+    if not resolved_target:
+        if not phase or not status:
+            raise HTTPException(status_code=400, detail="either 'target' or both 'phase' and 'status' are required")
 
-    # New target-based path
-    if target:
-        # Work-phase targets that need worktree resolution
-        effective_cwd = _resolve_worktree_cwd(cwd, slug, force) if target in _BUILD_TERMINAL_STATES else cwd
-
-        # Uncommitted-changes guard for build terminal states
-        if not force and target in ("build_complete",):
-            if has_uncommitted_changes(cwd, slug):
+        # Verdict stamp — direct DB mutation, no lifecycle machine
+        if phase in _PREPARE_VERDICT_PHASES:
+            if status not in _PREPARE_VERDICT_VALUES:
                 raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes"
-                        " — commit them before marking phase complete"
-                    ),
+                    status_code=400,
+                    detail=f"invalid verdict '{status}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}",
                 )
+            todos_db = await _get_todos_db_from_cwd(cwd)
+            state = await todos_db.read_state(slug)
+            if state is None:
+                raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
+            review_dict = state.get(phase)
+            if not isinstance(review_dict, dict):
+                review_dict = {}
+            review_dict["verdict"] = status
+            state[phase] = review_dict
+            await todos_db.write_state(slug, state)
+            logger.info("verdict stamped to DB: slug=%s phase=%s verdict=%s", slug, phase, status)
+            return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(state)}
 
-        try:
-            updated_state = mark_phase(effective_cwd, slug, target)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # Artifact stamp — direct DB mutation
+        if phase in _PREPARE_ARTIFACT_PHASES:
+            todos_db = await _get_todos_db_from_cwd(cwd)
+            state = await todos_db.read_state(slug)
+            if state is None:
+                raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
+            artifacts = state.get("artifacts", {})
+            if not isinstance(artifacts, dict):
+                artifacts = {}
+            entry = artifacts.get(phase, {})
+            if not isinstance(entry, dict):
+                entry = {}
+            entry["produced_at"] = _dt.now(UTC).isoformat()
+            entry["stale"] = False
+            artifacts[phase] = entry
+            state["artifacts"] = artifacts
+            await todos_db.write_state(slug, state)
+            logger.info("artifact stamped to DB: slug=%s artifact=%s", slug, phase)
+            return {"result": f"OK: {slug} artifacts.{phase}.produced_at stamped", "state": str(state)}
 
-        await (await _ensure_db()).write_state(slug, updated_state)
-        logger.info("mark_phase synced to todos.db: slug=%s target=%s", slug, target)
-
-        try:
-            _auto_commit_state(effective_cwd, slug, target)
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("auto_commit_state failed slug=%s cwd=%s target=%s err=%s", slug, effective_cwd, target, exc)
-            return {
-                "result": f"PARTIAL: {slug} state updated - target: {target} (state written, commit failed: {exc})",
-                "state": str(updated_state),
-            }
-        return {"result": f"OK: {slug} state updated - target: {target}", "state": str(updated_state)}
-
-    # Legacy phase/status path — map to target
-    if not phase or not status:
-        raise HTTPException(status_code=400, detail="either 'target' or both 'phase' and 'status' are required")
-
-    # Prepare sub-phases: verdict-based, operate on main repo
-    if phase in _PREPARE_VERDICT_PHASES:
-        if status not in _PREPARE_VERDICT_VALUES:
+        # Map legacy phase/status to target name
+        if phase == "prepare":
+            if status not in _PREPARE_PHASE_VALUES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"invalid prepare status '{status}': must be one of {', '.join(_PREPARE_PHASE_VALUES)}",
+                )
+            resolved_target = status
+        elif phase in ("build", "review"):
+            resolved_target = f"{phase}_{status}"
+        else:
+            all_phases = ("build", "review", "prepare", *_PREPARE_VERDICT_PHASES, *_PREPARE_ARTIFACT_PHASES)
             raise HTTPException(
-                status_code=400,
-                detail=f"invalid verdict '{status}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}",
+                status_code=400, detail=f"invalid phase '{phase}': must be one of {', '.join(all_phases)}"
             )
-        updated_state = stamp_verdict(cwd, slug, phase, status)
-        await (await _ensure_db()).write_state(slug, updated_state)
-        logger.info("stamp_verdict synced to todos.db: slug=%s phase=%s verdict=%s", slug, phase, status)
-        return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(updated_state)}
 
-    # Artifact stamp phases
-    if phase in _PREPARE_ARTIFACT_PHASES:
-        updated_state = stamp_artifact(cwd, slug, phase)
-        await (await _ensure_db()).write_state(slug, updated_state)
-        logger.info("stamp_artifact synced to todos.db: slug=%s artifact=%s", slug, phase)
-        return {
-            "result": f"OK: {slug} state updated - artifacts.{phase}.produced_at stamped",
-            "state": str(updated_state),
-        }
+    # --- Lifecycle transition via pure state machine ---
 
-    # Direct prepare_phase advancement
-    if phase == "prepare":
-        if status not in _PREPARE_PHASE_VALUES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"invalid prepare status '{status}': must be one of {', '.join(_PREPARE_PHASE_VALUES)}",
-            )
-        resolved_target = status
-        updated_state = mark_phase(cwd, slug, resolved_target)
-        await (await _ensure_db()).write_state(slug, updated_state)
-        logger.info("mark_phase synced to todos.db: slug=%s prepare_phase=%s", slug, status)
-        return {"result": f"OK: {slug} state updated - prepare_phase: {status}", "state": str(updated_state)}
+    effective_cwd = cwd
+    if resolved_target in _BUILD_TERMINAL_STATES:
+        effective_cwd = _resolve_worktree_cwd(cwd, slug, force)
 
-    # Work phases: build/review — map to target name
-    if phase not in ("build", "review"):
-        all_phases = ("build", "review", "prepare", *_PREPARE_VERDICT_PHASES, *_PREPARE_ARTIFACT_PHASES)
-        raise HTTPException(status_code=400, detail=f"invalid phase '{phase}': must be one of {', '.join(all_phases)}")
-
-    resolved_target = f"{phase}_{status}"
-    effective_cwd = _resolve_worktree_cwd(cwd, slug, force)
-
-    # Uncommitted-changes guard
-    build_terminal = ("complete", "approved")
-    if not force and phase == "build" and status in build_terminal:
+    if not force and resolved_target in ("build_complete",):
         if has_uncommitted_changes(cwd, slug):
             raise HTTPException(
                 status_code=409,
@@ -347,25 +318,25 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
                 ),
             )
 
+    todos_db = await _get_todos_db_from_cwd(cwd)
+    state = await todos_db.read_state(slug)
+    if state is None:
+        raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
+
+    machine = build_lifecycle_machine()
+    actor_id = get_session_id() or "mark-phase"
+    now = _dt.now(UTC).isoformat()
+    ctx = TargetContext(cwd=effective_cwd, slug=slug, actor_id=actor_id, at=now)
+
     try:
-        updated_state = mark_phase(effective_cwd, slug, resolved_target)
+        updated_state = machine.target(state, resolved_target, ctx)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    await (await _ensure_db()).write_state(slug, updated_state)
-    logger.info("mark_phase synced to todos.db: slug=%s phase=%s status=%s", slug, phase, status)
+    await todos_db.write_state(slug, updated_state)
+    logger.info("mark_phase DB-native: slug=%s target=%s", slug, resolved_target)
 
-    try:
-        _auto_commit_state(effective_cwd, slug, f"{phase}={status}")
-    except Exception as exc:  # pylint: disable=broad-except
-        logger.error(
-            "auto_commit_state failed slug=%s cwd=%s phase=%s status=%s err=%s", slug, effective_cwd, phase, status, exc
-        )
-        return {
-            "result": f"PARTIAL: {slug} state updated - {phase}: {status} (state written, commit failed: {exc})",
-            "state": str(updated_state),
-        }
-    return {"result": f"OK: {slug} state updated - {phase}: {status}", "state": str(updated_state)}
+    return {"result": f"OK: {slug} state updated - target: {resolved_target}", "state": str(updated_state)}
 
 
 @router.post("/set-deps")
@@ -398,29 +369,21 @@ async def todo_set_deps(  # pyright: ignore
     if slug in after:
         raise HTTPException(status_code=400, detail=f"slug '{slug}' cannot depend on itself")
 
-    entries = load_roadmap(cwd)
-    if not entries:
-        raise HTTPException(status_code=404, detail="todos/roadmap.yaml not found")
+    todos_db = await _get_todos_db_from_cwd(cwd)
 
-    roadmap_slugs = {e.slug for e in entries}
-    if slug not in roadmap_slugs:
-        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap.yaml")
+    if not await todos_db.slug_in_roadmap(slug):
+        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
     for dep in after:
-        if dep not in roadmap_slugs:
-            raise HTTPException(status_code=404, detail=f"dependency '{dep}' not found in roadmap.yaml")
+        if not await todos_db.slug_in_roadmap(dep):
+            raise HTTPException(status_code=404, detail=f"dependency '{dep}' not found in roadmap")
 
-    deps = load_roadmap_deps(cwd)
+    deps = await todos_db.load_deps()
     cycle = detect_circular_dependency(deps, slug, after)
     if cycle:
         cycle_str = " -> ".join(cycle)
         raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
 
-    for entry in entries:
-        if entry.slug == slug:
-            entry.after = after
-            break
-
-    save_roadmap(cwd, entries)
+    await todos_db.set_deps(slug, after=after)
 
     msg = f"dependencies set for '{slug}': {', '.join(after)}" if after else f"dependencies cleared for '{slug}'"
     return {"result": f"OK: {msg}"}

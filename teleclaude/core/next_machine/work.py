@@ -24,7 +24,6 @@ from teleclaude.core.next_machine._types import (
     ItemPhase,
     PhaseName,
     PhaseStatus,
-    PreparePhase,
     StateValue,
 )
 from teleclaude.core.next_machine.build_gates import (
@@ -50,7 +49,6 @@ from teleclaude.core.next_machine.output_formatting import (
 )
 from teleclaude.core.next_machine.slug_resolution import (
     _get_item_phase_db,
-    _is_ready_for_work_db,
     resolve_canonical_project_root,
     resolve_slug_async,
     set_item_phase_db,
@@ -151,7 +149,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
         return slug_error
 
     phase_slug = resolved_slug
-    precondition_error = await _validate_work_preconditions(todos_db, cwd, resolved_slug, phase_slug)
+    precondition_error = await _validate_work_preconditions(cwd, resolved_slug, phase_slug)
     if precondition_error is not None:
         return precondition_error
 
@@ -229,7 +227,7 @@ async def _resolve_explicit_work_slug(
 
     phase = await _get_item_phase_db(todos_db, slug)
     readiness_error = await _validate_explicit_slug_readiness(
-        todos_db, slug, phase, deps, is_bug, phase_slug, slug_resolution_started
+        todos_db, slug, phase, deps, phase_slug, slug_resolution_started
     )
     if readiness_error is not None:
         return "", readiness_error
@@ -283,116 +281,41 @@ async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-argumen
     slug: str,
     phase: str,
     deps: dict[str, list[str]],
-    is_bug: bool,
     phase_slug: str,
     slug_resolution_started: float,
 ) -> str | None:
-    """Validate readiness and dependency constraints for an explicit slug."""
-    if not is_bug and phase == ItemPhase.PENDING.value and not await _is_ready_for_work_db(todos_db, slug):
-        _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "item_not_ready")
-        return format_error(
-            "ITEM_NOT_READY",
-            f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
-            next_call=f"Call telec todo prepare {slug} to prepare it first.",
-        )
+    """Validate dispatch concerns only: done check and dependency satisfaction.
+
+    Per-step prerequisites (DOR, artifacts, freshness) are handled by
+    on_enter handlers in the lifecycle machine — not here.
+    """
     if phase == ItemPhase.DONE.value:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "item_done")
         return f"COMPLETE: Item '{slug}' is already done."
     delivered = await todos_db.delivered_slugs()
     slug_deps = deps.get(slug, [])
-    if not slug_deps or all(d in delivered for d in slug_deps):
-        return None
-    _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "deps_unsatisfied")
-    return format_error(
-        "DEPS_UNSATISFIED",
-        f"Item '{slug}' has unsatisfied dependencies.",
-        next_call="Complete dependency items first, or check todos/roadmap.yaml.",
-    )
+    if slug_deps and not all(d in delivered for d in slug_deps):
+        _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "deps_unsatisfied")
+        return format_error(
+            "DEPS_UNSATISFIED",
+            f"Item '{slug}' has unsatisfied dependencies.",
+            next_call="Complete dependency items first.",
+        )
+    return None
 
 
-async def _validate_work_preconditions(todos_db: TodosDb, cwd: str, resolved_slug: str, phase_slug: str) -> str | None:
-    """Validate orchestration preconditions before worktree setup."""
+async def _validate_work_preconditions(cwd: str, resolved_slug: str, phase_slug: str) -> str | None:
+    """Validate environmental preconditions only: stash debt.
+
+    Per-step prerequisites (artifacts, freshness) are handled by
+    on_enter handlers in the lifecycle machine.
+    """
     preconditions_started = perf_counter()
     stash_entries = await asyncio.to_thread(get_stash_entries, cwd)
     if stash_entries:
         _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stash_debt")
         return format_stash_debt(resolved_slug, len(stash_entries))
-
-    is_bug = await todos_db.is_bug_todo(resolved_slug)
-    missing_artifacts_error = await _validate_required_artifacts(todos_db, resolved_slug, is_bug)
-    if missing_artifacts_error is not None:
-        reason = "invalid_bug" if is_bug else "not_prepared"
-        _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", reason)
-        return missing_artifacts_error
     _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "run", "validated")
-
-    freshness_error = await _validate_preparation_freshness(
-        todos_db, resolved_slug, phase_slug, is_bug, preconditions_started
-    )
-    if freshness_error is not None:
-        return freshness_error
-
-    return None  # No remote artifact sync — bookkeeping is in todos.db
-
-
-async def _validate_required_artifacts(todos_db: TodosDb, resolved_slug: str, is_bug: bool) -> str | None:
-    """Ensure the required todo artifacts exist in the DB before build work starts."""
-    if not is_bug:
-        has_requirements = await todos_db.artifact_exists(resolved_slug, "requirements")
-        has_impl_plan = await todos_db.artifact_exists(resolved_slug, "implementation-plan")
-        if has_requirements and has_impl_plan:
-            return None
-        return format_error(
-            "NOT_PREPARED",
-            f"todos/{resolved_slug} is missing requirements or implementation plan.",
-            next_call=f"Call telec todo prepare {resolved_slug} to complete preparation.",
-        )
-
-    has_bug_md = await todos_db.artifact_exists(resolved_slug, "bug")
-    if has_bug_md:
-        return None
-    return format_error(
-        "INVALID_BUG",
-        f"todos/{resolved_slug} has kind='bug' but bug.md is missing or empty.",
-        next_call=f"Recreate with: telec bugs create {resolved_slug}",
-    )
-
-
-async def _validate_preparation_freshness(
-    todos_db: TodosDb,
-    resolved_slug: str,
-    phase_slug: str,
-    is_bug: bool,
-    preconditions_started: float,
-) -> str | None:
-    """Reject stale or invalidated preparation before build work begins."""
-    if is_bug:
-        return None
-    prep_state = await todos_db.read_state(resolved_slug)
-    current_val = str(prep_state.get("current", "")).strip()
-    grounding = prep_state.get("grounding", {})
-    grounding_valid = isinstance(grounding, dict) and grounding.get("valid") is True
-    # The v2 unified `current` field carries both prepare and work lifecycle
-    # states. Preparation is complete when current is at or past "prepared"
-    # in the canonical LIFECYCLE_STATES ordering.
-    from teleclaude.core.next_machine.work_lifecycle import LIFECYCLE_STATES  # pylint: disable=import-outside-toplevel
-
-    prepared_index = LIFECYCLE_STATES.index("prepared")
-    current_index = LIFECYCLE_STATES.index(current_val) if current_val in LIFECYCLE_STATES else -1
-    if current_val and current_index < prepared_index:
-        _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_preparation")
-        return format_error(
-            "STALE",
-            f"{resolved_slug} preparation is not complete (current: {current_val}).",
-            next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
-        )
-    if current_val == PreparePhase.PREPARED.value and not grounding_valid:
-        _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_grounding")
-        return format_error(
-            "STALE",
-            f"{resolved_slug} preparation is invalidated (grounding.valid=false).",
-            next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
-        )
     return None
 
 

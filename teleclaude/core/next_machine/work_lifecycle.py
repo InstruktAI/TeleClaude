@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
+    DOR_READY_THRESHOLD,
     FINDING_ID_PATTERN,
     ItemPhase,
     StateValue,
@@ -112,6 +113,26 @@ Ownership:
 # ---------------------------------------------------------------------------
 # on_enter handlers
 # ---------------------------------------------------------------------------
+
+
+def _on_enter_build_started(state: dict[str, StateValue], ctx: TargetContext) -> dict[str, StateValue]:
+    """Validate preparation prerequisites before starting build.
+
+    This is the entry gate into the work lifecycle. DOR score must meet
+    the threshold. Once past this handler, subsequent steps never re-check DOR.
+    """
+    kind = state.get("kind")
+    if kind == "bug":
+        return state  # Bug todos skip DOR — they enter work directly
+
+    current_dor = state.get("dor", {})
+    if isinstance(current_dor, dict):
+        score = current_dor.get("score", 0)
+        if isinstance(score, int) and score < DOR_READY_THRESHOLD:
+            raise ValueError(
+                f"DOR score {score} is below threshold {DOR_READY_THRESHOLD}. Run telec todo prepare {ctx.slug} first."
+            )
+    return state
 
 
 def _on_enter_prepared(state: dict[str, StateValue], ctx: TargetContext) -> dict[str, StateValue]:
@@ -327,7 +348,7 @@ LIFECYCLE_STATE_DEFS: list[State] = [
     State("re_grounding"),
     State("prepared", on_enter=_on_enter_prepared),
     # Work phases
-    State("build_started"),
+    State("build_started", on_enter=_on_enter_build_started),
     State("build_complete"),
     State("review_pending"),
     State("review_changes_requested", on_enter=_on_enter_review_changes),

@@ -94,11 +94,17 @@ async def _get_item_phase_db(
 
 
 async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
-    """Check if item is ready for work: current == 'prepared'."""
+    """Check if item is at or beyond 'prepared' — ready for work dispatch."""
+    from teleclaude.core.next_machine.work_lifecycle import LIFECYCLE_STATES  # pylint: disable=import-outside-toplevel
+
     state = await todos_db.read_state(slug)
     if state is None:
         return False
-    return state.get("current") == "prepared"
+    current = str(state.get("current", ""))
+    try:
+        return LIFECYCLE_STATES.index(current) >= LIFECYCLE_STATES.index("prepared")
+    except ValueError:
+        return False
 
 
 async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:

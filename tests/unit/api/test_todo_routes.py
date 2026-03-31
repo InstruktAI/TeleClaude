@@ -145,11 +145,12 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_todo_set_deps_returns_409_for_circular_dependency(self) -> None:
         """Dependency updates reject cycles discovered by the roadmap graph helper."""
-        entries = [SimpleNamespace(slug="chartest-api-routes", after=[]), SimpleNamespace(slug="base-task", after=[])]
+        mock_db = AsyncMock()
+        mock_db.slug_in_roadmap = AsyncMock(return_value=True)
+        mock_db.load_deps = AsyncMock(return_value={"chartest-api-routes": []})
 
         with (
-            patch("teleclaude.api.todo_routes.load_roadmap", return_value=entries),
-            patch("teleclaude.api.todo_routes.load_roadmap_deps", return_value={"chartest-api-routes": []}),
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
             patch("teleclaude.api.todo_routes.detect_circular_dependency", return_value=["a", "b", "a"]),
         ):
             with pytest.raises(HTTPException) as exc_info:
@@ -164,41 +165,22 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_todo_set_deps_persists_updated_dependency_list(self) -> None:
-        """Successful dependency updates rewrite the roadmap entry and save the roadmap."""
-        entries = [SimpleNamespace(slug="chartest-api-routes", after=[]), SimpleNamespace(slug="base-task", after=[])]
-
-        with (
-            patch("teleclaude.api.todo_routes.load_roadmap", return_value=entries),
-            patch("teleclaude.api.todo_routes.load_roadmap_deps", return_value={"chartest-api-routes": []}),
-            patch("teleclaude.api.todo_routes.detect_circular_dependency", return_value=None),
-            patch("teleclaude.api.todo_routes.save_roadmap", new=MagicMock()) as save_roadmap,
-        ):
-            response = await todo_routes.todo_set_deps(
-                slug="chartest-api-routes",
-                after=["base-task"],
-                cwd="/repo",
-                _identity=_identity(),
-            )
-
-        assert "result" in response
-        assert response["result"]  # non-empty result present
-        assert entries[0].after == ["base-task"]
-        save_roadmap.assert_called_once_with("/repo", entries)
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
     async def test_mark_phase_build_complete_force_skips_uncommitted_check(self, tmp_path: Path) -> None:
         """Force flag bypasses uncommitted-changes guard for build:complete."""
         worktree = tmp_path / "trees" / "test-slug"
         worktree.mkdir(parents=True)
-        mock_repo = MagicMock()
-        mock_repo.git.diff.return_value = ""
+        mock_db = AsyncMock()
+        mock_db.read_state = AsyncMock(return_value={"current": "build_started"})
+        mock_db.write_state = AsyncMock()
+
+        mock_machine = MagicMock()
+        mock_machine.target.return_value = {"current": "build_complete"}
+
         with (
             patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
             patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=True),
-            patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "complete"}) as mock_mark,
-            patch("teleclaude.git.Repo", return_value=mock_repo),
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.core.next_machine.work_lifecycle.build_lifecycle_machine", return_value=mock_machine),
         ):
             response = await todo_routes.todo_mark_phase(
                 slug="test-slug",
@@ -209,136 +191,50 @@ class TestTodoRoutes:
                 force=True,
             )
         assert "result" in response
-        mock_mark.assert_called_once()
+        mock_db.write_state.assert_awaited_once()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_mark_phase_review_approved_no_longer_blocks_on_uncommitted(self, tmp_path: Path) -> None:
-        """Review:approved no longer checks for uncommitted changes."""
-        worktree = tmp_path / "trees" / "test-slug"
-        worktree.mkdir(parents=True)
-        mock_repo = MagicMock()
-        mock_repo.git.diff.return_value = ""
-        with (
-            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
-            patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=True) as mock_uc,
-            patch("teleclaude.api.todo_routes.mark_phase", return_value={"review": "approved"}) as mock_mark,
-            patch("teleclaude.git.Repo", return_value=mock_repo),
-        ):
-            response = await todo_routes.todo_mark_phase(
-                slug="test-slug",
-                phase="review",
-                status="approved",
-                cwd=str(tmp_path),
-                _identity=_identity(),
-            )
-        assert "result" in response
-        mock_mark.assert_called_once()
-        mock_uc.assert_not_called()
+    async def test_mark_phase_reads_from_db_and_applies_transition(self) -> None:
+        """DB-native mark_phase reads state from DB, applies transition, writes back."""
+        mock_db = AsyncMock()
+        mock_db.read_state = AsyncMock(return_value={"current": "prepared", "dor": {"score": 8}})
+        mock_db.write_state = AsyncMock()
 
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_mark_phase_stash_no_longer_blocks_any_phase(self, tmp_path: Path) -> None:
-        """Stash entries no longer block any phase transition."""
-        worktree = tmp_path / "trees" / "test-slug"
-        worktree.mkdir(parents=True)
-        mock_repo = MagicMock()
-        mock_repo.git.diff.return_value = ""
+        mock_machine = MagicMock()
+        mock_machine.target.return_value = {"current": "build_started", "dor": {"score": 8}}
+
         with (
-            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
             patch("teleclaude.api.todo_routes.has_uncommitted_changes", return_value=False),
-            patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "complete"}) as mock_mark,
-            patch("teleclaude.git.Repo", return_value=mock_repo),
-        ):
-            response = await todo_routes.todo_mark_phase(
-                slug="test-slug",
-                phase="build",
-                status="complete",
-                cwd=str(tmp_path),
-                _identity=_identity(),
-            )
-        assert "result" in response
-        mock_mark.assert_called_once()
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_mark_phase_force_falls_back_to_cwd_when_no_worktree(self, tmp_path: Path) -> None:
-        """Force flag uses cwd when worktree directory does not exist."""
-        mock_repo = MagicMock()
-        mock_repo.git.diff.return_value = ""
-        with (
-            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
-            patch("teleclaude.api.todo_routes.mark_phase", return_value={"build": "pending"}) as mock_mark,
-            patch("teleclaude.git.Repo", return_value=mock_repo),
-        ):
-            response = await todo_routes.todo_mark_phase(
-                slug="test-slug",
-                phase="build",
-                status="pending",
-                cwd=str(tmp_path),
-                _identity=_identity(),
-                force=True,
-            )
-        assert "result" in response
-        mock_mark.assert_called_once_with(str(tmp_path), "test-slug", "build_pending")
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_mark_phase_no_force_still_404_when_worktree_absent(self, tmp_path: Path) -> None:
-        """Without force, missing worktree still returns 404."""
-        with (
-            patch("teleclaude.api.todo_routes.WORKTREE_DIR", "trees"),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await todo_routes.todo_mark_phase(
-                    slug="test-slug",
-                    phase="build",
-                    status="pending",
-                    cwd=str(tmp_path),
-                    _identity=_identity(),
-                )
-        assert exc_info.value.status_code == 404
-
-    # ------------------------------------------------------------------
-    # New target= path tests (I-3)
-    # ------------------------------------------------------------------
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_mark_phase_target_happy_path(self, tmp_path: Path) -> None:
-        """target= path calls mark_phase and auto-commits state (non-build-terminal target)."""
-        mock_repo = MagicMock()
-        mock_repo.git.diff.return_value = ""
-        with (
-            patch("teleclaude.api.todo_routes.mark_phase", return_value={"current": "build_started"}) as mock_mark,
-            patch("teleclaude.git.Repo", return_value=mock_repo),
+            patch("teleclaude.core.next_machine.work_lifecycle.build_lifecycle_machine", return_value=mock_machine),
         ):
             response = await todo_routes.todo_mark_phase(
                 slug="test-slug",
                 target="build_started",
-                cwd=str(tmp_path),
+                cwd="/repo",
                 _identity=_identity(),
             )
         assert "result" in response
         assert "OK:" in response["result"]
-        mock_mark.assert_called_once_with(str(tmp_path), "test-slug", "build_started")
+        mock_db.write_state.assert_awaited_once()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_mark_phase_target_returns_409_on_value_error(self, tmp_path: Path) -> None:
-        """target= path converts ValueError from mark_phase to 409."""
-        with (
-            patch("teleclaude.api.todo_routes.mark_phase", side_effect=ValueError("transition not allowed")),
-        ):
+    async def test_mark_phase_returns_404_when_slug_not_in_db(self) -> None:
+        """mark_phase returns 404 when slug has no state in DB."""
+        mock_db = AsyncMock()
+        mock_db.read_state = AsyncMock(return_value=None)
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
             with pytest.raises(HTTPException) as exc_info:
                 await todo_routes.todo_mark_phase(
-                    slug="test-slug",
+                    slug="nonexistent",
                     target="build_started",
-                    cwd=str(tmp_path),
+                    cwd="/repo",
                     _identity=_identity(),
                 )
-        assert exc_info.value.status_code == 409
-        assert "transition not allowed" in exc_info.value.detail
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.unit
     @pytest.mark.asyncio

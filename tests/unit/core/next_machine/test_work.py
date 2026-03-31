@@ -13,7 +13,6 @@ from teleclaude.core.next_machine.work import (
     _dispatch_review_approved,
     _DispatchState,
     _resolve_explicit_work_slug,
-    _validate_required_artifacts,
     _validate_work_preconditions,
     next_work,
 )
@@ -29,26 +28,6 @@ def _mock_todos_db(**overrides: object) -> AsyncMock:
     db.load_deps = AsyncMock(return_value=overrides.get("deps", {}))
     db.read_state = AsyncMock(return_value=overrides.get("state", None))
     return db
-
-
-@pytest.mark.asyncio
-async def test_validate_required_artifacts_returns_none_for_bug_with_bug_artifact() -> None:
-    todos_db = _mock_todos_db()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-
-    error = await _validate_required_artifacts(todos_db, "bug-slug", True)
-
-    assert error is None
-
-
-@pytest.mark.asyncio
-async def test_validate_required_artifacts_returns_error_for_bug_without_bug_artifact() -> None:
-    todos_db = _mock_todos_db()
-    todos_db.artifact_exists = AsyncMock(return_value=False)
-
-    error = await _validate_required_artifacts(todos_db, "bug-slug", True)
-
-    assert error is not None
 
 
 @pytest.mark.asyncio
@@ -74,7 +53,7 @@ async def test_validate_work_preconditions_reports_stash_debt_when_git_stash_exi
     todos_db = _mock_todos_db()
 
     with patch("teleclaude.core.next_machine.work.get_stash_entries", return_value=["stash@{0}: WIP on main"]):
-        error = await _validate_work_preconditions(todos_db, "/repo", "slug-stash", "slug-stash")
+        error = await _validate_work_preconditions("/repo", "slug-stash", "slug-stash")
 
     assert error is not None
 
