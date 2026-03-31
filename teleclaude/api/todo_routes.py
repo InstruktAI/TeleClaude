@@ -665,7 +665,7 @@ async def stamp(  # pylint: disable=too-many-locals,too-many-branches
     return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
 
 
-@router.get("/{slug}/show")
+@router.get("/{slug}/show", response_model=None)
 async def todo_show(
     slug: str,
     cwd: str | None = None,
