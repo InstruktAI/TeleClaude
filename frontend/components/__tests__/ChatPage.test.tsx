@@ -12,6 +12,8 @@ const {
   endSessionMutateAsyncMock,
   restartMutateAsyncMock,
   refreshMock,
+  subscribeMock,
+  unsubscribeMock,
   toastSuccessMock,
   toastInfoMock,
   toastErrorMock,
@@ -47,6 +49,8 @@ const {
   endSessionMutateAsyncMock: vi.fn(),
   restartMutateAsyncMock: vi.fn(),
   refreshMock: vi.fn(),
+  subscribeMock: vi.fn(),
+  unsubscribeMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastInfoMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -195,6 +199,8 @@ vi.mock("@/lib/ws/WebSocketProvider", () => ({
   useWS: () => ({
     onEvent: () => () => undefined,
     refresh: refreshMock,
+    subscribe: subscribeMock,
+    unsubscribe: unsubscribeMock,
   }),
 }))
 
@@ -233,6 +239,14 @@ describe("ChatPage", () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+  })
+
+  it("subscribes the chat page to live session events for each computer", async () => {
+    render(<ChatPage />)
+
+    await screen.findByTestId("computer-header-local")
+
+    expect(subscribeMock).toHaveBeenCalledWith("local", ["sessions"])
   })
 
   it("renders the real session tree and footer instead of placeholder shell text", async () => {

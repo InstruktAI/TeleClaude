@@ -52,8 +52,9 @@ The TeleClaude project has two separate UIs with completely different architectu
 ### Development
 
 ```bash
-pnpm dev       # Start Next.js with Turbopack
-pnpm dev:ws    # Start custom server with WebSocket support
+pnpm dev       # Start the custom dev server with WebSocket support
+pnpm dev:next  # Start raw Next.js only; do not use this for live WebSocket features
+pnpm dev:ws    # Alias for the custom WebSocket-capable dev server
 ```
 
 ### Database & Auth
@@ -95,6 +96,7 @@ The frontend does not communicate directly with external services. Instead, it p
 
 - **SSE Streaming:** `app/api/chat/route.ts` transforms the daemon stream into an AI SDK-compatible format.
 - **WebSocket Bridge:** `server.ts` handles auth-guarded WebSocket upgrades for real-time updates.
+- **Development invariant:** WebSocket-driven features require the custom server path. If you start raw `next dev`, `/api/ws` will not work and live session-tree activity will appear broken.
 
 ### Code Quality
 

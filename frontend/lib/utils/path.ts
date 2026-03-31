@@ -77,21 +77,28 @@ export function replaceHomeWithTilde(path: string | null | undefined): string {
     return '';
   }
 
-  const homedir = getHomedir();
-  if (homedir && path.startsWith(homedir)) {
-    return `~${path.slice(homedir.length)}`;
+  if (path === '~' || path.startsWith('~/') || path.startsWith('~\\')) {
+    return path;
   }
 
-  if (/^\/Users\/[^/]+(?:\/|$)/.test(path)) {
-    return path.replace(/^\/Users\/[^/]+/, '~');
+  const posixMatch = path.match(/^\/(?:Users|home)\/[^/]+(?:(\/.*))?$/);
+  if (posixMatch) {
+    return posixMatch[1] ? `~${posixMatch[1]}` : '~';
   }
 
-  if (/^\/home\/[^/]+(?:\/|$)/.test(path)) {
-    return path.replace(/^\/home\/[^/]+/, '~');
+  const windowsMatch = path.match(/^[A-Za-z]:\\Users\\[^\\]+(?:(\\.*))?$/);
+  if (windowsMatch) {
+    return windowsMatch[1] ? `~${windowsMatch[1]}` : '~';
   }
 
-  if (/^[A-Za-z]:\\Users\\[^\\]+(?:\\|$)/.test(path)) {
-    return path.replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~');
+  const homedir = getHomedir().replace(/[\\/]+$/, '');
+  if (homedir.length > 1) {
+    if (path === homedir) {
+      return '~';
+    }
+    if (path.startsWith(`${homedir}/`) || path.startsWith(`${homedir}\\`)) {
+      return `~${path.slice(homedir.length)}`;
+    }
   }
 
   return path;

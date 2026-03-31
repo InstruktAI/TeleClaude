@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "tsx watch server.ts",
+    "dev:next": "next dev --turbopack",
     "dev:ws": "tsx watch server.ts",
     "build": "next build",
     "start": "tsx server.ts",

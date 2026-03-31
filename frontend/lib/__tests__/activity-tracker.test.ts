@@ -18,13 +18,37 @@ import type { AgentActivityEvent } from '@/lib/api/types'
 function makeActivityEvent(
   overrides?: Partial<AgentActivityEvent>,
 ): AgentActivityEvent {
-  return {
-    event: 'agent_activity',
+  const base = {
+    event: 'agent_activity' as const,
     session_id: 'sess-1',
-    type: 'tool_use',
     timestamp: new Date().toISOString(),
-    ...overrides,
   }
+  const type = overrides?.type ?? 'tool_use'
+
+  if (type === 'thinking') {
+    return {
+      ...base,
+      type: 'thinking',
+      text: 'Thinking...',
+      ...overrides,
+    } as AgentActivityEvent
+  }
+
+  if (type === 'user_prompt_submit') {
+    return {
+      ...base,
+      type: 'user_prompt_submit',
+      ...overrides,
+    } as AgentActivityEvent
+  }
+
+  return {
+    ...base,
+    type: 'tool_use',
+    tool_name: 'shell',
+    tool_preview: 'shell: ls',
+    ...overrides,
+  } as AgentActivityEvent
 }
 
 // ---------------------------------------------------------------------------

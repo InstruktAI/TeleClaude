@@ -90,7 +90,7 @@ function ChatPageInner() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogPrefill, setDialogPrefill] = useState<NewSessionPrefill>();
   const [confirmEndOpen, setConfirmEndOpen] = useState(false);
-  const { refresh } = useWS();
+  const { refresh, subscribe, unsubscribe } = useWS();
   const [layoutState, setLayoutState] = usePersistentState<{
     activeTab: TabValue;
     lastSessionId: string | null;
@@ -118,6 +118,31 @@ function ChatPageInner() {
   useSessionToasts();
 
   const sessionHighlights = useSessionHighlights(sessions, sessionId);
+
+  const sessionSubscriptionKey = useMemo(() => {
+    const computerNames = (computers ?? [])
+      .map((computer) => computer.name)
+      .filter((name): name is string => Boolean(name));
+
+    if (computerNames.length > 0) {
+      return Array.from(new Set(computerNames)).sort().join("\0");
+    }
+
+    const fallbackNames = (sessions ?? [])
+      .map((session) => session.computer)
+      .filter((name): name is string => Boolean(name));
+
+    if (fallbackNames.length > 0) {
+      return Array.from(new Set(fallbackNames)).sort().join("\0");
+    }
+
+    return "local";
+  }, [computers, sessions]);
+
+  const wsSessionComputers = useMemo(
+    () => sessionSubscriptionKey.split("\0").filter(Boolean),
+    [sessionSubscriptionKey],
+  );
 
   const tree = useMemo(
     () => buildSessionTree(sessions ?? [], computers ?? []),
@@ -177,6 +202,18 @@ function ChatPageInner() {
     restoredSessionIdRef.current = lastSessionId;
     router.push(`/?sessionId=${lastSessionId}`);
   }, [lastSessionId, router, sessionId, sessions, setLayoutState]);
+
+  useEffect(() => {
+    for (const computer of wsSessionComputers) {
+      subscribe(computer, ["sessions"]);
+    }
+
+    return () => {
+      for (const computer of wsSessionComputers) {
+        unsubscribe(computer);
+      }
+    };
+  }, [sessionSubscriptionKey, subscribe, unsubscribe, wsSessionComputers]);
 
   const closeNewSessionDialog = useCallback((open: boolean) => {
     setDialogOpen(open);
