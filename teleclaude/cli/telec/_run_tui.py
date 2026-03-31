@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import shutil
 import sys
 import time as _t
 from typing import Any
@@ -33,6 +34,24 @@ def _load_tui_runtime() -> tuple[Any, ...]:
         app_module.RELOAD_EXIT,
         app_module.TelecApp,
     )
+
+
+def _resolve_reload_exec_argv() -> tuple[str, list[str]]:
+    entrypoint = sys.argv[0]
+    if (
+        entrypoint
+        and os.path.isabs(entrypoint)
+        and os.path.basename(entrypoint) == "telec"
+        and os.access(entrypoint, os.X_OK)
+    ):
+        return entrypoint, [entrypoint]
+
+    telec_entrypoint = shutil.which("telec")
+    if telec_entrypoint:
+        return telec_entrypoint, [telec_entrypoint]
+
+    python = sys.executable
+    return python, [python, "-m", "teleclaude.cli.telec"]
 
 
 def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
@@ -74,12 +93,10 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
             maybe_kill_tui_session()
 
     if reload_requested:
-        # Re-exec via the Python interpreter + module flag, not sys.argv[0]
-        # (which may be a .py file path without execute permission).
         # Mark as reload so the new process skips re-applying pane layout.
         os.environ["TELEC_RELOAD"] = "1"
-        python = sys.executable
-        os.execvp(python, [python, "-m", "teleclaude.cli.telec"])
+        executable, argv = _resolve_reload_exec_argv()
+        os.execvp(executable, argv)
 
 
 def _run_tui_config_mode(guided: bool = False) -> None:

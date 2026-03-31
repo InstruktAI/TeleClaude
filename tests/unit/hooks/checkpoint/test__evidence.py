@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 
+from teleclaude.constants import CHECKPOINT_FILE_CATEGORIES
 from teleclaude.hooks.checkpoint._evidence import (
     _check_edit_hygiene,
     _check_error_state,
@@ -129,3 +131,17 @@ class TestEvidenceUtilities:
         assert _compute_log_since_window(None) == "2m"
         assert _compute_log_since_window(61) == "2m"
         assert _compute_log_since_window(121) == "3m"
+
+    @pytest.mark.unit
+    def test_tui_checkpoint_reload_instruction_matches_console_script_process_shape(self) -> None:
+        tui_category = next(category for category in CHECKPOINT_FILE_CATEGORIES if category.name == "TUI code")
+        match = re.search(r"pkill -SIGUSR2 -f -- '([^']+)'", tui_category.instruction)
+
+        assert match is not None
+        pattern = match.group(1)
+        command_line = (
+            "/Users/Morriz/Workspace/InstruktAI/TeleClaude/.venv/bin/python3 "
+            "/Users/Morriz/Workspace/InstruktAI/TeleClaude/.venv/bin/telec"
+        )
+
+        assert re.search(pattern, command_line) is not None

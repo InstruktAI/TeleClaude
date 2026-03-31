@@ -201,6 +201,8 @@ CHECKPOINT_MESSAGE = (
 CHECKPOINT_RESULT_SNIPPET_MAX_CHARS = 500
 # Threshold for wide blast radius observation
 CHECKPOINT_BLAST_RADIUS_THRESHOLD = 3
+TUI_RELOAD_PROCESS_PATTERN = r".venv/bin/telec$"
+TUI_RELOAD_COMMAND = f"Run `pkill -SIGUSR2 -f -- '{TUI_RELOAD_PROCESS_PATTERN}'`"
 
 
 @dataclass(frozen=True)
@@ -264,7 +266,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="TUI code",
         include_patterns=["teleclaude/cli/tui/**"],
-        instruction="Run `pkill -SIGUSR2 -f -- '-m teleclaude.cli.telec$'`",
+        instruction=TUI_RELOAD_COMMAND,
         evidence_substrings=["pkill -SIGUSR2", "kill -USR2"],
         evidence_must_follow_last_mutation=True,
         precedence=40,

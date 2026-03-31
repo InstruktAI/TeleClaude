@@ -74,7 +74,7 @@ def test_run_tui_reexecs_python_module_on_reload(monkeypatch: pytest.MonkeyPatch
             return 99
 
     monkeypatch.setattr(run_tui.os, "execvp", execvp)
-    monkeypatch.setattr(run_tui.sys, "executable", "/tmp/python")
+    monkeypatch.setattr(run_tui, "_resolve_reload_exec_argv", lambda: ("/tmp/telec", ["/tmp/telec"]))
     monkeypatch.delenv("TELEC_RELOAD", raising=False)
 
     with patch.dict(
@@ -92,8 +92,35 @@ def test_run_tui_reexecs_python_module_on_reload(monkeypatch: pytest.MonkeyPatch
     ):
         run_tui._run_tui(start_view=2)
 
-    execvp.assert_called_once_with("/tmp/python", ["/tmp/python", "-m", "teleclaude.cli.telec"])
+    execvp.assert_called_once_with("/tmp/telec", ["/tmp/telec"])
     assert os.environ["TELEC_RELOAD"] == "1"
+
+
+def test_resolve_reload_exec_argv_prefers_current_console_script(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_tui.sys, "argv", ["/tmp/telec"])
+    monkeypatch.setattr(run_tui.os.path, "isabs", lambda value: value == "/tmp/telec")
+    monkeypatch.setattr(run_tui.os.path, "basename", lambda value: "telec" if value == "/tmp/telec" else "")
+    monkeypatch.setattr(run_tui.os, "access", lambda value, mode: value == "/tmp/telec")
+    monkeypatch.setattr(run_tui.shutil, "which", lambda name: "/other/telec" if name == "telec" else None)
+
+    executable, argv = run_tui._resolve_reload_exec_argv()
+
+    assert executable == "/tmp/telec"
+    assert argv == ["/tmp/telec"]
+
+
+def test_resolve_reload_exec_argv_falls_back_to_module_when_console_script_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(run_tui.sys, "argv", ["telec"])
+    monkeypatch.setattr(run_tui.os.path, "isabs", lambda _value: False)
+    monkeypatch.setattr(run_tui.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(run_tui.sys, "executable", "/tmp/python")
+
+    executable, argv = run_tui._resolve_reload_exec_argv()
+
+    assert executable == "/tmp/python"
+    assert argv == ["/tmp/python", "-m", "teleclaude.cli.telec"]
 
 
 def test_run_tui_config_mode_uses_config_view() -> None:
