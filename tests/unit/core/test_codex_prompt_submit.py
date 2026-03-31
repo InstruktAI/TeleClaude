@@ -143,25 +143,25 @@ class TestExtractLiveThinkingText:
     def test_returns_clean_thinking_text_without_timer_suffix(self):
         output = "\x1b[38;5;45m•\x1b[0m \x1b[38;5;117mWorking\x1b[0m (7s • esc to interrupt)"
 
-        assert extract_live_thinking_text(output) == "• Working"
+        assert extract_live_thinking_text(output) == "Working"
 
     @pytest.mark.unit
     def test_matches_footer_variant_with_inline_message(self):
         output = "• Working (7s • esc to interrupt) · 1 background terminal running · /ps to view"
 
-        assert extract_live_thinking_text(output) == "• Working"
+        assert extract_live_thinking_text(output) == "Working"
 
     @pytest.mark.unit
     def test_matches_footer_variant_with_reasoning_header(self):
         output = "• Investigating rendering code (1m 03s • esc to interrupt)"
 
-        assert extract_live_thinking_text(output) == "• Investigating rendering code"
+        assert extract_live_thinking_text(output) == "Investigating rendering code"
 
     @pytest.mark.unit
     def test_matches_truncated_interrupt_hint_variant(self):
         output = "• Working (7s • esc…"
 
-        assert extract_live_thinking_text(output) == "• Working"
+        assert extract_live_thinking_text(output) == "Working"
 
     @pytest.mark.unit
     def test_returns_none_for_plain_agent_line_without_footer_timer(self):

@@ -282,7 +282,10 @@ def extract_live_thinking_text(output: str) -> str | None:
             continue
         match = _CODEX_THINKING_STATUS_RE.match(clean_line)
         if match:
-            return match.group("prefix").strip()
+            prefix = match.group("prefix").strip()
+            if prefix and prefix[0] in CODEX_AGENT_MARKERS:
+                prefix = prefix[1:].strip()
+            return prefix or None
     return None
 
 
