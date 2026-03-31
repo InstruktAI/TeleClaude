@@ -49,7 +49,6 @@ from ._snapshot import (
     StartSessionArgs,
     SystemCommandArgs,
     ThinkingMode,
-    TodoInfo,
 )
 from ._types import (
     JsonDict,
@@ -101,7 +100,6 @@ __all__ = [
     "SystemCommandContext",
     "TelegramAdapterMetadata",
     "ThinkingMode",
-    "TodoInfo",
     "TranscriptFormat",
     "TransportAdapterMetadata",
     "UiAdapterMetadata",

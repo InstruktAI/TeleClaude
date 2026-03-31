@@ -1,4 +1,5 @@
 """Characterization tests for project listing routes."""
+# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 
@@ -8,10 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from teleclaude.api import projects_routes
-from teleclaude.core.models import ProjectInfo, TodoInfo
+from teleclaude.api_models import TodoDTO
+from teleclaude.core.models import ProjectInfo
 
 
-class CacheStub:
+class CacheStub:  # pylint: disable=too-few-public-methods,missing-class-docstring
     def __init__(self, local_projects: list[ProjectInfo], remote_projects: list[ProjectInfo]) -> None:
         self._local_projects = local_projects
         self._remote_projects = remote_projects
@@ -26,7 +28,7 @@ class CacheStub:
         return self._remote_projects
 
 
-class TestProjectsRoutes:
+class TestProjectsRoutes:  # pylint: disable=missing-class-docstring
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_list_projects_prefers_cached_local_projects_and_appends_remote_cache(self) -> None:
@@ -58,7 +60,9 @@ class TestProjectsRoutes:
                 name="local",
                 path="/work/local",
                 computer="local-box",
-                todos=[TodoInfo(slug="chartest-api-routes", status="pending")],
+                todos=[
+                    TodoDTO(slug="chartest-api-routes", status="pending", has_requirements=False, has_impl_plan=False)
+                ],
             )
         ]
         cache = CacheStub(local_projects=[], remote_projects=[])
@@ -80,5 +84,9 @@ class TestProjectsRoutes:
         cache.apply_projects_snapshot.assert_called_once_with("local-box", discovered)
         cache.apply_todos_snapshot.assert_called_once_with(
             "local-box",
-            {"/work/local": [TodoInfo(slug="chartest-api-routes", status="pending")]},
+            {
+                "/work/local": [
+                    TodoDTO(slug="chartest-api-routes", status="pending", has_requirements=False, has_impl_plan=False)
+                ]
+            },
         )

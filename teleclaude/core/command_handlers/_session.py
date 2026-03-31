@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import psutil
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core import tmux_bridge
@@ -27,7 +28,6 @@ from teleclaude.core.models import (
     ProjectInfo,
     Session,
     SessionSnapshot,
-    TodoInfo,
 )
 from teleclaude.core.roadmap import assemble_roadmap_from_db
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
@@ -335,7 +335,7 @@ async def list_projects_with_todos() -> list[ProjectInfo]:
     projects_with_todos: list[ProjectInfo] = []
 
     for project in raw_projects:
-        todos: list[TodoInfo] = []
+        todos: list[TodoDTO] = []
         if project.path:
             todos = await list_todos(project.path)
 
@@ -345,7 +345,7 @@ async def list_projects_with_todos() -> list[ProjectInfo]:
     return projects_with_todos
 
 
-async def list_todos(project_path: str) -> list[TodoInfo]:
+async def list_todos(project_path: str) -> list[TodoDTO]:
     """List roadmap + folder-based todos for a project.
 
     Ephemeral request/response - no DB session required.

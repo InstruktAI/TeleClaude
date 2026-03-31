@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
-from teleclaude.core.models import JsonDict, MessageMetadata, ProjectInfo, SessionSnapshot, TodoInfo
+from teleclaude.api_models import TodoDTO
+from teleclaude.core.models import JsonDict, MessageMetadata, ProjectInfo, SessionSnapshot
 
 logger = get_logger(__name__)
 
@@ -207,7 +208,7 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
                 return
 
             projects: list[ProjectInfo] = []
-            todos_by_project: dict[str, list[TodoInfo]] = {}
+            todos_by_project: dict[str, list[TodoDTO]] = {}
             for project_obj in data:
                 project_path = str(project_obj.get("path", ""))
                 if not project_path:
@@ -224,9 +225,9 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
         except _PULL_EXCEPTIONS as e:
             logger.warning("Failed to pull projects-with-todos from %s: %s", computer, e)
 
-    def _extract_todos_for_project(self, data: list[object], computer: str, project_path: str) -> list[TodoInfo] | None:
+    def _extract_todos_for_project(self, data: list[object], computer: str, project_path: str) -> list[TodoDTO] | None:
         """Extract todos for one project from a projects-with-todos payload."""
-        todos: list[TodoInfo] = []
+        todos: list[TodoDTO] = []
         for project_obj in data:
             if not isinstance(project_obj, dict):
                 continue
@@ -239,7 +240,7 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
                 return None
             for todo_obj in todos_obj:
                 if isinstance(todo_obj, dict):
-                    todos.append(TodoInfo.from_dict(todo_obj))
+                    todos.append(TodoDTO.model_validate(todo_obj))
             break
         return todos
 

@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, clearance_projects_list
-from teleclaude.api_models import ProjectDTO
+from teleclaude.api_models import ProjectDTO, TodoDTO
 from teleclaude.config import config
 from teleclaude.core import command_handlers
-from teleclaude.core.models import ProjectInfo, TodoInfo
+from teleclaude.core.models import ProjectInfo
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
@@ -38,9 +38,9 @@ def _dto_from_project(project: ProjectInfo, computer_name: str) -> ProjectDTO:
     )
 
 
-def _build_todos_snapshot(projects: list[ProjectInfo]) -> dict[str, list[TodoInfo]]:
+def _build_todos_snapshot(projects: list[ProjectInfo]) -> dict[str, list[TodoDTO]]:
     """Build a cacheable todo snapshot keyed by project path."""
-    todos_by_project: dict[str, list[TodoInfo]] = {}
+    todos_by_project: dict[str, list[TodoDTO]] = {}
     for project in projects:
         if project.path and project.todos:
             todos_by_project[project.path] = project.todos

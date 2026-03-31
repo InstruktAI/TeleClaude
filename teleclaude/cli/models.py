@@ -81,9 +81,6 @@ from teleclaude.api_models import (
     SettingsPatchDTO as SettingsPatchInfo,
 )
 from teleclaude.api_models import (
-    TodoDTO as TodoInfo,
-)
-from teleclaude.api_models import (
     TTSSettingsPatchDTO as TTSSettingsPatchInfo,
 )
 
@@ -119,7 +116,6 @@ __all__ = [
     "SubscribeData",
     "SubscribeRequest",
     "TTSSettingsPatchInfo",
-    "TodoInfo",
     "UnsubscribeData",
     "UnsubscribeRequest",
     "WsEvent",

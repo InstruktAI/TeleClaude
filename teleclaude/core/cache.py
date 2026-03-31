@@ -11,8 +11,9 @@ from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api_models import TodoDTO
 from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER
-from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot, TodoInfo
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
 
 logger = get_logger(__name__)
 
@@ -54,7 +55,7 @@ class TodoCacheEntry:
 
     computer: str
     project_path: str
-    todos: list[TodoInfo]
+    todos: list[TodoDTO]
 
 
 class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
@@ -87,7 +88,7 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
         self._sessions: dict[str, CachedItem[SessionSnapshot]] = {}
 
         # Todo cache: key = f"{computer}:{project_path}"  # pylint: disable=fixme
-        self._todos: dict[str, CachedItem[list[TodoInfo]]] = {}
+        self._todos: dict[str, CachedItem[list[TodoDTO]]] = {}
 
         # Snapshot fingerprints + versions (per computer)
         self._projects_digest: dict[str, str] = {}
@@ -223,7 +224,7 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
             sessions.append(session)
         return sessions
 
-    def get_todos(self, computer: str, project_path: str) -> list[TodoInfo]:
+    def get_todos(self, computer: str, project_path: str) -> list[TodoDTO]:
         """Get cached todos for a project.
 
         Always returns cached data regardless of TTL. Stale reads trigger the
@@ -366,7 +367,7 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
         self,
         computer: str,
         project_path: str,
-        todos: list[TodoInfo],
+        todos: list[TodoDTO],
         *,
         event_name: str = "todos_updated",
     ) -> None:
@@ -425,7 +426,7 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
         )
         return True
 
-    def apply_todos_snapshot(self, computer: str, todos_by_project: dict[str, list[TodoInfo]]) -> bool:
+    def apply_todos_snapshot(self, computer: str, todos_by_project: dict[str, list[TodoDTO]]) -> bool:
         """Apply a full todos snapshot for a computer with change detection."""
         digest = self._todos_fingerprint(todos_by_project)
         if self._todos_digest.get(computer) == digest:
@@ -473,8 +474,8 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
         payload = json.dumps(computer.to_dict(), sort_keys=True, default=str)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def _todos_fingerprint(self, todos_by_project: dict[str, list[TodoInfo]]) -> str:
-        def _todo_key(todo: TodoInfo) -> str:
+    def _todos_fingerprint(self, todos_by_project: dict[str, list[TodoDTO]]) -> str:
+        def _todo_key(todo: TodoDTO) -> str:
             return todo.slug
 
         parts: list[str] = []

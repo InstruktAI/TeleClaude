@@ -19,7 +19,7 @@ from pydantic import TypeAdapter, ValidationError
 from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import ClientConnection, unix_connect
 
-from teleclaude.api_models import RunSessionRequest
+from teleclaude.api_models import RunSessionRequest, TodoDTO
 from teleclaude.cli.models import (
     AgentAvailabilityInfo,
     ChiptunesCommandReceiptInfo,
@@ -34,7 +34,6 @@ from teleclaude.cli.models import (
     SettingsPatchInfo,
     SubscribeData,
     SubscribeRequest,
-    TodoInfo,
     UnsubscribeData,
     UnsubscribeRequest,
     WsEvent,
@@ -648,7 +647,7 @@ class _TelecSessionAPI:
         if not projects:
             return []
 
-        todo_map: dict[tuple[str, str], list[TodoInfo]] = {}
+        todo_map: dict[tuple[str, str], list[TodoDTO]] = {}
         for todo in todos:
             if not todo.computer or not todo.project_path:
                 continue
@@ -675,7 +674,7 @@ class _TelecSessionAPI:
         self,
         project_path: str | None = None,
         computer: str | None = None,
-    ) -> list[TodoInfo]:
+    ) -> list[TodoDTO]:
         """List todos."""
         params: dict[str, str] = {}
         if project_path:
@@ -683,7 +682,7 @@ class _TelecSessionAPI:
         if computer:
             params["computer"] = computer
         resp = await self._request("GET", "/todos", request_options=RequestOptions(params=params))
-        return TypeAdapter(list[TodoInfo]).validate_json(resp.text)
+        return TypeAdapter(list[TodoDTO]).validate_json(resp.text)
 
     async def list_jobs(self) -> list[JobInfo]:
         """List scheduled jobs."""

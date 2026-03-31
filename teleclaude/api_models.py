@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import SessionSnapshot, TodoInfo
+    from teleclaude.core.models import SessionSnapshot
 
 
 class CreateSessionRequest(BaseModel):
@@ -225,37 +225,6 @@ class TodoDTO(BaseModel):
     integration_phase: str | None = None
     finalize_status: str | None = None
     todo_path: str | None = None
-
-    @classmethod
-    def from_core(
-        cls,
-        todo: "TodoInfo",
-        *,
-        computer: str | None,
-        project_path: str | None,
-    ) -> "TodoDTO":
-        """Build a DTO from a core todo object."""
-        return cls(
-            slug=todo.slug,
-            status=todo.status,
-            description=todo.description,
-            computer=computer,
-            project_path=project_path,
-            has_requirements=todo.has_requirements,
-            has_impl_plan=todo.has_impl_plan,
-            build_status=todo.build_status,
-            review_status=todo.review_status,
-            dor_score=todo.dor_score,
-            deferrals_status=todo.deferrals_status,
-            findings_count=todo.findings_count,
-            files=todo.files,
-            after=todo.after,
-            group=todo.group,
-            prepare_phase=todo.prepare_phase,
-            integration_phase=todo.integration_phase,
-            finalize_status=todo.finalize_status,
-            todo_path=todo.todo_path,
-        )
 
 
 class OperationStatusDTO(BaseModel):

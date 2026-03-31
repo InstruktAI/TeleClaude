@@ -3,6 +3,7 @@
 from dataclasses import asdict, dataclass, field
 from typing import cast
 
+from teleclaude.api_models import TodoDTO
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
@@ -248,67 +249,6 @@ class ComputerInfo:  # pylint: disable=too-many-instance-attributes  # Computer 
 
 
 @dataclass
-class TodoInfo:  # pylint: disable=too-many-instance-attributes  # Todo summary payload
-    """Information about a work item todo."""
-
-    slug: str
-    status: str
-    description: str | None = None
-    has_requirements: bool = False
-    has_impl_plan: bool = False
-    build_status: str | None = None
-    review_status: str | None = None
-    dor_score: int | None = None
-    deferrals_status: str | None = None
-    findings_count: int = 0
-    files: list[str] = field(default_factory=list)
-    after: list[str] = field(default_factory=list)
-    group: str | None = None
-    delivered_at: str | None = None
-    prepare_phase: str | None = None
-    integration_phase: str | None = None
-    finalize_status: str | None = None
-    current: str | None = None
-    todo_path: str | None = None  # Always set by assemble_roadmap; None = contract violation
-
-    @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "TodoInfo":  # guard: loose-dict
-        """Create from dict with field mapping."""
-        dor_score_raw = data.get("dor_score")
-        dor_score: int | None
-        try:
-            dor_score = int(dor_score_raw) if dor_score_raw is not None else None
-        except (TypeError, ValueError):
-            dor_score = None
-
-        return cls(
-            slug=str(data.get("slug", "")),
-            status=str(data.get("status", "pending")),
-            description=str(data.get("description") or data.get("title") or ""),
-            has_requirements=bool(data.get("has_requirements", False)),
-            has_impl_plan=bool(data.get("has_impl_plan", False)),
-            build_status=cast(str | None, data.get("build_status")),
-            review_status=cast(str | None, data.get("review_status")),
-            dor_score=dor_score,
-            deferrals_status=cast(str | None, data.get("deferrals_status")),
-            findings_count=int(data.get("findings_count", 0) or 0),
-            files=[str(f) for f in cast(list[object], data.get("files", []))],
-            after=[str(a) for a in cast(list[object], data.get("after", []))],
-            group=cast(str | None, data.get("group")),
-            delivered_at=cast(str | None, data.get("delivered_at")),
-            prepare_phase=cast(str | None, data.get("prepare_phase")),
-            integration_phase=cast(str | None, data.get("integration_phase")),
-            finalize_status=cast(str | None, data.get("finalize_status")),
-            current=cast(str | None, data.get("current")),
-            todo_path=cast(str | None, data.get("todo_path")),
-        )
-
-    def to_dict(self) -> JsonDict:  # guard: loose-dict
-        """Convert to dict."""
-        return cast(JsonDict, asdict(self))
-
-
-@dataclass
 class ProjectInfo:
     """Information about a project directory."""
 
@@ -316,27 +256,27 @@ class ProjectInfo:
     path: str
     description: str | None = None
     computer: str | None = None
-    todos: list[TodoInfo] = field(default_factory=list)
+    todos: list[TodoDTO] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "ProjectInfo":  # guard: loose-dict
         """Create from dict with field mapping."""
-        # fmt: off
+        raw_todos = data.get("todos") or []
+        todo_list = list(raw_todos) if isinstance(raw_todos, list) else []
         return cls(
             name=str(data.get("name", "")),
             path=str(data.get("path", "")),
             description=str(data.get("description") or data.get("desc") or ""),
             computer=cast(str | None, data.get("computer")),
             todos=[
-                TodoInfo.from_dict(t) for t in cast(list[dict[str, object]], data.get("todos", []))  # guard: loose-dict - JSON deserialization  # pylint: disable=line-too-long
-            ],
+                TodoDTO.model_validate(t) for t in todo_list if isinstance(t, dict)
+            ],  # guard: loose-dict - JSON deserialization
         )
-        # fmt: on
 
     def to_dict(self) -> JsonDict:  # guard: loose-dict
         """Convert to dict."""
         result = cast(JsonDict, asdict(self))
-        result["todos"] = [t.to_dict() for t in self.todos]
+        result["todos"] = [t.model_dump() for t in self.todos]
         return result
 
 

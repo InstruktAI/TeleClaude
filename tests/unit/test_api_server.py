@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.api_server public boundaries."""
+# pylint: disable=missing-function-docstring,protected-access,import-outside-toplevel
 
 from __future__ import annotations
 
@@ -14,8 +15,8 @@ from fastapi import APIRouter, WebSocket
 from fastapi.testclient import TestClient
 
 from teleclaude.api.auth import CallerIdentity
+from teleclaude.api_models import TodoDTO
 from teleclaude.core.cache import DaemonCache
-from teleclaude.core.models import TodoInfo
 
 _ROUTE_MODULE_NAMES = (
     "teleclaude.api.agents_routes",
@@ -133,7 +134,7 @@ class TestApiServerHttpRoutes:
             "local",
             "/srv/project",
             [
-                TodoInfo(
+                TodoDTO(
                     slug="todo-1",
                     status="pending",
                     has_requirements=True,
@@ -174,7 +175,7 @@ class TestApiServerHttpRoutes:
 
     @pytest.mark.unit
     def test_todos_endpoint_falls_back_to_local_command_handler_without_cache(self, tmp_path):
-        raw_todos = [TodoInfo(slug="todo-2", status="active", has_requirements=False, has_impl_plan=True)]
+        raw_todos = [TodoDTO(slug="todo-2", status="active", has_requirements=False, has_impl_plan=True)]
 
         with (
             _api_server_harness(tmp_path, cache=None) as (server, _),
@@ -262,7 +263,7 @@ class TestApiServerLifecycle:
         cache.unsubscribe.assert_called_once_with(server._on_cache_change)
         websocket.close.assert_awaited_once()
         assert server._ws_clients == set()
-        assert server._client_subscriptions == {}
+        assert not server._client_subscriptions
 
     @pytest.mark.unit
     @pytest.mark.asyncio

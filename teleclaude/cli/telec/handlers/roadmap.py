@@ -10,7 +10,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.core.todos_db import TodosDb
 
 if TYPE_CHECKING:
-    from teleclaude.core.models import TodoInfo
+    from teleclaude.api_models import TodoDTO
 
 __all__ = [
     "_handle_roadmap",
@@ -118,8 +118,8 @@ def _parse_roadmap_show_args(args: list[str]) -> dict[str, bool]:
     return parsed
 
 
-def _print_grouped_roadmap(todos: list[TodoInfo]) -> None:
-    groups: dict[str, list[TodoInfo]] = {}
+def _print_grouped_roadmap(todos: list[TodoDTO]) -> None:
+    groups: dict[str, list[TodoDTO]] = {}
     for todo in todos:
         groups.setdefault(todo.group or "", []).append(todo)
 
@@ -154,7 +154,7 @@ class _TrimmedTodoDict(TypedDict, total=False):
     delivered_at: str
 
 
-def _todo_to_trimmed_dict(todo: TodoInfo) -> _TrimmedTodoDict:
+def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
     """Build a minimal dict with only meaningful fields — no null values, no empty arrays."""
     result = _TrimmedTodoDict(slug=todo.slug, status=todo.status)
     if todo.description:

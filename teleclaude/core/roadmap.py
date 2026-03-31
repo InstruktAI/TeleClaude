@@ -8,7 +8,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import TodoInfo
+from teleclaude.api_models import TodoDTO
 
 logger = get_logger(__name__)
 
@@ -46,7 +46,7 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
     icebox_only: bool = False,
     include_delivered: bool = False,
     delivered_only: bool = False,
-) -> list[TodoInfo]:
+) -> list[TodoDTO]:
     """Assemble roadmap from todos.db using sync methods.
 
     Reads state, roadmap entries, and deps from the SQLite database.
@@ -86,7 +86,7 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
         for dr in dep_rows:
             deps_map.setdefault(dr[0], []).append(dr[1])
 
-        todos: list[TodoInfo] = []
+        todos: list[TodoDTO] = []
         for row in rows:
             row_id = row[0]
             slug = row[1]
@@ -153,7 +153,7 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
             ).fetchall()
 
             todos.append(
-                TodoInfo(
+                TodoDTO(
                     slug=slug,
                     status=todo_status,
                     description=row[4] or "",
@@ -165,7 +165,6 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
                     after=deps_map.get(slug, []),
                     group=row[3],
                     delivered_at=row[6],
-                    current=current or None,
                     prepare_phase=prepare_phase,
                     integration_phase=integration_phase,
                     finalize_status=finalize_status,

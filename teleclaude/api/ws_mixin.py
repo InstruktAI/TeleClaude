@@ -32,7 +32,6 @@ from teleclaude.api_models import (
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
-    TodoDTO,
 )
 from teleclaude.config import config
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
@@ -288,10 +287,11 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
                                     description=proj.description,
                                     has_roadmap=roadmap_exists,
                                     todos=[
-                                        TodoDTO.from_core(
-                                            t,
-                                            computer=comp or config.computer.name,
-                                            project_path=proj.path,
+                                        t.model_copy(
+                                            update={
+                                                "computer": comp or config.computer.name,
+                                                "project_path": proj.path,
+                                            }
                                         )
                                         for t in todos
                                     ],

@@ -151,9 +151,9 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
             logger.info("Seeded cache with %d local projects", len(projects))
 
         # Warm todo cache alongside projects
-        from teleclaude.core.models import TodoInfo  # pylint: disable=import-outside-toplevel
+        from teleclaude.api_models import TodoDTO  # pylint: disable=import-outside-toplevel
 
-        todos_by_project: dict[str, list[TodoInfo]] = {}
+        todos_by_project: dict[str, list[TodoDTO]] = {}
         for p in projects:
             if p.path and p.todos:
                 todos_by_project[p.path] = p.todos

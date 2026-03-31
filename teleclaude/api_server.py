@@ -452,11 +452,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                     if project and (computer in (None, "local")):
                         raw_todos = await command_handlers.list_todos(project)
                         return [
-                            TodoDTO.from_core(
-                                t,
-                                computer=config.computer.name,
-                                project_path=project,
-                            )
+                            t.model_copy(update={"computer": config.computer.name, "project_path": project})
                             for t in raw_todos
                         ]
                     return []
@@ -469,11 +465,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 for entry in entries:
                     for todo in entry.todos:
                         result.append(
-                            TodoDTO.from_core(
-                                todo,
-                                computer=entry.computer,
-                                project_path=entry.project_path,
-                            )
+                            todo.model_copy(update={"computer": entry.computer, "project_path": entry.project_path})
                         )
                 return result
             except Exception as e:

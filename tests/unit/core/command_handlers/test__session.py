@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from teleclaude.api_models import TodoDTO
 from teleclaude.core.command_handlers import _session
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import (
@@ -18,7 +19,6 @@ from teleclaude.core.models import (
     Session,
     SessionLaunchIntent,
     SessionLaunchKind,
-    TodoInfo,
     _snapshot,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
@@ -268,7 +268,7 @@ class TestSessionListing:
     @pytest.mark.unit
     async def test_list_projects_with_todos_attaches_project_todos(self, monkeypatch: pytest.MonkeyPatch) -> None:
         project = ProjectInfo(name="Existing", path="/tmp/project")
-        todo = TodoInfo(slug="todo-1", status="pending")
+        todo = TodoDTO(slug="todo-1", status="pending", has_requirements=False, has_impl_plan=False)
 
         monkeypatch.setattr(_session, "list_projects", AsyncMock(return_value=[project]))
         monkeypatch.setattr(_session, "list_todos", AsyncMock(return_value=[todo]))

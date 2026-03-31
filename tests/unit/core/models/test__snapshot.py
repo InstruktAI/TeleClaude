@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.core.models._snapshot."""
+# pylint: disable=missing-function-docstring,missing-class-docstring,too-few-public-methods
 
 from __future__ import annotations
 
@@ -7,12 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
+from teleclaude.api_models import TodoDTO
 from teleclaude.core.models._session import Session
 from teleclaude.core.models._snapshot import (
     ComputerInfo,
     ProjectInfo,
     SessionSnapshot,
-    TodoInfo,
 )
 
 
@@ -195,74 +196,13 @@ class TestComputerInfo:
         assert d["status"] == "online"
 
 
-class TestTodoInfo:
-    @pytest.mark.unit
-    def test_from_dict_basic_fields(self):
-        data: dict[str, object] = {  # guard: loose-dict - from_dict test input
-            "slug": "my-todo",
-            "status": "in_progress",
-        }
-        info = TodoInfo.from_dict(data)
-        assert info.slug == "my-todo"
-        assert info.status == "in_progress"
-
-    @pytest.mark.unit
-    def test_from_dict_dor_score_converted_to_int(self):
-        data: dict[str, object] = {  # guard: loose-dict - from_dict test input
-            "slug": "t",
-            "status": "pending",
-            "dor_score": "85",
-        }
-        info = TodoInfo.from_dict(data)
-        assert info.dor_score == 85
-
-    @pytest.mark.unit
-    def test_from_dict_invalid_dor_score_becomes_none(self):
-        data: dict[str, object] = {  # guard: loose-dict - from_dict test input
-            "slug": "t",
-            "status": "pending",
-            "dor_score": "invalid",
-        }
-        info = TodoInfo.from_dict(data)
-        assert info.dor_score is None
-
-    @pytest.mark.unit
-    def test_from_dict_description_falls_back_to_title(self):
-        data: dict[str, object] = {  # guard: loose-dict - from_dict test input
-            "slug": "t",
-            "status": "pending",
-            "title": "My Title",
-        }
-        info = TodoInfo.from_dict(data)
-        assert info.description == "My Title"
-
-    @pytest.mark.unit
-    def test_from_dict_files_and_after_cast_to_str_list(self):
-        data: dict[str, object] = {  # guard: loose-dict - from_dict test input
-            "slug": "t",
-            "status": "pending",
-            "files": [1, 2],
-            "after": ["dep-1"],
-        }
-        info = TodoInfo.from_dict(data)
-        assert info.files == ["1", "2"]
-        assert info.after == ["dep-1"]
-
-    @pytest.mark.unit
-    def test_to_dict_roundtrip(self):
-        info = TodoInfo(slug="my-todo", status="pending", description="desc", dor_score=90)
-        d = info.to_dict()
-        assert d["slug"] == "my-todo"
-        assert d["dor_score"] == 90
-
-
 class TestProjectInfo:
     @pytest.mark.unit
     def test_from_dict_with_todos(self):
         data: dict[str, object] = {  # guard: loose-dict - from_dict test input
             "name": "proj",
             "path": "/proj",
-            "todos": [{"slug": "t1", "status": "pending"}],
+            "todos": [{"slug": "t1", "status": "pending", "has_requirements": False, "has_impl_plan": False}],
         }
         info = ProjectInfo.from_dict(data)
         assert info.name == "proj"
@@ -281,7 +221,9 @@ class TestProjectInfo:
 
     @pytest.mark.unit
     def test_to_dict_serializes_todos(self):
-        info = ProjectInfo(name="p", path="/p", todos=[TodoInfo(slug="t1", status="done")])
+        info = ProjectInfo(
+            name="p", path="/p", todos=[TodoDTO(slug="t1", status="done", has_requirements=False, has_impl_plan=False)]
+        )
         d = info.to_dict()
         assert isinstance(d["todos"], list)
         assert d["todos"][0]["slug"] == "t1"  # type: ignore[index]
