@@ -392,14 +392,17 @@ function SessionRow({
   }
 
   return (
-    <>
+    <div
+      data-testid={`session-block-${s.session_id}`}
+      className="cursor-pointer"
+      onClick={() => onSelect?.()}
+      onDoubleClick={onToggle}
+    >
       <div
         data-testid={`session-row-${s.session_id}`}
         data-node-id={sessionNodeId(s.session_id)}
-        className="flex cursor-pointer items-center gap-1.5 rounded py-1 pr-2 text-xs transition-colors"
+        className="flex items-center gap-1.5 rounded py-1 pr-2 text-xs transition-colors"
         style={rowStyle}
-        onClick={() => onSelect?.()}
-        onDoubleClick={onToggle}
       >
         <Badge
           data-testid={`session-index-${s.session_id}`}
@@ -442,6 +445,9 @@ function SessionRow({
             e.stopPropagation()
             onToggle()
           }}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+          }}
           className="ml-auto"
         >
           <ExpandChevron
@@ -464,7 +470,7 @@ function SessionRow({
         sessionState={sessionState}
         currentUserEmail={currentUserEmail}
       />
-    </>
+    </div>
   )
 }
 

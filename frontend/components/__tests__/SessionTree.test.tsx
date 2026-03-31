@@ -434,6 +434,22 @@ describe("SessionTree", () => {
     expect(onSelect).toHaveBeenCalledWith("sess-2")
   })
 
+  it("calls onSelectSession when collapsed summary area is clicked", () => {
+    const onSelect = vi.fn()
+    render(
+      <SessionTree
+        tree={makeTree()}
+        onSelectSession={onSelect}
+        expandedSet={makeExpandedSet(makeTree())}
+        onToggle={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId("session-summary-input-sess-1"))
+
+    expect(onSelect).toHaveBeenCalledWith("sess-1")
+  })
+
   it("calls onCursorChange with the clicked node id", () => {
     const onCursorChange = vi.fn()
     render(
@@ -448,6 +464,16 @@ describe("SessionTree", () => {
     fireEvent.click(screen.getByTestId("session-row-sess-2"))
 
     expect(onCursorChange).toHaveBeenCalledWith("session:sess-2")
+  })
+
+  it("clicking expanded technical details still selects the session", () => {
+    const onSelect = vi.fn()
+    renderWithControlledExpansion(makeTree(), { onSelectSession: onSelect })
+
+    fireEvent.click(screen.getByTestId("session-toggle-sess-1"))
+    fireEvent.click(screen.getByTestId("session-detail-id-sess-1"))
+
+    expect(onSelect).toHaveBeenCalledWith("sess-1")
   })
 
   it("delegates expansion state to the caller via expandedSet and onToggle", () => {
