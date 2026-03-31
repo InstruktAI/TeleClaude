@@ -12,10 +12,9 @@ from pathlib import Path
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     PreparePhase,
+    StateValue,
     default_state,
 )
-from teleclaude.core.next_machine.roadmap import load_roadmap_slugs
-from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.session_identity import get_session_id
@@ -67,41 +66,66 @@ def _has_test_spec_artifacts(cwd: str, slug: str) -> bool:
     return False
 
 
-def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:
+def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:  # pylint: disable=too-many-locals
     """Scan all active todos and invalidate those with overlapping referenced paths.
 
-    Designed for post-commit hooks or CI to invalidate stale preparations.
-    Returns {"invalidated": ["slug-a", ...]} for each invalidated slug.
+    Reads state from todos.db (sync). When a todo's grounding.referenced_paths
+    overlaps with changed_paths, invalidates grounding and writes back to DB.
     """
+    import json as _json  # pylint: disable=import-outside-toplevel
+
+    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
+
     invalidated: list[str] = []
     now = datetime.now(UTC).isoformat()
     changed_set = set(changed_paths)
 
-    for slug in load_roadmap_slugs(cwd):
-        state = read_phase_state(cwd, slug)
-        grounding = state.get("grounding", {})
-        if not isinstance(grounding, dict):
-            continue
-        referenced = grounding.get("referenced_paths", [])
-        if not isinstance(referenced, list):
-            continue
-        overlap = [p for p in referenced if p in changed_set]
-        if overlap:
-            grounding_dict: dict[str, bool | str | list[str] | int] = {  # type: ignore[unused-ignore]
-                **default_state()["grounding"],  # type: ignore
-                **grounding,  # type: ignore[dict-item]
+    db = TodosDb(str(Path(cwd) / ".teleclaude" / "todos.db"))
+    db.initialize_sync()
+    conn = db._sync_conn()  # pylint: disable=protected-access
+
+    try:
+        rows = conn.execute(
+            "SELECT slug, state FROM todo_state",  # guard: raw-sql
+        ).fetchall()
+
+        for row in rows:
+            slug = row[0]
+            state = _json.loads(row[1]) if row[1] else {}
+            grounding = state.get("grounding", {})
+            if not isinstance(grounding, dict):
+                continue
+            referenced = grounding.get("referenced_paths", [])
+            if not isinstance(referenced, list):
+                continue
+            overlap = [p for p in referenced if p in changed_set]
+            if not overlap:
+                continue
+
+            grounding_defaults = default_state().get("grounding", {})
+            merged: dict[str, StateValue] = {
+                **(grounding_defaults if isinstance(grounding_defaults, dict) else {}),
+                **grounding,
             }
-            grounding_dict["valid"] = False
-            grounding_dict["invalidated_at"] = now
-            grounding_dict["invalidation_reason"] = "files_changed"
-            state["grounding"] = grounding_dict  # type: ignore[assignment]
+            merged["valid"] = False
+            merged["invalidated_at"] = now
+            merged["invalidation_reason"] = "files_changed"
+            state["grounding"] = merged
             state["current"] = PreparePhase.GROUNDING_CHECK.value
-            write_phase_state(cwd, slug, state)
+
+            conn.execute(
+                "UPDATE todo_state SET state = ?, updated_at = ? WHERE slug = ?",  # guard: raw-sql
+                (_json.dumps(state), now, slug),
+            )
+            conn.commit()
+
             _emit_prepare_event(
                 "domain.software-development.prepare.grounding_invalidated",
-                {"slug": slug, "reason": "files_changed", "changed_paths": overlap},  # type: ignore[dict-item]
+                {"slug": slug, "reason": "files_changed", "changed_paths": overlap},
             )
             invalidated.append(slug)
+    finally:
+        conn.close()
 
     return {"invalidated": invalidated}
 
