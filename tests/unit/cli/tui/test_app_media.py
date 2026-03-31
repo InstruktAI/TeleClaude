@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from teleclaude.cli.tui import app_media
+from teleclaude.cli.tui.animation_observability import AnimationPerfTracker
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 
@@ -14,6 +15,7 @@ class _MediaApp(app_media.TelecAppMediaMixin):
     def __init__(self, footer: object) -> None:
         self._footer = footer
         self._chiptunes_state_version = 3
+        self._animation_perf = AnimationPerfTracker(slow_frame_threshold_ms=1.0, warning_interval_ticks=9999)
         self.api = SimpleNamespace(
             chiptunes_pause=AsyncMock(return_value=SimpleNamespace(command_id="cmd-pause", action="pause")),
             chiptunes_resume=AsyncMock(return_value=SimpleNamespace(command_id="cmd-resume", action="resume")),
@@ -141,3 +143,33 @@ def test_animation_tick_precomputes_and_caches_header_frames(monkeypatch: pytest
     assert tab_bar._cached_render is sentinel_tabs
     banner.refresh.assert_called_once()
     tab_bar.refresh.assert_called_once()
+
+
+@pytest.mark.unit
+def test_record_animation_tick_emits_health_log_after_consecutive_slow_frames(monkeypatch: pytest.MonkeyPatch) -> None:
+    footer = SimpleNamespace()
+    app = _MediaApp(footer)
+    app._animation_perf = AnimationPerfTracker(slow_frame_threshold_ms=1.0, warning_interval_ticks=9999)
+    app._header_entity_count = Mock(return_value=7)
+    info = Mock()
+    monkeypatch.setattr(app_media.logger, "info", info)
+
+    app._record_animation_tick(changed=True, total_ms=2.0, update_ms=1.0, build_ms=1.0)
+    app._record_animation_tick(changed=True, total_ms=2.0, update_ms=1.0, build_ms=1.0)
+    app._record_animation_tick(changed=True, total_ms=2.0, update_ms=1.0, build_ms=1.0)
+
+    assert info.call_count == 1
+
+
+@pytest.mark.unit
+def test_log_animation_health_reports_current_entity_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    footer = SimpleNamespace()
+    app = _MediaApp(footer)
+    app._animation_perf.record_tick(changed=True, total_ms=3.0, update_ms=1.0, build_ms=2.0)
+    app._header_entity_count = Mock(return_value=11)
+    info = Mock()
+    monkeypatch.setattr(app_media.logger, "info", info)
+
+    app._log_animation_health(reason="tick")
+
+    assert info.call_args.kwargs["header_entity_count"] == 11

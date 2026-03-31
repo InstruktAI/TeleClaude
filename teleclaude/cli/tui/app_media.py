@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from instrukt_ai_logging import get_logger
 from textual import work
@@ -335,6 +336,7 @@ class TelecAppMediaMixin:
     def _stop_animation(self) -> None:
         """Stop all animation output, including the ambient sky scene."""
         self._stop_banner_animation()
+        self._log_animation_health(reason="stop")
 
         self._animation_engine.stop()  # type: ignore[attr-defined]
         self._animation_engine.is_enabled = False  # type: ignore[attr-defined]
@@ -361,24 +363,36 @@ class TelecAppMediaMixin:
 
     def _animation_tick(self) -> None:
         """Periodic tick: advance engine and refresh banner if frame changed."""
+        tick_started = time.perf_counter()
         try:
+            update_started = time.perf_counter()
             changed = self._animation_engine.update()  # type: ignore[attr-defined]
+            update_ms = (time.perf_counter() - update_started) * 1000.0
         except Exception:
             logger.exception("Animation engine tick crashed")
             return
+        build_ms = 0.0
         if changed:
             try:
                 from teleclaude.cli.tui.header_frames import build_header_frames
 
+                build_started = time.perf_counter()
                 banner = self.query_one(Banner)  # type: ignore[attr-defined]
                 tab_bar = self.query_one(BoxTabBar)  # type: ignore[attr-defined]
                 banner_render, tab_render = build_header_frames(banner=banner, tab_bar=tab_bar)
+                build_ms = (time.perf_counter() - build_started) * 1000.0
                 banner.set_cached_render(banner_render)
                 tab_bar.set_cached_render(tab_render)
                 banner.refresh()
                 tab_bar.refresh()
             except Exception:
                 logger.exception("Header refresh failed after animation tick")
+        self._record_animation_tick(
+            changed=changed,
+            total_ms=(time.perf_counter() - tick_started) * 1000.0,
+            update_ms=update_ms,
+            build_ms=build_ms,
+        )
 
     def _cycle_animation(self, new_mode: str) -> None:
         """Set animation mode, reconfigure engine, and update status bar."""
@@ -386,3 +400,45 @@ class TelecAppMediaMixin:
         self._apply_animation_runtime()
         status_bar = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
         status_bar.animation_mode = new_mode
+
+    def _record_animation_tick(
+        self,
+        *,
+        changed: bool,
+        total_ms: float,
+        update_ms: float,
+        build_ms: float,
+    ) -> None:
+        """Record recent animation timing and emit bounded diagnostics."""
+        tracker = self._animation_perf  # type: ignore[attr-defined]
+        tracker.record_tick(changed=changed, total_ms=total_ms, update_ms=update_ms, build_ms=build_ms)
+        if tracker.should_warn():
+            self._log_animation_health(reason="tick")
+            tracker.mark_warned()
+
+    def _log_animation_health(self, *, reason: str) -> None:
+        """Emit a bounded diagnostic snapshot for the header animation path."""
+        tracker = self._animation_perf  # type: ignore[attr-defined]
+        snapshot = tracker.snapshot(header_entity_count=self._header_entity_count())
+        logger.info(
+            "TUI animation performance",
+            reason=reason,
+            tick_count=snapshot.tick_count,
+            changed_tick_count=snapshot.changed_tick_count,
+            recent_avg_total_ms=round(snapshot.recent_avg_total_ms, 3),
+            recent_max_total_ms=round(snapshot.recent_max_total_ms, 3),
+            recent_avg_update_ms=round(snapshot.recent_avg_update_ms, 3),
+            recent_avg_build_ms=round(snapshot.recent_avg_build_ms, 3),
+            header_entity_count=snapshot.header_entity_count,
+            consecutive_slow_frames=snapshot.consecutive_slow_frames,
+        )
+
+    def _header_entity_count(self) -> int:
+        """Return current header sky entity count when available."""
+        try:
+            header_slot = self._animation_engine._targets.get("header")  # type: ignore[attr-defined]
+            animation = header_slot.animation if header_slot is not None else None
+            entities = getattr(animation, "_sky_entities", None)
+            return len(entities) if isinstance(entities, list) else 0
+        except Exception:
+            return 0

@@ -25,6 +25,7 @@ from teleclaude.cli.models import (
 )
 from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.animation_engine import AnimationEngine
+from teleclaude.cli.tui.animation_observability import AnimationPerfTracker
 from teleclaude.cli.tui.app_actions import TelecAppActionsMixin
 from teleclaude.cli.tui.app_media import TelecAppMediaMixin
 from teleclaude.cli.tui.app_ws import TelecAppWsMixin
@@ -81,6 +82,7 @@ _APP_STATE_FIELDS = {
     "_sky_width_timer": ("_runtime_state", "sky_width_timer"),
     "_reload_loop": ("_runtime_state", "reload_loop"),
     "_animation_engine": ("_media_state", "animation_engine"),
+    "_animation_perf": ("_media_state", "animation_perf"),
     "_periodic_trigger": ("_media_state", "periodic_trigger"),
     "_activity_trigger": ("_media_state", "activity_trigger"),
     "_animation_timer": ("_media_state", "animation_timer"),
@@ -118,8 +120,9 @@ class _AppRuntimeState:
 
 
 @dataclass
-class _AppMediaState:
+class _AppMediaState:  # pylint: disable=too-many-instance-attributes
     animation_engine: AnimationEngine = field(default_factory=AnimationEngine)
+    animation_perf: AnimationPerfTracker = field(default_factory=AnimationPerfTracker)
     periodic_trigger: object | None = None
     activity_trigger: object | None = None
     animation_timer: object | None = None
@@ -130,6 +133,8 @@ class _AppMediaState:
 
 class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[str | None]):
     """Main TeleClaude TUI application."""
+
+    # pylint: disable=too-many-instance-attributes
 
     api: TelecAPIClient
     _persisted: dict[str, dict[str, object]]  # guard: loose-dict - dynamic payload
