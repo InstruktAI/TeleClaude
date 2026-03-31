@@ -24,20 +24,6 @@ else
     MYPY="uv run --quiet mypy"
 fi
 
-# Session scope detection: resolve session-touched Python files for type-checker scoping.
-# Exit 2 → no session (fall back silently). Exit 3 → collection failed (emit diagnostic).
-SCOPED_FILES=""
-_scope_stderr_tmp=$(mktemp)
-if _scope_out=$($RUN "${REPO_ROOT}/tools/session_scope.py" --mode lint 2>"$_scope_stderr_tmp"); then
-    SCOPED_FILES="$_scope_out"
-else
-    _scope_exit=$?
-    if [ "$_scope_exit" -eq 3 ]; then
-        cat "$_scope_stderr_tmp" >&2
-    fi
-fi
-rm -f "$_scope_stderr_tmp"
-
 component="$1"; shift
 
 case "$component" in
@@ -53,9 +39,9 @@ case "$component" in
         fi
         ;;
     pyright)
-        if [ -n "$SCOPED_FILES" ]; then
-            # shellcheck disable=SC2086
-            $PYRIGHT $SCOPED_FILES
+        # Pre-commit must validate the staged snapshot only.
+        if [ $# -gt 0 ]; then
+            $PYRIGHT "$@"
         else
             $PYRIGHT
         fi
@@ -64,24 +50,20 @@ case "$component" in
         $RUN "${REPO_ROOT}/tools/lint/markdown.py"
         ;;
     mypy)
-        if [ -n "$SCOPED_FILES" ]; then
-            # shellcheck disable=SC2086
-            $MYPY $SCOPED_FILES
+        # Pre-commit must validate the staged snapshot only.
+        if [ $# -gt 0 ]; then
+            $MYPY "$@"
         else
             $MYPY
         fi
         ;;
     pylint)
-        # Scope to staged Python files for fast pre-commit feedback.
-        # Full-codebase pylint runs in CI; pre-commit checks only what changed.
-        # Session scope is intentionally NOT applied here — pylint must only check
-        # what is staged, not everything the session touched (which may not be staged).
-        staged_py=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' | grep '^teleclaude/' || true)
-        if [ -z "$staged_py" ]; then
-            exit 0
+        # Pre-commit must validate the staged snapshot only.
+        if [ $# -gt 0 ]; then
+            $PYLINT "$@"
+        else
+            $PYLINT teleclaude
         fi
-        # shellcheck disable=SC2086
-        $PYLINT $staged_py
         ;;
     parallel-typecheck)
         # Run pyright, mypy, and pylint concurrently. Collects output and
@@ -89,10 +71,9 @@ case "$component" in
         tmpdir=$(mktemp -d)
         trap 'rm -rf "$tmpdir"' EXIT
 
-        # Pyright (session-scoped when inside an agent session)
-        (if [ -n "$SCOPED_FILES" ]; then
-            # shellcheck disable=SC2086
-            if $PYRIGHT $SCOPED_FILES > "$tmpdir/pyright.out" 2>&1; then
+        # Pyright (staged-file scoped when invoked by pre-commit)
+        (if [ $# -gt 0 ]; then
+            if $PYRIGHT "$@" > "$tmpdir/pyright.out" 2>&1; then
                 echo 0 > "$tmpdir/pyright.rc"
             else
                 echo $? > "$tmpdir/pyright.rc"
@@ -106,10 +87,9 @@ case "$component" in
         fi) &
         pid_pyright=$!
 
-        # Mypy (session-scoped when inside an agent session)
-        (if [ -n "$SCOPED_FILES" ]; then
-            # shellcheck disable=SC2086
-            if $MYPY $SCOPED_FILES > "$tmpdir/mypy.out" 2>&1; then
+        # Mypy (staged-file scoped when invoked by pre-commit)
+        (if [ $# -gt 0 ]; then
+            if $MYPY "$@" > "$tmpdir/mypy.out" 2>&1; then
                 echo 0 > "$tmpdir/mypy.rc"
             else
                 echo $? > "$tmpdir/mypy.rc"
@@ -123,14 +103,15 @@ case "$component" in
         fi) &
         pid_mypy=$!
 
-        # Pylint (scoped to staged files — not session-scoped, to avoid checking unstaged edits)
-        staged_py=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' | grep '^teleclaude/' || true)
-        (if [ -z "$staged_py" ]; then
-            echo 0 > "$tmpdir/pylint.rc"
-            echo "(no staged teleclaude/ files)" > "$tmpdir/pylint.out"
+        # Pylint (staged-file scoped when invoked by pre-commit)
+        (if [ $# -gt 0 ]; then
+            if $PYLINT "$@" > "$tmpdir/pylint.out" 2>&1; then
+                echo 0 > "$tmpdir/pylint.rc"
+            else
+                echo $? > "$tmpdir/pylint.rc"
+            fi
         else
-            # shellcheck disable=SC2086
-            if $PYLINT $staged_py > "$tmpdir/pylint.out" 2>&1; then
+            if $PYLINT teleclaude > "$tmpdir/pylint.out" 2>&1; then
                 echo 0 > "$tmpdir/pylint.rc"
             else
                 echo $? > "$tmpdir/pylint.rc"

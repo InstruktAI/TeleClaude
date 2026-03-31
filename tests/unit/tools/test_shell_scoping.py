@@ -1,13 +1,14 @@
 # guard: no-companion
-"""Test spec (xfail) for session-aware scoping wired into lint.sh, test.sh, and
-tools/lint/precommit-hook.sh (Tasks 2-4).
+"""Test spec (xfail) for split scoping contracts across lint/test and pre-commit.
 
 These tests verify two layers:
-  1. Structural wiring — each script calls session_scope.py with the correct flags.
+  1. Structural wiring — session-aware scripts call session_scope.py with the correct flags.
   2. Behavioral protocol — each script falls back to full suite on non-zero helper exit.
 
 Combined with tests/unit/tools/test_session_scope.py (helper contracts), this proves
-the end-to-end session scoping chain without requiring tool-binary stubbing.
+the split contract without requiring tool-binary stubbing:
+  - lint.sh and test.sh are session-scoped in agent sessions
+  - pre-commit operates only on the staged filenames it is given
 
 Remove ``pytestmark = pytest.mark.xfail`` once all tests pass after implementation.
 """
@@ -22,6 +23,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LINT_SH = _REPO_ROOT / "tools" / "lint.sh"
 _TEST_SH = _REPO_ROOT / "tools" / "test.sh"
 _PRECOMMIT_SH = _REPO_ROOT / "tools" / "lint" / "precommit-hook.sh"
+_PRECOMMIT_CONFIG = _REPO_ROOT / ".pre-commit-config.yaml"
 
 
 def _read(path: Path) -> str:
@@ -34,6 +36,8 @@ def _read(path: Path) -> str:
 
 
 class TestLintShWiring:
+    """Contract checks for session-scoped lint wiring."""
+
     def test_calls_session_scope_with_mode_lint(self) -> None:
         """lint.sh must invoke session_scope.py --mode lint to resolve scoped files."""
         assert _LINT_SH.exists(), "tools/lint.sh not yet modified"
@@ -49,6 +53,7 @@ class TestLintShWiring:
         # not pass explicit file paths to the lint tools (uses dirs, not a file list).
         result = subprocess.run(
             ["sh", str(_LINT_SH), "--dry-run"],
+            check=False,
             capture_output=True,
             text=True,
             cwd=str(_REPO_ROOT),
@@ -64,6 +69,7 @@ class TestLintShWiring:
         result = subprocess.run(
             ["sh", str(_LINT_SH), "--dry-run"],
             env=env,
+            check=False,
             capture_output=True,
             text=True,
             cwd=str(_REPO_ROOT),
@@ -106,6 +112,8 @@ class TestLintShWiring:
 
 
 class TestTestShWiring:
+    """Contract checks for session-scoped test wiring."""
+
     def test_calls_session_scope_with_mode_test(self) -> None:
         """test.sh must invoke session_scope.py --mode test to resolve companion files."""
         assert _TEST_SH.exists(), "tools/test.sh not yet modified"
@@ -161,38 +169,37 @@ class TestTestShWiring:
 
 
 class TestPrecommitHookWiring:
-    def test_calls_session_scope_with_mode_lint(self) -> None:
-        """precommit-hook.sh invokes session_scope.py --mode lint for pyright/mypy scoping."""
+    """Contract checks for staged-file pre-commit wiring."""
+
+    def test_precommit_does_not_call_session_scope(self) -> None:
+        """precommit-hook.sh must not consult session scope; commit hooks validate staged files only."""
         assert _PRECOMMIT_SH.exists(), "tools/lint/precommit-hook.sh not yet modified"
         content = _read(_PRECOMMIT_SH)
-        assert "session_scope.py" in content, "precommit-hook.sh does not call session_scope.py"
-        assert "--mode lint" in content, "precommit-hook.sh does not pass --mode lint to helper"
+        assert "session_scope.py" not in content, "precommit-hook.sh should not consult session scope"
 
-    def test_pylint_not_scoped_to_session(self) -> None:
-        """precommit-hook.sh pylint remains staged-file scoped, not session-scoped."""
-        assert _PRECOMMIT_SH.exists(), "tools/lint/precommit-hook.sh not yet modified"
-        content = _read(_PRECOMMIT_SH)
-        # Behavioral contract: pylint must not use the session-scoped file list.
-        # It retains its existing git diff --cached / staged-file scoping.
-        assert "git diff --cached" in content or "git diff" in content, (
-            "staged-file diff no longer present in precommit-hook.sh for pylint"
-        )
+    def test_precommit_config_passes_filenames_to_typecheck(self) -> None:
+        """The typecheck pre-commit hook must receive the staged filenames directly from pre-commit."""
+        assert _PRECOMMIT_CONFIG.exists(), ".pre-commit-config.yaml not found"
+        content = _read(_PRECOMMIT_CONFIG)
+        start = content.find("- id: typecheck")
+        assert start != -1, "typecheck hook missing from pre-commit config"
+        end = content.find("\n  - id:", start + 1)
+        hook_block = content[start:] if end == -1 else content[start:end]
+        assert "pass_filenames: true" in hook_block, "typecheck hook must receive staged filenames from pre-commit"
 
-    def test_parallel_typecheck_pyright_uses_scoped_files(self) -> None:
-        """precommit-hook.sh passes $SCOPED_FILES to pyright in parallel-typecheck block."""
-        assert _PRECOMMIT_SH.exists(), "tools/lint/precommit-hook.sh not yet modified"
+    def test_parallel_typecheck_routes_passed_filenames_to_all_checkers(self) -> None:
+        """parallel-typecheck must pass the pre-commit filename list to pyright, mypy, and pylint."""
         content = _read(_PRECOMMIT_SH)
-        assert "parallel-typecheck" in content, "parallel-typecheck block missing"
-        # Verify $SCOPED_FILES is actually passed to the $PYRIGHT invocation.
-        assert "$PYRIGHT $SCOPED_FILES" in content, "SCOPED_FILES not passed to $PYRIGHT command in precommit-hook.sh"
+        assert 'if $PYRIGHT "$@" > "$tmpdir/pyright.out" 2>&1; then' in content
+        assert 'if $MYPY "$@" > "$tmpdir/mypy.out" 2>&1; then' in content
+        assert 'if $PYLINT "$@" > "$tmpdir/pylint.out" 2>&1; then' in content
 
-    def test_parallel_typecheck_routes_scoped_files_to_pyright_and_mypy(self) -> None:
-        """parallel-typecheck and standalone cases route scoped files to both type checkers."""
+    def test_standalone_checker_cases_use_passed_filenames(self) -> None:
+        """pyright, mypy, and pylint cases must all use the same passed filename list."""
         content = _read(_PRECOMMIT_SH)
-        assert "$PYRIGHT $SCOPED_FILES" in content
-        assert "$MYPY $SCOPED_FILES" in content
-        assert 'if $PYRIGHT $SCOPED_FILES > "$tmpdir/pyright.out" 2>&1; then' in content
-        assert 'if $MYPY $SCOPED_FILES > "$tmpdir/mypy.out" 2>&1; then' in content
+        assert '$PYRIGHT "$@"' in content
+        assert '$MYPY "$@"' in content
+        assert '$PYLINT "$@"' in content
 
     def test_guardrails_and_ruff_check_unchanged(self) -> None:
         """precommit-hook.sh guardrails and ruff-check components are not modified."""
@@ -208,6 +215,8 @@ class TestPrecommitHookWiring:
 
 
 class TestExitProtocolHandling:
+    """Shared exit-code handling contracts for scoped helper callers."""
+
     def test_lint_sh_falls_back_silently_on_exit_2(self) -> None:
         """lint.sh treats session_scope exit 2 as non-session context; no stderr emitted."""
         assert _LINT_SH.exists(), "tools/lint.sh not yet modified"

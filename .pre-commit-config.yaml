@@ -30,7 +30,7 @@ repos:
     entry: ./tools/lint/precommit-hook.sh parallel-typecheck
     language: system
     types: [python]
-    pass_filenames: false
+    pass_filenames: true
   - id: markdown-validate
     name: Markdown validation
     entry: ./tools/lint/precommit-hook.sh markdown
