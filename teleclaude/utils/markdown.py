@@ -682,6 +682,137 @@ def truncate_gfm_with_consumed(text: str, max_chars: int, suffix: str) -> tuple[
     return f"{truncated}{suffix}", consumed
 
 
+# ===========================================================================
+# WhatsApp markdown state machine
+# ===========================================================================
+# Used after _convert_markdown_for_platform converts GFM → WhatsApp dialect.
+# Tracks: code-block (```), bold (*), italic (_), strikethrough (~).
+# Single-char markers (*/_/~) toggle open/closed symmetrically.
+# ===========================================================================
+
+_WA_STATE_CODE_BLOCK = "wa_code_block"
+_WA_STATE_BOLD = "wa_bold"
+_WA_STATE_ITALIC = "wa_italic"
+_WA_STATE_STRIKETHROUGH = "wa_strikethrough"
+
+
+@dataclass(frozen=True)
+class WhatsAppMarkdownState:
+    """Parser state for balanced WhatsApp markdown chunking.
+
+    stack:
+        Open entity markers in open order, innermost last.
+        Preserves close/reopen order across chunk boundaries.
+    """
+
+    stack: tuple[str, ...] = ()
+
+
+WA_MARKDOWN_INITIAL_STATE = WhatsAppMarkdownState()
+
+
+def _scan_wa_token(text: str, index: int, stack: list[str]) -> int:  # pylint: disable=too-many-return-statements
+    """Consume one WhatsApp token at *index*, mutating *stack*. Returns new index."""
+    in_code = bool(stack and stack[-1] == _WA_STATE_CODE_BLOCK)
+    if in_code:
+        if text[index : index + 3] == MARKDOWN_FENCE:
+            stack.pop()
+            return index + 3
+        return index + 1  # inside code block — skip char verbatim
+
+    # Not inside a code block — process format markers (longest match first).
+    if text[index : index + 3] == MARKDOWN_FENCE:
+        stack.append(_WA_STATE_CODE_BLOCK)
+        return index + 3
+    if text[index] == "*":
+        _toggle_stack_marker(stack, _WA_STATE_BOLD)
+        return index + 1
+    if text[index] == "_":
+        _toggle_stack_marker(stack, _WA_STATE_ITALIC)
+        return index + 1
+    if text[index] == "~":
+        _toggle_stack_marker(stack, _WA_STATE_STRIKETHROUGH)
+        return index + 1
+    return index + 1  # plain character
+
+
+def scan_wa_state(text: str, initial_state: WhatsAppMarkdownState = WA_MARKDOWN_INITIAL_STATE) -> WhatsAppMarkdownState:
+    """Scan WhatsApp markdown text and return parser state after consuming it."""
+    stack = list(initial_state.stack)
+    i = 0
+    while i < len(text):
+        i = _scan_wa_token(text, i, stack)
+    return WhatsAppMarkdownState(stack=tuple(stack))
+
+
+def _wa_opening_marker(marker: str) -> str:
+    if marker == _WA_STATE_CODE_BLOCK:
+        return f"{MARKDOWN_FENCE}\n"
+    if marker == _WA_STATE_BOLD:
+        return "*"
+    if marker == _WA_STATE_ITALIC:
+        return "_"
+    if marker == _WA_STATE_STRIKETHROUGH:
+        return "~"
+    return ""
+
+
+def _wa_closing_marker(marker: str, source_text: str) -> str:
+    if marker == _WA_STATE_CODE_BLOCK:
+        prefix = "\n" if source_text and not source_text.endswith("\n") else ""
+        return f"{prefix}{MARKDOWN_FENCE}"
+    if marker == _WA_STATE_BOLD:
+        return "*"
+    if marker == _WA_STATE_ITALIC:
+        return "_"
+    if marker == _WA_STATE_STRIKETHROUGH:
+        return "~"
+    return ""
+
+
+def continuation_prefix_for_wa_state(state: WhatsAppMarkdownState) -> str:
+    """Build WhatsApp opening markers needed to continue a previously closed chunk."""
+    return "".join(_wa_opening_marker(m) for m in state.stack)
+
+
+def _wa_closers(text: str, state: WhatsAppMarkdownState) -> str:
+    return "".join(_wa_closing_marker(m, text) for m in reversed(state.stack))
+
+
+def _trim_wa_balanced(text: str, budget: int) -> tuple[str, int]:
+    """Trim WhatsApp markdown text to *budget* chars while keeping markers balanced."""
+    current = text[:budget]
+    while True:
+        state = scan_wa_state(current)
+        if not state.stack:
+            return current, len(current)
+        closers = _wa_closers(current, state)
+        if len(current) + len(closers) <= budget:
+            return f"{current}{closers}", len(current)
+        if not current:
+            return closers[:budget], 0
+        current = current[:-1]
+
+
+def truncate_wa_with_consumed(text: str, max_chars: int, suffix: str) -> tuple[str, int]:
+    """Truncate WhatsApp markdown text to *max_chars* keeping markers balanced.
+
+    Returns (truncated_text, consumed_source_chars).  The consumed count
+    excludes any balancing closers or suffix appended during truncation.
+    """
+    if max_chars <= 0:
+        return "", 0
+    if len(text) <= max_chars and not suffix:
+        return _trim_wa_balanced(text, max_chars)
+    if len(text) <= max_chars:
+        return text, len(text)
+    if len(suffix) >= max_chars:
+        return suffix[:max_chars], 0
+    budget = max_chars - len(suffix)
+    truncated, consumed = _trim_wa_balanced(text[:budget], budget)
+    return f"{truncated}{suffix}", consumed
+
+
 def _strip_heading_icons(text: str) -> str:
     """Remove emoji prefixes added by telegramify_markdown heading conversion."""
     heading_icons = ("\U0001f4cc", "\u270f", "\U0001f4da", "\U0001f516")

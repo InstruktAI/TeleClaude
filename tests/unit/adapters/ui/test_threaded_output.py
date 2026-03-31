@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from teleclaude.adapters.ui.threaded_output import ThreadedOutputMixin
+from teleclaude.adapters.ui.threaded_output import OverflowContext, ThreadedOutputMixin
 from teleclaude.core.models import MessageMetadata, Session
 
 # ---------------------------------------------------------------------------
@@ -18,7 +18,6 @@ from teleclaude.core.models import MessageMetadata, Session
 
 class _ThreadedHost(ThreadedOutputMixin):
     ADAPTER_KEY = "telegram"
-    MARKDOWN_FLAVOR = "plain"
     max_message_size = 50
     THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS = 50
 
@@ -54,14 +53,14 @@ class _ThreadedHost(ThreadedOutputMixin):
     def _build_metadata_for_thread(self) -> MessageMetadata:
         return MessageMetadata(parse_mode=None)  # No MarkdownV2 by default
 
-    async def _deliver_output_unlocked(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def _deliver_output_unlocked(  # pylint: disable=too-many-arguments,too-many-positional-arguments,unused-argument
         self,
         session: Session,
         text: str,
         metadata: MessageMetadata,
-        _multi_message: bool = False,
-        _status_line: str = "",
-        _dedupe_by_digest: bool = True,
+        multi_message: bool = False,
+        status_line: str = "",
+        dedupe_by_digest: bool = True,
     ) -> str | None:
         if self._output_message_id:
             return self._output_message_id
@@ -76,6 +75,30 @@ class _ThreadedHost(ThreadedOutputMixin):
         return await self.edit_message(session, self._output_message_id, text, metadata=metadata)
 
     def _convert_markdown_for_platform(self, text: str) -> str:
+        return text
+
+    # Markdown strategy — plain-text stubs
+    def _markdown_initial_state(self) -> None:
+        return None
+
+    def _continuation_prefix_for_state(self, _state: object) -> str:
+        return ""
+
+    def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
+        candidate = body_text[:max_chars]
+        last_space = candidate.rfind(" ")
+        split_idx = last_space if last_space > (len(candidate) * 0.8) else max_chars
+        return body_text[:split_idx], split_idx
+
+    def _scan_markdown_state(self, _consumed: str, state: object) -> object:
+        return state
+
+    def _finalize_overflow_split(
+        self, _active_text: str, _overflow_context: OverflowContext, split_idx: int, chunk: str
+    ) -> tuple[int, str]:
+        return split_idx, chunk
+
+    def _balance_intermediate_chunk(self, text: str) -> str:
         return text
 
 

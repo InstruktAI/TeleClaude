@@ -16,6 +16,12 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, WhatsAppAdapterMetadata
+from teleclaude.utils.markdown import (
+    WA_MARKDOWN_INITIAL_STATE,
+    continuation_prefix_for_wa_state,
+    scan_wa_state,
+    truncate_wa_with_consumed,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -29,12 +35,29 @@ class WhatsAppAdapter(UiAdapter):
     """UI adapter for WhatsApp Business Cloud API."""
 
     ADAPTER_KEY = "whatsapp"
-    MARKDOWN_FLAVOR = "plain"  # WA converts markdown before sending; word-boundary split is correct
     OUTPUT_MESSAGE_ID_FIELD = "id"
     max_message_size = 4096
     _CAPTION_MAX_CHARS = 1024
     _MAX_429_RETRIES = 3
     _BASE_429_BACKOFF_SECONDS = 1.0
+
+    # -------------------------------------------------------------------------
+    # Markdown strategy — WhatsApp dialect (*bold*, _italic_, ~strike~, ```mono```)
+    # -------------------------------------------------------------------------
+
+    def _markdown_initial_state(self) -> object:
+        return WA_MARKDOWN_INITIAL_STATE
+
+    def _continuation_prefix_for_state(self, state: object) -> str:
+        return continuation_prefix_for_wa_state(state)
+
+    def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
+        return truncate_wa_with_consumed(body_text, max_chars=max_chars, suffix="")
+
+    def _scan_markdown_state(self, consumed: str, state: object) -> object:
+        return scan_wa_state(consumed, initial_state=state)
+
+    # -------------------------------------------------------------------------
 
     def __init__(self, client: Any) -> None:
         super().__init__(client)

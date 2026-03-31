@@ -36,6 +36,13 @@ from teleclaude.core.models import (
     TelegramAdapterMetadata,
 )
 from teleclaude.core.session_utils import get_display_title_for_session
+from teleclaude.utils.markdown import (
+    MARKDOWN_V2_INITIAL_STATE,
+    continuation_prefix_for_markdown_v2_state,
+    leading_balanced_markdown_v2_entity_span,
+    scan_markdown_v2_state,
+    truncate_markdown_v2_with_consumed,
+)
 
 from .telegram.callback_handlers import CallbackAction, CallbackHandlersMixin
 from .telegram.channel_ops import ChannelOperationsMixin
@@ -44,6 +51,7 @@ from .telegram.input_handlers import InputHandlersMixin
 from .telegram.lifecycle import LifecycleMixin, TelegramApp
 from .telegram.message_ops import EditContext, MessageOperationsMixin
 from .telegram.private_handlers import PrivateHandlersMixin
+from .ui.threaded_output import OverflowContext
 from .ui_adapter import UiAdapter
 
 logger = get_logger(__name__)
@@ -62,7 +70,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
-    MARKDOWN_FLAVOR = "markdownv2"
     OUTPUT_MESSAGE_ID_FIELD = "message_id"
 
     COMMAND_HANDLER_OVERRIDES = {
@@ -88,6 +95,58 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         "key_left",
         "key_right",
     ]
+
+    # -------------------------------------------------------------------------
+    # Markdown strategy — MarkdownV2
+    # -------------------------------------------------------------------------
+
+    def _markdown_initial_state(self) -> object:
+        return MARKDOWN_V2_INITIAL_STATE
+
+    def _continuation_prefix_for_state(self, state: object) -> str:
+        return continuation_prefix_for_markdown_v2_state(state)
+
+    def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
+        return truncate_markdown_v2_with_consumed(body_text, max_chars=max_chars, suffix="")
+
+    def _scan_markdown_state(self, consumed: str, state: object) -> object:
+        return scan_markdown_v2_state(consumed, initial_state=state)
+
+    def _finalize_overflow_split(
+        self,
+        active_text: str,
+        overflow_context: OverflowContext,
+        split_idx: int,
+        chunk: str,
+    ) -> tuple[int, str]:
+        entity_scan_limit = min(self.THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS, len(active_text))
+        atomic_entity_threshold = min(
+            self.THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS,
+            max(32, overflow_context.available_for_content // 2),
+        )
+        leading_entity_span = leading_balanced_markdown_v2_entity_span(
+            active_text,
+            max_scan_chars=entity_scan_limit,
+        )
+        if not 0 < leading_entity_span <= atomic_entity_threshold or split_idx >= leading_entity_span:
+            return split_idx, chunk
+
+        atomic_chunk, atomic_consumed_display = truncate_markdown_v2_with_consumed(
+            f"{overflow_context.continuation_prefix}{active_text[:leading_entity_span]}",
+            max_chars=overflow_context.available_for_content,
+            suffix="",
+        )
+        atomic_consumed_prefix = min(atomic_consumed_display, len(overflow_context.continuation_prefix))
+        atomic_split_idx = atomic_consumed_display - atomic_consumed_prefix
+        if atomic_split_idx == leading_entity_span:
+            return atomic_split_idx, atomic_chunk
+        return split_idx, chunk
+
+    def _balance_intermediate_chunk(self, text: str) -> str:
+        balanced, _ = truncate_markdown_v2_with_consumed(text, max_chars=len(text), suffix="")
+        return balanced
+
+    # -------------------------------------------------------------------------
 
     def __init__(self, client: AdapterClient) -> None:
         """Initialize Telegram adapter.
@@ -415,8 +474,7 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         Threaded output payloads are coalesced (latest-only) so that only the
         most recent accumulated text is dispatched per scheduler tick.
         """
-        from teleclaude.adapters.ui_adapter import UiAdapter
-        from teleclaude.utils.markdown import MARKDOWN_V2_INITIAL_STATE
+        from teleclaude.adapters.ui_adapter import UiAdapter  # pylint: disable=import-outside-toplevel
 
         if self._qos_scheduler._policy.mode == "off":
             return await UiAdapter.send_threaded_output(self, session, text, multi_message)

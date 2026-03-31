@@ -13,14 +13,14 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui.output_cadence import OutputCadenceLoop
 from teleclaude.adapters.ui.output_delivery import OutputDeliveryMixin
-from teleclaude.adapters.ui.threaded_output import ThreadedOutputMixin
+from teleclaude.adapters.ui.threaded_output import OverflowContext, ThreadedOutputMixin
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -63,11 +63,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     max_message_size: int = UI_MESSAGE_MAX_CHARS
     # Keep small Markdown entities (e.g. links) atomic across chunk boundaries.
     THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS = 50
-    # Markdown dialect used by this adapter for split-boundary marker tracking.
-    # "markdownv2" — Telegram MarkdownV2 (state machine with escaping).
-    # "gfm"        — GitHub-Flavoured Markdown (Discord, raw output).
-    # "plain"      — no markdown tracking; word-boundary splits only.
-    MARKDOWN_FLAVOR: str = "plain"
 
     # Per-session lock to serialize output delivery and prevent concurrent
     # lanes from racing on output_message_id reads/writes.
@@ -81,6 +76,52 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             lock = asyncio.Lock()
             cls._output_delivery_locks[session_id] = lock
         return lock
+
+    # -------------------------------------------------------------------------
+    # Markdown strategy — plain-text defaults (override per adapter)
+    # -------------------------------------------------------------------------
+
+    def _markdown_initial_state(self) -> Any:
+        """Return the zero-state for this adapter's markdown parser."""
+        return None
+
+    def _continuation_prefix_for_state(self, state: Any) -> str:
+        """Return opening markers to continue a previously closed chunk."""
+        _ = state
+        return ""
+
+    def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
+        """Truncate *body_text* to *max_chars*.
+
+        Returns (chunk, consumed_display).
+        Default: word-boundary split with no marker tracking.
+        """
+        candidate = body_text[:max_chars]
+        last_space = candidate.rfind(" ")
+        split_idx = last_space if last_space > (len(candidate) * 0.8) else max_chars
+        return body_text[:split_idx], split_idx
+
+    def _scan_markdown_state(self, consumed: str, state: Any) -> Any:
+        """Return the parser state after consuming *consumed* from *state*."""
+        _ = consumed
+        return state
+
+    def _finalize_overflow_split(
+        self,
+        active_text: str,
+        overflow_context: OverflowContext,
+        split_idx: int,
+        chunk: str,
+    ) -> tuple[int, str]:
+        """Optional post-processing after the split point is computed."""
+        _ = (active_text, overflow_context)
+        return split_idx, chunk
+
+    def _balance_intermediate_chunk(self, text: str) -> str:
+        """Close any open markers for a live intermediate render."""
+        return text
+
+    # -------------------------------------------------------------------------
 
     def __init__(self, client: AdapterClient) -> None:
         """Initialize UiAdapter and register event listeners.

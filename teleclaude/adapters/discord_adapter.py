@@ -30,6 +30,12 @@ from teleclaude.core.events import (
     SessionUpdatedContext,
 )
 from teleclaude.core.models import DiscordAdapterMetadata
+from teleclaude.utils.markdown import (
+    GFM_MARKDOWN_INITIAL_STATE,
+    continuation_prefix_for_gfm_state,
+    scan_gfm_state,
+    truncate_gfm_with_consumed,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -66,11 +72,28 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     """Discord bot adapter using discord.py."""
 
     ADAPTER_KEY = "discord"
-    MARKDOWN_FLAVOR = "gfm"
     OUTPUT_MESSAGE_ID_FIELD = "id"
     OUTPUT_CADENCE_SECONDS = 1.0
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
+
+    # -------------------------------------------------------------------------
+    # Markdown strategy — GFM
+    # -------------------------------------------------------------------------
+
+    def _markdown_initial_state(self) -> object:
+        return GFM_MARKDOWN_INITIAL_STATE
+
+    def _continuation_prefix_for_state(self, state: object) -> str:
+        return continuation_prefix_for_gfm_state(state)
+
+    def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
+        return truncate_gfm_with_consumed(body_text, max_chars=max_chars, suffix="")
+
+    def _scan_markdown_state(self, consumed: str, state: object) -> object:
+        return scan_gfm_state(consumed, initial_state=state)
+
+    # -------------------------------------------------------------------------
 
     def __init__(self, client: AdapterClient, *, task_registry: TaskRegistry | None = None) -> None:
         super().__init__(client)
