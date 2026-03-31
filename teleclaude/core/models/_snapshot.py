@@ -5,6 +5,7 @@ from typing import cast
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.feedback import get_last_output_summary
+from teleclaude.core.session_status import compute_agent_status
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
 from teleclaude.types import SystemStats
@@ -117,9 +118,10 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
     @classmethod
     def from_db_session(cls, session: "Session", computer: str | None = None) -> "SessionSnapshot":
         """Create from database Session object."""
-        agent_status = "unknown"
-        if session.last_message_sent_at and session.last_agent_stop_at:
-            agent_status = "idle" if session.last_agent_stop_at >= session.last_message_sent_at else "active"
+        agent_status = compute_agent_status(
+            last_activity=session.last_activity,
+            last_agent_stop_at=session.last_agent_stop_at,
+        )
         return cls(
             session_id=session.session_id,
             last_input_origin=session.last_input_origin,

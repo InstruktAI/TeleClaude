@@ -58,6 +58,7 @@ from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, Session
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import unregister_listener
+from teleclaude.core.session_status import compute_agent_status
 from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
 from teleclaude.output_projection import serializers as output_serializers
@@ -505,10 +506,10 @@ async def get_session_messages(
         last_agent_stop_at = (
             session.last_agent_stop_at.isoformat() if isinstance(session.last_agent_stop_at, datetime) else None
         )
-        if isinstance(session.last_message_sent_at, datetime) and isinstance(session.last_agent_stop_at, datetime):
-            agent_status = "idle" if session.last_agent_stop_at >= session.last_message_sent_at else "active"
-        else:
-            agent_status = "unknown"
+        agent_status = compute_agent_status(
+            last_activity=session.last_activity,
+            last_agent_stop_at=session.last_agent_stop_at,
+        )
 
         return SessionMessagesDTO(
             session_id=session_id,

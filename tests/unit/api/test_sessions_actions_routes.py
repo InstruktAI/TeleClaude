@@ -43,6 +43,8 @@ def _identity(
 
 
 class TestSessionsActionsRoutes:
+    """Characterization tests for session action route behavior."""
+
     def _make_session(self, **kwargs: object) -> Session:
         defaults = {
             "session_id": "sess-messages",
@@ -339,17 +341,57 @@ class TestSessionsActionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_get_session_messages_sets_active_status_when_activity_exists_before_stop(self) -> None:
+        """Recorded activity means active until the stop event becomes the latest activity."""
+        http_request = SimpleNamespace(headers={})
+        identity = _identity("sess-active")
+        session = self._make_session(
+            session_id="sess-active",
+            active_agent="claude",
+            transcript_files="[]",
+            native_log_file=None,
+            last_activity=datetime(2025, 2, 1, 12, 0, 3, tzinfo=UTC),
+            last_agent_stop_at=None,
+        )
+        service = SimpleNamespace(get_session_data=AsyncMock(return_value={"messages": "terminal tail output"}))
+
+        with (
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
+            patch.object(sessions_actions_routes, "db") as db,
+            patch.object(sessions_actions_routes, "get_command_service", return_value=service),
+        ):
+            db.get_session = AsyncMock(return_value=session)
+
+            response = await sessions_actions_routes.get_session_messages(
+                http_request,
+                "sess-active",
+                query=SessionMessagesQuery(),
+                _identity=identity,
+            )
+
+        assert response.agent_status == "active"
+        assert response.last_activity == "2025-02-01T12:00:03+00:00"
+        assert response.last_agent_stop_at is None
+        check_session_access.assert_awaited_once_with(http_request, "sess-active")
+        service.get_session_data.assert_awaited_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_get_session_messages_falls_back_to_tail_output_when_projection_is_empty(self) -> None:
         """Fallback session data becomes a single assistant text message when no structured output exists."""
         http_request = SimpleNamespace(headers={})
         identity = _identity("sess-tail")
+        last_stop = datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC)
         session = self._make_session(
             session_id="sess-tail",
             active_agent="claude",
             transcript_files="[]",
             native_log_file=None,
-            last_message_sent_at=datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC),
-            last_agent_stop_at=datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC),
+            last_activity=last_stop,
+            last_message_sent_at=last_stop,
+            last_agent_stop_at=last_stop,
         )
         service = SimpleNamespace(get_session_data=AsyncMock(return_value={"messages": "terminal tail output"}))
 
@@ -545,7 +587,7 @@ class TestSessionsActionsRoutes:
             tmux_session_name=None,
             email="alice@example.com",
         )
-        plan = sessions_actions_routes._prepare_run_session(request, identity)
+        plan = sessions_actions_routes._prepare_run_session(request, identity)  # pylint: disable=protected-access
         assert plan.origin_metadata is not None
         assert plan.origin_metadata["email"] == "alice@example.com"
 

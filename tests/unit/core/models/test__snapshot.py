@@ -109,20 +109,30 @@ class TestSessionSnapshot:
         assert snap.last_output_summary == "summary text"
 
     @pytest.mark.unit
-    def test_from_db_session_sets_idle_agent_status_when_stop_catches_up_to_input(self):
+    def test_from_db_session_sets_idle_agent_status_when_stop_matches_last_activity(self):
         input_at = datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC)
         stop_at = datetime(2025, 2, 1, 12, 0, 5, tzinfo=UTC)
-        session = self._make_session(last_message_sent_at=input_at, last_agent_stop_at=stop_at)
+        session = self._make_session(last_message_sent_at=input_at, last_activity=stop_at, last_agent_stop_at=stop_at)
         snap = SessionSnapshot.from_db_session(session)
         assert snap.last_input_at == input_at.isoformat()
         assert snap.last_agent_stop_at == stop_at.isoformat()
         assert snap.agent_status == "idle"
 
     @pytest.mark.unit
-    def test_from_db_session_sets_active_agent_status_when_stop_is_behind_input(self):
+    def test_from_db_session_sets_active_agent_status_when_activity_exists_after_stop(self):
         input_at = datetime(2025, 2, 1, 12, 0, 5, tzinfo=UTC)
+        activity_at = datetime(2025, 2, 1, 12, 0, 6, tzinfo=UTC)
         stop_at = datetime(2025, 2, 1, 12, 0, 0, tzinfo=UTC)
-        session = self._make_session(last_message_sent_at=input_at, last_agent_stop_at=stop_at)
+        session = self._make_session(
+            last_message_sent_at=input_at, last_activity=activity_at, last_agent_stop_at=stop_at
+        )
+        snap = SessionSnapshot.from_db_session(session)
+        assert snap.agent_status == "active"
+
+    @pytest.mark.unit
+    def test_from_db_session_sets_active_agent_status_when_stop_is_missing(self):
+        activity_at = datetime(2025, 2, 1, 12, 0, 6, tzinfo=UTC)
+        session = self._make_session(last_activity=activity_at, last_agent_stop_at=None)
         snap = SessionSnapshot.from_db_session(session)
         assert snap.agent_status == "active"
 

@@ -317,6 +317,11 @@ TAILING DISCIPLINE:
 Each telec sessions tail response includes `last_input_at`, `last_activity`,
 `last_agent_stop_at`, and computed `agent_status`.
 
+Status semantics:
+- `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+- `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+- `unknown`: no `last_activity` has been recorded yet.
+
 HEARTBEAT RULE (applies to every agent):
 
 A) NOTIFICATION ARRIVES OR TIMER COMPLETES:
@@ -325,7 +330,7 @@ A) NOTIFICATION ARRIVES OR TIMER COMPLETES:
    - Inspect `agent_status` in the JSON response.
    - If `agent_status` is `active`: the current turn is still in progress. Reset the non-blocking heartbeat timer and WAIT again.
    - If `agent_status` is `idle`: the current turn is settled. Inspect the returned messages and proceed to WHEN WORKER COMPLETES below.
-   - If `agent_status` is `unknown`: inspect the session because input/stop timing is incomplete or startup/stop capture may have failed. Investigate or escalate before acting.
+   - If `agent_status` is `unknown`: no activity has been recorded yet. Keep waiting unless the worker appears stalled for other reasons.
 
 C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
    - Cancel the old timer: KillShell(shell_id=<task_id>)
