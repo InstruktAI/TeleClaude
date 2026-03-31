@@ -40,7 +40,7 @@ def test_handle_bugs_create_calls_dump_api(
     monkeypatch.setattr(
         bugs,
         "tool_api_request",
-        lambda method, path, **kw: (api_calls.append((method, path)) or {"status": "ok", "slug": "sample-bug"}),
+        lambda method, path, **kw: api_calls.append((method, path)) or {"status": "ok", "slug": "sample-bug"},
     )
 
     bugs._handle_bugs_create(["sample-bug"])

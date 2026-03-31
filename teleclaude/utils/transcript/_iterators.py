@@ -141,7 +141,6 @@ def _strip_turn_aborted_text(entry: JsonDict) -> JsonDict | None:
     cleaned_content: list[JsonDict] = []
     for block_raw in content:
         if not isinstance(block_raw, dict):
-            cleaned_content.append(block_raw)
             continue
         text = block_raw.get("text")
         if not isinstance(text, str):
@@ -149,7 +148,7 @@ def _strip_turn_aborted_text(entry: JsonDict) -> JsonDict | None:
             continue
         stripped = re.sub(r"<turn_aborted>.*?</turn_aborted>\s*", "", text, flags=re.DOTALL).strip()
         if stripped:
-            cleaned_content.append(cast(JsonDict, {**block_raw, "text": stripped}))
+            cleaned_content.append({**block_raw, "text": stripped})
 
     if not cleaned_content:
         return None
