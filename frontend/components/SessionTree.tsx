@@ -37,6 +37,7 @@ interface SessionTreeProps {
 interface SessionPalette {
   normal: string
   muted: string
+  highlight: string
   contrast: string
   badgeText: string
   subtleBg: string
@@ -57,6 +58,7 @@ function getSessionPalette(
     return {
       normal: agentVar(agent, "normal"),
       muted: agentVar(agent, "muted"),
+      highlight: agentVar(agent, "highlight"),
       contrast: "var(--tc-primary-fg)",
       badgeText: "#ffffff",
       subtleBg: agentVar(agent, "subtle"),
@@ -69,6 +71,7 @@ function getSessionPalette(
   return {
     normal: "var(--tc-peaceful-normal)",
     muted: "var(--tc-peaceful-muted)",
+    highlight: "var(--tc-primary)",
     contrast: "var(--tc-primary-fg)",
     badgeText: "var(--tc-primary-fg)",
     subtleBg: "var(--tc-selection-base)",
@@ -164,7 +167,7 @@ function outputDetailLine(
     return {
       timestamp: formatSessionTime(session.last_activity),
       text: "out: ...",
-      emphasized: false,
+      emphasized: true,
     }
   }
 
@@ -172,7 +175,7 @@ function outputDetailLine(
     return {
       timestamp: formatSessionTime(session.last_activity),
       text: "out: ...",
-      emphasized: false,
+      emphasized: true,
     }
   }
 
@@ -280,7 +283,7 @@ function SessionSummary({
         <div
           data-testid={`session-summary-input-${s.session_id}`}
           className="truncate font-mono"
-          style={{ color: sessionState?.highlightType === "input" ? palette.normal : palette.muted }}
+          style={{ color: sessionState?.highlightType === "input" ? palette.highlight : palette.normal }}
           title={`${inputLine.timestamp} ${inputLine.text}`}
         >
           {inputLine.timestamp} {inputLine.text}
@@ -290,7 +293,7 @@ function SessionSummary({
         <div
           data-testid={`session-summary-output-${s.session_id}`}
           className="truncate font-mono"
-          style={{ color: outputLine.emphasized ? palette.normal : palette.muted }}
+          style={{ color: outputLine.emphasized ? palette.highlight : palette.normal }}
           title={`${outputLine.timestamp} ${outputLine.text}`}
         >
           {outputLine.timestamp} {outputLine.text}

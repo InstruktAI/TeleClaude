@@ -58,9 +58,9 @@ function lastSegment(path: string): string {
   return path.split('/').filter(Boolean).pop() ?? path
 }
 
-function sortByActivityDesc(a: SessionInfo, b: SessionInfo): number {
-  const ta = a.last_activity ?? ''
-  const tb = b.last_activity ?? ''
+function sortByCreatedDesc(a: SessionInfo, b: SessionInfo): number {
+  const ta = a.created_at ?? ''
+  const tb = b.created_at ?? ''
   if (!ta && !tb) return 0
   if (!ta) return 1
   if (!tb) return -1
@@ -87,14 +87,14 @@ function nestChildren(
     }
   }
 
-  topLevel.sort(sortByActivityDesc)
+  topLevel.sort(sortByCreatedDesc)
 
   function buildNode(
     session: SessionInfo,
     index: number,
     parentDisplayIndex?: string,
   ): SessionTreeNode {
-    const kids = (childMap.get(session.session_id) ?? []).sort(sortByActivityDesc)
+    const kids = (childMap.get(session.session_id) ?? []).sort(sortByCreatedDesc)
     const displayIndex = parentDisplayIndex ? `${parentDisplayIndex}.${index}` : String(index)
     return {
       type: 'session',

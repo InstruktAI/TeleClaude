@@ -295,7 +295,9 @@ describe("SessionTree", () => {
       />,
     )
 
-    expect(screen.getByTestId("session-summary-output-sess-2").textContent).toContain("out: Build complete")
+    const output = screen.getByTestId("session-summary-output-sess-2")
+    expect(output.textContent).toContain("out: Build complete")
+    expect(output.style.color).toBe("var(--tc-agent-codex-highlight)")
   })
 
   it("renders input and output activity in the collapsed session summary", () => {
@@ -312,8 +314,13 @@ describe("SessionTree", () => {
       />,
     )
 
-    expect(screen.getByTestId("session-summary-input-sess-1").textContent).toContain("in: Run the planner")
-    expect(screen.getByTestId("session-summary-output-sess-1").textContent).toContain("out: ...")
+    const input = screen.getByTestId("session-summary-input-sess-1")
+    const output = screen.getByTestId("session-summary-output-sess-1")
+
+    expect(input.textContent).toContain("in: Run the planner")
+    expect(input.style.color).toBe("var(--tc-agent-claude-highlight)")
+    expect(output.textContent).toContain("out: ...")
+    expect(output.style.color).toBe("var(--tc-agent-claude-highlight)")
   })
 
   it("renders thinking activity in the collapsed session summary", () => {
@@ -330,7 +337,9 @@ describe("SessionTree", () => {
       />,
     )
 
-    expect(screen.getByTestId("session-summary-output-sess-1").textContent).toContain("out: • Working")
+    const output = screen.getByTestId("session-summary-output-sess-1")
+    expect(output.textContent).toContain("out: • Working")
+    expect(output.style.color).toBe("var(--tc-agent-claude-highlight)")
   })
 
   it("keeps technical session ids in the expanded detail block only", () => {

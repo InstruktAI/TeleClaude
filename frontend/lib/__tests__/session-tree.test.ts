@@ -269,14 +269,14 @@ describe('buildSessionTree', () => {
         computer: 'local',
         project_path: '/proj',
         initiator_session_id: 'parent',
-        last_activity: '2024-03-01T00:00:00Z',
+        created_at: '2024-03-01T00:00:00Z',
       })
       const child2 = makeSession({
         session_id: 'child-2',
         computer: 'local',
         project_path: '/proj',
         initiator_session_id: 'parent',
-        last_activity: '2024-02-01T00:00:00Z',
+        created_at: '2024-02-01T00:00:00Z',
       })
       const sessions = [parent, child1, child2]
       const computers = [makeComputer()]
@@ -284,7 +284,7 @@ describe('buildSessionTree', () => {
       const project = tree[0].projects[0]
       expect(project.sessions).toHaveLength(1)
       expect(project.sessions[0].children).toHaveLength(2)
-      // Children sorted by last_activity descending
+      // Children sorted by created_at descending
       expect(project.sessions[0].children[0].session.session_id).toBe('child-1')
       expect(project.sessions[0].children[1].session.session_id).toBe('child-2')
     })
@@ -331,26 +331,26 @@ describe('buildSessionTree', () => {
       ])
     })
 
-    it('sorts sessions by last_activity descending within project', async () => {
+    it('sorts sessions by created_at descending within project', async () => {
       const { buildSessionTree } = await import('@/lib/sessions/tree')
       const sessions = [
         makeSession({
           computer: 'local',
           project_path: '/proj',
           session_id: 'oldest',
-          last_activity: '2024-01-01T00:00:00Z',
+          created_at: '2024-01-01T00:00:00Z',
         }),
         makeSession({
           computer: 'local',
           project_path: '/proj',
           session_id: 'newest',
-          last_activity: '2024-03-01T00:00:00Z',
+          created_at: '2024-03-01T00:00:00Z',
         }),
         makeSession({
           computer: 'local',
           project_path: '/proj',
           session_id: 'middle',
-          last_activity: '2024-02-01T00:00:00Z',
+          created_at: '2024-02-01T00:00:00Z',
         }),
       ]
       const computers = [makeComputer()]
@@ -361,20 +361,20 @@ describe('buildSessionTree', () => {
       expect(sessionIds).toEqual(['newest', 'middle', 'oldest'])
     })
 
-    it('handles sessions with null last_activity (sorted last)', async () => {
+    it('handles sessions with null created_at (sorted last)', async () => {
       const { buildSessionTree } = await import('@/lib/sessions/tree')
       const sessions = [
         makeSession({
           computer: 'local',
           project_path: '/proj',
           session_id: 'no-activity',
-          last_activity: null,
+          created_at: null,
         }),
         makeSession({
           computer: 'local',
           project_path: '/proj',
           session_id: 'has-activity',
-          last_activity: '2024-01-01T00:00:00Z',
+          created_at: '2024-01-01T00:00:00Z',
         }),
       ]
       const computers = [makeComputer()]
@@ -384,6 +384,32 @@ describe('buildSessionTree', () => {
       )
       expect(sessionIds[0]).toBe('has-activity')
       expect(sessionIds[1]).toBe('no-activity')
+    })
+
+    it('does not reshuffle sessions when only last_activity changes', async () => {
+      const { buildSessionTree } = await import('@/lib/sessions/tree')
+      const sessions = [
+        makeSession({
+          computer: 'local',
+          project_path: '/proj',
+          session_id: 'first-created',
+          created_at: '2024-03-01T00:00:00Z',
+          last_activity: '2024-01-01T00:00:00Z',
+        }),
+        makeSession({
+          computer: 'local',
+          project_path: '/proj',
+          session_id: 'second-created',
+          created_at: '2024-02-01T00:00:00Z',
+          last_activity: '2024-12-01T00:00:00Z',
+        }),
+      ]
+      const computers = [makeComputer()]
+      const tree = buildSessionTree(sessions, computers)
+      const sessionIds = tree[0].projects[0].sessions.map(
+        (s: { session: SessionInfo }) => s.session.session_id,
+      )
+      expect(sessionIds).toEqual(['first-created', 'second-created'])
     })
   })
 
