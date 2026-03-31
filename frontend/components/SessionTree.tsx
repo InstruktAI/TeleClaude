@@ -94,39 +94,74 @@ function normalizeSubdir(subdir: string): string {
   return subdir.startsWith("trees/") ? subdir.slice("trees/".length) : subdir
 }
 
-function sessionActivityLine(
+function formatSessionTime(timestamp?: string | null): string {
+  if (!timestamp) return "--:--:--"
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return "--:--:--"
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+}
+
+function inputDetailLine(
+  session: SessionTreeNode["session"],
+): { timestamp: string; text: string } | null {
+  const lastInput = session.last_input?.replace(/\n/g, " ").trim()
+  if (!lastInput) return null
+
+  return {
+    timestamp: formatSessionTime(session.last_input_at ?? session.last_activity),
+    text: `in: ${lastInput}`,
+  }
+}
+
+function outputDetailLine(
   session: SessionTreeNode["session"],
   state?: SessionHighlightViewState,
-): { prefix: "in" | "out"; text: string; emphasized: boolean } | null {
-  const lastInput = session.last_input?.replace(/\n/g, " ").trim()
-  if (state?.highlightType === "input" && lastInput) {
-    return { prefix: "in", text: lastInput, emphasized: true }
-  }
-
+): { timestamp: string; text: string; emphasized: boolean } | null {
   if (state?.activityEvent === "tool_use" && state.activityText) {
-    return { prefix: "out", text: state.activityText, emphasized: true }
+    return {
+      timestamp: formatSessionTime(session.last_activity),
+      text: `out: ${state.activityText}`,
+      emphasized: true,
+    }
   }
 
   if (state?.activityEvent === "tool_done") {
-    return { prefix: "out", text: "...", emphasized: false }
+    return {
+      timestamp: formatSessionTime(session.last_activity),
+      text: "out: ...",
+      emphasized: false,
+    }
   }
 
   if (state?.activityEvent === "user_prompt_submit") {
-    if (lastInput) {
-      return { prefix: "in", text: lastInput, emphasized: true }
+    return {
+      timestamp: formatSessionTime(session.last_activity),
+      text: "out: ...",
+      emphasized: false,
     }
-    return { prefix: "out", text: "...", emphasized: false }
   }
 
   if (state?.activityEvent === "agent_stop" && state.activityText) {
-    return { prefix: "out", text: state.activityText, emphasized: true }
+    return {
+      timestamp: formatSessionTime(
+        state?.lastOutputSummaryAt ?? session.last_output_summary_at ?? session.last_activity,
+      ),
+      text: `out: ${state.activityText}`,
+      emphasized: true,
+    }
   }
 
   const summary = state?.lastOutputSummary?.replace(/\n/g, " ").trim()
   if (summary) {
     return {
-      prefix: "out",
-      text: summary,
+      timestamp: formatSessionTime(
+        state?.lastOutputSummaryAt ?? session.last_output_summary_at ?? session.last_activity,
+      ),
+      text: `out: ${summary}`,
       emphasized: state?.highlightType === "output",
     }
   }
@@ -170,13 +205,18 @@ function SessionDetails({
   session,
   depth,
   isThemed,
+  sessionState,
 }: {
   session: SessionTreeNode
   depth: number
   isThemed: boolean
+  sessionState?: SessionHighlightViewState
 }) {
   const s = session.session
   const palette = getSessionPalette(sessionAgent(s.active_agent), isThemed)
+  const inputLine = inputDetailLine(s)
+  const outputLine = outputDetailLine(s, sessionState)
+  const idLine = `${formatSessionTime(s.last_activity)} ${s.session_id} / ${s.native_session_id ?? "-"}`
   return (
     <div
       className="space-y-0.5 py-1 pl-3 text-[10px]"
@@ -186,11 +226,33 @@ function SessionDetails({
         color: palette.muted,
       }}
     >
-      <div>ID: {s.session_id}</div>
-      <div>Status: {s.status}</div>
-      {s.last_activity && (
-        <div>Last activity: {new Date(s.last_activity).toLocaleString()}</div>
-      )}
+      <div
+        data-testid={`session-detail-id-${s.session_id}`}
+        className="truncate font-mono"
+        title={idLine}
+      >
+        {idLine}
+      </div>
+      {inputLine ? (
+        <div
+          data-testid={`session-detail-input-${s.session_id}`}
+          className="truncate font-mono"
+          style={{ color: sessionState?.highlightType === "input" ? palette.normal : palette.muted }}
+          title={`${inputLine.timestamp} ${inputLine.text}`}
+        >
+          {inputLine.timestamp} {inputLine.text}
+        </div>
+      ) : null}
+      {outputLine ? (
+        <div
+          data-testid={`session-detail-output-${s.session_id}`}
+          className="truncate font-mono"
+          style={{ color: outputLine.emphasized ? palette.normal : palette.muted }}
+          title={`${outputLine.timestamp} ${outputLine.text}`}
+        >
+          {outputLine.timestamp} {outputLine.text}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -231,7 +293,6 @@ function SessionRow({
     color: palette.normal,
     paddingLeft: `${rowOffset(depth)}px`,
   }
-  const activityLine = sessionActivityLine(s, sessionState)
   const isOwnedByCurrentUser = Boolean(
     s.human_email &&
       currentUserEmail &&
@@ -321,36 +382,23 @@ function SessionRow({
           </button>
         )}
       </div>
-      {secondaryLine || activityLine ? (
+      {secondaryLine ? (
         <div
-          className="space-y-0.5"
-          style={{ paddingLeft: `${rowOffset(depth)}px` }}
+          data-testid={`session-identity-${s.session_id}`}
+          className="truncate text-[10px]"
+          style={{ paddingLeft: `${rowOffset(depth)}px`, color: palette.muted }}
         >
-          {secondaryLine ? (
-            <div
-              data-testid={`session-identity-${s.session_id}`}
-              className="truncate text-[10px]"
-              style={{ color: palette.muted }}
-            >
-              {secondaryLine.label}
-              {secondaryLine.value && <>: <span style={{ color: palette.normal }}>{secondaryLine.value}</span></>}
-            </div>
-          ) : null}
-          {activityLine ? (
-            <div
-              data-testid={`session-activity-${s.session_id}`}
-              className="truncate text-[10px]"
-              style={{
-                color: activityLine.emphasized ? palette.normal : palette.muted,
-              }}
-            >
-              {activityLine.prefix}: <span style={{ color: palette.normal }}>{activityLine.text}</span>
-            </div>
-          ) : null}
+          {secondaryLine.label}
+          {secondaryLine.value && <>: <span style={{ color: palette.normal }}>{secondaryLine.value}</span></>}
         </div>
       ) : null}
       {expanded && (
-        <SessionDetails session={node} depth={depth} isThemed={isThemed} />
+        <SessionDetails
+          session={node}
+          depth={depth}
+          isThemed={isThemed}
+          sessionState={sessionState}
+        />
       )}
     </>
   )

@@ -281,22 +281,44 @@ describe("SessionTree", () => {
     const sessionStateMap = new Map<string, SessionHighlightViewState>([
       ["sess-2", { lastOutputSummary: "Build complete", highlightType: "output" }],
     ])
+    const expandedSet = makeExpandedSet(makeTree())
+    expandedSet.add("session:sess-2")
 
     render(
       <SessionTree
         tree={makeTree()}
         sessionStateMap={sessionStateMap}
-        expandedSet={makeExpandedSet(makeTree())}
+        expandedSet={expandedSet}
         onToggle={vi.fn()}
       />,
     )
 
-    expect(screen.getByTestId("session-activity-sess-2").textContent).toContain("out: Build complete")
+    expect(screen.getByTestId("session-detail-output-sess-2").textContent).toContain("out: Build complete")
   })
 
   it("renders input activity from the session last input when highlighted", () => {
     const sessionStateMap = new Map<string, SessionHighlightViewState>([
       ["sess-1", { highlightType: "input", activityEvent: "user_prompt_submit" }],
+    ])
+    const expandedSet = makeExpandedSet(makeTree())
+    expandedSet.add("session:sess-1")
+
+    render(
+      <SessionTree
+        tree={makeTree()}
+        sessionStateMap={sessionStateMap}
+        expandedSet={expandedSet}
+        onToggle={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId("session-detail-input-sess-1").textContent).toContain("in: Run the planner")
+    expect(screen.getByTestId("session-detail-output-sess-1").textContent).toContain("out: ...")
+  })
+
+  it("does not render output detail lines on collapsed session rows", () => {
+    const sessionStateMap = new Map<string, SessionHighlightViewState>([
+      ["sess-2", { lastOutputSummary: "Build complete", highlightType: "output" }],
     ])
 
     render(
@@ -308,7 +330,7 @@ describe("SessionTree", () => {
       />,
     )
 
-    expect(screen.getByTestId("session-activity-sess-1").textContent).toContain("in: Run the planner")
+    expect(screen.queryByTestId("session-detail-output-sess-2")).toBeNull()
   })
 
   it("applies agent-specific cursor highlight colors when themed", () => {
