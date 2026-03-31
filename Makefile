@@ -1,4 +1,4 @@
-.PHONY: help install init link certs format lint lint-cycles lint-topimports check-test-mapping test-unit test-e2e test-all test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
+.PHONY: help install init link certs format lint lint-cycles lint-topimports check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
 
 # Default target
 help:
@@ -16,7 +16,7 @@ help:
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make format       Format code with ruff"
-	@echo "  make lint                 Run linting checks (ruff, pyright)"
+	@echo "  make lint                 Run repo-wide linting checks"
 	@echo "  make lint-cycles          Run pylint cyclic-import check only"
 	@echo "  make lint-topimports      Run pylint import-outside-toplevel check only"
 	@echo "  make check-test-mapping   Check 1:1 source-to-test mapping (expected to fail during overhaul)"
@@ -24,8 +24,7 @@ help:
 	@echo "Testing:"
 	@echo "  make test-unit        Run unit tests only"
 	@echo "  make test-e2e         Run integration/e2e tests only"
-	@echo "  make test-all         Run all tests"
-	@echo "  make test             Alias for test-all"
+	@echo "  make test             Run repo-wide tests"
 	@echo "  make coverage         Run tests with coverage report"
 	@echo "  make coverage-html    Generate HTML coverage report"
 	@echo "  make coverage-report  Open HTML coverage report in browser"
@@ -104,12 +103,10 @@ test-agents:
 	@. .venv/bin/activate && pytest tests/integration/test_agent_invocation_matrix.py -v -m expensive -o "addopts="
 	@echo "✓ Agent matrix tests passed"
 
-test-all:
-	@echo "Running all tests..."
+test:
+	@echo "Running repo-wide tests..."
 	@./tools/test.sh
 	@echo "✓ All tests passed"
-
-test: test-all
 
 coverage:
 	@echo "Running tests with coverage..."

@@ -2,7 +2,7 @@
 # Component-scoped lint hook for pre-commit.
 # Usage: ./tools/lint/precommit-hook.sh <component> [files...]
 #
-# Components: guardrails, ruff-check, pyright, mypy, pylint, markdown
+# Components: guardrails, ruff-check, pyright, mypy, pylint, markdown, docs-validate
 set -e
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -48,6 +48,9 @@ case "$component" in
         ;;
     markdown)
         $RUN "${REPO_ROOT}/tools/lint/markdown.py"
+        ;;
+    docs-validate)
+        $RUN "${REPO_ROOT}/tools/lint/docs_validate.py" "$@"
         ;;
     mypy)
         # Pre-commit must validate the staged snapshot only.

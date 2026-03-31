@@ -1,22 +1,44 @@
 #!/usr/bin/env python3
+"""Project lint guardrails for repo-wide and staged-file validation."""
 
 from __future__ import annotations
 
+import argparse
 import ast
+import fnmatch
 import json
 import re
 import tomllib
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
 
 def _fail(message: str) -> None:
+    """Abort guardrails execution with a formatted failure message."""
     raise SystemExit(f"guardrails: {message}")
 
 
-def main() -> None:
+_REPO_INVARIANT_INPUTS = frozenset(
+    {
+        ".pre-commit-config.yaml",
+        "Makefile",
+        "pyproject.toml",
+        "pyrightconfig.json",
+        "tools/lint.sh",
+    }
+)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """Run repo-wide or selected-file guardrails."""
+    parser = argparse.ArgumentParser(description="Run TeleClaude lint guardrails.")
+    parser.add_argument("paths", nargs="*", help="Optional repo-relative files to scope the checks to.")
+    args = parser.parse_args(list(argv) if argv is not None else None)
+
     # tools/lint/guardrails.py -> go up 2 levels to repo root
     repo_root = Path(__file__).resolve().parents[2]
+    selected_paths = _normalize_selected_paths(repo_root, args.paths)
 
     pyproject_path = repo_root / "pyproject.toml"
     if not pyproject_path.exists():
@@ -29,28 +51,79 @@ def main() -> None:
     pyright = json.loads(pyright_path.read_text(encoding="utf-8"))
     pyproject = pyproject_path.read_text(encoding="utf-8")
 
-    # Existing checks
-    if pyright.get("typeCheckingMode") != "strict":
-        _fail("pyright typeCheckingMode must be strict")
-    if "[tool.ruff]" not in pyproject:
-        _fail("pyproject.toml must define [tool.ruff]")
+    if _should_run_repo_invariants(selected_paths):
+        # Repo-wide invariants should only fire on repo-wide lint runs or when one of
+        # their owning files is actually part of the staged selection.
+        if pyright.get("typeCheckingMode") != "strict":
+            _fail("pyright typeCheckingMode must be strict")
+        if "[tool.ruff]" not in pyproject:
+            _fail("pyproject.toml must define [tool.ruff]")
 
-    # Config invariant enforcement (prevents silent erosion by agents)
-    _check_pyright_invariants(pyright)
-    _check_ruff_invariants(pyproject)
-    _check_mypy_invariants(pyproject)
-    _check_lint_pipeline_integrity(repo_root)
-    _check_module_sizes(repo_root)
+        # Config invariant enforcement (prevents silent erosion by agents)
+        _check_pyright_invariants(pyright)
+        _check_ruff_invariants(pyproject)
+        _check_mypy_invariants(pyproject)
+        _check_lint_pipeline_integrity(repo_root)
 
     # Test structure enforcement
-    _check_test_companions(repo_root)
+    _check_module_sizes(repo_root, selected_paths)
+    _check_test_companions(repo_root, selected_paths)
 
     # Source pattern guardrails (table-driven)
-    _check_source_patterns(repo_root)
+    _check_source_patterns(repo_root, selected_paths)
 
     # Existing guardrails
-    _remove_empty_claude_md(repo_root)
-    _warn_for_loose_dicts(repo_root)
+    _remove_empty_claude_md(repo_root, selected_paths)
+    _warn_for_loose_dicts(repo_root, selected_paths)
+
+
+def _normalize_selected_paths(repo_root: Path, raw_paths: Sequence[str]) -> set[str] | None:
+    """Normalize raw path arguments to repo-relative POSIX paths."""
+    if not raw_paths:
+        return None
+
+    normalized: set[str] = set()
+    for raw in raw_paths:
+        candidate = Path(raw)
+        try:
+            resolved = (
+                candidate.resolve(strict=False)
+                if candidate.is_absolute()
+                else (repo_root / candidate).resolve(strict=False)
+            )
+            rel = resolved.relative_to(repo_root).as_posix()
+        except ValueError:
+            continue
+        normalized.add(rel)
+    return normalized
+
+
+def _should_run_repo_invariants(selected_paths: set[str] | None) -> bool:
+    """Return True when repo-wide invariants should run for the current selection."""
+    if selected_paths is None:
+        return True
+    return any(path in _REPO_INVARIANT_INPUTS for path in selected_paths)
+
+
+def _iter_selected_files(
+    repo_root: Path,
+    selected_paths: set[str] | None,
+    *,
+    prefixes: tuple[str, ...] = (),
+    suffixes: tuple[str, ...] = (),
+) -> Iterable[Path]:
+    """Yield selected files that match the provided repo-relative constraints."""
+    if selected_paths is None:
+        return
+
+    for rel in sorted(selected_paths):
+        if prefixes and not rel.startswith(prefixes):
+            continue
+        if suffixes and not rel.endswith(suffixes):
+            continue
+        candidate = repo_root / rel
+        if candidate.is_file():
+            yield candidate
 
 
 # ---------------------------------------------------------------------------
@@ -215,28 +288,27 @@ def _check_lint_pipeline_integrity(repo_root: Path) -> None:
                 _fail(f"Makefile: required target '{target}' is missing")
 
 
-def _check_module_sizes(repo_root: Path) -> None:
+def _check_module_sizes(repo_root: Path, selected_paths: set[str] | None = None) -> None:
     """Enforce max lines per Python module."""
-    scan_roots = [
-        repo_root / "teleclaude",
-    ]
     violations: list[str] = []
+    candidates: Iterable[Path]
+    if selected_paths is None:
+        candidates = (path for path in (repo_root / "teleclaude").rglob("*.py"))
+    else:
+        candidates = _iter_selected_files(repo_root, selected_paths, prefixes=("teleclaude/",), suffixes=(".py",))
 
-    for root in scan_roots:
-        if not root.exists():
+    for path in candidates:
+        rel = path.relative_to(repo_root).as_posix()
+        if rel.startswith(("teleclaude/cli/tui/", "teleclaude/entrypoints/")):
+            # TUI views and entrypoints have different complexity profiles
             continue
-        for path in root.rglob("*.py"):
-            rel = path.relative_to(repo_root).as_posix()
-            if rel.startswith(("teleclaude/cli/tui/", "teleclaude/entrypoints/")):
-                # TUI views and entrypoints have different complexity profiles
-                continue
-            try:
-                line_count = len(path.read_text(encoding="utf-8").splitlines())
-            except OSError:
-                continue
+        try:
+            line_count = len(path.read_text(encoding="utf-8").splitlines())
+        except OSError:
+            continue
 
-            if line_count > MODULE_MAX_LINES:
-                violations.append(f"{rel}: {line_count} lines (max: {MODULE_MAX_LINES})")
+        if line_count > MODULE_MAX_LINES:
+            violations.append(f"{rel}: {line_count} lines (max: {MODULE_MAX_LINES})")
 
     if violations:
         formatted = "\n".join(f"- {v}" for v in violations)
@@ -252,7 +324,7 @@ def _check_module_sizes(repo_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _check_test_companions(repo_root: Path) -> None:
+def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = None) -> None:
     """Enforce that every test file has a corresponding source module.
 
     Convention: tests/unit/foo/test_bar.py must have teleclaude/foo/bar.py.
@@ -268,7 +340,16 @@ def _check_test_companions(repo_root: Path) -> None:
     orphan_exclusions = _load_orphan_exclusions(repo_root)
 
     orphans: list[tuple[str, str]] = []
-    for test_path in sorted(tests_root.rglob("test_*.py")):
+    if selected_paths is None:
+        candidates = sorted(tests_root.rglob("test_*.py"))
+    else:
+        candidates = [
+            path
+            for path in _iter_selected_files(repo_root, selected_paths, prefixes=("tests/unit/",), suffixes=(".py",))
+            if path.name.startswith("test_")
+        ]
+
+    for test_path in candidates:
         rel_test = test_path.relative_to(repo_root).as_posix()
         if rel_test in orphan_exclusions:
             continue
@@ -342,7 +423,7 @@ def _load_orphan_exclusions(repo_root: Path) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def _remove_empty_claude_md(repo_root: Path) -> None:
+def _remove_empty_claude_md(repo_root: Path, selected_paths: set[str] | None = None) -> None:
     """Find and remove empty CLAUDE.md files from the filesystem.
 
     CLAUDE.md is gitignored, so these are always untracked files created by
@@ -354,7 +435,12 @@ def _remove_empty_claude_md(repo_root: Path) -> None:
     (e.g. @./AGENTS.md references) are left alone.
     """
     empty: list[str] = []
-    for path in sorted(repo_root.rglob("CLAUDE.md")):
+    if selected_paths is None:
+        candidates = sorted(repo_root.rglob("CLAUDE.md"))
+    else:
+        candidates = [path for path in _iter_selected_files(repo_root, selected_paths) if path.name == "CLAUDE.md"]
+
+    for path in candidates:
         rel = path.relative_to(repo_root).as_posix()
         if rel.startswith("trees/"):
             continue
@@ -378,6 +464,8 @@ def _remove_empty_claude_md(repo_root: Path) -> None:
 
 
 class PatternRule(NamedTuple):
+    """Declarative source-hygiene rule scanned by guardrails."""
+
     name: str
     pattern: re.Pattern[str]
     scan_dirs: list[str]
@@ -439,39 +527,67 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
 ]
 
 
-def _check_source_patterns(repo_root: Path) -> None:
+def _check_source_patterns(repo_root: Path, selected_paths: set[str] | None = None) -> None:
     """Table-driven pattern scanner for source hygiene rules."""
     for rule in SOURCE_PATTERN_RULES:
         matches: list[str] = []
-        for dirname in rule.scan_dirs:
-            root = repo_root / dirname
-            if not root.exists():
+        for path in _iter_rule_candidate_paths(repo_root, rule, selected_paths):
+            rel = path.relative_to(repo_root).as_posix()
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeDecodeError):
                 continue
-            globs = rule.glob if isinstance(rule.glob, list) else [rule.glob]
-            for g in globs:
-                for path in root.rglob(g):
-                    if not path.is_file():
-                        continue
-                    rel = path.relative_to(repo_root).as_posix()
-                    if any(rel.startswith(p) for p in rule.exclude_prefixes):
-                        continue
-                    try:
-                        lines = path.read_text(encoding="utf-8").splitlines()
-                    except (OSError, UnicodeDecodeError):
-                        continue
-                    for lineno, line in enumerate(lines, start=1):
-                        if rule.exception_marker and rule.exception_marker in line:
-                            continue
-                        if rule.exception_marker and lineno > 1 and rule.exception_marker in lines[lineno - 2]:
-                            continue
-                        if rule.pattern.search(line):
-                            matches.append(f"{rel}:{lineno}: {line.strip()}")
+            for lineno, line in enumerate(lines, start=1):
+                if rule.exception_marker and rule.exception_marker in line:
+                    continue
+                if rule.exception_marker and lineno > 1 and rule.exception_marker in lines[lineno - 2]:
+                    continue
+                if rule.pattern.search(line):
+                    matches.append(f"{rel}:{lineno}: {line.strip()}")
         if matches:
             formatted = "\n".join(f"- {m}" for m in matches)
             _fail(f"{rule.name}: {rule.message}\n{formatted}\n")
 
 
-def _warn_for_loose_dicts(repo_root: Path) -> None:
+def _iter_rule_candidate_paths(
+    repo_root: Path,
+    rule: PatternRule,
+    selected_paths: set[str] | None,
+) -> Iterable[Path]:
+    """Yield files that should be scanned for a given pattern rule."""
+    globs = rule.glob if isinstance(rule.glob, list) else [rule.glob]
+
+    if selected_paths is None:
+        for dirname in rule.scan_dirs:
+            root = repo_root / dirname
+            if not root.exists():
+                continue
+            for glob in globs:
+                for path in root.rglob(glob):
+                    if not path.is_file():
+                        continue
+                    rel = path.relative_to(repo_root).as_posix()
+                    if any(rel.startswith(prefix) for prefix in rule.exclude_prefixes):
+                        continue
+                    yield path
+        return
+
+    for rel in sorted(selected_paths):
+        if not any(rel == dirname or rel.startswith(f"{dirname}/") for dirname in rule.scan_dirs):
+            continue
+        if any(rel.startswith(prefix) for prefix in rule.exclude_prefixes):
+            continue
+        path = repo_root / rel
+        if not path.is_file():
+            continue
+        if not any(fnmatch.fnmatch(path.name, glob) for glob in globs):
+            continue
+        yield path
+
+
+def _warn_for_loose_dicts(  # pylint: disable=too-many-branches,too-many-locals
+    repo_root: Path, selected_paths: set[str] | None = None
+) -> None:
     """Check for loose dict typings without proper justification.
 
     Allows exceptions when documented with:
@@ -516,27 +632,35 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
         repo_root / "teleclaude" / "types" / "commands.py",
     }
 
-    for root in scan_roots:
-        if not root.exists():
+    candidate_paths: Iterable[Path]
+    if selected_paths is None:
+        candidate_paths = (path for root in scan_roots if root.exists() for path in root.rglob("*.py"))
+    else:
+        candidate_paths = _iter_selected_files(
+            repo_root,
+            selected_paths,
+            prefixes=("teleclaude/", "tests/", "scripts/", "tools/", "bin/"),
+            suffixes=(".py",),
+        )
+
+    for path in candidate_paths:
+        if path in excluded_files:
             continue
-        for path in root.rglob("*.py"):
-            if path in excluded_files:
-                continue
-            try:
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except OSError:
-                continue
-            guarded_ranges = _collect_function_guard_ranges(lines)
-            for lineno, line in enumerate(lines, start=1):
-                if legacy_noqa_marker in line:
-                    legacy_marker_matches.append(f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}")
-                if any(pattern in line for pattern in patterns):
-                    # Skip if line or previous line has documented exception.
-                    if _line_has_exception_marker(lines, lineno, exception_markers):
-                        continue
-                    if _line_in_ranges(lineno, guarded_ranges):
-                        continue
-                    matches.append(f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}")
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        guarded_ranges = _collect_function_guard_ranges(lines)
+        for lineno, line in enumerate(lines, start=1):
+            if legacy_noqa_marker in line:
+                legacy_marker_matches.append(f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}")
+            if any(pattern in line for pattern in patterns):
+                # Skip if line or previous line has documented exception.
+                if _line_has_exception_marker(lines, lineno, exception_markers):
+                    continue
+                if _line_in_ranges(lineno, guarded_ranges):
+                    continue
+                matches.append(f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}")
 
     if legacy_marker_matches:
         formatted = "\n".join(f"- {match}" for match in legacy_marker_matches)
@@ -550,7 +674,7 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
     if not matches:
         return
 
-    max_allowed = 0  # TODO: Reduce to 0 as we type everything (see todos/reduce-loose-dict-typings/)
+    max_allowed = 0  # Guardrail budget must stay at zero until all loose dicts are typed.
     if len(matches) > max_allowed:
         formatted = "\n".join(f"- {match}" for match in matches)
         _fail(

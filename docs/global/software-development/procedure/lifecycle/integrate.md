@@ -29,6 +29,12 @@ each decision point until the queue is drained.
 2. Read the returned instruction block and execute it verbatim.
 3. After executing, call `telec todo integrate` again to advance.
 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
+5. Before any push from `trees/_integration`, run repo-wide verification in that
+   worktree:
+   - `make -C trees/_integration lint`
+   - `make -C trees/_integration test`
+     If either command fails, fix the failures in `trees/_integration`, rerun both,
+     then resume the state machine.
 
 The state machine returns one of the following instruction blocks at each step.
 
@@ -44,6 +50,8 @@ staged changes are ready.
    - Body: summarize what changed, key decisions, scope
    - Footer: `Co-Authored-By: TeleClaude <noreply@instrukt.ai>`
 3. Run `git -C trees/_integration commit -m '<message>'`, then call `telec todo integrate`.
+4. When the state machine reaches push, repo-wide `make -C trees/_integration lint`
+   and `make -C trees/_integration test` must already be green.
 
 ### CONFLICT RESOLUTION REQUIRED
 
@@ -81,6 +89,8 @@ contributions — this is the #1 cause of silent regression in multi-agent workf
 8. Run `git -C trees/_integration commit -m '<message>'`, then call `telec todo integrate`.
 9. If conflicts are genuinely unresolvable, call `telec todo integrate` without
    committing — the state machine will detect this and re-prompt.
+10. Before any push from `trees/_integration`, repo-wide `make -C trees/_integration lint`
+    and `make -C trees/_integration test` must pass.
 
 ### PUSH REJECTION RECOVERY
 
@@ -137,11 +147,6 @@ from the last persisted phase. No manual checkpoint editing is required.
 - **Push repeatedly rejected:** Fetch, rebase, resolve, push in `trees/_integration/`,
   then call `telec todo integrate`. If the problem persists, check for concurrent integrators.
 
-## Required tools
-
-- `telec todo artifacts list <slug>`
-- `telec todo show <slug>`
-
 ### Automatic crash recovery
 
 | Crash point                       | What happens on re-entry                                             |
@@ -152,3 +157,8 @@ from the last persisted phase. No manual checkpoint editing is required.
 | After push rejection              | Re-checks if integration worktree HEAD matches remote main.          |
 | During cleanup                    | Re-runs cleanup (idempotent). Missing worktrees/branches are no-ops. |
 | After candidate delivered         | Marks integrated, resets to IDLE, loops for next candidate.          |
+
+Useful commands during recovery:
+
+- `telec todo artifacts list <slug>`
+- `telec todo show <slug>`

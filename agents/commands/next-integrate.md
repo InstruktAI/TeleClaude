@@ -48,6 +48,11 @@ confirming the candidate branch is clean, tests pass, and the worktree state mat
 expectations before merging to canonical main. Follow the lease protocol exactly.
 A failed merge that reaches main is harder to fix than a blocked integration queue.
 
+Before pushing canonical main, run repo-wide verification in the integration worktree:
+`make -C trees/_integration lint` and `make -C trees/_integration test`.
+If either fails, do not push. Stay in the integrator session, fix the failures in
+`trees/_integration`, rerun both commands, and only continue once both pass.
+
 After pushing to origin/main, the machine syncs local main via git pull and
 automatically pushes any accumulated repo root bookkeeping commits to origin/main.
 If the pull is blocked by dirty local files, you receive a REPO ROOT SYNC BLOCKED

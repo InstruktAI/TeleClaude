@@ -17,8 +17,7 @@ repos:
     name: Config guardrails
     entry: ./tools/lint/precommit-hook.sh guardrails
     language: system
-    pass_filenames: false
-    always_run: true
+    pass_filenames: true
   - id: ruff-check
     name: Ruff check
     entry: ./tools/lint/precommit-hook.sh ruff-check
@@ -49,11 +48,9 @@ repos:
     pass_filenames: false
   - id: teleclaude-docs-validate
     name: Validate docs and artifacts
-    entry: bash -c
-    args:
-    - 'uv run --quiet --no-dev --no-sync -m teleclaude.cli.telec sync --warn-only --validate-only --project-root "$PWD"'
+    entry: ./tools/lint/precommit-hook.sh docs-validate
     language: system
-    pass_filenames: false
+    pass_filenames: true
     files: ^(docs/|agents/|\.agents/|scripts/snippet_schema\.yaml|teleclaude/constants\.py)
   - id: check-cli-help
     name: Verify CLI -h exits cleanly

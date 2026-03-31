@@ -87,7 +87,7 @@ resolved_findings: [] # R1-F1, R1-F2, ...
 ## Invariants
 
 - **Routing from state**: all routing decisions derive from `build` and `review` fields in `todo state (todos.db)`. No internal state.
-- **Build gates before review**: `make test` and `telec todo demo validate <slug>` must pass before dispatching a reviewer.
+- **Build gates before review**: diff-scoped tests and `telec todo demo validate <slug>` must pass before dispatching a reviewer.
 - **Artifact verification**: mechanical checks at phase boundaries (tasks checked, commits exist, findings substantive).
 - **Stale approval guard**: if new commits exist between `review_baseline_commit` and current HEAD, the machine resets `review=pending` to force a fresh review.
 - **Review round limit**: after `max_review_rounds` (default 3) iterations, the machine returns `REVIEW_ROUND_LIMIT` for orchestrator decision instead of looping.
@@ -201,7 +201,7 @@ sequenceDiagram
     Note over O,B: Build Phase
     O->>B: telec sessions run --command /next-build --args slug
     B->>B: Satisfy test specs, implement tasks, commit per task
-    B->>B: Check all tasks [x], make test, make lint
+    B->>B: Check all tasks [x], run scoped build gates, repo-wide lint/test when explicitly requested
     B-->>O: BUILD COMPLETE: slug
     O->>O: telec todo mark-phase slug --build complete
     O->>O: telec sessions end builder-session

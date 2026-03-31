@@ -4,6 +4,7 @@
 Covers the _check_source_patterns function and SOURCE_PATTERN_RULES,
 with focus on the invalid-noqa rule (net-new behavior).
 """
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -29,12 +30,14 @@ _spec.loader.exec_module(_mod)
 
 _SOURCE_PATTERN_RULES: list[Any] = _mod.SOURCE_PATTERN_RULES
 _check_source_patterns = _mod._check_source_patterns
+_warn_for_loose_dicts = _mod._warn_for_loose_dicts
 
 # Build test fixture strings via concatenation so the guardrails scanner
 # does not match them in THIS file (tests/ is in the scan scope).
 _NOQA_RAW_SQL = "# noqa" + ": raw-sql"
 _NOQA_LOOSE_DICT = "# noqa" + ": loose-dict"
 _NOQA_CUSTOM = "# noqa" + ": custom-rule"
+_LOOSE_DICT_ANNOTATION = "dict[str, " + "object]"
 
 
 # ---------------------------------------------------------------------------
@@ -49,12 +52,26 @@ def _write_file(base: Path, rel_path: str, content: str) -> None:
     full.write_text(content, encoding="utf-8")
 
 
-def _run_scanner(tmp_path: Path, rules: list[Any] | None = None) -> str | None:
+def _run_scanner(
+    tmp_path: Path,
+    rules: list[Any] | None = None,
+    *,
+    selected_paths: set[str] | None = None,
+) -> str | None:
     """Run _check_source_patterns and return the error message, or None if clean."""
     _ = rules  # reserved for future per-rule testing
 
     try:
-        _check_source_patterns(tmp_path)
+        _check_source_patterns(tmp_path, selected_paths)
+        return None
+    except SystemExit as e:
+        return str(e)
+
+
+def _run_loose_dict_check(tmp_path: Path, *, selected_paths: set[str] | None = None) -> str | None:
+    """Run _warn_for_loose_dicts and return the error message, or None if clean."""
+    try:
+        _warn_for_loose_dicts(tmp_path, selected_paths)
         return None
     except SystemExit as e:
         return str(e)
@@ -117,6 +134,14 @@ class TestInvalidNoqaRule:
         """A guard: raw-sql marker is NOT flagged by invalid-noqa."""
         _write_file(tmp_path, "teleclaude/db.py", 'await conn.execute("PRAGMA")  # guard: raw-sql\n')
         result = _run_scanner(tmp_path)
+        assert result is None
+
+    @pytest.mark.unit
+    def test_scoped_run_ignores_unselected_match(self, tmp_path: Path) -> None:
+        """Scoped scans must not fail on files outside the passed selection."""
+        _write_file(tmp_path, "teleclaude/selected.py", "x = 1\n")
+        _write_file(tmp_path, "teleclaude/unselected.py", f"x = 1  {_NOQA_RAW_SQL}\n")
+        result = _run_scanner(tmp_path, selected_paths={"teleclaude/selected.py"})
         assert result is None
 
 
@@ -212,16 +237,19 @@ class TestPatternRuleIntegrity:
 
     @pytest.mark.unit
     def test_all_rules_have_non_empty_scan_dirs(self) -> None:
+        """Each rule must declare at least one scan directory."""
         for rule in _SOURCE_PATTERN_RULES:
             assert len(rule.scan_dirs) > 0, f"Rule {rule.name} has empty scan_dirs"
 
     @pytest.mark.unit
     def test_all_rules_have_non_empty_glob(self) -> None:
+        """Each rule must declare a non-empty glob filter."""
         for rule in _SOURCE_PATTERN_RULES:
             assert rule.glob, f"Rule {rule.name} has empty glob"
 
     @pytest.mark.unit
     def test_all_patterns_compile(self) -> None:
+        """Rule patterns should be compiled regular expressions."""
         for rule in _SOURCE_PATTERN_RULES:
             assert isinstance(rule.pattern, re.Pattern), f"Rule {rule.name} pattern is not compiled"
 
@@ -230,3 +258,23 @@ class TestPatternRuleIntegrity:
         """A rule with a nonexistent scan dir does not crash."""
         result = _run_scanner(tmp_path)
         assert result is None
+
+
+class TestLooseDictScoping:
+    """Scoped-file behavior for loose-dict guardrails."""
+
+    @pytest.mark.unit
+    def test_scoped_run_ignores_unselected_loose_dict_match(self, tmp_path: Path) -> None:
+        """Scoped loose-dict runs should ignore matches outside the selection."""
+        _write_file(tmp_path, "teleclaude/selected.py", "value = 1\n")
+        _write_file(tmp_path, "teleclaude/unselected.py", f"data: {_LOOSE_DICT_ANNOTATION} = {{}}\n")
+        result = _run_loose_dict_check(tmp_path, selected_paths={"teleclaude/selected.py"})
+        assert result is None
+
+    @pytest.mark.unit
+    def test_scoped_run_reports_selected_loose_dict_match(self, tmp_path: Path) -> None:
+        """Scoped loose-dict runs should still report matches in selected files."""
+        _write_file(tmp_path, "teleclaude/selected.py", f"data: {_LOOSE_DICT_ANNOTATION} = {{}}\n")
+        result = _run_loose_dict_check(tmp_path, selected_paths={"teleclaude/selected.py"})
+        assert result is not None
+        assert "loose dict typings detected" in result

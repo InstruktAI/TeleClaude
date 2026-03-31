@@ -25,7 +25,7 @@ Create a predictable Python project skeleton with standardized tooling and verif
    - `make lint` (lint + type check)
    - `make test-unit` (unit tests)
    - `make test-e2e` (integration tests, if applicable)
-   - `make test` or `make test-all` (full suite)
+   - `make test` (full repo-wide suite)
 
 3. **Wire tool configuration**
    - Configure format/lint/type tools inside `pyproject.toml`.

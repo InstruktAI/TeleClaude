@@ -5,12 +5,17 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+import contextlib
+import io
+import multiprocessing as mp
 import os
 import re
-import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, NamedTuple, TypedDict, cast
 
+import pytest
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli import demo_validation
@@ -24,12 +29,156 @@ from teleclaude.git import GitCommandError, Repo
 logger = get_logger(__name__)
 
 GateCheck = Callable[[Path, list[str]], bool]
+_PYTEST_GATE_TIMEOUT_SECONDS = 300
+_PYTEST_RETRY_TIMEOUT_SECONDS = 120
+
+
+class _PytestRunResult(NamedTuple):
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class _PytestResultPayload(TypedDict):
+    returncode: int
+    stdout: str
+    stderr: str
 
 
 def _count_test_failures(output: str) -> int:
     """Parse pytest summary line for failure count. Returns 0 if not found."""
     match = re.search(r"(\d+) failed", output)
     return int(match.group(1)) if match else 0
+
+
+def _mirror_test_path(source_path: str) -> str | None:
+    """Map a changed source file to its expected unit-test companion."""
+    prefix_map = {
+        "teleclaude/": "tests/unit/",
+        "tools/": "tests/unit/tools/",
+        "scripts/": "tests/unit/scripts/",
+        "bin/": "tests/unit/bin/",
+    }
+    for source_prefix, test_prefix in prefix_map.items():
+        if not source_path.startswith(source_prefix):
+            continue
+        if not source_path.endswith((".py", ".pyi")):
+            return None
+        without_prefix = source_path.removeprefix(source_prefix)
+        parent, filename = without_prefix.rsplit("/", 1) if "/" in without_prefix else ("", without_prefix)
+        stem = Path(filename).stem
+        test_filename = f"test_{stem}.py"
+        if parent:
+            return f"{test_prefix}{parent}/{test_filename}"
+        return f"{test_prefix}{test_filename}"
+    return None
+
+
+def _collect_scoped_test_targets(worktree_cwd: str) -> list[str]:
+    """Return diff-scoped test files for the current worktree."""
+    repo = Repo(worktree_cwd)
+    merge_base = repo.git.merge_base("HEAD", "main").strip()
+    changed_files = [
+        line.strip() for line in repo.git.diff("--name-only", f"{merge_base}..HEAD").splitlines() if line.strip()
+    ]
+
+    targets: set[str] = set()
+    worktree_root = Path(worktree_cwd)
+    for rel_path in changed_files:
+        candidate = worktree_root / rel_path
+        if (
+            rel_path.startswith("tests/")
+            and candidate.is_file()
+            and candidate.name.startswith("test_")
+            and candidate.suffix == ".py"
+        ):
+            targets.add(rel_path)
+            continue
+
+        companion = _mirror_test_path(rel_path)
+        if companion is None:
+            continue
+        if (worktree_root / companion).is_file():
+            targets.add(companion)
+
+    return sorted(targets)
+
+
+def _pytest_worker(worktree_cwd: str, pytest_args: list[str], result_queue: Any) -> None:
+    """Run pytest in a fresh Python process against the worktree checkout."""
+    worktree_root = Path(worktree_cwd).resolve()
+    canonical_root = Path(__file__).resolve().parents[3]
+
+    for name in list(sys.modules):
+        if name == "teleclaude" or name.startswith("teleclaude.") or name == "tests" or name.startswith("tests."):
+            sys.modules.pop(name, None)
+
+    sys.path = [
+        str(worktree_root),
+        *[
+            entry
+            for entry in sys.path
+            if entry and Path(entry).resolve() != canonical_root and Path(entry).resolve() != worktree_root
+        ],
+    ]
+    os.chdir(worktree_root)
+    os.environ["TELECLAUDE_CONFIG_PATH"] = os.environ.get("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+    os.environ["TELECLAUDE_ENV_PATH"] = os.environ.get("TELECLAUDE_ENV_PATH", "tests/integration/.env")
+
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+            exit_code = int(pytest.main(pytest_args))
+        result_queue.put(
+            {
+                "returncode": exit_code,
+                "stdout": stdout_buffer.getvalue(),
+                "stderr": stderr_buffer.getvalue(),
+            }
+        )
+    except BaseException as exc:  # pylint: disable=broad-exception-caught
+        result_queue.put(
+            {
+                "returncode": 1,
+                "stdout": stdout_buffer.getvalue(),
+                "stderr": f"{stderr_buffer.getvalue()}\npytest worker error: {type(exc).__name__}: {exc}",
+            }
+        )
+
+
+def _run_pytest_in_child_process(
+    worktree_cwd: str, pytest_args: list[str], *, timeout_seconds: int
+) -> _PytestRunResult:
+    """Execute pytest in an isolated Python child process and capture its output."""
+    ctx = mp.get_context("spawn")
+    result_queue = ctx.Queue()
+    process = ctx.Process(target=_pytest_worker, args=(worktree_cwd, pytest_args, result_queue))
+    process.start()
+    process.join(timeout_seconds)
+
+    if process.is_alive():
+        process.terminate()
+        process.join()
+        return _PytestRunResult(
+            returncode=124,
+            stdout="",
+            stderr=f"timed out after {timeout_seconds}s",
+        )
+
+    if not result_queue.empty():
+        payload = cast(_PytestResultPayload, result_queue.get())
+        return _PytestRunResult(
+            returncode=payload["returncode"],
+            stdout=payload["stdout"],
+            stderr=payload["stderr"],
+        )
+
+    return _PytestRunResult(
+        returncode=process.exitcode or 1,
+        stdout="",
+        stderr="pytest worker exited without reporting a result",
+    )
 
 
 def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint: disable=too-many-branches,too-many-locals
@@ -42,65 +191,44 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint
 
     # Gate 1: Test suite
     try:
-        test_result = subprocess.run(  # pylint: disable=subprocess-run-check
-            ["make", "test"],
-            cwd=worktree_cwd,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if test_result.returncode != 0:
+        test_targets = _collect_scoped_test_targets(worktree_cwd)
+        if not test_targets:
+            results.append("GATE SKIPPED: scoped tests (no changed or mapped test files)")
+            test_result = None
+        else:
+            test_result = _run_pytest_in_child_process(
+                worktree_cwd,
+                [*test_targets, "-m", "not expensive", "-q"],
+                timeout_seconds=_PYTEST_GATE_TIMEOUT_SECONDS,
+            )
+        if test_result is not None and test_result.returncode != 0:
             output = test_result.stdout[-2000:] if test_result.stdout else ""
             stderr = test_result.stderr[-500:] if test_result.stderr else ""
             failure_count = _count_test_failures(test_result.stdout)
             if 1 <= failure_count <= 2:
-                # Single retry for low-count flaky test failures
-                venv_pytest = Path(worktree_cwd) / ".venv" / "bin" / "pytest"
-                pytest_cmd = str(venv_pytest) if venv_pytest.exists() else "pytest"
-                # Explicit config paths are required for pytest --lf because the
-                # Makefile's `test` target sets them via its own environment; running
-                # pytest directly bypasses the Makefile, so we mirror those paths here
-                # to keep the retry under the same configuration as the original run.
-                retry_env = {
-                    **os.environ,
-                    "TELECLAUDE_CONFIG_PATH": "tests/integration/config.yml",
-                    "TELECLAUDE_ENV_PATH": "tests/integration/.env",
-                }
-                try:
-                    retry_result = subprocess.run(  # pylint: disable=subprocess-run-check
-                        [pytest_cmd, "--lf", "-q"],
-                        cwd=worktree_cwd,
-                        capture_output=True,
-                        text=True,
-                        timeout=120,
-                        env=retry_env,
-                    )
-                    if retry_result.returncode == 0:
-                        results.append(f"GATE PASSED: make test (retry passed after {failure_count} flaky failure(s))")
-                    else:
-                        all_passed = False
-                        retry_output = retry_result.stdout[-1000:] if retry_result.stdout else ""
-                        results.append(
-                            f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}"
-                            f"\n--- RETRY ALSO FAILED ---\n{retry_output}"
-                        )
-                except (subprocess.TimeoutExpired, OSError) as exc:
+                retry_result = _run_pytest_in_child_process(
+                    worktree_cwd,
+                    ["--lf", "-m", "not expensive", "-q"],
+                    timeout_seconds=_PYTEST_RETRY_TIMEOUT_SECONDS,
+                )
+                if retry_result.returncode == 0:
+                    results.append(f"GATE PASSED: scoped tests (retry passed after {failure_count} flaky failure(s))")
+                else:
                     all_passed = False
+                    retry_output = retry_result.stdout[-1000:] if retry_result.stdout else ""
+                    retry_stderr = retry_result.stderr[-500:] if retry_result.stderr else ""
                     results.append(
-                        f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}"
-                        f"\n--- RETRY ERROR: {exc} ---"
+                        f"GATE FAILED: scoped tests (exit {test_result.returncode})\n{output}\n{stderr}"
+                        f"\n--- RETRY ALSO FAILED ---\n{retry_output}\n{retry_stderr}"
                     )
             else:
                 all_passed = False
-                results.append(f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}")
-        else:
-            results.append("GATE PASSED: make test")
-    except subprocess.TimeoutExpired:
+                results.append(f"GATE FAILED: scoped tests (exit {test_result.returncode})\n{output}\n{stderr}")
+        elif test_result is not None:
+            results.append("GATE PASSED: scoped tests")
+    except (GitCommandError, OSError) as exc:
         all_passed = False
-        results.append("GATE FAILED: make test (timed out after 300s)")
-    except OSError as exc:
-        all_passed = False
-        results.append(f"GATE FAILED: make test (error: {exc})")
+        results.append(f"GATE FAILED: scoped tests (error: {exc})")
 
     # Gate 2: Demo structure validation (inline — no subprocess)
     if is_bug_todo(worktree_cwd, slug):
@@ -180,7 +308,7 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool =
     """Mechanically verify artifacts for a given phase.
 
     Checks presence and completeness of artifacts for build or review phase.
-    Does not replace functional gates (make test, demo validate) — complements
+    Does not replace functional gates (scoped tests, demo validate) — complements
     them with artifact presence and consistency checks.
 
     When is_bug=True, checks bug.md instead of implementation-plan.md and
