@@ -477,7 +477,11 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         )
 
         stop_timestamp = datetime.now(UTC).isoformat()
-        await db.update_session(session_id, last_agent_stop_at=stop_timestamp)
+        await db.update_session(
+            session_id,
+            last_activity=stop_timestamp,
+            last_agent_stop_at=stop_timestamp,
+        )
 
         await self._record_agent_stop_input(session_id, payload, session)
         link_output, summary = await self._record_agent_stop_output(session_id, payload)

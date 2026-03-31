@@ -1,4 +1,6 @@
 """Characterization tests for teleclaude.core.agent_coordinator._coordinator."""
+# pylint: disable=missing-function-docstring,missing-class-docstring,protected-access
+# pylint: disable=too-few-public-methods,line-too-long,use-implicit-booleaness-not-comparison,unused-argument
 
 from __future__ import annotations
 
@@ -550,7 +552,7 @@ class TestHandleAgentStop:
         assert "completed" in called_statuses
 
     @pytest.mark.unit
-    async def test_records_last_agent_stop_at(self):
+    async def test_records_last_agent_stop_at_and_last_activity(self):
         coord = _make_coordinator()
         context = MagicMock()
         context.session_id = "sess-001"
@@ -567,7 +569,12 @@ class TestHandleAgentStop:
             await coord.handle_agent_stop(context)
 
         update_calls = mock_db.update_session.call_args_list
-        assert any("last_agent_stop_at" in call.kwargs for call in update_calls)
+        stop_updates = [call.kwargs for call in update_calls if "last_agent_stop_at" in call.kwargs]
+        assert stop_updates
+        assert any(
+            "last_activity" in kwargs and kwargs["last_activity"] == kwargs["last_agent_stop_at"]
+            for kwargs in stop_updates
+        )
 
     @pytest.mark.unit
     async def test_emits_activity_with_summary(self):
