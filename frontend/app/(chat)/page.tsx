@@ -129,8 +129,8 @@ function ChatPageInner() {
     setCursorId,
     moveCursor,
     toggleNode,
-    expandAll,
-    collapseAll,
+    expandScope,
+    collapseScope,
     revealSession,
     getNodeType,
     getSessionId,
@@ -273,10 +273,10 @@ function ChatPageInner() {
           }
           return;
         case "expand_all":
-          expandAll();
+          expandScope(cursorId);
           return;
         case "collapse_all":
-          collapseAll();
+          collapseScope(cursorId);
           return;
         case "activate_session": {
           if (!cursorId) return;
@@ -314,9 +314,9 @@ function ChatPageInner() {
     },
     [
       activeTab,
-      collapseAll,
+      collapseScope,
       cursorId,
-      expandAll,
+      expandScope,
       expandedSet,
       getSessionId,
       handleRestartSelectedSession,

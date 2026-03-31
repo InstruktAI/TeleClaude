@@ -365,7 +365,7 @@ function SessionRow({
     paddingLeft: `${rowOffset(depth)}px`,
   }
 
-  if (sessionState?.highlightType || sessionState?.activityEvent === "tool_use") {
+  if (expanded && (sessionState?.highlightType || sessionState?.activityEvent === "tool_use")) {
     rowStyle.backgroundColor = palette.subtleBg
   }
   if (isActive) {
@@ -517,7 +517,7 @@ export function SessionTree({
         <div
           data-testid={`project-header-${project.path}`}
           data-node-id={nodeId}
-          className={`flex items-start gap-1.5 px-4 py-1 text-xs cursor-pointer hover:bg-accent/50 ${
+          className={`flex items-center gap-1.5 px-4 py-1 text-xs cursor-pointer hover:bg-accent/50 ${
             cursorId === nodeId ? "ring-1 ring-primary" : ""
           }`}
           onClick={() => {
@@ -526,11 +526,14 @@ export function SessionTree({
           }}
         >
           <ExpandChevron expanded={expanded} />
-          <div className="min-w-0 flex-1">
-            <div className="font-medium">{project.name}</div>
-            <div className="break-all text-[11px] leading-4 text-muted-foreground">
+          <div className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
+            <span className="shrink-0 font-medium">{project.name}</span>
+            <span
+              className="truncate text-xs text-muted-foreground"
+              title={project.path}
+            >
               {project.path}
-            </div>
+            </span>
           </div>
           <Badge variant="secondary" className="ml-auto h-4 px-1 text-[9px]">
             {project.sessionCount}

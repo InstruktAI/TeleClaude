@@ -262,7 +262,7 @@ describe("SessionTree", () => {
     expect(agentSvgs.length).toBeGreaterThan(0)
   })
 
-  it("applies activity highlight background when session is active", () => {
+  it("keeps collapsed session rows visually quiet while summary lines carry activity", () => {
     const sessionStateMap = new Map<string, SessionHighlightViewState>([
       ["sess-1", { activityEvent: "tool_use", activityText: "bash: telec todo work" }],
     ])
@@ -275,7 +275,10 @@ describe("SessionTree", () => {
       />,
     )
     const row = screen.getByTestId("session-row-sess-1")
-    expect(row.style.backgroundColor).toContain("var(--tc-agent-")
+    expect(row.style.backgroundColor).toBe("")
+    expect(screen.getByTestId("session-summary-output-sess-1").textContent).toContain(
+      "out: bash: telec todo work",
+    )
   })
 
   it("renders persisted output summaries in the collapsed session summary", () => {

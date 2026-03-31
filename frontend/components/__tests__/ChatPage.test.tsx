@@ -321,6 +321,44 @@ describe("ChatPage", () => {
     })
   })
 
+  it("uses +/- on a selected session to expand and collapse that parent project's sessions", async () => {
+    render(<ChatPage />)
+
+    fireEvent.keyDown(document, { key: "ArrowDown" })
+    fireEvent.keyDown(document, { key: "ArrowDown" })
+    fireEvent.keyDown(document, { key: "ArrowDown" })
+
+    fireEvent.keyDown(document, { key: "=" })
+
+    expect(await screen.findByTestId("session-detail-id-sess-1")).toBeDefined()
+    expect(screen.getByTestId("session-detail-id-sess-2")).toBeDefined()
+
+    fireEvent.keyDown(document, { key: "-" })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("session-detail-id-sess-1")).toBeNull()
+      expect(screen.queryByTestId("session-detail-id-sess-2")).toBeNull()
+    })
+  })
+
+  it("uses +/- on a selected project to expand and collapse project visibility without collapsing computers", async () => {
+    render(<ChatPage />)
+
+    fireEvent.keyDown(document, { key: "ArrowDown" })
+    fireEvent.keyDown(document, { key: "ArrowDown" })
+
+    fireEvent.keyDown(document, { key: "-" })
+
+    await waitFor(() => {
+      expect(screen.getByTestId("computer-header-local")).toBeDefined()
+      expect(screen.queryByText("Session Alpha")).toBeNull()
+    })
+
+    fireEvent.keyDown(document, { key: "=" })
+
+    expect(await screen.findByText("Session Alpha")).toBeDefined()
+  })
+
   it("switches tabs from the keyboard and opens a prefilled new-session dialog from a project node", async () => {
     render(<ChatPage />)
 

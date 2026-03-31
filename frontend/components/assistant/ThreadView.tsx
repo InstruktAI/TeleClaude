@@ -7,6 +7,7 @@ import {
   useThread,
 } from "@assistant-ui/react";
 import { MarkdownContent } from "@/components/parts/MarkdownContent";
+import { PlainTextContent } from "@/components/parts/PlainTextContent";
 import { ThinkingBlock } from "@/components/parts/ThinkingBlock";
 import { ToolCallBlock } from "@/components/parts/ToolCallBlock";
 import { FileLink } from "@/components/parts/FileLink";
@@ -77,7 +78,11 @@ function UserMessage() {
           color: colors.userBubbleText,
         }}
       >
-        <MessagePrimitive.Content />
+        <MessagePrimitive.Content
+          components={{
+            Text: PlainTextContent,
+          }}
+        />
       </div>
     </MessagePrimitive.Root>
   );

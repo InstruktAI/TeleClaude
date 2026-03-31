@@ -192,6 +192,52 @@ describe('useSessionTree', () => {
     expect(result.current.visibleNodeIds).toEqual(['computer:local'])
   })
 
+  it('expandScope on a session expands all sessions in its parent project', () => {
+    const { result } = renderHook(() => useSessionTree(makeTree()))
+
+    act(() => result.current.collapseScope('session:sess-1'))
+
+    expect(result.current.expandedSet.has('session:sess-1')).toBe(false)
+    expect(result.current.expandedSet.has('session:sess-child')).toBe(false)
+    expect(result.current.expandedSet.has('session:sess-2')).toBe(false)
+
+    act(() => result.current.expandScope('session:sess-child'))
+
+    expect(result.current.expandedSet.has('session:sess-1')).toBe(true)
+    expect(result.current.expandedSet.has('session:sess-child')).toBe(true)
+    expect(result.current.expandedSet.has('session:sess-2')).toBe(true)
+  })
+
+  it('collapseScope on a project collapses project nodes without collapsing computers', () => {
+    const { result } = renderHook(() => useSessionTree(makeTree()))
+
+    act(() => result.current.collapseScope('project:local:/home/user/my-project'))
+
+    expect(result.current.expandedSet.has('computer:local')).toBe(true)
+    expect(result.current.expandedSet.has('project:local:/home/user/my-project')).toBe(false)
+  })
+
+  it('collapseScope on a computer collapses all computer nodes', () => {
+    const tree = [
+      ...makeTree(),
+      {
+        type: 'computer' as const,
+        name: 'remote',
+        status: 'online',
+        isLocal: false,
+        sessionCount: 0,
+        projects: [],
+      },
+    ]
+    const { result } = renderHook(() => useSessionTree(tree))
+
+    act(() => result.current.collapseScope('computer:local'))
+
+    expect(result.current.expandedSet.has('computer:local')).toBe(false)
+    expect(result.current.expandedSet.has('computer:remote')).toBe(false)
+    expect(result.current.visibleNodeIds).toEqual(['computer:local', 'computer:remote'])
+  })
+
   it('getNodeType returns correct type for each node', () => {
     const { result } = renderHook(() => useSessionTree(makeTree()))
     expect(result.current.getNodeType('computer:local')).toBe('computer')

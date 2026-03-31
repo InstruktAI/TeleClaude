@@ -61,6 +61,60 @@ function collectDefaultExpandedIds(tree: ComputerGroup[]): NodeId[] {
   return ids
 }
 
+function collectComputerNodeIds(tree: ComputerGroup[]): NodeId[] {
+  return tree.map((computer) => computerNodeId(computer.name))
+}
+
+function collectProjectNodeIds(tree: ComputerGroup[]): NodeId[] {
+  const ids: NodeId[] = []
+  for (const computer of tree) {
+    for (const project of computer.projects) {
+      ids.push(projectNodeId(computer.name, project.path))
+    }
+  }
+  return ids
+}
+
+function collectSessionNodeIds(sessions: SessionTreeNode[]): NodeId[] {
+  const ids: NodeId[] = []
+  for (const node of sessions) {
+    ids.push(sessionNodeId(node.session.session_id))
+    if (node.children.length > 0) {
+      ids.push(...collectSessionNodeIds(node.children))
+    }
+  }
+  return ids
+}
+
+function findProjectSessionsForNode(
+  tree: ComputerGroup[],
+  nodeId: NodeId,
+): SessionTreeNode[] | null {
+  if (nodeId.startsWith("project:")) {
+    for (const computer of tree) {
+      for (const project of computer.projects) {
+        if (projectNodeId(computer.name, project.path) === nodeId) {
+          return project.sessions
+        }
+      }
+    }
+    return null
+  }
+
+  if (!nodeId.startsWith("session:")) return null
+  const targetSessionId = nodeId.slice("session:".length)
+
+  for (const computer of tree) {
+    for (const project of computer.projects) {
+      if (projectHasSession(project.sessions, targetSessionId)) {
+        return project.sessions
+      }
+    }
+  }
+
+  return null
+}
+
 function flattenVisible(
   tree: ComputerGroup[],
   expanded: Set<NodeId>,
@@ -304,6 +358,60 @@ export function useSessionTree(
     }))
   }, [setPersistedState])
 
+  const setExpandedInScope = useCallback(
+    (nodeIds: NodeId[], expanded: boolean) => {
+      if (nodeIds.length === 0) return
+      setPersistedState((prev) => {
+        const next = new Set(prev.expandedIds)
+        for (const nodeId of nodeIds) {
+          if (expanded) next.add(nodeId)
+          else next.delete(nodeId)
+        }
+        return {
+          ...prev,
+          expandedIds: sanitizeExpandedIds([...next], validNodeIds),
+        }
+      })
+    },
+    [setPersistedState, validNodeIds],
+  )
+
+  const expandScope = useCallback(
+    (nodeId: NodeId | null) => {
+      if (!nodeId) return
+      if (nodeId.startsWith("computer:")) {
+        setExpandedInScope(collectComputerNodeIds(tree), true)
+        return
+      }
+      if (nodeId.startsWith("project:")) {
+        setExpandedInScope(collectProjectNodeIds(tree), true)
+        return
+      }
+      const sessions = findProjectSessionsForNode(tree, nodeId)
+      if (!sessions) return
+      setExpandedInScope(collectSessionNodeIds(sessions), true)
+    },
+    [setExpandedInScope, tree],
+  )
+
+  const collapseScope = useCallback(
+    (nodeId: NodeId | null) => {
+      if (!nodeId) return
+      if (nodeId.startsWith("computer:")) {
+        setExpandedInScope(collectComputerNodeIds(tree), false)
+        return
+      }
+      if (nodeId.startsWith("project:")) {
+        setExpandedInScope(collectProjectNodeIds(tree), false)
+        return
+      }
+      const sessions = findProjectSessionsForNode(tree, nodeId)
+      if (!sessions) return
+      setExpandedInScope(collectSessionNodeIds(sessions), false)
+    },
+    [setExpandedInScope, tree],
+  )
+
   const revealSession = useCallback(
     (sessionId: string) => {
       const nextCursorId = sessionNodeId(sessionId)
@@ -358,6 +466,8 @@ export function useSessionTree(
     toggleNode,
     expandAll,
     collapseAll,
+    expandScope,
+    collapseScope,
     revealSession,
     getNodeType,
     getSessionId,
