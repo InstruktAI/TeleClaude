@@ -14,6 +14,7 @@ from typing import TextIO, cast
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
 
+import teleclaude.observability.httpx_runtime_debug as _httpx_runtime_debug
 from teleclaude.chiptunes.manager import ChiptunesManager
 from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.config.runtime_settings import RuntimeSettings
@@ -118,6 +119,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         """
         # Load environment variables
         load_dotenv(env_path)
+        self._httpx_runtime_debug_module = _httpx_runtime_debug
 
         # Log experiment status if any are enabled
         if config.experiments:

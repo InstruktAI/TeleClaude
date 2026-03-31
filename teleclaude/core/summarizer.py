@@ -90,23 +90,23 @@ async def _call_summarizer(
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if api_key:
         try:
-            anthropic_client = AsyncAnthropic(api_key=api_key)
-            response = await anthropic_client.beta.messages.create(
-                model=SUMMARY_MODEL_ANTHROPIC,
-                max_tokens=200,
-                messages=[{"role": "user", "content": prompt}],
-                betas=["structured-outputs-2025-11-13"],
-                output_format={
-                    "type": "json_schema",
-                    "schema": {
-                        "type": schema["type"],
-                        "properties": schema["properties"],
-                        "required": schema["required"],
-                        "additionalProperties": schema["additionalProperties"],
+            async with AsyncAnthropic(api_key=api_key) as anthropic_client:
+                response = await anthropic_client.beta.messages.create(
+                    model=SUMMARY_MODEL_ANTHROPIC,
+                    max_tokens=200,
+                    messages=[{"role": "user", "content": prompt}],
+                    betas=["structured-outputs-2025-11-13"],
+                    output_format={
+                        "type": "json_schema",
+                        "schema": {
+                            "type": schema["type"],
+                            "properties": schema["properties"],
+                            "required": schema["required"],
+                            "additionalProperties": schema["additionalProperties"],
+                        },
                     },
-                },
-            )
-            text = response.content[0].text  # type: ignore[union-attr]
+                )
+                text = response.content[0].text  # type: ignore[union-attr]
             return parser(text)
         except Exception as e:  # pylint: disable=broad-exception-caught
             errors.append(f"Anthropic: {e}")
@@ -114,23 +114,23 @@ async def _call_summarizer(
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         try:
-            openai_client = AsyncOpenAI(api_key=openai_key)
-            response_format: ResponseFormatJSONSchema = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "summary",
-                    "schema": schema,
-                    "strict": True,
-                },
-            }
-            oai_response = await openai_client.chat.completions.create(
-                model=SUMMARY_MODEL_OPENAI,
-                max_tokens=200,
-                messages=[{"role": "user", "content": prompt}],
-                response_format=response_format,
-            )
-            response_any = cast(Any, oai_response)
-            text = response_any.choices[0].message.content or ""
+            async with AsyncOpenAI(api_key=openai_key) as openai_client:
+                response_format: ResponseFormatJSONSchema = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "summary",
+                        "schema": schema,
+                        "strict": True,
+                    },
+                }
+                oai_response = await openai_client.chat.completions.create(
+                    model=SUMMARY_MODEL_OPENAI,
+                    max_tokens=200,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format=response_format,
+                )
+                response_any = cast(Any, oai_response)
+                text = response_any.choices[0].message.content or ""
             return parser(text)
         except Exception as e:  # pylint: disable=broad-exception-caught
             errors.append(f"OpenAI: {e}")
