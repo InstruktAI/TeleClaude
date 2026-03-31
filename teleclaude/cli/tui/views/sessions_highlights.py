@@ -174,6 +174,14 @@ class SessionsViewHighlightsMixin:
                 widget.activity_event = hook_type
                 widget.activity_text = text
                 break
+        # Persist agent_stop summary so output survives tree rebuilds.
+        # activity_event/activity_text are volatile widget state lost when
+        # widgets are recreated; _last_output_summary is the durable fallback.
+        if hook_type == "agent_stop" and text:
+            self._last_output_summary[session_id] = {  # type: ignore[attr-defined]
+                "text": text,
+                "ts": time.monotonic(),
+            }
         if session_id == self.preview_session_id:  # type: ignore[attr-defined]
             self._schedule_highlight_clear(session_id)  # type: ignore[attr-defined]
         self._notify_state_changed()  # type: ignore[attr-defined]

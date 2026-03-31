@@ -144,3 +144,29 @@ def test_get_persisted_state_preview_wraps_session_id_when_set() -> None:
     host.preview_session_id = "sess-preview"
     state = host.get_persisted_state()
     assert state["preview"] == {"session_id": "sess-preview"}
+
+
+@pytest.mark.unit
+def test_update_activity_agent_stop_persists_summary() -> None:
+    """agent_stop summary is written to _last_output_summary for rebuild resilience."""
+    host = _make_mixin()
+    host.update_activity("sess-6", "agent_stop", "completed task")
+    entry = host._last_output_summary.get("sess-6")
+    assert entry is not None
+    assert entry["text"] == "completed task"
+
+
+@pytest.mark.unit
+def test_update_activity_non_stop_does_not_persist_summary() -> None:
+    """Non agent_stop events must not write to _last_output_summary."""
+    host = _make_mixin()
+    host.update_activity("sess-7", "tool_use", "Read file.py")
+    assert "sess-7" not in host._last_output_summary
+
+
+@pytest.mark.unit
+def test_update_activity_agent_stop_empty_text_skips_persist() -> None:
+    """agent_stop with empty text must not create an entry."""
+    host = _make_mixin()
+    host.update_activity("sess-8", "agent_stop", "")
+    assert "sess-8" not in host._last_output_summary

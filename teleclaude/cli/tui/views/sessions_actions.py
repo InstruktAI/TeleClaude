@@ -98,7 +98,9 @@ class SessionsViewActionsMixin:
 
         if decision.action == TreeInteractionAction.PREVIEW:
             if session_id == self.preview_session_id:  # type: ignore[attr-defined]
-                # Already previewed — toggle OFF
+                # Already previewed — toggle OFF. Clear highlights: the user
+                # was viewing this session, so its output has been seen.
+                self._clear_session_highlights(session_id)  # type: ignore[attr-defined]
                 self.preview_session_id = None  # type: ignore[attr-defined]
                 self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
             else:

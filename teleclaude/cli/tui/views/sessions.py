@@ -419,13 +419,14 @@ class SessionsView(  # pylint: disable=too-many-instance-attributes
             elif session.session_id in self._output_highlights:
                 row.highlight_type = "output"
 
-            # Restore persisted output text (WS-driven, survives reloads)
+            container.mount(row)
+            self._nav_items.append(row)
+
+            # Restore persisted output text AFTER mount so Textual
+            # recalculates layout from the reactive change.
             stored = self._last_output_summary.get(session.session_id)
             if stored and stored.get("text"):
                 row.last_output_summary = str(stored["text"])
-
-            container.mount(row)
-            self._nav_items.append(row)
 
             # Recurse into AI-to-AI children
             for child in node.children:
