@@ -53,7 +53,12 @@ class WebhookDeliveryWorker:
     async def close(self) -> None:
         """Shut down the HTTP client."""
         if self._client:
-            await self._client.aclose()
+            try:
+                await self._client.aclose()
+            except RuntimeError as exc:
+                if str(exc) != "Event loop is closed":
+                    raise
+                logger.debug("Webhook HTTP client closed after event loop shutdown")
             self._client = None
 
     async def run(self, shutdown_event: asyncio.Event) -> None:

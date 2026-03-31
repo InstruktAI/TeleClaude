@@ -107,3 +107,19 @@ class Pipeline:
             raise
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Domain pipeline fan-out error: %s", e, exc_info=True)
+
+    async def shutdown(self, *, timeout: float = 5.0) -> None:
+        """Drain or cancel in-flight domain fan-out tasks."""
+        if not self._pending_fanout_tasks:
+            return
+
+        pending = tuple(self._pending_fanout_tasks)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*pending, return_exceptions=True),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)

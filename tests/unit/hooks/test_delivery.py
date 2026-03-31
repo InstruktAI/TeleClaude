@@ -48,6 +48,18 @@ class TestDeliveryHelpers:
 class TestWebhookDeliveryWorker:
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_close_swallows_event_loop_closed_runtime_error(self) -> None:
+        worker = WebhookDeliveryWorker()
+        client = SimpleNamespace(aclose=AsyncMock(side_effect=RuntimeError("Event loop is closed")))
+        worker._client = client
+
+        await worker.close()
+
+        client.aclose.assert_awaited_once()
+        assert worker._client is None
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_run_delivers_claimed_rows_and_signs_secret_headers(
         self,
         monkeypatch: pytest.MonkeyPatch,

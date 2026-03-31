@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import os
 from pathlib import Path
@@ -15,7 +16,22 @@ DEFAULT_MESSAGE_MAX_LENGTH = 4000
 DEFAULT_CAPTION_MAX_LENGTH = 1024
 
 
-async def send_telegram_dm(  # pylint: disable=too-many-locals
+async def _close_client(client: httpx.AsyncClient) -> None:
+    """Close a request-scoped HTTP client safely during shutdown."""
+    task = asyncio.current_task()
+    task_name = task.get_name() if task is not None else "unknown"
+    logger.debug("telegram http client close begin", task_name=task_name)
+    try:
+        await client.aclose()
+    except RuntimeError as exc:
+        if str(exc) != "Event loop is closed":
+            raise
+        logger.warning("telegram http client close hit closed loop", task_name=task_name)
+        return
+    logger.debug("telegram http client close done", task_name=task_name)
+
+
+async def send_telegram_dm(  # pylint: disable=too-many-locals,too-many-branches
     chat_id: str,
     content: str,
     file: str | None = None,
@@ -32,7 +48,11 @@ async def send_telegram_dm(  # pylint: disable=too-many-locals
     if not message.strip() and not file:
         raise ValueError("Notification content is empty")
 
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
+    task = asyncio.current_task()
+    task_name = task.get_name() if task is not None else "unknown"
+    logger.debug("telegram http client create", task_name=task_name, chat_id=chat_id, with_file=bool(file))
+    client = httpx.AsyncClient(timeout=timeout_s)
+    try:
         if file:
             file_path = Path(file)
             if not file_path.exists():
@@ -62,6 +82,8 @@ async def send_telegram_dm(  # pylint: disable=too-many-locals
                     "disable_web_page_preview": "true",
                 },
             )
+    finally:
+        await _close_client(client)
 
     if response.status_code >= 400:
         try:

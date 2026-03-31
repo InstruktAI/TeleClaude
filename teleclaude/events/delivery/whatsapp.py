@@ -20,11 +20,13 @@ class WhatsAppDeliveryAdapter:
         phone_number: str,
         send_fn: Callable[..., Coroutine[Any, Any, str]],
         min_level: int = int(EventLevel.WORKFLOW),
+        shutdown_check: Callable[[], bool] | None = None,
     ) -> None:
         """Initialize the adapter for one WhatsApp recipient."""
         self._phone_number = phone_number
         self._send_fn = send_fn
         self._min_level = min_level
+        self._shutdown_check = shutdown_check or (lambda: False)
 
     def recipient(self) -> str:
         """Return the WhatsApp phone number targeted by this adapter."""
@@ -42,6 +44,8 @@ class WhatsAppDeliveryAdapter:
         if not was_created:
             return
         if level < self._min_level:
+            return
+        if self._shutdown_check():
             return
         try:
             message = f"[{event_type}] Notification #{notification_id} created."

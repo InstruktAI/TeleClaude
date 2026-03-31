@@ -92,3 +92,16 @@ async def test_sends_for_workflow_and_business_levels(level: int) -> None:
         _is_meaningful=True,
     )
     send_fn.assert_awaited_once()
+
+
+async def test_on_notification_skips_when_shutdown_started() -> None:
+    send_fn = AsyncMock()
+    adapter = WhatsAppDeliveryAdapter(phone_number="+1234567890", send_fn=send_fn, shutdown_check=lambda: True)
+    await adapter.on_notification(
+        notification_id=7,
+        event_type="deployment.failed",
+        level=int(EventLevel.BUSINESS),
+        was_created=True,
+        _is_meaningful=True,
+    )
+    send_fn.assert_not_awaited()

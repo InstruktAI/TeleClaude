@@ -32,16 +32,14 @@ class _RecordingAsyncClient:
     def __init__(self, responses: list[_FakeResponse]) -> None:
         self._responses = list(responses)
         self.calls: list[Mapping[str, object]] = []
-
-    async def __aenter__(self) -> _RecordingAsyncClient:
-        return self
-
-    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        return False
+        self.closed = False
 
     async def post(self, url: str, **kwargs: object) -> _FakeResponse:
         self.calls.append({"url": url, **kwargs})
         return self._responses.pop(0)
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 class TestSendTelegramDm:
@@ -66,6 +64,7 @@ class TestSendTelegramDm:
             message_id = await send_telegram_dm("chat-1", "x" * (DEFAULT_MESSAGE_MAX_LENGTH + 20))
 
         assert message_id == "42"
+        assert client.closed is True
         assert client.calls[0]["url"].endswith("/sendMessage")
         assert client.calls[0]["data"] == {
             "chat_id": "chat-1",
@@ -88,6 +87,7 @@ class TestSendTelegramDm:
             )
 
         assert message_id == "9"
+        assert client.closed is True
         assert client.calls[0]["url"].endswith("/sendDocument")
         assert client.calls[0]["data"] == {
             "chat_id": "chat-1",
@@ -107,3 +107,20 @@ class TestSendTelegramDm:
         with patch("teleclaude.services.telegram.httpx.AsyncClient", return_value=client):
             with pytest.raises(RuntimeError, match="Telegram send failed \\(HTTP 400\\): Bad Request: chat not found"):
                 await send_telegram_dm("chat-1", "hello")
+
+        assert client.closed is True
+
+    @pytest.mark.unit
+    async def test_swallows_event_loop_closed_while_closing_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token-123")
+        client = _RecordingAsyncClient([_FakeResponse(200, {"ok": True, "result": {"message_id": 42}})])
+
+        async def _aclose() -> None:
+            raise RuntimeError("Event loop is closed")
+
+        client.aclose = _aclose
+
+        with patch("teleclaude.services.telegram.httpx.AsyncClient", return_value=client):
+            message_id = await send_telegram_dm("chat-1", "hello")
+
+        assert message_id == "42"

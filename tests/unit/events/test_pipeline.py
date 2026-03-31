@@ -111,3 +111,28 @@ class TestPipeline:
         await pipeline.execute(event)
         await asyncio.sleep(0)
         domain_runner.run_all.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_awaits_pending_domain_fanout_tasks(self) -> None:
+        event = _make_envelope()
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def _run_all(_event: EventEnvelope, _context: PipelineContext) -> dict[str, EventEnvelope | None]:
+            started.set()
+            await release.wait()
+            return {}
+
+        cartridge = _make_cartridge(result=event)
+        domain_runner = MagicMock()
+        domain_runner.run_all = AsyncMock(side_effect=_run_all)
+        pipeline = Pipeline([cartridge], _make_context(), domain_runner=domain_runner)
+
+        await pipeline.execute(event)
+        await started.wait()
+        release.set()
+
+        await pipeline.shutdown(timeout=0.1)
+
+        domain_runner.run_all.assert_called_once()
+        assert not pipeline._pending_fanout_tasks

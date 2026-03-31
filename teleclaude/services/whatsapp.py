@@ -8,6 +8,8 @@ catching exceptions and logging them.
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 from instrukt_ai_logging import get_logger
 
@@ -16,7 +18,22 @@ logger = get_logger(__name__)
 WHATSAPP_MAX_MESSAGE_LENGTH = 4096
 
 
-async def send_whatsapp_message(  # pylint: disable=too-many-arguments
+async def _close_client(client: httpx.AsyncClient) -> None:
+    """Close a request-scoped HTTP client safely during shutdown."""
+    task = asyncio.current_task()
+    task_name = task.get_name() if task is not None else "unknown"
+    logger.debug("whatsapp http client close begin", task_name=task_name)
+    try:
+        await client.aclose()
+    except RuntimeError as exc:
+        if str(exc) != "Event loop is closed":
+            raise
+        logger.warning("whatsapp http client close hit closed loop", task_name=task_name)
+        return
+    logger.debug("whatsapp http client close done", task_name=task_name)
+
+
+async def send_whatsapp_message(  # pylint: disable=too-many-arguments,too-many-locals
     phone_number: str,
     content: str,
     *,
@@ -55,8 +72,14 @@ async def send_whatsapp_message(  # pylint: disable=too-many-arguments
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
+    task = asyncio.current_task()
+    task_name = task.get_name() if task is not None else "unknown"
+    logger.debug("whatsapp http client create", task_name=task_name, phone_number=phone_number)
+    client = httpx.AsyncClient(timeout=timeout_s)
+    try:
         response = await client.post(url, json=payload, headers=headers)
+    finally:
+        await _close_client(client)
 
     if response.status_code >= 400:
         try:

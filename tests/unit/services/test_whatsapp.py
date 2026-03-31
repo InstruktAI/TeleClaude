@@ -26,16 +26,14 @@ class _RecordingAsyncClient:
     def __init__(self, responses: list[_FakeResponse]) -> None:
         self._responses = list(responses)
         self.calls: list[Mapping[str, object]] = []
-
-    async def __aenter__(self) -> _RecordingAsyncClient:
-        return self
-
-    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        return False
+        self.closed = False
 
     async def post(self, url: str, **kwargs: object) -> _FakeResponse:
         self.calls.append({"url": url, **kwargs})
         return self._responses.pop(0)
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 class TestSendWhatsappMessage:
@@ -78,6 +76,7 @@ class TestSendWhatsappMessage:
             )
 
         assert message_id == "wamid-7"
+        assert client.closed is True
         assert client.calls[0]["json"] == {
             "messaging_product": "whatsapp",
             "to": "+15555550123",
@@ -99,3 +98,24 @@ class TestSendWhatsappMessage:
                     phone_number_id="phone-number-id",
                     access_token="token-123",
                 )
+
+        assert client.closed is True
+
+    @pytest.mark.unit
+    async def test_swallows_event_loop_closed_while_closing_client(self) -> None:
+        client = _RecordingAsyncClient([_FakeResponse(200, {"messages": [{"id": "wamid-7"}]})])
+
+        async def _aclose() -> None:
+            raise RuntimeError("Event loop is closed")
+
+        client.aclose = _aclose
+
+        with patch("teleclaude.services.whatsapp.httpx.AsyncClient", return_value=client):
+            message_id = await send_whatsapp_message(
+                "+15555550123",
+                "hello",
+                phone_number_id="phone-number-id",
+                access_token="token-123",
+            )
+
+        assert message_id == "wamid-7"

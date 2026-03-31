@@ -64,7 +64,12 @@ class WhatsAppAdapter(UiAdapter):
 
     async def stop(self) -> None:
         if self._http is not None:
-            await self._http.aclose()
+            try:
+                await self._http.aclose()
+            except RuntimeError as exc:
+                if str(exc) != "Event loop is closed":
+                    raise
+                logger.debug("WhatsApp HTTP client closed after event loop shutdown")
             self._http = None
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:

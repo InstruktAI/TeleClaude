@@ -92,3 +92,16 @@ async def test_sends_for_workflow_and_business_levels(level: int) -> None:
         _is_meaningful=True,
     )
     send_fn.assert_awaited_once()
+
+
+async def test_on_notification_skips_when_shutdown_started() -> None:
+    send_fn = AsyncMock()
+    adapter = TelegramDeliveryAdapter(chat_id="chat-456", send_fn=send_fn, shutdown_check=lambda: True)
+    await adapter.on_notification(
+        notification_id=7,
+        event_type="content.published",
+        level=int(EventLevel.BUSINESS),
+        was_created=True,
+        _is_meaningful=True,
+    )
+    send_fn.assert_not_awaited()

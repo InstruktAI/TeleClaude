@@ -3,6 +3,7 @@
 import asyncio
 import atexit
 import fcntl
+import inspect
 import os
 import signal
 import sys
@@ -576,19 +577,33 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
         await self._stop_session_outbox_workers()
 
+        await self._await_task_attr("webhook_delivery_task", "Webhook delivery worker stopped", timeout=5.0)
+        await self._await_task_attr(
+            "channel_subscription_worker_task",
+            "Channel subscription worker stopped",
+            timeout=5.0,
+        )
+        await self._await_task_attr("_deployment_fanout_task", "Deployment fanout stopped", timeout=5.0)
+        await self._await_task_attr("_ingest_scheduler_task", "IngestScheduler stopped", timeout=5.0)
+        await self._await_task_attr("_event_processor_task", "EventProcessor stopped", timeout=5.0)
+
         for attr_name, log_message in (
-            ("webhook_delivery_task", "Webhook delivery worker stopped"),
-            ("channel_subscription_worker_task", "Channel subscription worker stopped"),
             ("resource_monitor_task", "Resource monitor stopped"),
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
             ("launchd_watch_task", "Launchd watch task stopped"),
-            ("_ingest_scheduler_task", "IngestScheduler stopped"),
-            ("_event_processor_task", "EventProcessor stopped"),
+            ("_contract_sweep_task", "Contract sweep stopped"),
         ):
             await self._cancel_task_attr(attr_name, log_message)
 
-        if hasattr(self, "_webhook_delivery_worker"):
-            await self._webhook_delivery_worker.close()
+        if getattr(self, "_event_pipeline", None) is not None:
+            await self._event_pipeline.shutdown(timeout=5.0)
+
+        signal_ai_client = getattr(self, "_signal_ai_client", None)
+        close_signal_ai = getattr(signal_ai_client, "close", None)
+        if callable(close_signal_ai):
+            close_result = close_signal_ai()
+            if inspect.isawaitable(close_result):
+                await close_result
 
         # Close event DB
         if self._event_db:
@@ -633,6 +648,28 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         task.cancel()
         try:
             await task
+        except asyncio.CancelledError:
+            pass
+        logger.info(log_message)
+
+    async def _await_task_attr(self, attr_name: str, log_message: str, *, timeout: float) -> None:
+        """Await an optional task attribute without cancelling it first.
+
+        Used for tasks that already honor shutdown_event and perform their own
+        cleanup on exit. Falls back to cancellation if graceful stop times out.
+        """
+        task = getattr(self, attr_name, None)
+        if task is None:
+            return
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+        except TimeoutError:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            logger.warning("%s timed out after %.1fs; task was cancelled", attr_name, timeout)
         except asyncio.CancelledError:
             pass
         logger.info(log_message)

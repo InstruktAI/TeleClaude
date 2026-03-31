@@ -26,16 +26,14 @@ class _RecordingAsyncClient:
     def __init__(self, responses: list[_FakeResponse]) -> None:
         self._responses = list(responses)
         self.calls: list[Mapping[str, object]] = []
-
-    async def __aenter__(self) -> _RecordingAsyncClient:
-        return self
-
-    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        return False
+        self.closed = False
 
     async def post(self, url: str, **kwargs: object) -> _FakeResponse:
         self.calls.append({"url": url, **kwargs})
         return self._responses.pop(0)
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 class TestSendDiscordDm:
@@ -65,6 +63,7 @@ class TestSendDiscordDm:
             message_id = await send_discord_dm("user-1", "x" * (DISCORD_MAX_MESSAGE_LENGTH + 25))
 
         assert message_id == "message-7"
+        assert client.closed is True
         assert client.calls[0]["json"] == {"recipient_id": "user-1"}
         assert client.calls[1]["json"] == {"content": "x" * DISCORD_MAX_MESSAGE_LENGTH}
 
@@ -76,6 +75,8 @@ class TestSendDiscordDm:
         with patch("teleclaude.services.discord.httpx.AsyncClient", return_value=client):
             with pytest.raises(RuntimeError, match="Discord create DM channel failed \\(HTTP 403\\): Missing Access"):
                 await send_discord_dm("user-1", "hello")
+
+        assert client.closed is True
 
     @pytest.mark.unit
     async def test_raises_when_message_send_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,3 +91,25 @@ class TestSendDiscordDm:
         with patch("teleclaude.services.discord.httpx.AsyncClient", return_value=client):
             with pytest.raises(RuntimeError, match="Discord send message failed \\(HTTP 429\\): Rate limited"):
                 await send_discord_dm("user-1", "hello")
+
+        assert client.closed is True
+
+    @pytest.mark.unit
+    async def test_swallows_event_loop_closed_while_closing_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "token-123")
+        client = _RecordingAsyncClient(
+            [
+                _FakeResponse(200, {"id": "channel-9"}),
+                _FakeResponse(200, {"id": "message-7"}),
+            ]
+        )
+
+        async def _aclose() -> None:
+            raise RuntimeError("Event loop is closed")
+
+        client.aclose = _aclose
+
+        with patch("teleclaude.services.discord.httpx.AsyncClient", return_value=client):
+            message_id = await send_discord_dm("user-1", "hello")
+
+        assert message_id == "message-7"

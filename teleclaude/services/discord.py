@@ -8,6 +8,7 @@ Discord platform limitation and cannot be worked around in code.
 
 from __future__ import annotations
 
+import asyncio
 import os
 
 import httpx
@@ -17,6 +18,21 @@ logger = get_logger(__name__)
 
 DISCORD_MAX_MESSAGE_LENGTH = 2000
 DISCORD_API_BASE = "https://discord.com/api/v10"
+
+
+async def _close_client(client: httpx.AsyncClient) -> None:
+    """Close a request-scoped HTTP client safely during shutdown."""
+    task = asyncio.current_task()
+    task_name = task.get_name() if task is not None else "unknown"
+    logger.debug("discord http client close begin", task_name=task_name)
+    try:
+        await client.aclose()
+    except RuntimeError as exc:
+        if str(exc) != "Event loop is closed":
+            raise
+        logger.warning("discord http client close hit closed loop", task_name=task_name)
+        return
+    logger.debug("discord http client close done", task_name=task_name)
 
 
 async def send_discord_dm(
@@ -50,7 +66,11 @@ async def send_discord_dm(
 
     headers = {"Authorization": f"Bot {token}", "Content-Type": "application/json"}
 
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
+    task = asyncio.current_task()
+    task_name = task.get_name() if task is not None else "unknown"
+    logger.debug("discord http client create", task_name=task_name, user_id=user_id)
+    client = httpx.AsyncClient(timeout=timeout_s)
+    try:
         # Step 1: Create DM channel
         dm_response = await client.post(
             f"{DISCORD_API_BASE}/users/@me/channels",
@@ -72,6 +92,8 @@ async def send_discord_dm(
             json={"content": text},
             headers=headers,
         )
+    finally:
+        await _close_client(client)
 
     if msg_response.status_code >= 400:
         try:

@@ -361,6 +361,17 @@ class TestStop:
         assert adapter._http is None
 
     @pytest.mark.unit
+    async def test_stop_swallows_event_loop_closed_runtime_error(self, adapter: WhatsAppAdapter) -> None:
+        adapter._http = httpx.AsyncClient()
+        with patch.object(
+            adapter._http, "aclose", AsyncMock(side_effect=RuntimeError("Event loop is closed"))
+        ) as aclose:
+            await adapter.stop()
+
+        aclose.assert_awaited_once()
+        assert adapter._http is None
+
+    @pytest.mark.unit
     async def test_stop_is_safe_when_not_started(self, adapter: WhatsAppAdapter) -> None:
         adapter._http = None
         await adapter.stop()  # should not raise

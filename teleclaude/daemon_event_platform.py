@@ -74,6 +74,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
         client: AdapterClient
         lifecycle: DaemonLifecycle
         _event_db: EventDB | None
+        _event_pipeline: Pipeline | None
+        _signal_ai_client: object | None
+        _deployment_fanout_task: asyncio.Task[object] | None
+        _contract_sweep_task: asyncio.Task[object] | None
         _event_processor_task: asyncio.Task[object] | None
         _ingest_scheduler_task: asyncio.Task[object] | None
         webhook_delivery_task: asyncio.Task[object] | None
@@ -154,7 +158,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
                 chat_id = person_cfg.creds.telegram.chat_id if person_cfg.creds.telegram else None
                 if not chat_id:
                     continue
-                adapter = TelegramDeliveryAdapter(chat_id=chat_id, send_fn=send_telegram_dm)
+                adapter = TelegramDeliveryAdapter(
+                    chat_id=chat_id,
+                    send_fn=send_telegram_dm,
+                    shutdown_check=self.shutdown_event.is_set,
+                )
                 push_callbacks.append(adapter.on_notification)
                 logger.info("TelegramDeliveryAdapter registered for admin %s", person_name)
         except Exception:  # pylint: disable=broad-exception-caught
@@ -173,7 +181,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
                 user_id = person_cfg.creds.discord.user_id if person_cfg.creds.discord else None
                 if not user_id:
                     continue
-                adapter = DiscordDeliveryAdapter(user_id=user_id, send_fn=send_discord_dm)
+                adapter = DiscordDeliveryAdapter(
+                    user_id=user_id,
+                    send_fn=send_discord_dm,
+                    shutdown_check=self.shutdown_event.is_set,
+                )
                 push_callbacks.append(adapter.on_notification)
                 logger.info("DiscordDeliveryAdapter registered for admin %s", person_name)
         except Exception:  # pylint: disable=broad-exception-caught
@@ -202,7 +214,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
                     access_token=config.whatsapp.access_token,
                     api_version=config.whatsapp.api_version,
                 )
-                adapter = WhatsAppDeliveryAdapter(phone_number=phone_number, send_fn=bound_send_fn)
+                adapter = WhatsAppDeliveryAdapter(
+                    phone_number=phone_number,
+                    send_fn=bound_send_fn,
+                    shutdown_check=self.shutdown_event.is_set,
+                )
                 push_callbacks.append(adapter.on_notification)
                 logger.info("WhatsAppDeliveryAdapter registered for admin %s", person_name)
         except Exception:  # pylint: disable=broad-exception-caught
@@ -397,6 +413,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
 
             raw_ai = anthropic.AsyncAnthropic()
             signal_ai = DefaultSignalAIClient(raw_ai)
+            self._signal_ai_client = raw_ai
             signal_db = self._event_db.signal
             source_config_data = signal_cfg if isinstance(signal_cfg, dict) else {}
             source_config = SignalSourceConfig(**source_config_data)
@@ -452,6 +469,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
             integration_trigger = self._build_integration_trigger()
             context = self._build_pipeline_context(event_catalog, push_callbacks, event_producer)
             pipeline = self._build_pipeline(context, integration_trigger)
+            self._event_pipeline = pipeline
             self._register_sandbox_bridge(pipeline, event_producer)
             computer_label = self._start_event_processor(redis_client, pipeline)
             await self._emit_daemon_restarted_event(event_producer, computer_label)
