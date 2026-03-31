@@ -196,7 +196,7 @@ class SessionRow(TelecMixin, Widget):
         return line
 
     def _build_owner_line(self, *, connector_pad: str, detail_pad: str, connector_style: Style) -> Text | None:
-        """Build the owner/system line when it should be visible."""
+        """Build the owner line when it should be visible."""
         human_email = getattr(self.session, "human_email", None)
         viewer_email = read_current_session_email()
         if human_email and viewer_email and human_email.lower() == viewer_email.lower():
@@ -211,18 +211,6 @@ class SessionRow(TelecMixin, Widget):
             line.append(f"{detail_pad}{human_role}: ", style=resolve_style(self.agent, self._tier("muted")))
             line.append(str(human_name), style=resolve_style(self.agent, self._tier("normal")))
             return line
-
-        if human_role != "customer":
-            system_role = getattr(self.session, "system_role", None)
-            job = getattr(self.session, "job", None)
-            if system_role:
-                line = Text(no_wrap=True)
-                line.append(connector_pad)
-                line.append("\u2502", style=connector_style)
-                line.append(f"{detail_pad}{system_role}: ", style=resolve_style(self.agent, self._tier("muted")))
-                if job:
-                    line.append(str(job), style=resolve_style(self.agent, self._tier("normal")))
-                return line
 
         return None
 
@@ -313,13 +301,13 @@ class SessionRow(TelecMixin, Widget):
         detail_pad = " "
         connector_style = Style(color=CONNECTOR_COLOR)
         id_style = resolve_style(self.agent, self._tier("muted"))
-        activity_time = format_time(self.session.last_activity)
+        created_time = format_time(getattr(self.session, "created_at", None))
         sid = self.session.session_id
         native_id = getattr(self.session, "native_session_id", None) or "-"
         line = Text(no_wrap=True)
         line.append(connector_pad)
         line.append("\u2502", style=connector_style)
-        line.append(f"{detail_pad}[{activity_time}] {sid} / {native_id}", style=id_style)
+        line.append(f"{detail_pad}[{created_time}] {sid} / {native_id}", style=id_style)
         return line
 
     def _build_connector_bottom(self) -> Text:
@@ -342,12 +330,13 @@ class SessionRow(TelecMixin, Widget):
         is_previewed = self.is_preview
 
         result = self._build_title_line(selected=is_selected, previewed=is_previewed)
+        if not self.collapsed:
+            result.append("\n")
+            result.append_text(self._build_id_detail_line())
         for summary in self._build_summary_lines():
             result.append("\n")
             result.append_text(summary)
         if not self.collapsed:
-            result.append("\n")
-            result.append_text(self._build_id_detail_line())
             # Bottom connector (skipped for last session before GroupSeparator)
             if not self.skip_bottom_connector:
                 result.append("\n")

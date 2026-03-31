@@ -136,13 +136,6 @@ function ownerSummaryLine(
     }
   }
 
-  if (session.human_role !== "customer" && session.system_role) {
-    return {
-      label: session.system_role,
-      value: session.job,
-    }
-  }
-
   return null
 }
 
@@ -313,7 +306,7 @@ function SessionDetails({
 }) {
   const s = session.session
   const palette = getSessionPalette(sessionAgent(s.active_agent), isThemed)
-  const idLine = `${formatSessionTime(s.last_activity)} ${s.session_id} / ${s.native_session_id ?? "-"}`
+  const idLine = `${formatSessionTime(s.created_at)} ${s.session_id} / ${s.native_session_id ?? "-"}`
 
   return (
     <div
@@ -445,13 +438,6 @@ function SessionRow({
           />
         </button>
       </div>
-      <SessionSummary
-        session={node}
-        depth={depth}
-        isThemed={isThemed}
-        sessionState={sessionState}
-        currentUserEmail={currentUserEmail}
-      />
       {expanded && (
         <SessionDetails
           session={node}
@@ -459,6 +445,13 @@ function SessionRow({
           isThemed={isThemed}
         />
       )}
+      <SessionSummary
+        session={node}
+        depth={depth}
+        isThemed={isThemed}
+        sessionState={sessionState}
+        currentUserEmail={currentUserEmail}
+      />
     </>
   )
 }

@@ -333,6 +333,33 @@ describe("SessionTree", () => {
     expect(screen.getByTestId("session-detail-id-sess-2").textContent).toContain("sess-2")
   })
 
+  it("shows created time in the expanded technical id row", () => {
+    const tree = makeTree()
+    tree[0].projects[0].sessions[0].session.created_at = "2026-03-31T12:00:00Z"
+    const createdTime = new Date("2026-03-31T12:00:00Z").toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+
+    renderWithControlledExpansion(tree)
+    fireEvent.click(screen.getByTestId("session-toggle-sess-1"))
+
+    expect(screen.getByTestId("session-detail-id-sess-1").textContent).toContain(createdTime)
+  })
+
+  it("renders the expanded technical id row before summary lines", () => {
+    renderWithControlledExpansion()
+    fireEvent.click(screen.getByTestId("session-toggle-sess-1"))
+
+    const detail = screen.getByTestId("session-detail-id-sess-1")
+    const input = screen.getByTestId("session-summary-input-sess-1")
+
+    expect(
+      Boolean(detail.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true)
+  })
+
   it("applies agent-specific cursor highlight colors when themed", () => {
     render(
       <SessionTree
@@ -463,7 +490,7 @@ describe("SessionTree", () => {
     expect(screen.queryByTestId("session-identity-sess-1")).toBeNull()
   })
 
-  it("renders the system fallback for unresolved non-customer sessions", () => {
+  it("does not render the system fallback for unresolved non-customer sessions", () => {
     const tree = makeTree()
     tree[0].projects[0].sessions[0].session.human_role = "member"
     tree[0].projects[0].sessions[0].session.system_role = "worker"
@@ -476,7 +503,6 @@ describe("SessionTree", () => {
         onToggle={vi.fn()}
       />,
     )
-    expect(screen.getByText(/^worker:/)).toBeDefined()
-    expect(screen.getByText("next-build")).toBeDefined()
+    expect(screen.queryByTestId("session-identity-sess-1")).toBeNull()
   })
 })

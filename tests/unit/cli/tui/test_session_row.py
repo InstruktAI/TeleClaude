@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from teleclaude.api_models import SessionDTO
+from teleclaude.cli.tui.utils.formatters import format_time
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
 
@@ -94,13 +95,35 @@ def test_collapsed_render_shows_summary_lines_but_not_ids(monkeypatch: pytest.Mo
 
 @pytest.mark.unit
 def test_expanded_render_shows_technical_ids(monkeypatch: pytest.MonkeyPatch) -> None:
-    row = _make_row("Planner Session")
+    row = _make_row("Planner Session", created_at="2026-03-31T16:00:00Z")
     row.collapsed = False
     monkeypatch.setattr(type(row), "_content_width", property(lambda _: 120))
 
     text = row.render().plain
 
+    assert f"[{format_time('2026-03-31T16:00:00Z')}]" in text
     assert "test-session-id / native-session-id" in text
+
+
+@pytest.mark.unit
+def test_expanded_render_places_technical_ids_before_summary_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _make_row("Planner Session", created_at="2026-03-31T16:00:00Z")
+    row.collapsed = False
+    monkeypatch.setattr(type(row), "_content_width", property(lambda _: 120))
+
+    text = row.render().plain
+
+    assert text.index("test-session-id / native-session-id") < text.index("in: Run the planner")
+
+
+@pytest.mark.unit
+def test_unresolved_session_does_not_render_system_role_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _make_row("Planner Session", human_role="member", system_role="worker", job="next-build")
+    monkeypatch.setattr(type(row), "_content_width", property(lambda _: 120))
+
+    text = row.render().plain
+
+    assert "worker: next-build" not in text
 
 
 @pytest.mark.unit
