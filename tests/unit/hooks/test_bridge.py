@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from teleclaude.core.events import ThinkingActivityEvent, ToolUseActivityEvent
+from teleclaude.core.events import ToolUseActivityEvent
 from teleclaude.hooks.bridge import EventBusBridge
 from teleclaude.hooks.webhook_models import HookEvent
 
@@ -20,24 +20,6 @@ class _DispatcherStub:
 
 
 class TestEventBusBridge:
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_dispatches_thinking_activity_without_runtime_type_error(self) -> None:
-        dispatcher = _DispatcherStub()
-        bridge = EventBusBridge(dispatcher)
-        context = ThinkingActivityEvent(
-            session_id="sess-1",
-            event_type="thinking",
-            timestamp="2026-01-01T00:00:00Z",
-            text="• Working",
-        )
-
-        await bridge._handle("agent_activity", context)  # pylint: disable=protected-access
-
-        assert dispatcher.events[0].type == "agent.activity.thinking"
-        assert dispatcher.events[0].properties["session_id"] == "sess-1"
-        assert dispatcher.events[0].properties["agent_event_type"] == "thinking"
-
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_dispatches_tool_use_activity_with_tool_name_property(self) -> None:

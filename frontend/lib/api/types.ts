@@ -293,11 +293,6 @@ export interface UserPromptSubmitActivityEvent extends BaseAgentActivityEvent {
   type: "user_prompt_submit";
 }
 
-export interface ThinkingActivityEvent extends BaseAgentActivityEvent {
-  type: "thinking";
-  text: string;
-}
-
 export interface ToolUseActivityEvent extends BaseAgentActivityEvent {
   type: "tool_use";
   tool_name?: string | null;
@@ -315,7 +310,6 @@ export interface AgentStopActivityEvent extends BaseAgentActivityEvent {
 
 export type AgentActivityEvent =
   | UserPromptSubmitActivityEvent
-  | ThinkingActivityEvent
   | ToolUseActivityEvent
   | ToolDoneActivityEvent
   | AgentStopActivityEvent;

@@ -29,7 +29,6 @@ from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api_models import (
     AgentStopActivityEventDTO,
     SessionLifecycleStatusEventDTO,
-    ThinkingActivityEventDTO,
     TodoDTO,
     ToolDoneActivityEventDTO,
     ToolUseActivityEventDTO,
@@ -338,8 +337,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         }
         if context.event_type == "user_prompt_submit":
             dto = UserPromptSubmitActivityEventDTO(**common)
-        elif context.event_type == "thinking":
-            dto = ThinkingActivityEventDTO(text=getattr(context, "text", ""), **common)
         elif context.event_type == "tool_use":
             dto = ToolUseActivityEventDTO(
                 tool_name=getattr(context, "tool_name", None),

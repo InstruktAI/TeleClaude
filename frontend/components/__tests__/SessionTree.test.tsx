@@ -323,25 +323,6 @@ describe("SessionTree", () => {
     expect(output.style.color).toBe("var(--tc-agent-claude-highlight)")
   })
 
-  it("renders thinking activity in the collapsed session summary", () => {
-    const sessionStateMap = new Map<string, SessionHighlightViewState>([
-      ["sess-1", { activityEvent: "thinking", activityText: "• Working" }],
-    ])
-
-    render(
-      <SessionTree
-        tree={makeTree()}
-        sessionStateMap={sessionStateMap}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-
-    const output = screen.getByTestId("session-summary-output-sess-1")
-    expect(output.textContent).toContain("out: • Working")
-    expect(output.style.color).toBe("var(--tc-agent-claude-highlight)")
-  })
-
   it("keeps technical session ids in the expanded detail block only", () => {
     render(
       <SessionTree

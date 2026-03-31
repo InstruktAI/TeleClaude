@@ -104,7 +104,6 @@ export class PeriodicTrigger {
 export type ActivityEvent =
   | 'tool_use'
   | 'streaming'
-  | 'thinking'
   | 'message'
   | 'error'
   | 'connected'

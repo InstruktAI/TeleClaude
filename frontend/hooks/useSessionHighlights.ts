@@ -201,9 +201,7 @@ export function useSessionHighlights(
           activityText:
             isToolUseEvent(activityEvent)
               ? buildToolActivityText(activityEvent)
-              : activityEvent.type === "thinking"
-                ? activityEvent.text ?? ""
-                : activityEvent.type === "agent_stop"
+              : activityEvent.type === "agent_stop"
                 ? activityEvent.summary ?? ""
                 : "",
         },

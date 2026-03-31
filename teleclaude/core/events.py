@@ -28,7 +28,6 @@ EventType = Literal[
 AgentHookEventType = Literal[
     "session_start",
     "user_prompt_submit",
-    "thinking",
     "tool_use",
     "tool_done",
     "agent_stop",
@@ -54,7 +53,6 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
 
     AGENT_SESSION_START: AgentHookEventType = "session_start"
     USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
-    THINKING: AgentHookEventType = "thinking"
     TOOL_DONE: AgentHookEventType = "tool_done"
     AGENT_STOP: AgentHookEventType = "agent_stop"
     AGENT_SESSION_END: AgentHookEventType = "session_end"
@@ -126,7 +124,6 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
     ALL: set[AgentHookEventType] = {
         AGENT_SESSION_START,
         USER_PROMPT_SUBMIT,
-        THINKING,
         TOOL_DONE,
         AGENT_STOP,
         AGENT_SESSION_END,
@@ -149,7 +146,6 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
         {
             AGENT_SESSION_START,
             USER_PROMPT_SUBMIT,
-            THINKING,
             TOOL_DONE,
             TOOL_USE,
             AGENT_STOP,
@@ -511,13 +507,6 @@ class UserPromptSubmitActivityEvent(BaseAgentActivityEvent):
 
 
 @dataclass(frozen=True)
-class ThinkingActivityEvent(BaseAgentActivityEvent):
-    """Real-time transient thinking/progress activity."""
-
-    text: str = ""
-
-
-@dataclass(frozen=True)
 class ToolUseActivityEvent(BaseAgentActivityEvent):
     """Real-time tool-use activity."""
 
@@ -540,7 +529,6 @@ class AgentStopActivityEvent(BaseAgentActivityEvent):
 
 type AgentActivityEvent = (
     UserPromptSubmitActivityEvent
-    | ThinkingActivityEvent
     | ToolUseActivityEvent
     | ToolDoneActivityEvent
     | AgentStopActivityEvent

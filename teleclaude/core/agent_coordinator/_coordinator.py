@@ -24,7 +24,6 @@ from teleclaude.core.events import (
     AgentStopPayload,
     SessionStatusContext,
     TeleClaudeEvents,
-    ThinkingActivityEvent,
     ToolDoneActivityEvent,
     ToolUseActivityEvent,
     UserPromptSubmitActivityEvent,
@@ -186,16 +185,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 message_intent=message_intent,
                 delivery_scope=delivery_scope,
             )
-        if event_type == AgentHookEvents.THINKING:
-            return ThinkingActivityEvent(
-                session_id=session_id,
-                event_type=event_type,
-                text=message or "",
-                timestamp=timestamp,
-                canonical_type=canonical_type,
-                message_intent=message_intent,
-                delivery_scope=delivery_scope,
-            )
         if event_type == AgentHookEvents.TOOL_USE:
             return ToolUseActivityEvent(
                 session_id=session_id,
@@ -294,8 +283,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             await self.handle_agent_stop(context)
         elif context.event_type == AgentHookEvents.TOOL_DONE:
             await self.handle_tool_done(context)
-        elif context.event_type == AgentHookEvents.THINKING:
-            await self.handle_thinking(context)
         elif context.event_type == AgentHookEvents.TOOL_USE:
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
@@ -653,17 +640,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         self._emit_activity_event(session_id, AgentHookEvents.TOOL_DONE)
 
         # Drive headless output delivery via debounced transcript pull.
-        await self._signal_headless_activity(session_id)
-
-    async def handle_thinking(self, context: AgentEventContext) -> None:
-        """Handle transient thinking/progress activity for live consumers."""
-        session_id = context.session_id
-        payload = cast(AgentOutputPayload, context.data)
-        text_raw = payload.raw.get("text")
-        text = text_raw if isinstance(text_raw, str) else ""
-        self._emit_activity_event(session_id, AgentHookEvents.THINKING, message=text)
-        now_ts = datetime.now(UTC).isoformat()
-        self._emit_status_event(session_id, "active_output", "output_observed", last_activity_at=now_ts)
         await self._signal_headless_activity(session_id)
 
     async def handle_session_end(self, context: AgentEventContext) -> None:

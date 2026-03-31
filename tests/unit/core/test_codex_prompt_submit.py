@@ -16,7 +16,6 @@ from teleclaude.core.codex_prompt_submit import (
     _has_agent_marker,
     _is_live_agent_marker_line,
     cleanup_codex_prompt_state,
-    extract_live_thinking_text,
     seed_codex_prompt_from_message,
 )
 
@@ -136,53 +135,3 @@ class TestIsLiveAgentMarkerLine:
     def test_marker_only_line_returns_true(self):
         # A line with just the bullet marker and no other content
         assert _is_live_agent_marker_line("•") is True
-
-
-class TestExtractLiveThinkingText:
-    @pytest.mark.unit
-    def test_returns_clean_thinking_text_without_timer_suffix(self):
-        output = "\x1b[38;5;45m•\x1b[0m \x1b[38;5;117mWorking\x1b[0m (7s • esc to interrupt)"
-
-        assert extract_live_thinking_text(output) == "Working"
-
-    @pytest.mark.unit
-    def test_matches_footer_variant_with_inline_message(self):
-        output = "• Working (7s • esc to interrupt) · 1 background terminal running · /ps to view"
-
-        assert extract_live_thinking_text(output) == "Working"
-
-    @pytest.mark.unit
-    def test_matches_footer_variant_with_reasoning_header(self):
-        output = "• Investigating rendering code (1m 03s • esc to interrupt)"
-
-        assert extract_live_thinking_text(output) == "Investigating rendering code"
-
-    @pytest.mark.unit
-    def test_matches_footer_variant_with_waiting_header_and_trailing_suffix(self):
-        output = "• Waiting for background terminal (25s • esc to interrupt) · 1 background terminal running · /ps to view · /clean to close"
-
-        assert extract_live_thinking_text(output) == "Waiting for background terminal"
-
-    @pytest.mark.unit
-    def test_prefers_last_marker_segment_when_visible_row_contains_prefix_text(self):
-        output = "• I've confirmed the key point: • Working (7s • esc to interrupt)"
-
-        assert extract_live_thinking_text(output) == "Working"
-
-    @pytest.mark.unit
-    def test_matches_truncated_interrupt_hint_variant(self):
-        output = "• Working (7s • esc…"
-
-        assert extract_live_thinking_text(output) == "Working"
-
-    @pytest.mark.unit
-    def test_returns_none_for_plain_agent_line_without_footer_timer(self):
-        output = "• Working on changes"
-
-        assert extract_live_thinking_text(output) is None
-
-    @pytest.mark.unit
-    def test_returns_none_without_leading_agent_marker(self):
-        output = "Waiting for background terminal (25s • esc to interrupt) · 1 background terminal running"
-
-        assert extract_live_thinking_text(output) is None

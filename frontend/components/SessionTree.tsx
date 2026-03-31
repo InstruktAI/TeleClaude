@@ -155,14 +155,6 @@ function outputDetailLine(
     }
   }
 
-  if (state?.activityEvent === "thinking" && state.activityText) {
-    return {
-      timestamp: formatSessionTime(session.last_activity),
-      text: `out: ${state.activityText}`,
-      emphasized: true,
-    }
-  }
-
   if (state?.activityEvent === "tool_done") {
     return {
       timestamp: formatSessionTime(session.last_activity),

@@ -25,15 +25,6 @@ function makeActivityEvent(
   }
   const type = overrides?.type ?? 'tool_use'
 
-  if (type === 'thinking') {
-    return {
-      ...base,
-      type: 'thinking',
-      text: 'Thinking...',
-      ...overrides,
-    } as AgentActivityEvent
-  }
-
   if (type === 'user_prompt_submit') {
     return {
       ...base,
@@ -102,9 +93,9 @@ describe('ActivityTracker', () => {
       )
       const tracker = createActivityTracker()
       tracker.handleEvent(
-        makeActivityEvent({ session_id: 'sess-1', type: 'thinking' }),
+        makeActivityEvent({ session_id: 'sess-1', type: 'tool_done' }),
       )
-      expect(tracker.getActivityType('sess-1')).toBe('thinking')
+      expect(tracker.getActivityType('sess-1')).toBe('tool_done')
     })
 
     it('updates activity type when new event arrives', async () => {
@@ -116,9 +107,9 @@ describe('ActivityTracker', () => {
         makeActivityEvent({ session_id: 'sess-1', type: 'tool_use' }),
       )
       tracker.handleEvent(
-        makeActivityEvent({ session_id: 'sess-1', type: 'thinking' }),
+        makeActivityEvent({ session_id: 'sess-1', type: 'tool_done' }),
       )
-      expect(tracker.getActivityType('sess-1')).toBe('thinking')
+      expect(tracker.getActivityType('sess-1')).toBe('tool_done')
     })
 
     it(
@@ -226,10 +217,10 @@ describe('ActivityTracker', () => {
           makeActivityEvent({ session_id: 'sess-1', type: 'tool_use' }),
         )
         tracker.handleEvent(
-          makeActivityEvent({ session_id: 'sess-2', type: 'thinking' }),
+          makeActivityEvent({ session_id: 'sess-2', type: 'tool_done' }),
         )
         expect(tracker.getActivityType('sess-1')).toBe('tool_use')
-        expect(tracker.getActivityType('sess-2')).toBe('thinking')
+        expect(tracker.getActivityType('sess-2')).toBe('tool_done')
       },
     )
   })

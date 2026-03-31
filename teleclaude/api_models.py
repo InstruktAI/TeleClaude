@@ -529,13 +529,6 @@ class UserPromptSubmitActivityEventDTO(BaseAgentActivityEventDTO):
     type: Literal["user_prompt_submit"] = "user_prompt_submit"
 
 
-class ThinkingActivityEventDTO(BaseAgentActivityEventDTO):
-    """WebSocket event for transient thinking activity."""
-
-    type: Literal["thinking"] = "thinking"
-    text: str
-
-
 class ToolUseActivityEventDTO(BaseAgentActivityEventDTO):
     """WebSocket event for tool use activity."""
 
@@ -559,7 +552,6 @@ class AgentStopActivityEventDTO(BaseAgentActivityEventDTO):
 
 type AgentActivityEventDTO = (  # pylint: disable=invalid-name
     UserPromptSubmitActivityEventDTO
-    | ThinkingActivityEventDTO
     | ToolUseActivityEventDTO
     | ToolDoneActivityEventDTO
     | AgentStopActivityEventDTO

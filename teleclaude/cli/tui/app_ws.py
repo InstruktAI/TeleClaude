@@ -307,9 +307,6 @@ class TelecAppWsMixin:
         elif hook == "tool_done":
             sessions_view.update_activity(sid, "tool_done")
 
-        elif hook == "thinking":
-            sessions_view.update_activity(sid, "thinking", message.text or "")
-
         elif hook == "agent_stop":
             sessions_view.update_activity(sid, "agent_stop", message.summary or "")
             sessions_view.set_output_highlight(sid, message.summary or "")

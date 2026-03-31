@@ -148,20 +148,4 @@ describe("useSessionHighlights", () => {
     expect(result.current.get("sess-1")).toBeUndefined();
   });
 
-  it("stores thinking activity text as volatile output state", () => {
-    const { result } = renderHook(() =>
-      useSessionHighlights(sessions, null),
-    );
-
-    emit("agent_activity", {
-      event: "agent_activity",
-      session_id: "sess-1",
-      type: "thinking",
-      text: "• Working",
-      timestamp: "2026-03-30T12:08:00Z",
-    });
-
-    expect(result.current.get("sess-1")?.activityEvent).toBe("thinking");
-    expect(result.current.get("sess-1")?.activityText).toBe("• Working");
-  });
 });

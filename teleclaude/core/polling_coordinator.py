@@ -40,13 +40,10 @@ class CodexTurnState:
     """Per-session state for synthetic codex turn/tool events."""
 
     turn_active: bool = False
-    turn_closed: bool = False
     in_tool: bool = False
     prompt_visible_last: bool = False
     initialized: bool = False
     last_tool_signature: str = ""
-    last_thinking_text: str = ""
-    last_seen_agent_stop_at: str | None = None
 
 
 _codex_turn_state: dict[str, CodexTurnState] = {}
@@ -129,8 +126,6 @@ def _mark_codex_turn_started(session_id: str) -> None:
         state = CodexTurnState()
         _codex_turn_state[session_id] = state
     state.turn_active = True
-    state.turn_closed = False
-    state.last_thinking_text = ""
 
 
 seed_codex_prompt_from_message = codex_prompt_submit.seed_codex_prompt_from_message
@@ -140,7 +135,6 @@ _find_prompt_input = codex_prompt_submit._find_prompt_input  # pylint: disable=p
 _has_agent_marker = codex_prompt_submit._has_agent_marker  # pylint: disable=protected-access
 _has_live_prompt_marker = codex_prompt_submit._has_live_prompt_marker  # pylint: disable=protected-access
 _is_live_agent_marker_line = codex_prompt_submit._is_live_agent_marker_line  # pylint: disable=protected-access
-extract_live_thinking_text = codex_prompt_submit.extract_live_thinking_text
 _is_suggestion_styled = codex_prompt_submit._is_suggestion_styled  # pylint: disable=protected-access
 _strip_suggestion_segments = codex_prompt_submit._strip_suggestion_segments  # pylint: disable=protected-access
 
@@ -166,7 +160,7 @@ async def _emit_synthetic_codex_event(  # pylint: disable=too-many-arguments
     if text:
         raw["text"] = text
 
-    if event_type in (AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE, AgentHookEvents.THINKING):
+    if event_type in (AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE):
         payload = AgentOutputPayload(raw=raw)
     else:
         return
@@ -184,7 +178,6 @@ async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches,to
     session_id: str,
     active_agent: str | None,
     current_output: str,
-    session_last_agent_stop_at: str | None,
     emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
     *,
     enable_synthetic_turn_events: bool,
@@ -200,7 +193,6 @@ async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches,to
 
     prompt_visible = codex_prompt_submit._has_live_prompt_marker(current_output)  # pylint: disable=protected-access
     responding = codex_prompt_submit._is_live_agent_responding(current_output)  # pylint: disable=protected-access
-    thinking_text = extract_live_thinking_text(current_output)
     tool_match = codex_prompt_submit._find_recent_tool_action(current_output)  # pylint: disable=protected-access
     raw_tool_action = tool_match[0] if tool_match else None
     raw_tool_signature = tool_match[1] if tool_match else ""
@@ -208,29 +200,9 @@ async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches,to
     if not state.initialized:
         state.initialized = True
         state.prompt_visible_last = prompt_visible
-        state.last_seen_agent_stop_at = session_last_agent_stop_at
         if prompt_visible and raw_tool_signature:
             # Baseline stale scrollback on first sight to avoid startup false positives.
             state.last_tool_signature = raw_tool_signature
-    elif session_last_agent_stop_at and session_last_agent_stop_at != state.last_seen_agent_stop_at:
-        state.last_seen_agent_stop_at = session_last_agent_stop_at
-        state.turn_closed = True
-        state.turn_active = False
-        state.in_tool = False
-        state.last_thinking_text = ""
-
-    if thinking_text and not state.turn_closed:
-        state.turn_active = True
-        if thinking_text != state.last_thinking_text:
-            await _emit_synthetic_codex_event(
-                session_id,
-                AgentHookEvents.THINKING,
-                emit_agent_event,
-                text=thinking_text,
-            )
-            state.last_thinking_text = thinking_text
-    elif state.last_thinking_text:
-        state.last_thinking_text = ""
 
     is_new_tool_signature = bool(raw_tool_signature and raw_tool_signature != state.last_tool_signature)
     # Prompt-visible snapshots are common; ignore known stale signatures but allow new ones.
@@ -244,7 +216,6 @@ async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches,to
         if is_new_tool_signature:
             state.last_tool_signature = raw_tool_signature
         state.turn_active = True
-        state.turn_closed = False
         if not state.in_tool:
             await _emit_synthetic_codex_event(
                 session_id,
@@ -454,9 +425,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                             session_id=event.session_id,
                             active_agent=session.active_agent,
                             current_output=clean_output,
-                            session_last_agent_stop_at=(
-                                session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None
-                            ),
                             emit_agent_event=emit_handler,
                             enable_synthetic_turn_events=synth_turn_events_enabled,
                         )
