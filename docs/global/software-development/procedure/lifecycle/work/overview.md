@@ -109,13 +109,6 @@ build-gate failures until they pass or a blocker remains.
 - If review/fix loops hit the cap, the orchestrator owns pragmatic closure.
 - The state machine checkpoint is crash-safe — re-calling `telec todo work` resumes from last state.
 
-## Required tools
-
-- `telec todo artifacts read <slug> <name>`
-- `telec todo stamp <slug> --build complete`
-- `telec todo stamp <slug> --verdict approve|needs_work`
-- `telec todo show <slug>`
-
 ## See also
 
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
