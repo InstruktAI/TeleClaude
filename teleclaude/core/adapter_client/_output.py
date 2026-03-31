@@ -1,4 +1,4 @@
-"""Message and output delivery methods for AdapterClient."""
+"""Message and output delivery methods for AdapterRuntime."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 class _OutputMixin:  # pyright: ignore[reportUnusedClass]
-    """Message, output, and delivery operations for AdapterClient."""
+    """Message, output, and delivery operations for AdapterRuntime."""
 
     if TYPE_CHECKING:
         adapters: dict[str, "BaseAdapter"]

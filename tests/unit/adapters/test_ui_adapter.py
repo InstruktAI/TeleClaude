@@ -205,6 +205,26 @@ class TestNoOpMethods:
         assert result is session
 
     @pytest.mark.unit
+    async def test_ensure_output_lane_ready_skips_channel_ensure_for_tmux_activity(
+        self, adapter: _ConcreteAdapter
+    ) -> None:
+        session = _make_session()
+        with patch.object(adapter, "ensure_channel", AsyncMock(return_value=session)) as ensure_channel:
+            result = await adapter.ensure_output_lane_ready(session, trigger="tmux_activity")
+
+        assert result is session
+        ensure_channel.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_ensure_output_lane_ready_delegates_for_non_tmux_triggers(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        with patch.object(adapter, "ensure_channel", AsyncMock(return_value=session)) as ensure_channel:
+            result = await adapter.ensure_output_lane_ready(session, trigger="repair")
+
+        assert result is session
+        ensure_channel.assert_awaited_once_with(session)
+
+    @pytest.mark.unit
     def test_drop_pending_output_returns_zero(self, adapter: _ConcreteAdapter) -> None:
         result = adapter.drop_pending_output("sess-x")
         assert result == 0

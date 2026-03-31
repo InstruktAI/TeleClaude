@@ -1,4 +1,4 @@
-"""Core AdapterClient class composing channel, output, and remote mixins."""
+"""Core adapter runtime composing channel, output, and remote mixins."""
 
 import asyncio
 import os
@@ -31,21 +31,19 @@ _OUTPUT_SUMMARY_MIN_INTERVAL_S = 2.0
 _OUTPUT_SUMMARY_IDLE_THRESHOLD_S = 2.0
 
 
-class AdapterClient(_OutputMixin, _ChannelsMixin, _RemoteMixin):
-    """Unified interface for multi-adapter operations.
+class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
+    """Runtime host for adapter lifecycle and shared infrastructure.
 
-    Manages UI adapters (Telegram, Discord) and transport services (Redis),
-    providing a clean, boundary-agnostic API. Owns the lifecycle of registered
-    components.
+    Manages UI adapters (Telegram, Discord, WhatsApp) and transport services
+    (Redis), owning startup/shutdown, registry, and shared execution plumbing.
+    Concrete UI delivery policy belongs to UiAdapter subclasses, not here.
 
-    Routing model: all UI adapters receive output unconditionally. Channel
-    provisioning (ensure_channel) determines which adapters participate —
-    not the routing layer. The entry point (last_input_origin) is bookkeeping
-    for response routing, not a routing decision.
+    Routing helpers execute explicit UI operations across selected adapters.
+    Narrow flows must not provision unrelated UI lanes.
     """
 
     def __init__(self, task_registry: "TaskRegistry | None" = None) -> None:
-        """Initialize AdapterClient.
+        """Initialize adapter runtime.
 
         Args:
             task_registry: Optional TaskRegistry for tracking background tasks
@@ -242,7 +240,7 @@ class AdapterClient(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         Channel provisioning (ensure_channel) determines which adapters
         participate — not the routing layer.
         """
-        session = await self.ensure_ui_channels(session)
+        session = await self.ensure_ui_channels(session, include_adapters=include_adapters)
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
@@ -268,3 +266,6 @@ class AdapterClient(_OutputMixin, _ChannelsMixin, _RemoteMixin):
                 entry_point_result = result
 
         return entry_point_result if entry_point_result is not None else first_result
+
+
+AdapterClient = AdapterRuntime

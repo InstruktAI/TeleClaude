@@ -150,19 +150,6 @@ class MaintenanceService:
             if await polling_coordinator.is_polling(session.session_id):
                 continue
 
-            # Ensure UI channels exist for output delivery (all origins)
-            telegram_topic = session.get_origin_section("telegram").get("topic_id")
-            if not telegram_topic:
-                try:
-                    await self._client.ensure_ui_channels(session)
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    logger.warning(
-                        "Failed to ensure UI channels for session %s: %s",
-                        session.session_id,
-                        exc,
-                    )
-                    continue
-
             if session.tmux_session_name not in active_tmux_sessions:
                 if session.session_id not in self._restoring_sessions:
                     self._restoring_sessions.add(session.session_id)

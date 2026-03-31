@@ -1,4 +1,4 @@
-"""Channel provisioning, command handlers, and UI lane management for AdapterClient."""
+"""Channel provisioning, command handlers, and UI lane management for AdapterRuntime."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -309,6 +309,8 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     async def ensure_ui_channels(
         self,
         session: "Session",
+        *,
+        include_adapters: set[str] | None = None,
     ) -> "Session":
         """Single funnel for UI channel provisioning.
 
@@ -339,6 +341,10 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                 for adapter_type, adapter in self.adapters.items()
                 if isinstance(adapter, UiAdapter)
             ]
+            if include_adapters is not None:
+                ui_adapters = [
+                    (adapter_type, adapter) for adapter_type, adapter in ui_adapters if adapter_type in include_adapters
+                ]
             if not ui_adapters:
                 raise ValueError("No UI adapters registered")
 
@@ -349,6 +355,50 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         if not refreshed:
             raise ValueError(f"Session {session_id} missing after channel creation")
         return refreshed
+
+    async def ensure_output_lanes_ready(
+        self,
+        session: "Session",
+        *,
+        trigger: str,
+        include_adapters: set[str] | None = None,
+    ) -> "Session":
+        """Run trigger-aware output-lane readiness on selected UI adapters."""
+        session_id = session.session_id
+
+        if session_id not in self._channel_ensure_locks:
+            self._channel_ensure_locks[session_id] = asyncio.Lock()
+
+        async with self._channel_ensure_locks[session_id]:
+            fresh = await db.get_session(session_id)
+            if fresh:
+                session = fresh
+
+            if session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
+                logger.debug(
+                    "Skipping ensure_output_lanes_ready for terminal session %s (status=%s)",
+                    session_id,
+                    session.lifecycle_status,
+                )
+                return session
+
+            ui_adapters = [
+                (adapter_type, adapter)
+                for adapter_type, adapter in self.adapters.items()
+                if isinstance(adapter, UiAdapter)
+            ]
+            if include_adapters is not None:
+                ui_adapters = [
+                    (adapter_type, adapter) for adapter_type, adapter in ui_adapters if adapter_type in include_adapters
+                ]
+            if not ui_adapters:
+                raise ValueError("No UI adapters registered")
+
+            for _, adapter in ui_adapters:
+                session = await adapter.ensure_output_lane_ready(session, trigger=trigger)  # type: ignore[arg-type]
+
+        refreshed = await db.get_session(session_id)
+        return refreshed or session
 
     async def get_output_message_id(self, session_id: str) -> str | None:
         """Get output message ID for session.

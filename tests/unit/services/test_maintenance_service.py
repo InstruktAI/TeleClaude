@@ -18,7 +18,6 @@ from teleclaude.services.maintenance_service import COMPACTION_IDLE_THRESHOLD_S,
 def _make_service() -> MaintenanceService:
     client = SimpleNamespace(
         adapters={},
-        ensure_ui_channels=AsyncMock(),
     )
     return MaintenanceService(
         client=client,
@@ -100,7 +99,7 @@ class TestMaintenanceService:
         update_mock.assert_awaited_once_with("target", native_log_file="/tmp/discovered.log")
 
     @pytest.mark.unit
-    async def test_poller_watch_ensures_channels_and_schedules_polling(self) -> None:
+    async def test_poller_watch_schedules_polling_without_lane_provisioning(self) -> None:
         session = _make_session("session-1", topic_id=None)
         service = _make_service()
 
@@ -128,7 +127,6 @@ class TestMaintenanceService:
         ):
             await service._poller_watch_iteration()
 
-        service._client.ensure_ui_channels.assert_awaited_once_with(session)
         schedule_mock.assert_awaited_once()
 
     @pytest.mark.unit

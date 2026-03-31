@@ -245,6 +245,8 @@ class TestSendMessage:
             )
 
         assert result == "transcript-msg"
+        telegram.ensure_channel.assert_awaited_once_with(session)
+        discord.ensure_channel.assert_not_awaited()
         telegram.send_message.assert_awaited_once()
         assert discord.send_message.await_count == 0
         mock_db.add_pending_deletion.assert_awaited_once_with(

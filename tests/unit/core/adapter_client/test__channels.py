@@ -208,6 +208,23 @@ class TestEnsureUiChannels:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_provisions_only_included_ui_adapters(self):
+        client = AdapterClient()
+        session = _make_session()
+        telegram = _make_ui_adapter()
+        discord = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+
+        with patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)):
+            result = await client.ensure_ui_channels(session, include_adapters={"telegram"})
+
+        assert result is session
+        telegram.ensure_channel.assert_awaited_once_with(session)
+        discord.ensure_channel.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_raises_when_no_ui_adapters_registered(self):
         client = AdapterClient()
         session = _make_session()

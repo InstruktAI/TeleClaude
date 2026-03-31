@@ -1,6 +1,7 @@
 """Base adapter for UI-enabled platforms (Telegram, Slack, WhatsApp).
 
 UI adapters provide:
+- Output lane readiness
 - Output message management (edit/create messages)
 - Feedback message cleanup
 - Message formatting and display
@@ -12,7 +13,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
 
@@ -112,6 +113,22 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     async def ensure_channel(self, session: Session) -> Session:
         """Ensure adapter-specific channel exists (default no-op)."""
         return session
+
+    async def ensure_output_lane_ready(
+        self,
+        session: Session,
+        *,
+        trigger: Literal["tmux_activity", "external_input", "daemon_startup", "repair"],
+    ) -> Session:
+        """Ensure this adapter's output lane is ready for the given trigger.
+
+        UI adapters own output-lane readiness. The default implementation keeps
+        tmux-activity wakeups effectively free and provisions channel state only
+        for triggers that do not already prove lane viability.
+        """
+        if trigger == "tmux_activity":
+            return session
+        return await self.ensure_channel(session)
 
     async def recover_lane_error(
         self,
