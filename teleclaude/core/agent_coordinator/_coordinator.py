@@ -16,12 +16,18 @@ from teleclaude.core.events import (
     AgentActivityEvent,
     AgentEventContext,
     AgentHookEvents,
+    AgentHookEventType,
     AgentOutputPayload,
     AgentSessionEndPayload,
     AgentSessionStartPayload,
+    AgentStopActivityEvent,
     AgentStopPayload,
     SessionStatusContext,
     TeleClaudeEvents,
+    ThinkingActivityEvent,
+    ToolDoneActivityEvent,
+    ToolUseActivityEvent,
+    UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
 )
 from teleclaude.core.status_contract import serialize_status_event
@@ -103,7 +109,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
     def _emit_activity_event(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Event contract fields
         self,
         session_id: str,
-        event_type: str,
+        event_type: AgentHookEventType,
         tool_name: str | None = None,
         tool_preview: str | None = None,
         summary: str | None = None,
@@ -136,14 +142,14 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             )
             event_bus.emit(
                 TeleClaudeEvents.AGENT_ACTIVITY,
-                AgentActivityEvent(
+                self._build_activity_event(
                     session_id=session_id,
-                    event_type=event_type,  # type: ignore[arg-type]
+                    event_type=event_type,
+                    timestamp=timestamp,
                     tool_name=tool_name,
                     tool_preview=tool_preview,
                     summary=summary,
                     message=message,
-                    timestamp=timestamp,
                     canonical_type=canonical.canonical_type if canonical else None,
                     message_intent=canonical.message_intent if canonical else None,
                     delivery_scope=canonical.delivery_scope if canonical else None,
@@ -156,6 +162,72 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 exc_info=True,
                 extra={"session_id": session_id, "event_type": event_type},
             )
+
+    @staticmethod
+    def _build_activity_event(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        *,
+        session_id: str,
+        event_type: AgentHookEventType,
+        timestamp: str,
+        tool_name: str | None,
+        tool_preview: str | None,
+        summary: str | None,
+        message: str | None,
+        canonical_type: str | None,
+        message_intent: str | None,
+        delivery_scope: str | None,
+    ) -> AgentActivityEvent:
+        if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
+            return UserPromptSubmitActivityEvent(
+                session_id=session_id,
+                event_type=event_type,
+                timestamp=timestamp,
+                canonical_type=canonical_type,
+                message_intent=message_intent,
+                delivery_scope=delivery_scope,
+            )
+        if event_type == AgentHookEvents.THINKING:
+            return ThinkingActivityEvent(
+                session_id=session_id,
+                event_type=event_type,
+                text=message or "",
+                timestamp=timestamp,
+                canonical_type=canonical_type,
+                message_intent=message_intent,
+                delivery_scope=delivery_scope,
+            )
+        if event_type == AgentHookEvents.TOOL_USE:
+            return ToolUseActivityEvent(
+                session_id=session_id,
+                event_type=event_type,
+                tool_name=tool_name,
+                tool_preview=tool_preview,
+                timestamp=timestamp,
+                canonical_type=canonical_type,
+                message_intent=message_intent,
+                delivery_scope=delivery_scope,
+            )
+        if event_type == AgentHookEvents.TOOL_DONE:
+            return ToolDoneActivityEvent(
+                session_id=session_id,
+                event_type=event_type,
+                timestamp=timestamp,
+                canonical_type=canonical_type,
+                message_intent=message_intent,
+                delivery_scope=delivery_scope,
+            )
+        if event_type == AgentHookEvents.AGENT_STOP:
+            return AgentStopActivityEvent(
+                session_id=session_id,
+                event_type=event_type,
+                summary=summary,
+                message=message,
+                timestamp=timestamp,
+                canonical_type=canonical_type,
+                message_intent=message_intent,
+                delivery_scope=delivery_scope,
+            )
+        raise ValueError(f"Unsupported activity event_type: {event_type}")
 
     def _emit_status_event(
         self,
@@ -222,6 +294,8 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             await self.handle_agent_stop(context)
         elif context.event_type == AgentHookEvents.TOOL_DONE:
             await self.handle_tool_done(context)
+        elif context.event_type == AgentHookEvents.THINKING:
+            await self.handle_thinking(context)
         elif context.event_type == AgentHookEvents.TOOL_USE:
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
@@ -575,6 +649,17 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         self._emit_activity_event(session_id, AgentHookEvents.TOOL_DONE)
 
         # Drive headless output delivery via debounced transcript pull.
+        await self._signal_headless_activity(session_id)
+
+    async def handle_thinking(self, context: AgentEventContext) -> None:
+        """Handle transient thinking/progress activity for live consumers."""
+        session_id = context.session_id
+        payload = cast(AgentOutputPayload, context.data)
+        text_raw = payload.raw.get("text")
+        text = text_raw if isinstance(text_raw, str) else ""
+        self._emit_activity_event(session_id, AgentHookEvents.THINKING, message=text)
+        now_ts = datetime.now(UTC).isoformat()
+        self._emit_status_event(session_id, "active_output", "output_observed", last_activity_at=now_ts)
         await self._signal_headless_activity(session_id)
 
     async def handle_session_end(self, context: AgentEventContext) -> None:

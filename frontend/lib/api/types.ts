@@ -279,18 +279,46 @@ export interface ErrorEvent {
   data: ErrorEventData;
 }
 
-export interface AgentActivityEvent {
+export interface BaseAgentActivityEvent {
   event: "agent_activity";
   session_id: string;
   type: string;
-  tool_name?: string | null;
-  tool_preview?: string | null;
-  summary?: string | null;
   timestamp?: string | null;
   canonical_type?: string | null;
   message_intent?: string | null;
   delivery_scope?: string | null;
 }
+
+export interface UserPromptSubmitActivityEvent extends BaseAgentActivityEvent {
+  type: "user_prompt_submit";
+}
+
+export interface ThinkingActivityEvent extends BaseAgentActivityEvent {
+  type: "thinking";
+  text: string;
+}
+
+export interface ToolUseActivityEvent extends BaseAgentActivityEvent {
+  type: "tool_use";
+  tool_name?: string | null;
+  tool_preview?: string | null;
+}
+
+export interface ToolDoneActivityEvent extends BaseAgentActivityEvent {
+  type: "tool_done";
+}
+
+export interface AgentStopActivityEvent extends BaseAgentActivityEvent {
+  type: "agent_stop";
+  summary?: string | null;
+}
+
+export type AgentActivityEvent =
+  | UserPromptSubmitActivityEvent
+  | ThinkingActivityEvent
+  | ToolUseActivityEvent
+  | ToolDoneActivityEvent
+  | AgentStopActivityEvent;
 
 export interface SessionStatusEvent {
   event: "session_status";

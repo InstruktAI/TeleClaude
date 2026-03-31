@@ -533,8 +533,8 @@ class SessionLifecycleStatusEventDTO(BaseModel):
     delivery_scope: str | None = None
 
 
-class AgentActivityEventDTO(BaseModel):
-    """WebSocket event for agent activity (tool_use, tool_done, agent_stop).
+class BaseAgentActivityEventDTO(BaseModel):
+    """Base WebSocket event for agent activity.
 
     Canonical contract fields (ucap-canonical-contract):
       canonical_type: stable outbound vocabulary type (user_prompt_submit,
@@ -547,15 +547,54 @@ class AgentActivityEventDTO(BaseModel):
 
     event: Literal["agent_activity"] = "agent_activity"
     session_id: str
-    type: str  # hook event type (preserved for consumer compatibility)
-    tool_name: str | None = None
-    tool_preview: str | None = None
-    summary: str | None = None
     timestamp: str | None = None
     # Canonical contract fields (optional; present when produced via activity_contract)
     canonical_type: str | None = None
     message_intent: str | None = None
     delivery_scope: str | None = None
+
+
+class UserPromptSubmitActivityEventDTO(BaseAgentActivityEventDTO):
+    """WebSocket event for user prompt submit activity."""
+
+    type: Literal["user_prompt_submit"] = "user_prompt_submit"
+
+
+class ThinkingActivityEventDTO(BaseAgentActivityEventDTO):
+    """WebSocket event for transient thinking activity."""
+
+    type: Literal["thinking"] = "thinking"
+    text: str
+
+
+class ToolUseActivityEventDTO(BaseAgentActivityEventDTO):
+    """WebSocket event for tool use activity."""
+
+    type: Literal["tool_use"] = "tool_use"
+    tool_name: str | None = None
+    tool_preview: str | None = None
+
+
+class ToolDoneActivityEventDTO(BaseAgentActivityEventDTO):
+    """WebSocket event for tool completion activity."""
+
+    type: Literal["tool_done"] = "tool_done"
+
+
+class AgentStopActivityEventDTO(BaseAgentActivityEventDTO):
+    """WebSocket event for agent stop activity."""
+
+    type: Literal["agent_stop"] = "agent_stop"
+    summary: str | None = None
+
+
+type AgentActivityEventDTO = (  # pylint: disable=invalid-name
+    UserPromptSubmitActivityEventDTO
+    | ThinkingActivityEventDTO
+    | ToolUseActivityEventDTO
+    | ToolDoneActivityEventDTO
+    | AgentStopActivityEventDTO
+)
 
 
 class TTSSettingsDTO(BaseModel):

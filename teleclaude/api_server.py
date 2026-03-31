@@ -26,7 +26,15 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api.auth import CallerIdentity, verify_caller
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
 from teleclaude.api.ws_mixin import _WebSocketMixin
-from teleclaude.api_models import AgentActivityEventDTO, SessionLifecycleStatusEventDTO, TodoDTO
+from teleclaude.api_models import (
+    AgentStopActivityEventDTO,
+    SessionLifecycleStatusEventDTO,
+    ThinkingActivityEventDTO,
+    TodoDTO,
+    ToolDoneActivityEventDTO,
+    ToolUseActivityEventDTO,
+    UserPromptSubmitActivityEventDTO,
+)
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
@@ -321,17 +329,29 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         also carries canonical contract fields (canonical_type, message_intent,
         delivery_scope) when produced via the canonical contract module.
         """
-        dto = AgentActivityEventDTO(
-            session_id=context.session_id,
-            type=context.event_type,
-            tool_name=context.tool_name,
-            tool_preview=context.tool_preview,
-            summary=context.summary,
-            timestamp=context.timestamp,
-            canonical_type=context.canonical_type,
-            message_intent=context.message_intent,
-            delivery_scope=context.delivery_scope,
-        )
+        common = {
+            "session_id": context.session_id,
+            "timestamp": context.timestamp,
+            "canonical_type": context.canonical_type,
+            "message_intent": context.message_intent,
+            "delivery_scope": context.delivery_scope,
+        }
+        if context.event_type == "user_prompt_submit":
+            dto = UserPromptSubmitActivityEventDTO(**common)
+        elif context.event_type == "thinking":
+            dto = ThinkingActivityEventDTO(text=getattr(context, "text", ""), **common)
+        elif context.event_type == "tool_use":
+            dto = ToolUseActivityEventDTO(
+                tool_name=getattr(context, "tool_name", None),
+                tool_preview=getattr(context, "tool_preview", None),
+                **common,
+            )
+        elif context.event_type == "tool_done":
+            dto = ToolDoneActivityEventDTO(**common)
+        elif context.event_type == "agent_stop":
+            dto = AgentStopActivityEventDTO(summary=getattr(context, "summary", None), **common)
+        else:
+            return
         self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))
 
     async def _handle_error_event(

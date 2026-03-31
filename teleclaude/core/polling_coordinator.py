@@ -44,6 +44,7 @@ class CodexTurnState:
     prompt_visible_last: bool = False
     initialized: bool = False
     last_tool_signature: str = ""
+    last_thinking_text: str = ""
 
 
 _codex_turn_state: dict[str, CodexTurnState] = {}
@@ -135,17 +136,19 @@ _find_prompt_input = codex_prompt_submit._find_prompt_input  # pylint: disable=p
 _has_agent_marker = codex_prompt_submit._has_agent_marker  # pylint: disable=protected-access
 _has_live_prompt_marker = codex_prompt_submit._has_live_prompt_marker  # pylint: disable=protected-access
 _is_live_agent_marker_line = codex_prompt_submit._is_live_agent_marker_line  # pylint: disable=protected-access
+extract_live_thinking_text = codex_prompt_submit.extract_live_thinking_text
 _is_suggestion_styled = codex_prompt_submit._is_suggestion_styled  # pylint: disable=protected-access
 _strip_suggestion_segments = codex_prompt_submit._strip_suggestion_segments  # pylint: disable=protected-access
 
 
-async def _emit_synthetic_codex_event(
+async def _emit_synthetic_codex_event(  # pylint: disable=too-many-arguments
     session_id: str,
     event_type: str,
     emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
     *,
     tool_name: str | None = None,
     tool_preview: str | None = None,
+    text: str | None = None,
 ) -> None:
     """Emit a synthetic Codex event through the regular agent event handler."""
     raw = {
@@ -156,10 +159,10 @@ async def _emit_synthetic_codex_event(
         raw["tool_name"] = tool_name
     if tool_preview:
         raw["tool_preview"] = truncate_tool_preview(tool_preview)
+    if text:
+        raw["text"] = text
 
-    if event_type == AgentHookEvents.TOOL_USE:
-        payload = AgentOutputPayload(raw=raw)
-    elif event_type == AgentHookEvents.TOOL_DONE:
+    if event_type in (AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE, AgentHookEvents.THINKING):
         payload = AgentOutputPayload(raw=raw)
     else:
         return
@@ -173,7 +176,7 @@ async def _emit_synthetic_codex_event(
     )
 
 
-async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches
+async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
     session_id: str,
     active_agent: str | None,
     current_output: str,
@@ -192,10 +195,24 @@ async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches
 
     prompt_visible = codex_prompt_submit._has_live_prompt_marker(current_output)  # pylint: disable=protected-access
     responding = codex_prompt_submit._is_live_agent_responding(current_output)  # pylint: disable=protected-access
+    thinking_text = extract_live_thinking_text(current_output)
     tool_match = codex_prompt_submit._find_recent_tool_action(current_output)  # pylint: disable=protected-access
     raw_tool_action = tool_match[0] if tool_match else None
     raw_tool_signature = tool_match[1] if tool_match else ""
     raw_tool_preview = tool_match[2] if tool_match else ""
+    if thinking_text:
+        state.turn_active = True
+        if thinking_text != state.last_thinking_text:
+            await _emit_synthetic_codex_event(
+                session_id,
+                AgentHookEvents.THINKING,
+                emit_agent_event,
+                text=thinking_text,
+            )
+            state.last_thinking_text = thinking_text
+    elif state.last_thinking_text:
+        state.last_thinking_text = ""
+
     if not state.initialized:
         state.initialized = True
         state.prompt_visible_last = prompt_visible

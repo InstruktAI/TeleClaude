@@ -8,9 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from teleclaude.api_models import (
-    AgentActivityEventDTO,
     AgentAvailabilityDTO,
     AgentStatusRequest,
+    AgentStopActivityEventDTO,
     ChiptunesCommandReceiptDTO,
     ChiptunesStateEventDTO,
     ChiptunesStatusDTO,
@@ -51,8 +51,11 @@ from teleclaude.api_models import (
     SettingsDTO,
     SettingsPatchDTO,
     TodoDTO,
+    ToolDoneActivityEventDTO,
+    ToolUseActivityEventDTO,
     TTSSettingsDTO,
     TTSSettingsPatchDTO,
+    UserPromptSubmitActivityEventDTO,
     VoiceInputRequest,
 )
 
@@ -1030,21 +1033,19 @@ class TestAgentActivityEventDTO:
     @pytest.mark.unit
     def test_constructs_with_required_fields(self):
         """session_id and type are required; optional fields default to None."""
-        dto = AgentActivityEventDTO(session_id="s-1", type="tool_use")
+        dto = ToolUseActivityEventDTO(session_id="s-1")
         assert dto.event == "agent_activity"
         assert dto.session_id == "s-1"
         assert dto.type == "tool_use"
         assert dto.tool_name is None
         assert dto.tool_preview is None
-        assert dto.summary is None
         assert dto.canonical_type is None
 
     @pytest.mark.unit
     def test_canonical_fields_included(self):
         """Canonical contract fields are stored when provided."""
-        dto = AgentActivityEventDTO(
+        dto = ToolDoneActivityEventDTO(
             session_id="s-1",
-            type="tool_done",
             canonical_type="agent_output_update",
             message_intent="ctrl_activity",
             delivery_scope="CTRL",
@@ -1052,6 +1053,15 @@ class TestAgentActivityEventDTO:
         assert dto.canonical_type == "agent_output_update"
         assert dto.message_intent == "ctrl_activity"
         assert dto.delivery_scope == "CTRL"
+
+    @pytest.mark.unit
+    def test_typed_subclasses_pin_payload_shape(self):
+        prompt = UserPromptSubmitActivityEventDTO(session_id="s-1")
+        stop = AgentStopActivityEventDTO(session_id="s-1", summary="done")
+
+        assert prompt.type == "user_prompt_submit"
+        assert stop.type == "agent_stop"
+        assert stop.summary == "done"
 
 
 # ---------------------------------------------------------------------------

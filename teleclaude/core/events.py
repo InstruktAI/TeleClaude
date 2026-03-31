@@ -28,6 +28,7 @@ EventType = Literal[
 AgentHookEventType = Literal[
     "session_start",
     "user_prompt_submit",
+    "thinking",
     "tool_use",
     "tool_done",
     "agent_stop",
@@ -53,6 +54,7 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
 
     AGENT_SESSION_START: AgentHookEventType = "session_start"
     USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
+    THINKING: AgentHookEventType = "thinking"
     TOOL_DONE: AgentHookEventType = "tool_done"
     AGENT_STOP: AgentHookEventType = "agent_stop"
     AGENT_SESSION_END: AgentHookEventType = "session_end"
@@ -124,6 +126,7 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
     ALL: set[AgentHookEventType] = {
         AGENT_SESSION_START,
         USER_PROMPT_SUBMIT,
+        THINKING,
         TOOL_DONE,
         AGENT_STOP,
         AGENT_SESSION_END,
@@ -146,6 +149,7 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
         {
             AGENT_SESSION_START,
             USER_PROMPT_SUBMIT,
+            THINKING,
             TOOL_DONE,
             TOOL_USE,
             AGENT_STOP,
@@ -490,30 +494,57 @@ class SessionStatusContext:
 
 
 @dataclass(frozen=True)
-class AgentActivityEvent:  # pylint: disable=too-many-instance-attributes
-    """Agent activity event for real-time UI updates.
-
-    Direct event from coordinator to consumers (TUI/Web) without DB mediation.
-    Carries typed activity events (tool_use, tool_done, agent_stop) with optional metadata.
-
-    Canonical contract fields (ucap-canonical-contract):
-      canonical_type: stable outbound vocabulary type (user_prompt_submit,
-                      agent_output_update, agent_output_stop).
-      message_intent: routing intent for this event (ctrl_activity).
-      delivery_scope:  routing scope (CTRL for all activity events).
-    """
+class BaseAgentActivityEvent:
+    """Base class for typed real-time activity events."""
 
     session_id: str
     event_type: AgentHookEventType
-    tool_name: str | None = None
-    tool_preview: str | None = None
-    summary: str | None = None
-    message: str | None = None
     timestamp: str | None = None
-    # Canonical contract fields (preserved as optional for backward compatibility)
     canonical_type: str | None = None
     message_intent: str | None = None
     delivery_scope: str | None = None
+
+
+@dataclass(frozen=True)
+class UserPromptSubmitActivityEvent(BaseAgentActivityEvent):
+    """Real-time user prompt submit activity."""
+
+
+@dataclass(frozen=True)
+class ThinkingActivityEvent(BaseAgentActivityEvent):
+    """Real-time transient thinking/progress activity."""
+
+    text: str = ""
+
+
+@dataclass(frozen=True)
+class ToolUseActivityEvent(BaseAgentActivityEvent):
+    """Real-time tool-use activity."""
+
+    tool_name: str | None = None
+    tool_preview: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolDoneActivityEvent(BaseAgentActivityEvent):
+    """Real-time tool completion activity."""
+
+
+@dataclass(frozen=True)
+class AgentStopActivityEvent(BaseAgentActivityEvent):
+    """Real-time turn completion activity."""
+
+    summary: str | None = None
+    message: str | None = None
+
+
+type AgentActivityEvent = (
+    UserPromptSubmitActivityEvent
+    | ThinkingActivityEvent
+    | ToolUseActivityEvent
+    | ToolDoneActivityEvent
+    | AgentStopActivityEvent
+)
 
 
 @dataclass(frozen=True)

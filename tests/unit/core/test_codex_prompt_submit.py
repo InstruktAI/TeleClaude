@@ -16,6 +16,7 @@ from teleclaude.core.codex_prompt_submit import (
     _has_agent_marker,
     _is_live_agent_marker_line,
     cleanup_codex_prompt_state,
+    extract_live_thinking_text,
     seed_codex_prompt_from_message,
 )
 
@@ -135,3 +136,17 @@ class TestIsLiveAgentMarkerLine:
     def test_marker_only_line_returns_true(self):
         # A line with just the bullet marker and no other content
         assert _is_live_agent_marker_line("•") is True
+
+
+class TestExtractLiveThinkingText:
+    @pytest.mark.unit
+    def test_returns_clean_thinking_text_without_timer_suffix(self):
+        output = "\x1b[38;5;45m•\x1b[0m \x1b[38;5;117mWorking\x1b[0m (7s • esc to interrupt)"
+
+        assert extract_live_thinking_text(output) == "• Working"
+
+    @pytest.mark.unit
+    def test_returns_none_when_interrupt_suffix_missing(self):
+        output = "• Working on changes"
+
+        assert extract_live_thinking_text(output) is None

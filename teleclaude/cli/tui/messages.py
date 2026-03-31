@@ -322,7 +322,7 @@ class AgentActivity(Message):
 
     def __init__(self, session_id: str, activity_type: str, **details: object) -> None:
         super().__init__()
-        expected = {"canonical_type", "tool_name", "tool_preview", "summary", "timestamp"}
+        expected = {"canonical_type", "tool_name", "tool_preview", "summary", "text", "timestamp"}
         unknown = set(details) - expected
         if unknown:
             unknown_names = ", ".join(sorted(unknown))
@@ -334,6 +334,7 @@ class AgentActivity(Message):
             "tool_name": details.get("tool_name"),
             "tool_preview": details.get("tool_preview"),
             "summary": details.get("summary"),
+            "text": details.get("text"),
             "timestamp": details.get("timestamp"),
         }
 
@@ -369,6 +370,12 @@ class AgentActivity(Message):
     def summary(self) -> str | None:
         """Return the agent stop summary when present."""
         value = self._event["summary"]
+        return value if isinstance(value, str) else None
+
+    @property
+    def text(self) -> str | None:
+        """Return the thinking text when present."""
+        value = self._event["text"]
         return value if isinstance(value, str) else None
 
     @property

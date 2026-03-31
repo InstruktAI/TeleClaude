@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from instrukt_ai_logging import get_logger
 from textual.widgets import TabbedContent
 
@@ -100,16 +102,18 @@ class TelecAppWsMixin:
             self.post_message(SessionUpdated(session))  # type: ignore[attr-defined]
             return True
 
-        if isinstance(event, AgentActivityEvent):
+        if getattr(event, "event", None) == "agent_activity":
+            activity_event = cast(AgentActivityEvent, event)
             self.post_message(  # type: ignore[attr-defined]
                 AgentActivity(
-                    session_id=event.session_id,
-                    activity_type=event.type,
-                    canonical_type=event.canonical_type,
-                    tool_name=event.tool_name,
-                    tool_preview=event.tool_preview,
-                    summary=event.summary,
-                    timestamp=event.timestamp,
+                    session_id=activity_event.session_id,
+                    activity_type=activity_event.type,
+                    canonical_type=activity_event.canonical_type,
+                    tool_name=getattr(activity_event, "tool_name", None),
+                    tool_preview=getattr(activity_event, "tool_preview", None),
+                    summary=getattr(activity_event, "summary", None),
+                    text=getattr(activity_event, "text", None),
+                    timestamp=activity_event.timestamp,
                 )
             )
             return True
@@ -302,6 +306,9 @@ class TelecAppWsMixin:
 
         elif hook == "tool_done":
             sessions_view.update_activity(sid, "tool_done")
+
+        elif hook == "thinking":
+            sessions_view.update_activity(sid, "thinking", message.text or "")
 
         elif hook == "agent_stop":
             sessions_view.update_activity(sid, "agent_stop", message.summary or "")

@@ -316,6 +316,23 @@ describe("SessionTree", () => {
     expect(screen.getByTestId("session-summary-output-sess-1").textContent).toContain("out: ...")
   })
 
+  it("renders thinking activity in the collapsed session summary", () => {
+    const sessionStateMap = new Map<string, SessionHighlightViewState>([
+      ["sess-1", { activityEvent: "thinking", activityText: "• Working" }],
+    ])
+
+    render(
+      <SessionTree
+        tree={makeTree()}
+        sessionStateMap={sessionStateMap}
+        expandedSet={makeExpandedSet(makeTree())}
+        onToggle={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId("session-summary-output-sess-1").textContent).toContain("out: • Working")
+  })
+
   it("keeps technical session ids in the expanded detail block only", () => {
     render(
       <SessionTree

@@ -32,7 +32,15 @@ export interface SessionHighlightViewState {
 type PersistedHighlightMap = Record<string, PersistedHighlightState>;
 type VolatileHighlightMap = Record<string, VolatileHighlightState>;
 
-function buildToolActivityText(event: AgentActivityEvent): string {
+function isToolUseEvent(
+  event: AgentActivityEvent,
+): event is Extract<AgentActivityEvent, { type: "tool_use" }> {
+  return event.type === "tool_use";
+}
+
+function buildToolActivityText(
+  event: Extract<AgentActivityEvent, { type: "tool_use" }>,
+): string {
   if (!event.tool_name) return "";
   const preview = event.tool_preview ?? "";
   if (preview.startsWith(event.tool_name)) {
@@ -191,9 +199,11 @@ export function useSessionHighlights(
         [sessionId]: {
           activityEvent: activityEvent.type,
           activityText:
-            activityEvent.type === "tool_use"
+            isToolUseEvent(activityEvent)
               ? buildToolActivityText(activityEvent)
-              : activityEvent.type === "agent_stop"
+              : activityEvent.type === "thinking"
+                ? activityEvent.text ?? ""
+                : activityEvent.type === "agent_stop"
                 ? activityEvent.summary ?? ""
                 : "",
         },

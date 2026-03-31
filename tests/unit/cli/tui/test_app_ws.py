@@ -119,6 +119,23 @@ def test_on_agent_activity_strips_duplicate_tool_name_prefix_from_preview() -> N
 
 
 @pytest.mark.unit
+def test_on_agent_activity_passes_thinking_text_through() -> None:
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge)
+    message = AgentActivity(
+        session_id="session-1",
+        activity_type="thinking",
+        canonical_type="agent_output_update",
+        text="• Working",
+    )
+
+    app.on_agent_activity(message)
+
+    assert sessions_view.activity_calls == [("session-1", "thinking", "• Working")]
+
+
+@pytest.mark.unit
 def test_on_session_closed_drops_cached_agent_and_updates_views() -> None:
     sessions_view = _SessionsView()
     pane_bridge = _PaneBridge()

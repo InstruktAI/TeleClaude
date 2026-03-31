@@ -46,6 +46,7 @@ _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 _ANSI_BOLD_TOKEN_RE = re.compile(r"\x1b\[[0-9;]*1m([A-Za-z][A-Za-z_-]{1,40})\x1b\[[0-9;]*m")
 _ACTION_WORD_RE = re.compile(r"^([A-Za-z][A-Za-z_-]{1,40})")
 _TREE_CONTINUATION_PREFIX_RE = re.compile(r"^(?:[│┃┆┊|]+\s*|[├└]\s*)+")
+_CODEX_THINKING_SUFFIX_RE = re.compile(r"\s+\(\d+s\s+•\s+esc to interrupt\)\s*$", re.IGNORECASE)
 
 _CODEX_TOOL_ACTION_WORDS = frozenset(
     {
@@ -258,6 +259,21 @@ def _is_live_agent_marker_line(line: str) -> bool:
     if normalized.startswith(("working", "thinking", "sublimating", "planning", "analyzing")):
         return True
     return False
+
+
+def extract_live_thinking_text(output: str) -> str | None:
+    """Extract the current visible Codex thinking line without the timer suffix."""
+    lines = output.rstrip().split("\n")
+    for line in reversed(lines[-10:]):
+        clean_line = _strip_ansi(line).strip()
+        if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
+            continue
+        if "esc to interrupt" not in clean_line.lower():
+            continue
+        cleaned = _CODEX_THINKING_SUFFIX_RE.sub("", clean_line).strip()
+        if cleaned and cleaned != clean_line:
+            return cleaned
+    return None
 
 
 def _is_compact_dimmed_agent_boundary_line(line: str) -> bool:
