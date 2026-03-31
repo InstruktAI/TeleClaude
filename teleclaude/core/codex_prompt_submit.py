@@ -49,7 +49,9 @@ _TREE_CONTINUATION_PREFIX_RE = re.compile(r"^(?:[│┃┆┊|]+\s*|[├└]\s*)
 _CODEX_THINKING_STATUS_RE = re.compile(
     r"""
     ^
-    (?P<prefix>[•◦✶✦✧✴✸✹✺★☆●○◆◇]\s+.+?)
+    (?P<marker>[•◦✶✦✧✴✸✹✺★☆●○◆◇])
+    \s+
+    (?P<text>.+?)
     \s+\(
     (?P<elapsed>\d+s|\d+m\s+\d{2}s|\d+h\s+\d{2}m\s+\d{2}s)
     (?:\s+•\s+esc(?:\s+to\s+interrupt|…))?
@@ -282,10 +284,13 @@ def extract_live_thinking_text(output: str) -> str | None:
             continue
         match = _CODEX_THINKING_STATUS_RE.match(clean_line)
         if match:
-            prefix = match.group("prefix").strip()
-            if prefix and prefix[0] in CODEX_AGENT_MARKERS:
-                prefix = prefix[1:].strip()
-            return prefix or None
+            text = match.group("text").strip()
+            for idx, char in enumerate(text):
+                if char in CODEX_AGENT_MARKERS:
+                    remainder = text[idx + 1 :].strip()
+                    if remainder:
+                        text = remainder
+            return text or None
     return None
 
 

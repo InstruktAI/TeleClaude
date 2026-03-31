@@ -158,6 +158,18 @@ class TestExtractLiveThinkingText:
         assert extract_live_thinking_text(output) == "Investigating rendering code"
 
     @pytest.mark.unit
+    def test_matches_footer_variant_with_waiting_header_and_trailing_suffix(self):
+        output = "• Waiting for background terminal (25s • esc to interrupt) · 1 background terminal running · /ps to view · /clean to close"
+
+        assert extract_live_thinking_text(output) == "Waiting for background terminal"
+
+    @pytest.mark.unit
+    def test_prefers_last_marker_segment_when_visible_row_contains_prefix_text(self):
+        output = "• I've confirmed the key point: • Working (7s • esc to interrupt)"
+
+        assert extract_live_thinking_text(output) == "Working"
+
+    @pytest.mark.unit
     def test_matches_truncated_interrupt_hint_variant(self):
         output = "• Working (7s • esc…"
 
@@ -166,5 +178,11 @@ class TestExtractLiveThinkingText:
     @pytest.mark.unit
     def test_returns_none_for_plain_agent_line_without_footer_timer(self):
         output = "• Working on changes"
+
+        assert extract_live_thinking_text(output) is None
+
+    @pytest.mark.unit
+    def test_returns_none_without_leading_agent_marker(self):
+        output = "Waiting for background terminal (25s • esc to interrupt) · 1 background terminal running"
 
         assert extract_live_thinking_text(output) is None
