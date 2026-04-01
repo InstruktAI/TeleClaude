@@ -464,28 +464,34 @@ async def todo_dump(
     """
     from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
 
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    try:
+        effective_cwd = cwd or _default_cwd()
+        todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
-    existing = await todos_db.read_state(slug)
-    if existing is not None:
-        raise HTTPException(status_code=409, detail=f"Todo '{slug}' already exists")
+        existing = await todos_db.read_state(slug)
+        if existing is not None:
+            raise HTTPException(status_code=409, detail=f"Todo '{slug}' already exists")
 
-    state = default_state()
-    if kind == "bug":
-        state["kind"] = "bug"
+        state = default_state()
+        if kind == "bug":
+            state["kind"] = "bug"
 
-    await todos_db.write_state(slug, state)
+        # Roadmap first — write_artifact resolves slug→UUID via the roadmap.
+        await todos_db.add_to_roadmap(slug, after=after if after else None)
+        await todos_db.write_state(slug, state)
 
-    if kind == "bug":
-        await todos_db.write_artifact(slug, "bug", content)
-    else:
-        input_content = f"# {slug} — Input\n\n{content}\n"
-        await todos_db.write_artifact(slug, "input", input_content)
+        if kind == "bug":
+            await todos_db.write_artifact(slug, "bug", content)
+        else:
+            input_content = f"# {slug} — Input\n\n{content}\n"
+            await todos_db.write_artifact(slug, "input", input_content)
 
-    await todos_db.add_to_roadmap(slug, after=after if after else None)
-
-    return _SlugStatusResponse(status="ok", slug=slug)
+        return _SlugStatusResponse(status="ok", slug=slug)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.error("todo_dump failed for slug=%s", slug, exc_info=True)
+        raise
 
 
 @router.post("/split")
