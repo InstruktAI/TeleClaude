@@ -3,6 +3,7 @@
 ## Heartbeat Discipline
 
 - YOUR #1 FAILURE MODE. Every sustained work block needs a heartbeat timer. Set it BEFORE your first tool call — before reading, before searching, before anything. No timer, no work.
+- **Never use cron, `/loop`, or any recurring mechanism for heartbeats.** They create zombie timers that fire after the task is done. Use a one-shot `Bash(command="sleep <seconds> && echo 'Heartbeat: <intent>'", run_in_background=true)` — fires once, dies, you choose whether to set another.
 
 ## RLHF Deference Correction
 
