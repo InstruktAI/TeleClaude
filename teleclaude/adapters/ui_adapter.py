@@ -29,6 +29,7 @@ from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents, UiCom
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
+from teleclaude.utils.transcript._utils import _parse_timestamp
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -136,13 +137,39 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         text: str,
         multi_message: bool = False,
         _continuation_state: Any = None,
+        *,
+        delivery_ts: datetime | None = None,
     ) -> str | None:
-        """Send or edit threaded output message with smart pagination."""
+        """Send or edit threaded output message with smart pagination.
+
+        Args:
+            delivery_ts: Content timestamp from the transcript renderer.
+                When provided, the method rejects the delivery inside the
+                output lock if a turn break has sealed last_delivered_at
+                past this timestamp — closing the TOCTOU race between
+                the cadence loop and concurrent turn breaks.
+        """
         if _continuation_state is None:
             _continuation_state = self._markdown_initial_state()  # pylint: disable=assignment-from-none
         lock = self._get_output_delivery_lock(session.session_id)
         async with lock:
             await self._sync_threaded_session_state(session)
+
+            # Reject stale deliveries: a turn break may have sealed the
+            # delivery window after the caller computed this content.
+            if delivery_ts is not None:
+                sealed_raw = self._origin_field(session, "last_delivered_at")
+                if isinstance(sealed_raw, str):
+                    sealed = _parse_timestamp(sealed_raw)
+                    if sealed and delivery_ts <= sealed:
+                        logger.debug(
+                            "[THREADED] Rejected stale delivery: adapter=%s session=%s delivery_ts=%s sealed=%s",
+                            self.ADAPTER_KEY,
+                            session.session_id,
+                            delivery_ts.isoformat(),
+                            sealed.isoformat(),
+                        )
+                        return None
 
             converted_text = self._convert_markdown_for_platform(text)
             logger.debug(
@@ -564,14 +591,18 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         return 0
 
     async def clear_turn_state(self, session: Session) -> None:
-        """Reset per-turn output state (char_offset only).
+        """Complete per-turn output reset — the single atomic turn-break operation.
 
-        Does NOT clear delivery timestamp — that persists in origin_metadata
-        and prevents re-sending content that was already delivered.
-        Does NOT clear output_message_id — cleared separately by
-        break_threaded_turn or the cadence loop's turn break.
+        Resets char_offset, clears output_message_id, and seals the delivery
+        window so the cadence loop won't re-send already-displayed content.
         """
         await self._set_char_offset(session, 0)
+        await self._set_origin_field(
+            session,
+            output_message_id=None,
+            last_delivered_at=datetime.now(UTC).isoformat(),
+        )
+        logger.debug("Turn state cleared: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
 
     async def force_output_pull(self, session: Session) -> None:
         """Trigger an immediate output pull for a session outside the cadence schedule."""

@@ -19,7 +19,6 @@ from teleclaude.core.db import db
 from teleclaude.core.models import SessionField
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
-    extract_last_user_message_with_timestamp,
     get_assistant_messages_since,
     render_agent_output,
     render_clean_agent_output,
@@ -159,35 +158,9 @@ class OutputCadenceLoop:
 
         turn_cursor = session.last_tool_done_at
 
-        # Detect turn break: new user message in transcript since last render.
-        from teleclaude.core.agent_coordinator._helpers import (  # pylint: disable=import-outside-toplevel
-            _has_active_output_message,
-        )
-
-        if await _has_active_output_message(session):
-            user_msg = extract_last_user_message_with_timestamp(transcript_path, agent_name)
-            if user_msg:
-                user_text, user_ts = user_msg
-                if user_ts and (turn_cursor is None or user_ts > turn_cursor):
-                    logger.info(
-                        "Turn break: session=%s adapter=%s user_ts=%s cursor=%s cursor_is_none=%s",
-                        session_id,
-                        self._adapter.ADAPTER_KEY,
-                        user_ts.isoformat() if user_ts else "None",
-                        turn_cursor.isoformat() if turn_cursor else "None",
-                        turn_cursor is None,
-                    )
-                    # Reflect user input before clearing turn state.
-                    await self._reflect_user_input(session, user_text)
-                    await self._adapter.clear_turn_state(session)
-                    await self._adapter._clear_output_message_id(session)  # pylint: disable=protected-access
-                    await db.update_session(session_id, last_tool_done_at=user_ts.isoformat())
-                    turn_cursor = user_ts
-                    # Refresh session after state change.
-                    fresh = await db.get_session(session_id)
-                    if not fresh:
-                        return
-                    session = fresh
+        # Turn-break detection is NOT done here — core owns that responsibility
+        # via break_threaded_turn (coordinator + command handlers).  The cadence
+        # loop only renders; it never mutates turn state.
 
         # Read assistant messages since cursor.
         assistant_messages = get_assistant_messages_since(transcript_path, agent_name, since_timestamp=turn_cursor)
@@ -237,11 +210,15 @@ class OutputCadenceLoop:
             len(message),
             is_multi,
         )
-        await self._adapter.send_threaded_output(session, message, multi_message=is_multi)
+        await self._adapter.send_threaded_output(session, message, multi_message=is_multi, delivery_ts=last_ts)
         await self._adapter._set_origin_field(session, last_delivered_at=last_ts.isoformat())  # pylint: disable=protected-access
 
         # Update cursor if no adapter is actively tracking an output message for this session.
         if last_ts:
+            from teleclaude.core.agent_coordinator._helpers import (  # pylint: disable=import-outside-toplevel
+                _has_active_output_message,
+            )
+
             fresh = await db.get_session(session_id)
             is_active = fresh is not None and await _has_active_output_message(fresh)
             if not is_active:

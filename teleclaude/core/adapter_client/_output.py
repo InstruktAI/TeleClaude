@@ -252,13 +252,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
     async def break_threaded_turn(self, session: "Session") -> None:
         """Force a break in the threaded output stream on all UI adapters.
 
-        Each adapter clears its own output_message_id and char_offset in its
-        metadata namespace. Broadcast is serialized to prevent blob clobbering.
-
-        Also drops pending QoS payloads to prevent stale output from being
-        dispatched after the user's new input.
+        Drops pending QoS payloads, then calls ``clear_turn_state`` on each
+        adapter — the single atomic operation that resets char_offset,
+        output_message_id, and last_delivered_at.
         """
-        # Drop pending QoS payloads then clear adapter state.
         for adapter_type, adapter in self.adapters.items():
             if isinstance(adapter, UiAdapter):
                 dropped = adapter.drop_pending_output(session.session_id)
@@ -270,11 +267,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         adapter_type,
                     )
 
-        async def _break(adapter: UiAdapter, s: "Session") -> None:
-            await adapter.clear_turn_state(s)
-            await adapter._clear_output_message_id(s)  # pylint: disable=protected-access
-
-        await self._broadcast_to_ui_adapters(session, "break_turn", _break)
+        await self._broadcast_to_ui_adapters(session, "break_turn", lambda adapter, s: adapter.clear_turn_state(s))
 
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in all UI adapters.
