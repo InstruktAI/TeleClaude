@@ -1,43 +1,14 @@
-"""Output delivery mixin for UI adapters.
+"""Output delivery dataclasses and helpers for UI adapters.
 
-Handles threaded output delivery, error feedback, and edit/send logic.
+Shared data structures and utility functions for output delivery logic.
 """
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, MutableMapping
+from collections.abc import MutableMapping
 from dataclasses import dataclass
-from hashlib import sha256
-from typing import TYPE_CHECKING, cast
 
-from instrukt_ai_logging import get_logger
-
-import teleclaude.core.db as core_db
-from teleclaude.core.models import MessageMetadata
-
-if TYPE_CHECKING:
-    import asyncio  # pylint: disable=import-outside-toplevel
-    from typing import Protocol
-
-    from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
-
-    class _OutputDeliveryHost(Protocol):  # pylint: disable=too-few-public-methods
-        client: AdapterClient
-        ADAPTER_KEY: str
-        max_message_size: int
-        _convert_markdown_for_platform: Callable[[str], str]
-        _get_output_delivery_lock: Callable[[str], asyncio.Lock]
-        _get_output_message_id: Callable[[Session], Awaitable[str | None]]
-        _store_output_message_id: Callable[[Session, str], Awaitable[None]]
-        _clear_output_message_id: Callable[[Session], Awaitable[None]]
-        send_message: Callable[..., Awaitable[str | None]]
-        edit_message: Callable[..., Awaitable[bool]]
-        _metadata: Callable[..., MessageMetadata]
-
-
-logger = get_logger(__name__)
+__all__ = ["DeliveryOptions", "_delivery_options_from_kwargs"]
 
 
 @dataclass(frozen=True)
@@ -57,140 +28,3 @@ def _delivery_options_from_kwargs(delivery_kwargs: MutableMapping[str, object]) 
         multi_message=bool(delivery_kwargs.get("multi_message", False)),
         dedupe_by_digest=bool(delivery_kwargs.get("dedupe_by_digest", True)),
     )
-
-
-class OutputDeliveryMixin:  # pylint: disable=too-few-public-methods
-    """Mixin providing output delivery for UiAdapter.
-
-    Required from host class:
-    - client: AdapterClient
-    - ADAPTER_KEY: str
-    - max_message_size: int
-    - _get_output_message_id(session) -> str | None
-    - _store_output_message_id(session, message_id) -> None
-    - _clear_output_message_id(session) -> None
-    - send_message(session, text, metadata, ...) -> str | None
-    - edit_message(session, message_id, text, metadata) -> bool
-    - _convert_markdown_for_platform(text) -> str
-    """
-
-    client: AdapterClient
-    ADAPTER_KEY: str
-    max_message_size: int
-
-    def _build_metadata_for_thread(self) -> MessageMetadata:
-        """Build metadata for threaded content messages. Override for platform-specific parse mode."""
-        return MessageMetadata()
-
-    async def _deliver_output(
-        self,
-        session: Session,
-        text: str,
-        metadata: MessageMetadata,
-        **delivery_kwargs: object,
-    ) -> str | None:
-        """Unified output delivery: dedup, edit/send."""
-        options = _delivery_options_from_kwargs(delivery_kwargs)
-        host = cast("_OutputDeliveryHost", self)
-        lock = host._get_output_delivery_lock(session.session_id)
-        async with lock:
-            return await self._deliver_output_unlocked(session, text, metadata, options=options)
-
-    async def _deliver_output_unlocked(
-        self,
-        session: Session,
-        text: str,
-        metadata: MessageMetadata,
-        **delivery_kwargs: object,
-    ) -> str | None:
-        """Core output delivery logic. Caller must hold the session output lock."""
-        host = cast("_OutputDeliveryHost", self)
-        options = _delivery_options_from_kwargs(delivery_kwargs)
-        display_digest = sha256(text.encode("utf-8")).hexdigest()
-
-        # Digest short-circuit is kept for non-threaded output updates.
-        # Threaded mode dedupe belongs upstream in the coordinator.
-        if options.dedupe_by_digest and session.last_output_digest == display_digest:
-            return await host._get_output_message_id(session)
-
-        # 2. Try edit existing
-        edited = await self._try_edit_output_message(session, text, metadata)
-        if edited:
-            logger.debug("[DELIVER] Edited existing: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
-            await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
-            return await host._get_output_message_id(session)
-
-        # 3. Edit failed → send new
-        logger.debug(
-            "[DELIVER] Edit failed, sending new: adapter=%s session=%s text_len=%d",
-            self.ADAPTER_KEY,
-            session.session_id,
-            len(text),
-        )
-        new_id = await host.send_message(
-            session,
-            text,
-            metadata=metadata,
-            multi_message=options.multi_message,
-        )
-        logger.debug(
-            "[DELIVER] New message result: adapter=%s session=%s new_id=%s",
-            self.ADAPTER_KEY,
-            session.session_id,
-            new_id,
-        )
-        if new_id:
-            await host._store_output_message_id(session, new_id)
-            await core_db.db.update_session(session.session_id, last_output_digest=display_digest)
-        return new_id
-
-    async def _try_edit_output_message(self, session: Session, text: str, metadata: MessageMetadata) -> bool:
-        """Try to edit existing output message, clear message_id if edit fails.
-
-        Returns:
-            True if edited successfully, False if no message_id or edit failed
-        """
-        host = cast("_OutputDeliveryHost", self)
-        message_id = await host._get_output_message_id(session)
-        logger.debug(
-            "[TRY_EDIT] session=%s existing_message_id=%s",
-            session.session_id,
-            message_id if message_id else "None",
-        )
-        if not message_id:
-            logger.debug("[TRY_EDIT] No existing message_id, will send new message")
-            return False
-
-        logger.debug("[TRY_EDIT] Attempting to edit message %s for session %s", message_id, session.session_id)
-        success = await host.edit_message(session, message_id, text, metadata=metadata)
-        logger.debug(
-            "[TRY_EDIT] Edit result for message %s: %s",
-            message_id,
-            "SUCCESS" if success else "FAILED",
-        )
-
-        if not success:
-            # Edit failed - clear stale message_id
-            logger.warning("[TRY_EDIT] Failed to edit message %s, clearing stale message_id", message_id)
-            await host._clear_output_message_id(session)
-
-        return success
-
-    async def send_error_feedback(self, session_id: str, error_message: str) -> None:
-        """Send error as feedback message to user.
-
-        Args:
-            session_id: Session that encountered error
-            error_message: Human-readable error description
-        """
-        try:
-            session = await core_db.db.get_session(session_id)
-            if session:
-                host = cast("_OutputDeliveryHost", self)
-                await host.send_message(
-                    session,
-                    f"❌ {error_message}",
-                    metadata=host._metadata(),
-                )
-        except (AttributeError, RuntimeError, TypeError, ValueError) as error:
-            logger.error("Failed to send error feedback for session %s: %s", session_id, error)

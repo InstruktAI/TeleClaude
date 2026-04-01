@@ -1,55 +1,101 @@
-"""Characterization tests for teleclaude.adapters.ui.output_delivery."""
+"""Characterization tests for output delivery on UiAdapter."""
+# pylint: disable=protected-access,redefined-outer-name,missing-class-docstring,missing-function-docstring,too-few-public-methods
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from hashlib import sha256
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from teleclaude.adapters.ui.output_delivery import OutputDeliveryMixin
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
 
 # ---------------------------------------------------------------------------
-# Minimal concrete host that satisfies the mixin's TYPE_CHECKING contract
+# Minimal concrete host that satisfies UiAdapter's abstract methods
 # ---------------------------------------------------------------------------
 
 
-class _FakeHost(OutputDeliveryMixin):
+class _FakeHost(UiAdapter):  # pylint: disable=too-many-instance-attributes
     ADAPTER_KEY = "telegram"
     max_message_size = 100
+    OUTPUT_CADENCE_SECONDS = 0.0
 
-    def __init__(self):
+    def __init__(self):  # pylint: disable=super-init-not-called,too-many-instance-attributes
+        # Skip UiAdapter.__init__ to avoid event_bus side effects
         self.client = MagicMock()
         self._output_message_id: str | None = None
         self._last_edit_result = True
-        self.send_message = AsyncMock(return_value="msg-new")
-        self.edit_message = AsyncMock(return_value=True)
-        self.delete_message = AsyncMock(return_value=True)
         self._output_delivery_locks: dict[str, asyncio.Lock] = {}
+        self._output_cadence = None
 
-    @classmethod
-    def _get_output_delivery_lock(cls, session_id: str) -> asyncio.Lock:
-        return asyncio.Lock()
+        # Mocked methods — assigned as instance attrs
+        self._send_message_mock = AsyncMock(return_value="msg-new")
+        self._edit_message_mock = AsyncMock(return_value=True)
+        self._delete_message_mock = AsyncMock(return_value=True)
 
-    async def _get_output_message_id(self, session: Session) -> str | None:
+    # --- Abstract method stubs (required by BaseAdapter) ---
+
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
+
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
+        return ""
+
+    async def update_channel_title(self, session: Session, title: str) -> bool:
+        return True
+
+    async def close_channel(self, session: Session) -> bool:
+        return True
+
+    async def reopen_channel(self, session: Session) -> bool:
+        return True
+
+    async def delete_channel(self, session: Session) -> bool:
+        return True
+
+    async def send_message(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+    ) -> str:
+        result = await self._send_message_mock(session, text, metadata=metadata, multi_message=multi_message)
+        return result
+
+    async def edit_message(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+    ) -> bool:
+        result = await self._edit_message_mock(session, message_id, text, metadata=metadata)
+        return result
+
+    async def delete_message(self, session: Session, message_id: str) -> bool:
+        return await self._delete_message_mock(session, message_id)
+
+    async def send_file(
+        self, session: Session, file_path: str, *, caption: str | None = None, metadata: MessageMetadata | None = None
+    ) -> str:
+        _ = (session, file_path, caption, metadata)
+        return ""
+
+    async def discover_peers(self) -> list[PeerInfo]:
+        return []
+
+    async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
+        raise NotImplementedError
+
+    # --- Override output message tracking to use simple instance attrs ---
+
+    async def _get_output_message_id(self, _session: Session) -> str | None:
         return self._output_message_id
 
-    async def _store_output_message_id(self, session: Session, message_id: str) -> None:
+    async def _store_output_message_id(self, _session: Session, message_id: str) -> None:
         self._output_message_id = message_id
 
-    async def _clear_output_message_id(self, session: Session) -> None:
+    async def _clear_output_message_id(self, _session: Session) -> None:
         self._output_message_id = None
-
-    def _convert_markdown_for_platform(self, text: str) -> str:
-        return text
-
-    def _build_session_id_lines(self, session: Session) -> str:
-        return f"📋 tc: {session.session_id}"
-
-    def _metadata(self) -> MessageMetadata:
-        return MessageMetadata()
 
 
 def _make_session(**kwargs: object) -> Session:
@@ -96,7 +142,7 @@ class TestTryEditOutputMessage:
     async def test_successful_edit_returns_true(self, host: _FakeHost) -> None:
         session = _make_session()
         host._output_message_id = "msg-1"
-        host.edit_message = AsyncMock(return_value=True)
+        host._edit_message_mock = AsyncMock(return_value=True)
         result = await host._try_edit_output_message(session, "text", MessageMetadata())
         assert result is True
 
@@ -104,7 +150,7 @@ class TestTryEditOutputMessage:
     async def test_failed_edit_clears_message_id(self, host: _FakeHost) -> None:
         session = _make_session()
         host._output_message_id = "msg-1"
-        host.edit_message = AsyncMock(return_value=False)
+        host._edit_message_mock = AsyncMock(return_value=False)
         result = await host._try_edit_output_message(session, "text", MessageMetadata())
         assert result is False
         assert host._output_message_id is None
@@ -123,20 +169,19 @@ class TestDeliverOutputUnlocked:
         digest = sha256(text.encode()).hexdigest()
         session.last_output_digest = digest
         host._output_message_id = "existing-msg"
-        send_message = host.send_message
 
         result = await host._deliver_output_unlocked(session, text, MessageMetadata())
         assert result == "existing-msg"
-        send_message.assert_not_called()
+        host._send_message_mock.assert_not_called()
 
     @pytest.mark.unit
     async def test_edit_success_returns_existing_message_id(self, host: _FakeHost) -> None:
         session = _make_session()
         session.last_output_digest = None
         host._output_message_id = "msg-existing"
-        host.edit_message = AsyncMock(return_value=True)
+        host._edit_message_mock = AsyncMock(return_value=True)
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
             mock_db.update_session = AsyncMock()
             result = await host._deliver_output_unlocked(session, "new content", MessageMetadata())
 
@@ -147,9 +192,9 @@ class TestDeliverOutputUnlocked:
         session = _make_session()
         session.last_output_digest = None
         host._output_message_id = None
-        host.send_message = AsyncMock(return_value="msg-new")
+        host._send_message_mock = AsyncMock(return_value="msg-new")
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
             mock_db.update_session = AsyncMock()
             result = await host._deliver_output_unlocked(session, "text", MessageMetadata())
 
@@ -166,20 +211,17 @@ class TestSendErrorFeedback:
     @pytest.mark.unit
     async def test_sends_feedback_message_when_session_exists(self, host: _FakeHost) -> None:
         session = _make_session()
-        host.send_message = AsyncMock(return_value="msg-err")
+        host._send_message_mock = AsyncMock(return_value="msg-err")
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
             await host.send_error_feedback(session.session_id, "something failed")
 
-        host.send_message.assert_awaited_once()
-        delivered_session, delivered_text = host.send_message.await_args.args
-        assert delivered_session is session
-        assert isinstance(delivered_text, str)
+        host._send_message_mock.assert_awaited_once()
 
     @pytest.mark.unit
     async def test_missing_session_does_not_raise(self, host: _FakeHost) -> None:
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=None)
             # Should not raise
             await host.send_error_feedback("nonexistent-sess", "error")

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -19,8 +20,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui.output_cadence import OutputCadenceLoop
-from teleclaude.adapters.ui.output_delivery import OutputDeliveryMixin
-from teleclaude.adapters.ui.threaded_output import OverflowContext, ThreadedOutputMixin
+from teleclaude.adapters.ui.output_delivery import _delivery_options_from_kwargs
+from teleclaude.adapters.ui.threaded_output import OverflowContext, OverflowPlan, ThreadDelivery
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -37,7 +38,7 @@ logger = get_logger(__name__)
 
 
 class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
-    ThreadedOutputMixin, OutputDeliveryMixin, BaseAdapter
+    BaseAdapter,
 ):
     """Base class for UI-enabled adapters.
 
@@ -120,6 +121,316 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     def _balance_intermediate_chunk(self, text: str) -> str:
         """Close any open markers for a live intermediate render."""
         return text
+
+    # -------------------------------------------------------------------------
+    # Threaded output delivery (was ThreadedOutputMixin)
+    # -------------------------------------------------------------------------
+
+    async def sync_threaded_session_state(self, session: Session) -> None:
+        """Public wrapper for refreshing the mutable session output state."""
+        await self._sync_threaded_session_state(session)
+
+    async def send_threaded_output(
+        self,
+        session: Session,
+        text: str,
+        multi_message: bool = False,
+        _continuation_state: Any = None,
+    ) -> str | None:
+        """Send or edit threaded output message with smart pagination."""
+        if _continuation_state is None:
+            _continuation_state = self._markdown_initial_state()  # pylint: disable=assignment-from-none
+        lock = self._get_output_delivery_lock(session.session_id)
+        async with lock:
+            await self._sync_threaded_session_state(session)
+
+            converted_text = self._convert_markdown_for_platform(text)
+            logger.debug(
+                "[THREADED] Rendering: adapter=%s session=%s text_len=%d converted_len=%d",
+                self.ADAPTER_KEY,
+                session.session_id,
+                len(text),
+                len(converted_text),
+            )
+            result = await self._send_threaded_output_unlocked(
+                session,
+                converted_text,
+                multi_message=multi_message,
+                _continuation_state=_continuation_state,
+            )
+            logger.debug(
+                "[THREADED] Result: adapter=%s session=%s result=%s",
+                self.ADAPTER_KEY,
+                session.session_id,
+                type(result).__name__ if result else "None",
+            )
+            return result
+
+    async def _send_threaded_output_unlocked(
+        self,
+        session: Session,
+        text: str,
+        multi_message: bool = False,
+        _continuation_state: Any = None,
+    ) -> str | None:
+        """Threaded-output core logic. Caller must hold the session output lock."""
+        # 1. Get current offset and ID.
+        char_offset = await self._normalize_char_offset(session, text)
+        output_message_id = await self._get_output_message_id(session)
+        logger.debug(
+            "[THREADED_UNLOCKED] adapter=%s session=%s char_offset=%d text_len=%d output_message_id=%s",
+            self.ADAPTER_KEY,
+            session.session_id,
+            char_offset,
+            len(text),
+            output_message_id,
+        )
+
+        # 2. Slice text to get the "active" portion.
+        active_text = text[char_offset:]
+        if not active_text and output_message_id:
+            return output_message_id
+
+        # 3. Build display body with continuation markers.
+        continuation_prefix = self._continuation_prefix_for_state(_continuation_state)
+        display_text = f"{continuation_prefix}{active_text}"
+
+        # 4. Check for overflow.
+        limit = self.max_message_size - 10
+        if len(display_text) > limit:
+            overflow_context = OverflowContext(
+                continuation_prefix=continuation_prefix,
+                continuation_state=_continuation_state,
+                available_for_content=max(limit, 1),
+            )
+            overflow_plan = self._plan_overflow(active_text, overflow_context)
+            await self._seal_thread_chunk(
+                session,
+                output_message_id,
+                overflow_plan.chunk,
+                multi_message=multi_message,
+            )
+            await self._set_char_offset(session, char_offset + overflow_plan.split_idx)
+            await self._clear_output_message_id(session)
+
+            return await self._send_threaded_output_unlocked(
+                session,
+                text,
+                multi_message=multi_message,
+                _continuation_state=overflow_plan.next_state,
+            )
+
+        # --- NORMAL CASE: FIT AND SEND ---
+        return await self._deliver_thread_body(
+            session,
+            display_text,
+            ThreadDelivery(
+                output_message_id=output_message_id,
+                multi_message=multi_message,
+            ),
+        )
+
+    async def _sync_threaded_session_state(self, session: Session) -> None:
+        """Refresh mutable session output state from the database before rendering."""
+        fresh = await db.get_session(session.session_id)
+        if fresh:
+            session.origin_metadata = fresh.origin_metadata
+            session.last_output_digest = fresh.last_output_digest
+
+    async def _normalize_char_offset(self, session: Session, text: str) -> int:
+        """Reset an invalid char offset and return the effective offset."""
+        char_offset = self._get_char_offset(session)
+        if len(text) < char_offset:
+            await self._set_char_offset(session, 0)
+            return 0
+        return char_offset
+
+    def _plan_overflow(
+        self,
+        active_text: str,
+        overflow_context: OverflowContext,
+    ) -> OverflowPlan:
+        """Compute the next sealed chunk when the display body overflows."""
+        body_text = f"{overflow_context.continuation_prefix}{active_text}"
+        chunk, consumed_display = self._truncate_for_overflow(body_text, overflow_context.available_for_content)
+
+        consumed_prefix = min(consumed_display, len(overflow_context.continuation_prefix))
+        split_idx = consumed_display - consumed_prefix
+
+        split_idx, chunk = self._finalize_overflow_split(active_text, overflow_context, split_idx, chunk)
+
+        # Ensure we always make progress (avoid infinite split at position 0).
+        if split_idx <= 0 and active_text:
+            split_idx = min(len(active_text), overflow_context.available_for_content)
+            chunk, _ = self._truncate_for_overflow(
+                f"{overflow_context.continuation_prefix}{active_text[:split_idx]}",
+                overflow_context.available_for_content,
+            )
+
+        consumed_source = active_text[:split_idx]
+        next_state = self._scan_markdown_state(consumed_source, overflow_context.continuation_state)
+        return OverflowPlan(chunk=chunk, split_idx=split_idx, next_state=next_state)
+
+    async def _seal_thread_chunk(
+        self,
+        session: Session,
+        output_message_id: str | None,
+        sealed_text: str,
+        *,
+        multi_message: bool,
+    ) -> None:
+        """Commit a sealed overflow chunk before continuing with the remainder."""
+        seal_metadata = self._build_metadata_for_thread()
+        if output_message_id:
+            await self._try_edit_output_message(session, sealed_text, seal_metadata)
+            return
+
+        new_id = await self.send_message(
+            session,
+            sealed_text,
+            metadata=seal_metadata,
+            multi_message=multi_message,
+        )
+        if new_id:
+            await self._store_output_message_id(session, new_id)
+
+    async def _deliver_thread_body(
+        self,
+        session: Session,
+        display_text: str,
+        delivery: ThreadDelivery,
+    ) -> str | None:
+        """Deliver the current threaded body without digest-based dedupe."""
+        if display_text:
+            display_text = self._balance_intermediate_chunk(display_text)
+            if not display_text:
+                return delivery.output_message_id
+
+        metadata = self._build_metadata_for_thread()
+        return await self._deliver_output_unlocked(
+            session,
+            display_text,
+            metadata,
+            multi_message=delivery.multi_message,
+            dedupe_by_digest=False,
+        )
+
+    # -------------------------------------------------------------------------
+    # Output delivery (was OutputDeliveryMixin)
+    # -------------------------------------------------------------------------
+
+    def _build_metadata_for_thread(self) -> MessageMetadata:
+        """Build metadata for threaded content messages. Override for platform-specific parse mode."""
+        return MessageMetadata()
+
+    async def _deliver_output(
+        self,
+        session: Session,
+        text: str,
+        metadata: MessageMetadata,
+        **delivery_kwargs: object,
+    ) -> str | None:
+        """Unified output delivery: dedup, edit/send."""
+        options = _delivery_options_from_kwargs(delivery_kwargs)
+        lock = self._get_output_delivery_lock(session.session_id)
+        async with lock:
+            return await self._deliver_output_unlocked(session, text, metadata, options=options)
+
+    async def _deliver_output_unlocked(
+        self,
+        session: Session,
+        text: str,
+        metadata: MessageMetadata,
+        **delivery_kwargs: object,
+    ) -> str | None:
+        """Core output delivery logic. Caller must hold the session output lock."""
+        options = _delivery_options_from_kwargs(delivery_kwargs)
+        display_digest = sha256(text.encode("utf-8")).hexdigest()
+
+        # Digest short-circuit is kept for non-threaded output updates.
+        # Threaded mode dedupe belongs upstream in the coordinator.
+        if options.dedupe_by_digest and session.last_output_digest == display_digest:
+            return await self._get_output_message_id(session)
+
+        # 2. Try edit existing
+        edited = await self._try_edit_output_message(session, text, metadata)
+        if edited:
+            logger.debug("[DELIVER] Edited existing: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
+            await db.update_session(session.session_id, last_output_digest=display_digest)
+            return await self._get_output_message_id(session)
+
+        # 3. Edit failed -> send new
+        logger.debug(
+            "[DELIVER] Edit failed, sending new: adapter=%s session=%s text_len=%d",
+            self.ADAPTER_KEY,
+            session.session_id,
+            len(text),
+        )
+        new_id = await self.send_message(
+            session,
+            text,
+            metadata=metadata,
+            multi_message=options.multi_message,
+        )
+        logger.debug(
+            "[DELIVER] New message result: adapter=%s session=%s new_id=%s",
+            self.ADAPTER_KEY,
+            session.session_id,
+            new_id,
+        )
+        if new_id:
+            await self._store_output_message_id(session, new_id)
+            await db.update_session(session.session_id, last_output_digest=display_digest)
+        return new_id
+
+    async def _try_edit_output_message(self, session: Session, text: str, metadata: MessageMetadata) -> bool:
+        """Try to edit existing output message, clear message_id if edit fails.
+
+        Returns:
+            True if edited successfully, False if no message_id or edit failed
+        """
+        message_id = await self._get_output_message_id(session)
+        logger.debug(
+            "[TRY_EDIT] session=%s existing_message_id=%s",
+            session.session_id,
+            message_id if message_id else "None",
+        )
+        if not message_id:
+            logger.debug("[TRY_EDIT] No existing message_id, will send new message")
+            return False
+
+        logger.debug("[TRY_EDIT] Attempting to edit message %s for session %s", message_id, session.session_id)
+        success = await self.edit_message(session, message_id, text, metadata=metadata)
+        logger.debug(
+            "[TRY_EDIT] Edit result for message %s: %s",
+            message_id,
+            "SUCCESS" if success else "FAILED",
+        )
+
+        if not success:
+            # Edit failed - clear stale message_id
+            logger.warning("[TRY_EDIT] Failed to edit message %s, clearing stale message_id", message_id)
+            await self._clear_output_message_id(session)
+
+        return success
+
+    async def send_error_feedback(self, session_id: str, error_message: str) -> None:
+        """Send error as feedback message to user.
+
+        Args:
+            session_id: Session that encountered error
+            error_message: Human-readable error description
+        """
+        try:
+            session = await db.get_session(session_id)
+            if session:
+                await self.send_message(
+                    session,
+                    f"\u274c {error_message}",
+                    metadata=self._metadata(),
+                )
+        except (AttributeError, RuntimeError, TypeError, ValueError) as error:
+            logger.error("Failed to send error feedback for session %s: %s", session_id, error)
 
     # -------------------------------------------------------------------------
 
@@ -275,7 +586,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     # === Command Registration ===
 
     def _get_command_handlers(self) -> list[tuple[str, object]]:
-        """Get command handlers by convention: command_name → _handle_{command_name}.
+        """Get command handlers by convention: command_name -> _handle_{command_name}.
 
         Returns:
             List of (command_name, handler_method) tuples
@@ -316,12 +627,12 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
         # TeleClaude session ID (full UUID)
         if session.session_id:
-            lines.append(f"📋 tc: {session.session_id}")
+            lines.append(f"\U0001f4cb tc: {session.session_id}")
 
         # Native agent session ID (from session - set when any agent starts)
         if session.native_session_id:
             agent_name = session.active_agent or "ai"
-            lines.append(f"🤖 {agent_name}: {session.native_session_id}")
+            lines.append(f"\U0001f916 {agent_name}: {session.native_session_id}")
 
         return "\n".join(lines)
 

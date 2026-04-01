@@ -38,7 +38,7 @@ from teleclaude.adapters.discord import (
     RelayOperationsMixin, TeamChannelsMixin,
 )
 from teleclaude.adapters.telegram import LifecycleMixin, PrivateHandlersMixin
-from teleclaude.adapters.ui import OutputDeliveryMixin, ThreadedOutputMixin
+from teleclaude.adapters.ui import DeliveryOptions, OverflowContext, OverflowPlan, ThreadDelivery
 print('All mixin imports OK')
 "
 ```

@@ -1,39 +1,92 @@
-"""Characterization tests for teleclaude.adapters.ui.threaded_output."""
+"""Characterization tests for threaded output delivery on UiAdapter."""
 # pylint: disable=protected-access
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from teleclaude.adapters.ui.threaded_output import OverflowContext, ThreadedOutputMixin
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
 
 # ---------------------------------------------------------------------------
 # Minimal concrete host for testing
 # ---------------------------------------------------------------------------
 
 
-class _ThreadedHost(ThreadedOutputMixin):
+class _ThreadedHost(UiAdapter):
     ADAPTER_KEY = "telegram"
     max_message_size = 50
     THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS = 50
+    OUTPUT_CADENCE_SECONDS = 0.0
 
-    def __init__(self) -> None:
+    def __init__(self) -> None:  # pylint: disable=super-init-not-called
+        # Skip UiAdapter.__init__ to avoid event_bus side effects
         self.client = MagicMock()
         self._char_offset: int = 0
         self._output_message_id: str | None = None
         self._output_delivery_locks: dict[str, asyncio.Lock] = {}
+        self._output_cadence = None
 
-        # Mocked methods
-        self.send_message = AsyncMock(return_value="new-msg")
-        self.edit_message = AsyncMock(return_value=True)
+        # Mocked methods — assigned as instance attrs to override abstract methods
+        self._send_message_mock = AsyncMock(return_value="new-msg")
+        self._edit_message_mock = AsyncMock(return_value=True)
 
-    @classmethod
-    def _get_output_delivery_lock(cls, _session_id: str) -> asyncio.Lock:
-        return asyncio.Lock()
+    # --- Abstract method stubs (required by BaseAdapter) ---
+
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
+
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
+        return ""
+
+    async def update_channel_title(self, session: Session, title: str) -> bool:
+        return True
+
+    async def close_channel(self, session: Session) -> bool:
+        return True
+
+    async def reopen_channel(self, session: Session) -> bool:
+        return True
+
+    async def delete_channel(self, session: Session) -> bool:
+        return True
+
+    async def send_message(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, session: Session, text: str, *, metadata: MessageMetadata | None = None, multi_message: bool = False
+    ) -> str:
+        result = await self._send_message_mock(session, text, metadata=metadata, multi_message=multi_message)
+        return result
+
+    async def edit_message(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+    ) -> bool:
+        result = await self._edit_message_mock(session, message_id, text, metadata=metadata)
+        return result
+
+    async def delete_message(self, session: Session, message_id: str) -> bool:
+        _ = (session, message_id)
+        return True
+
+    async def send_file(
+        self, session: Session, file_path: str, *, caption: str | None = None, metadata: MessageMetadata | None = None
+    ) -> str:
+        _ = (session, file_path, caption, metadata)
+        return ""
+
+    async def discover_peers(self) -> list[PeerInfo]:
+        return []
+
+    async def poll_output_stream(self, session: Session, timeout: float = 300.0) -> AsyncIterator[str]:
+        raise NotImplementedError
+
+    # --- Override output message tracking to use simple instance attrs ---
 
     def _get_char_offset(self, _session: Session) -> int:
         return self._char_offset
@@ -58,9 +111,7 @@ class _ThreadedHost(ThreadedOutputMixin):
         session: Session,
         text: str,
         metadata: MessageMetadata,
-        multi_message: bool = False,
-        status_line: str = "",
-        dedupe_by_digest: bool = True,
+        **delivery_kwargs: object,
     ) -> str | None:
         if self._output_message_id:
             return self._output_message_id
@@ -73,33 +124,6 @@ class _ThreadedHost(ThreadedOutputMixin):
         if not self._output_message_id:
             return False
         return await self.edit_message(session, self._output_message_id, text, metadata=metadata)
-
-    def _convert_markdown_for_platform(self, text: str) -> str:
-        return text
-
-    # Markdown strategy — plain-text stubs
-    def _markdown_initial_state(self) -> None:
-        return None
-
-    def _continuation_prefix_for_state(self, _state: object) -> str:
-        return ""
-
-    def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
-        candidate = body_text[:max_chars]
-        last_space = candidate.rfind(" ")
-        split_idx = last_space if last_space > (len(candidate) * 0.8) else max_chars
-        return body_text[:split_idx], split_idx
-
-    def _scan_markdown_state(self, _consumed: str, state: object) -> object:
-        return state
-
-    def _finalize_overflow_split(
-        self, _active_text: str, _overflow_context: OverflowContext, split_idx: int, chunk: str
-    ) -> tuple[int, str]:
-        return split_idx, chunk
-
-    def _balance_intermediate_chunk(self, text: str) -> str:
-        return text
 
 
 def _make_session(**kwargs: object) -> Session:
@@ -114,7 +138,7 @@ def _make_session(**kwargs: object) -> Session:
 
 @pytest.fixture
 def host() -> _ThreadedHost:
-    """Provide a minimal ThreadedOutputMixin host instance."""
+    """Provide a minimal UiAdapter host instance for threaded output tests."""
     return _ThreadedHost()
 
 
@@ -132,7 +156,7 @@ class TestCharOffsetManagement:
         session = _make_session()
         host._char_offset = 100  # More than text length
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=None)
             await host.send_threaded_output(session, "short")
 
@@ -145,7 +169,7 @@ class TestCharOffsetManagement:
         host._char_offset = 5
         host._output_message_id = "existing-id"
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=None)
             result = await host.send_threaded_output(session, "hello")  # len=5, all consumed
 
@@ -167,7 +191,7 @@ class TestOverflowPagination:
         session = _make_session()
         long_text = "a" * 100
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=None)
             await host.send_threaded_output(session, long_text)
 
@@ -180,7 +204,7 @@ class TestOverflowPagination:
         session = _make_session()
         short_text = "hi"
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=None)
             result = await host.send_threaded_output(session, short_text)
 
