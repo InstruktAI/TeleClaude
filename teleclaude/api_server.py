@@ -386,6 +386,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         identity_headers = {"x-web-user-email", "x-web-user-name", "x-web-user-role"}
         trusted_hosts = {"127.0.0.1", "::1", "localhost"}
 
+        @self.app.exception_handler(Exception)
+        async def _unhandled_exception(request, exc):  # type: ignore[no-untyped-def]
+            """Last-resort handler: log full traceback, return generic 500 to client."""
+            logger.error("Unhandled API exception: %s %s", request.method, request.url.path, exc_info=exc)
+            return JSONResponse({"detail": "Internal server error"}, status_code=500)
+
         @self.app.middleware("http")
         async def _validate_identity_headers(request, call_next):  # type: ignore[no-untyped-def]
             """Reject identity headers from non-trusted sources."""
