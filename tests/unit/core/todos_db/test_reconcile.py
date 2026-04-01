@@ -30,6 +30,7 @@ def _write_roadmap(todos_dir: Path, entries: list[dict[str, str | list[str]]]) -
 
 @pytest.mark.unit
 async def test_inserts_new_slug_from_filesystem(todos_db: TodosDb, tmp_path: Path) -> None:
+    """Filesystem slug with no DB entry is inserted with correct state and artifacts."""
     todo_dir = tmp_path / "todos" / "new-slug"
     _write_state(todo_dir, {"current": "build_started", "phase": "in_progress"})
     _write_artifact(todo_dir, "requirements", "Real requirements content")
@@ -47,7 +48,9 @@ async def test_inserts_new_slug_from_filesystem(todos_db: TodosDb, tmp_path: Pat
 
 @pytest.mark.unit
 async def test_updates_state_when_filesystem_is_newer(todos_db: TodosDb, tmp_path: Path) -> None:
-    # Write old state to DB
+    """Filesystem state.yaml with newer mtime overwrites the DB entry."""
+    # Write old state to DB (roadmap entry required by write_state contract)
+    await todos_db.add_to_roadmap("my-slug")
     await todos_db.write_state("my-slug", {"current": "input_assessment"})
 
     # Write newer state to filesystem (touch with future mtime)
@@ -67,7 +70,9 @@ async def test_updates_state_when_filesystem_is_newer(todos_db: TodosDb, tmp_pat
 
 @pytest.mark.unit
 async def test_skips_state_when_db_is_newer(todos_db: TodosDb, tmp_path: Path) -> None:
-    # Write state to DB (will have recent timestamp)
+    """DB entry with newer timestamp is kept when filesystem state is older."""
+    # Write state to DB (roadmap entry required by write_state contract)
+    await todos_db.add_to_roadmap("my-slug")
     await todos_db.write_state("my-slug", {"current": "review_approved"})
 
     # Write old state to filesystem (set mtime to past)
@@ -87,6 +92,7 @@ async def test_skips_state_when_db_is_newer(todos_db: TodosDb, tmp_path: Path) -
 
 @pytest.mark.unit
 async def test_updates_artifact_when_filesystem_is_newer(todos_db: TodosDb, tmp_path: Path) -> None:
+    """Artifact with newer filesystem mtime overwrites the DB copy."""
     await todos_db.write_artifact("my-slug", "requirements", "old content")
 
     todo_dir = tmp_path / "todos" / "my-slug"
@@ -104,6 +110,7 @@ async def test_updates_artifact_when_filesystem_is_newer(todos_db: TodosDb, tmp_
 
 @pytest.mark.unit
 async def test_skips_artifact_when_content_identical(todos_db: TodosDb, tmp_path: Path) -> None:
+    """Artifact with identical digest is skipped even when filesystem mtime is newer."""
     content = "same content"
     await todos_db.write_artifact("my-slug", "requirements", content)
 
@@ -121,6 +128,7 @@ async def test_skips_artifact_when_content_identical(todos_db: TodosDb, tmp_path
 
 @pytest.mark.unit
 async def test_prefers_worktree_state_when_newer(todos_db: TodosDb, tmp_path: Path) -> None:
+    """Worktree state.yaml wins over main todos/ state when it has a newer mtime."""
     # Main has old state
     main_dir = tmp_path / "todos" / "my-slug"
     _write_state(main_dir, {"current": "build_started"})
@@ -143,6 +151,7 @@ async def test_prefers_worktree_state_when_newer(todos_db: TodosDb, tmp_path: Pa
 
 @pytest.mark.unit
 async def test_reconciles_roadmap_entries(todos_db: TodosDb, tmp_path: Path) -> None:
+    """Roadmap entries from roadmap.yaml are inserted into the DB."""
     _write_roadmap(
         tmp_path / "todos",
         [
@@ -160,6 +169,7 @@ async def test_reconciles_roadmap_entries(todos_db: TodosDb, tmp_path: Path) -> 
 
 @pytest.mark.unit
 async def test_idempotent_second_run_changes_nothing(todos_db: TodosDb, tmp_path: Path) -> None:
+    """Second reconcile run produces zero changes when sources are already in sync."""
     todo_dir = tmp_path / "todos" / "my-slug"
     _write_state(todo_dir, {"current": "prepared"})
     _write_artifact(todo_dir, "input", "brain dump")

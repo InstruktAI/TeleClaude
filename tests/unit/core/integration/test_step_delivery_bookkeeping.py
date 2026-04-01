@@ -8,11 +8,15 @@ Covers:
 4. Bug todo slugs reach DB delivery (no is_bug bypass)
 """
 
+# pylint: disable=unused-argument
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from teleclaude.core.integration.checkpoint import (
     IntegrationCheckpoint,
@@ -94,7 +98,6 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
             "teleclaude.core.integration.step_functions._get_todos_db_sync",
             return_value=mock_db,
         ),
-        patch("teleclaude.core.next_machine.icebox.clean_dependency_references"),
         patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
     ):
         ok, _msg = _step_delivery_bookkeeping(
@@ -235,7 +238,6 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
         patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
-        patch("teleclaude.core.next_machine.icebox.clean_dependency_references"),
         patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
     ):
         ok, _msg = _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
@@ -263,8 +265,8 @@ def _run_bookkeeping_with_mock(
     mock_run_git: Any,
     *,
     mock_deliver_result: bool = True,
-) -> IntegrationCheckpoint:
-    """Run _step_delivery_bookkeeping with given mocks and return checkpoint."""
+) -> tuple[bool, str, IntegrationCheckpoint]:
+    """Run _step_delivery_bookkeeping with given mocks and return (ok, msg, checkpoint)."""
     slug = "my-feature"
     wt = tmp_path / "trees" / "_integration"
     wt.mkdir(parents=True, exist_ok=True)
@@ -278,19 +280,39 @@ def _run_bookkeeping_with_mock(
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
         patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
-        patch("teleclaude.core.next_machine.icebox.clean_dependency_references"),
         patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
     ):
-        _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
+        ok, msg = _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
-    return cp
+    return ok, msg, cp
 
 
 def test_anomaly_deliver_to_delivered_fails(tmp_path: Path) -> None:
-    """When deliver_to_delivered returns False, warning is captured."""
-    cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git, mock_deliver_result=False)
-    assert cp.warnings
-    assert any("todos_db.deliver" in w for w in cp.warnings)
+    """When deliver_sync returns False, delivery step fails with a hard error."""
+    ok, msg, _cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git, mock_deliver_result=False)
+    assert ok is False
+    assert "DELIVERY_FAILED" in msg
+
+
+def test_deliver_sync_exception_propagates(tmp_path: Path) -> None:
+    """When deliver_sync raises, the exception propagates — no try/except swallow."""
+    slug = "my-feature"
+    wt = tmp_path / "trees" / "_integration"
+    wt.mkdir(parents=True, exist_ok=True)
+    (wt / "todos" / slug).mkdir(parents=True, exist_ok=True)
+
+    cp, cp_path = _make_checkpoint(tmp_path)
+
+    mock_db = _mock_todos_db_for_delivery()
+    mock_db.deliver_sync = MagicMock(side_effect=RuntimeError("DB connection lost"))
+
+    with (
+        patch("teleclaude.core.integration.step_functions._run_git", side_effect=_base_mock_run_git),
+        patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
+        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
+    ):
+        with pytest.raises(RuntimeError, match="DB connection lost"):
+            _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
 
 def test_anomaly_bookkeeping_commit_removed_with_db_delivery(tmp_path: Path) -> None:
@@ -300,7 +322,7 @@ def test_anomaly_bookkeeping_commit_removed_with_db_delivery(tmp_path: Path) -> 
     DB delivery (todos_db.deliver_sync) replaces it. This test verifies that
     the delivery step completes without warnings when git operations succeed.
     """
-    cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git)
+    _ok, _msg, cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git)
     assert not cp.warnings or not any("Bookkeeping commit failed" in w for w in cp.warnings)
 
 
@@ -312,21 +334,21 @@ def test_anomaly_cleanup_commit_fails(tmp_path: Path) -> None:
             return 1, "", "cleanup commit failed"
         return _base_mock_run_git(args, cwd=cwd, timeout=timeout)
 
-    cp = _run_bookkeeping_with_mock(tmp_path, mock_git)
+    _ok, _msg, cp = _run_bookkeeping_with_mock(tmp_path, mock_git)
     assert cp.warnings
     assert any("Cleanup commit failed" in w for w in cp.warnings)
 
 
 def test_anomaly_none_on_full_success(tmp_path: Path) -> None:
     """When all steps succeed, no warnings are captured."""
-    cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git)
+    _ok, _msg, cp = _run_bookkeeping_with_mock(tmp_path, _base_mock_run_git)
     assert cp.warnings == []
 
 
 def test_anomaly_cleanup_delivered_slug_exception(tmp_path: Path) -> None:
     """When cleanup_delivered_slug throws, warning is captured and flow continues."""
-    from teleclaude.core.integration.readiness_projection import CandidateKey
-    from teleclaude.core.integration.step_functions import _do_cleanup
+    from teleclaude.core.integration.readiness_projection import CandidateKey  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.integration.step_functions import _do_cleanup  # pylint: disable=import-outside-toplevel
 
     cp, cp_path = _make_checkpoint(tmp_path, phase=IntegrationPhase.CLEANUP.value)
     key = CandidateKey(slug="my-feature", branch="my-feature", sha="a" * 40)

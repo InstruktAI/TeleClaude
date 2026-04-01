@@ -1,4 +1,5 @@
 """Tests for Task 2: prepare_helpers module — artifact lifecycle helpers."""
+# pylint: disable=missing-function-docstring,import-outside-toplevel
 
 from __future__ import annotations
 
@@ -15,10 +16,31 @@ from teleclaude.core.next_machine._types import StateValue
 # ---------------------------------------------------------------------------
 
 
+def _ensure_roadmap_db(cwd: str, slug: str) -> None:
+    """Insert a roadmap entry in the DB so write_phase_state succeeds."""
+    import uuid  # pylint: disable=import-outside-toplevel
+
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, 0, 'active', '', '')",
+            (str(uuid.uuid4()), slug),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _make_todo(tmp_path: Path, slug: str = "test-slug") -> tuple[str, str]:
     todo_dir = tmp_path / "todos" / slug
     todo_dir.mkdir(parents=True)
-    return str(tmp_path), slug
+    cwd = str(tmp_path)
+    _ensure_roadmap_db(cwd, slug)
+    return cwd, slug
 
 
 def _write_file(todo_dir: Path, name: str, content: str = "content") -> Path:

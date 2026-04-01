@@ -1,4 +1,5 @@
 """Tests for teleclaude.core.next_machine.core — phase derivation, dispatch, verdicts, artifacts."""
+# pylint: disable=import-outside-toplevel,unused-argument,invalid-name,too-few-public-methods
 
 from __future__ import annotations
 
@@ -29,10 +30,31 @@ def _mock_todos_db() -> AsyncMock:
     return db
 
 
+def _ensure_roadmap_db(cwd: str, slug: str) -> None:
+    """Insert a roadmap entry in the DB so write_phase_state succeeds."""
+    import uuid  # pylint: disable=import-outside-toplevel
+
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, 0, 'active', '', '')",
+            (str(uuid.uuid4()), slug),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _make_todo(tmp_path: Path, slug: str = "test-slug") -> tuple[str, str]:
     todo_dir = tmp_path / "todos" / slug
     todo_dir.mkdir(parents=True)
-    return str(tmp_path), slug
+    cwd = str(tmp_path)
+    _ensure_roadmap_db(cwd, slug)
+    return cwd, slug
 
 
 def _write_file(base: Path, name: str, content: str = _LONG) -> Path:
@@ -438,7 +460,8 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     """When artifact digest mismatches, prepare emits artifact_invalidated and reroutes."""
     from teleclaude.core.next_machine.prepare import next_prepare
 
-    # Seed DB with state that has a stale input digest
+    # Ensure roadmap entry exists before writing state
+    await todos_db.add_to_roadmap("my-slug")
     await todos_db.write_state(
         "my-slug",
         {
@@ -452,7 +475,6 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     )
     # Write an artifact whose digest differs from the stored one
     await todos_db.write_artifact("my-slug", "input", "changed content")
-    await todos_db.add_to_roadmap("my-slug")
 
     mock_db = MagicMock()
 

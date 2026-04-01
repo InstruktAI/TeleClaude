@@ -9,6 +9,9 @@ from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
+from teleclaude.core.todos_db import TodosDb
+from teleclaude.todo_scaffold import _collect_session_touched_files, create_from_main_skeleton
+
 # Patch targets — these are lazy-imported inside create_from_main_skeleton
 _WT = "teleclaude.core.next_machine.worktrees"
 _SI = "teleclaude.core.next_machine.state_io"
@@ -28,7 +31,7 @@ def _make_repo_ns(
 ) -> SimpleNamespace:
     """Build a SimpleNamespace that mimics a GitPython Repo for tests."""
 
-    def update_environment(**kwargs: str) -> dict[str, str]:
+    def update_environment(**_kwargs: str) -> dict[str, str]:
         return {}
 
     def show_ref(ref: str) -> str:
@@ -65,8 +68,6 @@ class TestCreateFromMainSkeleton:
 
     def test_rejects_non_main_branch(self, tmp_path: Path) -> None:
         """Must be on main branch."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         repo = _make_repo_ns(branch="feature-x")
 
         with (
@@ -77,8 +78,6 @@ class TestCreateFromMainSkeleton:
 
     def test_rejects_clean_working_tree(self, tmp_path: Path) -> None:
         """Must have uncommitted changes."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         repo = _make_repo_ns(status="")
 
         with (
@@ -89,8 +88,6 @@ class TestCreateFromMainSkeleton:
 
     def test_happy_path_creates_worktree_and_cleans_main(self, tmp_path: Path) -> None:
         """Full happy path: scaffold, worktree, transfer, clean, state."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         worktree_path = project / "trees" / "test-slug"
         worktree_path.mkdir(parents=True)
@@ -148,10 +145,54 @@ class TestCreateFromMainSkeleton:
         mock_phase.assert_any_call(str(worktree_path), "test-slug", "prepared")
         mock_phase.assert_any_call(str(worktree_path), "test-slug", "build_complete")
 
+    def test_db_roadmap_and_artifacts_bootstrapped(self, tmp_path: Path) -> None:
+        """DB roadmap entry and stub artifacts exist before mark_phase is called."""
+        project = _setup_project(tmp_path)
+        worktree_path = project / "trees" / "test-slug"
+        worktree_path.mkdir(parents=True)
+        (worktree_path / "src").mkdir(parents=True)
+
+        repo = _make_repo_ns()
+
+        with (
+            patch("teleclaude.git.Repo", return_value=repo),
+            patch(_COLLECT, return_value={"src/app.py"}),
+            patch(f"{_WT}._create_or_attach_worktree", return_value=True),
+            patch(
+                f"{_WT}._decide_worktree_prep",
+                return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
+            ),
+            patch(f"{_SI}.mark_phase"),
+        ):
+            create_from_main_skeleton(str(project), "test-slug", description="DB bootstrap test")
+
+        # Verify roadmap entry and artifacts were written to the worktree DB
+        db_path = str(project / ".teleclaude" / "todos.db")
+        db = TodosDb(db_path)
+        db.initialize_sync()
+        conn = db._sync_conn()  # pylint: disable=protected-access
+        try:
+            roadmap_row = conn.execute(
+                "SELECT slug FROM roadmap WHERE slug = ? AND status != 'delivered'",
+                ("test-slug",),
+            ).fetchone()
+            assert roadmap_row is not None, "roadmap entry was not bootstrapped"
+
+            artifact_names = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM todo_artifacts WHERE slug = ?",
+                    ("test-slug",),
+                ).fetchall()
+            }
+            assert "requirements" in artifact_names
+            assert "implementation-plan" in artifact_names
+            assert "quality-checklist" in artifact_names
+        finally:
+            conn.close()
+
     def test_deleted_files_removed_from_worktree(self, tmp_path: Path) -> None:
         """Deleted files on main should be removed from the worktree."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         worktree_path = project / "trees" / "del-slug"
         worktree_path.mkdir(parents=True)
@@ -176,8 +217,6 @@ class TestCreateFromMainSkeleton:
 
     def test_push_skips_when_not_a_repo(self, tmp_path: Path) -> None:
         """If scaffold push fails because not a repo, do not raise."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         repo = _make_repo_ns()
 
@@ -195,8 +234,6 @@ class TestCreateFromMainSkeleton:
 
     def test_description_defaults_to_see_diff(self, tmp_path: Path) -> None:
         """Without --description, requirements.md shows default text."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         worktree_path = project / "trees" / "no-desc"
         worktree_path.mkdir(parents=True)
@@ -220,8 +257,6 @@ class TestCreateFromMainSkeleton:
 
     def test_session_scoping_filters_to_touched_files_only(self, tmp_path: Path) -> None:
         """Only files touched by the session should be transferred."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         (project / "docs").mkdir()
         (project / "docs" / "guide.md").write_text("modified guide", encoding="utf-8")
@@ -255,8 +290,6 @@ class TestCreateFromMainSkeleton:
 
     def test_no_session_id_raises_value_error(self, tmp_path: Path) -> None:
         """from-main fails hard when not in an agent session."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         repo = _make_repo_ns()
 
@@ -269,8 +302,6 @@ class TestCreateFromMainSkeleton:
 
     def test_empty_session_files_raises_value_error(self, tmp_path: Path) -> None:
         """from-main fails when transcript yields no files."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         repo = _make_repo_ns()
 
@@ -283,8 +314,6 @@ class TestCreateFromMainSkeleton:
 
     def test_all_files_true_transfers_without_session_scoping(self, tmp_path: Path) -> None:
         """all_files=True transfers all dirty files without invoking _collect_session_touched_files."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         (project / "docs").mkdir()
         (project / "docs" / "guide.md").write_text("guide content", encoding="utf-8")
@@ -317,8 +346,6 @@ class TestCreateFromMainSkeleton:
 
     def test_no_intersection_between_session_and_status_raises(self, tmp_path: Path) -> None:
         """ValueError when session-touched files don't overlap with git status."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
-
         project = _setup_project(tmp_path)
         repo = _make_repo_ns()
 
@@ -350,8 +377,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_happy_path_returns_touched_files(self) -> None:
         """Returns set of files from transcript parsing pipeline."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
@@ -378,8 +403,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_missing_session_id_raises(self) -> None:
         """Raises ValueError when session marker file is not found."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         with (
             patch("teleclaude.todo_scaffold._get_session_id", return_value=None),
             pytest.raises(ValueError, match="active agent session"),
@@ -388,8 +411,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_session_not_in_db_raises(self) -> None:
         """Raises ValueError when session ID not found in database."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         mock_db = MagicMock()
         mock_db.get.return_value = None
 
@@ -406,8 +427,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_missing_transcript_raises(self) -> None:
         """Raises ValueError when session has no native_log_file."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         mock_row = SimpleNamespace(native_log_file=None)
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
@@ -425,8 +444,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_empty_timeline_raises(self) -> None:
         """Raises ValueError when transcript parsing returns no touched files."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
@@ -451,8 +468,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_no_touched_files_raises(self) -> None:
         """Raises ValueError when transcript parses but yields no file signals."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
@@ -477,8 +492,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_codex_prefers_live_thread_transcript_when_db_points_to_stale_subagent(self) -> None:
         """Codex sessions recover from stale DB transcript pointers using CODEX_THREAD_ID."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         mock_row = SimpleNamespace(
             active_agent="codex",
             native_log_file="/tmp/stale-subagent.jsonl",
@@ -508,8 +521,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_codex_discovers_transcript_from_native_session_id_when_log_is_missing(self) -> None:
         """Codex sessions fall back to transcript discovery when native_log_file is empty."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         mock_row = SimpleNamespace(active_agent="codex", native_log_file=None, native_session_id="native-parent")
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
@@ -535,8 +546,6 @@ class TestCollectSessionTouchedFiles:
 
     def test_codex_uses_effective_timeline_union_for_touched_files(self) -> None:
         """Codex sessions consume the shared effective timeline abstraction."""
-        from teleclaude.todo_scaffold import _collect_session_touched_files
-
         mock_row = SimpleNamespace(
             active_agent="codex",
             native_log_file="/tmp/parent.jsonl",
@@ -584,49 +593,44 @@ class TestCollectSessionTouchedFiles:
         }
 
 
-class TestCreateFromMainSkeletonAllFiles:
-    """Tests for the all_files=True bypass path (I-6)."""
+def test_all_files_skips_session_scoping(tmp_path: Path) -> None:
+    """all_files=True transfers all dirty files without calling _collect_session_touched_files."""
+    project = tmp_path
+    (project / "src").mkdir()
+    (project / "src" / "app.py").write_text("modified content")
+    (project / "todos").mkdir()
 
-    def test_all_files_skips_session_scoping(self, tmp_path: Path) -> None:
-        """all_files=True transfers all dirty files without calling _collect_session_touched_files."""
-        from teleclaude.todo_scaffold import create_from_main_skeleton
+    worktree_path = project / "trees" / "all-files-slug"
+    worktree_path.mkdir(parents=True)
+    (worktree_path / "src").mkdir(parents=True)
 
-        project = tmp_path
-        (project / "src").mkdir()
-        (project / "src" / "app.py").write_text("modified content")
-        (project / "todos").mkdir()
+    def update_environment(**_kwargs: str) -> dict[str, str]:
+        return {}
 
-        worktree_path = project / "trees" / "all-files-slug"
-        worktree_path.mkdir(parents=True)
-        (worktree_path / "src").mkdir(parents=True)
+    # Status has both a modified file and an added (staged) file
+    repo_ns = SimpleNamespace(
+        git=SimpleNamespace(
+            status=MagicMock(return_value=" M src/app.py\nA  src/staged.py"),
+            diff=MagicMock(return_value=""),
+            checkout=MagicMock(),
+            reset=MagicMock(),
+            update_environment=update_environment,
+        ),
+        active_branch=SimpleNamespace(name="main"),
+    )
 
-        def update_environment(**kwargs: str) -> dict[str, str]:
-            return {}
+    collect_mock = MagicMock()
+    with (
+        patch("teleclaude.git.Repo", return_value=repo_ns),
+        patch(_COLLECT, collect_mock),
+        patch(f"{_WT}._create_or_attach_worktree", return_value=True),
+        patch(
+            f"{_WT}._decide_worktree_prep",
+            return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
+        ),
+        patch(f"{_SI}.mark_phase"),
+    ):
+        create_from_main_skeleton(str(project), "all-files-slug", all_files=True)
 
-        # Status has both a modified file and an added (staged) file
-        repo_ns = SimpleNamespace(
-            git=SimpleNamespace(
-                status=MagicMock(return_value=" M src/app.py\nA  src/staged.py"),
-                diff=MagicMock(return_value=""),
-                checkout=MagicMock(),
-                reset=MagicMock(),
-                update_environment=update_environment,
-            ),
-            active_branch=SimpleNamespace(name="main"),
-        )
-
-        collect_mock = MagicMock()
-        with (
-            patch("teleclaude.git.Repo", return_value=repo_ns),
-            patch(_COLLECT, collect_mock),
-            patch(f"{_WT}._create_or_attach_worktree", return_value=True),
-            patch(
-                f"{_WT}._decide_worktree_prep",
-                return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
-            ),
-            patch(f"{_SI}.mark_phase"),
-        ):
-            create_from_main_skeleton(str(project), "all-files-slug", all_files=True)
-
-        # Session scoping must not be called when all_files=True
-        collect_mock.assert_not_called()
+    # Session scoping must not be called when all_files=True
+    collect_mock.assert_not_called()

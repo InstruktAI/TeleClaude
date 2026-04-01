@@ -22,23 +22,15 @@ class TodosDbStateMixin:
     async def read_state(self, slug: str) -> dict[str, StateValue] | None:
         """Read state JSON for a slug (active/icebox). Returns None if not found."""
         assert self.conn is not None
-        # Resolve slug → id via roadmap (prefer active/icebox)
+        # Resolve slug → id via roadmap (active/icebox only — delivered slugs
+        # can be reused, so we must not return stale delivery-cycle state)
         async with self.conn.execute(
             "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
             (slug,),
         ) as cursor:
             id_row = await cursor.fetchone()
         if id_row is None:
-            # Fallback: try direct slug lookup in todo_state (delivered items)
-            async with self.conn.execute(
-                "SELECT state FROM todo_state WHERE slug = ? ORDER BY updated_at DESC LIMIT 1",  # guard: raw-sql
-                (slug,),
-            ) as cursor:
-                row = await cursor.fetchone()
-            if row is None:
-                return None
-            result: dict[str, StateValue] = json.loads(row[0])
-            return result
+            return None
 
         async with self.conn.execute(
             "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
@@ -63,7 +55,10 @@ class TodosDbStateMixin:
         ) as cursor:
             id_row = await cursor.fetchone()
 
-        row_id = id_row[0] if id_row else slug  # fallback: use slug as id for orphaned state
+        if id_row is None:
+            msg = f"write_state: no active/icebox roadmap entry for slug {slug!r}"
+            raise ValueError(msg)
+        row_id = id_row[0]
 
         await self.conn.execute(
             "INSERT INTO todo_state (id, slug, state, created_at, updated_at) "  # guard: raw-sql
@@ -73,6 +68,26 @@ class TodosDbStateMixin:
         )
         await self.conn.commit()
         self._on_mutation()
+
+    async def read_state_delivered(self, slug: str) -> dict[str, StateValue] | None:
+        """Read state for a delivered slug via roadmap ID join.
+
+        Unlike read_state (active/icebox only), this targets delivered entries.
+        Used by display paths that render delivered items.
+        """
+        assert self.conn is not None
+        async with self.conn.execute(
+            "SELECT ts.state FROM todo_state ts "  # guard: raw-sql
+            "JOIN roadmap r ON ts.id = r.id "
+            "WHERE r.slug = ? AND r.status = 'delivered' "
+            "ORDER BY r.delivered_at DESC LIMIT 1",
+            (slug,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        result: dict[str, StateValue] = json.loads(row[0])
+        return result
 
     async def delete_state(self, slug: str) -> None:
         """Delete state for a slug."""
@@ -116,21 +131,13 @@ class TodosDbStateMixin:
         """Sync version of read_state for use from worker threads."""
         conn = self._sync_conn()  # type: ignore[attr-defined]
         try:
-            # Resolve slug → id
+            # Resolve slug → id (active/icebox only — delivered slugs can be reused)
             id_row = conn.execute(
                 "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
                 (slug,),
             ).fetchone()
             if id_row is None:
-                # Fallback: direct slug lookup
-                row = conn.execute(
-                    "SELECT state FROM todo_state WHERE slug = ? ORDER BY updated_at DESC LIMIT 1",  # guard: raw-sql
-                    (slug,),
-                ).fetchone()
-                if row is None:
-                    return None
-                fallback: dict[str, StateValue] = json.loads(row[0])
-                return fallback
+                return None
 
             row = conn.execute(
                 "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
@@ -154,7 +161,10 @@ class TodosDbStateMixin:
                 "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
                 (slug,),
             ).fetchone()
-            row_id = id_row[0] if id_row else slug
+            if id_row is None:
+                msg = f"write_state_sync: no active/icebox roadmap entry for slug {slug!r}"
+                raise ValueError(msg)
+            row_id = id_row[0]
 
             conn.execute(
                 "INSERT INTO todo_state (id, slug, state, created_at, updated_at) "  # guard: raw-sql

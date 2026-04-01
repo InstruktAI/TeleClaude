@@ -1,5 +1,7 @@
 """Characterization tests for teleclaude.cli.tui.widgets.todo_row."""
 
+# pylint: disable=missing-function-docstring,import-outside-toplevel
+
 from __future__ import annotations
 
 import pytest
@@ -59,6 +61,15 @@ def test_prepare_phase_label_blocked_returns_red_color() -> None:
     assert prefix == "P"
     assert value == "blocked"
     assert color == _red_color()
+
+
+@pytest.mark.unit
+def test_prepare_phase_label_test_spec_phases_map_to_requirements() -> None:
+    for phase in (PreparePhase.TEST_SPEC_BUILD, PreparePhase.TEST_SPEC_REVIEW):
+        result = prepare_phase_label(phase.value)
+        assert result is not None
+        _, value, _ = result
+        assert value == "requirements"
 
 
 @pytest.mark.unit

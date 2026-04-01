@@ -318,7 +318,7 @@ def _read_artifact_content(todo_base: Path, artifact_name: str) -> str | None:
             "SELECT content FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
             (slug, db_name),
         ).fetchone()
-        return row[0] if row else None
+        return str(row[0]) if row else None
     finally:
         conn.close()
 

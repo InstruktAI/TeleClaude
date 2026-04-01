@@ -90,6 +90,9 @@ def _is_phase_done(  # pylint: disable=too-many-return-statements
     current: str, state: dict[str, StateValue]
 ) -> bool:
     """Determine whether the current phase has a completion marker."""
+    if current == "delivered":
+        return True
+
     if current in ("requirements_review", "test_spec_review", "plan_review"):
         section = state.get(current)
         return isinstance(section, dict) and bool(section.get("verdict"))
@@ -211,13 +214,17 @@ async def assemble_show_payload(  # pylint: disable=too-many-locals,too-many-bra
 ) -> ShowPayload | None:
     """Assemble the full show payload for a slug. Returns None if not found."""
     state = await todos_db.read_state(slug)
+    is_delivered = False
     if state is None:
-        return None
+        # Active/icebox lookup found nothing — try delivered path
+        state = await todos_db.read_state_delivered(slug)
+        if state is None:
+            return None
+        is_delivered = True
 
     current = str(state.get("current", "input_assessment"))
 
     delivered_slugs = await todos_db.delivered_slugs()
-    is_delivered = slug in delivered_slugs
 
     roadmap_entries = await todos_db.list_roadmap(include_icebox=True, include_delivered=True)
     description: str | None = None

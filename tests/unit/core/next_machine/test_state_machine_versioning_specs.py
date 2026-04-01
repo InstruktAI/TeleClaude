@@ -1,11 +1,15 @@
+# guard: no-companion
+"""State machine v1→v2 migration and is_ready_for_work characterization tests."""
+# pylint: disable=missing-function-docstring
+
 from __future__ import annotations
 
-# guard: no-companion
+import json
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import yaml
 
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
 from teleclaude.core.next_machine.prepare import next_prepare
@@ -17,14 +21,41 @@ pytestmark = [
 ]
 
 
-def _write_state(todo_dir: Path, state: dict[str, StateValue]) -> None:
-    todo_dir.mkdir(parents=True, exist_ok=True)
-    (todo_dir / "state.yaml").write_text(yaml.safe_dump(state, sort_keys=False), encoding="utf-8")
+def _write_state_db(tmp_path: Path, slug: str, state: dict[str, StateValue]) -> None:
+    """Write state to todos.db so read_phase_state can find it."""
+    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
+
+    db_path = tmp_path / ".teleclaude" / "todos.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db = TodosDb(str(db_path))
+    db.initialize_sync()
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        roadmap_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, 0, 'active', '', '')",
+            (roadmap_id, slug),
+        )
+        row = conn.execute(
+            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+        if row:
+            conn.execute(
+                "INSERT OR REPLACE INTO todo_state (id, slug, state, created_at, updated_at) "  # guard: raw-sql
+                "VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+                (row[0], slug, json.dumps(state)),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def test_read_phase_state_migrates_legacy_prepare_state_into_v2_current(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-a",
+    _write_state_db(
+        tmp_path,
+        "slug-a",
         {
             "schema_version": 1,
             "phase": "pending",
@@ -45,8 +76,9 @@ def test_read_phase_state_migrates_legacy_prepare_state_into_v2_current(tmp_path
 
 
 def test_read_phase_state_keeps_existing_v2_blob_without_reintroducing_legacy_fields(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-b",
+    _write_state_db(
+        tmp_path,
+        "slug-b",
         {
             "schema_version": 2,
             "current": "requirements_review",
@@ -96,7 +128,7 @@ async def test_next_prepare_routes_from_current_without_phase_derivation() -> No
     )
 
     with (
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children_db", return_value=[]),
         patch("teleclaude.core.next_machine.prepare.resolve_canonical_project_root", return_value="/tmp/project"),
         patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
         patch("teleclaude.core.next_machine.prepare.check_artifact_staleness_db", return_value=[]),
@@ -115,8 +147,9 @@ async def test_next_prepare_routes_from_current_without_phase_derivation() -> No
 
 
 def test_v1_finalize_handed_off_migrates_to_current(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-fh",
+    _write_state_db(
+        tmp_path,
+        "slug-fh",
         {
             "phase": "in_progress",
             "build": "complete",
@@ -131,8 +164,9 @@ def test_v1_finalize_handed_off_migrates_to_current(tmp_path: Path) -> None:
 
 
 def test_v1_finalize_ready_migrates_to_current(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-fr",
+    _write_state_db(
+        tmp_path,
+        "slug-fr",
         {
             "phase": "in_progress",
             "build": "complete",
@@ -145,8 +179,9 @@ def test_v1_finalize_ready_migrates_to_current(tmp_path: Path) -> None:
 
 
 def test_v1_review_approved_migrates_to_current(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-ra",
+    _write_state_db(
+        tmp_path,
+        "slug-ra",
         {"phase": "in_progress", "build": "complete", "review": "approved"},
     )
     state = read_phase_state(str(tmp_path), "slug-ra")
@@ -154,8 +189,9 @@ def test_v1_review_approved_migrates_to_current(tmp_path: Path) -> None:
 
 
 def test_v1_review_changes_requested_migrates_to_current(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-rc",
+    _write_state_db(
+        tmp_path,
+        "slug-rc",
         {"phase": "in_progress", "build": "complete", "review": "changes_requested"},
     )
     state = read_phase_state(str(tmp_path), "slug-rc")
@@ -163,8 +199,9 @@ def test_v1_review_changes_requested_migrates_to_current(tmp_path: Path) -> None
 
 
 def test_v1_review_pending_with_build_complete_migrates_to_current(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-rp",
+    _write_state_db(
+        tmp_path,
+        "slug-rp",
         {"phase": "in_progress", "build": "complete", "review": "pending"},
     )
     state = read_phase_state(str(tmp_path), "slug-rp")
@@ -172,8 +209,9 @@ def test_v1_review_pending_with_build_complete_migrates_to_current(tmp_path: Pat
 
 
 def test_v1_build_complete_without_review_migrates_to_current(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-bc",
+    _write_state_db(
+        tmp_path,
+        "slug-bc",
         {"phase": "in_progress", "build": "complete", "review": ""},
     )
     state = read_phase_state(str(tmp_path), "slug-bc")
@@ -181,8 +219,9 @@ def test_v1_build_complete_without_review_migrates_to_current(tmp_path: Path) ->
 
 
 def test_v1_build_started_migrates_to_current(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-bs",
+    _write_state_db(
+        tmp_path,
+        "slug-bs",
         {"phase": "in_progress", "build": "started", "review": "pending"},
     )
     state = read_phase_state(str(tmp_path), "slug-bs")
@@ -190,8 +229,9 @@ def test_v1_build_started_migrates_to_current(tmp_path: Path) -> None:
 
 
 def test_v1_fallback_to_input_assessment(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-fb",
+    _write_state_db(
+        tmp_path,
+        "slug-fb",
         {"phase": "pending", "build": "pending", "review": "pending"},
     )
     state = read_phase_state(str(tmp_path), "slug-fb")
@@ -205,7 +245,7 @@ def test_v1_fallback_to_input_assessment(tmp_path: Path) -> None:
 
 def test_is_ready_for_work_uses_current_authoritative_state_value() -> None:
     with patch(
-        "teleclaude.core.next_machine.slug_resolution.read_phase_state",
+        "teleclaude.core.next_machine.state_io.read_phase_state",
         side_effect=[
             {"schema_version": 2, "current": "prepared", "history": []},
             {"schema_version": 2, "current": "requirements_review", "history": []},

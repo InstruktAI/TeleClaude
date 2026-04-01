@@ -314,20 +314,6 @@ def _get_todo_commit(slug: str, project_root: Path) -> str:
         return "unknown"
 
 
-def _read_state_yaml(state_path: Path) -> dict[str, StateValue]:
-    if not state_path.exists():
-        return {}
-    try:
-        return cast(dict[str, StateValue], yaml.safe_load(state_path.read_text()) or {})
-    except (yaml.YAMLError, OSError):
-        logger.error("prepare: corrupt state.yaml, cannot read", path=str(state_path))
-        raise
-
-
-def _write_state_yaml(state_path: Path, state: dict[str, StateValue]) -> None:
-    state_path.write_text(yaml.safe_dump(state, default_flow_style=False, sort_keys=False))
-
-
 def _build_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
     slug: str,
     score: int,

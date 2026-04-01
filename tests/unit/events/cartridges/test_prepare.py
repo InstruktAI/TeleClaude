@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import yaml
 
 from teleclaude.events.cartridges.prepare import (
     PrepareCartridge,
@@ -283,7 +282,7 @@ def test_fill_requirements_gaps_no_change_when_no_gaps(tmp_path: Path) -> None:
     content = "# Goal\n\nSome goal.\n"
     result, edits = _fill_requirements_gaps(content, [], tmp_path / "roadmap.yaml", "slug")
     assert result == content
-    assert edits == []
+    assert not edits
 
 
 # ── _fill_plan_gaps ───────────────────────────────────────────────────────────
@@ -303,7 +302,7 @@ def test_fill_plan_gaps_no_change_when_no_gaps():
     content = "## Tasks\n\n- [ ] do something\n"
     result, edits = _fill_plan_gaps(content, [])
     assert result == content
-    assert edits == []
+    assert not edits
 
 
 # ── _is_slug_delivered_or_frozen ──────────────────────────────────────────────
@@ -316,20 +315,28 @@ def test_is_slug_delivered_returns_false_when_no_delivered_file(tmp_path: Path) 
 
 
 def test_is_slug_delivered_returns_true_when_in_delivered(tmp_path: Path) -> None:
-    """Returns True when slug appears in delivered.yaml."""
-    delivered = tmp_path / "todos" / "delivered.yaml"
-    delivered.parent.mkdir(parents=True)
-    delivered.write_text("- slug: my-slug\n  delivered_at: 2025-01-01\n")
-    result = _is_slug_delivered_or_frozen("my-slug", tmp_path)
+    """Returns True when slug's DB roadmap status is 'delivered'."""
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchone.return_value = ("delivered",)
+    mock_db = MagicMock()
+    mock_db._sync_conn.return_value = mock_conn  # pylint: disable=protected-access
+
+    with patch("teleclaude.core.todos_db.TodosDb", return_value=mock_db):
+        result = _is_slug_delivered_or_frozen("my-slug", tmp_path)
+
     assert result is True
 
 
 def test_is_slug_frozen_returns_true_when_in_icebox_yaml(tmp_path: Path) -> None:
-    """Returns True when slug appears in icebox.yaml."""
-    icebox = tmp_path / "todos" / "_icebox" / "icebox.yaml"
-    icebox.parent.mkdir(parents=True)
-    icebox.write_text("- slug: frozen-slug\n")
-    result = _is_slug_delivered_or_frozen("frozen-slug", tmp_path)
+    """Returns True when slug's DB roadmap status is 'icebox'."""
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchone.return_value = ("icebox",)
+    mock_db = MagicMock()
+    mock_db._sync_conn.return_value = mock_conn  # pylint: disable=protected-access
+
+    with patch("teleclaude.core.todos_db.TodosDb", return_value=mock_db):
+        result = _is_slug_delivered_or_frozen("frozen-slug", tmp_path)
+
     assert result is True
 
 
@@ -395,14 +402,26 @@ async def test_assessment_failure_does_not_propagate():
 # ── PrepareCartridge._assess public behavior ───────────────────────────
 
 
+def _make_mock_todos_db(requirements: str = "", plan: str = "") -> AsyncMock:
+    """Return a mock todos_db wired for prepare cartridge tests."""
+    mock_db = AsyncMock()
+    mock_db.read_state.return_value = {}
+
+    async def _read_artifact(_: str, name: str) -> str:
+        if name == "requirements":
+            return requirements
+        if name == "implementation-plan":
+            return plan
+        return ""
+
+    mock_db.read_artifact = AsyncMock(side_effect=_read_artifact)
+    return mock_db
+
+
 @pytest.mark.asyncio
 async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> None:
-    """process() scores artifacts, writes dor-report.md, and updates state.yaml dor section."""
-    todo_dir = tmp_path / "todos" / "my-slug"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text(_full_requirements_content())
-    (todo_dir / "implementation-plan.md").write_text(_full_plan_content())
-    (todo_dir / "state.yaml").write_text("phase: active\n")
+    """process() scores artifacts, writes dor-report artifact, and updates state dor section."""
+    mock_todos_db = _make_mock_todos_db(_full_requirements_content(), _full_plan_content())
 
     ctx = MagicMock()
     ctx.db.find_by_group_key = AsyncMock(return_value={"id": 17})
@@ -416,12 +435,14 @@ async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> No
         patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
         patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
         patch("teleclaude.events.cartridges.prepare.emit_event", new_callable=AsyncMock) as emit_event,
+        patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
     ):
         result = await cartridge.process(event, ctx)
 
     assert result is event
-    assert (todo_dir / "dor-report.md").exists(), "dor-report.md must be written"
-    state = yaml.safe_load((todo_dir / "state.yaml").read_text())
+    write_artifact_calls = {call[0][1] for call in mock_todos_db.write_artifact.call_args_list}
+    assert "dor-report" in write_artifact_calls, "dor-report artifact must be written to DB"
+    state = mock_todos_db.write_state.call_args[0][1]
     assert "dor" in state
     assert state["dor"]["status"] == "pass"
     assert state["dor"]["score"] == 10
@@ -443,9 +464,7 @@ async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> No
 @pytest.mark.asyncio
 async def test_process_claims_and_resolves_notification(tmp_path: Path) -> None:
     """process() claims the notification before assessment and resolves it after."""
-    todo_dir = tmp_path / "todos" / "my-slug"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("# Goal\n\nSome goal.\n")
+    mock_todos_db = _make_mock_todos_db("# Goal\n\nSome goal.\n")
 
     ctx = MagicMock()
     ctx.db.find_by_group_key = AsyncMock(return_value={"id": 42})
@@ -459,6 +478,7 @@ async def test_process_claims_and_resolves_notification(tmp_path: Path) -> None:
         patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
         patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
         patch("teleclaude.events.cartridges.prepare.emit_event", new_callable=AsyncMock),
+        patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
     ):
         result = await cartridge.process(event, ctx)
 
@@ -471,9 +491,7 @@ async def test_process_claims_and_resolves_notification(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_process_emits_dor_assessed_event(tmp_path: Path) -> None:
     """process() emits domain.software-development.planning.dor_assessed with slug and score."""
-    todo_dir = tmp_path / "todos" / "my-slug"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("# Goal\n\nSome goal.\n")
+    mock_todos_db = _make_mock_todos_db("# Goal\n\nSome goal.\n")
 
     ctx = MagicMock()
     ctx.db.find_by_group_key = AsyncMock(return_value=None)
@@ -486,6 +504,7 @@ async def test_process_emits_dor_assessed_event(tmp_path: Path) -> None:
         patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
         patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
         patch("teleclaude.events.cartridges.prepare.emit_event", emit_mock),
+        patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
     ):
         result = await cartridge.process(event, ctx)
 

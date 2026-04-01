@@ -206,6 +206,8 @@ class TodosDbRoadmapMixin:
             if row:
                 state = json.loads(row[1])
                 state["current"] = "delivered"
+                state["phase"] = "delivered"
+                state["integration_phase"] = "candidate_delivered"
                 await self.conn.execute(
                     "UPDATE todo_state SET state = ?, updated_at = ? WHERE id = ?",  # guard: raw-sql
                     (json.dumps(state), now, row[0]),
@@ -399,6 +401,8 @@ class TodosDbRoadmapMixin:
                 if row:
                     state = json.loads(row[1])
                     state["current"] = "delivered"
+                    state["phase"] = "delivered"
+                    state["integration_phase"] = "candidate_delivered"
                     conn.execute(
                         "UPDATE todo_state SET state = ?, updated_at = ? WHERE id = ?",  # guard: raw-sql
                         (json.dumps(state), now, row[0]),

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import yaml
 
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.todo_scaffold import split_todo
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,8 +35,24 @@ def _set_parent_state(tmp_path: Path, slug: str, extra: dict[str, StateValue]) -
 
 
 def _read_child_state(tmp_path: Path, child_slug: str) -> dict[str, StateValue]:
+    """Read child state.yaml for assertion."""
     state_path = tmp_path / "todos" / child_slug / "state.yaml"
     return yaml.safe_load(state_path.read_text()) or {}
+
+
+def _yaml_read_state(cwd: str, slug: str) -> dict[str, StateValue]:
+    """Read state from state.yaml — substitutes DB-based read_phase_state in unit tests."""
+    state_path = Path(cwd) / "todos" / slug / "state.yaml"
+    if state_path.exists():
+        return yaml.safe_load(state_path.read_text()) or {}
+    return {}
+
+
+def _yaml_write_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
+    """Write state to state.yaml — substitutes DB-based write_phase_state in unit tests."""
+    state_path = Path(cwd) / "todos" / slug / "state.yaml"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(yaml.dump(state))
 
 
 # ---------------------------------------------------------------------------
@@ -46,16 +63,17 @@ def _read_child_state(tmp_path: Path, child_slug: str) -> dict[str, StateValue]:
 @patch("teleclaude.core.next_machine.core._emit_prepare_event")
 @patch("teleclaude.todo_scaffold._emit_prepare_event", create=True)
 def test_split_no_approval_children_start_at_discovery(
-    mock_scaffold_emit: MagicMock,
-    mock_core_emit: MagicMock,
+    _mock_scaffold_emit: MagicMock,
+    _mock_core_emit: MagicMock,
     tmp_path: Path,
 ) -> None:
     """Parent with no approved phase → children start without inherited phase."""
-    from teleclaude.todo_scaffold import split_todo
-
     project_root, parent_slug = _make_parent(tmp_path)
 
-    with patch("teleclaude.core.next_machine.core.add_to_roadmap", return_value=None):
+    with (
+        patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=_yaml_read_state),
+        patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=_yaml_write_state),
+    ):
         split_todo(project_root, parent_slug, ["child-a"])
 
     child_state = _read_child_state(tmp_path, "child-a")
@@ -67,13 +85,11 @@ def test_split_no_approval_children_start_at_discovery(
 @patch("teleclaude.core.next_machine.core._emit_prepare_event")
 @patch("teleclaude.todo_scaffold._emit_prepare_event", create=True)
 def test_split_req_approved_children_inherit_plan_drafting(
-    mock_scaffold_emit: MagicMock,
-    mock_core_emit: MagicMock,
+    _mock_scaffold_emit: MagicMock,
+    _mock_core_emit: MagicMock,
     tmp_path: Path,
 ) -> None:
     """Parent with approved requirements → children inherit current=plan_drafting."""
-    from teleclaude.todo_scaffold import split_todo
-
     project_root, parent_slug = _make_parent(tmp_path)
     (tmp_path / "todos" / parent_slug / "requirements.md").write_text(
         "Requirements content long enough to pass scaffold threshold check."
@@ -93,7 +109,10 @@ def test_split_req_approved_children_inherit_plan_drafting(
         },
     )
 
-    with patch("teleclaude.core.next_machine.core.add_to_roadmap", return_value=None):
+    with (
+        patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=_yaml_read_state),
+        patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=_yaml_write_state),
+    ):
         split_todo(project_root, parent_slug, ["child-b"])
 
     child_state = _read_child_state(tmp_path, "child-b")
@@ -111,13 +130,11 @@ def test_split_req_approved_children_inherit_plan_drafting(
 @patch("teleclaude.core.next_machine.core._emit_prepare_event")
 @patch("teleclaude.todo_scaffold._emit_prepare_event", create=True)
 def test_split_plan_approved_children_inherit_prepared(
-    mock_scaffold_emit: MagicMock,
-    mock_core_emit: MagicMock,
+    _mock_scaffold_emit: MagicMock,
+    _mock_core_emit: MagicMock,
     tmp_path: Path,
 ) -> None:
     """Parent with approved plan → children inherit current=prepared with all verdicts."""
-    from teleclaude.todo_scaffold import split_todo
-
     project_root, parent_slug = _make_parent(tmp_path)
     (tmp_path / "todos" / parent_slug / "requirements.md").write_text(
         "Requirements content long enough to pass scaffold threshold check."
@@ -148,7 +165,10 @@ def test_split_plan_approved_children_inherit_prepared(
         },
     )
 
-    with patch("teleclaude.core.next_machine.core.add_to_roadmap", return_value=None):
+    with (
+        patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=_yaml_read_state),
+        patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=_yaml_write_state),
+    ):
         split_todo(project_root, parent_slug, ["child-c"])
 
     child_state = _read_child_state(tmp_path, "child-c")

@@ -517,12 +517,12 @@ async def todo_split(
         existing = await todos_db.read_state(child_slug)
         if existing is not None:
             raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
+        await todos_db.add_to_roadmap(child_slug, group_slug=slug)
         await todos_db.write_state(child_slug, default_state())
         # Copy parent input to child
         parent_input = await todos_db.read_artifact(slug, "input")
         if parent_input:
             await todos_db.write_artifact(child_slug, "input", parent_input)
-        await todos_db.add_to_roadmap(child_slug, group_slug=slug)
 
     # Update parent breakdown
     parent_state["breakdown"] = {"assessed": True, "todos": list(children)}  # type: ignore[dict-item]

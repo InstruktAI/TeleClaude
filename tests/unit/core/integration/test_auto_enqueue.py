@@ -5,6 +5,7 @@ The integration state machine scans todo state from todos.db to find
 finalize-ready candidates. Tests mock _get_todos_db_sync to inject a
 test-scoped TodosDb instance.
 """
+# pylint: disable=missing-function-docstring,redefined-outer-name,unused-argument,use-implicit-booleaness-not-comparison
 
 from __future__ import annotations
 
@@ -32,7 +33,24 @@ def todos_db(tmp_path: Path) -> TodosDb:
     return db
 
 
+def _ensure_roadmap(todos_db: TodosDb, slug: str) -> None:
+    """Insert a roadmap entry via raw SQL (write_state requires it)."""
+    import uuid  # pylint: disable=import-outside-toplevel
+
+    conn = todos_db._sync_conn()  # pylint: disable=protected-access
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, 0, 'active', '', '')",
+            (str(uuid.uuid4()), slug),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _seed(todos_db: TodosDb, slug: str, finalize: dict[str, StateValue]) -> None:
+    _ensure_roadmap(todos_db, slug)
     todos_db.write_state_sync(slug, {"finalize": finalize})
 
 

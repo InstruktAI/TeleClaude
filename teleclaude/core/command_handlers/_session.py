@@ -356,7 +356,7 @@ async def list_todos(project_path: str) -> list[TodoDTO]:
     Returns:
         List of todo objects.
     """
-    return assemble_roadmap_from_db(project_path)
+    return assemble_roadmap_from_db(project_path, include_delivered=True)
 
 
 async def get_computer_info() -> ComputerInfo:

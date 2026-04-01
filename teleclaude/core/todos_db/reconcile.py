@@ -77,13 +77,13 @@ async def reconcile_filesystem_to_db(project_root: str, todos_db: TodosDb) -> di
             if wt_todo.is_dir():
                 slug_dirs.setdefault(wt_entry.name, []).append(wt_todo)
 
+    # Reconcile roadmap first so roadmap.yaml entries exist before state writes
+    await _reconcile_roadmap(project_root, todos_db, counts)
+
     # Reconcile each slug
     for slug, dirs in slug_dirs.items():
         await _reconcile_slug_state(slug, dirs, todos_db, counts)
         await _reconcile_slug_artifacts(slug, dirs, todos_db, counts)
-
-    # Reconcile roadmap
-    await _reconcile_roadmap(project_root, todos_db, counts)
 
     logger.info(
         "Reconciliation complete: %s",
@@ -147,6 +147,9 @@ async def _reconcile_slug_state(  # pylint: disable=too-many-locals
     if not isinstance(fs_state, dict):
         return
 
+    # write_state requires an active roadmap entry; ensure one exists for slugs
+    # not covered by roadmap.yaml (e.g. worktree-only slugs)
+    await todos_db.add_to_roadmap(slug)
     await todos_db.write_state(slug, fs_state)
     if db_state is None:
         counts["state_inserted"] += 1

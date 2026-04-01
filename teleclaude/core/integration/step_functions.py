@@ -669,17 +669,13 @@ def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-stat
     # --- Delivery bookkeeping via todos.db ---
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
 
-    try:
-        todos_db = _get_todos_db_sync(cwd)
-        delivered = todos_db.deliver_sync(key.slug, commit=checkpoint.candidate_sha)
-        if not delivered:
-            msg = f"todos_db.deliver failed for {key.slug}"
-            logger.warning(msg)
-            warnings.append(msg)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        msg = f"Delivery bookkeeping failed for {key.slug}: {exc}"
-        logger.warning(msg)
-        warnings.append(msg)
+    todos_db = _get_todos_db_sync(cwd)
+    delivered = todos_db.deliver_sync(key.slug, commit=checkpoint.candidate_sha)
+    if not delivered:
+        return False, _format_error(
+            "DELIVERY_FAILED",
+            f"todos_db.deliver_sync returned False for {key.slug} — roadmap entry may already be delivered or missing",
+        )
 
     # --- Clean dependency references in DB ---
     todos_db = _get_todos_db_sync(cwd)
@@ -892,12 +888,14 @@ def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
     """Write integration_phase into the todo state in todos.db.
 
     Best-effort: failures are logged but do not block the integration flow.
+    After delivery, read_state_sync returns None (the delivered filter is correct)
+    and deliver_sync already wrote integration_phase, so we skip silently.
     """
     try:
         todos_db = _get_todos_db_sync(cwd)
         state = todos_db.read_state_sync(slug)
         if state is None:
-            state = {}
+            return
         state["integration_phase"] = phase
         todos_db.write_state_sync(slug, state)
     except Exception as exc:  # pylint: disable=broad-except

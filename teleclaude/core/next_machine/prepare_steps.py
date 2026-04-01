@@ -571,10 +571,12 @@ async def _prepare_step_gate(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """GATE: DOR formal validation."""
+    stamp_audit(state, "gate", "started_at", datetime.now(UTC).isoformat())
     dor = state.get("dor", {})
     dor_score = dor.get("score") if isinstance(dor, dict) else None
 
     if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
+        stamp_audit(state, "gate", "completed_at", datetime.now(UTC).isoformat())
         state["current"] = PreparePhase.GROUNDING_CHECK.value
         await todos_db.write_state(slug, state)
         return True, ""  # loop

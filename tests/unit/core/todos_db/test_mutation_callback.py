@@ -1,4 +1,5 @@
 # guard: no-companion
+# pylint: disable=redefined-outer-name
 """Tests that TodosDb mutation methods fire the _on_mutation callback.
 
 Reproduces the bug: TUI todos pane shows stale data because no signal
@@ -18,6 +19,22 @@ from teleclaude.core.todos_db import TodosDb, _instances, get_todos_db, set_todo
 pytestmark = pytest.mark.asyncio
 
 
+def _ensure_roadmap_sync(db: TodosDb, slug: str) -> None:
+    """Insert a roadmap entry via raw SQL for sync test paths."""
+    import uuid  # pylint: disable=import-outside-toplevel
+
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, 0, 'active', '', '')",
+            (str(uuid.uuid4()), slug),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncIterator[TodosDb]:  # pylint: disable=redefined-outer-name
     """Fresh TodosDb instance for each test."""
@@ -31,6 +48,7 @@ async def db(tmp_path: Path) -> AsyncIterator[TodosDb]:  # pylint: disable=redef
 
 async def test_write_state_fires_mutation_callback(db: TodosDb) -> None:  # pylint: disable=redefined-outer-name
     """write_state calls _on_mutation after committing."""
+    await db.add_to_roadmap("my-slug")
     cb = MagicMock()
     db._on_mutation = cb  # pylint: disable=protected-access
     await db.write_state("my-slug", {"current": "pending"})
@@ -39,6 +57,7 @@ async def test_write_state_fires_mutation_callback(db: TodosDb) -> None:  # pyli
 
 async def test_delete_state_fires_mutation_callback(db: TodosDb) -> None:  # pylint: disable=redefined-outer-name
     """delete_state calls _on_mutation after committing."""
+    await db.add_to_roadmap("my-slug")
     await db.write_state("my-slug", {"current": "pending"})
     cb = MagicMock()
     db._on_mutation = cb  # pylint: disable=protected-access
@@ -48,6 +67,7 @@ async def test_delete_state_fires_mutation_callback(db: TodosDb) -> None:  # pyl
 
 async def test_write_state_sync_fires_mutation_callback(db: TodosDb) -> None:  # pylint: disable=redefined-outer-name
     """write_state_sync calls _on_mutation after committing (sync/worker thread path)."""
+    await db.add_to_roadmap("my-slug")
     cb = MagicMock()
     db._on_mutation = cb  # pylint: disable=protected-access
     db.write_state_sync("my-slug", {"current": "pending"})
@@ -173,6 +193,7 @@ async def test_set_todos_mutation_hook_applies_to_sync_get_todos_db_instance(tmp
     set_todos_mutation_hook(_hook)
     try:
         synced_db = _get_todos_db_sync(project_root)
+        _ensure_roadmap_sync(synced_db, "my-slug")
         synced_db.write_state_sync("my-slug", {"current": "pending"})
         assert calls == [project_root]
     finally:
@@ -181,6 +202,7 @@ async def test_set_todos_mutation_hook_applies_to_sync_get_todos_db_instance(tmp
 
 async def test_no_callback_by_default(db: TodosDb) -> None:  # pylint: disable=redefined-outer-name
     """Default _on_mutation is a no-op — mutations complete without error."""
+    await db.add_to_roadmap("my-slug")
     await db.write_state("my-slug", {"current": "pending"})
     result = await db.read_state("my-slug")
     assert result is not None
@@ -194,6 +216,12 @@ async def test_set_todos_mutation_hook_applies_to_new_get_todos_db_instance(tmp_
 
     def _hook(instance: TodosDb, root: str) -> None:
         instance._on_mutation = lambda: calls.append(root)  # pylint: disable=protected-access
+
+    # Create DB and add roadmap entry BEFORE setting hook (add_to_roadmap also fires mutation)
+    pre_db = await get_todos_db(project_root)
+    await pre_db.add_to_roadmap("my-slug")
+    await pre_db.close()
+    _instances.pop(db_path, None)
 
     set_todos_mutation_hook(_hook)
     created: TodosDb | None = None

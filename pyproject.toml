@@ -258,8 +258,6 @@ disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
 # ALL imports MUST be at the top of the file
 enable = ["import-outside-toplevel"]
 fail-on = ["import-outside-toplevel"]
-# Cyclic imports are managed via lazy imports (import-outside-toplevel pattern)
-disable = ["cyclic-import"]
 
 [tool.pylint.'SIMILARITIES']
 min-similarity-lines = 10  # Flag duplicate blocks of 10+ lines

@@ -4,6 +4,7 @@ DB-backed roadmap assembly for CLI, API, and TUI.
 """
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -11,6 +12,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import TodoDTO
 
 logger = get_logger(__name__)
+
+RECENTLY_DELIVERED_HOURS = 72
 
 # v2 current values that indicate prepare-phase territory
 _PREPARE_CURRENT_VALUES: dict[str, str] = {
@@ -69,7 +72,8 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
             if include_icebox:
                 parts.append("status = 'icebox'")
             if include_delivered:
-                parts.append("status = 'delivered'")
+                cutoff = (datetime.now(UTC) - timedelta(hours=RECENTLY_DELIVERED_HOURS)).isoformat()
+                parts.append(f"(status = 'delivered' AND delivered_at >= '{cutoff}')")
             conditions.append(" OR ".join(parts))
 
         where = conditions[0] if conditions else "1=1"

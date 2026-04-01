@@ -36,7 +36,7 @@ def _write_file(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def create_todo_skeleton(  # pylint: disable=too-many-locals
+def create_todo_skeleton(  # pylint: disable=too-many-locals,unused-argument
     project_root: Path,
     slug: str,
     *,
@@ -78,23 +78,6 @@ def create_todo_skeleton(  # pylint: disable=too-many-locals
     _write_file(todo_dir / "input.md", input_md)
     _write_file(todo_dir / "demo.md", demo_md)
     _write_file(todo_dir / "state.yaml", state_content)
-
-    if after is not None or group is not None:
-        from teleclaude.core.next_machine.core import add_to_roadmap  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.next_machine.roadmap import RoadmapInsertion  # pylint: disable=import-outside-toplevel
-
-        # Deduplicate and clean deps
-        deduped: list[str] = []
-        for item in after or []:
-            cleaned = item.strip()
-            if cleaned and cleaned not in deduped:
-                deduped.append(cleaned)
-
-        add_to_roadmap(
-            str(project_root),
-            slug,
-            RoadmapInsertion(after=deduped or None, group=group),
-        )
 
     return todo_dir
 
@@ -354,13 +337,8 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
 def remove_todo(project_root: Path, slug: str) -> None:  # pylint: disable=too-many-locals
     """Remove a todo and all its references. Best-effort: removes whatever exists.
 
-    Removes:
-    - Worktree trees/{slug}/ (if present)
-    - Local branch {slug} (if present)
-    - todos/{slug}/ directory
-    - Entry from todos/roadmap.yaml
-    - Entry from todos/icebox.yaml (if present)
-    - All `after` dependency references to this slug in roadmap and icebox
+    Removes worktree and local branch for the given slug. DB cleanup
+    (roadmap, icebox, state, artifacts) is handled by the /todos/remove API route.
 
     Args:
         project_root: Project root directory
@@ -368,61 +346,24 @@ def remove_todo(project_root: Path, slug: str) -> None:  # pylint: disable=too-m
 
     Raises:
         ValueError: If slug format is invalid
-        FileNotFoundError: If slug has no artifacts anywhere (unknown slug)
     """
-    from teleclaude.core.next_machine.core import (  # pylint: disable=import-outside-toplevel
-        clean_dependency_references,
-        remove_from_icebox,
-        remove_from_roadmap,
-    )
+    from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
 
     validate_slug(slug)
     slug = slug.strip()
 
-    # Remove worktree if present (best-effort: non-fatal)
-    from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
-
     worktree_path = project_root / WORKTREE_DIR / slug
-    found_worktree = worktree_path.exists()
     repo = Repo(str(project_root))
-    if found_worktree:
+    if worktree_path.exists():
         try:
             repo.git.worktree("remove", "--force", str(worktree_path))
         except GitCommandError:
             pass
 
-    # Remove local branch if present (best-effort: non-fatal)
     try:
         repo.git.branch("-D", slug)
     except GitCommandError:
         pass
-
-    todos_root = project_root / "todos"
-    todo_dir = todos_root / slug
-    icebox_dir = todos_root / "_icebox" / slug
-
-    # Check both active and icebox locations
-    found_in_active = todo_dir.exists()
-    found_in_icebox_dir = icebox_dir.exists()
-    found_directory = found_in_active or found_in_icebox_dir
-    target_dir = todo_dir if found_in_active else icebox_dir
-
-    found_in_roadmap = remove_from_roadmap(str(project_root), slug)
-    found_in_icebox = remove_from_icebox(str(project_root), slug)
-
-    # Clean up dependency references
-    clean_dependency_references(str(project_root), slug)
-
-    # Delete directory if it exists (symlink-safe: unlink symlink, don't rmtree through it)
-    if found_directory:
-        if target_dir.is_symlink():
-            target_dir.unlink()
-        else:
-            shutil.rmtree(target_dir)
-
-    # Error only if slug is completely unknown
-    if not (found_directory or found_in_roadmap or found_in_icebox or found_worktree):
-        raise FileNotFoundError(f"Todo '{slug}' not found in directory, roadmap, icebox, or worktree")
 
 
 def _classify_porcelain_status(
@@ -611,7 +552,7 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
     )
 
 
-def create_from_main_skeleton(  # pylint: disable=too-many-locals
+def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-statements
     cwd: str,
     slug: str,
     *,
@@ -713,8 +654,59 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals
         project_root, worktree_path, modified_files + added_files, untracked_files, deleted_files
     )
 
-    # --- 5g. Set state for review dispatch (before cleaning main — atomic) ---
+    # --- 5g. Ensure roadmap entry exists (write_state requires slug→UUID resolution) ---
     worktree_cwd = str(worktree_path)
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+    _from_main_db = _get_todos_db_sync(worktree_cwd)
+    _from_main_conn = _from_main_db._sync_conn()  # pylint: disable=protected-access
+    try:
+        import uuid as _uuid  # pylint: disable=import-outside-toplevel
+
+        _existing = _from_main_conn.execute(
+            "SELECT 1 FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+        if not _existing:
+            _now = datetime.now(UTC).isoformat()
+            _max_pos = _from_main_conn.execute(
+                "SELECT COALESCE(MAX(position), 0) + 1 FROM roadmap",  # guard: raw-sql
+            ).fetchone()[0]
+            _from_main_conn.execute(
+                "INSERT INTO roadmap "  # guard: raw-sql
+                "(id, slug, position, description, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, 'active', ?, ?)",
+                (str(_uuid.uuid4()), slug, _max_pos, description, _now, _now),
+            )
+            _from_main_conn.commit()
+    finally:
+        _from_main_conn.close()
+
+    # --- 5h. Write DB artifacts (mark_phase "prepared" validates their existence) ---
+    _art_db = _get_todos_db_sync(worktree_cwd)
+    _art_conn = _art_db._sync_conn()  # pylint: disable=protected-access
+    try:
+        _art_id_row = _art_conn.execute(
+            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+        if _art_id_row:
+            _art_id = _art_id_row[0]
+            for _art_name, _art_content in [
+                ("requirements", f"{from_main_marker}\n# Requirements: {slug}\n\n{desc_text}\n"),
+                ("implementation-plan", f"{from_main_marker}\n# Implementation Plan: {slug}\n"),
+                ("quality-checklist", f"{from_main_marker}\n# Quality Checklist: {slug}\n"),
+            ]:
+                _art_conn.execute(
+                    "INSERT OR REPLACE INTO todo_artifacts (id, slug, name, content, updated_at) "  # guard: raw-sql
+                    "VALUES (?, ?, ?, ?, datetime('now'))",
+                    (_art_id, slug, _art_name, _art_content),
+                )
+            _art_conn.commit()
+    finally:
+        _art_conn.close()
+
+    # --- 5i. Set state for review dispatch (before cleaning main — atomic) ---
     set_item_phase(worktree_cwd, slug, "in_progress")
     mark_phase(worktree_cwd, slug, "prepared")
     mark_phase(worktree_cwd, slug, "build_complete")
