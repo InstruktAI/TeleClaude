@@ -508,6 +508,7 @@ async def get_session_messages(
         )
         agent_status = compute_agent_status(
             last_activity=session.last_activity,
+            last_input_at=session.last_message_sent_at,
             last_agent_stop_at=session.last_agent_stop_at,
         )
 

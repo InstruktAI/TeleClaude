@@ -120,6 +120,7 @@ class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Sessio
         """Create from database Session object."""
         agent_status = compute_agent_status(
             last_activity=session.last_activity,
+            last_input_at=session.last_message_sent_at,
             last_agent_stop_at=session.last_agent_stop_at,
         )
         return cls(
