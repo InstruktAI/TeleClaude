@@ -568,9 +568,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
-                        args="<slug> <name> [--file <path>]",
-                        flags=[_H, Flag("--file", desc="Read from file (stdin default)")],
-                        examples=["telec todo artifacts write my-slug requirements --file /tmp/req.md"],
+                        args="<slug> <name> <content>",
+                        flags=[_H],
+                        examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
                     ),
                 },

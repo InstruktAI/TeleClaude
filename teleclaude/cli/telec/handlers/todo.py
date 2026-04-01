@@ -430,9 +430,9 @@ def _handle_todo_from_main(args: list[str]) -> None:
 
 
 def _handle_todo_artifacts(args: list[str]) -> None:
-    """Handle telec todo artifacts {list|read|write} <slug> [<name>] [--file <path>]."""
+    """Handle telec todo artifacts {list|read|write} <slug> [<name>] [<content>]."""
     if not args:
-        print("Usage: telec todo artifacts {list|read|write} <slug> [<name>] [--file <path>]")
+        print("Usage: telec todo artifacts {list|read|write} <slug> [<name>] [<content>]")
         raise SystemExit(1)
 
     subcommand = args[0]
@@ -446,7 +446,7 @@ def _handle_todo_artifacts(args: list[str]) -> None:
         _handle_artifacts_write(sub_args)
     else:
         print(f"Unknown artifacts subcommand: {subcommand}")
-        print("Usage: telec todo artifacts {list|read|write} <slug> [<name>] [--file <path>]")
+        print("Usage: telec todo artifacts {list|read|write} <slug> [<name>] [<content>]")
         raise SystemExit(1)
 
 
@@ -484,41 +484,33 @@ def _handle_artifacts_read(args: list[str]) -> None:
 
 
 def _handle_artifacts_write(args: list[str]) -> None:
-    """Handle telec todo artifacts write <slug> <name> [--file <path>]."""
-    import sys  # pylint: disable=import-outside-toplevel
-
+    """Handle telec todo artifacts write <slug> <name> <content>."""
     slug: str | None = None
     name: str | None = None
-    file_path: str | None = None
-    positionals: list[str] = []
+    content: str | None = None
 
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--file" and i + 1 < len(args):
-            file_path = args[i + 1]
-            i += 2
-        elif not arg.startswith("-"):
-            positionals.append(arg)
-            i += 1
+        if arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print("Usage: telec todo artifacts write <slug> <name> <content>")
+            raise SystemExit(1)
+        elif slug is None:
+            slug = arg
+        elif name is None:
+            name = arg
+        elif content is None:
+            content = arg
         else:
-            i += 1
+            print("Too many positional arguments.")
+            print("Usage: telec todo artifacts write <slug> <name> <content>")
+            raise SystemExit(1)
+        i += 1
 
-    if len(positionals) >= 2:
-        slug, name = positionals[0], positionals[1]
-
-    if not slug or not name:
-        print("Usage: telec todo artifacts write <slug> <name> [--file <path>]")
+    if not slug or not name or not content:
+        print("Usage: telec todo artifacts write <slug> <name> <content>")
         raise SystemExit(1)
-
-    if file_path:
-        try:
-            content = Path(file_path).read_text(encoding="utf-8")
-        except FileNotFoundError as exc:
-            print(f"File not found: {file_path}", file=sys.stderr)
-            raise SystemExit(1) from exc
-    else:
-        content = sys.stdin.read()
 
     result = tool_api_request(
         "POST",
