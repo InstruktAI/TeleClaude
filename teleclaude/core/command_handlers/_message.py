@@ -13,6 +13,7 @@ from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.events import FileEventContext, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
@@ -112,7 +113,6 @@ async def handle_voice(
     logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
 
     # Reset threaded output state so the next agent output starts a fresh message.
-    # The next agent output will start a fresh message block at the bottom.
     session = await db.get_session(cmd.session_id)
     if session:
         await client.break_threaded_turn(session)
@@ -305,8 +305,6 @@ async def process_message(
     start_polling: StartPollingFunc,
 ) -> None:
     """Enqueue an incoming user message for durable delivery to the session."""
-    from teleclaude.core.inbound_queue import get_inbound_queue_manager  # pylint: disable=import-outside-toplevel
-
     del client, start_polling
 
     session_id = cmd.session_id

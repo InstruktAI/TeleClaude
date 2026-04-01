@@ -14,9 +14,11 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.agent_coordinator._helpers import has_active_output_message
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
-from teleclaude.core.models import SessionField
+from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.models import MessageMetadata, SessionField
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
     get_assistant_messages_since,
@@ -71,9 +73,6 @@ class OutputCadenceLoop:
         transcript. The originating adapter suppresses its own echo via
         reflection_origin matching.
         """
-        from teleclaude.core.identity import get_identity_resolver  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
-
         try:
             input_origin = session.last_input_origin or ""
             resolver = get_identity_resolver()
@@ -194,13 +193,9 @@ class OutputCadenceLoop:
             return
 
         # Deduplicate by delivery timestamp (persisted in origin_metadata).
-        last_delivered_raw = self._adapter._origin_field(session, "last_delivered_at")  # pylint: disable=protected-access
-        if isinstance(last_delivered_raw, str):
-            from teleclaude.utils.transcript._utils import _parse_timestamp  # pylint: disable=import-outside-toplevel
-
-            last_delivered = _parse_timestamp(last_delivered_raw)
-            if last_delivered and last_ts <= last_delivered:
-                return
+        last_delivered = self._adapter.get_last_delivered_at(session)
+        if last_delivered and last_ts <= last_delivered:
+            return
 
         # Send via adapter's threaded output method.
         logger.debug(
@@ -211,15 +206,11 @@ class OutputCadenceLoop:
             is_multi,
         )
         await self._adapter.send_threaded_output(session, message, multi_message=is_multi, delivery_ts=last_ts)
-        await self._adapter._set_origin_field(session, last_delivered_at=last_ts.isoformat())  # pylint: disable=protected-access
+        await self._adapter.set_last_delivered_at(session, last_ts)
 
         # Update cursor if no adapter is actively tracking an output message for this session.
         if last_ts:
-            from teleclaude.core.agent_coordinator._helpers import (  # pylint: disable=import-outside-toplevel
-                _has_active_output_message,
-            )
-
             fresh = await db.get_session(session_id)
-            is_active = fresh is not None and await _has_active_output_message(fresh)
+            is_active = fresh is not None and await has_active_output_message(fresh)
             if not is_active:
                 await db.update_session(session_id, **{SessionField.LAST_TOOL_DONE_AT.value: last_ts.isoformat()})

@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.core.command_handlers._message."""
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,protected-access,too-many-arguments
 
 from __future__ import annotations
 
@@ -348,15 +349,13 @@ class TestDeliverInbound:
 class TestProcessMessage:
     @pytest.mark.unit
     async def test_available_session_is_enqueued(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import teleclaude.core.inbound_queue as inbound_queue_module
-
         session = make_session()
         db = SimpleNamespace(get_session=AsyncMock(return_value=session))
         manager = SimpleNamespace(enqueue=AsyncMock())
 
         monkeypatch.setattr(_message, "db", db)
         monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
-        monkeypatch.setattr(inbound_queue_module, "get_inbound_queue_manager", lambda: manager)
+        monkeypatch.setattr(_message, "get_inbound_queue_manager", lambda: manager)
 
         cmd = ProcessMessageCommand(
             session_id=session.session_id,

@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.adapters.ui.output_cadence."""
-# pylint: disable=protected-access,redefined-outer-name,missing-class-docstring,missing-function-docstring,too-few-public-methods,unused-argument
+# pylint: disable=protected-access,redefined-outer-name,missing-class-docstring,missing-function-docstring,too-few-public-methods,unused-argument,import-outside-toplevel
 
 from __future__ import annotations
 
@@ -26,10 +26,15 @@ class _FakeAdapter:
         self.ensure_channel = AsyncMock(side_effect=lambda session: session)  # pyright: ignore[reportUnknownLambdaType]
         self.send_message = AsyncMock(return_value="reflected-msg")
         self._clear_output_message_id = AsyncMock()
-        self._set_origin_field = AsyncMock()
+        self.set_last_delivered_at = AsyncMock()
 
-    def _origin_field(self, session: Session, field: str, default: object = None) -> object:
-        return session.get_origin_section(self.ADAPTER_KEY).get(field, default)
+    def get_last_delivered_at(self, session: Session) -> datetime | None:
+        from teleclaude.utils.transcript._utils import _parse_timestamp
+
+        raw = session.get_origin_section(self.ADAPTER_KEY).get("last_delivered_at")
+        if isinstance(raw, str):
+            return _parse_timestamp(raw)
+        return None
 
 
 def _make_session(**kwargs: object) -> Session:
@@ -129,7 +134,7 @@ class TestDeliveryTimestampDedup:
             patch("teleclaude.adapters.ui.output_cadence.count_renderable_assistant_blocks", return_value=1),
             patch("teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=("content", last_ts)),
             patch(
-                "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
+                "teleclaude.adapters.ui.output_cadence.has_active_output_message",
                 new=AsyncMock(return_value=False),
             ),
         ):
@@ -155,7 +160,7 @@ class TestDeliveryTimestampDedup:
                 "teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=("new content", new_ts)
             ),
             patch(
-                "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
+                "teleclaude.adapters.ui.output_cadence.has_active_output_message",
                 new=AsyncMock(return_value=False),
             ),
         ):
@@ -175,7 +180,7 @@ class TestDeliveryTimestampDedup:
             patch("teleclaude.adapters.ui.output_cadence.db") as mock_db,
             patch("teleclaude.adapters.ui.output_cadence.get_assistant_messages_since", return_value=[]),
             patch(
-                "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
+                "teleclaude.adapters.ui.output_cadence.has_active_output_message",
                 new=AsyncMock(return_value=False),
             ),
         ):
@@ -205,7 +210,7 @@ class TestCursorUpdate:
             patch("teleclaude.adapters.ui.output_cadence.count_renderable_assistant_blocks", return_value=1),
             patch("teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=("content", last_ts)),
             patch(
-                "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
+                "teleclaude.adapters.ui.output_cadence.has_active_output_message",
                 new=AsyncMock(return_value=False),
             ),
         ):
@@ -234,7 +239,7 @@ class TestCursorUpdate:
             patch("teleclaude.adapters.ui.output_cadence.count_renderable_assistant_blocks", return_value=1),
             patch("teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=("content", last_ts)),
             patch(
-                "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
+                "teleclaude.adapters.ui.output_cadence.has_active_output_message",
                 new=AsyncMock(return_value=True),
             ),
         ):
@@ -257,7 +262,7 @@ class TestCursorUpdate:
             patch("teleclaude.adapters.ui.output_cadence.count_renderable_assistant_blocks", return_value=1),
             patch("teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=("content", None)),
             patch(
-                "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
+                "teleclaude.adapters.ui.output_cadence.has_active_output_message",
                 new=AsyncMock(return_value=False),
             ),
         ):

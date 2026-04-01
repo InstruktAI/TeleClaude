@@ -554,6 +554,17 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             message_id,
         )
 
+    def get_last_delivered_at(self, session: Session) -> datetime | None:
+        """Read last_delivered_at from this adapter's origin_metadata section."""
+        raw = self._origin_field(session, "last_delivered_at")
+        if isinstance(raw, str):
+            return _parse_timestamp(raw)
+        return None
+
+    async def set_last_delivered_at(self, session: Session, ts: datetime) -> None:
+        """Write last_delivered_at to this adapter's origin_metadata section."""
+        await self._set_origin_field(session, last_delivered_at=ts.isoformat())
+
     def _origin_field(self, session: Session, field: str, default: object = None) -> object:
         """Read a field from this adapter's origin_metadata section."""
         return session.get_origin_section(self.ADAPTER_KEY).get(field, default)

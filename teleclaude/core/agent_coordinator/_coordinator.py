@@ -29,6 +29,7 @@ from teleclaude.core.events import (
     UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
 )
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.tts.manager import TTSManager
@@ -402,8 +403,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         # Terminal input bypasses the command pipeline — set origin here.
         # UI adapter edge handlers set last_input_origin at dispatch time,
         # before the hook fires. Re-read to see the current value.
-        from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
-
         fresh_origin = await db.get_session(session_id)
         current_origin = (fresh_origin.last_input_origin if fresh_origin else session.last_input_origin) or ""
         is_terminal_input = current_origin == InputOrigin.TERMINAL.value or not current_origin

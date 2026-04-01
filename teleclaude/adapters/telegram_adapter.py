@@ -477,8 +477,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         Threaded output payloads are coalesced (latest-only) so that only the
         most recent accumulated text is dispatched per scheduler tick.
         """
-        from teleclaude.adapters.ui_adapter import UiAdapter  # pylint: disable=import-outside-toplevel
-
         if self._qos_scheduler._policy.mode == "off":
             return await UiAdapter.send_threaded_output(self, session, text, multi_message, delivery_ts=delivery_ts)
 

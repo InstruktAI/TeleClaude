@@ -8,6 +8,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
+from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 
 if TYPE_CHECKING:
@@ -207,8 +208,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
-        from teleclaude.core.identity import get_identity_resolver  # pylint: disable=import-outside-toplevel
-
         identity = get_identity_resolver().resolve(source, session_to_use.get_origin_section(source))
         normalized_actor_name = (actor_name or "").strip() or identity.display_name
 
@@ -252,9 +251,12 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
     async def break_threaded_turn(self, session: "Session") -> None:
         """Force a break in the threaded output stream on all UI adapters.
 
-        Drops pending QoS payloads, then calls ``clear_turn_state`` on each
-        adapter — the single atomic operation that resets char_offset,
-        output_message_id, and last_delivered_at.
+        Drops pending QoS payloads, calls ``clear_turn_state`` on each adapter
+        (resets char_offset, output_message_id, last_delivered_at), and advances
+        the cadence cursor past already-displayed content.
+
+        This is the single authoritative turn-break operation.  Callers never
+        need to advance cursors or clear state separately.
         """
         for adapter_type, adapter in self.adapters.items():
             if isinstance(adapter, UiAdapter):
