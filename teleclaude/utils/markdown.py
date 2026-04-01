@@ -648,15 +648,40 @@ def _gfm_closers(text: str, state: GfmMarkdownState) -> str:
     return "".join(_gfm_closing_marker(m, text) for m in reversed(state.stack))
 
 
+def _seek_word_boundary(text: str) -> str:
+    """Trim *text* to the last whitespace boundary (80% threshold).
+
+    If a whitespace position exists in the last 20% of the text, trim there
+    to avoid splitting mid-word.  Inside code fences or very short strings
+    the caller should skip this step.
+    """
+    last_space = text.rfind(" ")
+    if last_space > len(text) * 0.8:
+        return text[:last_space]
+    last_nl = text.rfind("\n")
+    if last_nl > len(text) * 0.8:
+        return text[:last_nl]
+    return text
+
+
 def _trim_gfm_balanced(text: str, budget: int) -> tuple[str, int]:
     """Trim GFM text to *budget* chars while keeping markers balanced."""
     current = text[:budget]
     while True:
         state = scan_gfm_state(current)
         if not state.stack:
+            # No open markers — prefer a word boundary unless inside code.
+            current = _seek_word_boundary(current)
             return current, len(current)
         closers = _gfm_closers(current, state)
         if len(current) + len(closers) <= budget:
+            # Markers will be closed — seek word boundary if not in a code fence.
+            in_code = any(m == _GFM_STATE_CODE_FENCE for m in state.stack)
+            if not in_code:
+                trimmed = _seek_word_boundary(current)
+                if len(trimmed) + len(closers) <= budget and trimmed:
+                    closers = _gfm_closers(trimmed, scan_gfm_state(trimmed))
+                    return f"{trimmed}{closers}", len(trimmed)
             return f"{current}{closers}", len(current)
         if not current:
             return closers[:budget], 0
@@ -785,9 +810,16 @@ def _trim_wa_balanced(text: str, budget: int) -> tuple[str, int]:
     while True:
         state = scan_wa_state(current)
         if not state.stack:
+            current = _seek_word_boundary(current)
             return current, len(current)
         closers = _wa_closers(current, state)
         if len(current) + len(closers) <= budget:
+            in_code = any(m == _WA_STATE_CODE_BLOCK for m in state.stack)
+            if not in_code:
+                trimmed = _seek_word_boundary(current)
+                if len(trimmed) + len(closers) <= budget and trimmed:
+                    closers = _wa_closers(trimmed, scan_wa_state(trimmed))
+                    return f"{trimmed}{closers}", len(trimmed)
             return f"{current}{closers}", len(current)
         if not current:
             return closers[:budget], 0
