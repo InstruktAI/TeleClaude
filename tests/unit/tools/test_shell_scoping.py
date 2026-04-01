@@ -1,5 +1,5 @@
 # guard: no-companion
-"""Contract tests for repo-wide shell commands and staged pre-commit hooks."""
+"""Contract tests for worktree-scoped shell commands and staged pre-commit hooks."""
 
 from __future__ import annotations
 
@@ -18,21 +18,36 @@ def _read(path: Path) -> str:
 
 
 class TestLintShWiring:
-    """Repo-wide lint command contract."""
+    """Worktree-scoped lint command contract."""
 
-    def test_lint_sh_no_longer_uses_session_scope(self) -> None:
-        """make lint should no longer consult session-scoped helper scripts."""
+    def test_lint_sh_uses_session_scope_in_worktree(self) -> None:
+        """make lint must consult session_scope.py for worktree-scoped runs."""
         content = _read(_LINT_SH)
-        assert "session_scope.py" not in content
+        assert "session_scope.py" in content
 
-    def test_lint_sh_runs_repo_wide_tools(self) -> None:
-        """make lint should invoke repo-wide lint tools without scoped file lists."""
+    def test_lint_sh_scopes_all_tools_when_worktree(self) -> None:
+        """When SCOPED_FILES is set, all lint tools receive the scoped file list."""
+        content = _read(_LINT_SH)
+        # Each tool must have a scoped branch — including guardrails
+        assert '$RUN "${REPO_ROOT}/tools/lint/guardrails.py" $SCOPED_FILES' in content
+        assert '$RUN "${REPO_ROOT}/tools/lint/ruff_safe.py" --fix $SCOPED_FILES' in content
+        assert "$RUFF format $SCOPED_FILES" in content
+        assert "$PYRIGHT $SCOPED_FILES" in content
+        assert "$MYPY $SCOPED_FILES" in content
+        assert "$PYLINT $SCOPED_FILES" in content
+
+    def test_lint_sh_runs_repo_wide_outside_worktree(self) -> None:
+        """When not in a worktree, lint tools run against repo-wide dirs."""
         content = _read(_LINT_SH)
         assert '$RUN "${REPO_ROOT}/tools/lint/ruff_safe.py" --fix $dirs' in content
         assert "$RUFF format $dirs" in content
-        assert "$PYRIGHT" in content
-        assert "$MYPY" in content
         assert "$PYLINT teleclaude" in content
+
+    def test_lint_sh_fails_on_scope_error_in_worktree(self) -> None:
+        """Worktree scope resolution failure must exit 1, never fall back to repo-wide."""
+        content = _read(_LINT_SH)
+        assert "ERROR: worktree lint scope resolution failed" in content
+        assert "exit 1" in content
 
     def test_lint_sh_dry_run_still_exits_cleanly(self) -> None:
         """The lint dry-run path should still succeed without executing the full suite."""
@@ -47,21 +62,28 @@ class TestLintShWiring:
 
 
 class TestTestShWiring:
-    """Repo-wide test command contract."""
+    """Worktree-scoped test command contract."""
 
-    def test_test_sh_no_longer_uses_session_scope(self) -> None:
-        """make test should no longer consult session-scoped helper scripts."""
+    def test_test_sh_uses_session_scope_in_worktree(self) -> None:
+        """make test must consult session_scope.py for worktree-scoped runs."""
         content = _read(_TEST_SH)
-        assert "session_scope.py" not in content
+        assert "session_scope.py" in content
 
-    def test_test_sh_runs_repo_wide_pytest_commands(self) -> None:
-        """make test should run the full repo test suite in both normal and coverage modes."""
+    def test_test_sh_scopes_pytest_when_worktree(self) -> None:
+        """When SCOPED_TEST_FILES is set, pytest receives only the scoped test files."""
+        content = _read(_TEST_SH)
+        assert "pytest $SCOPED_TEST_FILES" in content
+
+    def test_test_sh_runs_repo_wide_outside_worktree(self) -> None:
+        """When not in a worktree, pytest runs the full repo test suite."""
         content = _read(_TEST_SH)
         assert 'timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -m "not expensive" -q' in content
-        assert (
-            'timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -m "not expensive" --cov=teleclaude '
-            "--cov-report=html --cov-report=term-missing"
-        ) in content
+
+    def test_test_sh_fails_on_scope_error_in_worktree(self) -> None:
+        """Worktree scope resolution failure must exit 1, never fall back to repo-wide."""
+        content = _read(_TEST_SH)
+        assert "ERROR: worktree test scope resolution failed" in content
+        assert "exit 1" in content
 
 
 class TestPrecommitHookWiring:

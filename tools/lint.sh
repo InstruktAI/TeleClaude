@@ -34,35 +34,91 @@ done
 
 echo "Running lint checks"
 
-# Repo-wide checks: make lint is intentionally a full-repository command.
-echo "Running guardrails"
-if [ -z "$DRY_RUN" ]; then
-    $RUN "${REPO_ROOT}/tools/lint/guardrails.py"
-
-    echo "Running markdown validation"
-    $RUN "${REPO_ROOT}/tools/lint/markdown.py"
-
-    echo "Running resource validation"
-    if [ "${CI:-}" = "true" ]; then
-        echo "  Skipped (CI: telec sync makes network calls)"
-    else
-        $RUN_M teleclaude.cli.telec sync --warn-only --validate-only --project-root "${REPO_ROOT}"
-    fi
-fi
-
 [ -n "$DRY_RUN" ] && exit 0
 
+# Worktree detection: scope lint to session-touched files when inside a worktree.
+# Outside a worktree, run repo-wide.
+_GIT_COMMON=$(git -C "${REPO_ROOT}" rev-parse --git-common-dir 2>/dev/null || true)
+_GIT_DIR=$(git -C "${REPO_ROOT}" rev-parse --git-dir 2>/dev/null || true)
+SCOPED_FILES=""
+IN_WORKTREE=""
+if [ -n "$_GIT_COMMON" ] && [ -n "$_GIT_DIR" ] && [ "$_GIT_COMMON" != "$_GIT_DIR" ]; then
+    IN_WORKTREE=1
+    _scope_stderr_tmp=$(mktemp)
+    if _scope_out=$($RUN "${REPO_ROOT}/tools/session_scope.py" --mode lint --project-root "${REPO_ROOT}" 2>"$_scope_stderr_tmp"); then
+        SCOPED_FILES="$_scope_out"
+        if [ -n "$SCOPED_FILES" ]; then
+            _file_count=$(echo "$SCOPED_FILES" | wc -l | tr -d ' ')
+            echo "Worktree-scoped lint: ${_file_count} files"
+        else
+            echo "Worktree-scoped lint: no Python files touched — skipping"
+            rm -f "$_scope_stderr_tmp"
+            exit 0
+        fi
+    else
+        _scope_exit=$?
+        echo "ERROR: worktree lint scope resolution failed (exit $_scope_exit)" >&2
+        cat "$_scope_stderr_tmp" >&2
+        rm -f "$_scope_stderr_tmp"
+        exit 1
+    fi
+    rm -f "$_scope_stderr_tmp"
+fi
+
+echo "Running guardrails"
+if [ -n "$SCOPED_FILES" ]; then
+    # shellcheck disable=SC2086
+    $RUN "${REPO_ROOT}/tools/lint/guardrails.py" $SCOPED_FILES
+else
+    $RUN "${REPO_ROOT}/tools/lint/guardrails.py"
+fi
+
+echo "Running markdown validation"
+$RUN "${REPO_ROOT}/tools/lint/markdown.py"
+
+echo "Running resource validation"
+if [ "${CI:-}" = "true" ]; then
+    echo "  Skipped (CI: telec sync makes network calls)"
+else
+    $RUN_M teleclaude.cli.telec sync --warn-only --validate-only --project-root "${REPO_ROOT}"
+fi
+
 echo "Running ruff check (auto-fix: imports + lint rules)"
-$RUN "${REPO_ROOT}/tools/lint/ruff_safe.py" --fix $dirs
+if [ -n "$SCOPED_FILES" ]; then
+    # shellcheck disable=SC2086
+    $RUN "${REPO_ROOT}/tools/lint/ruff_safe.py" --fix $SCOPED_FILES
+else
+    $RUN "${REPO_ROOT}/tools/lint/ruff_safe.py" --fix $dirs
+fi
 
 echo "Running ruff format (auto-fix: style)"
-$RUFF format $dirs
+if [ -n "$SCOPED_FILES" ]; then
+    # shellcheck disable=SC2086
+    $RUFF format $SCOPED_FILES
+else
+    $RUFF format $dirs
+fi
 
 echo "Running pyright"
-$PYRIGHT
+if [ -n "$SCOPED_FILES" ]; then
+    # shellcheck disable=SC2086
+    $PYRIGHT $SCOPED_FILES
+else
+    $PYRIGHT
+fi
 
 echo "Running mypy"
-$MYPY
+if [ -n "$SCOPED_FILES" ]; then
+    # shellcheck disable=SC2086
+    $MYPY $SCOPED_FILES
+else
+    $MYPY
+fi
 
 echo "Running pylint"
-$PYLINT teleclaude
+if [ -n "$SCOPED_FILES" ]; then
+    # shellcheck disable=SC2086
+    $PYLINT $SCOPED_FILES
+else
+    $PYLINT teleclaude
+fi
