@@ -90,7 +90,7 @@ def _migrate_to_uuid_schema(conn: sqlite3.Connection) -> None:
 
     # --- todo_artifact_versions ---
     old_cols = {r[1] for r in conn.execute("PRAGMA table_info(todo_artifact_versions)").fetchall()}
-    if "id" not in old_cols:
+    if "version_id" not in old_cols:
         conn.execute(
             "CREATE TABLE todo_artifact_versions_new ("  # guard: raw-sql
             "version_id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -117,6 +117,55 @@ def _migrate_to_uuid_schema(conn: sqlite3.Connection) -> None:
     logger.info("UUID migration complete")
 
 
+def _migrate_artifact_versions_schema(conn: sqlite3.Connection) -> None:
+    """Fix todo_artifact_versions if it still has the old id INTEGER PRIMARY KEY schema.
+
+    Runs independently of the UUID migration so it catches databases where the UUID
+    migration already ran but incorrectly skipped this table.
+    """
+    rows = conn.execute("PRAGMA table_info(todo_artifact_versions)").fetchall()
+    if not rows:
+        return  # Table not yet created; schema.sql will create it correctly.
+    col_names = {r[1] for r in rows}
+    if "version_id" in col_names:
+        return  # Already correct schema.
+
+    logger.info("Fixing todo_artifact_versions schema (id INTEGER → version_id + id TEXT)")
+
+    # Build slug→id mapping from roadmap for data preservation.
+    slug_to_id: dict[str, str] = {}
+    roadmap_cols = {r[1] for r in conn.execute("PRAGMA table_info(roadmap)").fetchall()}
+    if "id" in roadmap_cols:
+        for row in conn.execute("SELECT id, slug, status FROM roadmap").fetchall():
+            rid, rslug, rstatus = row
+            if rstatus != "delivered" or rslug not in slug_to_id:
+                slug_to_id[rslug] = rid
+
+    conn.execute(
+        "CREATE TABLE todo_artifact_versions_new ("  # guard: raw-sql
+        "version_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT NOT NULL, "
+        "content TEXT NOT NULL, digest TEXT NOT NULL, updated_by TEXT, "
+        "created_at TEXT NOT NULL)"
+    )
+    for row in conn.execute(
+        "SELECT slug, name, content, digest, updated_by, created_at "  # guard: raw-sql
+        "FROM todo_artifact_versions"
+    ).fetchall():
+        slug = row[0]
+        row_id = slug_to_id.get(slug, _generate_id())
+        conn.execute(
+            "INSERT INTO todo_artifact_versions_new "  # guard: raw-sql
+            "(id, slug, name, content, digest, updated_by, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (row_id, slug, row[1], row[2], row[3], row[4], row[5]),
+        )
+    conn.execute("DROP TABLE todo_artifact_versions")  # guard: raw-sql
+    conn.execute("ALTER TABLE todo_artifact_versions_new RENAME TO todo_artifact_versions")  # guard: raw-sql
+    conn.commit()
+    logger.info("todo_artifact_versions schema fix complete")
+
+
 class TodosDbBase:
     """Database base class for the todos lifecycle store."""
 
@@ -140,6 +189,7 @@ class TodosDbBase:
             }
             if "roadmap" in tables:
                 _migrate_to_uuid_schema(sync_conn)
+            _migrate_artifact_versions_schema(sync_conn)
         finally:
             sync_conn.close()
 
@@ -179,6 +229,7 @@ class TodosDbBase:
         }
         if "roadmap" in tables:
             _migrate_to_uuid_schema(conn)
+        _migrate_artifact_versions_schema(conn)
 
         schema_path = Path(__file__).parent / "schema.sql"
         conn.executescript(schema_path.read_text(encoding="utf-8"))  # guard: raw-sql
