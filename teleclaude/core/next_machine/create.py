@@ -28,20 +28,20 @@ _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".svg"})
 
 def _human_review_file_list(cwd: str, slug: str, folder: str, suffixes: set[str] | frozenset[str]) -> str:
     """Return a newline-separated list of reviewable files."""
-    target_dir = Path(cwd) / "todos" / slug / folder
+    target_dir = Path(cwd) / "workspace" / slug / folder
     files = sorted(f.name for f in target_dir.iterdir() if f.suffix.lower() in suffixes) if target_dir.is_dir() else []
-    return "\n".join(f"  todos/{slug}/{folder}/{file_name}" for file_name in files)
+    return "\n".join(f"  workspace/{slug}/{folder}/{file_name}" for file_name in files)
 
 
 def _design_discovery_required(slug: str) -> str:
     return (
         f"DESIGN_DISCOVERY_REQUIRED: {slug}\n\n"
-        f"design-spec.md does not exist. Run design discovery with the human.\n"
+        f"design-spec does not exist. Run design discovery with the human.\n"
         f"This is an interactive session — the human participates directly.\n"
-        f"Read todos/{slug}/input.md for context. Present reference sites,\n"
-        f"collect images the human provides (save to todos/{slug}/input/),\n"
-        f"and facilitate the dialogue that produces todos/{slug}/design-spec.md.\n\n"
-        f"After design-spec.md is written, call `telec todo create {slug}` again."
+        f"Read input via `telec todo artifacts read {slug} input` for context. Present reference sites,\n"
+        f"collect images the human provides (save to workspace/{slug}/input/),\n"
+        f"and facilitate the dialogue that produces the design-spec artifact.\n\n"
+        f"After design-spec is written, call `telec todo create {slug}` again."
     )
 
 
@@ -100,19 +100,18 @@ def _creative_blocked(slug: str) -> str:
     return (
         f"BLOCKED: {slug}\n\n"
         f"The creative machine encountered a condition it cannot resolve.\n"
-        f"Check todos/{slug}/state.yaml for details. End worker sessions\n"
+        f"Check `telec todo show {slug}` for details. End worker sessions\n"
         f"and report the blocker to the human."
     )
 
 
-def _derive_creative_phase(todo_dir: Path, creative: dict[str, StateValue]) -> CreativePhase:
-    """Derive the current creative phase from filesystem artifacts and state.yaml."""
-    design_spec = todo_dir / "design-spec.md"
-    art_dir = todo_dir / "art"
-    html_dir = todo_dir / "html"
+def _derive_creative_phase(workspace_dir: Path, has_design_spec: bool, creative: dict[str, StateValue]) -> CreativePhase:
+    """Derive the current creative phase from workspace binary artifacts, DB flag, and state."""
+    art_dir = workspace_dir / "art"
+    html_dir = workspace_dir / "html"
 
     phase = CreativePhase.DESIGN_DISCOVERY_REQUIRED
-    if design_spec.exists():
+    if has_design_spec:
         ds_state = creative.get("design_spec")
         ds_dict = ds_state if isinstance(ds_state, dict) else {}
         phase = CreativePhase.DESIGN_SPEC_PENDING_CONFIRMATION
@@ -201,7 +200,7 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
                 note="Human requested art changes. Dispatch artist with feedback for revision.",
                 next_call=f"telec todo create {slug}",
                 additional_context="ITERATION: The human reviewed the art and wants changes. "
-                "Read the feedback and revise the images in todos/{slug}/art/.",
+                "Read the feedback and revise the images in workspace/{slug}/art/.",
             )
         ),
         CreativePhase.VISUAL_DRAFTS_REQUIRED: lambda: format_tool_call(
@@ -226,7 +225,7 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
                 note="Human requested visual changes. Dispatch frontender with feedback for revision.",
                 next_call=f"telec todo create {slug}",
                 additional_context="ITERATION: The human reviewed the visuals and wants changes. "
-                "Read the feedback and revise the HTML+CSS in todos/{slug}/html/.",
+                "Read the feedback and revise the HTML+CSS in workspace/{slug}/html/.",
             )
         ),
         CreativePhase.CREATIVE_COMPLETE: lambda: _creative_complete(slug),
@@ -264,8 +263,9 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
         state = {}
     creative = state.get("creative")
     creative_state = creative if isinstance(creative, dict) else {}
-    todo_dir = Path(cwd) / "todos" / resolved_slug
-    phase = await asyncio.to_thread(_derive_creative_phase, todo_dir, creative_state)
+    workspace_dir = Path(cwd) / "workspace" / resolved_slug
+    has_design_spec = await todos_db.artifact_exists(resolved_slug, "design-spec")
+    phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
     if "creative" not in state or not isinstance(state.get("creative"), dict):

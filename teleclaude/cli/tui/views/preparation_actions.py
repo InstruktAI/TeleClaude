@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from teleclaude.cli.tool_client import tool_api_request
@@ -430,9 +429,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             if not todo_row:
                 return
             file_names = {name.lower() for name in todo_row.todo.files}
-            is_bug = "bug.md" in file_names
-            if not is_bug:
-                is_bug = (Path(project_path) / "todos" / slug / "bug.md").exists()
+            is_bug = "bug" in file_names or "bug.md" in file_names
             if not is_bug:
                 dor = todo_row.todo.dor_score
                 if dor is None or dor < DOR_READY_THRESHOLD:

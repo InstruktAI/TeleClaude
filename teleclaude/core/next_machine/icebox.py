@@ -99,16 +99,6 @@ def freeze_to_icebox(cwd: str, slug: str) -> bool:
     icebox.insert(0, entry)
     save_icebox(cwd, icebox)
 
-    # Move folder if it exists
-    src = Path(cwd) / "todos" / slug
-    if src.exists():
-        dest_dir = _icebox_dir(cwd)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / slug
-        if dest.exists():
-            raise FileExistsError(f"Cannot freeze: destination already exists at {dest}")
-        shutil.move(str(src), str(dest))
-
     return True
 
 
@@ -128,14 +118,6 @@ def unfreeze_from_icebox(cwd: str, slug: str) -> bool:
     roadmap = load_roadmap(cwd)
     roadmap.append(entry)
     save_roadmap(cwd, roadmap)
-
-    # Move folder back if it exists in _icebox/
-    src = _icebox_dir(cwd) / slug
-    if src.exists():
-        dest = Path(cwd) / "todos" / slug
-        if dest.exists():
-            raise FileExistsError(f"Cannot unfreeze: destination already exists at {dest}")
-        shutil.move(str(src), str(dest))
 
     return True
 

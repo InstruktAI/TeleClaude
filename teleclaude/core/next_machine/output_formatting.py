@@ -372,7 +372,7 @@ def format_error(code: str, message: str, next_call: str = "") -> str:
 
 def format_prepared(slug: str) -> str:
     """Format a 'prepared' message indicating work item is ready."""
-    return f"""PREPARED: todos/{slug} is ready for work.
+    return f"""PREPARED: {slug} is ready for work.
 
 DECISION REQUIRED: Continue preparation work, or start the build/review cycle with telec todo work {slug}."""
 

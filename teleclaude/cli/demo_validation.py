@@ -12,13 +12,10 @@ from pathlib import Path
 
 
 def _find_demo_md(slug: str, project_root: Path) -> Path | None:
-    """Find demo.md for a slug. Searches todos/ first, then demos/."""
-    for candidate in [
-        project_root / "todos" / slug / "demo.md",
-        project_root / "demos" / slug / "demo.md",
-    ]:
-        if candidate.exists():
-            return candidate
+    """Find demo.md for a slug. Searches demos/ directory."""
+    candidate = project_root / "demos" / slug / "demo.md"
+    if candidate.exists():
+        return candidate
     return None
 
 

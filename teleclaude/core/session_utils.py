@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 OUTPUT_DIR = Path("workspace")
 
 
+def get_slug_workspace(project_root: str, slug: str) -> Path:
+    """Return the workspace directory for a slug's binary artifacts."""
+    return Path(project_root) / "workspace" / slug
+
+
 def unique_title(base_title: str, existing_titles: set[str]) -> str:
     """Return a unique title by appending a counter if needed."""
     if base_title not in existing_titles:

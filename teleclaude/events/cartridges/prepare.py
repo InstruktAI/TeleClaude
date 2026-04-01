@@ -211,7 +211,7 @@ def compute_dor_score(req_result: RequirementsScoreResult, plan_result: PlanScor
 def _fill_requirements_gaps(
     req_content: str,
     gaps: list[str],
-    roadmap_path: Path,
+    roadmap_path: Path | None,
     slug: str,
 ) -> tuple[str, list[str]]:
     """Fill structural gaps in requirements.md. Returns (updated_content, edits_made)."""
@@ -231,8 +231,8 @@ def _fill_requirements_gaps(
     return content, edits
 
 
-def _build_dependency_section(roadmap_path: Path, slug: str) -> str:
-    if not roadmap_path.exists():
+def _build_dependency_section(roadmap_path: Path | None, slug: str) -> str:
+    if roadmap_path is None or not roadmap_path.exists():
         return ""
     try:
         raw = yaml.safe_load(roadmap_path.read_text()) or []
@@ -328,8 +328,7 @@ def _write_state_yaml(state_path: Path, state: dict[str, StateValue]) -> None:
     state_path.write_text(yaml.safe_dump(state, default_flow_style=False, sort_keys=False))
 
 
-def _write_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
-    report_path: Path,
+def _build_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
     slug: str,
     score: int,
     verdict: str,
@@ -338,7 +337,7 @@ def _write_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too
     edits: list[str],
     assessed_at: str,
     assessed_commit: str,
-) -> None:
+) -> str:
     all_gaps = req_result["gaps"] + plan_result["gaps"]
     lines = [
         f"# DOR Assessment: {slug}",
@@ -376,19 +375,19 @@ def _write_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too
         for b in blockers:
             lines.append(f"- {b}")
 
-    report_path.write_text("\n".join(lines) + "\n")
+    return "\n".join(lines) + "\n"
 
 
 # ── Cartridge ─────────────────────────────────────────────────────────────────
 
 
 def _find_project_root() -> Path:
-    """Walk up from cwd to find the project root (where todos/ lives)."""
+    """Walk up from cwd to find the project root (where .teleclaude/ lives)."""
     here = Path.cwd()
     for candidate in [here, *here.parents]:
-        if (candidate / "todos").is_dir():
+        if (candidate / ".teleclaude").is_dir():
             return candidate
-    logger.warning("prepare: no todos/ directory found, falling back to cwd", cwd=str(here))
+    logger.warning("prepare: no .teleclaude/ directory found, falling back to cwd", cwd=str(here))
     return here
 
 
@@ -447,16 +446,19 @@ class PrepareCartridge:
     async def _assess(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         self, slug: str, _event: EventEnvelope, context: PipelineContext
     ) -> None:
+        from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
+
         project_root = _find_project_root()
-        todo_dir = project_root / "todos" / slug
 
         # Skip delivered/icebox slugs
         if _is_slug_delivered_or_frozen(slug, project_root):
             logger.debug("prepare: slug is delivered/frozen, skipping", slug=slug)
             return
 
-        state_path = todo_dir / "state.yaml"
-        state = _read_state_yaml(state_path)
+        todos_db = await get_todos_db(str(project_root))
+        state = await todos_db.read_state(slug)
+        if state is None:
+            state = {}
 
         current_commit = await asyncio.to_thread(_get_todo_commit, slug, project_root)
         dor_state_raw = state.get("dor", {})
@@ -473,13 +475,13 @@ class PrepareCartridge:
             )
             return
 
-        # Read artifacts before claiming — keeps early returns side-effect free
-        req_path = todo_dir / "requirements.md"
-        plan_path = todo_dir / "implementation-plan.md"
-        roadmap_path = project_root / "todos" / "roadmap.yaml"
+        # Read artifacts from DB
+        req_content = await todos_db.read_artifact(slug, "requirements")
+        plan_content = await todos_db.read_artifact(slug, "implementation-plan")
 
-        req_content = req_path.read_text() if req_path.exists() else ""
-        plan_content = plan_path.read_text() if plan_path.exists() else ""
+        # Roadmap path for dependency section (may not exist)
+        roadmap_path = project_root / "todos" / "roadmap.yaml"
+        roadmap_path_or_none: Path | None = roadmap_path if roadmap_path.exists() else None
 
         if not req_content and not plan_content:
             logger.info("prepare: no artifacts to assess", slug=slug)
@@ -500,15 +502,15 @@ class PrepareCartridge:
 
         # Lightweight improvement when below threshold
         if score < 8:
-            new_req, req_edits = _fill_requirements_gaps(req_content, req_result["gaps"], roadmap_path, slug)
+            new_req, req_edits = _fill_requirements_gaps(req_content, req_result["gaps"], roadmap_path_or_none, slug)
             if req_edits and new_req != req_content:
-                req_path.write_text(new_req)
+                await todos_db.write_artifact(slug, "requirements", new_req, updated_by="prepare-runner")
                 all_edits.extend(req_edits)
                 req_content = new_req
 
             new_plan, plan_edits = _fill_plan_gaps(plan_content, plan_result["gaps"])
             if plan_edits and new_plan != plan_content:
-                plan_path.write_text(new_plan)
+                await todos_db.write_artifact(slug, "implementation-plan", new_plan, updated_by="prepare-runner")
                 all_edits.extend(plan_edits)
                 plan_content = new_plan
 
@@ -523,10 +525,8 @@ class PrepareCartridge:
 
         assessed_at = datetime.now(UTC).isoformat()
 
-        # Write DOR report
-        report_path = todo_dir / "dor-report.md"
-        _write_dor_report(
-            report_path,
+        # Build and write DOR report to DB
+        report_content = _build_dor_report(
             slug,
             score,
             verdict,
@@ -536,8 +536,9 @@ class PrepareCartridge:
             assessed_at,
             current_commit,
         )
+        await todos_db.write_artifact(slug, "dor-report", report_content, updated_by="prepare-runner")
 
-        # Update state.yaml dor section
+        # Update state dor section
         all_gaps = req_result["gaps"] + plan_result["gaps"]
         state["dor"] = cast(
             StateValue,
@@ -554,7 +555,7 @@ class PrepareCartridge:
                 "assessed_commit": current_commit,
             },
         )
-        _write_state_yaml(state_path, state)
+        await todos_db.write_state(slug, state)
 
         logger.info(
             "prepare: assessment complete",

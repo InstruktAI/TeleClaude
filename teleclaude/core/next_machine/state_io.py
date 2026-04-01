@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from instrukt_ai_logging import get_logger
@@ -33,7 +34,35 @@ from teleclaude.core.next_machine.file_io import (
     write_text_sync,
 )
 
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
+
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Project root / DB helpers
+# ---------------------------------------------------------------------------
+
+
+def _project_root_from_cwd(cwd: str) -> str:
+    """Resolve project root from a path that may be inside a worktree."""
+    p = Path(cwd)
+    if WORKTREE_DIR in p.parts:
+        idx = p.parts.index(WORKTREE_DIR)
+        return str(Path(*p.parts[:idx]))
+    return cwd
+
+
+def _get_todos_db_sync(cwd: str) -> "TodosDb":
+    """Return a sync-initialized TodosDb for the project owning *cwd*."""
+    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
+
+    project_root = _project_root_from_cwd(cwd)
+    db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
+    db = TodosDb(db_path)
+    db.initialize_sync()
+    return db
+
 
 # ---------------------------------------------------------------------------
 # Internal constants
@@ -152,27 +181,17 @@ def _migrate_v1_to_v2(state: dict[str, StateValue]) -> dict[str, StateValue]:
 
 
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
-    """Read state.yaml for a work item, preferring worktree when it exists.
+    """Read state for a work item from todos.db.
 
-    Returns default state if file doesn't exist.
+    Returns default state if no state exists in the database.
     V2 blobs are returned directly (self-contained).
     V1 blobs are deep-merged with defaults and migrated to v2.
     """
-    effective_cwd = _resolve_state_cwd(cwd, slug)
-    state_path = get_state_path(effective_cwd, slug)
+    db = _get_todos_db_sync(cwd)
+    state = db.read_state_sync(slug)
 
-    if not state_path.exists():
+    if state is None:
         return default_state()
-
-    content = read_text_sync(state_path)
-    raw_state = yaml.safe_load(content)
-    if raw_state is None:
-        state: dict[str, StateValue] = {}
-    elif isinstance(raw_state, dict):
-        state = raw_state
-    else:
-        logger.warning("Ignoring non-mapping phase state for %s/%s", cwd, slug)
-        state = {}
 
     # V2: self-contained, skip deep-merge
     if state.get("schema_version") == 2:
@@ -197,26 +216,10 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     return _migrate_v1_to_v2(merged)
 
 
-def _resolve_state_cwd(cwd: str, slug: str) -> str:
-    """Prefer worktree for state writes when it exists.
-
-    If cwd is the repo root and trees/{slug} exists, return the worktree path.
-    If cwd is already inside the worktree, return as-is.
-    This prevents state writes from landing on main when the worktree owns the state.
-    """
-    worktree_path = Path(cwd) / WORKTREE_DIR / slug
-    if worktree_path.is_dir():
-        return str(worktree_path)
-    return cwd
-
-
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
-    """Write state.yaml, preferring worktree when it exists."""
-    effective_cwd = _resolve_state_cwd(cwd, slug)
-    state_path = get_state_path(effective_cwd, slug)
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    content = yaml.dump(state, default_flow_style=False, sort_keys=False)
-    write_text_sync(state_path, content)
+    """Write state to todos.db."""
+    db = _get_todos_db_sync(cwd)
+    db.write_state_sync(slug, state)
 
 
 # ---------------------------------------------------------------------------
@@ -395,14 +398,22 @@ def is_review_changes_requested(cwd: str, slug: str) -> bool:
 def has_pending_deferrals(cwd: str, slug: str) -> bool:
     """Check if there are pending deferrals.
 
-    Returns true if deferrals.md exists AND state.yaml.deferrals_processed is NOT true.
+    Returns true if deferrals artifact exists in DB AND state.deferrals_processed is NOT true.
     """
-    deferrals_path = Path(cwd) / "todos" / slug / "deferrals.md"
-    if not deferrals_path.exists():
+    state = read_phase_state(cwd, slug)
+    if state.get("deferrals_processed") is True:
         return False
 
-    state = read_phase_state(cwd, slug)
-    return state.get("deferrals_processed") is not True
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM todo_artifacts WHERE slug = ? AND name = 'deferrals' LIMIT 1",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
 
 
 def is_bug_todo(cwd: str, slug: str) -> bool:
@@ -415,15 +426,24 @@ def check_review_status(cwd: str, slug: str) -> str:
     """Check review status for a work item.
 
     Returns:
-        - "missing" if review-findings.md doesn't exist
+        - "missing" if review-findings artifact doesn't exist
         - "approved" if contains "[x] APPROVE"
         - "changes_requested" otherwise
     """
-    review_path = Path(cwd) / "todos" / slug / "review-findings.md"
-    if not review_path.exists():
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute(
+            "SELECT content FROM todo_artifacts WHERE slug = ? AND name = 'review-findings' LIMIT 1",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
         return "missing"
 
-    content = read_text_sync(review_path)
+    content: str = row[0]
     if REVIEW_APPROVE_MARKER in content:
         return PhaseStatus.APPROVED.value
     return PhaseStatus.CHANGES_REQUESTED.value
@@ -480,8 +500,10 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
 
 __all__ = [
     "_file_sha256",
+    "_get_todos_db_sync",
     "_is_review_round_limit_reached",
     "_normalize_finalize_state",
+    "_project_root_from_cwd",
     "_review_scope_note",
     "check_review_status",
     "get_state_path",

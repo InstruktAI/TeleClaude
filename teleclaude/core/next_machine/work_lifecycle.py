@@ -20,7 +20,6 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
-from teleclaude.core.next_machine.file_io import read_text_sync
 from teleclaude.core.next_machine.git_ops import (
     get_head_commit,
     get_ref_commit,
@@ -40,11 +39,21 @@ logger = get_logger(__name__)
 
 
 def _extract_finding_ids(cwd: str, slug: str) -> list[str]:
-    """Extract stable finding IDs (e.g. R1-F1) from review-findings.md."""
-    review_path = Path(cwd) / "todos" / slug / "review-findings.md"
-    if not review_path.exists():
+    """Extract stable finding IDs (e.g. R1-F1) from review-findings artifact in DB."""
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute(
+            "SELECT content FROM todo_artifacts WHERE slug = ? AND name = 'review-findings' LIMIT 1",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
         return []
-    content = read_text_sync(review_path)
+    content: str = row[0]
     seen: list[str] = []
     for match in FINDING_ID_PATTERN.findall(content):
         if match not in seen:
@@ -52,11 +61,22 @@ def _extract_finding_ids(cwd: str, slug: str) -> list[str]:
     return seen
 
 
-def _has_content(path: Path) -> bool:
-    """Check if a file has non-trivial content (beyond whitespace and headings)."""
-    if not path.exists():
+def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
+    """Check if a DB artifact has non-trivial content (beyond whitespace and headings)."""
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute(
+            "SELECT content FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
+            (slug, artifact_name),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
         return False
-    text = path.read_text(encoding="utf-8").strip()
+    text = row[0].strip()
     lines = [ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
     return len(lines) > 0
 
@@ -136,28 +156,50 @@ def _on_enter_build_started(state: dict[str, StateValue], ctx: TargetContext) ->
 
 
 def _on_enter_prepared(state: dict[str, StateValue], ctx: TargetContext) -> dict[str, StateValue]:
-    """Validate artifacts exist, stamp DOR/grounding/verdicts for work readiness."""
-    todo_dir = Path(ctx.cwd) / "todos" / ctx.slug
-    if not todo_dir.exists():
-        raise ValueError(f"Todo directory not found: todos/{ctx.slug}/")
+    """Validate artifacts exist in DB, stamp DOR/grounding/verdicts for work readiness."""
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
-    requirements_path = todo_dir / "requirements.md"
-    plan_path = todo_dir / "implementation-plan.md"
-    checklist_path = todo_dir / "quality-checklist.md"
-    input_path = todo_dir / "input.md"
+    cwd = ctx.cwd
+    slug = ctx.slug
+    db = _get_todos_db_sync(cwd)
 
-    if not requirements_path.exists() or not _has_content(requirements_path):
-        raise ValueError(f"Missing requirements.md with content in todos/{ctx.slug}/")
+    if not _has_artifact_content(cwd, slug, "requirements"):
+        raise ValueError(f"Missing requirements artifact with content for {slug}")
 
-    if not plan_path.exists() or not _has_content(plan_path):
-        raise ValueError(f"Missing implementation-plan.md with content in todos/{ctx.slug}/")
+    if not _has_artifact_content(cwd, slug, "implementation-plan"):
+        raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
 
     # Quality checklist can be generated
-    if not checklist_path.exists() or not _has_content(checklist_path):
-        checklist_path.write_text(
-            _QUALITY_CHECKLIST_TEMPLATE.format(slug=ctx.slug),
-            encoding="utf-8",
-        )
+    if not _has_artifact_content(cwd, slug, "quality-checklist"):
+        conn = db._sync_conn()  # pylint: disable=protected-access
+        try:
+            from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
+
+            # Write quality-checklist via sync SQL
+            import hashlib as _hl  # pylint: disable=import-outside-toplevel
+            from datetime import UTC as _UTC  # pylint: disable=import-outside-toplevel
+            from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
+
+            checklist_content = _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug)
+            _now = _dt.now(_UTC).isoformat()
+            _digest = _hl.sha256(checklist_content.encode("utf-8")).hexdigest()
+            # Resolve id
+            id_row = conn.execute(
+                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
+                (slug,),
+            ).fetchone()
+            row_id = id_row[0] if id_row else slug
+            conn.execute(
+                "INSERT INTO todo_artifacts (id, slug, name, content, digest, updated_by, updated_at) "  # guard: raw-sql
+                "VALUES (?, ?, 'quality-checklist', ?, ?, 'on_enter_prepared', ?) "
+                "ON CONFLICT(id, name) DO UPDATE SET "
+                "content = excluded.content, digest = excluded.digest, "
+                "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+                (row_id, slug, checklist_content, _digest, _now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     now_iso = ctx.at
 
@@ -189,9 +231,9 @@ def _on_enter_prepared(state: dict[str, StateValue], ctx: TargetContext) -> dict
     }
 
     # Grounding
-    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=ctx.cwd)
+    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     if rc != 0 or not current_sha.strip():
-        raise ValueError(f"git rev-parse HEAD failed (rc={rc}) in {ctx.cwd} — cannot establish grounding baseline")
+        raise ValueError(f"git rev-parse HEAD failed (rc={rc}) in {cwd} — cannot establish grounding baseline")
     grounding: dict[str, StateValue] = {
         **default_state()["grounding"],  # type: ignore[dict-item]
         "valid": True,
@@ -200,8 +242,17 @@ def _on_enter_prepared(state: dict[str, StateValue], ctx: TargetContext) -> dict
         "invalidation_reason": "",
         "changed_paths": [],
     }
-    if input_path.exists():
-        grounding["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
+    # Read input digest from DB
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        input_row = conn.execute(
+            "SELECT digest FROM todo_artifacts WHERE slug = ? AND name = 'input' LIMIT 1",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if input_row and input_row[0]:
+        grounding["input_digest"] = input_row[0]
     state["grounding"] = grounding
 
     return state

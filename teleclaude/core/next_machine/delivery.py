@@ -36,21 +36,22 @@ _BINARY_ARTIFACT_DIRS = ("art", "html", "input")
 _STORAGE_ROOT = Path("~/.teleclaude/storage").expanduser()
 
 
-def _archive_binary_artifacts(worktree_path: Path, slug: str) -> None:
-    """Move binary artifact directories from worktree to permanent storage.
+def _archive_binary_artifacts(project_root: Path, slug: str) -> None:
+    """Move binary artifact directories from workspace to permanent storage.
 
-    Archives art/, html/, and input/ directories to
-    ~/.teleclaude/storage/{delivery_date}/{slug}/ before worktree cleanup.
+    Archives art/, html/, and input/ directories from workspace/{slug}/
+    to ~/.teleclaude/storage/{delivery_date}/{slug}/ before cleanup.
     Only moves directories that exist and contain files.
     """
-    if not worktree_path.exists():
+    workspace_slug_dir = project_root / "workspace" / slug
+    if not workspace_slug_dir.exists():
         return
 
     delivery_date = date.today().isoformat()
     storage_dir = _STORAGE_ROOT / delivery_date / slug
 
     for dirname in _BINARY_ARTIFACT_DIRS:
-        source = worktree_path / "todos" / slug / dirname
+        source = workspace_slug_dir / dirname
         if not source.is_dir():
             continue
         if not any(source.iterdir()):
@@ -77,12 +78,13 @@ def cleanup_delivered_slug(
     Each step is a no-op if the artifact is already gone.
     """
     branch = branch or slug
+    project_root = Path(cwd)
 
-    # 0. Archive binary artifacts (art/, html/) before worktree removal
-    worktree_path = Path(cwd) / WORKTREE_DIR / slug
-    _archive_binary_artifacts(worktree_path, slug)
+    # 0. Archive binary artifacts (art/, html/) from workspace/ before cleanup
+    _archive_binary_artifacts(project_root, slug)
 
     # 1. Remove worktree
+    worktree_path = project_root / WORKTREE_DIR / slug
     if worktree_path.exists():
         rc, _, stderr = _run_git_cmd(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd, timeout=10)
         if rc != 0:
@@ -95,9 +97,9 @@ def cleanup_delivered_slug(
     if remove_remote_branch:
         _run_git_cmd(["push", "origin", "--delete", branch], cwd=cwd, timeout=5)
 
-    # 4. Remove todo directory (symlink-safe: unlink symlink, don't rmtree through it)
-    todo_dir = Path(cwd) / "todos" / slug
-    if todo_dir.is_symlink():
-        todo_dir.unlink()
-    elif todo_dir.exists():
-        shutil.rmtree(str(todo_dir), ignore_errors=True)
+    # 4. Clean up workspace/{slug}/ directory
+    workspace_dir = project_root / "workspace" / slug
+    if workspace_dir.is_symlink():
+        workspace_dir.unlink()
+    elif workspace_dir.exists():
+        shutil.rmtree(str(workspace_dir), ignore_errors=True)

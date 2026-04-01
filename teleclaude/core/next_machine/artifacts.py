@@ -9,15 +9,23 @@ from pathlib import Path
 from teleclaude.core.next_machine.file_io import file_sha256
 from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
-from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync, read_phase_state, write_phase_state
 
 
 def artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
-    """Compute SHA-256 digest of todos/{slug}/{artifact_name}."""
-    path = Path(cwd) / "todos" / slug / artifact_name
-    if not path.exists():
-        return ""
-    return file_sha256(path)
+    """Read artifact digest from todos.db."""
+    # Strip .md extension for DB lookup (DB stores "requirements", not "requirements.md")
+    db_name = artifact_name.removesuffix(".md") if artifact_name.endswith(".md") else artifact_name
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute(
+            "SELECT digest FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
+            (slug, db_name),
+        ).fetchone()
+        return row[0] if row else ""
+    finally:
+        conn.close()
 
 
 def record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:
@@ -56,14 +64,9 @@ def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str
     return stdout
 
 
-def compute_todo_folder_diff(cwd: str, slug: str, base_sha: str) -> str:
-    """Run git diff {base_sha}..HEAD -- todos/{slug}/ and return the diff output."""
-    if not base_sha:
-        return ""
-    rc, stdout, _ = run_git_command(["diff", f"{base_sha}..HEAD", "--", f"todos/{slug}/"], cwd=cwd)
-    if rc != 0:
-        return ""
-    return stdout
+def compute_todo_folder_diff(cwd: str, slug: str, base_sha: str) -> str:  # pylint: disable=unused-argument
+    """No filesystem folder to diff — artifacts live in todos.db."""
+    return ""
 
 
 def _filename_to_artifact_key(filename: str) -> str:

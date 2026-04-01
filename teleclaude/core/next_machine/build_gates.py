@@ -23,7 +23,7 @@ from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName
 from teleclaude.core.next_machine.path_checks import (
     _has_from_main_marker,
 )
-from teleclaude.core.next_machine.state_io import is_bug_todo
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync, is_bug_todo
 from teleclaude.git import GitCommandError, Repo
 
 logger = get_logger(__name__)
@@ -304,6 +304,25 @@ def _is_review_findings_template(content: str) -> bool:
     return False
 
 
+def _read_artifact_content(todo_base: Path, artifact_name: str) -> str | None:
+    """Read artifact content from todos.db. Returns None if not found."""
+    # todo_base is Path(worktree_cwd) / "todos" / slug in old code;
+    # extract cwd and slug to resolve DB path.
+    slug = todo_base.name
+    cwd = str(todo_base.parent.parent)
+    db_name = artifact_name.removesuffix(".md") if artifact_name.endswith(".md") else artifact_name
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute(
+            "SELECT content FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
+            (slug, db_name),
+        ).fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
 def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool = False) -> tuple[bool, str]:
     """Mechanically verify artifacts for a given phase.
 
@@ -336,12 +355,7 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool =
 
 
 def _verify_state_yaml(todo_base: Path, phase: str, results: list[str]) -> bool:
-    """Validate state.yaml presence, parseability, and phase consistency."""
-    state_path = todo_base / "state.yaml"
-    if not state_path.exists():
-        results.append("FAIL: state.yaml does not exist")
-        return False
-
+    """Validate state presence and phase consistency via DB."""
     try:
         from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
 
@@ -349,10 +363,10 @@ def _verify_state_yaml(todo_base: Path, phase: str, results: list[str]) -> bool:
         slug = todo_base.name
         state = read_phase_state(cwd, slug)
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        results.append(f"FAIL: state.yaml is not parseable: {exc}")
+        results.append(f"FAIL: state is not readable: {exc}")
         return False
 
-    results.append("PASS: state.yaml is parseable YAML")
+    results.append("PASS: state is readable")
     return _verify_phase_consistency(state, phase, results)
 
 
@@ -405,37 +419,35 @@ def _build_commit_check(worktree_cwd: str, results: list[str]) -> GateCheck:
 
 
 def _verify_bug_report(todo_base: Path, results: list[str]) -> bool:
-    """Verify bug.md exists and contains non-template content."""
-    bug_path = todo_base / "bug.md"
-    if not bug_path.exists():
-        results.append("FAIL: bug.md does not exist")
+    """Verify bug artifact exists and contains non-template content."""
+    content = _read_artifact_content(todo_base, "bug")
+    if content is None:
+        results.append("FAIL: bug artifact does not exist")
         return False
-    content = bug_path.read_text(encoding="utf-8")
     stripped = content.strip()
     if not stripped or (stripped.startswith("<!--") and stripped.endswith("-->")):
-        results.append("FAIL: bug.md is empty or contains only a template comment")
+        results.append("FAIL: bug artifact is empty or contains only a template comment")
         return False
-    results.append("PASS: bug.md exists and has content")
+    results.append("PASS: bug artifact exists and has content")
     return True
 
 
 def _verify_implementation_plan(todo_base: Path, results: list[str]) -> bool:
-    """Verify implementation-plan.md exists and all tasks are checked off."""
-    plan_path = todo_base / "implementation-plan.md"
-    if not plan_path.exists():
-        results.append("FAIL: implementation-plan.md does not exist")
+    """Verify implementation-plan artifact exists and all tasks are checked off."""
+    content = _read_artifact_content(todo_base, "implementation-plan")
+    if content is None:
+        results.append("FAIL: implementation-plan artifact does not exist")
         return False
-    content = plan_path.read_text(encoding="utf-8")
     if _has_from_main_marker(content):
-        results.append("PASS: implementation-plan.md — from-main marker (human-supervised)")
+        results.append("PASS: implementation-plan — from-main marker (human-supervised)")
         return True
     unchecked = re.findall(r"^\s*-\s*\[ \]", content, re.MULTILINE)
     if unchecked:
         results.append(
-            f"FAIL: implementation-plan.md has {len(unchecked)} unchecked task(s) (all must be [x] before review)"
+            f"FAIL: implementation-plan has {len(unchecked)} unchecked task(s) (all must be [x] before review)"
         )
         return False
-    results.append("PASS: implementation-plan.md — all tasks checked [x]")
+    results.append("PASS: implementation-plan — all tasks checked [x]")
     return True
 
 
@@ -481,52 +493,50 @@ def _checklist_gate_check(todo_base: Path, section: str, results: list[str]) -> 
 
 
 def _verify_review_findings(todo_base: Path, results: list[str]) -> bool:
-    """Verify review-findings.md exists, is filled in, and includes a verdict."""
-    findings_path = todo_base / "review-findings.md"
-    if not findings_path.exists():
-        results.append("FAIL: review-findings.md does not exist")
+    """Verify review-findings artifact exists, is filled in, and includes a verdict."""
+    content = _read_artifact_content(todo_base, "review-findings")
+    if content is None:
+        results.append("FAIL: review-findings artifact does not exist")
         return False
 
-    content = findings_path.read_text(encoding="utf-8")
     passed = True
     if _is_review_findings_template(content):
-        results.append("FAIL: review-findings.md appears to be an unfilled template")
+        results.append("FAIL: review-findings appears to be an unfilled template")
         passed = False
     else:
-        results.append("PASS: review-findings.md has real content (not template)")
+        results.append("PASS: review-findings has real content (not template)")
 
     has_approve = REVIEW_APPROVE_MARKER in content
     has_request_changes = "REQUEST CHANGES" in content
     if not (has_approve or has_request_changes):
-        results.append("FAIL: review-findings.md missing verdict (APPROVE or REQUEST CHANGES)")
+        results.append("FAIL: review-findings missing verdict (APPROVE or REQUEST CHANGES)")
         return False
 
     verdict = "APPROVE" if has_approve else "REQUEST CHANGES"
-    results.append(f"PASS: review-findings.md verdict: {verdict}")
+    results.append(f"PASS: review-findings verdict: {verdict}")
     return passed
 
 
 def _verify_checklist_section(todo_base: Path, section_name: str, results: list[str]) -> bool:
     """Verify a checklist section exists and has at least one checked item."""
-    checklist_path = todo_base / "quality-checklist.md"
-    if not checklist_path.exists():
-        results.append("FAIL: quality-checklist.md does not exist")
+    content = _read_artifact_content(todo_base, "quality-checklist")
+    if content is None:
+        results.append("FAIL: quality-checklist artifact does not exist")
         return False
 
-    content = checklist_path.read_text(encoding="utf-8")
     if _has_from_main_marker(content):
-        results.append(f"PASS: quality-checklist.md {section_name} — from-main marker (human-supervised)")
+        results.append(f"PASS: quality-checklist {section_name} — from-main marker (human-supervised)")
         return True
 
     section = _extract_checklist_section(content, section_name)
     if section is None:
-        results.append(f"FAIL: quality-checklist.md missing '## {section_name}' section")
+        results.append(f"FAIL: quality-checklist missing '## {section_name}' section")
         return False
 
     checked = re.findall(r"^\s*-\s*\[x\]", section, re.MULTILINE | re.IGNORECASE)
     if not checked:
-        results.append(f"FAIL: quality-checklist.md {section_name} — no checked items")
+        results.append(f"FAIL: quality-checklist {section_name} — no checked items")
         return False
 
-    results.append(f"PASS: quality-checklist.md {section_name} — {len(checked)} checked item(s)")
+    results.append(f"PASS: quality-checklist {section_name} — {len(checked)} checked item(s)")
     return True
