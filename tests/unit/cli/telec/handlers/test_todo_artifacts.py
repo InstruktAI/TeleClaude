@@ -1,9 +1,9 @@
 # guard: no-companion
 """Tests for telec todo artifacts {list|read|write} and telec todo stamp."""
 
+# pylint: disable=missing-function-docstring,import-outside-toplevel
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -50,7 +50,7 @@ class TestHandleTodoArtifactsRead:
 
 
 class TestHandleTodoArtifactsWrite:
-    """telec todo artifacts write <slug> <name> --file <path>."""
+    """telec todo artifacts write <slug> <name> <content>."""
 
     def test_missing_args_exits(self) -> None:
         from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts
@@ -58,18 +58,15 @@ class TestHandleTodoArtifactsWrite:
         with pytest.raises(SystemExit):
             _handle_todo_artifacts(["write", "my-slug"])
 
-    def test_writes_from_file(self, tmp_path: Path) -> None:
+    def test_writes_inline_content(self) -> None:
         from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts
 
-        content_file = tmp_path / "req.md"
-        content_file.write_text("file-content")
-
         with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
-            _handle_todo_artifacts(["write", "my-slug", "requirements", "--file", str(content_file)])
+            _handle_todo_artifacts(["write", "my-slug", "requirements", "inline-content"])
 
         mock_api.assert_called_once()
         body = mock_api.call_args[1].get("json_body") or mock_api.call_args[0][2]
-        assert body["content"] == "file-content"
+        assert body["content"] == "inline-content"
 
 
 class TestHandleTodoStamp:

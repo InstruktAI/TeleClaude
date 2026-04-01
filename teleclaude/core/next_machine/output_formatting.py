@@ -62,11 +62,13 @@ POST_COMPLETION: dict[str, str] = {
    e. Tell the reviewer to start a direct conversation with the fixer:
         telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \\
         Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \\
-        Collaborate until all findings are resolved, then update review-findings.md verdict \\
-        to APPROVE and report FIX COMPLETE." (you will use regular send, NOT --direct)
+        Collaborate until all findings are resolved, then persist the full review-findings artifact \\
+        with telec todo artifacts write {args} review-findings <content> and set the verdict \\
+        by arithmetic: APPROVE only when unresolved Critical and Important counts are both zero. \\
+        Report FIX COMPLETE." (you will use regular send, NOT --direct)
    f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
    g. When fixer reports FIX COMPLETE:
-      - Read review-findings.md verdict
+      - Read the review-findings artifact verdict
       - If APPROVE: telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>,
           telec todo mark-phase {args} --target review_approved,
           call {next_call}

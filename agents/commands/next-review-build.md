@@ -30,7 +30,7 @@ Review code changes against requirements and architecture and produce a verdict.
 
 ## Outputs
 
-- `telec todo artifacts read {slug} review-findings`
+- Updated `review-findings` todo artifact persisted with `telec todo artifacts write {slug} review-findings "<content>"`
 - Verdict: APPROVE or REQUEST CHANGES
 - Report format:
 
@@ -55,6 +55,8 @@ Review code changes against requirements and architecture and produce a verdict.
 - Before writing findings, verify every triggered lane was executed. A missing lane
   means the review is incomplete — stop and execute it.
 - Each lane must produce a section in `review-findings.md`.
+- Persist the full findings artifact with `telec todo artifacts write {slug} review-findings "<content>"`.
+  Do not stage temporary markdown files or write under `todos/{slug}/`.
 - Count unresolved Critical and unresolved Important findings.
 - If either count > 0: verdict is REQUEST CHANGES.
 - If both are 0: verdict is APPROVE.

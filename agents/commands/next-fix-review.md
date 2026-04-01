@@ -25,6 +25,7 @@ Address review findings and prepare the work for re-review.
 ## Outputs
 
 - Commits addressing findings
+- Updated `review-findings` todo artifact persisted with `telec todo artifacts write {slug} review-findings "<content>"`
 - Report format:
 
   ```
@@ -41,6 +42,8 @@ Address review findings and prepare the work for re-review.
 ## Steps
 
 - Follow the fix-review procedure.
+- Persist findings updates with `telec todo artifacts write {slug} review-findings "<content>"`.
+  Do not stage temporary markdown files or write under `todos/{slug}/`.
 - Do not self-terminate — the orchestrator always ends child sessions.
 
 ## Discipline

@@ -280,7 +280,8 @@ Missing reproduction test for a bug fix is a **Critical** finding. All other rev
 
 ### 6. Write and commit findings
 
-Write unresolved findings to `telec todo artifacts read {slug} review-findings`.
+Write the full findings artifact with `telec todo artifacts write {slug} review-findings "<content>"`.
+Do not stage temporary markdown files or write under `todos/{slug}/`.
 
 Verdict rules — **verdict is arithmetic, not judgement:**
 
@@ -320,7 +321,7 @@ Verdict: APPROVE | REQUEST CHANGES
 
 ## Outputs
 
-- `telec todo artifacts read {slug} review-findings` with structured severity sections.
+- `review-findings` todo artifact persisted via `telec todo artifacts write {slug} review-findings "<content>"`, with structured severity sections.
 - A commit containing review findings (and any allowed checklist updates).
 - Verdict reported to orchestrator for phase-state recording.
 
