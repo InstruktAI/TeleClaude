@@ -271,6 +271,15 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         await self._broadcast_to_ui_adapters(session, "break_turn", lambda adapter, s: adapter.clear_turn_state(s))
 
+        # Advance cadence cursor atomically with the state clear.  Without
+        # this, the cadence delivers old content using the stale cursor in
+        # the gap before the coordinator hook fires (seconds, not millis).
+        # The coordinator may override this later (e.g. None for terminal
+        # input) — that's correct and idempotent for non-terminal.
+        from datetime import UTC, datetime  # pylint: disable=import-outside-toplevel
+
+        await db.update_session(session.session_id, last_tool_done_at=datetime.now(UTC).isoformat())
+
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in all UI adapters.
 
