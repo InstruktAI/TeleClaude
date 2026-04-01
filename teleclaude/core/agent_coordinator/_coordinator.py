@@ -435,11 +435,16 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         # Reset threaded output state on user input.
         await self.client.break_threaded_turn(session)
 
-        # Force output pull so adapters render immediately (terminal input
-        # resets the cursor — the pull re-renders with the updated origin).
-        fresh = await db.get_session(session_id)
-        if fresh:
-            await self.client.force_session_output_pull(fresh)
+        # Force output pull only for terminal input — terminal resets the
+        # cadence cursor so adapters need an immediate re-render.  For UI
+        # adapter input (Discord, Telegram, WhatsApp) the cadence loop
+        # handles the next render naturally; forcing a pull here races with
+        # agent output arriving between the turn break and the pull,
+        # causing the last agent message to be re-sent as a new message.
+        if is_terminal_input:
+            fresh = await db.get_session(session_id)
+            if fresh:
+                await self.client.force_session_output_pull(fresh)
 
         # Emit activity event for all sessions
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
