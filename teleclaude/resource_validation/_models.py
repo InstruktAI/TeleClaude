@@ -1,4 +1,4 @@
-"""Shared patterns, warning/error collection, and schema loading for resource validation."""
+"""Shared patterns, finding collection, and schema loading for resource validation."""
 
 from __future__ import annotations
 
@@ -26,10 +26,8 @@ __all__ = [
     "_as_str_list",
     "_error",
     "_load_schema",
-    "_warn",
-    "clear_warnings",
+    "clear_errors",
     "get_errors",
-    "get_warnings",
 ]
 
 # ---------------------------------------------------------------------------
@@ -54,25 +52,18 @@ _SCHEMA_PATH = REPO_ROOT / "scripts" / "snippet_schema.yaml"
 _ARTIFACT_REF_ORDER = TAXONOMY_TYPES.copy()
 
 # ---------------------------------------------------------------------------
-# Warning collection
+# Finding collection
 # ---------------------------------------------------------------------------
 
 
-class ValidationWarning(TypedDict):
-    """Typed dict for a validation warning entry."""
+class ValidationFinding(TypedDict):
+    """Typed dict for a validation finding entry."""
 
     code: str
     path: str
 
 
-_WARNINGS: list[dict[str, str]] = []
 _ERRORS: list[dict[str, str]] = []
-
-
-def _warn(code: str, path: str = "", **kwargs: str) -> None:
-    payload: dict[str, str] = {"code": code, "path": path}
-    payload.update({k: str(v) for k, v in kwargs.items()})
-    _WARNINGS.append(payload)
 
 
 def _error(code: str, path: str = "", **kwargs: str) -> None:
@@ -81,19 +72,13 @@ def _error(code: str, path: str = "", **kwargs: str) -> None:
     _ERRORS.append(payload)
 
 
-def get_warnings() -> list[dict[str, str]]:
-    """Return a copy of collected warnings."""
-    return list(_WARNINGS)
-
-
 def get_errors() -> list[dict[str, str]]:
-    """Return a copy of collected errors."""
+    """Return a copy of collected validation findings."""
     return list(_ERRORS)
 
 
-def clear_warnings() -> None:
-    """Clear both warnings and errors."""
-    _WARNINGS.clear()
+def clear_errors() -> None:
+    """Clear collected validation findings."""
     _ERRORS.clear()
 
 

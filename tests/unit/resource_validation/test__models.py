@@ -1,6 +1,6 @@
 """Characterization tests for teleclaude.resource_validation._models."""
-# pylint: disable=protected-access,too-few-public-methods
 
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,30 +13,21 @@ pytestmark = pytest.mark.unit
 
 
 class TestStringListCoercion:
-    """Validate string-list coercion for schema fragments."""
-
     def test_returns_list_only_when_all_items_are_strings(self) -> None:
-        """Reject mixed-type lists when normalizing schema values."""
         assert _models._as_str_list(["a", "b"]) == ["a", "b"]
         assert not _models._as_str_list(["a", 2])
 
 
-class TestWarningAndErrorCollection:
-    """Exercise the in-memory warning and error registries."""
+class TestFindingCollection:
+    def test_errors_are_collected_and_clearable(self) -> None:
+        _models.clear_errors()
 
-    def test_warn_and_error_are_collected_and_clearable(self) -> None:
-        """Keep warnings/errors observable and resettable between validations."""
-        _models.clear_warnings()
-
-        _models._warn("warn_code", path="docs/a.md", reason="why")
         _models._error("error_code", path="docs/b.md", ref="@docs/project")
 
-        assert _models.get_warnings() == [{"code": "warn_code", "path": "docs/a.md", "reason": "why"}]
         assert _models.get_errors() == [{"code": "error_code", "path": "docs/b.md", "ref": "@docs/project"}]
 
-        _models.clear_warnings()
+        _models.clear_errors()
 
-        assert not _models.get_warnings()
         assert not _models.get_errors()
 
 
@@ -63,8 +54,8 @@ sections:
 
         schema = _models._load_schema()
 
-        assert schema["global_"]["require_h1"] is True
-        assert schema["global_"]["allow_h3"] is False
+        assert schema["global_"].get("require_h1") is True
+        assert schema["global_"].get("allow_h3") is False
         assert schema["sections"]["policy"]["required"] == ["Overview"]
         assert schema["sections"]["policy"]["allowed"] == ["Overview", "Steps"]
 

@@ -34,5 +34,5 @@ Create and maintain concise, schema-compliant tool specifications that scale thr
 
 ## Recovery
 
-- If docs validation warns on unknown sections, remove non-schema headings.
+- If docs validation reports unknown-section findings, remove non-schema headings. `--warn-only` lets sync continue while still reporting the findings.
 - If tool details become noisy, split by primitive instead of expanding a single spec.

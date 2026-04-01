@@ -4,6 +4,7 @@ type: 'procedure'
 domain: 'general'
 scope: 'global'
 description: 'Two peer agents discuss a topic together — segmenting the work, dispatching subagents in parallel, converging findings, and reporting to the user.'
+activation_trigger: 'Use when a complex topic would benefit from two agents covering it together'
 ---
 
 # Peer Discussion — Procedure

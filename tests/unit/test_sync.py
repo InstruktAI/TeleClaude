@@ -1,14 +1,17 @@
 """Characterization tests for teleclaude.sync."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
 from __future__ import annotations
 
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from teleclaude import sync
+from teleclaude.git import GitCommandError
 
 pytestmark = pytest.mark.unit
 
@@ -41,13 +44,7 @@ class TestRunDistribute:
 
 
 class TestRepairBrokenDocsLinks:
-    def test_restores_self_referential_symlink_from_git_blob(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        from unittest.mock import MagicMock, patch
-
-        from teleclaude.git import GitCommandError
-
+    def test_restores_self_referential_symlink_from_git_blob(self, tmp_path: Path) -> None:
         project_root = tmp_path
         docs_dir = project_root / "docs" / "global"
         docs_dir.mkdir(parents=True)
@@ -70,8 +67,6 @@ class TestRepairBrokenDocsLinks:
         assert baseline_path.read_text(encoding="utf-8") == "restored baseline\n"
 
     def test_repair_broken_docs_links_excludes_index_yaml_from_git_recovery(self, tmp_path: Path) -> None:
-        from unittest.mock import MagicMock, patch
-
         project_root = tmp_path
         (project_root / "docs" / "global").mkdir(parents=True)
         # index.yaml absent — simulates missing-file scenario that would trigger repair
@@ -88,20 +83,21 @@ class TestRepairBrokenDocsLinks:
         assert not any("index.yaml" in call for call in git_calls)
 
 
-class TestPrintWarnings:
-    def test_groups_warnings_by_code_and_reason(self, capsys: pytest.CaptureFixture[str]) -> None:
-        sync._print_warnings(
+class TestGroupFindings:
+    def test_groups_findings_by_code_and_reason(self) -> None:
+        grouped = sync._group_findings(
             [
                 {"code": "missing", "path": "docs/a.md"},
                 {"code": "missing", "path": "docs/b.md", "reason": "bad_ref"},
-            ],
-            quiet=False,
+            ]
         )
 
-        output = capsys.readouterr().out
-        assert "Validation warnings: 2" in output
-        assert "missing:" in output
-        assert "missing/bad_ref:" in output
+        assert grouped == {
+            "missing": {
+                "": ["docs/a.md"],
+                "bad_ref": ["docs/b.md"],
+            }
+        }
 
 
 class TestSyncBootstrapOrdering:
@@ -115,9 +111,8 @@ class TestSyncBootstrapOrdering:
         monkeypatch.setattr(sync, "validate_third_party_docs", lambda _: None)
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
-        monkeypatch.setattr(sync, "get_warnings", lambda: [])
         monkeypatch.setattr(sync, "get_errors", lambda: [])
-        monkeypatch.setattr(sync, "clear_warnings", lambda: None)
+        monkeypatch.setattr(sync, "clear_errors", lambda: None)
         monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _: None)
         monkeypatch.setattr(sync, "_register_project_manifest", lambda _: None)
 
@@ -125,7 +120,8 @@ class TestSyncBootstrapOrdering:
             call_order.append("build_all_indexes")
             return []
 
-        def fake_run_distribute(_: Path, *, warn_only: bool = False) -> None:
+        def fake_run_distribute(project_root: Path, *, warn_only: bool = False) -> None:
+            del project_root, warn_only
             call_order.append("_run_distribute")
 
         monkeypatch.setattr(sync, "build_all_indexes", fake_build_all_indexes)

@@ -1,5 +1,6 @@
 """Characterization tests for teleclaude.resource_validation._snippet."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
 from __future__ import annotations
 
 from pathlib import Path
@@ -69,7 +70,7 @@ class TestCollectInlineRefErrors:
 
 class TestSeeAlsoValidation:
     def test_global_docs_require_global_prefix(self, tmp_path: Path) -> None:
-        resource_models.clear_warnings()
+        resource_models.clear_errors()
         path = tmp_path / "docs" / "global" / "general" / "policy" / "doc.md"
         path.parent.mkdir(parents=True)
         path.write_text("body", encoding="utf-8")
@@ -78,10 +79,25 @@ class TestSeeAlsoValidation:
 
         assert resource_models.get_errors()[0]["code"] == "snippet_see_also_bad_prefix"
 
+    def test_global_docs_accept_smudged_home_prefix(self, tmp_path: Path) -> None:
+        resource_models.clear_errors()
+        path = tmp_path / "docs" / "global" / "general" / "policy" / "doc.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("body", encoding="utf-8")
+        target = tmp_path / "docs" / "global" / "general" / "concept" / "other.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("body", encoding="utf-8")
+
+        smudged_ref = str(Path.home() / ".teleclaude" / "docs" / "general" / "concept" / "other.md")
+
+        _snippet._validate_see_also_ref(smudged_ref, path, tmp_path)
+
+        assert not resource_models.get_errors()
+
 
 class TestThirdPartyValidation:
-    def test_warns_for_non_url_source_entries(self, tmp_path: Path) -> None:
-        resource_models.clear_warnings()
+    def test_reports_non_url_source_entries_as_errors(self, tmp_path: Path) -> None:
+        resource_models.clear_errors()
         doc_path = tmp_path / "docs" / "third-party" / "guide.md"
         doc_path.parent.mkdir(parents=True)
         doc_path.write_text(
@@ -91,6 +107,6 @@ class TestThirdPartyValidation:
 
         _snippet.validate_third_party_docs(tmp_path)
 
-        assert resource_models.get_warnings() == [
+        assert resource_models.get_errors() == [
             {"code": "third_party_source_invalid", "path": str(doc_path), "source": "not-a-url"}
         ]

@@ -3,6 +3,7 @@ id: 'general/procedure/firecrawl-web-scraping'
 type: 'procedure'
 scope: 'global'
 description: 'Last-resort web scraping via Firecrawl MCP tools when built-in web search and consolidated docs are insufficient. JavaScript-rendered SPAs, structured data extraction, and multi-page crawling.'
+activation_trigger: 'Use when web search fails and you need to scrape JavaScript-rendered content'
 ---
 
 # Firecrawl Web Scraping — Procedure
@@ -22,7 +23,6 @@ Scrape web content that built-in web search cannot reach — JavaScript-rendered
 1. **Confirm this is the right tool.** Check consolidated third-party docs first (`telec docs index --third-party`), then try built-in web search. Only use Firecrawl when those cannot reach the content (SPA, structured extraction, crawl).
 
 2. **Choose the operation** based on intent:
-
    - **Single page scrape** — `firecrawl_scrape` with the target URL. Optionally pass `formats` (markdown, html, links, screenshot) and CSS selectors to include/exclude content.
    - **Site crawl** — `firecrawl_crawl` with root URL, optional `limit`, `maxDepth`, `includePaths`, `excludePaths`. Poll `firecrawl_check_crawl_status` with the returned crawl ID until complete.
    - **URL mapping** — `firecrawl_map` with the root URL to discover all indexed pages. Optionally pass a `search` term to filter.

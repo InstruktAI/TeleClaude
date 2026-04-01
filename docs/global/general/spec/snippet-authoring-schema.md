@@ -24,6 +24,7 @@ Frontmatter (required for all snippets):
 Frontmatter (optional):
 
 - `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
+- `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 
 Document structure:
 

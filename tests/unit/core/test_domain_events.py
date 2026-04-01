@@ -7,11 +7,15 @@ All new events must follow the existing domain event pattern (typed payload data
 The 202 response for fire-and-forget endpoints includes the completion_event name.
 """
 
+# pylint: disable=import-outside-toplevel,missing-function-docstring,no-value-for-parameter,protected-access,too-few-public-methods,too-many-locals
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from teleclaude.core.command_service import CommandService
 
 # ---------------------------------------------------------------------------
 # FR-4.1: Agent restart event emission
@@ -122,7 +126,6 @@ class TestSessionEscalationEventEmission:
         Must call event_bus.emit with the declared event name and a typed payload
         carrying the session_id — not a raw dict or ad-hoc string.
         """
-        from teleclaude.core.command_service import CommandService
         from teleclaude.core.event_bus import event_bus
         from teleclaude.core.events import SessionEscalatedPayload
 

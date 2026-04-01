@@ -16,9 +16,8 @@ from teleclaude.docs_index import build_all_indexes
 from teleclaude.paths import REPO_ROOT
 from teleclaude.project_manifest import MANIFEST_PATH, register_project
 from teleclaude.resource_validation import (
-    clear_warnings,
+    clear_errors,
     get_errors,
-    get_warnings,
     validate_all_artifacts,
     validate_all_snippets,
     validate_jobs_config,
@@ -38,7 +37,7 @@ def sync(
     """
     if not validate_only:
         _repair_broken_docs_links(project_root)
-    clear_warnings()
+    clear_errors()
     errors: list[str] = []
 
     # Phase 1: Validate
@@ -47,15 +46,16 @@ def sync(
     artifact_errors = validate_all_artifacts(project_root)
     errors.extend(artifact_errors)
     errors.extend(validate_jobs_config(project_root))
-    errors.extend(
-        f"{e['code']}: {e['path']} (ref={e.get('ref', '')} expected={e.get('expected', '')})" for e in get_errors()
-    )
-
-    warnings = get_warnings()
-    if warnings:
-        _print_warnings(warnings, quiet=warn_only)
-        if not warn_only:
-            errors.extend(f"{w['code']}: {w['path']}" for w in warnings)
+    findings = get_errors()
+    if findings:
+        _print_findings(findings, quiet=warn_only)
+        errors.extend(
+            (
+                f"{finding['code']}: {finding['path']} "
+                f"(ref={finding.get('ref', '')} expected={finding.get('expected', '')})"
+            )
+            for finding in findings
+        )
 
     if errors:
         for error in errors:
@@ -64,7 +64,7 @@ def sync(
             return False
 
     if validate_only:
-        return not errors
+        return warn_only or not errors
 
     # Phase 2: Build indexes
     written = build_all_indexes(project_root)
@@ -143,33 +143,35 @@ def _repair_broken_docs_links(project_root: Path) -> None:
         file_path.write_text(blob_content, encoding="utf-8")
 
 
-def _print_warnings(warnings: list[dict[str, str]], *, quiet: bool) -> None:
-    """Print validation warnings grouped by code."""
-    if not warnings:
+def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[str]]]:
+    """Group validation findings by code and reason."""
+    grouped: dict[str, dict[str, list[str]]] = {}
+    for finding in findings:
+        path = finding.get("path", "")
+        if not path:
+            continue
+        code = finding["code"]
+        reason = finding.get("reason", "")
+        grouped.setdefault(code, {}).setdefault(reason, []).append(path)
+    return grouped
+
+
+def _print_findings(findings: list[dict[str, str]], *, quiet: bool) -> None:
+    """Print validation findings grouped by code and reason."""
+    if not findings:
         return
-    print(f"Validation warnings: {len(warnings)}")
+    print(f"Validation findings: {len(findings)}")
     if quiet:
         return
-    grouped: dict[str, list[dict[str, str]]] = {}
-    for warning in warnings:
-        grouped.setdefault(warning["code"], []).append(warning)
-    for code, items in grouped.items():
-        reason_groups: dict[str, list[str]] = {}
-        no_reason: list[str] = []
-        for warning in items:
-            path = warning.get("path", "")
-            if not path:
-                continue
-            reason = warning.get("reason")
-            if reason:
-                reason_groups.setdefault(reason, []).append(path)
-            else:
-                no_reason.append(path)
+    for code, reason_groups in _group_findings(findings).items():
+        no_reason = reason_groups.get("", [])
         if no_reason:
             print(f"{code}:")
             for path in no_reason:
                 print(f"- {path}")
         for reason, paths in reason_groups.items():
+            if not reason:
+                continue
             print(f"{code}/{reason}:")
             for path in paths:
                 print(f"- {path}")

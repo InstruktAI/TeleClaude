@@ -17,12 +17,6 @@
 @~/.teleclaude/docs/software-development/policy/backward-compatibility-hygiene.md
 @~/.teleclaude/docs/software-development/policy/python/core.md
 @~/.teleclaude/docs/software-development/policy/typescript/core.md
-@~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
-@~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
-@~/.teleclaude/docs/general/procedure/peer-discussion.md
-@~/.teleclaude/docs/general/procedure/memory-management.md
-@~/.teleclaude/docs/general/procedure/brainstorming.md
-@~/.teleclaude/docs/software-development/procedure/debugging.md
 @~/.teleclaude/docs/creative/concept/image-generation.md
 @~/.teleclaude/docs/general/spec/agent-artifacts.md
 @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md

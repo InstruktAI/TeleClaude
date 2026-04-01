@@ -23,7 +23,6 @@ from teleclaude.resource_validation._models import (
     _SEE_ALSO_LIST_LINE,
     _SOURCES_HEADER,
     _error,
-    _warn,
 )
 from teleclaude.snippet_roots import iter_snippet_roots
 from teleclaude.snippet_validation import (
@@ -178,8 +177,37 @@ def _infer_type_from_path(file_path: Path) -> str | None:
     return folder if folder in TYPE_SUFFIX else None
 
 
+def _snippet_type_for_validation(path: Path, meta: Mapping[str, object]) -> str | None:
+    raw_type = meta.get("type")
+    if isinstance(raw_type, str):
+        return raw_type
+    return _infer_type_from_path(path)
+
+
+def _validate_visibility(path: Path, meta: Mapping[str, object]) -> None:
+    raw_visibility = meta.get("visibility")
+    if raw_visibility is None:
+        return
+    if not isinstance(raw_visibility, str) or raw_visibility not in SNIPPET_VISIBILITY_VALUES:
+        _error("snippet_invalid_visibility_value", path=str(path), value=str(raw_visibility))
+
+
+def _validate_activation_trigger(path: Path, meta: Mapping[str, object], *, snippet_type: str | None) -> None:
+    activation_trigger = meta.get("activation_trigger")
+    if activation_trigger is None:
+        return
+    if snippet_type != "procedure":
+        _error("snippet_activation_trigger_invalid_type", path=str(path))
+        return
+    if not isinstance(activation_trigger, str):
+        _error("snippet_activation_trigger_invalid_value", path=str(path))
+        return
+    if not activation_trigger.strip():
+        _error("snippet_activation_trigger_empty", path=str(path))
+
+
 def validate_snippet(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:
-    """Validate a single doc snippet. Collects warnings via ``_warn``."""
+    """Validate a single doc snippet. Collects validation findings via ``_error``."""
     if (path.name == "index.md" and "baseline" in path.parts) or (
         path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name in ("global", "project")
     ):
@@ -201,32 +229,30 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
 
     expected_id, path_error = expected_snippet_id_for_path(path, project_root=project_root, domains=domains)
     if path_error:
-        _warn("snippet_invalid_path", path=str(path), reason=path_error)
+        _error("snippet_invalid_path", path=str(path), reason=path_error)
 
     parsed_id = None
     snippet_id = meta.get("id")
     if isinstance(snippet_id, str):
         parsed_id, id_error = validate_snippet_id_format(snippet_id, domains=domains)
         if id_error:
-            _warn(
+            _error(
                 "snippet_invalid_id_format",
                 path=str(path),
                 reason=id_error,
                 snippet_id=snippet_id,
             )
     if expected_id and parsed_id and parsed_id.value() != expected_id:
-        _warn(
+        _error(
             "snippet_id_path_mismatch",
             path=str(path),
             expected_id=expected_id,
             snippet_id=parsed_id.value(),
         )
 
-    raw_visibility = meta.get("visibility")
-    if raw_visibility is not None:
-        if not isinstance(raw_visibility, str) or raw_visibility not in SNIPPET_VISIBILITY_VALUES:
-            _warn("snippet_invalid_visibility_value", path=str(path), value=str(raw_visibility))
-
+    _validate_visibility(path, meta)
+    snippet_type = _snippet_type_for_validation(path, meta)
+    _validate_activation_trigger(path, meta, snippet_type=snippet_type)
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
     _validate_snippet_sections(path, lines, meta, domains=domains)
@@ -243,12 +269,12 @@ def _validate_baseline_index(path: Path, content: str, project_root: Path, *, do
     ref_lines = [line for line in lines if line.startswith("@")]
     for line in lines:
         if not line.startswith("@"):
-            # Only warn if the file also contains @ refs — mixed content is suspicious.
+            # Only report if the file also contains @ refs — mixed content is suspicious.
             # A pure-instruction baseline file (no @ lines) is intentionally prose-only.
             if ref_lines:
-                _warn("snippet_baseline_index_invalid_line", path=str(path), line=line)
+                _error("snippet_baseline_index_invalid_line", path=str(path), line=line)
     for error in collect_inline_ref_errors(project_root, path, lines, domains=domains):
-        _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})
+        _error(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
 
 def _validate_snippet_structure(  # pylint: disable=too-many-branches,unused-argument
@@ -262,12 +288,12 @@ def _validate_snippet_structure(  # pylint: disable=too-many-branches,unused-arg
     if _SCHEMA["global_"].get("require_h1", True):
         first_non_empty = next((line for line in lines if line.strip()), "")
         if not _H1_LINE.match(first_non_empty):
-            _warn("snippet_missing_h1", path=str(path))
+            _error("snippet_missing_h1", path=str(path))
         if _SCHEMA["global_"].get("require_h1_first", True):
             if first_non_empty and not _H1_LINE.match(first_non_empty):
-                _warn("snippet_h1_not_first", path=str(path))
+                _error("snippet_h1_not_first", path=str(path))
     if not any(_H2_LINE.match(line) for line in lines):
-        _warn("snippet_missing_h2", path=str(path))
+        _error("snippet_missing_h2", path=str(path))
 
     required_reads_found = False
     required_reads_header_idx = None
@@ -290,23 +316,28 @@ def _validate_snippet_structure(  # pylint: disable=too-many-branches,unused-arg
             break
     if _SCHEMA["global_"].get("require_required_reads", True):
         if not required_reads_found:
-            _warn("snippet_required_reads_missing", path=str(path))
+            _error("snippet_required_reads_missing", path=str(path))
         if required_reads_text_header:
-            _warn("snippet_required_reads_text_header", path=str(path))
+            _error("snippet_required_reads_text_header", path=str(path))
         if required_reads_found and required_reads_header_idx is not None:
             if not lines[required_reads_header_idx].startswith("## "):
-                _warn("snippet_required_reads_header_level", path=str(path))
+                _error("snippet_required_reads_header_level", path=str(path))
             h2_indices = [i for i, line in enumerate(lines) if _H2_LINE.match(line)]
             if h2_indices and h2_indices[0] != required_reads_header_idx:
-                _warn("snippet_required_reads_not_first_h2", path=str(path))
+                _error("snippet_required_reads_not_first_h2", path=str(path))
 
     if sources_found and sources_header_idx is not None:
         if not lines[sources_header_idx].startswith("## "):
-            _warn("snippet_sources_header_level", path=str(path))
+            _error("snippet_sources_header_level", path=str(path))
 
 
 def _is_global_doc(path: Path) -> bool:
     return "global" in path.parts
+
+
+def _global_docs_prefixes() -> tuple[str, str]:
+    home_docs = str(Path.home() / ".teleclaude" / "docs")
+    return "~/.teleclaude/docs/", f"{home_docs}/"
 
 
 def _resolve_see_also_ref(ref: str, project_root: Path) -> Path | None:
@@ -318,6 +349,10 @@ def _resolve_see_also_ref(ref: str, project_root: Path) -> Path | None:
             tail = expanded[len(home_prefix) :]
             return (project_root / "docs" / "global" / tail).resolve()
         return Path(expanded).resolve()
+    _, absolute_prefix = _global_docs_prefixes()
+    if ref.startswith(absolute_prefix):
+        tail = ref[len(absolute_prefix) :]
+        return (project_root / "docs" / "global" / tail).resolve()
     if ref.startswith("docs/"):
         return (project_root / ref).resolve()
     return None
@@ -332,9 +367,10 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
         return
 
     is_global = _is_global_doc(path)
+    tilde_prefix, absolute_prefix = _global_docs_prefixes()
 
     if is_global:
-        if not raw.startswith("~/.teleclaude/docs/"):
+        if not raw.startswith((tilde_prefix, absolute_prefix)):
             _error(
                 "snippet_see_also_bad_prefix",
                 path=str(path),
@@ -343,7 +379,7 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
             )
             return
     else:
-        if not raw.startswith("docs/") and not raw.startswith("~/.teleclaude/docs/"):
+        if not raw.startswith("docs/") and not raw.startswith((tilde_prefix, absolute_prefix)):
             _error(
                 "snippet_see_also_bad_prefix",
                 path=str(path),
@@ -353,15 +389,15 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
             return
 
     if not raw.endswith(".md"):
-        _warn("snippet_see_also_missing_extension", path=str(path), ref=raw)
+        _error("snippet_see_also_missing_extension", path=str(path), ref=raw)
         return
 
     resolved = _resolve_see_also_ref(raw, project_root)
     if resolved is None:
-        _warn("snippet_see_also_unresolvable", path=str(path), ref=raw)
+        _error("snippet_see_also_unresolvable", path=str(path), ref=raw)
         return
     if not resolved.exists():
-        _warn("snippet_see_also_missing", path=str(path), ref=raw, resolved=str(resolved))
+        _error("snippet_see_also_missing", path=str(path), ref=raw, resolved=str(resolved))
 
 
 def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, domains: set[str]) -> None:  # pylint: disable=too-many-branches
@@ -391,16 +427,16 @@ def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, 
         line_without_inline = _INLINE_CODE_SPAN.sub("", line)
         if "@" in line_without_inline:
             if in_see_also:
-                _warn("snippet_see_also_inline_ref", path=str(path), line=line.strip())
+                _error("snippet_see_also_inline_ref", path=str(path), line=line.strip())
             elif not in_required_reads:
-                _warn("snippet_required_reads_outside_section", path=str(path), line=line.strip())
+                _error("snippet_required_reads_outside_section", path=str(path), line=line.strip())
         if in_see_also:
             m = _SEE_ALSO_LIST_LINE.match(line)
             if m:
                 _validate_see_also_ref(m.group(1), path, project_root)
 
     for error in collect_inline_ref_errors(project_root, path, lines, domains=domains):
-        _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})
+        _error(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
 
 def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-branches,unused-argument
@@ -425,7 +461,7 @@ def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-bran
     if "see also" in normalized_titles:
         last_h2 = normalized_titles[-1] if normalized_titles else ""
         if last_h2 != "see also":
-            _warn("snippet_see_also_not_last", path=str(path))
+            _error("snippet_see_also_not_last", path=str(path))
 
     if "baseline" not in path.parts:
         has_frontmatter = any(True for _ in [meta] if meta)
@@ -433,12 +469,12 @@ def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-bran
             pass  # handled elsewhere
         for field in ("id", "type", "scope", "description"):
             if not isinstance(meta.get(field), str) or not meta.get(field):
-                _warn("snippet_missing_frontmatter_field", path=str(path), field=field)
+                _error("snippet_missing_frontmatter_field", path=str(path), field=field)
 
     visibility_val = meta.get("visibility")
     if visibility_val is not None:
         if not isinstance(visibility_val, str) or visibility_val not in SNIPPET_VISIBILITY_VALUES:
-            _warn("snippet_invalid_visibility_value", path=str(path), value=str(visibility_val))
+            _error("snippet_invalid_visibility_value", path=str(path), value=str(visibility_val))
 
     snippet_type = meta.get("type") if isinstance(meta.get("type"), str) else None
     if not snippet_type:
@@ -450,12 +486,12 @@ def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-bran
         allowed = [_normalize_section_title(s) for s in section_rules.get("allowed", [])]
         for req in required:
             if req not in normalized_titles:
-                _warn("snippet_missing_required_section", path=str(path), section=req)
+                _error("snippet_missing_required_section", path=str(path), section=req)
         for title in normalized_titles:
             if title in ("required reads", "see also", "sources"):
                 continue
             if title not in allowed:
-                _warn("snippet_unknown_section", path=str(path), section=title)
+                _error("snippet_unknown_section", path=str(path), section=title)
 
 
 # ---------------------------------------------------------------------------
@@ -504,7 +540,7 @@ def validate_third_party_docs(project_root: Path) -> None:
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
-            _warn("third_party_read_failed", path=str(path), error=str(exc))
+            _error("third_party_read_failed", path=str(path), error=str(exc))
             continue
         lines = text.splitlines()
         sources = _extract_sources_section(lines)
@@ -519,7 +555,7 @@ def validate_third_party_docs(project_root: Path) -> None:
                 url = md_url
             if _is_web_url(url):
                 continue
-            _warn("third_party_source_invalid", path=str(path), source=source)
+            _error("third_party_source_invalid", path=str(path), source=source)
 
 
 # ---------------------------------------------------------------------------
@@ -533,7 +569,7 @@ def _iter_snippet_roots(project_root: Path) -> list[Path]:
 
 
 def validate_all_snippets(project_root: Path) -> None:
-    """Validate all doc snippets under the project. Collects warnings."""
+    """Validate all doc snippets under the project. Collects validation findings."""
     domains = load_domains(project_root)
     snippet_roots = _iter_snippet_roots(project_root)
     for snippets_root in snippet_roots:
@@ -550,7 +586,7 @@ def validate_all_snippets(project_root: Path) -> None:
             try:
                 text = path.read_text(encoding="utf-8")
             except OSError as exc:
-                _warn("snippet_read_failed", path=str(path), error=str(exc))
+                _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
             validate_snippet(path, text, project_root, domains=domains)
     validate_third_party_docs(project_root)

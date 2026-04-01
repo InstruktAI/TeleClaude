@@ -9,9 +9,8 @@ from pathlib import Path
 import frontmatter
 
 from teleclaude.resource_validation import (
-    clear_warnings,
+    clear_errors,
     get_errors,
-    get_warnings,
     validate_all_artifacts,
     validate_artifact,
 )
@@ -69,18 +68,15 @@ def _format_validation_record(record: dict[str, str]) -> str:
 
 
 def _print_diagnostics(extra_errors: list[str]) -> int:
-    """Print accumulated validation errors and warnings, return exit code."""
+    """Print accumulated validation errors, return exit code."""
     structured_errors = get_errors()
-    structured_warnings = get_warnings()
 
     for message in extra_errors:
         print(message)
     for error_record in structured_errors:
         print(_format_validation_record(error_record))
-    for warning_record in structured_warnings:
-        print(_format_validation_record(warning_record))
 
-    return 1 if extra_errors or structured_errors or structured_warnings else 0
+    return 1 if extra_errors or structured_errors else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -92,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     if not selected_paths:
         return 0
 
-    clear_warnings()
+    clear_errors()
     extra_errors: list[str] = []
 
     if any(_requires_full_repo_validation(rel_path) for rel_path in selected_paths):

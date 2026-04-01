@@ -1,5 +1,6 @@
 ---
 description: 'Research third-party docs: search authoritative sources, fetch, summarize, and index findings.'
+activation_trigger: 'Use when researching third-party documentation and consolidating findings'
 id: 'software-development/procedure/research/third-party-research'
 scope: 'domain'
 type: 'procedure'

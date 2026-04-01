@@ -35,6 +35,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
         [sys.executable, str(_SCRIPT), *args],
         capture_output=True,
         text=True,
+        check=False,
     )
 
 
@@ -50,12 +51,13 @@ def _run_no_session(*args: str) -> subprocess.CompletedProcess[str]:
             capture_output=True,
             text=True,
             env=env,
+            check=False,
         )
 
 
 def _run_with_fake_session(*args: str) -> subprocess.CompletedProcess[str]:
     """Run the script with a fake session identity file in TMPDIR."""
-    import json
+    import json  # pylint: disable=import-outside-toplevel
 
     env = os.environ.copy()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -70,6 +72,7 @@ def _run_with_fake_session(*args: str) -> subprocess.CompletedProcess[str]:
             capture_output=True,
             text=True,
             env=env,
+            check=False,
         )
 
 
@@ -127,6 +130,21 @@ def test_collection_failure_exits_3_with_stderr_diagnostic() -> None:
     result = _run_with_fake_session("--mode", "lint")
     assert result.returncode == 3, f"Expected exit 3, got {result.returncode}"
     assert result.stderr.strip() != "", "Expected diagnostic on stderr, got none"
+
+
+def _raise_runtime_error(path: str) -> set[str]:
+    raise RuntimeError("db connection lost")
+
+
+def test_non_valueerror_collection_failure_exits_3(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-ValueError exceptions from collection must also yield exit 3, not an uncaught traceback."""
+    mod = _import_session_scope()
+    monkeypatch.setattr(sys, "argv", ["session_scope.py", "--mode", "lint"])
+    monkeypatch.setattr(mod, "get_session_id", lambda: "fake-session-id")
+    monkeypatch.setattr(mod, "_collect_session_touched_files", _raise_runtime_error)
+    with pytest.raises(SystemExit) as exc_info:
+        mod.main()
+    assert exc_info.value.code == 3
 
 
 def test_missing_companion_is_silently_skipped() -> None:

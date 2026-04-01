@@ -3,6 +3,7 @@ id: 'general/procedure/doc-snippet-authoring'
 type: 'procedure'
 scope: 'global'
 description: 'Author documentation snippets according to the taxonomy and schema.'
+activation_trigger: 'Use when creating or updating documentation snippets'
 ---
 
 # Snippet Authoring — Procedure

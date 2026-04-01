@@ -99,11 +99,15 @@ def main() -> None:
 
     try:
         touched: set[str] = _collect_session_touched_files(str(project_root))
-    except Exception as exc:  # all collection errors → exit 3 per protocol
+    except Exception as exc:  # pylint: disable=broad-exception-caught # all collection errors → exit 3 per protocol
         print(f"session_scope: collection failed for session {session_id}: {exc}", file=sys.stderr)
         sys.exit(3)
 
     result = _filter_by_mode(args.mode, touched, project_root)
+    # Guard: emit only paths that exist on disk. Bare names extracted from
+    # non-path sources (e.g. git commit message content tokenized as shell
+    # arguments) are discarded here before being passed to type checkers.
+    result = [f for f in result if (project_root / f).exists()]
 
     if result:
         sys.stdout.write("\n".join(result) + "\n")

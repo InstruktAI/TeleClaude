@@ -143,7 +143,7 @@ Source: `teleclaude/project_setup/init_flow.py:_offer_enrichment()`
 - `telec init` is idempotent. Re-running it is safe and will skip already-configured steps.
 - If enrichment dispatch fails, the user is shown a manual command to retry:
   `telec sessions run --command /telec-init-analyze --project <root>`
-- If sync fails with warnings, the init still completes; warnings are reported.
+- If sync reports findings, the init still completes because this step runs `telec sync --warn-only`; the findings are reported for follow-up.
 
 ## See Also
 

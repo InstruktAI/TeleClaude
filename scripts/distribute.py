@@ -12,6 +12,9 @@
 #     "python-dotenv",
 # ]
 # ///
+"""Transpile and deploy agent artifacts and generated documentation."""
+
+# pylint: disable=too-many-lines
 from __future__ import annotations
 
 import argparse
@@ -22,9 +25,8 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, NotRequired, cast
+from typing import Literal, NamedTuple, NotRequired, cast
 
 import frontmatter
 import yaml
@@ -37,15 +39,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from teleclaude.docs_index import write_third_party_index_yaml
-from teleclaude.required_reads import (
+from teleclaude.docs_index import write_third_party_index_yaml  # pylint: disable=wrong-import-position
+from teleclaude.required_reads import (  # pylint: disable=wrong-import-position
     extract_required_reads,
     normalize_required_refs,
 )
-from teleclaude.resource_validation import (
+from teleclaude.resource_validation import (  # pylint: disable=wrong-import-position
     resolve_ref_path,
     validate_artifact,
 )
+from teleclaude.snippet_roots import iter_snippet_roots, snippet_files  # pylint: disable=wrong-import-position
 
 Transform = Callable[[Post], str]
 
@@ -109,7 +112,7 @@ def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
 def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:
     """Normalize Codex frontmatter scalars to explicit single-quoted values.
 
-    TODO: GitHub issue openai/codex#11495
+    Note: GitHub issue openai/codex#11495 tracks removal of this workaround.
     Remove this Codex-only compatibility path once upstream frontmatter parsing
     false positives are fixed.
     """
@@ -124,7 +127,7 @@ def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:
     raw_frontmatter = "\n".join(header_lines[1:-1])
     try:
         payload = yaml.safe_load(raw_frontmatter)
-    except Exception:
+    except yaml.YAMLError:
         return content
     if not isinstance(payload, dict):
         return content
@@ -194,6 +197,8 @@ ArtifactFrontmatter = TypedDict(
 
 
 class AgentConfig(TypedDict):
+    """Agent-specific output and deploy paths."""
+
     check_dir: str
     prefix: str
     master_dest: str
@@ -209,8 +214,9 @@ class AgentConfig(TypedDict):
     deploy_skills_dest: NotRequired[str]
 
 
-@dataclass(frozen=True)
-class FileArtifactType:
+class FileArtifactType(NamedTuple):
+    """Artifact type metadata for source, dist, and deploy phases."""
+
     name: str
     source_dir_key: str
     dest_dir_key: str
@@ -227,7 +233,7 @@ def transform_to_codex(post: Post) -> str:
     """
     # Codex uses Markdown with YAML frontmatter. Force explicit scalar quotes as
     # a compatibility workaround for intermittent frontmatter false positives.
-    # TODO: GitHub issue openai/codex#11495 — remove when fixed upstream.
+    # Note: GitHub issue openai/codex#11495 tracks removal of this workaround.
     content = _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(post))
     return _rewrite_codex_next_prompt_tokens(content)
 
@@ -327,7 +333,7 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     return filtered
 
 
-def _prepare_post(
+def _prepare_post(  # pylint: disable=too-many-arguments
     post: Post,
     *,
     agent_prefix: str,
@@ -377,8 +383,24 @@ def _render_progressive_index(
     frontmatter to extract snippet ID and description, then renders a scannable
     bullet list that agents can use with ``get_context``.
     """
+    entries, _ = _collect_progressive_index_entries(ref_file, project_root=project_root, warn_only=warn_only)
+
+    if not entries:
+        return ""
+
+    header = "## Baseline index — load via get_context when relevant\n\n"
+    return header + "\n".join(entries)
+
+
+def _collect_progressive_index_entries(
+    ref_file: Path,
+    *,
+    project_root: Path,
+    warn_only: bool = False,
+) -> tuple[list[str], list[tuple[str, str]]]:
     content = ref_file.read_text(encoding="utf-8")
-    entries: list[str] = []
+    baseline_entries: list[str] = []
+    activatable_entries: list[tuple[str, str]] = []
 
     for match in INLINE_REF_RE.finditer(content):
         ref = match.group(1)
@@ -391,19 +413,76 @@ def _render_progressive_index(
 
         raw = resolved.read_text(encoding="utf-8")
         post = frontmatter.loads(raw)
-        snippet_id = post.metadata.get("id", "")
-        description = post.metadata.get("description", "")
+        snippet_id = post.metadata.get("id")
+        description = post.metadata.get("description")
+        snippet_type = post.metadata.get("type")
+        activation_trigger = post.metadata.get("activation_trigger")
 
-        if snippet_id and description:
-            entries.append(f"- `{snippet_id}` — {description}")
-        elif snippet_id:
-            entries.append(f"- `{snippet_id}`")
+        if (
+            snippet_type == "procedure"
+            and isinstance(snippet_id, str)
+            and isinstance(activation_trigger, str)
+            and activation_trigger.strip()
+        ):
+            activatable_entries.append((snippet_id, activation_trigger.strip()))
+            continue
 
-    if not entries:
+        if isinstance(snippet_id, str) and isinstance(description, str) and description:
+            baseline_entries.append(f"- `{snippet_id}` — {description}")
+        elif isinstance(snippet_id, str) and snippet_id:
+            baseline_entries.append(f"- `{snippet_id}`")
+
+    return baseline_entries, activatable_entries
+
+
+def _render_activatable_procedures(*, project_root: Path, warn_only: bool = False) -> str:
+    activatable_by_id: dict[str, str] = {}
+    for snippets_root in iter_snippet_roots(project_root):
+        for snippet_path in sorted(snippet_files(snippets_root, include_baseline=False)):
+            raw = snippet_path.read_text(encoding="utf-8")
+            try:
+                post = frontmatter.loads(raw)
+            except Exception:
+                if warn_only:
+                    print(f"WARNING: failed to parse frontmatter: {snippet_path}")
+                    continue
+                raise
+            snippet_id = post.metadata.get("id")
+            snippet_type = post.metadata.get("type")
+            activation_trigger = post.metadata.get("activation_trigger")
+            if (
+                snippet_type == "procedure"
+                and isinstance(snippet_id, str)
+                and isinstance(activation_trigger, str)
+                and activation_trigger.strip()
+            ):
+                activatable_by_id[snippet_id] = activation_trigger.strip()
+    activatable_entries = sorted(activatable_by_id.items(), key=lambda item: item[0])
+    if not activatable_entries:
         return ""
+    lines = [f"- `{snippet_id}` — {trigger}" for snippet_id, trigger in activatable_entries]
+    header = "## Activatable Procedures — load via `telec docs get <id>` before acting\n\n"
+    return header + "\n".join(lines)
 
-    header = "## Baseline index — load via get_context when relevant\n\n"
-    return header + "\n".join(entries)
+
+def _exec_directive_env(project_root: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    path_entries = [
+        str(project_root / ".venv" / "bin"),
+        str(_REPO_ROOT / ".venv" / "bin"),
+    ]
+    existing_path = env.get("PATH", "")
+    if existing_path:
+        path_entries.extend(existing_path.split(os.pathsep))
+    deduped_entries: list[str] = []
+    seen_entries: set[str] = set()
+    for entry in path_entries:
+        if not entry or entry in seen_entries:
+            continue
+        seen_entries.add(entry)
+        deduped_entries.append(entry)
+    env["PATH"] = os.pathsep.join(deduped_entries)
+    return env
 
 
 def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool = False) -> str:
@@ -419,6 +498,8 @@ def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool 
                 text=True,
                 timeout=10,
                 cwd=project_root,
+                env=_exec_directive_env(project_root),
+                check=False,
             )
             output = result.stdout.strip()
             if result.returncode != 0:
@@ -440,11 +521,15 @@ def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool 
     return EXEC_DIRECTIVE_RE.sub(_run, content)
 
 
-def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, warn_only: bool = False) -> str:
+def expand_inline_refs(  # pylint: disable=too-many-statements
+    content: str, *, project_root: Path, current_path: Path, warn_only: bool = False
+) -> str:
     """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
 
-    def _expand_document(text: str, *, current_path: Path, depth: int) -> str:
+    def _expand_document(  # pylint: disable=too-many-locals,too-many-return-statements,too-many-statements
+        text: str, *, current_path: Path, depth: int
+    ) -> str:
         if depth <= 0:
             return text
 
@@ -465,13 +550,13 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, 
 
             # Progressive baseline: render as index instead of inlining
             if resolved.name.startswith("baseline-progressive"):
-                index_block = _render_progressive_index(
-                    resolved,
-                    project_root=project_root,
-                    warn_only=warn_only,
-                )
-                if index_block:
-                    required_sections.append(index_block)
+                blocks = [
+                    _render_progressive_index(resolved, project_root=project_root, warn_only=warn_only),
+                    _render_activatable_procedures(project_root=project_root, warn_only=warn_only),
+                ]
+                rendered_blocks = [block for block in blocks if block]
+                if rendered_blocks:
+                    required_sections.append("\n\n".join(rendered_blocks))
                 continue
 
             raw = resolved.read_text(encoding="utf-8")
@@ -494,12 +579,14 @@ def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, 
 
             # Progressive baseline: render as index instead of inlining
             if resolved.name.startswith("baseline-progressive"):
-                index_block = _render_progressive_index(
-                    resolved,
-                    project_root=project_root,
-                    warn_only=warn_only,
-                )
-                return f"{index_block}\n" if index_block else ""
+                blocks = [
+                    _render_progressive_index(resolved, project_root=project_root, warn_only=warn_only),
+                    _render_activatable_procedures(project_root=project_root, warn_only=warn_only),
+                ]
+                rendered_blocks = [block for block in blocks if block]
+                if not rendered_blocks:
+                    return ""
+                return f"{'\n\n'.join(rendered_blocks)}\n"
 
             raw = resolved.read_text(encoding="utf-8")
             post = frontmatter.loads(raw)
@@ -637,7 +724,8 @@ def _resolve_git_common_root(project_root: Path) -> Path:
     return common_path.parent
 
 
-def main() -> None:  # noqa: C901
+def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    """Transpile and optionally deploy agent artifacts for supported CLIs."""
     parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
     parser.add_argument("--deploy", action="store_true", help="Sync generated files to their locations.")
     parser.add_argument(
@@ -684,7 +772,9 @@ def main() -> None:  # noqa: C901
     canonical_root = _resolve_git_common_root(project_root_path)
     master_docs_dir = os.path.join(project_root, "docs", "global")
     canonical_docs_dir = os.path.join(canonical_root, "docs", "global")
-    docs_source_dir = canonical_docs_dir if os.path.isdir(canonical_docs_dir) else master_docs_dir
+    # Prefer the current checkout (worktree) docs so that telec sync deploys
+    # the docs being edited, not stale content from the main repo root.
+    docs_source_dir = master_docs_dir if os.path.isdir(master_docs_dir) else canonical_docs_dir
 
     agents_config: dict[str, AgentConfig] = {
         "claude": {
@@ -798,7 +888,7 @@ def main() -> None:  # noqa: C901
     global_sources = _existing_sources(global_sources)
     local_sources = _existing_sources(local_sources)
 
-    def _validate_sources(sources: list[dict[str, str]]) -> list[str]:
+    def _validate_sources(sources: list[dict[str, str]]) -> list[str]:  # pylint: disable=too-many-branches
         errors: list[str] = []
         artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
         for source in sources:
@@ -833,12 +923,12 @@ def main() -> None:  # noqa: C901
                 if not item_path:
                     continue
                 try:
-                    with open(item_path) as f:
+                    with open(item_path, encoding="utf-8") as f:
                         post = frontmatter.load(f)
                     validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
                     if spec.kind == "skill":
                         resolve_skill_name(post, item)
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     errors.append(str(e))
         return errors
 
@@ -858,7 +948,7 @@ def main() -> None:  # noqa: C901
         shutil.rmtree(dist_dir)
     os.makedirs(dist_dir)
 
-    def _run_phase(  # noqa: C901
+    def _run_phase(  # noqa: C901  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches,too-many-statements
         *,
         sources: list[dict[str, str]],
         prefix_root: str,
@@ -876,7 +966,7 @@ def main() -> None:  # noqa: C901
         artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
         for source in sources:
             if os.path.isfile(source["master"]) and source["label"] != ".agents":
-                with open(source["master"]) as f:
+                with open(source["master"], encoding="utf-8") as f:
                     agent_master_contents.append(f.read())
             for spec in artifact_specs:
                 source_dir = source.get(spec.source_dir_key)
@@ -902,7 +992,7 @@ def main() -> None:  # noqa: C901
             agent_specific_file = os.path.join(prefix_root, f"{agent_name.upper()}.addendum.md")
             agent_specific_content = ""
             if os.path.exists(agent_specific_file):
-                with open(agent_specific_file) as extra_f:
+                with open(agent_specific_file, encoding="utf-8") as extra_f:
                     raw_agent_specific = extra_f.read()
                 agent_specific_content = process_file(raw_agent_specific, config["prefix"], agent_name)
 
@@ -937,12 +1027,12 @@ def main() -> None:  # noqa: C901
                 master_dest_dir = os.path.dirname(master_dest_path)
                 if master_dest_dir:
                     os.makedirs(master_dest_dir, exist_ok=True)
-                with open(master_dest_path, "w") as f:
+                with open(master_dest_path, "w", encoding="utf-8") as f:
                     f.write(combined_agents_content)
                 markdown_outputs.append(master_dest_path)
                 if emit_repo_codex and agent_name == "codex":
                     repo_override_path = os.path.join(project_root, "AGENTS.override.md")
-                    with open(repo_override_path, "w") as f:
+                    with open(repo_override_path, "w", encoding="utf-8") as f:
                         f.write(combined_agents_content)
                     markdown_outputs.append(repo_override_path)
 
@@ -950,7 +1040,11 @@ def main() -> None:  # noqa: C901
                 items = artifact_items[spec.name]
                 if not items:
                     continue
-                dest_dir = os.path.join(dist_dir, agent_name, os.path.basename(config[spec.dest_dir_key]))  # type: ignore[literal-required]
+                dest_dir = os.path.join(
+                    dist_dir,
+                    agent_name,
+                    os.path.basename(config[spec.dest_dir_key]),  # type: ignore[literal-required]
+                )
                 os.makedirs(dest_dir, exist_ok=True)
                 for item in items:
                     item_path = ""
@@ -967,7 +1061,7 @@ def main() -> None:  # noqa: C901
                             break
                     if not item_path:
                         continue
-                    with open(item_path) as f:
+                    with open(item_path, encoding="utf-8") as f:
                         try:
                             post = frontmatter.load(f)
                             validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
@@ -997,7 +1091,7 @@ def main() -> None:  # noqa: C901
                                 base_name = os.path.splitext(item)[0]
                                 output_filename = f"{base_name}{config[spec.ext_key]}"  # type: ignore[literal-required]
                                 output_path = os.path.join(dest_dir, output_filename)
-                            with open(output_path, "w") as out_f:
+                            with open(output_path, "w", encoding="utf-8") as out_f:
                                 out_f.write(transformed_content.rstrip("\n") + "\n")
                             if output_filename.endswith(".md"):
                                 markdown_outputs.append(output_path)
@@ -1015,7 +1109,7 @@ def main() -> None:  # noqa: C901
                                         shutil.copytree(src_entry, dst_entry)
                                     else:
                                         shutil.copy2(src_entry, dst_entry)
-                        except Exception as e:
+                        except Exception as e:  # pylint: disable=broad-exception-caught
                             print(f"Error processing {spec.name} item {item} for agent {agent_name}: {e}")
 
             built_agents.append(agent_name)
@@ -1077,7 +1171,7 @@ def main() -> None:  # noqa: C901
             try:
                 dst_path.symlink_to(src_path)
                 print(f"  Synced: {dst_path} -> {src_path}")
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 print(f"  Error syncing {entry}: {e}")
 
         # Generate index.yaml for global third-party docs

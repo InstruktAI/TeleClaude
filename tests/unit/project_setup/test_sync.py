@@ -1,5 +1,6 @@
 """Characterization tests for teleclaude.project_setup.sync."""
 
+# pylint: disable=missing-function-docstring,protected-access
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,20 +17,30 @@ def test_project_label_slugifies_names_and_falls_back_when_empty() -> None:
     assert project_sync._project_label(project_sync.Path("/tmp/---")) == "teleclaude"
 
 
-def test_sync_project_artifacts_prints_warning_when_sync_reports_false(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_sync_project_artifacts_runs_sync_in_warn_only_mode_when_sync_reports_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(teleclaude_sync, "sync", lambda project_root, warn_only: False)
+    calls: list[tuple[Path, bool]] = []
+
+    def fake_sync(project_root: Path, warn_only: bool) -> bool:
+        calls.append((project_root, warn_only))
+        return False
+
+    monkeypatch.setattr(teleclaude_sync, "sync", fake_sync)
 
     project_sync.sync_project_artifacts(tmp_path)
 
-    assert "sync completed with warnings" in capsys.readouterr().out
+    assert calls == [(tmp_path, True)]
 
 
 def test_install_docs_watch_dispatches_to_launchd_on_macos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[object] = []
     monkeypatch.setattr(project_sync.sys, "platform", "darwin")
-    monkeypatch.setattr(project_sync, "_install_launchd_watch", lambda project_root: calls.append(project_root))
+
+    def fake_install_launchd_watch(project_root: Path) -> None:
+        calls.append(project_root)
+
+    monkeypatch.setattr(project_sync, "_install_launchd_watch", fake_install_launchd_watch)
 
     project_sync.install_docs_watch(tmp_path)
 
@@ -61,7 +72,7 @@ def test_install_systemd_watch_writes_units_and_reports_missing_user_services(
     project_root.mkdir()
     home_dir = tmp_path / "home"
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd: list[str], **_kwargs: object) -> SimpleNamespace:
         if cmd == ["systemctl", "--user", "daemon-reload"]:
             return SimpleNamespace(returncode=1)
         return SimpleNamespace(returncode=0)
