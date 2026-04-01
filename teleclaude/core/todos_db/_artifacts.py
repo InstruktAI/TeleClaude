@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,7 @@ class TodosDbArtifactsMixin:
     """Read/write/version todo artifacts (replaces filesystem todos/{slug}/*.md)."""
 
     conn: aiosqlite.Connection | None
+    _on_mutation: Callable[[], None]
 
     async def _resolve_artifact_id(self, slug: str) -> str:
         """Resolve slug to roadmap id for artifact operations. Falls back to slug."""
@@ -77,6 +79,7 @@ class TodosDbArtifactsMixin:
             (row_id, slug, name, content, digest, updated_by, now),
         )
         await self.conn.commit()
+        self._on_mutation()
 
     async def artifact_digest(self, slug: str, name: str) -> str:
         """Return SHA-256 digest of current artifact content. Empty string if not found."""
@@ -147,3 +150,4 @@ class TodosDbArtifactsMixin:
             (row_id,),
         )
         await self.conn.commit()
+        self._on_mutation()

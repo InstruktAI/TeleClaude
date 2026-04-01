@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 import aiosqlite
@@ -172,6 +173,7 @@ class TodosDbBase:
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
         self.conn: aiosqlite.Connection | None = None
+        self._on_mutation: Callable[[], None] = lambda: None
 
     async def initialize(self) -> None:
         """Bootstrap schema and open the runtime connection."""

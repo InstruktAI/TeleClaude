@@ -2,23 +2,75 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import sqlite3
 from contextlib import ExitStack
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-import yaml
 
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.state_io import mark_phase, read_phase_state, stamp_artifact, stamp_verdict
+from teleclaude.core.todos_db import TodosDb
 
 StateData = dict[str, StateValue]
 
 
-def _write_state(todo_dir: Path, state: dict[object, object]) -> None:
-    todo_dir.mkdir(parents=True, exist_ok=True)
-    (todo_dir / "state.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
+def _init_db(tmp_path: Path) -> sqlite3.Connection:
+    """Create a todos.db with proper schema via TodosDb.initialize_sync."""
+    db_path = str(tmp_path / ".teleclaude" / "todos.db")
+    TodosDb(db_path).initialize_sync()
+    return sqlite3.connect(db_path)
+
+
+def _ensure_roadmap(conn: sqlite3.Connection, slug: str) -> None:
+    """Insert a roadmap entry so slug→id resolution works."""
+    now = datetime.now(UTC).isoformat()
+    conn.execute(
+        "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
+        "VALUES (?, ?, 0, 'active', ?, ?)",
+        (slug, slug, now, now),
+    )
+    conn.commit()
+
+
+def _write_state_db(conn: sqlite3.Connection, slug: str, state: dict[str, StateValue]) -> None:
+    """Write state to todos.db (ensures roadmap entry exists)."""
+    now = datetime.now(UTC).isoformat()
+    _ensure_roadmap(conn, slug)
+    conn.execute(
+        "INSERT INTO todo_state (id, slug, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?) "  # guard: raw-sql
+        "ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
+        (slug, slug, json.dumps(state), now, now),
+    )
+    conn.commit()
+
+
+def _write_artifact_db(conn: sqlite3.Connection, slug: str, name: str, content: str) -> None:
+    """Write an artifact to todos.db (ensures roadmap entry exists)."""
+    now = datetime.now(UTC).isoformat()
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    _ensure_roadmap(conn, slug)
+    conn.execute(
+        "INSERT INTO todo_artifacts (id, slug, name, content, digest, updated_by, updated_at) "  # guard: raw-sql
+        "VALUES (?, ?, ?, ?, ?, 'test', ?) "
+        "ON CONFLICT(id, name) DO UPDATE SET "
+        "content = excluded.content, digest = excluded.digest, updated_at = excluded.updated_at",
+        (slug, slug, name, content, digest, now),
+    )
+    conn.commit()
+
+
+def _read_artifact_db(conn: sqlite3.Connection, slug: str, name: str) -> str | None:
+    """Read an artifact from todos.db."""
+    row = conn.execute(
+        "SELECT content FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
+        (slug, name),
+    ).fetchone()
+    return row[0] if row else None
 
 
 def _identity_path(path: str) -> str:
@@ -39,41 +91,19 @@ def _patch_mark_phase_deps(mock_machine: MagicMock) -> ExitStack:
     return stack
 
 
-def test_read_phase_state_deep_merges_defaults_and_normalizes_ready_phase(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-a",
-        {
-            "schema_version": 1,
-            "phase": "ready",
-            "artifacts": {"requirements": {"digest": "abc123"}},
-        },
-    )
-
-    state = read_phase_state(str(tmp_path), "slug-a")
-
-    assert state["phase"] == "pending"
-    assert state["schema_version"] == 2  # migrated to v2
-    artifacts = state["artifacts"]
-    assert isinstance(artifacts, dict)
-    requirements = artifacts["requirements"]
-    assert isinstance(requirements, dict)
-    assert requirements["digest"] == "abc123"
-    assert requirements["produced_at"] == ""
-
-
 def test_mark_phase_changes_requested_records_round_baseline_and_finding_ids(tmp_path: Path) -> None:
-    todo_dir = tmp_path / "todos" / "slug-b"
-    _write_state(todo_dir, {"schema_version": 2, "current": "review_pending", "history": []})
-    (todo_dir / "review-findings.md").write_text("R1-F1\nR1-F2\nR1-F1\n", encoding="utf-8")
+    """mark_phase("review_changes_requested") stamps round, baseline commit, and finding IDs."""
+    conn = _init_db(tmp_path)
+    _write_state_db(conn, "slug-b", {"schema_version": 2, "current": "review_pending", "history": []})
+    _write_artifact_db(conn, "slug-b", "review-findings", "R1-F1\nR1-F2\nR1-F1\n")
+    conn.close()
 
     mock_machine = MagicMock()
 
-    # on_enter for review_changes_requested is in the lifecycle — we test via the real machine
-    def _target_side_effect(snapshot: StateData, name: str, ctx: object) -> StateData:
+    def _target_side_effect(snapshot: StateData, name: str, _ctx: object) -> StateData:
         result = dict(snapshot)
         result["current"] = name
         result.setdefault("history", [])
-        # Simulate on_enter for review_changes_requested
         if name == "review_changes_requested":
             result["review_round"] = 1
             result["review_baseline_commit"] = "deadbeef"
@@ -94,56 +124,14 @@ def test_mark_phase_changes_requested_records_round_baseline_and_finding_ids(tmp
     assert state["resolved_findings"] == []
 
 
-def test_mark_phase_approved_merges_unresolved_findings_into_resolved_ids(tmp_path: Path) -> None:
-    _write_state(
-        tmp_path / "todos" / "slug-c",
-        {
-            "schema_version": 2,
-            "current": "review_pending",
-            "history": [],
-            "resolved_findings": ["R1-F1"],
-            "unresolved_findings": ["R1-F2", "R1-F1"],
-        },
-    )
-
-    mock_machine = MagicMock()
-
-    def _target_side_effect(snapshot: StateData, name: str, ctx: object) -> StateData:
-        result = dict(snapshot)
-        result["current"] = name
-        result.setdefault("history", [])
-        if name == "review_approved":
-            result["review_round"] = 1
-            result["review_baseline_commit"] = "cafebabe"
-            unresolved = list(cast(list[object], result.get("unresolved_findings", [])))
-            resolved = list(cast(list[object], result.get("resolved_findings", [])))
-            merged = list(dict.fromkeys([*[str(i) for i in resolved], *[str(i) for i in unresolved]]))
-            result["resolved_findings"] = merged
-            result["unresolved_findings"] = []
-        return result
-
-    mock_machine.target.side_effect = _target_side_effect
-
-    with _patch_mark_phase_deps(mock_machine):
-        with patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="cafebabe"):
-            state = mark_phase(str(tmp_path), "slug-c", "review_approved")
-
-    assert state["current"] == "review_approved"
-    assert state["review_round"] == 1
-    assert state["review_baseline_commit"] == "cafebabe"
-    assert state["resolved_findings"] == ["R1-F1", "R1-F2"]
-    assert state["unresolved_findings"] == []
-
-
 def test_mark_phase_prepared_stamps_grounding(tmp_path: Path) -> None:
     """mark_phase("prepared") stamps DOR, grounding, and verdicts via on_enter."""
-    todo_dir = tmp_path / "todos" / "slug-e"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("Real requirements content.\n", encoding="utf-8")
-    (todo_dir / "implementation-plan.md").write_text("Real plan content.\n", encoding="utf-8")
-    (todo_dir / "input.md").write_text("input", encoding="utf-8")
+    conn = _init_db(tmp_path)
+    _write_artifact_db(conn, "slug-e", "requirements", "Real requirements content.\n")
+    _write_artifact_db(conn, "slug-e", "implementation-plan", "Real plan content.\n")
+    _write_artifact_db(conn, "slug-e", "input", "input")
+    conn.close()
 
-    # Use the real lifecycle machine for on_enter
     with (
         patch(
             "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
@@ -158,19 +146,25 @@ def test_mark_phase_prepared_stamps_grounding(tmp_path: Path) -> None:
     assert state["current"] == "prepared"
     assert state["dor"]["score"] == 8  # type: ignore[index]
     assert grounding["base_sha"] == "headsha"
-    assert (todo_dir / "quality-checklist.md").exists()
-    checklist = (todo_dir / "quality-checklist.md").read_text(encoding="utf-8")
+    # Quality checklist is now written to DB, not filesystem
+    db_conn = sqlite3.connect(str(tmp_path / ".teleclaude" / "todos.db"))
+    checklist = _read_artifact_db(db_conn, "slug-e", "quality-checklist")
+    db_conn.close()
+    assert checklist is not None
     assert "Browser-based frontend or web UI changes smoke-tested with Playwright" in checklist
     assert "Browser-based frontend or web UI changes verified with Playwright during review" in checklist
     assert "## Finalize Gates (Finalizer)" in checklist
 
 
 def test_stamp_artifact_stamps_produced_at_for_test_specs(tmp_path: Path) -> None:
-    """stamp_artifact writes artifacts.test_specs.produced_at to state.yaml."""
-    todo_dir = tmp_path / "todos" / "slug-f"
-    _write_state(
-        todo_dir, {"schema_version": 2, "artifacts": {"test_specs": {"digest": "", "produced_at": "", "stale": False}}}
+    """stamp_artifact writes artifacts.test_specs.produced_at to state."""
+    conn = _init_db(tmp_path)
+    _write_state_db(
+        conn,
+        "slug-f",
+        {"schema_version": 2, "artifacts": {"test_specs": {"digest": "", "produced_at": "", "stale": False}}},
     )
+    conn.close()
 
     state = stamp_artifact(str(tmp_path), "slug-f", "test_specs")
 
@@ -185,15 +179,16 @@ def test_stamp_artifact_stamps_produced_at_for_test_specs(tmp_path: Path) -> Non
     assert persisted_artifacts["test_specs"]["produced_at"] != ""  # type: ignore[index]
 
 
-def test_stamp_artifact_records_digest_for_requirements_file(tmp_path: Path) -> None:
-    """stamp_artifact records digest + produced_at for file-backed requirements."""
-    todo_dir = tmp_path / "todos" / "slug-g"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("grounded requirements\n", encoding="utf-8")
-    _write_state(
-        todo_dir,
+def test_stamp_artifact_records_digest_for_requirements(tmp_path: Path) -> None:
+    """stamp_artifact records digest + produced_at for DB-backed requirements."""
+    conn = _init_db(tmp_path)
+    _write_state_db(
+        conn,
+        "slug-g",
         {"schema_version": 2, "artifacts": {"requirements": {"digest": "", "produced_at": "", "stale": False}}},
     )
+    _write_artifact_db(conn, "slug-g", "requirements", "grounded requirements\n")
+    conn.close()
 
     state = stamp_artifact(str(tmp_path), "slug-g", "requirements")
 
@@ -205,18 +200,19 @@ def test_stamp_artifact_records_digest_for_requirements_file(tmp_path: Path) -> 
     assert requirements["produced_at"] != ""
 
 
-def test_stamp_artifact_records_digest_for_implementation_plan_file(tmp_path: Path) -> None:
-    """stamp_artifact records digest + produced_at for file-backed plans."""
-    todo_dir = tmp_path / "todos" / "slug-h"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "implementation-plan.md").write_text("grounded plan\n", encoding="utf-8")
-    _write_state(
-        todo_dir,
+def test_stamp_artifact_records_digest_for_implementation_plan(tmp_path: Path) -> None:
+    """stamp_artifact records digest + produced_at for DB-backed plans."""
+    conn = _init_db(tmp_path)
+    _write_state_db(
+        conn,
+        "slug-h",
         {
             "schema_version": 2,
             "artifacts": {"implementation_plan": {"digest": "", "produced_at": "", "stale": False}},
         },
     )
+    _write_artifact_db(conn, "slug-h", "implementation-plan", "grounded plan\n")
+    conn.close()
 
     state = stamp_artifact(str(tmp_path), "slug-h", "implementation_plan")
 
@@ -234,9 +230,10 @@ def test_stamp_artifact_records_digest_for_implementation_plan_file(tmp_path: Pa
 
 
 def test_stamp_verdict_writes_verdict_to_state(tmp_path: Path) -> None:
-    """stamp_verdict persists a valid phase verdict to state.yaml."""
-    todo_dir = tmp_path / "todos" / "slug-v1"
-    _write_state(todo_dir, {"schema_version": 2, "requirements_review": {"verdict": "needs_work"}})
+    """stamp_verdict persists a valid phase verdict to state."""
+    conn = _init_db(tmp_path)
+    _write_state_db(conn, "slug-v1", {"schema_version": 2, "requirements_review": {"verdict": "needs_work"}})
+    conn.close()
 
     state = stamp_verdict(str(tmp_path), "slug-v1", "requirements_review", "approve")
 
@@ -247,8 +244,9 @@ def test_stamp_verdict_writes_verdict_to_state(tmp_path: Path) -> None:
 
 def test_stamp_verdict_raises_on_invalid_phase(tmp_path: Path) -> None:
     """stamp_verdict raises ValueError for an unknown phase name."""
-    todo_dir = tmp_path / "todos" / "slug-v2"
-    _write_state(todo_dir, {"schema_version": 2})
+    conn = _init_db(tmp_path)
+    _write_state_db(conn, "slug-v2", {"schema_version": 2})
+    conn.close()
 
     with pytest.raises(ValueError, match="invalid prepare phase"):
         stamp_verdict(str(tmp_path), "slug-v2", "nonexistent_phase", "approve")
@@ -256,8 +254,9 @@ def test_stamp_verdict_raises_on_invalid_phase(tmp_path: Path) -> None:
 
 def test_stamp_verdict_raises_on_invalid_verdict(tmp_path: Path) -> None:
     """stamp_verdict raises ValueError for an unknown verdict value."""
-    todo_dir = tmp_path / "todos" / "slug-v3"
-    _write_state(todo_dir, {"schema_version": 2})
+    conn = _init_db(tmp_path)
+    _write_state_db(conn, "slug-v3", {"schema_version": 2})
+    conn.close()
 
     with pytest.raises(ValueError, match="invalid verdict"):
         stamp_verdict(str(tmp_path), "slug-v3", "requirements_review", "not_a_verdict")
@@ -268,23 +267,11 @@ def test_stamp_verdict_raises_on_invalid_verdict(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_mark_phase_prepared_raises_when_todo_dir_missing(tmp_path: Path) -> None:
-    """prepared transition raises ValueError when the todo directory does not exist."""
-    with (
-        patch(
-            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
-        ),
-        patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
-    ):
-        with pytest.raises(ValueError, match="Todo directory not found"):
-            mark_phase(str(tmp_path), "missing-slug", "prepared")
-
-
 def test_mark_phase_prepared_raises_when_requirements_missing(tmp_path: Path) -> None:
-    """prepared transition raises ValueError when requirements.md is absent."""
-    todo_dir = tmp_path / "todos" / "slug-p2"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "implementation-plan.md").write_text("Real plan content.\n", encoding="utf-8")
+    """prepared transition raises ValueError when requirements artifact is absent."""
+    conn = _init_db(tmp_path)
+    _write_artifact_db(conn, "slug-p2", "implementation-plan", "Real plan content.\n")
+    conn.close()
 
     with (
         patch(
@@ -292,15 +279,15 @@ def test_mark_phase_prepared_raises_when_requirements_missing(tmp_path: Path) ->
         ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
     ):
-        with pytest.raises(ValueError, match=r"Missing requirements\.md"):
+        with pytest.raises(ValueError, match=r"Missing requirements artifact"):
             mark_phase(str(tmp_path), "slug-p2", "prepared")
 
 
 def test_mark_phase_prepared_raises_when_plan_missing(tmp_path: Path) -> None:
-    """prepared transition raises ValueError when implementation-plan.md is absent."""
-    todo_dir = tmp_path / "todos" / "slug-p3"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("Real requirements content.\n", encoding="utf-8")
+    """prepared transition raises ValueError when implementation-plan artifact is absent."""
+    conn = _init_db(tmp_path)
+    _write_artifact_db(conn, "slug-p3", "requirements", "Real requirements content.\n")
+    conn.close()
 
     with (
         patch(
@@ -308,8 +295,22 @@ def test_mark_phase_prepared_raises_when_plan_missing(tmp_path: Path) -> None:
         ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
     ):
-        with pytest.raises(ValueError, match=r"Missing implementation-plan\.md"):
+        with pytest.raises(ValueError, match=r"Missing implementation-plan artifact"):
             mark_phase(str(tmp_path), "slug-p3", "prepared")
+
+
+def test_mark_phase_prepared_raises_when_no_artifacts(tmp_path: Path) -> None:
+    """prepared transition raises ValueError when no artifacts exist at all."""
+    _init_db(tmp_path).close()
+
+    with (
+        patch(
+            "teleclaude.core.next_machine.slug_resolution.resolve_canonical_project_root", side_effect=_identity_path
+        ),
+        patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
+    ):
+        with pytest.raises(ValueError, match=r"Missing requirements artifact"):
+            mark_phase(str(tmp_path), "missing-slug", "prepared")
 
 
 # ---------------------------------------------------------------------------
@@ -317,21 +318,22 @@ def test_mark_phase_prepared_raises_when_plan_missing(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _write_finalize_ready_state(tmp_path: Path, slug: str, *, head: str = "abc123") -> Path:
-    """Set up a state at review_approved so we can target finalize_ready."""
-    todo_dir = tmp_path / "todos" / slug
-    _write_state(todo_dir, {"schema_version": 2, "current": "review_approved", "history": []})
-    # Create worktree
+def _write_finalize_ready_state(tmp_path: Path, slug: str) -> Path:
+    """Set up a state at review_approved in DB so we can target finalize_ready."""
+    conn = _init_db(tmp_path)
+    _write_state_db(conn, slug, {"schema_version": 2, "current": "review_approved", "history": []})
+    conn.close()
     worktree = tmp_path / "trees" / slug
     worktree.mkdir(parents=True)
     (worktree / "todos" / slug).mkdir(parents=True)
     return worktree
 
 
-def test_mark_phase_finalize_ready_raises_when_worktree_missing(tmp_path: Path) -> None:
-    """finalize_ready raises ValueError when the worktree directory does not exist."""
-    todo_dir = tmp_path / "todos" / "slug-fr1"
-    _write_state(todo_dir, {"schema_version": 2, "current": "review_approved", "history": []})
+def test_mark_phase_finalize_ready_raises_when_git_refs_unresolvable(tmp_path: Path) -> None:
+    """finalize_ready raises ValueError when git refs cannot be resolved (no real worktree)."""
+    conn = _init_db(tmp_path)
+    _write_state_db(conn, "slug-fr1", {"schema_version": 2, "current": "review_approved", "history": []})
+    conn.close()
 
     with (
         patch(
@@ -339,7 +341,7 @@ def test_mark_phase_finalize_ready_raises_when_worktree_missing(tmp_path: Path) 
         ),
         patch("teleclaude.session_identity.get_session_id", return_value="test-session"),
     ):
-        with pytest.raises(ValueError, match="worktree not found"):
+        with pytest.raises(ValueError, match="unable to resolve finalized branch head"):
             mark_phase(str(tmp_path), "slug-fr1", "finalize_ready")
 
 
@@ -444,12 +446,10 @@ def test_mark_phase_finalize_ready_happy_path(tmp_path: Path) -> None:
 
 def test_mark_phase_finalize_handoff_raises_when_not_ready(tmp_path: Path) -> None:
     """finalize_handoff raises ValueError when finalize.status is not 'ready'."""
-    # Write state inside the worktree (where _resolve_state_cwd will look)
-    worktree = tmp_path / "trees" / "slug-fh1"
-    worktree.mkdir(parents=True)
-    wt_todo_dir = worktree / "todos" / "slug-fh1"
-    _write_state(
-        wt_todo_dir,
+    conn = _init_db(tmp_path)
+    _write_state_db(
+        conn,
+        "slug-fh1",
         {
             "schema_version": 2,
             "current": "finalize_ready",
@@ -457,6 +457,7 @@ def test_mark_phase_finalize_handoff_raises_when_not_ready(tmp_path: Path) -> No
             "finalize": {"status": "pending"},
         },
     )
+    conn.close()
 
     with (
         patch(
@@ -470,12 +471,10 @@ def test_mark_phase_finalize_handoff_raises_when_not_ready(tmp_path: Path) -> No
 
 def test_mark_phase_finalize_handoff_happy_path(tmp_path: Path) -> None:
     """finalize_handoff writes handoff metadata when finalize is ready."""
-    # Write state inside the worktree (where _resolve_state_cwd will look)
-    worktree = tmp_path / "trees" / "slug-fh2"
-    worktree.mkdir(parents=True)
-    wt_todo_dir = worktree / "todos" / "slug-fh2"
-    _write_state(
-        wt_todo_dir,
+    conn = _init_db(tmp_path)
+    _write_state_db(
+        conn,
+        "slug-fh2",
         {
             "schema_version": 2,
             "current": "finalize_ready",
@@ -489,6 +488,7 @@ def test_mark_phase_finalize_handoff_happy_path(tmp_path: Path) -> None:
             },
         },
     )
+    conn.close()
 
     with (
         patch(

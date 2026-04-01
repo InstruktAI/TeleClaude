@@ -54,12 +54,14 @@ def _project_root_from_cwd(cwd: str) -> str:
 
 def _get_todos_db_sync(cwd: str) -> TodosDb:
     """Return a sync-initialized TodosDb for the project owning *cwd*."""
-    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.todos_db import TodosDb, _new_instance_hook  # pylint: disable=import-outside-toplevel
 
     project_root = _project_root_from_cwd(cwd)
     db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
     db = TodosDb(db_path)
     db.initialize_sync()
+    if _new_instance_hook is not None:
+        _new_instance_hook(db, project_root)
     return db
 
 

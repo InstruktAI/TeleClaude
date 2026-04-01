@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ class TodosDbStateMixin:
     """Read/write todo lifecycle state (replaces state_io.py)."""
 
     conn: aiosqlite.Connection | None
+    _on_mutation: Callable[[], None]
 
     async def read_state(self, slug: str) -> dict[str, StateValue] | None:
         """Read state JSON for a slug (active/icebox). Returns None if not found."""
@@ -70,6 +72,7 @@ class TodosDbStateMixin:
             (row_id, slug, state_json, now, now),
         )
         await self.conn.commit()
+        self._on_mutation()
 
     async def delete_state(self, slug: str) -> None:
         """Delete state for a slug."""
@@ -79,6 +82,7 @@ class TodosDbStateMixin:
             (slug,),
         )
         await self.conn.commit()
+        self._on_mutation()
 
     async def list_slugs(self) -> list[str]:
         """Return all slugs with stored state."""
@@ -161,3 +165,4 @@ class TodosDbStateMixin:
             conn.commit()
         finally:
             conn.close()
+        self._on_mutation()

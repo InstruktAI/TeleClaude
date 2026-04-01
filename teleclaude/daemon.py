@@ -35,6 +35,7 @@ from teleclaude.core.models import Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.core.todos_db import TodosDb, set_todos_mutation_hook
 from teleclaude.daemon_event_platform import _DaemonEventPlatformMixin
 from teleclaude.daemon_hook_outbox import (
     _DaemonHookOutboxMixin,
@@ -342,6 +343,30 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         ).model_dump()
         api_server._broadcast_payload("chiptunes_state", payload)  # pylint: disable=protected-access
 
+    def _register_todos_mutation_hook(self) -> None:
+        """Wire TodosDb mutation callbacks to daemon cache refresh.
+
+        Called at daemon startup after the event loop is running. Every TodosDb
+        instance created after this point (via get_todos_db or _get_todos_db_sync)
+        will call refresh_local_todos on the DaemonCache whenever a mutation
+        (write_state, deliver, write_artifact, etc.) is committed.
+        """
+        loop = self._loop
+        cache = self.cache
+        computer = config.computer.name
+
+        def _hook(instance: TodosDb, project_root: str) -> None:
+            def _on_mutation() -> None:
+                if loop is not None and loop.is_running():
+                    loop.call_soon_threadsafe(
+                        lambda: asyncio.ensure_future(cache.refresh_local_todos(computer, project_root, "todo_updated"))
+                    )
+
+            instance._on_mutation = _on_mutation  # pylint: disable=protected-access
+
+        set_todos_mutation_hook(_hook)
+        logger.info("Todos mutation hook registered (computer=%s)", computer)
+
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
 
@@ -475,6 +500,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         # main() already acquires this lock, so _acquire_lock() is idempotent.
         self._acquire_lock()
         self._loop = asyncio.get_running_loop()
+        self._register_todos_mutation_hook()
         logger.info("Starting TeleClaude daemon...")
         try:
             await self.lifecycle.startup()

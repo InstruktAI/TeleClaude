@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,7 @@ class TodosDbRoadmapMixin:
     """Roadmap CRUD, ordering, deps, delivery, icebox (replaces roadmap.yaml)."""
 
     conn: aiosqlite.Connection | None
+    _on_mutation: Callable[[], None]
 
     async def list_roadmap(
         self,
@@ -119,6 +121,7 @@ class TodosDbRoadmapMixin:
                 )
 
         await self.conn.commit()
+        self._on_mutation()
         return True
 
     async def remove_from_roadmap(self, slug: str) -> bool:
@@ -140,6 +143,7 @@ class TodosDbRoadmapMixin:
             (slug,),
         )
         await self.conn.commit()
+        self._on_mutation()
         return True
 
     async def slug_in_roadmap(self, slug: str) -> bool:
@@ -207,6 +211,8 @@ class TodosDbRoadmapMixin:
                     (json.dumps(state), now, row[0]),
                 )
         await self.conn.commit()
+        if result.rowcount > 0:
+            self._on_mutation()
         return result.rowcount > 0
 
     async def delivered_slugs(self) -> set[str]:
@@ -228,6 +234,8 @@ class TodosDbRoadmapMixin:
             (now, slug),
         )
         await self.conn.commit()
+        if result.rowcount > 0:
+            self._on_mutation()
         return result.rowcount > 0
 
     async def unfreeze(self, slug: str) -> bool:
@@ -240,6 +248,8 @@ class TodosDbRoadmapMixin:
             (now, slug),
         )
         await self.conn.commit()
+        if result.rowcount > 0:
+            self._on_mutation()
         return result.rowcount > 0
 
     async def set_deps(self, slug: str, *, after: list[str]) -> None:
@@ -255,6 +265,7 @@ class TodosDbRoadmapMixin:
                 (slug, dep),
             )
         await self.conn.commit()
+        self._on_mutation()
 
     async def load_deps(self) -> dict[str, list[str]]:
         """Return dependency graph: {slug: [depends_on, ...]}."""
@@ -276,6 +287,7 @@ class TodosDbRoadmapMixin:
             (slug,),
         )
         await self.conn.commit()
+        self._on_mutation()
 
     async def move_in_roadmap(
         self,
@@ -340,6 +352,7 @@ class TodosDbRoadmapMixin:
             (new_pos, now, slug),
         )
         await self.conn.commit()
+        self._on_mutation()
         return True
 
     # --- Sync methods for integration thread ---
@@ -392,6 +405,8 @@ class TodosDbRoadmapMixin:
                     )
             conn.commit()
             delivered: bool = cursor.rowcount > 0
-            return delivered
         finally:
             conn.close()
+        if delivered:
+            self._on_mutation()
+        return delivered
