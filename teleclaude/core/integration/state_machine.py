@@ -104,7 +104,7 @@ def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
     _, stash_after_out, _ = _run_git(["stash", "list"], cwd=cwd)
     stash_count_after = len(stash_after_out.strip().splitlines()) if stash_after_out.strip() else 0
     if stash_count_after > stash_count_before:
-        return _format_autostash_orphaned(stash_after_out.strip())
+        return _format_autostash_orphaned(stash_after_out.strip(), project_root=cwd)
 
     # Reset session-scoped counters on fresh entry so they reflect only this
     # run's work, not accumulated totals from previous integrator sessions.

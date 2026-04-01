@@ -1,14 +1,15 @@
 """Characterization tests for teleclaude.core.integration.formatters."""
+# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 
 from teleclaude.core.integration.formatters import (
     _format_anomalies,
+    _format_autostash_orphaned,
     _format_commit_decision,
     _format_conflict_decision,
     _format_error,
     _format_lease_busy,
-    _format_pull_blocked,
     _format_push_rejected,
     _format_queue_empty,
 )
@@ -62,11 +63,10 @@ def test_format_lease_busy_returns_string():
     assert "session-xyz" in result
 
 
-def test_format_pull_blocked_returns_string():
-    result = _format_pull_blocked("dirty files", "slug-a")
+def test_format_autostash_orphaned_targets_project_root():
+    result = _format_autostash_orphaned("stash@{0}: WIP", "/home/user/project")
     assert isinstance(result, str)
-    assert "slug-a" in result
-    assert "dirty files" in result
+    assert "git -C /home/user/project stash pop" in result
 
 
 def test_format_queue_empty_returns_string():
@@ -102,3 +102,23 @@ def test_format_error_returns_string_with_code():
     result = _format_error("INVALID_STATE", "checkpoint missing candidate")
     assert isinstance(result, str)
     assert "INVALID_STATE" in result
+
+
+def test_commit_decision_emits_plain_git_commands():
+    """Agent runs from the worktree — commands must not contain -C trees/_integration."""
+    result = _format_commit_decision("s", "b", "", "", "", "")
+    assert "git commit -m" in result
+    assert "-C trees/_integration" not in result
+
+
+def test_conflict_decision_emits_plain_git_commands():
+    result = _format_conflict_decision("s", "b", ["f.py"])
+    assert "git add" in result
+    assert "-C trees/_integration" not in result
+
+
+def test_push_rejected_emits_plain_git_commands():
+    result = _format_push_rejected("rejected", "s")
+    assert "git fetch origin" in result
+    assert "git rebase origin/main" in result
+    assert "-C trees/_integration" not in result

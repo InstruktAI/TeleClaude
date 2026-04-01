@@ -1,6 +1,10 @@
 """Integration instruction formatters — structured messages returned to agents.
 
 No imports from state_machine.py or step_functions.py (circular-import guard).
+
+All commands assume the agent's cwd is the integration worktree. Commands that
+target the project root (repo root sync, stash recovery) receive ``project_root``
+and emit explicit ``git -C <project_root>`` prefixes.
 """
 
 from __future__ import annotations
@@ -50,12 +54,10 @@ Staged changes are ready for commit.
    - Subject: clear, imperative, scoped (e.g. "feat({slug}): deliver {slug}")
    - Body: summarize what changed, key decisions, scope
    - Footer: TeleClaude Co-Authored-By trailer
-3. Run: git -C trees/_integration commit -m '<your message>'
+3. Run: git commit -m '<your message>'
 4. Then call: telec todo integrate
 
-NEXT: Compose and execute git commit in trees/_integration, then call telec todo integrate""" + _format_anomalies(
-        warnings or []
-    )
+NEXT: Compose and execute git commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
 
 
 def _format_conflict_decision(
@@ -66,7 +68,7 @@ def _format_conflict_decision(
 
 Candidate: {slug} (branch: {branch})
 
-The squash merge of {branch} into main encountered conflicts in trees/_integration/:
+The squash merge of {branch} into main encountered conflicts:
 {file_list}
 
 ## Resolution Rules
@@ -81,15 +83,13 @@ Full procedure: `telec docs get software-development/procedure/lifecycle/integra
 1. Read each conflicted file — understand the **intent** on both sides
 2. Merge both contributions (do not use `--theirs` or `--ours`)
 3. Verify: all API surface and behavior from both sides preserved
-4. Stage: git -C trees/_integration add <files>
+4. Stage: git add <files>
 5. Commit with delivery-quality message noting conflict resolution
 6. Call: telec todo integrate
 
 If unresolvable, call telec todo integrate without committing.
 
-NEXT: Resolve conflicts in trees/_integration, stage, commit, then call telec todo integrate""" + _format_anomalies(
-        warnings or []
-    )
+NEXT: Resolve conflicts, stage, commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
 
 
 def _format_push_rejected(rejection_reason: str, slug: str, *, warnings: list[str] | None = None) -> str:
@@ -103,16 +103,14 @@ Rejection output:
 
 ## Your Task
 1. Diagnose the rejection (likely non-fast-forward — another commit landed)
-2. Fetch and rebase in the integration worktree:
-   git -C trees/_integration fetch origin
-   git -C trees/_integration rebase origin/main
+2. Fetch and rebase:
+   git fetch origin
+   git rebase origin/main
 3. Resolve any new conflicts if present
-4. Push again: git -C trees/_integration push origin HEAD:main
+4. Push again: git push origin HEAD:main
 5. Then call: telec todo integrate
 
-NEXT: Rebase in trees/_integration, resolve (if needed), push, then call telec todo integrate""" + _format_anomalies(
-        warnings or []
-    )
+NEXT: Fetch, rebase, resolve (if needed), push, then call telec todo integrate""" + _format_anomalies(warnings or [])
 
 
 def _format_lease_busy(holder_session_id: str) -> str:
@@ -124,39 +122,6 @@ Only one integrator may run at a time.
 Exit this session immediately. The active integrator will drain the queue.
 
 NEXT: End this session — another integrator is already active"""
-
-
-def _format_pull_blocked(pull_stderr: str, slug: str, *, warnings: list[str] | None = None) -> str:
-    base = f"""INTEGRATION DECISION: REPO ROOT SYNC BLOCKED
-
-Candidate: {slug} — delivery pushed to origin/main successfully.
-
-Syncing local main with origin/main failed because of dirty local files:
-{pull_stderr}
-
-The delivery is safe on origin. But local main is now behind, and agents
-starting work on local main will see stale files as truth.
-
-## Your Task
-1. Tell the user: "Integration delivered {slug} to origin/main, but local main
-   has dirty files that block the pull. I need to stash local changes, pull, and
-   restore them — but only when no other agent sessions are active on local main.
-   Confirm when ready."
-2. Wait for the user's confirmation.
-3. Run the following commands in sequence:
-   git stash
-   git pull --ff-only origin main
-   git stash pop
-4. If stash pop succeeds cleanly, call: telec todo integrate
-5. If stash pop produces conflicts:
-   - Files deleted by the delivery that had local edits are obsolete — accept the delivered version
-   - Real work that should be ported to new locations: move manually, then stage
-   - After all conflicts resolved: git stash drop
-   - Then call: telec todo integrate
-
-NEXT: Inform user, wait for confirmation, stash/pull/pop, resolve conflicts if any, \
-then call telec todo integrate"""
-    return base + _format_anomalies(warnings or [])
 
 
 def _format_queue_empty(
@@ -179,7 +144,7 @@ The integration queue is empty.
 {next_line}""" + _format_anomalies(warnings or [])
 
 
-def _format_autostash_orphaned(stash_list: str) -> str:
+def _format_autostash_orphaned(stash_list: str, project_root: str) -> str:
     return f"""INTEGRATION ERROR: AUTOSTASH_ORPHANED
 
 git pull --autostash succeeded but left an un-popped stash on repo root.
@@ -189,13 +154,13 @@ Current stash list:
 {stash_list}
 
 ## Your Task
-1. Pop the stash: `git stash pop`
+1. Pop the stash: `git -C {project_root} stash pop`
 2. Resolve any conflicts between local changes and pulled content
-3. Stage resolved files: `git add <resolved files>`
-4. If pop left unresolved conflict state: `git stash drop` after resolving
+3. Stage resolved files: `git -C {project_root} add <resolved files>`
+4. If pop left unresolved conflict state: `git -C {project_root} stash drop` after resolving
 5. Re-run: `telec todo integrate`
 
-NEXT: Pop the orphaned stash, resolve conflicts, then call telec todo integrate"""
+NEXT: Pop the orphaned stash on repo root, resolve conflicts, then call telec todo integrate"""
 
 
 def _format_error(code: str, message: str) -> str:
@@ -209,7 +174,6 @@ __all__ = [
     "_format_conflict_decision",
     "_format_error",
     "_format_lease_busy",
-    "_format_pull_blocked",
     "_format_push_rejected",
     "_format_queue_empty",
 ]

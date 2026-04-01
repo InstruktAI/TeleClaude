@@ -22,6 +22,9 @@ each decision point until the queue is drained.
   `origin/main` before each merge. Repo root cleanliness is irrelevant — dirty files, hot
   patches, and operational edits on `main` do not affect integration.
 - Worker worktrees branch from `origin/main` (not local HEAD).
+- **The agent's cwd is the integration worktree.** All git and make commands run from
+  there without `-C` prefixes. Commands targeting project root (repo sync, stash recovery)
+  are emitted by the engine with explicit `-C <project_root>` paths.
 
 ## Steps
 
@@ -29,19 +32,16 @@ each decision point until the queue is drained.
 2. Read the returned instruction block and execute it verbatim.
 3. After executing, call `telec todo integrate` again to advance.
 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
-5. Before any push from `trees/_integration`, run repo-wide verification in that
-   worktree:
-   - `make -C trees/_integration lint`
-   - `make -C trees/_integration test`
-     If either command fails, fix the failures in `trees/_integration`, rerun both,
-     then resume the state machine.
+5. Before any push, run repo-wide verification:
+   - `make lint`
+   - `make test`
+     If either command fails, fix the failures, rerun both, then resume the state machine.
 
 The state machine returns one of the following instruction blocks at each step.
 
 ### SQUASH COMMIT REQUIRED
 
-The branch has been squash-merged in the integration worktree (`trees/_integration/`);
-staged changes are ready.
+The branch has been squash-merged; staged changes are ready.
 
 1. Read the context: diff stats, branch commit history, `requirements.md`,
    `implementation-plan.md`.
@@ -49,13 +49,12 @@ staged changes are ready.
    - Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
    - Body: summarize what changed, key decisions, scope
    - Footer: `Co-Authored-By: TeleClaude <noreply@instrukt.ai>`
-3. Run `git -C trees/_integration commit -m '<message>'`, then call `telec todo integrate`.
-4. When the state machine reaches push, repo-wide `make -C trees/_integration lint`
-   and `make -C trees/_integration test` must already be green.
+3. Run `git commit -m '<message>'`, then call `telec todo integrate`.
+4. When the state machine reaches push, `make lint` and `make test` must already be green.
 
 ### CONFLICT RESOLUTION REQUIRED
 
-The squash merge encountered conflicts in the integration worktree.
+The squash merge encountered conflicts.
 
 **Cardinal rule: preserve the best of both worlds.** Conflicts mean two branches
 independently evolved the same files. Neither side is "the winner." Both contain
@@ -64,7 +63,7 @@ contributions — this is the #1 cause of silent regression in multi-agent workf
 
 **Resolution procedure:**
 
-1. Read each conflicted file in `trees/_integration/`; understand the **intent** on both sides.
+1. Read each conflicted file; understand the **intent** on both sides.
    - What feature, fix, or architectural change does each side introduce?
    - Are the changes orthogonal (touching different concerns in the same file) or
      genuinely contradictory (mutually exclusive designs for the same concern)?
@@ -83,22 +82,21 @@ contributions — this is the #1 cause of silent regression in multi-agent workf
    - Does it preserve all public API surface from both sides?
    - Does it preserve all behavioral features (not just code) from both sides?
    - Are tests from both sides still valid against the merged implementation?
-6. Stage resolved files with `git -C trees/_integration add <files>`.
+6. Stage resolved files with `git add <files>`.
 7. Compose a commit message (same quality standard as squash commit). In the body,
    note which conflicts were resolved and how both sides' contributions were preserved.
-8. Run `git -C trees/_integration commit -m '<message>'`, then call `telec todo integrate`.
+8. Run `git commit -m '<message>'`, then call `telec todo integrate`.
 9. If conflicts are genuinely unresolvable, call `telec todo integrate` without
    committing — the state machine will detect this and re-prompt.
-10. Before any push from `trees/_integration`, repo-wide `make -C trees/_integration lint`
-    and `make -C trees/_integration test` must pass.
+10. Before any push, `make lint` and `make test` must pass.
 
 ### PUSH REJECTION RECOVERY
 
-Push from integration worktree to origin/main was rejected (likely non-fast-forward).
+Push to origin/main was rejected (likely non-fast-forward).
 
-1. Diagnose: `git -C trees/_integration fetch origin && git -C trees/_integration log --oneline origin/main ^HEAD`.
-2. Rebase: `git -C trees/_integration rebase origin/main`.
-3. Resolve any new conflicts, then `git -C trees/_integration push origin HEAD:main`.
+1. Diagnose: `git fetch origin && git log --oneline origin/main ^HEAD`.
+2. Rebase: `git rebase origin/main`.
+3. Resolve any new conflicts, then `git push origin HEAD:main`.
 4. Call `telec todo integrate`.
 
 ### LEASE_BUSY
@@ -122,7 +120,8 @@ logs `integration.candidate.already_merged` and moves on.
 All candidates have been processed. The state machine automatically pushes any
 accumulated repo root bookkeeping commits (orchestrator dumps, `[skip ci]`
 housekeeping) to origin/main after syncing local main via pull. If the pull
-failed and the agent resolved it manually, push repo root: `git push origin main`.
+failed and the agent resolved it manually, push repo root using the explicit
+project root path emitted by the engine.
 
 Self-end: `telec sessions end self`.
 
@@ -141,11 +140,11 @@ from the last persisted phase. No manual checkpoint editing is required.
 
 ### Agent-actionable recovery
 
-- **Squash commit fails:** Read the error and retry the commit in `trees/_integration/`.
+- **Squash commit fails:** Read the error and retry the commit.
 - **Conflicts unresolvable:** Call `telec todo integrate` without committing — the state
   machine detects no HEAD advancement and re-prompts.
-- **Push repeatedly rejected:** Fetch, rebase, resolve, push in `trees/_integration/`,
-  then call `telec todo integrate`. If the problem persists, check for concurrent integrators.
+- **Push repeatedly rejected:** Fetch, rebase, resolve, push, then call
+  `telec todo integrate`. If the problem persists, check for concurrent integrators.
 
 ### Automatic crash recovery
 
