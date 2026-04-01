@@ -304,12 +304,13 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
 
     # --- Lifecycle transition via pure state machine ---
 
-    effective_cwd = cwd
+    project_root = resolve_canonical_project_root(cwd)
+    worktree = cwd
     if resolved_target in _BUILD_TERMINAL_STATES:
-        effective_cwd = _resolve_worktree_cwd(cwd, slug, force)
+        worktree = _resolve_worktree_cwd(cwd, slug, force)
 
     if not force and resolved_target in ("build_complete",):
-        if has_uncommitted_changes(cwd, slug):
+        if has_uncommitted_changes(project_root, slug):
             raise HTTPException(
                 status_code=409,
                 detail=(
@@ -326,7 +327,7 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
     machine = build_lifecycle_machine()
     actor_id = get_session_id() or "mark-phase"
     now = _dt.now(UTC).isoformat()
-    ctx = TargetContext(cwd=effective_cwd, slug=slug, actor_id=actor_id, at=now)
+    ctx = TargetContext(worktree_path=worktree, project_root=project_root, slug=slug, actor_id=actor_id, at=now)
 
     try:
         updated_state = machine.target(state, resolved_target, ctx)

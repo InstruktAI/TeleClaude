@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
@@ -53,7 +52,7 @@ def _project_root_from_cwd(cwd: str) -> str:
     return cwd
 
 
-def _get_todos_db_sync(cwd: str) -> "TodosDb":
+def _get_todos_db_sync(cwd: str) -> TodosDb:
     """Return a sync-initialized TodosDb for the project owning *cwd*."""
     from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
 
@@ -254,8 +253,13 @@ def mark_phase(cwd: str, slug: str, target: str) -> dict[str, StateValue]:
 
     from teleclaude.core.next_machine.state_machine import TargetContext  # pylint: disable=import-outside-toplevel
 
+    project_root = resolve_canonical_project_root(cwd)
+    worktree = (
+        str(Path(project_root) / WORKTREE_DIR / slug) if (Path(project_root) / WORKTREE_DIR / slug).exists() else cwd
+    )
     ctx = TargetContext(
-        cwd=resolve_canonical_project_root(cwd),
+        worktree_path=worktree,
+        project_root=project_root,
         slug=slug,
         actor_id=get_session_id() or "mark-phase",
         at=datetime.now(UTC).isoformat(),

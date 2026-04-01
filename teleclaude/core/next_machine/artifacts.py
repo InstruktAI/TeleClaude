@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 
-from teleclaude.core.next_machine.file_io import file_sha256
 from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_io import _get_todos_db_sync, read_phase_state, write_phase_state

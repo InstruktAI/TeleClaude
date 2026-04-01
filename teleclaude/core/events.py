@@ -528,10 +528,7 @@ class AgentStopActivityEvent(BaseAgentActivityEvent):
 
 
 type AgentActivityEvent = (
-    UserPromptSubmitActivityEvent
-    | ToolUseActivityEvent
-    | ToolDoneActivityEvent
-    | AgentStopActivityEvent
+    UserPromptSubmitActivityEvent | ToolUseActivityEvent | ToolDoneActivityEvent | AgentStopActivityEvent
 )
 
 

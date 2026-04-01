@@ -20,8 +20,14 @@ from teleclaude.core.next_machine.work_lifecycle import (
 StateData = dict[str, StateValue]
 
 
-def _ctx(tmp_path: Path, slug: str = "test-slug") -> TargetContext:
-    return TargetContext(cwd=str(tmp_path), slug=slug, actor_id="session-x", at="2024-01-01T00:00:00")
+def _ctx(tmp_path: Path, slug: str = "test-slug", *, worktree_path: str | None = None) -> TargetContext:
+    return TargetContext(
+        worktree_path=worktree_path or str(tmp_path),
+        project_root=str(tmp_path),
+        slug=slug,
+        actor_id="session-x",
+        at="2024-01-01T00:00:00",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -31,9 +37,9 @@ def _ctx(tmp_path: Path, slug: str = "test-slug") -> TargetContext:
 
 def test_finalize_ready_raises_when_worktree_missing(tmp_path: Path) -> None:
     """Raises ValueError when the worktree directory does not exist."""
-    with patch("teleclaude.core.next_machine.work_lifecycle.WORKTREE_DIR", "trees"):
-        with pytest.raises(ValueError, match="worktree not found"):
-            _on_enter_finalize_ready({}, _ctx(tmp_path))
+    worktree = str(tmp_path / "trees" / "test-slug")
+    with pytest.raises(ValueError, match="worktree not found"):
+        _on_enter_finalize_ready({}, _ctx(tmp_path, worktree_path=worktree))
 
 
 def test_finalize_ready_raises_when_uncommitted_changes(tmp_path: Path) -> None:
@@ -41,12 +47,9 @@ def test_finalize_ready_raises_when_uncommitted_changes(tmp_path: Path) -> None:
     worktree = tmp_path / "trees" / "test-slug"
     worktree.mkdir(parents=True)
 
-    with (
-        patch("teleclaude.core.next_machine.work_lifecycle.WORKTREE_DIR", "trees"),
-        patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=True),
-    ):
+    with patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=True):
         with pytest.raises(ValueError, match="uncommitted changes"):
-            _on_enter_finalize_ready({}, _ctx(tmp_path))
+            _on_enter_finalize_ready({}, _ctx(tmp_path, worktree_path=str(worktree)))
 
 
 def test_finalize_ready_raises_when_head_commit_missing(tmp_path: Path) -> None:
@@ -55,13 +58,12 @@ def test_finalize_ready_raises_when_head_commit_missing(tmp_path: Path) -> None:
     worktree.mkdir(parents=True)
 
     with (
-        patch("teleclaude.core.next_machine.work_lifecycle.WORKTREE_DIR", "trees"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value=""),
         patch("teleclaude.core.next_machine.work_lifecycle.get_ref_commit", return_value=""),
     ):
         with pytest.raises(ValueError, match="unable to resolve finalized branch head"):
-            _on_enter_finalize_ready({}, _ctx(tmp_path))
+            _on_enter_finalize_ready({}, _ctx(tmp_path, worktree_path=str(worktree)))
 
 
 def test_finalize_ready_raises_when_head_mismatch(tmp_path: Path) -> None:
@@ -70,13 +72,12 @@ def test_finalize_ready_raises_when_head_mismatch(tmp_path: Path) -> None:
     worktree.mkdir(parents=True)
 
     with (
-        patch("teleclaude.core.next_machine.work_lifecycle.WORKTREE_DIR", "trees"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="aaa"),
         patch("teleclaude.core.next_machine.work_lifecycle.get_ref_commit", return_value="bbb"),
     ):
         with pytest.raises(ValueError, match="does not match worktree HEAD"):
-            _on_enter_finalize_ready({}, _ctx(tmp_path))
+            _on_enter_finalize_ready({}, _ctx(tmp_path, worktree_path=str(worktree)))
 
 
 def test_finalize_ready_raises_when_remote_missing(tmp_path: Path) -> None:
@@ -85,14 +86,13 @@ def test_finalize_ready_raises_when_remote_missing(tmp_path: Path) -> None:
     worktree.mkdir(parents=True)
 
     with (
-        patch("teleclaude.core.next_machine.work_lifecycle.WORKTREE_DIR", "trees"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="abc123"),
         patch("teleclaude.core.next_machine.work_lifecycle.get_ref_commit", return_value="abc123"),
         patch("teleclaude.core.next_machine.work_lifecycle.get_remote_branch_head", return_value=""),
     ):
         with pytest.raises(ValueError, match="origin/test-slug is missing"):
-            _on_enter_finalize_ready({}, _ctx(tmp_path))
+            _on_enter_finalize_ready({}, _ctx(tmp_path, worktree_path=str(worktree)))
 
 
 def test_finalize_ready_raises_when_remote_mismatch(tmp_path: Path) -> None:
@@ -101,14 +101,13 @@ def test_finalize_ready_raises_when_remote_mismatch(tmp_path: Path) -> None:
     worktree.mkdir(parents=True)
 
     with (
-        patch("teleclaude.core.next_machine.work_lifecycle.WORKTREE_DIR", "trees"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="abc123"),
         patch("teleclaude.core.next_machine.work_lifecycle.get_ref_commit", return_value="abc123"),
         patch("teleclaude.core.next_machine.work_lifecycle.get_remote_branch_head", return_value="old000"),
     ):
         with pytest.raises(ValueError, match="origin/test-slug is at old000"):
-            _on_enter_finalize_ready({}, _ctx(tmp_path))
+            _on_enter_finalize_ready({}, _ctx(tmp_path, worktree_path=str(worktree)))
 
 
 def test_finalize_ready_happy_path_writes_finalize_dict(tmp_path: Path) -> None:
@@ -117,13 +116,12 @@ def test_finalize_ready_happy_path_writes_finalize_dict(tmp_path: Path) -> None:
     worktree.mkdir(parents=True)
 
     with (
-        patch("teleclaude.core.next_machine.work_lifecycle.WORKTREE_DIR", "trees"),
         patch("teleclaude.core.next_machine.work_lifecycle.has_uncommitted_changes", return_value=False),
         patch("teleclaude.core.next_machine.work_lifecycle.get_head_commit", return_value="abc123"),
         patch("teleclaude.core.next_machine.work_lifecycle.get_ref_commit", return_value="abc123"),
         patch("teleclaude.core.next_machine.work_lifecycle.get_remote_branch_head", return_value="abc123"),
     ):
-        result = _on_enter_finalize_ready({}, _ctx(tmp_path))
+        result = _on_enter_finalize_ready({}, _ctx(tmp_path, worktree_path=str(worktree)))
 
     finalize = result.get("finalize")
     assert isinstance(finalize, dict)
@@ -152,7 +150,7 @@ def test_finalize_handoff_raises_when_finalize_absent(tmp_path: Path) -> None:
 
 
 def test_finalize_handoff_happy_path_writes_handed_off(tmp_path: Path) -> None:
-    """Happy path: transitions finalize.status from ready → handed_off."""
+    """Happy path: transitions finalize.status from ready -> handed_off."""
     state: StateData = {
         "finalize": {
             "status": "ready",
@@ -188,7 +186,6 @@ def test_review_changes_happy_path(tmp_path: Path) -> None:
     }
 
     with (
-        patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
         patch(f"{_REVIEW_MODULE}.get_head_commit", return_value="deadbeef") as mock_head,
         patch(f"{_REVIEW_MODULE}._extract_finding_ids", return_value=["R2-F1", "R2-F2"]) as mock_extract,
     ):
@@ -199,9 +196,8 @@ def test_review_changes_happy_path(tmp_path: Path) -> None:
     assert result["unresolved_findings"] == ["R2-F1", "R2-F2"]
     assert result["resolved_findings"] == ["R1-F1"]
 
-    expected_worktree = str(tmp_path / "trees" / "test-slug")
-    mock_head.assert_called_once_with(expected_worktree)
-    mock_extract.assert_called_once_with(expected_worktree, "test-slug")
+    mock_head.assert_called_once_with(str(tmp_path))
+    mock_extract.assert_called_once_with(str(tmp_path), "test-slug")
 
 
 def test_review_changes_empty_head_logs_warning(tmp_path: Path) -> None:
@@ -209,7 +205,6 @@ def test_review_changes_empty_head_logs_warning(tmp_path: Path) -> None:
     state: StateData = {"review_round": 0, "resolved_findings": []}
 
     with (
-        patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
         patch(f"{_REVIEW_MODULE}.get_head_commit", return_value=""),
         patch(f"{_REVIEW_MODULE}._extract_finding_ids", return_value=[]),
         patch(f"{_REVIEW_MODULE}.logger") as mock_logger,
@@ -226,7 +221,6 @@ def test_review_changes_defaults_non_int_round_to_zero(tmp_path: Path) -> None:
     state: StateData = {"review_round": "garbage", "resolved_findings": []}
 
     with (
-        patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
         patch(f"{_REVIEW_MODULE}.get_head_commit", return_value="abc"),
         patch(f"{_REVIEW_MODULE}._extract_finding_ids", return_value=[]),
     ):
@@ -248,23 +242,19 @@ def test_review_approved_happy_path_merges_findings(tmp_path: Path) -> None:
         "resolved_findings": ["R1-F1"],
     }
 
-    with (
-        patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
-        patch(f"{_REVIEW_MODULE}.get_head_commit", return_value="cafebabe") as mock_head,
-    ):
+    with patch(f"{_REVIEW_MODULE}.get_head_commit", return_value="cafebabe") as mock_head:
         result = _on_enter_review_approved(state, _ctx(tmp_path))
 
     assert result["review_round"] == 2
     assert result["review_baseline_commit"] == "cafebabe"
-    assert result["unresolved_findings"] == []
+    assert not result["unresolved_findings"]
     resolved = result["resolved_findings"]
     assert isinstance(resolved, list)
     assert "R1-F1" in resolved
     assert "R2-F1" in resolved
     assert "R2-F2" in resolved
 
-    expected_worktree = str(tmp_path / "trees" / "test-slug")
-    mock_head.assert_called_once_with(expected_worktree)
+    mock_head.assert_called_once_with(str(tmp_path))
 
 
 def test_review_approved_empty_head_logs_warning(tmp_path: Path) -> None:
@@ -272,7 +262,6 @@ def test_review_approved_empty_head_logs_warning(tmp_path: Path) -> None:
     state: StateData = {"review_round": 0, "unresolved_findings": [], "resolved_findings": []}
 
     with (
-        patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
         patch(f"{_REVIEW_MODULE}.get_head_commit", return_value=""),
         patch(f"{_REVIEW_MODULE}.logger") as mock_logger,
     ):
@@ -291,17 +280,14 @@ def test_review_approved_deduplicates_merged_findings(tmp_path: Path) -> None:
         "resolved_findings": ["R1-F1"],
     }
 
-    with (
-        patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"),
-        patch(f"{_REVIEW_MODULE}.get_head_commit", return_value="abc"),
-    ):
+    with patch(f"{_REVIEW_MODULE}.get_head_commit", return_value="abc"):
         result = _on_enter_review_approved(state, _ctx(tmp_path))
 
     resolved = result["resolved_findings"]
     assert isinstance(resolved, list)
     assert resolved.count("R1-F1") == 1
     assert "R2-F1" in resolved
-    assert result["unresolved_findings"] == []
+    assert not result["unresolved_findings"]
 
 
 # ---------------------------------------------------------------------------
@@ -322,9 +308,8 @@ def test_finalize_ready_raises_when_already_handed_off(tmp_path: Path) -> None:
     worktree = tmp_path / "trees" / "test-slug"
     worktree.mkdir(parents=True)
 
-    with patch(f"{_REVIEW_MODULE}.WORKTREE_DIR", "trees"):
-        with pytest.raises(ValueError, match=r"cannot regress.*finalize_handed_off.*finalize_ready"):
-            _on_enter_finalize_ready(state, _ctx(tmp_path))
+    with pytest.raises(ValueError, match=r"cannot regress.*finalize_handed_off.*finalize_ready"):
+        _on_enter_finalize_ready(state, _ctx(tmp_path, worktree_path=str(worktree)))
 
 
 # ---------------------------------------------------------------------------
@@ -336,23 +321,19 @@ _LIFECYCLE_MODULE = "teleclaude.core.next_machine.work_lifecycle"
 
 def test_prepared_raises_when_git_rev_parse_fails(tmp_path: Path) -> None:
     """Raises ValueError when git rev-parse HEAD fails during prepare — grounding cannot be established."""
-    todo_dir = tmp_path / "todos" / "test-slug"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("## Req\nContent here\n")
-    (todo_dir / "implementation-plan.md").write_text("## Plan\nContent here\n")
-
-    with patch(f"{_LIFECYCLE_MODULE}.run_git_command", return_value=(1, "", "fatal: not a git repo")):
+    with (
+        patch(f"{_LIFECYCLE_MODULE}._has_artifact_content", return_value=True),
+        patch(f"{_LIFECYCLE_MODULE}.run_git_command", return_value=(1, "", "fatal: not a git repo")),
+    ):
         with pytest.raises(ValueError, match="git rev-parse HEAD failed"):
             _on_enter_prepared({}, _ctx(tmp_path))
 
 
 def test_prepared_raises_when_git_returns_empty_sha(tmp_path: Path) -> None:
     """Raises ValueError when git rev-parse HEAD returns empty — no baseline to ground against."""
-    todo_dir = tmp_path / "todos" / "test-slug"
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "requirements.md").write_text("## Req\nContent here\n")
-    (todo_dir / "implementation-plan.md").write_text("## Plan\nContent here\n")
-
-    with patch(f"{_LIFECYCLE_MODULE}.run_git_command", return_value=(0, "", "")):
+    with (
+        patch(f"{_LIFECYCLE_MODULE}._has_artifact_content", return_value=True),
+        patch(f"{_LIFECYCLE_MODULE}.run_git_command", return_value=(0, "", "")),
+    ):
         with pytest.raises(ValueError, match="git rev-parse HEAD failed"):
             _on_enter_prepared({}, _ctx(tmp_path))

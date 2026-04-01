@@ -105,7 +105,9 @@ def _creative_blocked(slug: str) -> str:
     )
 
 
-def _derive_creative_phase(workspace_dir: Path, has_design_spec: bool, creative: dict[str, StateValue]) -> CreativePhase:
+def _derive_creative_phase(
+    workspace_dir: Path, has_design_spec: bool, creative: dict[str, StateValue]
+) -> CreativePhase:
     """Derive the current creative phase from workspace binary artifacts, DB flag, and state."""
     art_dir = workspace_dir / "art"
     html_dir = workspace_dir / "html"

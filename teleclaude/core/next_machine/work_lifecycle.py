@@ -6,13 +6,11 @@ Used by mark_phase, the API route, and display layers.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     DOR_READY_THRESHOLD,
     FINDING_ID_PATTERN,
@@ -155,30 +153,29 @@ def _on_enter_build_started(state: dict[str, StateValue], ctx: TargetContext) ->
     return state
 
 
-def _on_enter_prepared(state: dict[str, StateValue], ctx: TargetContext) -> dict[str, StateValue]:
+def _on_enter_prepared(  # pylint: disable=too-many-locals
+    state: dict[str, StateValue], ctx: TargetContext
+) -> dict[str, StateValue]:
     """Validate artifacts exist in DB, stamp DOR/grounding/verdicts for work readiness."""
     from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
-    cwd = ctx.cwd
     slug = ctx.slug
-    db = _get_todos_db_sync(cwd)
+    db = _get_todos_db_sync(ctx.project_root)
 
-    if not _has_artifact_content(cwd, slug, "requirements"):
+    if not _has_artifact_content(ctx.project_root, slug, "requirements"):
         raise ValueError(f"Missing requirements artifact with content for {slug}")
 
-    if not _has_artifact_content(cwd, slug, "implementation-plan"):
+    if not _has_artifact_content(ctx.project_root, slug, "implementation-plan"):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
 
     # Quality checklist can be generated
-    if not _has_artifact_content(cwd, slug, "quality-checklist"):
+    if not _has_artifact_content(ctx.project_root, slug, "quality-checklist"):
         conn = db._sync_conn()  # pylint: disable=protected-access
         try:
-            from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
-
             # Write quality-checklist via sync SQL
             import hashlib as _hl  # pylint: disable=import-outside-toplevel
-            from datetime import UTC as _UTC  # pylint: disable=import-outside-toplevel
-            from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
+            from datetime import UTC as _UTC  # pylint: disable=import-outside-toplevel,reimported
+            from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel,reimported
 
             checklist_content = _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug)
             _now = _dt.now(_UTC).isoformat()
@@ -190,7 +187,8 @@ def _on_enter_prepared(state: dict[str, StateValue], ctx: TargetContext) -> dict
             ).fetchone()
             row_id = id_row[0] if id_row else slug
             conn.execute(
-                "INSERT INTO todo_artifacts (id, slug, name, content, digest, updated_by, updated_at) "  # guard: raw-sql
+                "INSERT INTO todo_artifacts "  # guard: raw-sql
+                "(id, slug, name, content, digest, updated_by, updated_at) "
                 "VALUES (?, ?, 'quality-checklist', ?, ?, 'on_enter_prepared', ?) "
                 "ON CONFLICT(id, name) DO UPDATE SET "
                 "content = excluded.content, digest = excluded.digest, "
@@ -231,9 +229,11 @@ def _on_enter_prepared(state: dict[str, StateValue], ctx: TargetContext) -> dict
     }
 
     # Grounding
-    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
+    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=ctx.project_root)
     if rc != 0 or not current_sha.strip():
-        raise ValueError(f"git rev-parse HEAD failed (rc={rc}) in {cwd} — cannot establish grounding baseline")
+        raise ValueError(
+            f"git rev-parse HEAD failed (rc={rc}) in {ctx.project_root} — cannot establish grounding baseline"
+        )
     grounding: dict[str, StateValue] = {
         **default_state()["grounding"],  # type: ignore[dict-item]
         "valid": True,
@@ -266,20 +266,17 @@ def _on_enter_review_changes(state: dict[str, StateValue], ctx: TargetContext) -
     resolved_ids = list(resolved) if isinstance(resolved, list) else []
 
     state["review_round"] = current_round + 1
-    # ctx.cwd is always the project root (via resolve_canonical_project_root).
-    # Review baseline must reflect the worktree branch HEAD, not main's HEAD.
-    worktree_cwd = str(Path(ctx.cwd) / WORKTREE_DIR / ctx.slug)
-    head_sha = get_head_commit(worktree_cwd)
+    head_sha = get_head_commit(ctx.worktree_path)
     if head_sha:
         state["review_baseline_commit"] = head_sha
     else:
         logger.warning(
-            "review_baseline_commit not stamped: get_head_commit returned empty cwd=%s slug=%s",
-            worktree_cwd,
+            "review_baseline_commit not stamped: get_head_commit returned empty worktree=%s slug=%s",
+            ctx.worktree_path,
             ctx.slug,
         )
 
-    findings_ids = _extract_finding_ids(worktree_cwd, ctx.slug)
+    findings_ids = _extract_finding_ids(ctx.project_root, ctx.slug)
     state["unresolved_findings"] = findings_ids  # type: ignore[assignment]
     state["resolved_findings"] = list(dict.fromkeys(str(i) for i in resolved_ids))
 
@@ -296,16 +293,13 @@ def _on_enter_review_approved(state: dict[str, StateValue], ctx: TargetContext) 
     resolved_ids = list(resolved) if isinstance(resolved, list) else []
 
     state["review_round"] = current_round + 1
-    # ctx.cwd is always the project root (via resolve_canonical_project_root).
-    # Review baseline must reflect the worktree branch HEAD, not main's HEAD.
-    worktree_cwd = str(Path(ctx.cwd) / WORKTREE_DIR / ctx.slug)
-    head_sha = get_head_commit(worktree_cwd)
+    head_sha = get_head_commit(ctx.worktree_path)
     if head_sha:
         state["review_baseline_commit"] = head_sha
     else:
         logger.warning(
-            "review_baseline_commit not stamped: get_head_commit returned empty cwd=%s slug=%s",
-            worktree_cwd,
+            "review_baseline_commit not stamped: get_head_commit returned empty worktree=%s slug=%s",
+            ctx.worktree_path,
             ctx.slug,
         )
 
@@ -323,16 +317,14 @@ def _on_enter_finalize_ready(state: dict[str, StateValue], ctx: TargetContext) -
     if isinstance(finalize, dict) and finalize.get("status") == "handed_off":
         raise ValueError(f"cannot regress {ctx.slug} from finalize_handed_off to finalize_ready")
 
-    cwd = ctx.cwd
     slug = ctx.slug
-    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
-    if not Path(worktree_cwd).exists():
-        raise ValueError(f"worktree not found at {worktree_cwd}")
-    if has_uncommitted_changes(cwd, slug):
-        raise ValueError(f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes")
+    if not Path(ctx.worktree_path).exists():
+        raise ValueError(f"worktree not found at {ctx.worktree_path}")
+    if has_uncommitted_changes(ctx.project_root, slug):
+        raise ValueError(f"worktree for {slug} has uncommitted changes")
 
-    worktree_head = get_head_commit(worktree_cwd)
-    branch_head = get_ref_commit(cwd, slug)
+    worktree_head = get_head_commit(ctx.worktree_path)
+    branch_head = get_ref_commit(ctx.project_root, slug)
     if not worktree_head or not branch_head:
         raise ValueError(f"unable to resolve finalized branch head for {slug}")
     if worktree_head != branch_head:
@@ -341,7 +333,7 @@ def _on_enter_finalize_ready(state: dict[str, StateValue], ctx: TargetContext) -
             f"(branch={branch_head or '<missing>'}, worktree={worktree_head or '<missing>'})"
         )
 
-    remote_head = get_remote_branch_head(cwd, slug)
+    remote_head = get_remote_branch_head(ctx.project_root, slug)
     if not remote_head:
         raise ValueError(f"origin/{slug} is missing — push the finalized branch before marking ready")
     if remote_head != branch_head:

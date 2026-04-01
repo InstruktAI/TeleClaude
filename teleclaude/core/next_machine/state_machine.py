@@ -19,9 +19,13 @@ logger = get_logger(__name__)
 
 @dataclass(frozen=True)
 class TargetContext:
-    """Context passed to on_enter handlers when targeting a state."""
+    """Context passed to on_enter handlers when targeting a state.
 
-    cwd: str
+    Both paths are resolved once at engine entry — handlers consume, never derive.
+    """
+
+    worktree_path: str
+    project_root: str
     slug: str
     actor_id: str
     at: str

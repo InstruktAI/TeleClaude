@@ -551,10 +551,7 @@ class AgentStopActivityEventDTO(BaseAgentActivityEventDTO):
 
 
 type AgentActivityEventDTO = (  # pylint: disable=invalid-name
-    UserPromptSubmitActivityEventDTO
-    | ToolUseActivityEventDTO
-    | ToolDoneActivityEventDTO
-    | AgentStopActivityEventDTO
+    UserPromptSubmitActivityEventDTO | ToolUseActivityEventDTO | ToolDoneActivityEventDTO | AgentStopActivityEventDTO
 )
 
 
