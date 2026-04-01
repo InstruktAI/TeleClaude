@@ -389,7 +389,15 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         @self.app.exception_handler(Exception)
         async def _unhandled_exception(request, exc):  # type: ignore[no-untyped-def]
             """Last-resort handler: log full traceback, return generic 500 to client."""
-            logger.error("Unhandled API exception: %s %s", request.method, request.url.path, exc_info=exc)
+            import traceback as _tb  # pylint: disable=import-outside-toplevel
+
+            tb_lines = _tb.format_exception(type(exc), exc, exc.__traceback__)
+            logger.error(
+                "Unhandled API exception: %s %s\n%s",
+                request.method,
+                request.url.path,
+                "".join(tb_lines),
+            )
             return JSONResponse({"detail": "Internal server error"}, status_code=500)
 
         @self.app.middleware("http")
