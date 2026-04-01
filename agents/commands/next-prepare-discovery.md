@@ -23,11 +23,11 @@ is needed to surface hidden assumptions, missing constraints, or unresolved tens
 
 - Slug: "$ARGUMENTS"
 - `telec todo artifacts read {slug} input` (original intent)
-- Existing `todos/{slug}/requirements-review-findings.md` when present
+- Existing review findings when present: `telec todo artifacts read {slug} requirements-review-findings`
 
 ## Outputs
 
-- `todos/{slug}/requirements.md` — grounded, review-aware requirements
+- `requirements.md` via `telec todo artifacts write` — grounded, review-aware requirements
 
 ## Steps
 

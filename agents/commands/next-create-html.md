@@ -22,12 +22,12 @@ Produce self-contained HTML+CSS visual artifacts for the slug.
 
 - Slug: "$ARGUMENTS"
 - `telec todo artifacts read {slug} design-spec` — confirmed design spec (exact values)
-- `todos/{slug}/art/` (filesystem, not DB-backed) — approved mood board images (compositional intent)
+- `workspace/{slug}/art/` (filesystem, not DB-backed) — approved mood board images (compositional intent)
 - `telec todo artifacts read {slug} input` — content structure and storytelling arc
 
 ## Outputs
 
-- HTML files in `todos/{slug}/html/` (filesystem, not DB-backed)
+- HTML files in `workspace/{slug}/html/` (filesystem, not DB-backed)
 - Report format:
 
   ```

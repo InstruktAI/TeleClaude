@@ -21,13 +21,13 @@ Run formal DOR validation on the complete preparation artifact set and write the
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/requirements.md` (approved)
-- `todos/{slug}/implementation-plan.md` (approved)
+- `telec todo artifacts read {slug} requirements` (approved)
+- `telec todo artifacts read {slug} implementation-plan` (approved)
 
 ## Outputs
 
 - Gate verdict stamped via `telec todo stamp`
-- `todos/{slug}/dor-report.md` with comprehensive assessment
+- `dor-report.md` via `telec todo artifacts write` with comprehensive assessment
 - All gate artifacts stored via `telec todo artifacts write`
 
 ## Steps

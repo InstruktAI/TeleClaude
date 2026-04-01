@@ -26,7 +26,7 @@ Validate `requirements.md` against the requirements quality standard and stamp t
 ## Outputs
 
 - Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work`
-- `todos/{slug}/requirements-review-findings.md` if findings exist
+- `requirements-review-findings.md` via `telec todo artifacts write` if findings exist
 - All review artifacts stored via `telec todo artifacts write`
 
 ## Steps

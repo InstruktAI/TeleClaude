@@ -28,7 +28,7 @@ Generate a new image from a text prompt:
 ~/.teleclaude/scripts/helpers/nano_banana_helper.py generate \
   --prompt "A futuristic cityscape at sunset with neon lights" \
   --aspect-ratio 16:9 \
-  --output-dir todos/{slug}/art/ \
+  --output-dir workspace/{slug}/art/ \
   --output-name hero-mood
 ```
 
@@ -39,8 +39,8 @@ Edit an existing image with a text prompt:
 ```bash
 ~/.teleclaude/scripts/helpers/nano_banana_helper.py edit \
   --prompt "Add more vibrant colors and a warmer palette" \
-  --input-image todos/{slug}/art/hero-mood.png \
-  --output-dir todos/{slug}/art/ \
+  --input-image workspace/{slug}/art/hero-mood.png \
+  --output-dir workspace/{slug}/art/ \
   --output-name hero-mood-v2
 ```
 
@@ -51,13 +51,13 @@ Generate an image and then iterate on it with follow-up prompts:
 ```bash
 ~/.teleclaude/scripts/helpers/nano_banana_helper.py iterate \
   --prompt "A minimalist logo with geometric shapes" \
-  --output-dir todos/{slug}/art/
+  --output-dir workspace/{slug}/art/
 
 # Then iterate with feedback:
 ~/.teleclaude/scripts/helpers/nano_banana_helper.py edit \
   --prompt "Make the shapes more angular and use a darker palette" \
-  --input-image todos/{slug}/art/logo.png \
-  --output-dir todos/{slug}/art/ \
+  --input-image workspace/{slug}/art/logo.png \
+  --output-dir workspace/{slug}/art/ \
   --output-name logo-v2
 ```
 

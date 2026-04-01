@@ -24,10 +24,10 @@ sees what the human approved, and translates it into the target framework (React
 Astro, Next.js, etc.). The artifact captures what things look like and how they move.
 The builder adds the wiring: routing, data, state, server rendering.
 
-Visual artifacts live in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) alongside other todo artifacts.
+Visual artifacts live in `workspace/{slug}/html/` alongside other todo artifacts.
 They are constrained by `telec todo artifacts read {slug} design-spec` — every visual choice in
 the artifact must trace back to the design spec. They are informed by the approved
-art in `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) — the mood board images provide compositional intent
+art in `workspace/{slug}/art/` — the mood board images provide compositional intent
 that the frontender translates into HTML+CSS.
 
 ## Canonical fields
@@ -37,7 +37,7 @@ that the frontender translates into HTML+CSS.
 Each visual artifact is a single `.html` file:
 
 ```
-todos/{slug}/html/
+workspace/{slug}/html/
   hero.html
   features.html
   story.html

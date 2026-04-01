@@ -89,7 +89,7 @@ Demos run on real data. They must never be destructive. If the demo needs to exe
 
 ## Recovery
 
-- Demos survive cleanup (they live in `demos/{slug}/`, not `todos/{slug}/`).
+- Demos survive cleanup (they live in `demos/{slug}/`, separate from `todos.db`).
 - If a demo is missing `demo.md`, the runner falls back to the `snapshot.json` `demo` field (backward compatibility).
 - Breaking major version bumps disable stale demos automatically via semver gate.
 - If a demo is non-destructive but requires cleanup, include cleanup steps as the final block in the demo.

@@ -20,13 +20,13 @@ Validate `implementation-plan.md` against policies, Definition of Done gates, an
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/implementation-plan.md` (the artifact under review)
-- `todos/{slug}/requirements.md` (the requirements it must satisfy)
+- `telec todo artifacts read {slug} implementation-plan` (the artifact under review)
+- `telec todo artifacts read {slug} requirements` (the requirements it must satisfy)
 
 ## Outputs
 
 - Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work`
-- `todos/{slug}/plan-review-findings.md` if findings exist
+- `plan-review-findings.md` via `telec todo artifacts write` if findings exist
 - All review artifacts stored via `telec todo artifacts write`
 
 ## Steps

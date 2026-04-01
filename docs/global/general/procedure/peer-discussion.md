@@ -57,7 +57,7 @@ Enable two peer agents to cover a topic together — each owning a segment, work
 
 - A shared scratchpad at `/tmp/peer-discussion-{slug}.md` with raw findings from both agents.
 - A single L1 report delivered to the user.
-- Optionally: a durable brief written to the project (e.g., `todos/{slug}/discovery-brief.md`) when findings should persist beyond the session.
+- Optionally: a durable brief written to the project (e.g., `telec todo artifacts write {slug} discovery-brief`) when findings should persist beyond the session.
 
 ## Recovery
 

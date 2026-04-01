@@ -28,7 +28,7 @@ guided by the compositional intent of the approved art.
 ## Preconditions
 
 1. `telec todo artifacts read {slug} design-spec` exists and is confirmed by the human.
-2. `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) contains approved mood board images.
+2. `workspace/{slug}/art/` contains approved mood board images.
 3. `telec todo artifacts read {slug} input` exists with project context.
 4. The visual artifact spec and visual constraints policy are loaded.
 
@@ -36,7 +36,7 @@ guided by the compositional intent of the approved art.
 
 ### 1. Absorb the inputs
 
-**Read the approved art** in `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery). Study the mood board images
+**Read the approved art** in `workspace/{slug}/art/`. Study the mood board images
 for compositional intent: layout direction, spatial rhythm, color temperature,
 visual weight distribution, and emotional register. The art is your primary
 creative reference — it shows what the human approved visually.
@@ -178,10 +178,10 @@ Before delivering, check each artifact against:
 
 ### 8. Write to the todo folder
 
-Place all artifacts in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery):
+Place all artifacts in `workspace/{slug}/html/`:
 
 ```
-todos/{slug}/html/
+workspace/{slug}/html/
   hero.html
   features.html
   story.html
@@ -190,12 +190,12 @@ todos/{slug}/html/
 ```
 
 If this is a multi-agent bake-off, place artifacts in a named subfolder:
-`todos/{slug}/html/{agent-name}/`.
+`workspace/{slug}/html/{agent-name}/`.
 
 ## Outputs
 
-1. Visual artifact HTML files in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
-2. Any generated or referenced assets in `todos/{slug}/html/assets/`.
+1. Visual artifact HTML files in `workspace/{slug}/html/`.
+2. Any generated or referenced assets in `workspace/{slug}/html/assets/`.
 3. All artifacts passing the self-review checklist.
 
 ## Recovery

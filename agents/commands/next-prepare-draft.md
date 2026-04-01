@@ -21,16 +21,16 @@ todo into child work items when planning shows it is not atomic. Single-agent wo
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `todos/{slug}/requirements.md` (approved)
+- `telec todo artifacts read {slug} requirements` (approved)
 - `telec todo artifacts read {slug} input` (original intent)
 
 ## Outputs
 
 - Atomic case:
-  - `todos/{slug}/implementation-plan.md` — review-aware, rationale-rich
-  - `todos/{slug}/demo.md` — draft demonstration plan
+  - `implementation-plan.md` via `telec todo artifacts write` — review-aware, rationale-rich
+  - `demo.md` via `telec todo artifacts write` — draft demonstration plan
   - Split case:
-  - child todo folders and dependency links
+  - child todo items and dependency links
   
 ## Steps
 

@@ -42,18 +42,18 @@ preconditions for the prepare machine: `design-spec` constrains requirements,
 2. **Design Discovery** — human and creator collaborate to produce `design-spec.md`,
    the constraint document that governs all downstream creative work. The creator
    presents reference sites, collects images the human provides (saved to
-   `todos/{slug}/input/`), and facilitates the dialogue.
+   `workspace/{slug}/input/`), and facilitates the dialogue.
    Human gate: the design spec requires explicit human confirmation before proceeding.
 
 3. **Art Generation** — artist agent generates mood board images from the confirmed
-   design spec and any reference images. Output goes to `todos/{slug}/art/`.
+   design spec and any reference images. Output goes to `workspace/{slug}/art/`.
    Human gate: the art requires explicit human approval before proceeding. The human
    may request iterations — the artist revises and the human reviews again.
 
 4. **Visual Drafting** — frontender agent(s) produce self-contained HTML+CSS visual
    artifacts from the approved art and design spec. The frontender is multimodal — it
    reads the approved art images for compositional intent and uses the design spec for
-   exact values. Output goes to `todos/{slug}/html/`.
+   exact values. Output goes to `workspace/{slug}/html/`.
    Human gate: the visuals require explicit human approval before proceeding. For
    multi-agent bake-offs, the human selects the winning version.
 
@@ -65,8 +65,8 @@ preconditions for the prepare machine: `design-spec` constrains requirements,
 ## Outputs
 
 - Confirmed `design-spec` artifact in `todos.db`.
-- Approved images archived to `~/.teleclaude/storage/{date}/{slug}/art/`.
-- Approved visual artifacts archived to `~/.teleclaude/storage/{date}/{slug}/html/`.
+- Approved images in `workspace/{slug}/art/`.
+- Approved visual artifacts in `workspace/{slug}/html/`.
 - Updated state in `todos.db` with creative phase completion markers.
 
 ## Recovery

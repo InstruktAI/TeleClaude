@@ -38,16 +38,16 @@ compositional intent into code).
 
 - `telec todo artifacts read {slug} input` — human thinking and project context.
 - `todos.db` state — creative phase tracking.
-- `{worktree}/todos/{slug}/input/` (filesystem reference images) — user-provided reference images, screenshots, visual input.
+- `workspace/{slug}/input/` — user-provided reference images, screenshots, visual input.
 - `telec todo artifacts read {slug} design-spec` — produced during the design discovery phase.
-- `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) — produced during the art generation phase.
-- `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) — produced during the visual drafting phase.
+- `workspace/{slug}/art/` — produced during the art generation phase.
+- `workspace/{slug}/html/` — produced during the visual drafting phase.
 
 **Outputs:**
 
 - Confirmed `telec todo artifacts read {slug} design-spec`.
-- Approved images in `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
-- Approved visual artifacts in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+- Approved images in `workspace/{slug}/art/`.
+- Approved visual artifacts in `workspace/{slug}/html/`.
 - Updated `todo state (todos.db)` with creative phase completion markers.
 - The todo is ready to enter the prepare machine.
 
@@ -118,7 +118,7 @@ background worker. The orchestrator (creator) opens a session and the human
 participates directly.
 
 The creator presents reference sites, collects images the human drags in
-(saved to `{worktree}/todos/{slug}/input/` (filesystem reference images)), and facilitates the dialogue that produces
+(saved to `workspace/{slug}/input/`), and facilitates the dialogue that produces
 `design-spec.md`.
 
 After `design-spec.md` is written, call the machine again.
@@ -155,7 +155,7 @@ When the human requests changes:
 
 #### CHECK_ART
 
-Check whether `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) contains image files.
+Check whether `workspace/{slug}/art/` contains image files.
 
 - Contains image files (`.png`, `.jpg`, `.webp`, `.svg`) → transition to
   CHECK_ART_APPROVAL.
@@ -170,11 +170,11 @@ The artist receives:
 
 - `telec todo artifacts read {slug} design-spec` as the constraint document.
 - `telec todo artifacts read {slug} input` for context and content direction.
-- `{worktree}/todos/{slug}/input/` (filesystem reference images) for any reference images the human provided.
+- `workspace/{slug}/input/` for any reference images the human provided.
 
 The artist uses the `image-generator` meta-skill to select the appropriate
 engine based on the design spec's visual style. Output goes to
-`{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+`workspace/{slug}/art/`.
 
 The artist session stays open for iteration — it is not a fire-and-forget
 dispatch.
@@ -225,7 +225,7 @@ Track iteration count in `todo state (todos.db)` (`creative.art.iteration_count`
 
 #### CHECK_VISUALS
 
-Check whether `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) contains HTML files.
+Check whether `workspace/{slug}/html/` contains HTML files.
 
 - Contains `.html` files → transition to CHECK_VISUAL_APPROVAL.
 - Empty or missing → return `VISUAL_DRAFTS_REQUIRED`.
@@ -239,7 +239,7 @@ procedure.
 The frontender receives:
 
 - `telec todo artifacts read {slug} design-spec` for exact values (colors, fonts, spacing).
-- `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery) for compositional intent (layout, mood, spatial rhythm).
+- `workspace/{slug}/art/` for compositional intent (layout, mood, spatial rhythm).
 - `telec todo artifacts read {slug} input` for content structure and storytelling arc.
 
 The frontender is multimodal — it reads the approved art images to extract
@@ -248,10 +248,10 @@ from the design spec. No intermediate artifact is needed between images
 and code.
 
 **Single agent**: dispatch one frontender. Output goes to
-`{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+`workspace/{slug}/html/`.
 
 **Multi-agent bake-off**: dispatch N agents (potentially different AI models).
-Each agent's output goes to `todos/{slug}/html/{agent-name}/`. The human
+Each agent's output goes to `workspace/{slug}/html/{agent-name}/`. The human
 reviews all versions and selects.
 
 After artifacts are written, call the machine again.
@@ -281,7 +281,7 @@ and review.
 When the human approves:
 
 - Set `creative.visuals.approved: true` in `todo state (todos.db)`.
-- For bake-offs: promote the selected version's files to `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery)
+- For bake-offs: promote the selected version's files to `workspace/{slug}/html/`
   (top level) and remove the agent subfolders.
 - Call the machine again.
 

@@ -51,7 +51,7 @@ discovery.
 
 **Action**: open an interactive session. This is not a background dispatch — the
 human participates directly. The creator presents reference sites, collects
-images the human provides (saved to `{worktree}/todos/{slug}/input/` (filesystem reference images)), and facilitates
+images the human provides (saved to `workspace/{slug}/input/`), and facilitates
 the dialogue that produces `design-spec.md`.
 
 The creator may run this session itself (if the human is present in the
@@ -96,7 +96,7 @@ The artist receives:
 - `input/` for any reference images the human provided.
 
 The artist uses the `image-generator` meta-skill to select the appropriate
-engine. Output goes to `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+engine. Output goes to `workspace/{slug}/art/`.
 
 After images are written, call the machine again.
 
@@ -109,9 +109,9 @@ send them via messaging (Discord/Telegram) if the human requests it.
 
 ```
 Review the mood board:
-  todos/{slug}/art/hero-mood.png
-  todos/{slug}/art/palette-exploration.png
-  todos/{slug}/art/composition-study.png
+  workspace/{slug}/art/hero-mood.png
+  workspace/{slug}/art/palette-exploration.png
+  workspace/{slug}/art/composition-study.png
 ```
 
 Collect the human's response:
@@ -155,7 +155,7 @@ the role is about translating images + spec into code.
 indicates high creative ambiguity):
 
 Dispatch 2-3 agents in parallel, each with the same design spec and art.
-Each agent writes to `todos/{slug}/html/{agent-name}/`.
+Each agent writes to `workspace/{slug}/html/{agent-name}/`.
 
 ```
 # Parallel dispatch
@@ -178,17 +178,17 @@ they can open them in a browser:
 
 ```
 Open in your browser:
-  todos/{slug}/html/hero.html
-  todos/{slug}/html/features.html
-  todos/{slug}/html/story.html
+  workspace/{slug}/html/hero.html
+  workspace/{slug}/html/features.html
+  workspace/{slug}/html/story.html
 ```
 
 For bake-offs, list all agent versions:
 
 ```
-Version A (Gemini):  todos/{slug}/html/gemini/hero.html
-Version B (Claude):  todos/{slug}/html/claude/hero.html
-Version C (Codex):   todos/{slug}/html/codex/hero.html
+Version A (Gemini):  workspace/{slug}/html/gemini/hero.html
+Version B (Claude):  workspace/{slug}/html/claude/hero.html
+Version C (Codex):   workspace/{slug}/html/codex/hero.html
 ```
 
 Collect the human's response:
@@ -198,7 +198,7 @@ Collect the human's response:
   to the top-level `html/` folder.
 - **Cherry-pick** (bake-off): the human selects specific sections from
   different agents. Dispatch a frontender to merge the selected sections
-  into a cohesive set in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+  into a cohesive set in `workspace/{slug}/html/`.
 - **Iterate**: collect specific feedback and call the machine again (it
   returns VISUAL_ITERATION_REQUIRED).
 
@@ -277,8 +277,8 @@ defaults, no "assuming approval." The human decides.
 ## Outputs
 
 1. Confirmed `telec todo artifacts read {slug} design-spec`.
-2. Approved art in `{worktree}/todos/{slug}/art/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
-3. Approved visual artifacts in `{worktree}/todos/{slug}/html/` (filesystem, archived to ~/.teleclaude/storage/ on delivery).
+2. Approved art in `workspace/{slug}/art/`.
+3. Approved visual artifacts in `workspace/{slug}/html/`.
 4. Updated `todo state (todos.db)` with creative phase completion markers.
 5. All worker sessions ended on completion.
 6. The todo is ready for the prepare machine.

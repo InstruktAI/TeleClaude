@@ -21,11 +21,11 @@ Review test specifications for behavioral coverage, rigor, and alignment with re
 
 - Slug: "$ARGUMENTS"
 - Worktree for the slug
-- todos/{slug}/requirements.md
+- `telec todo artifacts read {slug} requirements`
 
 ## Outputs
 
-- todos/{slug}/spec-review-findings.md
+- `spec-review-findings.md` via `telec todo artifacts write`
 - Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work`
 
 ## Steps

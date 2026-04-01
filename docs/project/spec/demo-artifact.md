@@ -75,7 +75,7 @@ The `demo` field (shell command string) is deprecated. New demos use `demo.md` i
 
 ## Known caveats
 
-- Demo artifacts survive cleanup (they live outside `todos/{slug}/`)
+- Demo artifacts survive cleanup (they live in `demos/{slug}/`, separate from `todos.db`)
 - Breaking major version bumps disable stale demos automatically via the semver gate
 - No retroactive demo generation for past deliveries
 - Existing demos may use variant field names (`delivered_date` instead of `delivered`, etc.) — the CLI runner handles these with fallbacks
