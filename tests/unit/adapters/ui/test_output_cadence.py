@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.adapters.ui.output_cadence."""
+# pylint: disable=protected-access,redefined-outer-name,missing-class-docstring,missing-function-docstring,too-few-public-methods,unused-argument
 
 from __future__ import annotations
 
@@ -185,72 +186,6 @@ class TestDeliveryTimestampDedup:
 
 
 # ---------------------------------------------------------------------------
-# Turn break detection
-# ---------------------------------------------------------------------------
-
-
-class TestTurnBreakDetection:
-    @pytest.mark.unit
-    async def test_clears_turn_state_when_new_user_message_detected(
-        self, cadence_loop: OutputCadenceLoop, adapter: _FakeAdapter
-    ) -> None:
-        session = _make_session(
-            native_log_file="/tmp/log.jsonl",
-            active_agent="claude",
-            last_tool_done_at=None,
-        )
-        user_ts = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
-        fresh_session = _make_session(native_log_file="/tmp/log.jsonl", active_agent="claude")
-
-        with (
-            patch("teleclaude.adapters.ui.output_cadence.db") as mock_db,
-            patch(
-                "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
-                new=AsyncMock(return_value=True),
-            ),
-            patch(
-                "teleclaude.adapters.ui.output_cadence.extract_last_user_message_with_timestamp",
-                return_value=("user msg", user_ts),
-            ),
-            patch("teleclaude.adapters.ui.output_cadence.get_assistant_messages_since", return_value=[]),
-        ):
-            mock_db.get_sessions_active_since = AsyncMock(return_value=[session])
-            mock_db.update_session = AsyncMock()
-            mock_db.get_session = AsyncMock(return_value=fresh_session)
-            await cadence_loop._tick()
-
-        adapter.clear_turn_state.assert_called_once_with(session)
-
-    @pytest.mark.unit
-    async def test_no_turn_break_when_user_message_not_newer_than_cursor(
-        self, cadence_loop: OutputCadenceLoop, adapter: _FakeAdapter
-    ) -> None:
-        old_ts = datetime(2024, 1, 1, tzinfo=UTC)
-        session = _make_session(
-            native_log_file="/tmp/log.jsonl",
-            active_agent="claude",
-            last_tool_done_at=datetime(2024, 6, 1, tzinfo=UTC),
-        )
-
-        with (
-            patch("teleclaude.adapters.ui.output_cadence.db") as mock_db,
-            patch(
-                "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
-                new=AsyncMock(return_value=True),
-            ),
-            patch(
-                "teleclaude.adapters.ui.output_cadence.extract_last_user_message_with_timestamp",
-                return_value=("user msg", old_ts),
-            ),
-            patch("teleclaude.adapters.ui.output_cadence.get_assistant_messages_since", return_value=[]),
-        ):
-            mock_db.get_sessions_active_since = AsyncMock(return_value=[session])
-            await cadence_loop._tick()
-
-        adapter.clear_turn_state.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
 # Cursor update logic
 # ---------------------------------------------------------------------------
 
@@ -298,10 +233,6 @@ class TestCursorUpdate:
             patch("teleclaude.adapters.ui.output_cadence.get_assistant_messages_since", return_value=["msg"]),
             patch("teleclaude.adapters.ui.output_cadence.count_renderable_assistant_blocks", return_value=1),
             patch("teleclaude.adapters.ui.output_cadence.render_clean_agent_output", return_value=("content", last_ts)),
-            patch(
-                "teleclaude.adapters.ui.output_cadence.extract_last_user_message_with_timestamp",
-                return_value=None,
-            ),
             patch(
                 "teleclaude.core.agent_coordinator._helpers._has_active_output_message",
                 new=AsyncMock(return_value=True),

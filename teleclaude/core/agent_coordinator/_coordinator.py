@@ -411,6 +411,11 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             update_kwargs["last_input_origin"] = InputOrigin.TERMINAL.value
             # Reset cadence cursor so adapters re-render including the user message.
             update_kwargs["last_tool_done_at"] = None
+        else:
+            # Advance cursor to now — the cadence will only render agent output
+            # produced AFTER this point, preventing re-delivery of content that
+            # was already displayed before the user's message.
+            update_kwargs["last_tool_done_at"] = now.isoformat()
 
         # Track what triggered this turn for echo suppression in handle_agent_stop.
         _linked_prefix_check = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "

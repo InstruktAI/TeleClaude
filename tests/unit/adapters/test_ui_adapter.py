@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.adapters.ui_adapter."""
+# pylint: disable=protected-access,redefined-outer-name,missing-class-docstring,missing-function-docstring,too-few-public-methods,invalid-name,too-many-arguments,unused-argument,unreachable,use-implicit-booleaness-not-comparison
 
 from __future__ import annotations
 
@@ -301,13 +302,16 @@ class TestSendSessionBadge:
 
 class TestClearTurnState:
     @pytest.mark.unit
-    async def test_resets_char_offset_without_clearing_output_message_id(self, adapter: _ConcreteAdapter) -> None:
+    async def test_resets_char_offset_and_clears_output_message_id(self, adapter: _ConcreteAdapter) -> None:
         session = _make_session()
         with (
-            patch.object(adapter, "_clear_output_message_id", AsyncMock()) as clear_output,
             patch.object(adapter, "_set_char_offset", AsyncMock()) as set_char_offset,
+            patch.object(adapter, "_set_origin_field", AsyncMock()) as set_origin_field,
         ):
             await adapter.clear_turn_state(session)
 
-        clear_output.assert_not_awaited()
         set_char_offset.assert_awaited_once_with(session, 0)
+        set_origin_field.assert_awaited_once()
+        call_kwargs = set_origin_field.await_args[1]
+        assert call_kwargs["output_message_id"] is None
+        assert "last_delivered_at" in call_kwargs
