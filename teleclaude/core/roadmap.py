@@ -73,9 +73,10 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
             conditions.append(" OR ".join(parts))
 
         where = conditions[0] if conditions else "1=1"
+        order = "delivered_at DESC" if delivered_only else "position"
         rows = conn.execute(
             f"SELECT id, slug, position, group_slug, description, status, "  # guard: raw-sql
-            f"delivered_at FROM roadmap WHERE {where} ORDER BY position",
+            f"delivered_at FROM roadmap WHERE {where} ORDER BY {order}",
         ).fetchall()
 
         # Load deps
@@ -169,7 +170,7 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
                     integration_phase=integration_phase,
                     finalize_status=finalize_status,
                     files=[ar[0] for ar in artifact_rows],
-                    todo_path=str(Path(project_path) / "todos" / slug),
+                    todo_path=str(Path(project_path) / "workspace" / slug),
                 )
             )
 

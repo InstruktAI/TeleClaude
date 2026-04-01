@@ -23,19 +23,24 @@ class TodosDbRoadmapMixin:
         *,
         include_icebox: bool = False,
         include_delivered: bool = False,
+        delivered_only: bool = False,
     ) -> list[RoadmapRow]:
-        """List roadmap entries ordered by position."""
+        """List roadmap entries ordered by position (active) or delivery date (delivered)."""
         assert self.conn is not None
-        conditions = ["status = 'active'"]
-        if include_icebox:
-            conditions.append("status = 'icebox'")
-        if include_delivered:
-            conditions.append("status = 'delivered'")
+        if delivered_only:
+            conditions = ["status = 'delivered'"]
+        else:
+            conditions = ["status = 'active'"]
+            if include_icebox:
+                conditions.append("status = 'icebox'")
+            if include_delivered:
+                conditions.append("status = 'delivered'")
         where = " OR ".join(conditions)
+        order = "delivered_at DESC" if delivered_only else "position"
         async with self.conn.execute(
             f"SELECT id, slug, position, group_slug, description, status, "  # guard: raw-sql
             f"delivered_at, delivered_commit, children "
-            f"FROM roadmap WHERE {where} ORDER BY position",
+            f"FROM roadmap WHERE {where} ORDER BY {order}",
         ) as cursor:
             rows = await cursor.fetchall()
         return [
@@ -178,7 +183,7 @@ class TodosDbRoadmapMixin:
         children: list[str] | None = None,
         delivered_at: str | None = None,
     ) -> bool:
-        """Mark a slug as delivered. Returns False if not found."""
+        """Mark a slug as delivered and advance todo_state.current to 'delivered'."""
         assert self.conn is not None
         now = delivered_at or datetime.now(UTC).isoformat()
         children_json = json.dumps(children) if children else None
@@ -188,6 +193,19 @@ class TodosDbRoadmapMixin:
             "WHERE slug = ? AND status != 'delivered'",
             (now, commit, children_json, now, slug),
         )
+        if result.rowcount > 0:
+            async with self.conn.execute(
+                "SELECT id, state FROM todo_state WHERE slug = ?",  # guard: raw-sql
+                (slug,),
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                state = json.loads(row[1])
+                state["current"] = "delivered"
+                await self.conn.execute(
+                    "UPDATE todo_state SET state = ?, updated_at = ? WHERE id = ?",  # guard: raw-sql
+                    (json.dumps(state), now, row[0]),
+                )
         await self.conn.commit()
         return result.rowcount > 0
 
@@ -344,7 +362,11 @@ class TodosDbRoadmapMixin:
         commit: str | None = None,
         children: list[str] | None = None,
     ) -> bool:
-        """Sync version of deliver for use from worker threads."""
+        """Sync version of deliver for use from worker threads.
+
+        Updates both the roadmap status and the todo_state.current to
+        'delivered' so the state record is self-consistent.
+        """
         now = datetime.now(UTC).isoformat()
         children_json = json.dumps(children) if children else None
         conn = self._sync_conn()  # type: ignore[attr-defined]
@@ -355,6 +377,19 @@ class TodosDbRoadmapMixin:
                 "WHERE slug = ? AND status != 'delivered'",
                 (now, commit, children_json, now, slug),
             )
+            if cursor.rowcount > 0:
+                # Advance lifecycle state to terminal
+                row = conn.execute(
+                    "SELECT id, state FROM todo_state WHERE slug = ?",  # guard: raw-sql
+                    (slug,),
+                ).fetchone()
+                if row:
+                    state = json.loads(row[1])
+                    state["current"] = "delivered"
+                    conn.execute(
+                        "UPDATE todo_state SET state = ?, updated_at = ? WHERE id = ?",  # guard: raw-sql
+                        (json.dumps(state), now, row[0]),
+                    )
             conn.commit()
             delivered: bool = cursor.rowcount > 0
             return delivered
