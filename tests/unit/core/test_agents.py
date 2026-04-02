@@ -102,7 +102,7 @@ class TestAgentNameMetadataSpec:
         [
             (AgentName.GEMINI, "Type your message or @path/to/file"),
             (AgentName.CLAUDE, "\u276f"),
-            (AgentName.CODEX, "? for shortcuts"),
+            (AgentName.CODEX, "\n\u203a "),
         ],
     )
     def test_agent_name_returns_correct_marker(self, agent_name: AgentName, expected_marker: str) -> None:

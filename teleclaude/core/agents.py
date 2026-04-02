@@ -43,7 +43,7 @@ KNOWN_AGENT_IDS: tuple[str, ...] = AgentName.choices()
 _PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
     AgentName.CLAUDE.value: "\u276f",
     AgentName.GEMINI.value: "Type your message or @path/to/file",
-    AgentName.CODEX.value: "? for shortcuts",
+    AgentName.CODEX.value: "\n\u203a ",
 }
 
 

@@ -24,7 +24,7 @@ from teleclaude.api_models import (
     SendResultRequest,
     VoiceInputRequest,
 )
-from teleclaude.constants import ROLE_INTEGRATOR, ROLE_WORKER, JobRole
+from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER, JobRole
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import GetSessionDataCommand
@@ -595,8 +595,8 @@ class TestSessionsActionsRoutes:
         assert plan.origin_metadata["email"] == "alice@example.com"
 
     @pytest.mark.unit
-    def test_run_session_assigns_prepare_worker_role_from_command_role_map(self) -> None:
-        """The route contract for /next-prepare stays pinned to worker role assignment."""
+    def test_run_session_assigns_prepare_orchestrator_role_from_command_role_map(self) -> None:
+        """The route contract for /next-prepare uses orchestrator role."""
         request = RunSessionRequest(
             command="/next-prepare",
             args="edge-http-migration",
@@ -607,8 +607,8 @@ class TestSessionsActionsRoutes:
         plan = sessions_actions_routes._prepare_run_session(request, identity)
         role_info = sessions_actions_routes.COMMAND_ROLE_MAP[sessions_actions_routes.SlashCommand.NEXT_PREPARE]
 
-        assert role_info == (ROLE_WORKER, JobRole.PREPARE_ORCHESTRATOR)
-        assert plan.system_role == ROLE_WORKER
+        assert role_info == (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR)
+        assert plan.system_role == ROLE_ORCHESTRATOR
         assert plan.job == JobRole.PREPARE_ORCHESTRATOR.value
 
     @pytest.mark.unit
