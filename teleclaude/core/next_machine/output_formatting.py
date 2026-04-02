@@ -22,6 +22,7 @@ __all__ = [
 
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase build --status complete
 3. Call {next_call}
@@ -35,6 +36,7 @@ POST_COMPLETION: dict[str, str] = {
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase build --status complete
 3. Call {next_call}
@@ -48,6 +50,7 @@ POST_COMPLETION: dict[str, str] = {
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-build": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id> to extract verdict
 2. If verdict is APPROVE:
    a. telec sessions end <session_id>
@@ -81,6 +84,7 @@ POST_COMPLETION: dict[str, str] = {
 5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id>
 2. telec sessions end <session_id>
 3. telec todo mark-phase {args} --target review_pending
@@ -91,6 +95,7 @@ POST_COMPLETION: dict[str, str] = {
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-defer": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id>. Confirm deferrals_processed in state.yaml
 2. telec sessions end <session_id>
 3. Call {next_call}
@@ -102,6 +107,7 @@ POST_COMPLETION: dict[str, str] = {
     "next-finalize": """# state.yaml lives in the worktree only — never commit it to main directly.
 
 WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id>.
 2. Accept completion only for the dispatched worker session `<session_id>`.
    Ignore notifications from any other session.
@@ -116,6 +122,7 @@ WHEN WORKER COMPLETES:
 8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-prepare-discovery": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase requirements --status complete
 3. telec sessions end <session_id>
@@ -126,6 +133,7 @@ WHEN WORKER COMPLETES:
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-prepare-draft": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase implementation_plan --status complete
 3. telec sessions end <session_id>
@@ -136,6 +144,7 @@ WHEN WORKER COMPLETES:
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-build-specs": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id>
 2. telec todo mark-phase {args} --phase test_specs --status complete
 3. telec sessions end <session_id>
@@ -146,6 +155,7 @@ WHEN WORKER COMPLETES:
 6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-specs": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id> to extract verdict
 2. If verdict is APPROVE:
    a. telec todo mark-phase {args} --phase test_spec_review --status approve
@@ -172,6 +182,7 @@ WHEN WORKER COMPLETES:
 5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-requirements": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id> to extract verdict
 2. If verdict is APPROVE:
    a. telec todo mark-phase {args} --phase requirements_review --status approve
@@ -198,6 +209,7 @@ WHEN WORKER COMPLETES:
 5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review-plan": """WHEN WORKER COMPLETES:
+(You received this notification without blocking — never add blocking checks.)
 1. Inspect worker output via telec sessions tail <session_id> to extract verdict
 2. If verdict is APPROVE:
    a. telec todo mark-phase {args} --phase plan_review --status approve
@@ -307,10 +319,12 @@ STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
 Bash(command="sleep 300", run_in_background=true)
 Save the returned task_id.
 Save the current time as <marker_timestamp> for the tailing discipline.
+Do NOT block on this timer. Do NOT try to read its output. You will be notified automatically when it fires.
 
 STEP 3 - WAIT:
 Tell the user: "Dispatched session <session_id>. Waiting for completion."
 Do NOT call any more tools UNTIL one of the events below fires.
+Do NOT block on the background timer — notifications and timer completion arrive in your conversation automatically.
 When an event fires, you MUST immediately act on it — do NOT wait for user input.
 
 TAILING DISCIPLINE:
@@ -331,7 +345,7 @@ A) NOTIFICATION ARRIVES OR TIMER COMPLETES:
    - Update <marker_timestamp> to the latest message timestamp when new messages appear.
    - Inspect `agent_status` in the JSON response.
    - If `agent_status` is `active`: the current turn is still in progress. Reset the non-blocking heartbeat timer and WAIT again.
-   - If `agent_status` is `idle`: the current turn is settled. Inspect the returned messages and proceed to WHEN WORKER COMPLETES below.
+   - If `agent_status` is `idle`: the current turn is settled. Inspect the returned messages and proceed to WHEN WORKER COMPLETES section below.
    - If `agent_status` is `unknown`: no activity has been recorded yet. Keep waiting unless the worker appears stalled for other reasons.
 
 C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
