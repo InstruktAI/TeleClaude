@@ -259,6 +259,8 @@ class TodoRow(TelecMixin, Widget):
 
     def _status_style(self) -> Style:
         label = self.todo.status.display_label
+        if self.todo.integration_phase in _INTEGRATION_STARTED_PHASES:
+            label = _TODO_STATUS_ACTIVE
         colors = _STATUS_COLORS_DARK if is_dark_mode() else _STATUS_COLORS_LIGHT
         color = colors.get(label, colors[_TODO_STATUS_DRAFT])
         bold = label == _TODO_STATUS_ACTIVE
@@ -351,18 +353,8 @@ class TodoRow(TelecMixin, Widget):
             line.append("\u25a0", style=self._status_style())
         line.append(" ")
 
-        # Slug — muted when required planning artifacts are missing during prepare.
-        # Exempt: bug items (use bug.md), items past prepare (build/review/delivered),
-        # and from-main items (stub artifacts are sufficient).
-        is_bug = any(name.lower() == "bug.md" for name in self.todo.files)
-        past_prepare = bool(self.todo.build_status) or self.todo.status == _TODO_STATUS_DELIVERED
-        missing_artifacts = (
-            not is_bug and not past_prepare and (not self.todo.has_requirements or not self.todo.has_impl_plan)
-        )
         if is_selected:
             slug_style = Style(reverse=True)
-        elif missing_artifacts:
-            slug_style = Style(color=_muted_color())
         else:
             slug_style = Style()
         line.append(self.todo.slug, style=slug_style)
