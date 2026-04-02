@@ -297,11 +297,12 @@ class TodoRow(TelecMixin, Widget):
             result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))
             return result
 
-        # 2. Active or queued integration phase
+        # 2. Active or queued integration phase — render in the P column slot for alignment
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
         if i_result is not None:
             i_label, i_value, i_color = i_result
-            result.append_text(self._build_col(i_label, i_value, w.get("I", 0), Style(color=i_color, bold=True)))
+            result.append_text(self._build_col("", "", w.get("DOR", 0), Style()))
+            result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color, bold=True)))
             return result
 
         # 3. Work phase (build != pending) — existing B/R/F/D path
