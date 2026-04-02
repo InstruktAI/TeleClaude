@@ -312,10 +312,7 @@ run_macos_setup_action() {
         return 0
     fi
 
-    local cmd=(env "PYTHONPATH=$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR")
-    if [ "$CI_MODE" = true ]; then
-        cmd+=("--skip-build")
-    fi
+    local cmd=(env "PYTHONPATH=$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "-m" "teleclaude.entrypoints.macos_setup" "--project-root" "$INSTALL_DIR" "--skip-build")
     cmd+=("$action")
 
     "${cmd[@]}"
@@ -325,7 +322,7 @@ install_macos_launchers() {
     if [ "$OS" != "macos" ]; then
         return 0
     fi
-    print_header "Installing macOS Launcher Apps"
+    print_header "Deploying macOS Launcher Apps"
     if run_macos_setup_action "install-launchers"; then
         print_success "Launcher apps installed"
     else

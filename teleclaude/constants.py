@@ -390,6 +390,18 @@ REDIS_OUTPUT_STREAM_MAXLEN = 10000  # Max output messages per session
 REDIS_OUTPUT_STREAM_TTL = 3600  # Auto-expire output streams after 1 hour
 REDIS_REFRESH_COOLDOWN_SECONDS = 30  # Minimum time between remote refreshes per peer+data type
 
+# Directories mounted into restricted (sandboxed) agent profiles.
+# Add paths here to make them accessible to all agents in restricted mode.
+RESTRICTED_MOUNT_DIRS: tuple[str, ...] = (
+    "~/.teleclaude/docs",
+    "/var/log/instrukt-ai",
+)
+
+# Agent-specific formatters for restricted mount dirs.
+_CLAUDE_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
+_GEMINI_MOUNT = ",".join(RESTRICTED_MOUNT_DIRS)
+_CODEX_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
+
 # Agent protocol (NOT user-configurable)
 # Fixed interface contracts for each agent CLI binary.
 # The only user-configurable field is `binary` in config.yml (wrapper path).
@@ -404,8 +416,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "default": ('--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\''),
             "restricted": (
                 "--strict-mcp-config"
-                ' --settings \'{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}\''
-                " --add-dir ~/.teleclaude/docs"
+                f' --settings \'{{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}}\''
+                f" {_CLAUDE_MOUNT}"
             ),
         },
         "model_flags": {
@@ -427,7 +439,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_pattern": "*/chats/*.json",
         "profiles": {
             "default": "--yolo --allowed-mcp-server-names _none_",
-            "restricted": "--sandbox --include-directories ~/.teleclaude/docs --allowed-mcp-server-names _none_",
+            "restricted": f"--sandbox --include-directories {_GEMINI_MOUNT} --allowed-mcp-server-names _none_",
         },
         "model_flags": {
             "fast": "-m gemini-2.5-flash-lite",
@@ -448,7 +460,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_pattern": "**/*.jsonl",
         "profiles": {
             "default": "--dangerously-bypass-approvals-and-sandbox --search",
-            "restricted": "--full-auto --search",
+            "restricted": f"--full-auto --search {_CODEX_MOUNT}",
         },
         "model_flags": {
             "fast": (
