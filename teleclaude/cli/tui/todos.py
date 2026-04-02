@@ -26,6 +26,7 @@ class TodoItem:  # pylint: disable=too-many-instance-attributes
     integration_phase: str | None = None
     finalize_status: str | None = None
     todo_path: str | None = None  # Always set by assemble_roadmap; None = contract violation
+    children_statuses: list[str] = field(default_factory=list)
 
     def file_path(self, filename: str) -> str:
         """Resolve the absolute path for a file within this todo."""

@@ -182,6 +182,12 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         todo_path=t.todo_path,
                     )
                 )
+        # Populate children_statuses for holder todos
+        item_by_slug = {t.slug: t for t in all_todo_items}
+        for item in all_todo_items:
+            if item.group and item.group in item_by_slug:
+                item_by_slug[item.group].children_statuses.append(item.status.value)
+
         slug_width = max((len(t.slug) for t in all_todo_items), default=0)
         col_widths = TodoRow.compute_col_widths(all_todo_items)
 
@@ -236,17 +242,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 widgets_to_mount.append(header)
                 self._nav_items.append(header)
 
-                if getattr(project, "has_roadmap", False):
-                    roadmap_row = TodoFileRow(
-                        filepath=f"{project.path}/todos/roadmap.yaml",
-                        filename="roadmap.yaml",
-                        slug="",
-                        is_last=False,
-                        tree_lines=[],
-                    )
-                    widgets_to_mount.append(roadmap_row)
-                    self._nav_items.append(roadmap_row)
-
                 # Filter tree nodes to this project's todos
                 project_slugs = {td.slug for td in (project.todos or [])}
                 project_nodes = [node for node in tree_nodes if node.slug in project_slugs]
@@ -276,7 +271,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                             f_last = fi == len(sorted_files) - 1
                             filepath = node.todo.file_path(filename)
                             file_row = TodoFileRow(
-                                filepath=filepath,
+                                artifact_key=filepath,
                                 filename=filename,
                                 slug=node.slug,
                                 is_last=f_last,
@@ -316,7 +311,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             is_last = i == len(sorted_files) - 1
             filepath = todo_row.todo.file_path(filename)
             file_row = TodoFileRow(
-                filepath=filepath,
+                artifact_key=filepath,
                 filename=filename,
                 slug=todo_row.slug,
                 is_last=is_last,

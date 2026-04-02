@@ -36,7 +36,7 @@ class TodoFileRow(TelecMixin, Widget):
     def __init__(
         self,
         *,
-        filepath: str,
+        artifact_key: str,
         filename: str,
         slug: str = "",
         is_last: bool = False,
@@ -44,9 +44,9 @@ class TodoFileRow(TelecMixin, Widget):
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        self.filepath = filepath
+        self.artifact_key = artifact_key
         self.filename = filename
-        self.slug = slug  # Empty for standalone files (roadmap.yaml)
+        self.slug = slug
         self.is_last = is_last
         self._tree_lines = tree_lines or []
 

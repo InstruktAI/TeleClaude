@@ -259,7 +259,17 @@ class TodoRow(TelecMixin, Widget):
 
     def _status_style(self) -> Style:
         label = self.todo.status.display_label
-        if self.todo.integration_phase in _INTEGRATION_STARTED_PHASES:
+        # Holders derive color from children
+        if self.todo.children_statuses:
+            if all(s == "delivered" for s in self.todo.children_statuses):
+                label = _TODO_STATUS_DELIVERED
+            elif any(s == "in_progress" for s in self.todo.children_statuses):
+                label = _TODO_STATUS_ACTIVE
+            elif all(s == "ready" for s in self.todo.children_statuses):
+                label = _TODO_STATUS_READY
+            else:
+                label = _TODO_STATUS_DRAFT
+        elif self.todo.integration_phase in _INTEGRATION_STARTED_PHASES:
             label = _TODO_STATUS_ACTIVE
         colors = _STATUS_COLORS_DARK if is_dark_mode() else _STATUS_COLORS_LIGHT
         color = colors.get(label, colors[_TODO_STATUS_DRAFT])
@@ -277,6 +287,10 @@ class TodoRow(TelecMixin, Widget):
 
     def _build_columns(self) -> Text:  # pylint: disable=too-many-locals
         """Build aligned property columns. Phase-aware: P | I take priority over B/R/F/D."""
+        # Holders show no phase columns — their status block derives from children
+        if self.todo.children_statuses:
+            return Text()
+
         result = Text()
         ok = _ok_color()
         gold = _gold_color()
