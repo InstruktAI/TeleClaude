@@ -11,7 +11,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
-from teleclaude.install.install_hooks import main as install_agent_hooks
+from teleclaude.install.configure_agent_cli import main as configure_agent_cli
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
 from teleclaude.project_setup.gitattributes import update_gitattributes
@@ -179,11 +179,11 @@ def _offer_enrichment(project_root: Path) -> None:
 def init_project(project_root: Path) -> None:
     """Initialize a project for TeleClaude.
 
-    Sets up agent hooks, git filters, pre-commit hooks, syncs artifacts, and
+    Configures agent CLIs, git filters, pre-commit hooks, syncs artifacts, and
     installs watchers. Optionally runs AI-driven project analysis to generate
     doc snippets that make the codebase legible to AI.
     """
-    install_agent_hooks()
+    configure_agent_cli()
     ensure_git_repo(project_root)
     ensure_hooks_path(project_root)
     setup_git_filters(project_root)

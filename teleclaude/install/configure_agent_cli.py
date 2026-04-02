@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Install/Update agent hooks and settings configuration.
+"""Configure TeleClaude integration for supported agent CLIs.
 
-This script configures AI agents (Gemini, Claude, Codex) to use TeleClaude hooks
-and applies required settings overrides from teleclaude/install/settings/*.json.
-It idempotently merges hook definitions and settings into the agent's config files.
+This module configures Claude, Gemini, and Codex to use TeleClaude wrappers,
+hooks, MCP servers, and static settings overrides from
+``teleclaude/install/settings/*.json``. It idempotently merges the managed
+configuration into each agent CLI's user config directory.
 """
 
 import json
 import os
 import re
 import shlex
+import shutil
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -53,6 +55,8 @@ MATCHER_ALL = "*"
 NOTIFY_KEY = "notify"
 AGENT_FLAG = "--agent"
 CODEX_AGENT = "codex"
+CODEX_COMPACTION_PROMPT_FILENAME = "CODEX.compaction.md"
+CODEX_COMPACTION_PROMPT_KEY = "experimental_compact_prompt_file"
 CODEX_NOTIFY_SUFFIX = [AGENT_FLAG, CODEX_AGENT]
 KNOWN_NATIVE_HOOK_EVENTS = {
     event_name for agent_map in AgentHookEvents.HOOK_EVENT_MAP.values() for event_name in agent_map.keys()
@@ -503,15 +507,30 @@ def configure_codex(  # pylint: disable=too-many-branches,too-many-locals,too-ma
         notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
         content = f"# Codex CLI configuration\n\n{notify_line}\n"
 
+    compaction_prompt_source = SETTINGS_DIR / CODEX_COMPACTION_PROMPT_FILENAME
+    compaction_prompt_target = config_path.parent / CODEX_COMPACTION_PROMPT_FILENAME
+    compaction_prompt_available = compaction_prompt_source.exists()
+    if compaction_prompt_available:
+        shutil.copyfile(compaction_prompt_source, compaction_prompt_target)
+    else:
+        print(f"Warning: Codex compaction prompt not found at {compaction_prompt_source}")
+
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     content = _remove_codex_mcp_config(content)
     content = _ensure_codex_mcp_servers(content, managed_mcp_servers)
-    content = _apply_codex_settings_overrides(content)
+    skipped_override_keys = frozenset({CODEX_COMPACTION_PROMPT_KEY}) if not compaction_prompt_available else frozenset()
+    content = _apply_codex_settings_overrides(content, skip_keys=skipped_override_keys)
     config_path.write_text(content)
     print(f"Codex hooks and settings configured in {config_path}")
 
 
-def _apply_codex_settings_overrides(content: str) -> str:
+def _remove_codex_top_level_key(content: str, key: str) -> str:
+    """Remove a top-level scalar key assignment from Codex TOML content."""
+    key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*(?:\n|$)", re.MULTILINE)
+    return key_pattern.sub("", content)
+
+
+def _apply_codex_settings_overrides(content: str, *, skip_keys: frozenset[str] = frozenset()) -> str:
     """Apply settings overrides from settings/codex.json to TOML content.
 
     For each top-level key in the overrides, ensure it exists in the TOML.
@@ -526,7 +545,13 @@ def _apply_codex_settings_overrides(content: str) -> str:
     except tomllib.TOMLDecodeError:
         return content
 
+    for key in skip_keys:
+        content = _remove_codex_top_level_key(content, key)
+        config.pop(key, None)
+
     for key, value in overrides.items():
+        if key in skip_keys:
+            continue
         toml_value = json.dumps(value)
         key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*$", re.MULTILINE)
 
@@ -654,9 +679,9 @@ def install_env_symlink(repo_root: Path) -> None:
 
 
 def main() -> None:
-    """CLI entrypoint for installing agent hooks and wrappers."""
+    """CLI entrypoint for configuring supported agent CLIs."""
     repo_root = resolve_main_repo_root(Path(__file__).resolve().parents[2])
-    print(f"Configuring hooks from repo: {repo_root}")
+    print(f"Configuring agent CLIs from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")
     install_env_symlink(repo_root)

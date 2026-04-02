@@ -3,7 +3,7 @@ id: 'general/procedure/project-initialization'
 type: 'procedure'
 domain: 'general'
 scope: 'global'
-description: 'Complete telec init pipeline — agent hooks, git plumbing, artifact sync, event domain seeding, file watchers, release channel, and optional AI enrichment.'
+description: 'Complete telec init pipeline — agent CLI configuration, git plumbing, artifact sync, event domain seeding, file watchers, release channel, and optional AI enrichment.'
 ---
 
 # Project Initialization — Procedure
@@ -22,12 +22,12 @@ optionally generating AI-driven project documentation.
 
 ## Steps
 
-### 1. Install agent hooks and wrappers
+### 1. Configure agent CLIs
 
 Installs the git safety wrapper, environment symlinks, and per-agent configuration
 (Claude, Gemini, Codex). This is the global agent infrastructure — not project-specific.
 
-Source: `teleclaude/install/install_hooks.py:main()`
+Source: `teleclaude/install/configure_agent_cli.py:main()`
 
 ### 2. Ensure git repository
 

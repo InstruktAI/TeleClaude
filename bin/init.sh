@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # TeleClaude Init Script
-# One-time setup: config, service, MCP integration, agent hooks.
+# One-time setup: config, service, MCP integration, agent CLI configuration.
 # Run 'make install' first to install dependencies.
 #
 
@@ -575,9 +575,19 @@ install_service() {
     esac
 }
 
+configure_agent_cli() {
+    print_header "Configuring Agent CLI"
+    print_info "Running bin/init/configure_agent_cli.py..."
+
+    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/bin/init/configure_agent_cli.py"; then
+        print_success "Agent CLI configured"
+    else
+        print_error "Failed to configure agent CLI"
+    fi
+}
+
 # Load modular init steps
 source "$INSTALL_DIR/bin/init/setup_mcp_config.sh"
-source "$INSTALL_DIR/bin/init/setup_agent_hooks.sh"
 source "$INSTALL_DIR/bin/init/link_shared_scripts.sh"
 
 # Main
@@ -600,7 +610,7 @@ main() {
     fi
     
     setup_mcp_config
-    setup_agent_hooks
+    configure_agent_cli
     link_shared_scripts
 
     print_header "Init Complete!"

@@ -626,7 +626,7 @@ def _warn_for_loose_dicts(  # pylint: disable=too-many-branches,too-many-locals
         repo_root / "teleclaude" / "api_server.py",
         repo_root / "teleclaude" / "core" / "models.py",
         repo_root / "teleclaude" / "core" / "command_mapper.py",
-        repo_root / "teleclaude" / "install" / "install_hooks.py",
+        repo_root / "teleclaude" / "install" / "configure_agent_cli.py",
         repo_root / "teleclaude" / "config" / "schema.py",
         repo_root / "teleclaude" / "config" / "runtime_settings.py",
         repo_root / "teleclaude" / "types" / "commands.py",

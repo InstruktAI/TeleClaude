@@ -1,3 +1,4 @@
+# pylint: disable=missing-function-docstring,protected-access,consider-using-from-import
 """Characterization tests for teleclaude.project_setup.init_flow."""
 
 from __future__ import annotations
@@ -47,10 +48,22 @@ def test_offer_enrichment_launches_refresh_for_reinitialized_projects(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     launches: list[object] = []
+
+    def has_generated_snippets(project_root: Path) -> bool:
+        _ = project_root
+        return True
+
+    def prompt_yes_no(prompt: str) -> bool:
+        _ = prompt
+        return True
+
+    def launch_enrichment(project_root: Path) -> None:
+        launches.append(project_root)
+
     monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: True))
-    monkeypatch.setattr(init_flow, "_has_generated_snippets", lambda project_root: True)
-    monkeypatch.setattr(init_flow, "_prompt_yes_no", lambda prompt: True)
-    monkeypatch.setattr(init_flow, "_launch_enrichment", lambda project_root: launches.append(project_root))
+    monkeypatch.setattr(init_flow, "_has_generated_snippets", has_generated_snippets)
+    monkeypatch.setattr(init_flow, "_prompt_yes_no", prompt_yes_no)
+    monkeypatch.setattr(init_flow, "_launch_enrichment", launch_enrichment)
 
     init_flow._offer_enrichment(tmp_path)
 

@@ -58,6 +58,8 @@ CODEX_NEXT_COMMAND_RE = re.compile(
     r"(^|[\s`'\"(\[])\/(next-[a-z0-9-]+)(?=$|[\s`'\"),.:;!?])",
     re.MULTILINE,
 )
+CONTEXT_PRESERVATION_START = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->"
+CONTEXT_PRESERVATION_END = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->"
 
 
 class StableYAMLHandler(YAMLHandler):  # type: ignore[misc]
@@ -76,6 +78,14 @@ class StableYAMLHandler(YAMLHandler):  # type: ignore[misc]
 _FRONTMATTER_HANDLER = StableYAMLHandler()
 
 
+def wrap_with_context_markers(content: str, *, is_markdown: bool) -> str:
+    """Wrap markdown content with TeleClaude context-preservation markers."""
+    if not is_markdown:
+        return content
+    separator = "" if not content or content.endswith("\n") else "\n"
+    return f"{CONTEXT_PRESERVATION_START}\n{content}{separator}{CONTEXT_PRESERVATION_END}\n"
+
+
 def dump_frontmatter(post: Post) -> str:
     """Serialize frontmatter using the stable YAML handler.
 
@@ -85,7 +95,8 @@ def dump_frontmatter(post: Post) -> str:
     parameters = post.metadata.pop("parameters", None)
     if parameters:
         post.content = _inject_parameter_preamble(post.content, parameters)
-    return frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)  # type: ignore[no-any-return]
+    rendered = frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)
+    return wrap_with_context_markers(rendered, is_markdown=True)
 
 
 def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
@@ -109,14 +120,19 @@ def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
     return header, body, True
 
 
-def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:
+def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:  # pylint: disable=too-many-locals
     """Normalize Codex frontmatter scalars to explicit single-quoted values.
 
     Note: GitHub issue openai/codex#11495 tracks removal of this workaround.
     Remove this Codex-only compatibility path once upstream frontmatter parsing
     false positives are fixed.
     """
-    header, body, has_frontmatter = _split_frontmatter_block(content)
+    marker_prefix = f"{CONTEXT_PRESERVATION_START}\n"
+    marker_suffix = f"\n{CONTEXT_PRESERVATION_END}\n"
+    wrapped = content.startswith(marker_prefix) and content.endswith(marker_suffix)
+    body_to_normalize = content[len(marker_prefix) : -len(marker_suffix)] if wrapped else content
+
+    header, body, has_frontmatter = _split_frontmatter_block(body_to_normalize)
     if not has_frontmatter:
         return content
 
@@ -151,6 +167,8 @@ def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:
     rendered_header = "\n".join(rendered_lines) + "\n"
 
     normalized = rendered_header + body
+    if wrapped:
+        normalized = f"{marker_prefix}{normalized}{marker_suffix}"
     return normalized if normalized != content else content
 
 
