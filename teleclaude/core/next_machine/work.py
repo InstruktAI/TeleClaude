@@ -404,6 +404,13 @@ async def _prepare_dispatch_state(  # pylint: disable=too-many-arguments,too-man
     dispatch_started: float,
 ) -> tuple[_DispatchState, str | None]:
     """Load worktree phase state, claiming the item and repairing stale transitions."""
+    # Merge origin/main BEFORE the uncommitted-changes check so that files
+    # deleted on main (e.g. todos/) don't appear as false-positive drift.
+    merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
+    if merge_err:
+        _log_next_work_phase(phase_slug, "merge_main", dispatch_started, "error", "merge_main_failed")
+        return _DispatchState({}, "", "", {}), format_error("MERGE_MAIN_FAILED", merge_err)
+
     if has_uncommitted_changes(cwd, resolved_slug):
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "uncommitted_changes")
         return _DispatchState({}, "", "", {}), format_uncommitted_changes(resolved_slug)
@@ -466,7 +473,7 @@ async def _dispatch_pre_review(  # pylint: disable=too-many-arguments,too-many-p
     if dispatch_state.review_status == PhaseStatus.CHANGES_REQUESTED.value:
         return await _dispatch_fix_review(db, cwd, resolved_slug, phase_slug, dispatch_started)
     if dispatch_state.build_status != PhaseStatus.COMPLETE.value:
-        return await _dispatch_build_phase(db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started)
+        return await _dispatch_build_phase(db, todos_db, cwd, resolved_slug, phase_slug, dispatch_started)
     return await _dispatch_review_phase(
         db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state
     )
@@ -510,17 +517,11 @@ async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-
     db: Db,
     todos_db: TodosDb,
     cwd: str,
-    worktree_cwd: str,
     resolved_slug: str,
     phase_slug: str,
     dispatch_started: float,
 ) -> str:
     """Dispatch build or bug-fix work when the build phase is incomplete."""
-    merge_main_result = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
-    if merge_main_result:
-        _log_next_work_phase(phase_slug, "merge_main", dispatch_started, "error", "merge_main_failed")
-        return format_error("MERGE_MAIN_FAILED", merge_main_result)
-
     try:
         guidance = await compose_agent_guidance(db)
     except RuntimeError as exc:
