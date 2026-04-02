@@ -1,6 +1,8 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,consider-using-from-import
 """Characterization tests for teleclaude.hooks.whatsapp_handler."""
 
+# pylint: disable=missing-function-docstring
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -10,8 +12,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import teleclaude.hooks.whatsapp_handler as whatsapp_handler
 from teleclaude.core.models import MessageMetadata
+from teleclaude.hooks import whatsapp_handler
 from teleclaude.hooks.webhook_models import HookEvent
 
 
@@ -52,7 +54,9 @@ def _make_event(event_type: str, **properties: str) -> HookEvent:
     )
 
 
-class TestDownloadWhatsappMedia:
+class TestDownloadWhatsappMedia:  # pylint: disable=too-few-public-methods
+    """Media download tests for WhatsApp handler."""
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_downloads_media_into_the_event_specific_session_subdirectory(
@@ -71,15 +75,15 @@ class TestDownloadWhatsappMedia:
             "config",
             SimpleNamespace(whatsapp=SimpleNamespace(access_token="token", api_version="v21.0")),
         )
-        monkeypatch.setattr(
+        monkeypatch.setattr(  # pyright: ignore[reportUnknownLambdaType]
             whatsapp_handler,
             "get_session_output_dir",
-            lambda _session_id: tmp_path,  # pyright: ignore[reportUnknownLambdaType]
+            lambda _session_id: tmp_path,
         )
-        monkeypatch.setattr(
+        monkeypatch.setattr(  # pyright: ignore[reportUnknownLambdaType]
             whatsapp_handler.httpx,
             "AsyncClient",
-            lambda timeout: client,  # pyright: ignore[reportUnknownLambdaType]
+            lambda timeout: client,
         )
 
         output_path = await whatsapp_handler.download_whatsapp_media(
@@ -97,7 +101,93 @@ class TestDownloadWhatsappMedia:
         assert client.calls[1][1] == "https://cdn.example.test/media"
 
 
+class TestResolveOrCreateSession:  # pylint: disable=too-few-public-methods
+    """Session resolution and creation tests for WhatsApp handler."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_creates_missing_whatsapp_session_via_edge_session_route(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured = SimpleNamespace(
+            connected=False,
+            closed=False,
+            computer=None,
+            project_path=None,
+            title=None,
+            auto_command=None,
+            origin=None,
+            origin_metadata=None,
+        )
+        resolved_session = SimpleNamespace(session_id="session-whatsapp")
+
+        async def _connect() -> None:
+            captured.connected = True
+
+        async def _close() -> None:
+            captured.closed = True
+
+        async def _create_session(**kwargs: object) -> SimpleNamespace:
+            captured.computer = str(kwargs["computer"])
+            captured.project_path = str(kwargs["project_path"])
+            captured.title = str(kwargs["title"])
+            captured.auto_command = str(kwargs["auto_command"])
+            metadata = kwargs["metadata"]
+            assert isinstance(metadata, dict)
+            captured.origin = str(metadata["origin"])
+            origin_metadata = metadata["origin_metadata"]
+            assert isinstance(origin_metadata, dict)
+            captured.origin_metadata = {str(key): str(value) for key, value in origin_metadata.items()}
+            result = SimpleNamespace(session_id="session-whatsapp")
+            result.get = lambda key, default=None: result.session_id if key == "session_id" else default
+            return result
+
+        def _fake_api_client() -> SimpleNamespace:
+            return SimpleNamespace(
+                connect=_connect,
+                close=_close,
+                create_session=_create_session,
+            )
+
+        mock_db = SimpleNamespace(
+            get_sessions_by_origin_metadata=AsyncMock(return_value=[]),
+            get_session=AsyncMock(return_value=resolved_session),
+        )
+        mock_service = SimpleNamespace(
+            create_session=AsyncMock(side_effect=AssertionError("WhatsApp create must not bypass the API edge"))
+        )
+        monkeypatch.setattr(whatsapp_handler, "db", mock_db)
+        monkeypatch.setattr(
+            whatsapp_handler,
+            "config",
+            SimpleNamespace(computer=SimpleNamespace(name="local", help_desk_dir="/help-desk")),
+        )
+        monkeypatch.setattr(whatsapp_handler, "get_default_agent", lambda: "claude")
+        monkeypatch.setattr(whatsapp_handler, "get_command_service", lambda: mock_service)
+        monkeypatch.setattr("teleclaude.cli.api_client.TelecAPIClient", _fake_api_client)
+
+        session = await whatsapp_handler._resolve_or_create_session("15551234567")  # pylint: disable=protected-access
+
+        assert session is resolved_session
+        assert captured.connected is True
+        assert captured.closed is True
+        assert captured.computer == "local"
+        assert captured.project_path == "/help-desk"
+        assert captured.title == "WhatsApp: 15551234567"
+        assert captured.auto_command == "agent claude"
+        assert captured.origin == "whatsapp"
+        assert captured.origin_metadata == {
+            "phone_number": "15551234567",
+            "platform": "whatsapp",
+        }
+        mock_db.get_session.assert_awaited_once_with("session-whatsapp")
+        mock_service.create_session.assert_not_awaited()
+
+
 class TestHandleWhatsappEvent:
+    """Event dispatch tests for WhatsApp handler."""
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_text_messages_dispatch_process_message_with_normalized_actor_identity(
@@ -219,7 +309,7 @@ class TestHandleWhatsappEvent:
         monkeypatch.setattr(whatsapp_handler, "UiAdapter", _FakeWhatsappAdapter)
         monkeypatch.setattr(whatsapp_handler, "get_command_service", lambda: command_service)
 
-        await whatsapp_handler._dispatch_whatsapp_command(
+        await whatsapp_handler._dispatch_whatsapp_command(  # pylint: disable=protected-access
             session=SimpleNamespace(session_id="session-4"),
             message_id="wamid-typed",
             command_name="process_message",

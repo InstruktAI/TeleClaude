@@ -198,7 +198,7 @@ sequenceDiagram
 
 ## Invariants
 
-1. **Main database**: All memory tables live in `~/.teleclaude/teleclaude.db` alongside session and hook tables.
+1. **Main database**: All memory tables live in `/Users/Morriz/.teleclaude/teleclaude.db` alongside session and hook tables.
 
 2. **Strict enum validation**: `ObservationType` is enforced at every API boundary. The SQL schema has no CHECK constraint — validation happens in Python. Invalid types are rejected with 422 before reaching the database.
 

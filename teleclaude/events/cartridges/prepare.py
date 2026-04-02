@@ -13,8 +13,6 @@ from typing import TypedDict, cast
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import SlashCommand
-from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.models import JsonDict
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -417,14 +415,21 @@ class PrepareCartridge:
 
     async def _dispatch_prepare_agent(self, slug: str) -> None:
         """Spawn an agent session to run /next-prepare for the dumped todo."""
+        from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
+
         project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
         try:
-            await get_command_service().run_slash_command(
-                SlashCommand.NEXT_PREPARE,
-                project_path,
-                args=slug,
-                detach=True,
-            )
+            api = TelecAPIClient()
+            await api.connect()
+            try:
+                await api.run_session(
+                    command="/next-prepare",
+                    project_path=project_path,
+                    args=slug,
+                    detach=True,
+                )
+            finally:
+                await api.close()
             logger.info("prepare: dispatched prepare agent for %s", slug)
         except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("prepare: failed to dispatch prepare agent", slug=slug)

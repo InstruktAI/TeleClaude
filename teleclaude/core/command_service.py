@@ -7,7 +7,6 @@ This service wires required dependencies without using a generic dispatcher.
 from __future__ import annotations
 
 import functools
-import shlex
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -74,7 +73,7 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_PREPARE_GATE: (ROLE_WORKER, JobRole.GATE_CHECKER),
     SlashCommand.NEXT_BUILD_SPECS: (ROLE_WORKER, JobRole.SPEC_BUILDER),
     SlashCommand.NEXT_REVIEW_SPECS: (ROLE_WORKER, JobRole.SPEC_REVIEWER),
-    SlashCommand.NEXT_PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
+    SlashCommand.NEXT_PREPARE: (ROLE_WORKER, JobRole.PREPARE_ORCHESTRATOR),
     SlashCommand.NEXT_WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
     SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
 }
@@ -353,41 +352,3 @@ class CommandService:
         )
 
         return {"status": "accepted", "thread_id": thread_id}
-
-    async def run_slash_command(  # pylint: disable=too-many-arguments,too-many-locals
-        self,
-        command: SlashCommand,
-        project_path: str,
-        *,
-        args: str = "",
-        detach: bool = True,
-        thinking_mode: str = "slow",
-        agent: str = "claude",
-    ) -> dict[str, str]:
-        """Spawn a new agent session for a slash command without a caller session identity.
-
-        Used for daemon-internal spawning (e.g. integration_bridge) where no
-        human caller session is available.  system_role and job are derived from
-        COMMAND_ROLE_MAP so auth can identify the session's role.
-        """
-        from teleclaude.core.command_mapper import CommandMapper  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
-
-        role_info = COMMAND_ROLE_MAP.get(command)
-        full_command = f"/{command.value} {args}".rstrip() if args else f"/{command.value}"
-        auto_command = f"agent_then_message {agent} {thinking_mode} {shlex.quote(full_command)}"
-        metadata = MessageMetadata(
-            origin=InputOrigin.TERMINAL.value,
-            title=full_command,
-            project_path=project_path,
-            system_role=role_info[0] if role_info else None,
-            job=role_info[1].value if role_info else None,
-            auto_command=auto_command,
-        )
-        cmd = CommandMapper.map_api_input(
-            "new_session",
-            {"skip_listener_registration": detach},
-            metadata,
-        )
-        return await self.create_session(cmd)  # type: ignore[arg-type]

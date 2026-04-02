@@ -1,7 +1,11 @@
 """Characterization tests for teleclaude.core.command_service."""
 
+# pylint: disable=missing-function-docstring
+
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,6 +15,27 @@ from teleclaude.constants import JobRole, SlashCommand
 from teleclaude.core.command_service import COMMAND_ROLE_MAP, CommandService, _build_widget_summary
 from teleclaude.core.models import MessageMetadata
 from teleclaude.types.commands import SystemCommand
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _is_direct_session_creation_bypass(node: ast.AST) -> str | None:  # pylint: disable=too-many-return-statements
+    """Return the forbidden core-service call name when a caller bypasses the API edge."""
+    if not isinstance(node, ast.Call):
+        return None
+    if not isinstance(node.func, ast.Attribute):
+        return None
+    if node.func.attr not in {"run_slash_command", "create_session"}:
+        return None
+    service_call = node.func.value
+    if not isinstance(service_call, ast.Call):
+        return None
+    service_func = service_call.func
+    if isinstance(service_func, ast.Name) and service_func.id == "get_command_service":
+        return node.func.attr
+    if isinstance(service_func, ast.Attribute) and service_func.attr == "get_command_service":
+        return node.func.attr
+    return None
 
 
 def _make_service(*, client: object | None = None) -> CommandService:
@@ -26,6 +51,8 @@ def _make_service(*, client: object | None = None) -> CommandService:
 
 
 class TestCommandRoleMap:
+    """COMMAND_ROLE_MAP and edge migration tests."""
+
     @pytest.mark.unit
     def test_next_build_maps_to_worker_builder(self):
         role_info = COMMAND_ROLE_MAP.get(SlashCommand.NEXT_BUILD)
@@ -59,8 +86,54 @@ class TestCommandRoleMap:
     def test_map_is_not_empty(self):
         assert len(COMMAND_ROLE_MAP) > 0
 
+    @pytest.mark.unit
+    def test_command_service_no_longer_exposes_run_slash_command(self) -> None:
+        """CommandService stops exposing daemon-internal slash-command spawning once callers migrate to HTTP."""
+        assert not hasattr(CommandService, "run_slash_command")
 
-class TestBuildWidgetSummary:
+    @pytest.mark.unit
+    def test_production_code_contains_no_run_slash_command_ast_references(self) -> None:
+        """No production module defines or references run_slash_command after the edge migration."""
+        offenders: list[str] = []
+
+        for path in sorted((_REPO_ROOT / "teleclaude").rglob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == "run_slash_command":
+                    offenders.append(path.relative_to(_REPO_ROOT).as_posix())
+                    break
+                if isinstance(node, ast.Attribute) and node.attr == "run_slash_command":
+                    offenders.append(path.relative_to(_REPO_ROOT).as_posix())
+                    break
+
+        assert not offenders, offenders
+
+    @pytest.mark.unit
+    def test_affected_callers_contain_no_direct_session_creation_service_references(self) -> None:
+        """Migrated daemon-internal callers stop calling core session services directly."""
+        offenders: list[str] = []
+        target_paths = (
+            "teleclaude/core/integration_bridge.py",
+            "teleclaude/events/cartridges/prepare.py",
+            "teleclaude/hooks/whatsapp_handler.py",
+        )
+
+        for relative_path in target_paths:
+            path = _REPO_ROOT / relative_path
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                forbidden_call = _is_direct_session_creation_bypass(node)
+                if forbidden_call:
+                    offenders.append(f"{relative_path}:{forbidden_call}")
+
+        assert not offenders, offenders
+
+
+class TestBuildWidgetSummary:  # pylint: disable=too-few-public-methods
+    """Widget summary builder tests."""
+
     @pytest.mark.unit
     def test_builds_summary_with_all_section_types(self) -> None:
         """Widget summary includes title, text, table, code, divider, and footer."""
@@ -84,6 +157,8 @@ class TestBuildWidgetSummary:
 
 
 class TestSystemCommandHandlers:
+    """System command dispatch tests."""
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_deliver_result_retries_with_plain_text_on_formatting_failure(self) -> None:

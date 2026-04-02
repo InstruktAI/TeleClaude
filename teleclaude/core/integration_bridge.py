@@ -268,7 +268,7 @@ async def spawn_integrator_session(
 
     Returns session info dict on spawn, or None if integrator was notified.
     """
-    from teleclaude.constants import JobRole, SlashCommand  # pylint: disable=import-outside-toplevel
+    from teleclaude.constants import JobRole  # pylint: disable=import-outside-toplevel
     from teleclaude.core.command_registry import get_command_service  # pylint: disable=import-outside-toplevel
     from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
     from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
@@ -311,11 +311,18 @@ async def spawn_integrator_session(
 
     project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
     try:
-        await get_command_service().run_slash_command(
-            SlashCommand.NEXT_INTEGRATE,
-            project_path,
-            detach=True,
-        )
+        from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
+
+        api = TelecAPIClient()
+        await api.connect()
+        try:
+            await api.run_session(
+                command="/next-integrate",
+                project_path=project_path,
+                detach=True,
+            )
+        finally:
+            await api.close()
         logger.info("Spawned integrator session for %s", slug)
         return _SpawnResult(status="spawned", slug=slug)
     except Exception as exc:  # pylint: disable=broad-exception-caught

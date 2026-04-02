@@ -1,5 +1,7 @@
 """Characterization tests for session management routes."""
 
+# pylint: disable=protected-access
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -21,6 +23,8 @@ def _make_request(headers: dict[str, str] | None = None) -> SimpleNamespace:
 
 
 class TestSessionsRoutes:
+    """Session route preparation and lifecycle tests."""
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_create_session_returns_400_when_requested_agent_is_disabled(self) -> None:
@@ -223,6 +227,38 @@ class TestSessionsRoutes:
         assert metadata.origin == InputOrigin.TERMINAL.value
         assert metadata.origin_metadata is not None
         assert metadata.origin_metadata["email"] == "terminal@example.com"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_preserves_explicit_daemon_origin_override(self) -> None:
+        """Daemon-internal callers may provide origin/origin_metadata that must survive route preparation."""
+        request = CreateSessionRequest.model_validate(
+            {
+                "computer": "local",
+                "project_path": "/repo/demo",
+                "title": "WhatsApp: 15551234567",
+                "origin": InputOrigin.WHATSAPP.value,
+                "origin_metadata": {
+                    "phone_number": "15551234567",
+                    "platform": "whatsapp",
+                },
+            }
+        )
+        identity = SimpleNamespace(session_id="sess-daemon", human_role=None, email="daemon@example.com")
+
+        with patch(
+            "teleclaude.api.sessions_routes._build_launch_intent",
+            new=AsyncMock(return_value=(None, None)),
+        ):
+            metadata, _initiator, _title, _intent, _caller = await sessions_routes._prepare_create_session(
+                request, identity
+            )
+
+        assert metadata.origin == InputOrigin.WHATSAPP.value
+        assert metadata.origin_metadata is not None
+        assert metadata.origin_metadata["phone_number"] == "15551234567"
+        assert metadata.origin_metadata["platform"] == "whatsapp"
+        assert "email" not in metadata.origin_metadata
 
     @pytest.mark.unit
     @pytest.mark.asyncio

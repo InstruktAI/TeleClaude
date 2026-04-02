@@ -1,14 +1,21 @@
 """Tests for teleclaude.api.auth — verify_caller token path, clearance checks, principal wiring."""
+# pylint: disable=missing-function-docstring,import-outside-toplevel
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
-from teleclaude.api.auth import CallerIdentity, verify_caller
+from teleclaude.api.auth import (
+    CallerIdentity,
+    clearance_sessions_run,
+    clearance_sessions_start,
+    verify_caller,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -237,6 +244,46 @@ class TestVerifyCallerLifecycle:
                 await verify_caller(x_session_token="old-revoked-token")
 
         assert exc_info.value.status_code == 401
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "clearance_dependency",
+    [clearance_sessions_start, clearance_sessions_run],
+)
+async def test_orchestrator_token_identity_passes_session_creation_clearances(
+    clearance_dependency: Callable[..., Awaitable[CallerIdentity]],
+) -> None:
+    """A token-authenticated orchestrator identity passes the same clearance checks as any other caller."""
+    token_record = _make_token_record(
+        session_id="sess-orchestrator",
+        principal="system:sess-orchestrator",
+        role="admin",
+    )
+    session = _make_session_record(
+        session_id="sess-orchestrator",
+        human_role=None,
+        tmux_session_name="tmux-sess-orchestrator",
+        system_role="orchestrator",
+    )
+
+    with (
+        patch("teleclaude.api.auth._get_cached_token", return_value=None),
+        patch("teleclaude.api.auth.db") as mock_db,
+        patch("teleclaude.api.auth._get_cached_session", return_value=None),
+        patch("teleclaude.api.auth._put_cached_token"),
+        patch("teleclaude.api.auth._put_cached_session"),
+    ):
+        mock_db.validate_session_token = AsyncMock(return_value=token_record)
+        mock_db.get_session = AsyncMock(return_value=session)
+
+        identity = await verify_caller(x_session_token=token_record.token)
+        cleared_identity = await clearance_dependency(identity=identity)
+
+    assert cleared_identity.session_id == "sess-orchestrator"
+    assert cleared_identity.system_role == "orchestrator"
+    assert cleared_identity.principal == "system:sess-orchestrator"
 
 
 # ---------------------------------------------------------------------------

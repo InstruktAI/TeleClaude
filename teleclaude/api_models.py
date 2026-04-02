@@ -30,6 +30,8 @@ class CreateSessionRequest(BaseModel):
     human_email: str | None = None
     human_role: Literal["admin", "member", "contributor", "newcomer"] | None = None
     metadata: dict[str, object] | None = None  # guard: loose-dict
+    origin: str | None = None
+    origin_metadata: dict[str, object] | None = None  # guard: loose-dict
 
 
 class CreateSessionResponseDTO(BaseModel):

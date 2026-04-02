@@ -1,10 +1,10 @@
 """Characterization tests for teleclaude/cli/api_client.py."""
-# pylint: disable=missing-function-docstring,protected-access
+# pylint: disable=import-outside-toplevel,missing-function-docstring,protected-access
 
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -136,6 +136,92 @@ def test_build_identity_headers_excludes_absent_fields(monkeypatch: pytest.Monke
                 headers = client._build_identity_headers()
     assert "x-session-token" not in headers
     assert "x-telec-email" not in headers
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_create_session_posts_to_sessions_with_supplied_payload() -> None:
+    """The daemon-facing client preserves create-session inputs when calling POST /sessions."""
+    client = TelecAPIClient()
+    response = MagicMock()
+    response.text = '{"status":"success","session_id":"sess-edge","tmux_session_name":"tmux-edge","agent":"claude"}'
+
+    with patch.object(client, "_request", new=AsyncMock(return_value=response)) as request_mock:
+        result = await client.create_session(
+            computer="local",
+            project_path="/help-desk",
+            agent="claude",
+            thinking_mode="slow",
+            title="WhatsApp: 15551234567",
+            auto_command="agent claude",
+            metadata={
+                "origin": "whatsapp",
+                "origin_metadata": {
+                    "phone_number": "15551234567",
+                    "platform": "whatsapp",
+                },
+            },
+        )
+
+    assert result.session_id == "sess-edge"
+    request_mock.assert_awaited_once()
+    method, path = request_mock.await_args.args
+    request_options = request_mock.await_args.kwargs["request_options"]
+    assert method == "POST"
+    assert path == "/sessions"
+    assert request_options.json_body == {
+        "computer": "local",
+        "project_path": "/help-desk",
+        "agent": "claude",
+        "thinking_mode": "slow",
+        "title": "WhatsApp: 15551234567",
+        "message": None,
+        "auto_command": "agent claude",
+        "human_email": None,
+        "human_role": None,
+        "metadata": {
+            "origin": "whatsapp",
+            "origin_metadata": {
+                "phone_number": "15551234567",
+                "platform": "whatsapp",
+            },
+        },
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_session_posts_to_sessions_run_with_slash_command_payload() -> None:
+    """The daemon-facing client preserves slash-command inputs when calling POST /sessions/run."""
+    client = TelecAPIClient()
+    response = MagicMock()
+    response.text = '{"status":"success","session_id":"sess-edge","tmux_session_name":"tmux-edge","agent":"claude"}'
+
+    with patch.object(client, "_request", new=AsyncMock(return_value=response)) as request_mock:
+        result = await client.run_session(
+            command="/next-prepare",
+            args="edge-http-migration",
+            project_path="/repo/demo",
+            detach=True,
+        )
+
+    assert result.session_id == "sess-edge"
+    request_mock.assert_awaited_once()
+    method, path = request_mock.await_args.args
+    request_options = request_mock.await_args.kwargs["request_options"]
+    assert method == "POST"
+    assert path == "/sessions/run"
+    assert request_options.json_body == {
+        "command": "/next-prepare",
+        "args": "edge-http-migration",
+        "project": "/repo/demo",
+        "computer": "local",
+        "agent": "claude",
+        "thinking_mode": "slow",
+        "detach": True,
+        "additional_context": "",
+        "subfolder": "",
+    }
 
 
 # ---------------------------------------------------------------------------

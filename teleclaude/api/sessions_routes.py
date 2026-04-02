@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shlex
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -19,6 +20,7 @@ from teleclaude.api.auth import (
     clearance_sessions_start,
 )
 from teleclaude.api.session_access import check_session_access
+from teleclaude.api.sessions_actions_routes import _infer_role_from_message
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -28,12 +30,11 @@ from teleclaude.api_models import (
 )
 from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, SlashCommand, format_system_message
+from teleclaude.constants import HUMAN_ROLE_ADMIN, format_system_message
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.command_service import COMMAND_ROLE_MAP
 from teleclaude.core.db import db
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
@@ -177,19 +178,42 @@ def _extract_session_role_fields(
     return system_role, job
 
 
-def _infer_role_from_message(message: str | None) -> tuple[str | None, str | None]:
-    """Infer system_role and job from a slash command at the start of a message."""
-    if not message or not message.startswith("/"):
-        return None, None
-    cmd_token = message.split()[0].lstrip("/")
-    try:
-        slash_cmd = SlashCommand(cmd_token)
-    except ValueError:
-        return None, None
-    role_info = COMMAND_ROLE_MAP.get(slash_cmd)
-    if role_info:
-        return role_info[0], role_info[1].value
-    return None, None
+def _resolve_origin(
+    request: CreateSessionRequest,
+    identity: CallerIdentity,
+) -> tuple[str, str | None, Mapping[str, object] | None]:
+    """Resolve origin, caller_email, and origin_metadata from request and identity.
+
+    Daemon-internal callers (e.g. WhatsApp handler) may supply origin via top-level
+    request fields or nested inside the metadata dict.  When neither is present,
+    origin is derived from identity context (terminal vs web).
+
+    Returns (origin, caller_email, origin_metadata).
+    """
+    explicit_origin = request.origin
+    explicit_origin_meta: Mapping[str, object] | None = request.origin_metadata
+    # API client pass-through: origin may be nested inside request.metadata
+    if not explicit_origin and request.metadata and "origin" in request.metadata:
+        explicit_origin = str(request.metadata["origin"])
+        raw_meta = request.metadata.get("origin_metadata")
+        if isinstance(raw_meta, dict) and not explicit_origin_meta:
+            explicit_origin_meta = raw_meta
+
+    caller_email = identity.email
+    if explicit_origin:
+        return explicit_origin, caller_email, explicit_origin_meta
+
+    origin = InputOrigin.TERMINAL.value
+    if request.human_email:
+        origin = InputOrigin.WEB.value
+        caller_email = request.human_email
+    typed_origin: WebOriginMetadata | TerminalOriginMetadata | None = None
+    if caller_email:
+        if origin == InputOrigin.WEB.value:
+            typed_origin = WebOriginMetadata(email=caller_email)
+        else:
+            typed_origin = TerminalOriginMetadata(email=caller_email)
+    return origin, caller_email, typed_origin
 
 
 def _resolve_enabled_agent(requested_agent: str | None) -> str:
@@ -416,21 +440,8 @@ async def _prepare_create_session(
     """Prepare session creation metadata, initiator ID, and launch intent."""
     initiator_session_id = _extract_initiator_session_id(request, identity)
 
-    # Determine real origin and caller email from identity context
-    origin = InputOrigin.TERMINAL.value
-    caller_email = identity.email
-    if request.human_email:
-        origin = InputOrigin.WEB.value
-        caller_email = request.human_email
+    origin, caller_email, origin_meta = _resolve_origin(request, identity)
     effective_human_role = _resolve_effective_human_role(request.human_role, identity.human_role)
-
-    # Build typed origin metadata for identity resolution
-    typed_origin: WebOriginMetadata | TerminalOriginMetadata | None = None
-    if caller_email:
-        if origin == InputOrigin.WEB.value:
-            typed_origin = WebOriginMetadata(email=caller_email)
-        else:
-            typed_origin = TerminalOriginMetadata(email=caller_email)
 
     req_system_role, req_job = _extract_session_role_fields(request.metadata)
 
@@ -446,7 +457,7 @@ async def _prepare_create_session(
         subdir=request.subdir,
         human_email=caller_email,
         human_role=effective_human_role,
-        origin_metadata=typed_origin,
+        origin_metadata=origin_meta,
         system_role=req_system_role,
         job=req_job,
     )

@@ -234,6 +234,23 @@ class RunSessionPlan:
     job: str | None
 
 
+def _infer_role_from_message(  # pyright: ignore[reportUnusedFunction]
+    message: str | None,
+) -> tuple[str | None, str | None]:
+    """Infer system_role and job from a slash command at the start of a message."""
+    if not message or not message.startswith("/"):
+        return None, None
+    cmd_token = message.split()[0].lstrip("/")
+    try:
+        slash_cmd = SlashCommand(cmd_token)
+    except ValueError:
+        return None, None
+    role_info = COMMAND_ROLE_MAP.get(slash_cmd)
+    if role_info:
+        return role_info[0], role_info[1].value
+    return None, None
+
+
 def _resolve_run_session_agent(request: RunSessionRequest) -> str:
     """Resolve the agent used for a run-session request."""
     if "agent" in request.model_fields_set:

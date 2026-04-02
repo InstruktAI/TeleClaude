@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -397,6 +398,54 @@ async def test_assessment_failure_does_not_propagate():
         result = await cartridge.process(event, ctx)
 
     assert result is event
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_todo_dumped_dispatches_prepare_agent_via_edge_session_route() -> None:
+    """todo_dumped dispatches /next-prepare through the API edge instead of CommandService.run_slash_command."""
+    captured = SimpleNamespace(
+        connected=False,
+        closed=False,
+        command=None,
+        args=None,
+        project_path=None,
+        detach=None,
+    )
+
+    async def _connect() -> None:
+        captured.connected = True
+
+    async def _close() -> None:
+        captured.closed = True
+
+    async def _run_session(**kwargs: object) -> dict[str, str]:
+        captured.command = str(kwargs["command"])
+        captured.args = str(kwargs["args"])
+        captured.project_path = str(kwargs["project_path"])
+        captured.detach = bool(kwargs["detach"])
+        return {"session_id": "sess-prepare", "tmux_session_name": "tmux-prepare"}
+
+    def _fake_api_client() -> SimpleNamespace:
+        return SimpleNamespace(connect=_connect, close=_close, run_session=_run_session)
+
+    cartridge = PrepareCartridge()
+    event = _make_event("domain.software-development.planning.todo_dumped", slug="my-slug")
+    ctx = MagicMock()
+
+    with (
+        patch("teleclaude.cli.api_client.TelecAPIClient", _fake_api_client),
+        patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
+    ):
+        result = await cartridge.process(event, ctx)
+
+    assert result is event
+    assert captured.connected is True
+    assert captured.closed is True
+    assert captured.command == "/next-prepare"
+    assert captured.args == "my-slug"
+    assert captured.project_path == "/project"
+    assert captured.detach is True
 
 
 # ── PrepareCartridge._assess public behavior ───────────────────────────

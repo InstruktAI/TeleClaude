@@ -1,17 +1,19 @@
-"""Unit tests for integration_bridge.spawn_integrator_session,
-CommandService.run_slash_command, and Db session column round-trips.
+"""Unit tests for integration_bridge.spawn_integrator_session and Db session column round-trips.
 
-Covers the code paths introduced in the fix-integrator-spawn-broken-integration-brid fix:
-- spawn_integrator_session guard (already running) and spawn branches
-- CommandService.run_slash_command system_role/job and auto_command construction
-- Db._to_core_session system_role/job column read
+Covers spawn_integrator_session guard (already running) and spawn branches,
+plus Db._to_core_session system_role/job column reads.
 """
+
+# pylint: disable=import-outside-toplevel,missing-function-docstring,protected-access
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from teleclaude.constants import ROLE_INTEGRATOR, JobRole, SlashCommand
+import pytest
+
+from teleclaude.constants import ROLE_INTEGRATOR, JobRole
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,67 +76,6 @@ def test_to_core_session_reads_role_columns():
 
 
 # ---------------------------------------------------------------------------
-# CommandService.run_slash_command
-# ---------------------------------------------------------------------------
-
-
-async def test_run_slash_command_builds_integrator_metadata():
-    """NEXT_INTEGRATE must produce the correct system_role, job, and auto_command."""
-    from teleclaude.core.command_service import CommandService
-
-    svc = object.__new__(CommandService)  # bypass heavy __init__
-    svc.create_session = AsyncMock(return_value={"session_id": "x"})
-
-    with patch("teleclaude.core.command_mapper.CommandMapper.map_api_input") as mock_map:
-        mock_map.return_value = MagicMock()
-        await svc.run_slash_command(SlashCommand.NEXT_INTEGRATE, "/my/project")
-
-    positional = mock_map.call_args[0]
-    metadata = positional[2]  # MessageMetadata is the third positional arg
-
-    assert metadata.system_role == ROLE_INTEGRATOR
-    assert metadata.job == JobRole.INTEGRATOR.value
-    assert "agent_then_message claude slow" in metadata.auto_command
-    assert "/next-integrate" in metadata.auto_command
-
-
-async def test_run_slash_command_detach_forwarded_as_skip_listener():
-    """detach=True must set skip_listener_registration=True in the create params."""
-    from teleclaude.core.command_service import CommandService
-
-    svc = object.__new__(CommandService)
-    svc.create_session = AsyncMock(return_value={"session_id": "x"})
-
-    with patch("teleclaude.core.command_mapper.CommandMapper.map_api_input") as mock_map:
-        mock_map.return_value = MagicMock()
-        await svc.run_slash_command(SlashCommand.NEXT_INTEGRATE, "/p", detach=True)
-
-    positional = mock_map.call_args[0]
-    params = positional[1]
-    assert params["skip_listener_registration"] is True
-
-
-async def test_run_slash_command_unmapped_command_produces_no_metadata():
-    """A SlashCommand absent from COMMAND_ROLE_MAP must produce None system_role/job."""
-    from teleclaude.core.command_service import CommandService
-
-    svc = object.__new__(CommandService)
-    svc.create_session = AsyncMock(return_value={"session_id": "x"})
-
-    fake_cmd = MagicMock()
-    fake_cmd.value = "nonexistent-command"
-
-    with patch("teleclaude.core.command_mapper.CommandMapper.map_api_input") as mock_map:
-        mock_map.return_value = MagicMock()
-        await svc.run_slash_command(fake_cmd, "/p")
-
-    positional = mock_map.call_args[0]
-    metadata = positional[2]
-    assert metadata.system_role is None
-    assert metadata.job is None
-
-
-# ---------------------------------------------------------------------------
 # spawn_integrator_session
 # ---------------------------------------------------------------------------
 
@@ -185,18 +126,44 @@ async def test_spawn_integrator_session_notify_failure_returns_none():
     assert result is None
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_spawn_integrator_session_spawns_when_none_running():
-    """Spawn branch: when no integrator is active, run_slash_command is called."""
+    """Spawn branch: when no integrator is active, the edge API is used to run /next-integrate."""
+    captured = SimpleNamespace(
+        connected=False,
+        closed=False,
+        command=None,
+        project_path=None,
+        detach=None,
+    )
+
+    async def _connect() -> None:
+        captured.connected = True
+
+    async def _close() -> None:
+        captured.closed = True
+
+    async def _run_session(**kwargs: object) -> dict[str, str]:
+        captured.command = str(kwargs["command"])
+        captured.project_path = str(kwargs["project_path"])
+        captured.detach = bool(kwargs["detach"])
+        return {"session_id": "new", "tmux_session_name": "tmux-new"}
+
+    def _fake_api_client() -> SimpleNamespace:
+        return SimpleNamespace(connect=_connect, close=_close, run_session=_run_session)
+
     non_integrator = MagicMock()
     non_integrator.job = "builder"
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[non_integrator])
     mock_svc = MagicMock()
-    mock_svc.run_slash_command = AsyncMock(return_value={"session_id": "new"})
+    mock_svc.run_slash_command = AsyncMock(side_effect=AssertionError("spawn must not call run_slash_command"))
 
     with (
         patch("teleclaude.core.db.db", mock_db),
         patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.cli.api_client.TelecAPIClient", _fake_api_client),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         from teleclaude.core.integration_bridge import spawn_integrator_session
@@ -206,19 +173,29 @@ async def test_spawn_integrator_session_spawns_when_none_running():
     assert result is not None
     assert result.get("status") == "spawned"
     assert result.get("slug") == "my-slug"
-    mock_svc.run_slash_command.assert_called_once()
+    assert captured.connected is True
+    assert captured.closed is True
+    assert captured.command == "/next-integrate"
+    assert captured.project_path == "/project"
+    assert captured.detach is True
+    mock_svc.run_slash_command.assert_not_called()
 
 
 async def test_spawn_integrator_session_db_error_falls_through_to_spawn():
     """If db.list_sessions raises, proceed to spawn (optimistic fallback)."""
+
+    async def _run_session(**_kwargs: object) -> dict[str, str]:
+        return {"session_id": "new", "tmux_session_name": "tmux-new"}
+
+    def _fake_api_client() -> SimpleNamespace:
+        return SimpleNamespace(connect=AsyncMock(), close=AsyncMock(), run_session=_run_session)
+
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(side_effect=RuntimeError("DB unavailable"))
-    mock_svc = MagicMock()
-    mock_svc.run_slash_command = AsyncMock(return_value={"session_id": "new"})
 
     with (
         patch("teleclaude.core.db.db", mock_db),
-        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.cli.api_client.TelecAPIClient", _fake_api_client),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         from teleclaude.core.integration_bridge import spawn_integrator_session
