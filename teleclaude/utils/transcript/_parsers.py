@@ -3,8 +3,65 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from typing import cast
+
+
+def clean_command_message_text(text: str) -> str:
+    """Clean verbose prompt blocks from injected command messages."""
+    trimmed = text.strip()
+    if trimmed.startswith("<command-message>"):
+        name_match = re.search(r"<command-name>([\s\S]*?)</command-name>", text)
+        args_match = re.search(r"<command-args>([\s\S]*?)</command-args>", text)
+        if name_match:
+            name = name_match.group(1).strip()
+            args = args_match.group(1).strip() if args_match else ""
+            return f"{name} {args}".strip()
+    return text
+
+
+def _clean_message_content(message: dict[str, object]) -> dict[str, object]:
+    """Return a new message dict with cleaned command texts, avoiding in-place mutation."""
+    content = message.get("content")
+    if isinstance(content, str):
+        cleaned_text = clean_command_message_text(content)
+        if cleaned_text != content:
+            new_message = dict(message)
+            new_message["content"] = cleaned_text
+            return new_message
+        return message
+
+    if not isinstance(content, list):
+        return message
+
+    needs_cleaning = False
+    for block in content:
+        if isinstance(block, dict) and block.get("type") in ("text", "input_text"):
+            text_val = block.get("text")
+            if isinstance(text_val, str) and clean_command_message_text(text_val) != text_val:
+                needs_cleaning = True
+                break
+
+    if not needs_cleaning:
+        return message
+
+    new_message = dict(message)
+    new_content = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") in ("text", "input_text"):
+            text_val = block.get("text")
+            if isinstance(text_val, str):
+                cleaned_text = clean_command_message_text(text_val)
+                if cleaned_text != text_val:
+                    new_block = dict(block)
+                    new_block["text"] = cleaned_text
+                    new_content.append(new_block)
+                    continue
+        new_content.append(block)
+
+    new_message["content"] = new_content
+    return new_message
 
 
 def _extract_codex_reasoning_text(  # pylint: disable=too-many-branches
@@ -56,7 +113,7 @@ def normalize_transcript_entry_message(  # pylint: disable=too-many-return-state
     """
     message = entry.get("message")
     if isinstance(message, dict):
-        return cast(dict[str, object], message)  # guard: loose-dict - External message
+        return _clean_message_content(cast(dict[str, object], message))  # guard: loose-dict - External message
 
     if entry.get("type") != "response_item":
         return None
@@ -106,6 +163,6 @@ def normalize_transcript_entry_message(  # pylint: disable=too-many-return-state
         }
 
     if payload_type == "message" or (isinstance(payload.get("role"), str) and "content" in payload):
-        return cast(dict[str, object], payload)  # guard: loose-dict - External payload message
+        return _clean_message_content(cast(dict[str, object], payload))  # guard: loose-dict - External payload message
 
     return None
