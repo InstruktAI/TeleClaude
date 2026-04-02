@@ -27,6 +27,8 @@ from teleclaude.api.auth import CallerIdentity, verify_caller
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
 from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api_models import (
+    AgentAvailabilityDTO,
+    AgentAvailabilityEventDTO,
     AgentStopActivityEventDTO,
     SessionLifecycleStatusEventDTO,
     TodoDTO,
@@ -42,6 +44,7 @@ from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentActivityEvent,
+    AgentAvailabilityContext,
     ErrorEventContext,
     SessionLifecycleContext,
     SessionStatusContext,
@@ -189,6 +192,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status_event)
+        event_bus.subscribe(TeleClaudeEvents.AGENT_AVAILABILITY, self._handle_agent_availability_event)
         event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, self._handle_agent_activity_event)
         event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error_event)
 
@@ -350,6 +354,25 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         else:
             return
         self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))
+
+    async def _handle_agent_availability_event(
+        self,
+        _event: str,
+        context: AgentAvailabilityContext,
+    ) -> None:
+        """Broadcast live agent availability changes to WS clients."""
+        dto = AgentAvailabilityEventDTO(
+            data=AgentAvailabilityDTO(
+                agent=context.agent,  # type: ignore[arg-type]
+                available=context.available,
+                status=context.status,  # type: ignore[arg-type]
+                unavailable_until=context.unavailable_until,
+                degraded_until=context.degraded_until,
+                reason=context.reason,
+                error=context.error,
+            )
+        )
+        self._broadcast_payload("agent_availability", dto.model_dump(exclude_none=True))
 
     async def _handle_error_event(
         self,

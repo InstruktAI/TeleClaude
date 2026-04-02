@@ -99,23 +99,18 @@ describe("useLiveSessions", () => {
     });
 
     expect(result.current.data[0]?.status).toBe("active_output");
-    expect(result.current.data[0]?.last_activity).toBe("2026-03-30T12:03:00Z");
+    expect(result.current.data[0]?.last_activity).toBe("2026-03-30T12:00:00Z");
   });
 
-  it("applies agent_stop activity to last activity and summary", () => {
+  it("keeps the canonical session list stable on agent activity", () => {
     const { result } = renderHook(() => useLiveSessions());
+    const before = result.current.data[0];
 
-    emit("agent_activity", {
-      event: "agent_activity",
-      session_id: "sess-1",
-      type: "agent_stop",
-      summary: "Build complete",
-      timestamp: "2026-03-30T12:04:00Z",
-    });
+    expect(capturedHandlers.has("agent_activity")).toBe(false);
 
-    expect(result.current.data[0]?.last_activity).toBe("2026-03-30T12:04:00Z");
-    expect(result.current.data[0]?.last_output_summary).toBe("Build complete");
-    expect(result.current.data[0]?.last_output_summary_at).toBe("2026-03-30T12:04:00Z");
+    expect(result.current.data[0]).toBe(before);
+    expect(result.current.data[0]?.last_activity).toBe("2026-03-30T12:00:00Z");
+    expect(result.current.data[0]?.last_output_summary).toBeUndefined();
   });
 
   it("removes closed sessions from the live list", () => {

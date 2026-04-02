@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from teleclaude.api_models import SessionDTO, SessionStartedEventDTO
+from teleclaude.api_models import AgentAvailabilityDTO, AgentAvailabilityEventDTO, SessionDTO, SessionStartedEventDTO
 from teleclaude.cli.tui import app_ws
 from teleclaude.cli.tui.messages import AgentActivity, SessionClosed
 
@@ -27,6 +27,7 @@ class _SessionsView:
         self.activity_calls: list[tuple[str, str, str | None]] = []
         self.closed: list[str] = []
         self.updated: list[object] = []
+        self._availability: dict[str, AgentAvailabilityDTO] = {}
         self.pending_applied: int = 0
         self.select_requests: list[tuple[str, bool]] = []
 
@@ -51,6 +52,19 @@ class _Tabs:
         self.active = active
 
 
+class _Footer:
+    def __init__(self) -> None:
+        self.updated_availability: list[dict[str, AgentAvailabilityDTO]] = []
+
+    def update_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
+        self.updated_availability.append(availability)
+
+
+class _PreparationView:
+    def __init__(self) -> None:
+        self._availability: dict[str, AgentAvailabilityDTO] = {}
+
+
 class _WsApp(app_ws.TelecAppWsMixin):
     def __init__(
         self,
@@ -58,12 +72,17 @@ class _WsApp(app_ws.TelecAppWsMixin):
         pane_bridge: _PaneBridge,
         *,
         tabs: _Tabs | None = None,
+        footer: _Footer | None = None,
+        preparation_view: _PreparationView | None = None,
     ) -> None:
         self._sessions_view = sessions_view
         self._pane_bridge = pane_bridge
         self._tabs = tabs or _Tabs()
+        self._footer = footer or _Footer()
+        self._preparation_view = preparation_view or _PreparationView()
         self._post_messages: list[object] = []
         self._session_agents = {"session-1": "codex"}
+        self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._tui_initiated_sessions: set[str] = set()
         self._activity_trigger = None
         self.notify = Mock()
@@ -76,6 +95,10 @@ class _WsApp(app_ws.TelecAppWsMixin):
             return self._pane_bridge
         if selector == "#main-tabs":
             return self._tabs
+        if selector == "#telec-footer":
+            return self._footer
+        if selector == "#preparation-view":
+            return self._preparation_view
         raise AssertionError(selector)
 
     def post_message(self, message: object) -> None:
@@ -133,6 +156,31 @@ def test_on_agent_activity_passes_thinking_text_through() -> None:
     app.on_agent_activity(message)
 
     assert sessions_view.activity_calls == [("session-1", "thinking", "• Working")]
+
+
+@pytest.mark.unit
+def test_handle_ws_event_updates_live_agent_availability() -> None:
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    footer = _Footer()
+    preparation_view = _PreparationView()
+    app = _WsApp(sessions_view, pane_bridge, footer=footer, preparation_view=preparation_view)
+
+    app._handle_ws_event(
+        AgentAvailabilityEventDTO(
+            data=AgentAvailabilityDTO(
+                agent="codex",
+                available=False,
+                status="unavailable",
+                unavailable_until="2026-04-02T12:00:00Z",
+            )
+        )
+    )
+
+    assert app._availability["codex"].status == "unavailable"
+    assert footer.updated_availability[-1]["codex"].status == "unavailable"
+    assert sessions_view._availability["codex"].status == "unavailable"
+    assert preparation_view._availability["codex"].status == "unavailable"
 
 
 @pytest.mark.unit

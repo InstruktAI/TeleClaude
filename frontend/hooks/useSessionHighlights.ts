@@ -32,6 +32,19 @@ export interface SessionHighlightViewState {
 type PersistedHighlightMap = Record<string, PersistedHighlightState>;
 type VolatileHighlightMap = Record<string, VolatileHighlightState>;
 
+function sameViewState(
+  left: SessionHighlightViewState | undefined,
+  right: SessionHighlightViewState,
+): boolean {
+  return (
+    left?.highlightType === right.highlightType &&
+    left?.activityEvent === right.activityEvent &&
+    left?.activityText === right.activityText &&
+    left?.lastOutputSummary === right.lastOutputSummary &&
+    left?.lastOutputSummaryAt === right.lastOutputSummaryAt
+  );
+}
+
 function isToolUseEvent(
   event: AgentActivityEvent,
 ): event is Extract<AgentActivityEvent, { type: "tool_use" }> {
@@ -70,6 +83,7 @@ export function useSessionHighlights(
   const [volatileState, setVolatileState] = useState<VolatileHighlightMap>({});
   const timersRef = useRef<Map<string, number>>(new Map());
   const activeSessionIdRef = useRef<string | null>(activeSessionId ?? null);
+  const stableStateRef = useRef<Map<string, SessionHighlightViewState>>(new Map());
   activeSessionIdRef.current = activeSessionId ?? null;
 
   const cancelHighlightTimer = useCallback((sessionId: string) => {
@@ -263,6 +277,7 @@ export function useSessionHighlights(
       ...Object.keys(volatileState),
     ]);
     const next = new Map<string, SessionHighlightViewState>();
+    const previous = stableStateRef.current;
 
     for (const sessionId of sessionIds) {
       const persisted = persistedState[sessionId];
@@ -286,10 +301,17 @@ export function useSessionHighlights(
         state.lastOutputSummary ||
         state.lastOutputSummaryAt
       ) {
-        next.set(sessionId, state);
+        const previousState = previous.get(sessionId);
+        next.set(
+          sessionId,
+          previousState && sameViewState(previousState, state)
+            ? previousState
+            : state,
+        );
       }
     }
 
+    stableStateRef.current = next;
     return next;
   }, [persistedState, sessions, volatileState]);
 }

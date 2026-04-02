@@ -16,6 +16,7 @@ EventType = Literal[
     "session_close_requested",
     "session_updated",
     "session_status",
+    "agent_availability",
     "agent_ready",
     "agent_readiness_timeout",
     "agent_event",
@@ -341,6 +342,7 @@ class TeleClaudeEvents:  # pylint: disable=too-few-public-methods
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Fact: session is now closed. Observer-only.
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
     SESSION_STATUS: Literal["session_status"] = "session_status"  # Canonical lifecycle status transition
+    AGENT_AVAILABILITY: Literal["agent_availability"] = "agent_availability"  # Agent availability changed
     AGENT_READY: Literal["agent_ready"] = "agent_ready"  # Fact: agent TUI is stable at input prompt.
     AGENT_READINESS_TIMEOUT: Literal["agent_readiness_timeout"] = (
         "agent_readiness_timeout"  # Fact: agent TUI did not reach ready prompt within timeout.
@@ -490,6 +492,19 @@ class SessionStatusContext:
 
 
 @dataclass(frozen=True)
+class AgentAvailabilityContext:
+    """Context for agent availability changes broadcast to clients."""
+
+    agent: str
+    available: bool | None
+    status: str | None = None
+    unavailable_until: str | None = None
+    degraded_until: str | None = None
+    reason: str | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class BaseAgentActivityEvent:
     """Base class for typed real-time activity events."""
 
@@ -618,6 +633,7 @@ EventContext = (
     | ErrorEventContext
     | SessionUpdatedContext
     | SessionStatusContext
+    | AgentAvailabilityContext
     | AgentActivityEvent
     | AgentRestartDispatchedPayload
     | SessionCloseCompletedPayload

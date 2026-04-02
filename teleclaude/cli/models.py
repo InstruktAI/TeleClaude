@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from teleclaude.api_models import (
     AgentActivityEventDTO,
+    AgentAvailabilityEventDTO,
     ChiptunesStateEventDTO,
     ChiptunesTrackEventDTO,
     ErrorEventDTO,
@@ -39,6 +40,7 @@ type WsEvent = (
     | SessionLifecycleStatusEventDTO
     | RefreshEventDTO
     | ErrorEventDTO
+    | AgentAvailabilityEventDTO
     | AgentActivityEventDTO
     | ChiptunesStateEventDTO
     | ChiptunesTrackEventDTO

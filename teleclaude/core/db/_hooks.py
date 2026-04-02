@@ -10,6 +10,9 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import and_, delete, or_, update
 from sqlmodel import select
 
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import AgentAvailabilityContext, TeleClaudeEvents
+
 from .. import db_models
 from ..dates import parse_iso_datetime
 from ._rows import HookOutboxRow
@@ -22,6 +25,31 @@ logger = get_logger(__name__)
 
 class DbHooksMixin:
     """Agent availability and hook outbox persistence helpers."""
+
+    @staticmethod
+    def _emit_agent_availability_event(
+        *,
+        agent: str,
+        available: bool | None,
+        status: str | None,
+        unavailable_until: str | None = None,
+        degraded_until: str | None = None,
+        reason: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Broadcast a live agent availability change event."""
+        event_bus.emit(
+            TeleClaudeEvents.AGENT_AVAILABILITY,
+            AgentAvailabilityContext(
+                agent=agent,
+                available=available,
+                status=status,
+                unavailable_until=unavailable_until,
+                degraded_until=degraded_until,
+                reason=reason,
+                error=error,
+            ),
+        )
 
     async def get_agent_availability(self, agent: str) -> dict[str, bool | str | None] | None:
         """Get agent availability status.
@@ -110,6 +138,13 @@ class DbHooksMixin:
                 row.reason = reason
             db_session.add(row)
             await db_session.commit()
+        self._emit_agent_availability_event(
+            agent=agent,
+            available=False,
+            status="unavailable",
+            unavailable_until=unavailable_until,
+            reason=reason,
+        )
         logger.info("Marked agent %s unavailable until %s (%s)", agent, unavailable_until, reason)
 
     async def mark_agent_available(self, agent: str) -> None:
@@ -129,6 +164,7 @@ class DbHooksMixin:
                 row.reason = None
             db_session.add(row)
             await db_session.commit()
+        self._emit_agent_availability_event(agent=agent, available=True, status="available")
         logger.info("Marked agent %s available", agent)
 
     async def mark_agent_degraded(self, agent: str, reason: str, degraded_until: str | None = None) -> None:
@@ -151,6 +187,13 @@ class DbHooksMixin:
                 row.reason = degraded_reason
             db_session.add(row)
             await db_session.commit()
+        self._emit_agent_availability_event(
+            agent=agent,
+            available=True,
+            status="degraded",
+            degraded_until=degraded_until,
+            reason=degraded_reason,
+        )
         logger.info("Marked agent %s degraded (%s)", agent, degraded_reason)
 
     async def clear_expired_agent_availability(self) -> int:
@@ -160,6 +203,18 @@ class DbHooksMixin:
             Number of agents reset to available
         """
         now = datetime.now(UTC).isoformat()
+        select_stmt = select(db_models.AgentAvailability.agent).where(
+            or_(
+                and_(
+                    db_models.AgentAvailability.unavailable_until.is_not(None),
+                    db_models.AgentAvailability.unavailable_until < now,
+                ),
+                and_(
+                    db_models.AgentAvailability.degraded_until.is_not(None),
+                    db_models.AgentAvailability.degraded_until < now,
+                ),
+            )
+        )
         stmt = (
             update(db_models.AgentAvailability)
             .where(
@@ -177,10 +232,13 @@ class DbHooksMixin:
             .values(available=1, unavailable_until=None, degraded_until=None, reason=None)
         )
         async with self._session() as db_session:
+            expired_agents = list(await db_session.exec(select_stmt))
             result = await db_session.exec(stmt)
             await db_session.commit()
             cleared = result.rowcount or 0
         if cleared > 0:
+            for agent in expired_agents:
+                self._emit_agent_availability_event(agent=agent, available=True, status="available")
             logger.info("Cleared availability for %d agents (TTL expired)", cleared)
         return cleared
 

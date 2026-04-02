@@ -16,15 +16,18 @@ import {
 import { useChat } from "@ai-sdk/react";
 import { useQuery } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
-import type { MessageInfo } from "@/lib/api/types";
+import type { AgentActivityEvent, MessageInfo } from "@/lib/api/types";
 import { fetchSessions } from "@/lib/api/sessions";
 import { SessionAgentProvider } from "@/hooks/useSessionAgent";
 import { safeAgent, type AgentType } from "@/lib/theme/tokens";
+import { useWS } from "@/lib/ws/WebSocketProvider";
 
 interface Props {
   sessionId: string;
   children: ReactNode;
 }
+
+const HISTORY_REFRESH_DEBOUNCE_MS = 250;
 
 /**
  * Convert daemon MessageInfo[] to AI SDK UIMessage[] format.
@@ -85,6 +88,7 @@ function toUIMessages(messages: MessageInfo[]): UIMessage[] {
 
 export function MyRuntimeProvider({ sessionId, children }: Props) {
   const [error, setError] = useState<string | null>(null);
+  const { onEvent } = useWS();
 
   // Fetch session info to get active agent type
   const { data: sessions } = useQuery({
@@ -114,27 +118,86 @@ export function MyRuntimeProvider({ sessionId, children }: Props) {
     onError: handleError,
   });
 
-  // Load session history into useChat on mount / session change
-  const loadedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (loadedRef.current === sessionId) return;
-    loadedRef.current = sessionId;
+  const setMessagesRef = useRef(chat.setMessages);
+  const chatStatusRef = useRef(chat.status);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyAbortRef = useRef<AbortController | null>(null);
+  const historyRequestIdRef = useRef(0);
 
-    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: { messages?: MessageInfo[] }) => {
-        if (data.messages && data.messages.length > 0) {
-          const uiMessages = toUIMessages(data.messages);
-          chat.setMessages(uiMessages);
-        }
-      })
-      .catch((err) => {
-        console.warn("Failed to load session history:", err);
+  useEffect(() => {
+    setMessagesRef.current = chat.setMessages;
+    chatStatusRef.current = chat.status;
+  }, [chat.setMessages, chat.status]);
+
+  const loadSessionHistory = useCallback(async () => {
+    historyAbortRef.current?.abort();
+    const requestId = historyRequestIdRef.current + 1;
+    historyRequestIdRef.current = requestId;
+    const controller = new AbortController();
+    historyAbortRef.current = controller;
+
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
+        signal: controller.signal,
       });
-  }, [sessionId, chat]);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = (await response.json()) as { messages?: MessageInfo[] };
+      if (historyRequestIdRef.current !== requestId) return;
+
+      const uiMessages =
+        data.messages && data.messages.length > 0 ? toUIMessages(data.messages) : [];
+      setMessagesRef.current(uiMessages);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+      console.warn("Failed to load session history:", err);
+    }
+  }, [sessionId]);
+
+  const scheduleHistoryRefresh = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+    }
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      void loadSessionHistory();
+    }, HISTORY_REFRESH_DEBOUNCE_MS);
+  }, [loadSessionHistory]);
+
+  useEffect(() => {
+    void loadSessionHistory();
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+      historyAbortRef.current?.abort();
+      historyAbortRef.current = null;
+    };
+  }, [loadSessionHistory]);
+
+  useEffect(() => {
+    const shouldRefreshForActivity = (event: AgentActivityEvent): boolean => {
+      if (event.session_id !== sessionId) return false;
+      if (chatStatusRef.current === "submitted" || chatStatusRef.current === "streaming") {
+        return false;
+      }
+
+      // useChat already owns the local optimistic user-turn/send flow.
+      // Only pull transcript history for remote/background activity.
+      return true;
+    };
+
+    return onEvent("agent_activity", (event) => {
+      if (event.event !== "agent_activity") return;
+      const activityEvent = event as AgentActivityEvent;
+      if (!shouldRefreshForActivity(activityEvent)) return;
+      scheduleHistoryRefresh();
+    });
+  }, [onEvent, scheduleHistoryRefresh, sessionId]);
 
   const runtime = useAISDKRuntime(chat);
 

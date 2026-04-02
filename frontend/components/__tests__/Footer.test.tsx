@@ -1,7 +1,27 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, afterEach } from "vitest"
+import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, cleanup } from "@testing-library/react"
 import { Footer } from "../Footer"
+
+const liveAvailability = {
+  claude: { agent: "claude", available: true, status: "available" },
+  gemini: { agent: "gemini", available: true, status: "degraded", reason: "degraded:manual" },
+  codex: {
+    agent: "codex",
+    available: false,
+    status: "unavailable",
+    unavailable_until: new Date(Date.now() + 5 * 60_000).toISOString(),
+  },
+}
+
+vi.mock("@/lib/hooks/useLiveAgentAvailability", () => ({
+  useLiveAgentAvailability: () => ({
+    data: liveAvailability,
+    isLoading: false,
+    error: null,
+    refetch: async () => undefined,
+  }),
+}))
 
 describe("Footer", () => {
   afterEach(() => cleanup())
@@ -65,5 +85,15 @@ describe("Footer", () => {
     expect(text).toContain("TTS")
     expect(text).toContain("Back")
     expect(text).not.toContain("Sessions tab")
+  })
+
+  it("shows agent availability on the right side of the footer", () => {
+    const { container } = render(<Footer context="sessions" />)
+    const statuses = container.querySelector('[data-testid="footer-agent-statuses"]')
+    const text = statuses?.textContent ?? ""
+
+    expect(text).toContain("claude ✔")
+    expect(text).toContain("gemini ~")
+    expect(text).toContain("codex ✘(")
   })
 })

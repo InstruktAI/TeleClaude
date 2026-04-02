@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import type {
-  AgentActivityEvent,
   SessionClosedEvent,
   SessionInfo,
   SessionStartedEvent,
@@ -62,35 +61,11 @@ function patchSessionStatus(
   let changed = false;
   const next = sessions.map((session) => {
     if (session.session_id !== event.session_id) return session;
+    if (session.status === event.status) return session;
     changed = true;
     return {
       ...session,
       status: event.status,
-      last_activity: event.last_activity_at ?? event.timestamp ?? session.last_activity,
-    };
-  });
-  return changed ? next : sessions;
-}
-
-function patchSessionActivity(
-  sessions: SessionInfo[],
-  event: AgentActivityEvent,
-): SessionInfo[] {
-  let changed = false;
-  const next = sessions.map((session) => {
-    if (session.session_id !== event.session_id) return session;
-    changed = true;
-    return {
-      ...session,
-      last_activity: event.timestamp ?? session.last_activity,
-      last_output_summary:
-        event.type === "agent_stop" && event.summary
-          ? event.summary
-          : session.last_output_summary,
-      last_output_summary_at:
-        event.type === "agent_stop" && event.summary
-          ? event.timestamp ?? session.last_output_summary_at
-          : session.last_output_summary_at,
     };
   });
   return changed ? next : sessions;
@@ -144,18 +119,12 @@ export function useLiveSessions(computer?: string) {
       setSessions((prev) => patchSessionStatus(prev, event as SessionStatusEvent));
     });
 
-    const cleanupActivity = onEvent("agent_activity", (event) => {
-      if (event.event !== "agent_activity") return;
-      setSessions((prev) => patchSessionActivity(prev, event as AgentActivityEvent));
-    });
-
     return () => {
       cleanupInitial();
       cleanupStarted();
       cleanupUpdated();
       cleanupClosed();
       cleanupStatus();
-      cleanupActivity();
     };
   }, [computer, onEvent]);
 

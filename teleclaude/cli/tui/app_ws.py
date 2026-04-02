@@ -9,6 +9,7 @@ from textual.widgets import TabbedContent
 
 from teleclaude.api_models import (
     AgentActivityEventDTO,
+    AgentAvailabilityEventDTO,
     ChiptunesStateEventDTO,
     ChiptunesTrackEventDTO,
     ErrorEventDTO,
@@ -31,6 +32,7 @@ from teleclaude.cli.tui.messages import (
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
+from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 logger = get_logger(__name__)
 
@@ -126,6 +128,21 @@ class TelecAppWsMixin:
 
     def _handle_status_event(self, event: WsEvent) -> bool:
         """Handle websocket status and error notifications."""
+        if isinstance(event, AgentAvailabilityEventDTO):
+            availability = dict(getattr(self, "_availability", {}))
+            availability[event.data.agent] = event.data
+            self._availability = availability  # type: ignore[attr-defined]
+
+            footer = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
+            footer.update_availability(availability)
+
+            sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
+            sessions_view._availability = availability  # type: ignore[attr-defined]
+
+            prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
+            prep_view._availability = availability  # type: ignore[attr-defined]
+            return True
+
         if isinstance(event, SessionLifecycleStatusEventDTO):
             self._notify_session_lifecycle_status(event)
             return True

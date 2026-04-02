@@ -1,6 +1,6 @@
 "use client"
 
-import type { CSSProperties } from "react"
+import { memo, type CSSProperties } from "react"
 import { ChevronRight, ChevronDown, Brain, Sparkles, Code2, Monitor } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +40,8 @@ interface SessionPalette {
   highlight: string
   contrast: string
   badgeText: string
+  badgeBg: string
+  badgeBgFocused: string
   subtleBg: string
   selectionBg: string
   previewBg: string
@@ -60,7 +62,9 @@ function getSessionPalette(
       muted: agentVar(agent, "muted"),
       highlight: agentVar(agent, "highlight"),
       contrast: "var(--tc-primary-fg)",
-      badgeText: "#ffffff",
+      badgeText: "var(--tc-agent-badge-fg)",
+      badgeBg: agentVar(agent, "muted"),
+      badgeBgFocused: agentVar(agent, "normal"),
       subtleBg: agentVar(agent, "subtle"),
       selectionBg: agentVar(agent, "normal"),
       previewBg: agentVar(agent, "muted"),
@@ -74,6 +78,8 @@ function getSessionPalette(
     highlight: "var(--tc-primary)",
     contrast: "var(--tc-primary-fg)",
     badgeText: "var(--tc-primary-fg)",
+    badgeBg: "var(--tc-peaceful-muted)",
+    badgeBgFocused: "var(--tc-peaceful-normal)",
     subtleBg: "var(--tc-selection-base)",
     selectionBg: "var(--tc-selection-surface)",
     previewBg: "var(--tc-selection-base)",
@@ -336,7 +342,7 @@ function SessionDetails({
 // Session row
 // ---------------------------------------------------------------------------
 
-function SessionRow({
+const SessionRow = memo(function SessionRow({
   node,
   depth,
   expanded,
@@ -401,9 +407,11 @@ function SessionRow({
           variant="outline"
           className="h-4 min-w-[1.25rem] justify-center px-1.5 text-[9px] tabular-nums"
           style={{
-            backgroundColor: isCursor || isActive ? palette.contrast : palette.normal,
-            borderColor: isCursor || isActive ? palette.contrast : palette.normal,
-            color: isCursor || isActive ? palette.selectionBg : palette.badgeText,
+            backgroundColor:
+              isCursor || isActive ? palette.badgeBgFocused : palette.badgeBg,
+            borderColor:
+              isCursor || isActive ? palette.badgeBgFocused : palette.badgeBg,
+            color: palette.badgeText,
           }}
         >
           {node.displayIndex}
@@ -423,9 +431,11 @@ function SessionRow({
             variant="outline"
             className="max-w-[14rem] truncate px-2 py-0 text-[9px] font-semibold"
             style={{
-              backgroundColor: isCursor || isActive ? palette.contrast : palette.normal,
-              borderColor: isCursor || isActive ? palette.contrast : palette.normal,
-              color: isCursor || isActive ? palette.selectionBg : palette.badgeText,
+              backgroundColor:
+                isCursor || isActive ? palette.badgeBgFocused : palette.badgeBg,
+              borderColor:
+                isCursor || isActive ? palette.badgeBgFocused : palette.badgeBg,
+              color: palette.badgeText,
             }}
           >
             {subdirLabel}
@@ -464,7 +474,7 @@ function SessionRow({
       />
     </div>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // Main component

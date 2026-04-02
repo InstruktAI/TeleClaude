@@ -504,6 +504,15 @@ class SessionLifecycleStatusEventDTO(BaseModel):
     delivery_scope: str | None = None
 
 
+class AgentAvailabilityEventDTO(BaseModel):
+    """WebSocket event for live agent availability changes."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["agent_availability"] = "agent_availability"
+    data: AgentAvailabilityDTO
+
+
 class BaseAgentActivityEventDTO(BaseModel):
     """Base WebSocket event for agent activity.
 

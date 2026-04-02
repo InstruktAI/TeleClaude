@@ -163,6 +163,7 @@ export interface AgentAvailabilityInfo {
   available: boolean | null;
   status?: AgentStatus | null;
   unavailable_until?: string | null;
+  degraded_until?: string | null;
   reason?: string | null;
   error?: string | null;
 }
@@ -325,6 +326,11 @@ export interface SessionStatusEvent {
   delivery_scope?: string | null;
 }
 
+export interface AgentAvailabilityEvent {
+  event: "agent_availability";
+  data: AgentAvailabilityInfo;
+}
+
 /** Discriminated union of all WebSocket events. Discriminator: `event` field. */
 export type WsEvent =
   | SessionsInitialEvent
@@ -333,6 +339,7 @@ export type WsEvent =
   | SessionUpdatedEvent
   | SessionClosedEvent
   | SessionStatusEvent
+  | AgentAvailabilityEvent
   | RefreshEvent
   | ErrorEvent
   | AgentActivityEvent;

@@ -17,6 +17,7 @@ API_WS_REPLACEABLE_SEND_TIMEOUT_S = float(os.getenv("API_WS_REPLACEABLE_SEND_TIM
 API_WS_CONTROL_EVENTS = frozenset(
     {
         "agent_activity",
+        "agent_availability",
         "error",
         "notification",
         "projects_initial",

@@ -384,8 +384,26 @@ describe("SessionTree", () => {
     expect(row.style.backgroundColor).toContain("var(--tc-agent-claude-normal)")
     expect(row.style.color).toContain("var(--tc-primary-fg)")
     const subdirBadge = screen.getByTestId("session-subdir-sess-1")
-    expect(subdirBadge.style.backgroundColor).toContain("var(--tc-primary-fg)")
-    expect(subdirBadge.style.color).toContain("var(--tc-agent-claude-normal)")
+    expect(subdirBadge.style.backgroundColor).toContain("var(--tc-agent-claude-normal)")
+    expect(subdirBadge.style.color).toContain("var(--tc-agent-badge-fg)")
+  })
+
+  it("uses mode-aware themed badge colors in the left pane", () => {
+    render(
+      <SessionTree
+        tree={makeTree()}
+        expandedSet={makeExpandedSet(makeTree())}
+        onToggle={vi.fn()}
+      />,
+    )
+
+    const indexBadge = screen.getByTestId("session-index-sess-1")
+    const subdirBadge = screen.getByTestId("session-subdir-sess-1")
+
+    expect(indexBadge.style.backgroundColor).toContain("var(--tc-agent-claude-muted)")
+    expect(indexBadge.style.color).toContain("var(--tc-agent-badge-fg)")
+    expect(subdirBadge.style.backgroundColor).toContain("var(--tc-agent-claude-muted)")
+    expect(subdirBadge.style.color).toContain("var(--tc-agent-badge-fg)")
   })
 
   it("renders the session badge column aligned under the project chevron", () => {

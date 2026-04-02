@@ -70,6 +70,7 @@
   /* -- Semantic Aliases -- */
   --tc-primary: #303030;
   --tc-primary-fg: #fdf6e3;
+  --tc-agent-badge-fg: #ffffff;
 }
 
 .dark {
@@ -132,4 +133,5 @@
   /* -- Semantic Aliases -- */
   --tc-primary: #d0d0d0;
   --tc-primary-fg: #000000;
+  --tc-agent-badge-fg: #000000;
 }
