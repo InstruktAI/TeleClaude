@@ -20,23 +20,23 @@ The taxonomy feeds the Calibration principle: per-domain proficiency signals tel
 
 Defined in `teleclaude/config/schema.py` as `ProficiencyLevel`:
 
-| Level          | Meaning                                                                 |
-| -------------- | ----------------------------------------------------------------------- |
-| `novice`       | No meaningful experience. Needs full guidance.                          |
-| `intermediate` | Working knowledge. Can follow guidance with context.                    |
-| `advanced`     | Deep experience. Collaborates as a peer. Needs only architectural input.|
-| `expert`       | Authoritative. Leads decisions. Needs only blockers surfaced.           |
+| Level          | Meaning                                                                  |
+| -------------- | ------------------------------------------------------------------------ |
+| `novice`       | No meaningful experience. Needs full guidance.                           |
+| `intermediate` | Working knowledge. Can follow guidance with context.                     |
+| `advanced`     | Deep experience. Collaborates as a peer. Needs only architectural input. |
+| `expert`       | Authoritative. Leads decisions. Needs only blockers surfaced.            |
 
 ### Domains
 
 Four fixed domains. Adding a new domain requires a schema update and a change to this spec.
 
-| Domain                 | Description                                           |
-| ---------------------- | ----------------------------------------------------- |
-| `software-development` | Code, infrastructure, architecture, tooling.          |
-| `creative`             | Visual design, writing, UX, branding, media.          |
-| `marketing`            | Growth, content, analytics, campaigns, SEO.           |
-| `customer-relations`   | Support, sales, account management, community.        |
+| Domain                 | Description                                    |
+| ---------------------- | ---------------------------------------------- |
+| `software-development` | Code, infrastructure, architecture, tooling.   |
+| `creative`             | Visual design, writing, UX, branding, media.   |
+| `marketing`            | Growth, content, analytics, campaigns, SEO.    |
+| `customer-relations`   | Support, sales, account management, community. |
 
 ### Starter subdivisions
 
