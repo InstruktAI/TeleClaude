@@ -52,16 +52,28 @@ def _project_root_from_cwd(cwd: str) -> str:
     return cwd
 
 
+_db_cache: dict[str, TodosDb] = {}
+
+
 def _get_todos_db_sync(cwd: str) -> TodosDb:
-    """Return a sync-initialized TodosDb for the project owning *cwd*."""
+    """Return a cached TodosDb for the project owning *cwd*.
+
+    Schema already exists (daemon creates it at startup). Skips initialize_sync
+    after first call to avoid repeated DDL write locks on the database.
+    """
     from teleclaude.core.todos_db import TodosDb, _new_instance_hook  # pylint: disable=import-outside-toplevel
 
     project_root = _project_root_from_cwd(cwd)
+    cached = _db_cache.get(project_root)
+    if cached is not None:
+        return cached
+
     db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
     db = TodosDb(db_path)
     db.initialize_sync()
     if _new_instance_hook is not None:
         _new_instance_hook(db, project_root)
+    _db_cache[project_root] = db
     return db
 
 
