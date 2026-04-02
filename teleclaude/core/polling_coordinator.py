@@ -515,7 +515,5 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
         _cleanup_codex_input_state(session_id)
         _clear_output_metrics(session_id)
         # NOTE: Don't clear pending_deletions here - let _pre_handle_user_input handle deletion on next input
-        # NOTE: Keep output_message_id in DB - it's reused for all commands in the session
-        # Only cleared when session closes (/exit command)
 
         logger.debug("Polling ended for session %s", session_id)

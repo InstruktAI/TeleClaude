@@ -18,6 +18,7 @@ from ._iterators import (
 )
 from ._parsers import normalize_transcript_entry_message
 from ._rendering import _render_transcript_from_entries
+from ._tool_calls import _is_user_tool_result_only_message
 from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _escape_triple_backticks, _parse_timestamp
 
 
@@ -59,8 +60,9 @@ def get_assistant_messages_since(
             entry = entries[i]
             message = normalize_transcript_entry_message(entry)
             if isinstance(message, dict) and message.get("role") == "user":
-                last_user_idx = i
-                break
+                if not _is_user_tool_result_only_message(message):
+                    last_user_idx = i
+                    break
         start_idx = last_user_idx + 1
 
     assistant_messages = []

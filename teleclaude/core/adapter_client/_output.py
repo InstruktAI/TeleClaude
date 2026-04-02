@@ -8,7 +8,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
-from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 
 if TYPE_CHECKING:
@@ -188,54 +187,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return message_id
 
-    async def broadcast_user_input(  # pylint: disable=too-many-arguments  # Reflection payload is adapter-facing API.
-        self,
-        session: "Session",
-        text: str,
-        source: str,
-        *,
-        actor_id: str | None = None,
-        actor_name: str | None = None,
-        actor_avatar_url: str | None = None,
-    ) -> None:
-        """Reflect user input to all UI adapters.
-
-        Core sends raw text + metadata to every adapter. Each adapter owns
-        suppression (own-user echo) and presentation (headers, formatting).
-        """
-        if not source:
-            raise ValueError("broadcast_user_input requires a non-empty source")
-        fresh_session = await db.get_session(session.session_id)
-        session_to_use = fresh_session or session
-
-        identity = get_identity_resolver().resolve(source, session_to_use.get_origin_section(source))
-        normalized_actor_name = (actor_name or "").strip() or identity.display_name
-
-        reflection_origin = source.strip().lower()
-        reflection_metadata = MessageMetadata(
-            parse_mode=None,
-            reflection_actor_id=(actor_id or "").strip() or None,
-            reflection_actor_name=normalized_actor_name,
-            reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
-            reflection_origin=reflection_origin,
-        )
-
-        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
-            return cast(
-                Awaitable[object],
-                adapter.send_message(
-                    lane_session,
-                    text,
-                    metadata=reflection_metadata,
-                ),
-            )
-
-        await self._broadcast_to_ui_adapters(
-            session_to_use,
-            "send_user_input_reflection",
-            make_task,
-        )
-
     async def force_session_output_pull(self, session: "Session") -> None:
         """Trigger immediate output pull on all UI adapters before session termination.
 
@@ -249,14 +200,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         )
 
     async def break_threaded_turn(self, session: "Session") -> None:
-        """Force a break in the threaded output stream on all UI adapters.
+        """Drop pending QoS payloads on all UI adapters.
 
-        Drops pending QoS payloads, calls ``clear_turn_state`` on each adapter
-        (resets char_offset, output_message_id, last_delivered_at), and advances
-        the cadence cursor past already-displayed content.
-
-        This is the single authoritative turn-break operation.  Callers never
-        need to advance cursors or clear state separately.
+        Rendering state is managed by the cadence loop, not the lifecycle layer.
         """
         for adapter_type, adapter in self.adapters.items():
             if isinstance(adapter, UiAdapter):
@@ -268,17 +214,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         session.session_id,
                         adapter_type,
                     )
-
-        await self._broadcast_to_ui_adapters(session, "break_turn", lambda adapter, s: adapter.clear_turn_state(s))
-
-        # Advance cadence cursor atomically with the state clear.  Without
-        # this, the cadence delivers old content using the stale cursor in
-        # the gap before the coordinator hook fires (seconds, not millis).
-        # The coordinator may override this later (e.g. None for terminal
-        # input) — that's correct and idempotent for non-terminal.
-        from datetime import UTC, datetime  # pylint: disable=import-outside-toplevel
-
-        await db.update_session(session.session_id, last_tool_done_at=datetime.now(UTC).isoformat())
 
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in all UI adapters.

@@ -8,7 +8,6 @@ import asyncio
 import os
 import re
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -469,8 +468,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         session: Session,
         text: str,
         multi_message: bool = False,
-        *,
-        delivery_ts: datetime | None = None,
     ) -> str | None:
         """Route Telegram threaded output through the QoS scheduler.
 
@@ -478,18 +475,15 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         most recent accumulated text is dispatched per scheduler tick.
         """
         if self._qos_scheduler._policy.mode == "off":
-            return await UiAdapter.send_threaded_output(self, session, text, multi_message, delivery_ts=delivery_ts)
+            return await UiAdapter.send_threaded_output(self, session, text, multi_message)
 
         _self = self
         _session = session
         _text = text
         _multi = multi_message
-        _delivery_ts = delivery_ts
 
         async def _dispatch() -> str | None:
-            return await UiAdapter.send_threaded_output(
-                _self, _session, _text, _multi, MARKDOWN_V2_INITIAL_STATE, delivery_ts=_delivery_ts
-            )
+            return await UiAdapter.send_threaded_output(_self, _session, _text, _multi, MARKDOWN_V2_INITIAL_STATE)
 
         # Threaded output chunks are non-final (the coordinator handles completion separately).
         self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=False)

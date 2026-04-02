@@ -260,7 +260,7 @@ class TestSendMessage:
 class TestThreadState:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_break_threaded_turn_drops_pending_output_and_clears_turn_state(self):
+    async def test_break_threaded_turn_drops_pending_output(self):
         client = AdapterClient()
         session = _make_session()
         telegram = _make_ui_adapter()
@@ -272,13 +272,12 @@ class TestThreadState:
         client.register_adapter("discord", discord)
         client.register_adapter("redis", redis)
 
-        with patch("teleclaude.core.adapter_client._output.db.update_session", AsyncMock()):
-            await client.break_threaded_turn(session)
+        await client.break_threaded_turn(session)
 
         telegram.drop_pending_output.assert_called_once_with(session.session_id)
         discord.drop_pending_output.assert_called_once_with(session.session_id)
-        telegram.clear_turn_state.assert_awaited_once_with(session)
-        discord.clear_turn_state.assert_awaited_once_with(session)
+        telegram.clear_turn_state.assert_not_awaited()
+        discord.clear_turn_state.assert_not_awaited()
 
 
 class TestChannelUpdates:

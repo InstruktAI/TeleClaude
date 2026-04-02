@@ -340,7 +340,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         """Handle user prompt submission.
 
         For ALL sessions: write last_message_sent to DB, refresh title,
-        update last_activity, and reset threaded output state.
+        update last_activity, and drop pending QoS payloads.
         Adapters pull from transcripts on their own cadence.
         """
         session_id = context.session_id
@@ -408,13 +408,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         is_terminal_input = current_origin == InputOrigin.TERMINAL.value or not current_origin
         if is_terminal_input:
             update_kwargs["last_input_origin"] = InputOrigin.TERMINAL.value
-            # Reset cadence cursor so adapters re-render including the user message.
-            update_kwargs["last_tool_done_at"] = None
-        else:
-            # Advance cursor to now — the cadence will only render agent output
-            # produced AFTER this point, preventing re-delivery of content that
-            # was already displayed before the user's message.
-            update_kwargs["last_tool_done_at"] = now.isoformat()
 
         # Track what triggered this turn for echo suppression in handle_agent_stop.
         _linked_prefix_check = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
@@ -436,19 +429,8 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 f"title-summary:{session_id}",
             )
 
-        # Reset threaded output state on user input.
+        # Drop pending QoS payloads on user input.
         await self.client.break_threaded_turn(session)
-
-        # Force output pull only for terminal input — terminal resets the
-        # cadence cursor so adapters need an immediate re-render.  For UI
-        # adapter input (Discord, Telegram, WhatsApp) the cadence loop
-        # handles the next render naturally; forcing a pull here races with
-        # agent output arriving between the turn break and the pull,
-        # causing the last agent message to be re-sent as a new message.
-        if is_terminal_input:
-            fresh = await db.get_session(session_id)
-            if fresh:
-                await self.client.force_session_output_pull(fresh)
 
         # Emit activity event for all sessions
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)

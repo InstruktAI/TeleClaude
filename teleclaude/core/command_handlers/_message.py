@@ -112,7 +112,7 @@ async def handle_voice(
 
     logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
 
-    # Reset threaded output state so the next agent output starts a fresh message.
+    # Drop pending QoS payloads before forwarding transcribed voice.
     session = await db.get_session(cmd.session_id)
     if session:
         await client.break_threaded_turn(session)
@@ -247,21 +247,6 @@ async def deliver_inbound(
 
     active_agent = session.active_agent
 
-    async def _broadcast() -> None:
-        if not row["origin"]:
-            return
-        try:
-            await client.broadcast_user_input(
-                session,
-                message_text,
-                row["origin"],
-                actor_id=row["actor_id"],
-                actor_name=row["actor_name"],
-                actor_avatar_url=row["actor_avatar_url"],
-            )
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # UI reflection failures are non-fatal here.
-            logger.warning("broadcast_user_input failed (non-fatal): session=%s error=%s", session_id, exc)
-
     async def _break_turn() -> None:
         try:
             await client.break_threaded_turn(session)
@@ -282,7 +267,7 @@ async def deliver_inbound(
         )
 
     await _break_turn()
-    results = await asyncio.gather(_tmux_inject(), _broadcast(), return_exceptions=True)
+    results = await asyncio.gather(_tmux_inject(), return_exceptions=True)
     tmux_result = results[0]
     if isinstance(tmux_result, Exception):
         raise tmux_result

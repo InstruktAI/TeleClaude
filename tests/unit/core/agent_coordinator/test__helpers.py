@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -12,13 +11,11 @@ from teleclaude.constants import CHECKPOINT_MESSAGE, CHECKPOINT_PREFIX
 from teleclaude.core.agent_coordinator._helpers import (
     _MAX_FORWARDED_LINK_OUTPUT_CHARS,
     _NOOP_LOG_INTERVAL_SECONDS,
-    _has_active_output_message,
     _is_checkpoint_prompt,
     _is_codex_input_already_recorded,
     _is_codex_synthetic_prompt_event,
     _SuppressionState,
     _to_utc,
-    has_active_output_message,
 )
 from teleclaude.core.models import Session
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
@@ -156,57 +153,6 @@ class TestIsCodexSyntheticPromptEvent:
     @pytest.mark.unit
     def test_missing_source_returns_false(self):
         assert _is_codex_synthetic_prompt_event({"synthetic": True}) is False
-
-
-class TestHasActiveOutputMessage:
-    @pytest.mark.unit
-    async def test_no_output_message_ids_returns_false(self):
-        session = _make_session()
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            assert await _has_active_output_message(session) is False
-
-    @pytest.mark.unit
-    async def test_telegram_output_message_id_returns_true(self):
-        session = _make_session(origin_metadata={"telegram": {"output_message_id": "x"}})
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            assert await _has_active_output_message(session) is True
-
-    @pytest.mark.unit
-    async def test_discord_output_message_id_returns_true(self):
-        session = _make_session(origin_metadata={"discord": {"output_message_id": "x"}})
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            assert await _has_active_output_message(session) is True
-
-    @pytest.mark.unit
-    async def test_whatsapp_output_message_id_returns_true(self):
-        session = _make_session(origin_metadata={"whatsapp": {"output_message_id": "x"}})
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            assert await _has_active_output_message(session) is True
-
-    @pytest.mark.unit
-    async def test_fetches_fresh_session_from_db(self):
-        """The function must use fresh DB data, not stale in-memory session."""
-        stale = _make_session(origin_metadata={})
-        fresh = _make_session(origin_metadata={"discord": {"output_message_id": "msg123"}})
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=fresh)
-            assert await _has_active_output_message(stale) is True
-
-    @pytest.mark.unit
-    def test_public_alias_is_same_function(self):
-        assert has_active_output_message is _has_active_output_message
-
-    @pytest.mark.unit
-    async def test_arbitrary_adapter_key_detected(self):
-        """The function checks all origin_metadata sections dynamically."""
-        session = _make_session(origin_metadata={"custom_adapter": {"output_message_id": "y"}})
-        with patch("teleclaude.core.db.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            assert await has_active_output_message(session) is True
 
 
 class TestToUtc:

@@ -78,28 +78,6 @@ def _is_codex_synthetic_prompt_event(raw_payload: object) -> bool:
     return bool(raw_payload.get("synthetic")) and isinstance(source, str) and source.startswith("codex_")
 
 
-async def has_active_output_message(session: "Session") -> bool:
-    """Check if any adapter has an active output message in metadata.
-
-    Fetches fresh session from DB to avoid stale in-memory origin_metadata
-    that caused missed output on turn 2+ (the staleness regression).
-    Checks all origin_metadata sections dynamically rather than hardcoding
-    adapter keys.
-    """
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
-    fresh = await db.get_session(session.session_id)
-    s = fresh if fresh else session
-    for section in s.origin_metadata.values():
-        if isinstance(section, dict) and section.get("output_message_id"):
-            return True
-    return False
-
-
-# Backward-compatible alias for existing internal callers.
-_has_active_output_message = has_active_output_message
-
-
 def _to_utc(ts: datetime) -> datetime:
     """Normalize naive datetimes to UTC for stable comparisons."""
     if ts.tzinfo is None:
@@ -137,9 +115,7 @@ def _is_codex_input_already_recorded(
 
 
 __all__ = [
-    "_has_active_output_message",
     "_is_checkpoint_prompt",
     "_is_codex_input_already_recorded",
     "_is_codex_synthetic_prompt_event",
-    "has_active_output_message",
 ]
