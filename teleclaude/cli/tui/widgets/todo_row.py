@@ -223,7 +223,7 @@ class TodoRow(TelecMixin, Widget):
         self._max_depth = max_depth
 
     @staticmethod
-    def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
+    def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:  # pylint: disable=too-many-locals
         """Compute column widths from actual data: max rendered length + gap.
 
         Column order: P | I | DOR | B | R | F | D
@@ -250,7 +250,14 @@ class TodoRow(TelecMixin, Widget):
                 maxes["F"] = max(maxes["F"], len(f"F:{t.findings_count}"))
             if t.deferrals_status:
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
-        return {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
+        sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
+        # Compute max rendered width across the mutually exclusive column paths
+        path_prepare = sized["DOR"] + sized["P"]
+        path_integration = sized["DOR"] + sized["P"]  # I renders in P slot
+        path_work = sized["DOR"] + sized["B"] + sized["R"] + sized["F"] + sized["D"]
+        path_dor_only = sized["DOR"]
+        sized["_max"] = max(path_prepare, path_integration, path_work, path_dor_only) + 1  # +1 trailing dot
+        return sized
 
     @property
     def slug(self) -> str:
@@ -285,11 +292,17 @@ class TodoRow(TelecMixin, Widget):
             col.append(value, style=value_style)
         return _pad(col, width)
 
+    def _total_col_width(self) -> int:
+        """Max rendered column width across all paths — the target for uniform padding."""
+        return self._col_widths.get("_max", 0)
+
     def _build_columns(self) -> Text:  # pylint: disable=too-many-locals
         """Build aligned property columns. Phase-aware: P | I take priority over B/R/F/D."""
+        target = self._total_col_width()
+
         # Holders show no phase columns — their status block derives from children
         if self.todo.children_statuses:
-            return Text()
+            return _pad(Text(), target)
 
         result = Text()
         ok = _ok_color()
@@ -309,7 +322,7 @@ class TodoRow(TelecMixin, Widget):
             p_label, p_value, p_color = p_result
             result.append_text(dor_text)
             result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))
-            return result
+            return _pad(result, target)
 
         # 2. Active or queued integration phase — render in the P column slot for alignment
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
@@ -317,7 +330,7 @@ class TodoRow(TelecMixin, Widget):
             i_label, i_value, i_color = i_result
             result.append_text(self._build_col("", "", w.get("DOR", 0), Style()))
             result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color, bold=True)))
-            return result
+            return _pad(result, target)
 
         # 3. Work phase (build != pending) — existing B/R/F/D path
         bs = self.todo.build_status
@@ -345,11 +358,11 @@ class TodoRow(TelecMixin, Widget):
             ds = self.todo.deferrals_status
             result.append_text(self._build_col("D", ds or "", w.get("D", 0), _DIM))
 
-            return result
+            return _pad(result, target)
 
         # 4. Ready/pending state — DOR only
         result.append_text(dor_text)
-        return result
+        return _pad(result, target)
 
     def render(self) -> Text:  # pylint: disable=too-many-locals
         """Render the tree prefix, slug, and aligned property columns."""

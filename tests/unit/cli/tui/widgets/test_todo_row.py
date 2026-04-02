@@ -209,3 +209,82 @@ def test_pad_does_not_shorten_text_wider_than_target() -> None:
     t = Text("abcdef")
     result = _pad(t, 3)
     assert len(result.plain) == 6  # unchanged
+
+
+# --- Row width uniformity ---
+
+
+@pytest.mark.unit
+def test_all_rows_render_same_width_regardless_of_phase() -> None:
+    """Every rendered row must have the same plain-text width when given shared col_widths.
+
+    This covers: holder (no columns), prepare phase, integration phase, work phase (B/R),
+    and bare (no phase, no DOR). All must pad to the same total width.
+    """
+    holder_child = TodoItem(
+        slug="child-a",
+        status=TodoStatus.DELIVERED,
+        description=None,
+        has_requirements=True,
+        has_impl_plan=True,
+        group="holder-parent",
+    )
+    holder = TodoItem(
+        slug="holder-parent",
+        status=TodoStatus.PENDING,
+        description=None,
+        has_requirements=False,
+        has_impl_plan=False,
+        children_statuses=["delivered"],
+    )
+    prepare_item = TodoItem(
+        slug="prep-item",
+        status=TodoStatus.IN_PROGRESS,
+        description=None,
+        has_requirements=True,
+        has_impl_plan=False,
+        prepare_phase="input_assessment",
+    )
+    integration_item = TodoItem(
+        slug="integ-item",
+        status=TodoStatus.DELIVERED,
+        description=None,
+        has_requirements=True,
+        has_impl_plan=True,
+        integration_phase="candidate_delivered",
+    )
+    work_item = TodoItem(
+        slug="work-item",
+        status=TodoStatus.IN_PROGRESS,
+        description=None,
+        has_requirements=True,
+        has_impl_plan=True,
+        build_status="complete",
+        review_status="approved",
+        dor_score=9,
+    )
+    bare_item = TodoItem(
+        slug="bare-item",
+        status=TodoStatus.PENDING,
+        description=None,
+        has_requirements=False,
+        has_impl_plan=False,
+    )
+
+    all_items = [holder, holder_child, prepare_item, integration_item, work_item, bare_item]
+    slug_width = max(len(t.slug) for t in all_items)
+    col_widths = TodoRow.compute_col_widths(all_items)
+
+    rendered_widths: dict[str, int] = {}
+    for item in all_items:
+        row = TodoRow(
+            todo=item,
+            slug_width=slug_width,
+            col_widths=col_widths,
+            max_depth=0,
+        )
+        rendered = row.render()
+        rendered_widths[item.slug] = len(rendered.plain)
+
+    widths = list(rendered_widths.values())
+    assert len(set(widths)) == 1, f"Row widths differ — all must be equal. Got: {rendered_widths}"
