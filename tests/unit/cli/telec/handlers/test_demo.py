@@ -1,3 +1,6 @@
+"""Characterization tests for teleclaude.cli.telec.handlers.demo."""
+# pylint: disable=missing-function-docstring,protected-access,unnecessary-lambda
+
 from __future__ import annotations
 
 import importlib
@@ -49,7 +52,7 @@ def test_handle_todo_demo_rejects_slug_for_list(
 
 def test_demo_create_promotes_demo_and_writes_snapshot(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     project_root = tmp_path
-    source = project_root / "todos" / "sample-slug" / "demo.md"
+    source = project_root / "demos" / "sample-slug" / "demo.md"
     source.parent.mkdir(parents=True)
     source.write_text("# Demo: Sample Feature\n\nSome content\n", encoding="utf-8")
     (project_root / "pyproject.toml").write_text('[project]\nversion = "2.4.6"\n', encoding="utf-8")
@@ -104,7 +107,7 @@ def test_demo_list_reports_available_missing_and_broken_snapshots(
 
 
 def test_demo_validate_warns_for_no_demo_marker(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    demo_md = tmp_path / "todos" / "sample-slug" / "demo.md"
+    demo_md = tmp_path / "demos" / "sample-slug" / "demo.md"
     demo_md.parent.mkdir(parents=True)
     demo_md.write_text(
         "# Demo: Sample\n<!-- no-demo: internal refactor only -->\n\nNo executable steps.\n",
@@ -122,7 +125,7 @@ def test_demo_validate_warns_for_no_demo_marker(tmp_path: Path, capsys: pytest.C
 def test_demo_run_executes_non_skipped_blocks_with_project_venv(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    demo_md = tmp_path / "todos" / "sample-slug" / "demo.md"
+    demo_md = tmp_path / "demos" / "sample-slug" / "demo.md"
     demo_md.parent.mkdir(parents=True)
     demo_md.write_text(
         "\n".join(

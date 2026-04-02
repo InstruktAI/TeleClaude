@@ -1,4 +1,5 @@
 """Characterization tests for the prepare state machine entrypoint."""
+# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ async def test_next_prepare_canonicalizes_cwd_from_worktree_path() -> None:
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo") as mock_resolve,
         patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
-        patch(f"{_SLUG_RES}.resolve_holder_children", return_value=[]),
+        patch(f"{_SLUG_RES}.resolve_holder_children_db", return_value=[]),
         patch(f"{_PREPARE}.check_artifact_staleness_db", return_value=[]),
         patch(f"{_PREPARE}._prepare_dispatch", return_value=(False, "dispatch")),
     ):
@@ -48,7 +49,7 @@ async def test_next_prepare_dispatches_no_active_work_to_prepare_draft() -> None
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
         patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
-        patch(f"{_SLUG_RES}._find_next_prepare_slug", return_value=None),
+        patch(f"{_PREPARE}._find_next_prepare_slug_db", return_value=None),
         patch(f"{_PREPARE}.compose_agent_guidance", return_value="guidance"),
     ):
         result = await next_prepare(db, None, "/repo")
@@ -64,7 +65,7 @@ async def test_next_prepare_returns_container_message_when_holder_has_children()
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
         patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
-        patch(f"{_SLUG_RES}.resolve_holder_children", return_value=["child-a", "child-b"]),
+        patch(f"{_SLUG_RES}.resolve_holder_children_db", return_value=["child-a", "child-b"]),
     ):
         result = await next_prepare(db, "holder", "/repo")
 
@@ -79,7 +80,7 @@ async def test_next_prepare_uses_derived_phase_and_returns_dispatch_instruction(
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
         patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
-        patch(f"{_SLUG_RES}.resolve_holder_children", return_value=[]),
+        patch(f"{_SLUG_RES}.resolve_holder_children_db", return_value=[]),
         patch(f"{_PREPARE}.check_artifact_staleness_db", return_value=[]),
         patch(f"{_PREPARE}._prepare_dispatch", return_value=(False, "dispatch")),
     ):

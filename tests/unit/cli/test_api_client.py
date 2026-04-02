@@ -1,7 +1,9 @@
 """Characterization tests for teleclaude/cli/api_client.py."""
+# pylint: disable=missing-function-docstring,protected-access
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -127,10 +129,11 @@ def test_build_identity_headers_includes_email(monkeypatch: pytest.MonkeyPatch) 
 def test_build_identity_headers_excludes_absent_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TELEC_SESSION_TOKEN", raising=False)
     monkeypatch.setenv("TMPDIR", "")
-    with patch("teleclaude.cli.api_client.read_current_session_email", return_value=None):
-        with patch("teleclaude.cli.api_client.subprocess.run", side_effect=FileNotFoundError):
-            client = TelecAPIClient()
-            headers = client._build_identity_headers()
+    with patch("teleclaude.cli.api_client.get_session_token", return_value=None):
+        with patch("teleclaude.cli.api_client.read_current_session_email", return_value=None):
+            with patch("teleclaude.cli.api_client.subprocess.run", side_effect=FileNotFoundError):
+                client = TelecAPIClient()
+                headers = client._build_identity_headers()
     assert "x-session-token" not in headers
     assert "x-telec-email" not in headers
 
@@ -179,17 +182,13 @@ def test_subscribe_sends_correct_payload() -> None:
     sent: list[str] = []
 
     def _mock_send(payload: object) -> None:
-        import json as _json
-
-        sent.append(_json.dumps(payload))
+        sent.append(json.dumps(payload))
 
     with patch.object(client, "_send_ws", side_effect=_mock_send):
         client.subscribe("local", ["sessions", "todos"])
 
     assert len(sent) == 1
-    import json as _json
-
-    data = _json.loads(sent[0])
+    data = json.loads(sent[0])
     assert data["subscribe"]["computer"] == "local"
     assert set(data["subscribe"]["types"]) == {"sessions", "todos"}
 
@@ -199,15 +198,11 @@ def test_unsubscribe_sends_correct_payload() -> None:
     sent: list[str] = []
 
     def _mock_send(payload: object) -> None:
-        import json as _json
-
-        sent.append(_json.dumps(payload))
+        sent.append(json.dumps(payload))
 
     with patch.object(client, "_send_ws", side_effect=_mock_send):
         client.unsubscribe("remote")
 
     assert len(sent) == 1
-    import json as _json
-
-    data = _json.loads(sent[0])
+    data = json.loads(sent[0])
     assert data["unsubscribe"]["computer"] == "remote"

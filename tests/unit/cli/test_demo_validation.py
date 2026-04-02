@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude/cli/demo_validation.py."""
+# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 
@@ -78,13 +79,13 @@ def test_extract_demo_blocks_mixed_executable_and_skipped() -> None:
 
 def test_extract_demo_blocks_empty_content_returns_empty() -> None:
     blocks = _extract_demo_blocks("")
-    assert blocks == []
+    assert not blocks
 
 
 def test_extract_demo_blocks_non_bash_fence_ignored() -> None:
     content = "```python\nprint('hello')\n```\n"
     blocks = _extract_demo_blocks(content)
-    assert blocks == []
+    assert not blocks
 
 
 # ---------------------------------------------------------------------------
@@ -92,9 +93,9 @@ def test_extract_demo_blocks_non_bash_fence_ignored() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_find_demo_md_returns_todos_path_when_present(tmp_path: Path) -> None:
+def test_find_demo_md_returns_demos_path_when_present(tmp_path: Path) -> None:
     slug = "my-slug"
-    demo_path = tmp_path / "todos" / slug / "demo.md"
+    demo_path = tmp_path / "demos" / slug / "demo.md"
     demo_path.parent.mkdir(parents=True)
     demo_path.write_text("# Demo\n")
     result = _find_demo_md(slug, tmp_path)
@@ -115,7 +116,7 @@ def test_find_demo_md_returns_none_when_absent(tmp_path: Path) -> None:
     assert result is None
 
 
-def test_find_demo_md_prefers_todos_over_demos(tmp_path: Path) -> None:
+def test_find_demo_md_returns_demos_path_when_both_present(tmp_path: Path) -> None:
     slug = "my-slug"
     todos_path = tmp_path / "todos" / slug / "demo.md"
     todos_path.parent.mkdir(parents=True)
@@ -124,7 +125,7 @@ def test_find_demo_md_prefers_todos_over_demos(tmp_path: Path) -> None:
     demos_path.parent.mkdir(parents=True)
     demos_path.write_text("# Demos Demo\n")
     result = _find_demo_md(slug, tmp_path)
-    assert result == todos_path
+    assert result == demos_path
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +141,7 @@ def test_validate_demo_returns_failure_when_no_demo_md(tmp_path: Path) -> None:
 
 def test_validate_demo_returns_true_for_no_demo_marker(tmp_path: Path) -> None:
     slug = "my-slug"
-    demo_path = tmp_path / "todos" / slug / "demo.md"
+    demo_path = tmp_path / "demos" / slug / "demo.md"
     demo_path.parent.mkdir(parents=True)
     demo_path.write_text("<!-- no-demo: internal refactor only -->\n# Demo\n")
     passed, is_no_demo, _msg = validate_demo(slug, tmp_path)
@@ -160,7 +161,7 @@ def test_validate_demo_fails_when_no_executable_blocks(tmp_path: Path) -> None:
 
 def test_validate_demo_passes_with_executable_block(tmp_path: Path) -> None:
     slug = "my-slug"
-    demo_path = tmp_path / "todos" / slug / "demo.md"
+    demo_path = tmp_path / "demos" / slug / "demo.md"
     demo_path.parent.mkdir(parents=True)
     demo_path.write_text("# Demo\n\n```bash\necho hello\n```\n")
     passed, is_no_demo, _msg = validate_demo(slug, tmp_path)

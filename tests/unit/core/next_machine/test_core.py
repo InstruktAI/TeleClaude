@@ -1,5 +1,5 @@
 """Tests for teleclaude.core.next_machine.core — phase derivation, dispatch, verdicts, artifacts."""
-# pylint: disable=import-outside-toplevel,unused-argument,invalid-name,too-few-public-methods
+# pylint: disable=import-outside-toplevel,unused-argument,invalid-name,too-few-public-methods,duplicate-code
 
 from __future__ import annotations
 
@@ -57,6 +57,30 @@ def _make_todo(tmp_path: Path, slug: str = "test-slug") -> tuple[str, str]:
     return cwd, slug
 
 
+def _write_artifact_to_db(cwd: str, slug: str, name: str, content: str) -> None:
+    """Write an artifact directly to todos.db for test setup."""
+    import hashlib  # pylint: disable=import-outside-toplevel
+    import uuid  # pylint: disable=import-outside-toplevel
+
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute("SELECT id FROM roadmap WHERE slug=? LIMIT 1", (slug,)).fetchone()  # guard: raw-sql
+        row_id = row[0] if row else str(uuid.uuid4())
+        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        conn.execute(
+            "INSERT OR REPLACE INTO todo_artifacts "  # guard: raw-sql
+            "(id, slug, name, content, digest, updated_by, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, '')",
+            (row_id, slug, name, content, digest, None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _write_file(base: Path, name: str, content: str = _LONG) -> Path:
     p = base / name
     p.write_text(content)
@@ -94,17 +118,20 @@ def test_bug_md_presence_does_not_determine_bug_identity(tmp_path: Path) -> None
 def test_bug_build_passes_without_implementation_plan_or_checklist(tmp_path: Path) -> None:
     """Bug build verification must pass with only bug.md and commits."""
     from teleclaude.core.next_machine.core import verify_artifacts
+    from teleclaude.core.next_machine.state_io import write_phase_state
 
-    todo_dir = tmp_path / "todos" / "fix-crash"
-    _write_state(todo_dir, {"kind": "bug", "build": "complete"})
-    (todo_dir / "bug.md").write_text("Real bug report content here.", encoding="utf-8")
+    cwd = str(tmp_path)
+    slug = "fix-crash"
+    _ensure_roadmap_db(cwd, slug)
+    write_phase_state(cwd, slug, {"kind": "bug", "current": "build_complete", "schema_version": 2})
+    _write_artifact_to_db(cwd, slug, "bug", "Real bug report content here.")
 
     mock_repo = MagicMock()
     mock_repo.git.merge_base.return_value = "abc123"
     mock_repo.git.log.return_value = "abc123 fix the crash"
 
     with patch("teleclaude.core.next_machine.build_gates.Repo", return_value=mock_repo):
-        passed, _ = verify_artifacts(str(tmp_path), "fix-crash", "build", is_bug=True)
+        passed, _ = verify_artifacts(cwd, slug, "build", is_bug=True)
 
     assert passed is True
 
@@ -112,20 +139,23 @@ def test_bug_build_passes_without_implementation_plan_or_checklist(tmp_path: Pat
 def test_bug_review_passes_without_quality_checklist(tmp_path: Path) -> None:
     """Bug review verification must pass with only review-findings.md."""
     from teleclaude.core.next_machine.core import verify_artifacts
+    from teleclaude.core.next_machine.state_io import write_phase_state
 
-    todo_dir = tmp_path / "todos" / "fix-reviewed"
-    _write_state(todo_dir, {"kind": "bug", "build": "complete", "review": "approved"})
-    (todo_dir / "review-findings.md").write_text(
+    cwd = str(tmp_path)
+    slug = "fix-reviewed"
+    _ensure_roadmap_db(cwd, slug)
+    write_phase_state(cwd, slug, {"kind": "bug", "current": "review_approved", "schema_version": 2})
+    review_content = (
         "# Review Findings\n\n"
         "## Findings\n\n"
         "Code quality is solid. All edge cases handled correctly. "
         "No security concerns identified during the review process.\n\n"
         "## Verdict\n\n"
-        "[x] APPROVE\n",
-        encoding="utf-8",
+        "[x] APPROVE\n"
     )
+    _write_artifact_to_db(cwd, slug, "review-findings", review_content)
 
-    passed, _ = verify_artifacts(str(tmp_path), "fix-reviewed", "review", is_bug=True)
+    passed, _ = verify_artifacts(cwd, slug, "review", is_bug=True)
     assert passed is True
 
 
@@ -388,7 +418,7 @@ async def test_plan_with_referenced_paths_advances_to_plan_review(
         return_value="guidance",
     ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
+            with patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children_db", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
 
     assert result
@@ -440,7 +470,7 @@ async def test_plan_with_empty_referenced_paths_advances_normally(
         return_value="guidance",
     ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
+            with patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children_db", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
 
     assert result
@@ -481,7 +511,7 @@ async def test_next_prepare_staleness_triggers_artifact_invalidated(
     with (
         patch("teleclaude.core.next_machine.prepare.resolve_canonical_project_root", return_value="/repo"),
         patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
-        patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children_db", return_value=[]),
         patch("teleclaude.core.next_machine.prepare.check_artifact_staleness_db", return_value=["input"]),
         patch("teleclaude.core.next_machine.prepare._prepare_dispatch", return_value=(False, "dispatch")),
     ):
@@ -504,11 +534,8 @@ async def test_next_prepare_no_staleness_proceeds_normally(
     from teleclaude.core.next_machine.core import next_prepare, write_phase_state
 
     cwd, slug = _make_todo(tmp_path)
-    _write_file(
-        tmp_path / "todos" / slug,
-        "input.md",
-        "This is stable input that has enough content to pass scaffold threshold for the test.",
-    )
+    input_content = "This is stable input that has enough content to pass scaffold threshold for the test."
+    _write_artifact_to_db(cwd, slug, "input", input_content)
 
     record_artifact_produced(cwd, slug, "input.md")
 
@@ -526,7 +553,7 @@ async def test_next_prepare_no_staleness_proceeds_normally(
         return_value="guidance",
     ):
         with patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True):
-            with patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]):
+            with patch("teleclaude.core.next_machine.slug_resolution.resolve_holder_children_db", return_value=[]):
                 result = await next_prepare(mock_db, slug, cwd)
 
     all_calls = [c[0][0] for c in mock_core_emit.call_args_list]

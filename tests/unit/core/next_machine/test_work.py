@@ -1,4 +1,5 @@
 """Characterization tests for next-work precondition and routing helpers."""
+# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 
@@ -49,8 +50,6 @@ async def test_next_work_reports_no_ready_items_when_resolution_finds_nothing() 
 
 @pytest.mark.asyncio
 async def test_validate_work_preconditions_reports_stash_debt_when_git_stash_exists() -> None:
-    todos_db = _mock_todos_db()
-
     with patch("teleclaude.core.next_machine.work.get_stash_entries", return_value=["stash@{0}: WIP on main"]):
         error = await _validate_work_preconditions("/repo", "slug-stash")
 
@@ -127,6 +126,7 @@ async def test_dispatch_pre_review_routes_completed_builds_to_review_dispatch() 
         patch("teleclaude.core.next_machine.work.verify_artifacts", return_value=(True, "")),
         patch("teleclaude.core.next_machine.work._is_review_round_limit_reached", return_value=(False, 0, 3)),
         patch("teleclaude.core.next_machine.work.compose_agent_guidance", return_value="guidance"),
+        patch("teleclaude.core.next_machine.work._review_scope_note", return_value=""),
     ):
         result = await _dispatch_pre_review(
             db,

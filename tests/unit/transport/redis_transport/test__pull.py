@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.transport.redis_transport._pull."""
+# pylint: disable=missing-function-docstring,missing-class-docstring,protected-access,redefined-outer-name,too-few-public-methods
 
 from __future__ import annotations
 
@@ -132,7 +133,15 @@ class TestPullRemoteProjectsWithTodos:
         project_data = {
             "path": "/repo/project",
             "name": "myproject",
-            "todos": [{"slug": "my-todo", "title": "My Todo", "status": "pending"}],
+            "todos": [
+                {
+                    "slug": "my-todo",
+                    "title": "My Todo",
+                    "status": "pending",
+                    "has_requirements": False,
+                    "has_impl_plan": False,
+                }
+            ],
         }
         response = json.dumps({"status": "success", "data": [project_data]})
         transport_with_cache.send_request = AsyncMock(return_value="msg-id")
@@ -155,12 +164,28 @@ class TestPullRemoteTodos:
             {
                 "path": "/repo/target",
                 "name": "target",
-                "todos": [{"slug": "t-todo", "title": "T Todo", "status": "pending"}],
+                "todos": [
+                    {
+                        "slug": "t-todo",
+                        "title": "T Todo",
+                        "status": "pending",
+                        "has_requirements": False,
+                        "has_impl_plan": False,
+                    }
+                ],
             },
             {
                 "path": "/repo/other",
                 "name": "other",
-                "todos": [{"slug": "o-todo", "title": "O Todo", "status": "pending"}],
+                "todos": [
+                    {
+                        "slug": "o-todo",
+                        "title": "O Todo",
+                        "status": "pending",
+                        "has_requirements": False,
+                        "has_impl_plan": False,
+                    }
+                ],
             },
         ]
         response = json.dumps({"status": "success", "data": project_data})

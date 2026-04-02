@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.core.adapter_client._output."""
+# pylint: disable=missing-function-docstring,missing-class-docstring,too-few-public-methods
 
 from __future__ import annotations
 
@@ -271,7 +272,8 @@ class TestThreadState:
         client.register_adapter("discord", discord)
         client.register_adapter("redis", redis)
 
-        await client.break_threaded_turn(session)
+        with patch("teleclaude.core.adapter_client._output.db.update_session", AsyncMock()):
+            await client.break_threaded_turn(session)
 
         telegram.drop_pending_output.assert_called_once_with(session.session_id)
         discord.drop_pending_output.assert_called_once_with(session.session_id)

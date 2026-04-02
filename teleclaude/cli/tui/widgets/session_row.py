@@ -274,6 +274,13 @@ class SessionRow(TelecMixin, Widget):
             line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=output_style)
             lines.append(line4)
+        elif self.activity_event == "thinking" and self.activity_text:
+            activity_time_str = format_time(self.session.last_activity)
+            line4 = Text(no_wrap=True)
+            line4.append(connector_pad)
+            line4.append("\u2502", style=connector_style)
+            line4.append(f"{detail_pad}[{activity_time_str}] out: {self.activity_text}", style=highlight_style)
+            lines.append(line4)
         elif self.activity_event == "agent_stop" and self.activity_text:
             output_text = self.activity_text.replace("\n", " ")[:text_limit]
             summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
