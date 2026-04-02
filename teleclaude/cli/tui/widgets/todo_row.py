@@ -351,10 +351,14 @@ class TodoRow(TelecMixin, Widget):
             line.append("\u25a0", style=self._status_style())
         line.append(" ")
 
-        # Slug — muted when required planning artifacts are missing.
-        # Bug items intentionally use bug.md instead of requirements/plan.
+        # Slug — muted when required planning artifacts are missing during prepare.
+        # Exempt: bug items (use bug.md), items past prepare (build/review/delivered),
+        # and from-main items (stub artifacts are sufficient).
         is_bug = any(name.lower() == "bug.md" for name in self.todo.files)
-        missing_artifacts = not is_bug and (not self.todo.has_requirements or not self.todo.has_impl_plan)
+        past_prepare = bool(self.todo.build_status) or self.todo.status == _TODO_STATUS_DELIVERED
+        missing_artifacts = (
+            not is_bug and not past_prepare and (not self.todo.has_requirements or not self.todo.has_impl_plan)
+        )
         if is_selected:
             slug_style = Style(reverse=True)
         elif missing_artifacts:
