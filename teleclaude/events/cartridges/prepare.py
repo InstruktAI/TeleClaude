@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict, cast
 
-import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.models import JsonDict
@@ -209,18 +208,17 @@ def compute_dor_score(req_result: RequirementsScoreResult, plan_result: PlanScor
 def _fill_requirements_gaps(
     req_content: str,
     gaps: list[str],
-    roadmap_path: Path | None,
-    slug: str,
+    dep_slugs: list[str] | None,
 ) -> tuple[str, list[str]]:
     """Fill structural gaps in requirements.md. Returns (updated_content, edits_made)."""
     edits: list[str] = []
     content = req_content
 
     if "missing Dependency" in " ".join(gaps) and not _has_section(content, r"^#+\s+(Depend|Prerequisite|Prior)"):
-        dep_text = _build_dependency_section(roadmap_path, slug)
+        dep_text = _build_dependency_section(dep_slugs)
         if dep_text:
             content = content.rstrip() + f"\n\n{dep_text}\n"
-            edits.append("added Dependency section from roadmap.yaml")
+            edits.append("added Dependency section from roadmap")
 
     if "missing Constraints" in " ".join(gaps) and not _has_section(content, r"^#+\s+(Constraint|Non-functional|NFR)"):
         content = content.rstrip() + "\n\n## Constraints\n\n<!-- TODO: specify constraints -->\n"
@@ -229,23 +227,12 @@ def _fill_requirements_gaps(
     return content, edits
 
 
-def _build_dependency_section(roadmap_path: Path | None, slug: str) -> str:
-    if roadmap_path is None or not roadmap_path.exists():
+def _build_dependency_section(dep_slugs: list[str] | None) -> str:
+    """Build a markdown dependency section from DB-sourced dependency slugs."""
+    if not dep_slugs:
         return ""
-    try:
-        raw = yaml.safe_load(roadmap_path.read_text()) or []
-    except (yaml.YAMLError, OSError):
-        return ""
-    if not isinstance(raw, list) or not raw:
-        return ""
-    entry = next((item for item in raw if isinstance(item, dict) and item.get("slug") == slug), None)
-    if entry is None:
-        return ""
-    deps = [str(d) for d in entry.get("deps", []) if d]
-    if not deps:
-        return ""
-    lines = ["## Dependency", "", "Prerequisites (from roadmap.yaml):"]
-    for d in deps:
+    lines = ["## Dependency", "", "Prerequisites:"]
+    for d in dep_slugs:
         lines.append(f"- `{d}`")
     return "\n".join(lines)
 
@@ -470,9 +457,9 @@ class PrepareCartridge:
         req_content = await todos_db.read_artifact(slug, "requirements")
         plan_content = await todos_db.read_artifact(slug, "implementation-plan")
 
-        # Roadmap path for dependency section (may not exist)
-        roadmap_path = project_root / "todos" / "roadmap.yaml"
-        roadmap_path_or_none: Path | None = roadmap_path if roadmap_path.exists() else None
+        # Load dependency slugs for this item from DB
+        all_deps = await todos_db.load_deps()
+        dep_slugs: list[str] | None = all_deps.get(slug) or None
 
         if not req_content and not plan_content:
             logger.info("prepare: no artifacts to assess", slug=slug)
@@ -493,7 +480,7 @@ class PrepareCartridge:
 
         # Lightweight improvement when below threshold
         if score < 8:
-            new_req, req_edits = _fill_requirements_gaps(req_content, req_result["gaps"], roadmap_path_or_none, slug)
+            new_req, req_edits = _fill_requirements_gaps(req_content, req_result["gaps"], dep_slugs)
             if req_edits and new_req != req_content:
                 await todos_db.write_artifact(slug, "requirements", new_req, updated_by="prepare-runner")
                 all_edits.extend(req_edits)

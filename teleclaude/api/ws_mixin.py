@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -278,7 +277,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
                         comp = proj.computer or ""
                         if data_type == "preparation":
                             todos = self.cache.get_todos(comp or config.computer.name, proj.path)
-                            roadmap_exists = Path(f"{proj.path}/todos/roadmap.yaml").exists()
+                            roadmap_exists = False
                             projects.append(
                                 ProjectWithTodosDTO(
                                     computer=comp,

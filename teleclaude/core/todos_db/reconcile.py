@@ -77,9 +77,6 @@ async def reconcile_filesystem_to_db(project_root: str, todos_db: TodosDb) -> di
             if wt_todo.is_dir():
                 slug_dirs.setdefault(wt_entry.name, []).append(wt_todo)
 
-    # Reconcile roadmap first so roadmap.yaml entries exist before state writes
-    await _reconcile_roadmap(project_root, todos_db, counts)
-
     # Reconcile each slug
     for slug, dirs in slug_dirs.items():
         await _reconcile_slug_state(slug, dirs, todos_db, counts)
@@ -225,41 +222,3 @@ async def _reconcile_slug_artifacts(  # pylint: disable=too-many-locals
             await todos_db.write_artifact(slug, name, content, updated_by="reconcile")
             counts["artifacts_inserted"] += 1
             logger.info("Inserted artifact %s/%s", slug, name)
-
-
-async def _reconcile_roadmap(
-    project_root: str,
-    todos_db: TodosDb,
-    counts: dict[str, int],
-) -> None:
-    """Ensure filesystem roadmap.yaml entries exist in DB."""
-    roadmap_path = Path(project_root) / "todos" / "roadmap.yaml"
-    if not roadmap_path.exists():
-        return
-
-    try:
-        raw = yaml.safe_load(roadmap_path.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
-        return
-
-    if not isinstance(raw, list):
-        return
-
-    for entry in raw:
-        if not isinstance(entry, dict) or "slug" not in entry:
-            continue
-        slug = entry["slug"]
-        if await todos_db.slug_in_roadmap(slug):
-            continue
-
-        group = entry.get("group")
-        after = entry.get("after", [])
-        description = entry.get("description")
-        await todos_db.add_to_roadmap(
-            slug,
-            group_slug=group,
-            after=after if isinstance(after, list) else None,
-            description=description,
-        )
-        counts["roadmap_added"] += 1
-        logger.info("Added %s to roadmap from filesystem", slug)

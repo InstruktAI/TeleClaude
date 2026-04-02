@@ -258,8 +258,8 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
         if file_row:
             self.post_message(  # type: ignore[attr-defined]
                 DocEditRequest(
-                    doc_id=file_row.filepath,
-                    command=self._editor_command(file_row.filepath),  # type: ignore[attr-defined]
+                    doc_id=file_row.artifact_key,
+                    command=self._editor_command(file_row.artifact_key),  # type: ignore[attr-defined]
                     title=f"Editing: {file_row.filename}",
                 )
             )
@@ -282,8 +282,8 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
         if file_row:
             self.post_message(  # type: ignore[attr-defined]
                 DocPreviewRequest(
-                    doc_id=file_row.filepath,
-                    command=self._editor_command(file_row.filepath, view=True),  # type: ignore[attr-defined]
+                    doc_id=file_row.artifact_key,
+                    command=self._editor_command(file_row.artifact_key, view=True),  # type: ignore[attr-defined]
                     title=file_row.filename,
                 )
             )

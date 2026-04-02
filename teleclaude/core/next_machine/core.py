@@ -129,6 +129,11 @@ from teleclaude.core.next_machine.delivery import (
     cleanup_delivered_slug as cleanup_delivered_slug,
 )
 
+# ── dependency graph utilities (pure logic, no filesystem) ────────────────────
+from teleclaude.core.next_machine.dep_graph import (
+    detect_circular_dependency as detect_circular_dependency,
+)
+
 # ── git operations ─────────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.git_ops import (
     _dirty_paths as _dirty_paths,
@@ -159,38 +164,6 @@ from teleclaude.core.next_machine.git_ops import (
 )
 from teleclaude.core.next_machine.git_ops import (
     write_text_async as write_text_async,
-)
-
-# ── icebox ─────────────────────────────────────────────────────────────────────
-from teleclaude.core.next_machine.icebox import (
-    _icebox_dir as _icebox_dir,
-)
-from teleclaude.core.next_machine.icebox import (
-    _icebox_path as _icebox_path,
-)
-from teleclaude.core.next_machine.icebox import (
-    clean_dependency_references as clean_dependency_references,
-)
-from teleclaude.core.next_machine.icebox import (
-    freeze_to_icebox as freeze_to_icebox,
-)
-from teleclaude.core.next_machine.icebox import (
-    load_icebox as load_icebox,
-)
-from teleclaude.core.next_machine.icebox import (
-    load_icebox_slugs as load_icebox_slugs,
-)
-from teleclaude.core.next_machine.icebox import (
-    migrate_icebox_to_subfolder as migrate_icebox_to_subfolder,
-)
-from teleclaude.core.next_machine.icebox import (
-    remove_from_icebox as remove_from_icebox,
-)
-from teleclaude.core.next_machine.icebox import (
-    save_icebox as save_icebox,
-)
-from teleclaude.core.next_machine.icebox import (
-    unfreeze_from_icebox as unfreeze_from_icebox,
 )
 
 # ── output formatting ──────────────────────────────────────────────────────────
@@ -242,48 +215,7 @@ from teleclaude.core.next_machine.prepare_steps import (
     _prepare_step_requirements_review as _prepare_step_requirements_review,
 )
 
-# ── roadmap ────────────────────────────────────────────────────────────────────
-from teleclaude.core.next_machine.roadmap import (
-    _roadmap_path as _roadmap_path,
-)
-from teleclaude.core.next_machine.roadmap import (
-    add_to_roadmap as add_to_roadmap,
-)
-from teleclaude.core.next_machine.roadmap import (
-    check_dependencies_satisfied as check_dependencies_satisfied,
-)
-from teleclaude.core.next_machine.roadmap import (
-    detect_circular_dependency as detect_circular_dependency,
-)
-from teleclaude.core.next_machine.roadmap import (
-    load_roadmap as load_roadmap,
-)
-from teleclaude.core.next_machine.roadmap import (
-    load_roadmap_deps as load_roadmap_deps,
-)
-from teleclaude.core.next_machine.roadmap import (
-    load_roadmap_slugs as load_roadmap_slugs,
-)
-from teleclaude.core.next_machine.roadmap import (
-    move_in_roadmap as move_in_roadmap,
-)
-from teleclaude.core.next_machine.roadmap import (
-    remove_from_roadmap as remove_from_roadmap,
-)
-from teleclaude.core.next_machine.roadmap import (
-    save_roadmap as save_roadmap,
-)
-from teleclaude.core.next_machine.roadmap import (
-    slug_in_roadmap as slug_in_roadmap,
-)
-
 # ── slug resolution ────────────────────────────────────────────────────────────
-from teleclaude.core.next_machine.slug_resolution import (
-    get_item_phase as get_item_phase,
-)
-from teleclaude.core.next_machine.slug_resolution import (
-    is_ready_for_work as is_ready_for_work,
-)
 from teleclaude.core.next_machine.slug_resolution import (
     resolve_canonical_project_root as resolve_canonical_project_root,
 )

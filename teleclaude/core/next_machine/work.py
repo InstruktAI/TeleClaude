@@ -194,7 +194,7 @@ async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: st
         return "", format_error(
             "DEPS_UNSATISFIED",
             "Ready items exist but all have unsatisfied dependencies.",
-            next_call="Complete dependency items first, or check todos/roadmap.yaml.",
+            next_call="Complete dependency items first, or check the roadmap.",
         )
 
     _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "no_ready_items")

@@ -218,37 +218,6 @@ def resolve_canonical_project_root(cwd: str) -> str:
 # ── Legacy sync functions (retained for callers not yet migrated) ────────
 
 
-def get_item_phase(cwd: str, slug: str) -> str:  # pylint: disable=too-many-return-statements
-    """Sync legacy: get item phase from filesystem. Use _get_item_phase_db for new code."""
-    from teleclaude.core.next_machine.roadmap import slug_in_roadmap  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
-
-    db = TodosDb(str(Path(cwd) / ".teleclaude" / "todos.db"))
-    db.initialize_sync()
-    is_delivered = slug in db.delivered_slugs_sync()
-    is_in_roadmap = slug_in_roadmap(cwd, slug)
-    if is_delivered and is_in_roadmap:
-        raise ValueError(f"Slug '{slug}' in both delivered and roadmap — data integrity issue")
-    if is_delivered:
-        return ItemPhase.DONE.value
-    state = read_phase_state(cwd, slug)
-    phase = state.get("phase")
-    if isinstance(phase, str):
-        return phase
-    if is_in_roadmap:
-        return ItemPhase.PENDING.value
-    raise ValueError(f"Slug '{slug}' has no phase, not delivered, not in roadmap")
-
-
-def is_ready_for_work(cwd: str, slug: str) -> bool:
-    """Sync legacy: check if item is ready. Use _is_ready_for_work_db for new code."""
-    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
-
-    state = read_phase_state(cwd, slug)
-    return state.get("current") == "prepared"
-
-
 def set_item_phase(cwd: str, slug: str, phase: str) -> None:
     """Sync legacy: set item phase on filesystem. Use set_item_phase_db for new code."""
     from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
@@ -264,8 +233,6 @@ def set_item_phase(cwd: str, slug: str, phase: str) -> None:
 __all__ = [
     "_get_item_phase_db",
     "_is_ready_for_work_db",
-    "get_item_phase",
-    "is_ready_for_work",
     "resolve_canonical_project_root",
     "resolve_first_runnable_holder_child_db",
     "resolve_holder_children_db",

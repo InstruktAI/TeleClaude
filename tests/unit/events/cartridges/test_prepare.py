@@ -242,48 +242,55 @@ def test_compute_dor_score_threshold_at_eight():
 # ── _build_dependency_section ─────────────────────────────────────────────────
 
 
-def test_build_dependency_section_missing_roadmap_returns_empty(tmp_path: Path) -> None:
-    """Returns empty string when roadmap.yaml does not exist."""
-    result = _build_dependency_section(tmp_path / "roadmap.yaml", "my-slug")
+def test_build_dependency_section_none_deps_returns_empty() -> None:
+    """Returns empty string when no dependencies."""
+    result = _build_dependency_section(None)
     assert result == ""
 
 
-def test_build_dependency_section_slug_with_deps(tmp_path: Path) -> None:
-    """Returns markdown section when slug has deps in roadmap."""
-    roadmap = tmp_path / "roadmap.yaml"
-    roadmap.write_text("- slug: my-slug\n  deps:\n    - dep-a\n    - dep-b\n")
-    result = _build_dependency_section(roadmap, "my-slug")
+def test_build_dependency_section_empty_list_returns_empty() -> None:
+    """Returns empty string when dependency list is empty."""
+    result = _build_dependency_section([])
+    assert result == ""
+
+
+def test_build_dependency_section_with_deps() -> None:
+    """Returns markdown section listing dependency slugs."""
+    result = _build_dependency_section(["dep-a", "dep-b"])
     assert "dep-a" in result
     assert "dep-b" in result
-
-
-def test_build_dependency_section_slug_no_deps(tmp_path: Path) -> None:
-    """Returns empty string when slug exists but has no deps."""
-    roadmap = tmp_path / "roadmap.yaml"
-    roadmap.write_text("- slug: my-slug\n  deps: []\n")
-    result = _build_dependency_section(roadmap, "my-slug")
-    assert result == ""
+    assert "## Dependency" in result
 
 
 # ── _fill_requirements_gaps ──────────────────────────────────────────────────
 
 
-def test_fill_requirements_gaps_adds_constraints_placeholder(tmp_path: Path) -> None:
+def test_fill_requirements_gaps_adds_constraints_placeholder() -> None:
     """Adds a Constraints placeholder when gap is reported and section is absent."""
-    roadmap = tmp_path / "roadmap.yaml"
     content = "# Goal\n\nSome goal.\n"
     gaps = ["requirements: missing Constraints / Non-functional requirements section"]
-    result, edits = _fill_requirements_gaps(content, gaps, roadmap, "slug")
+    result, edits = _fill_requirements_gaps(content, gaps, None)
     assert "## Constraints" in result
     assert len(edits) > 0
 
 
-def test_fill_requirements_gaps_no_change_when_no_gaps(tmp_path: Path) -> None:
+def test_fill_requirements_gaps_no_change_when_no_gaps() -> None:
     """No edits made when gaps list is empty."""
     content = "# Goal\n\nSome goal.\n"
-    result, edits = _fill_requirements_gaps(content, [], tmp_path / "roadmap.yaml", "slug")
+    result, edits = _fill_requirements_gaps(content, [], None)
     assert result == content
     assert not edits
+
+
+def test_fill_requirements_gaps_adds_dependency_section() -> None:
+    """Adds dependency section when gap is reported and deps exist."""
+    content = "# Goal\n\nSome goal.\n"
+    gaps = ["requirements: missing Dependency section"]
+    result, edits = _fill_requirements_gaps(content, gaps, ["auth-module", "db-layer"])
+    assert "## Dependency" in result
+    assert "auth-module" in result
+    assert "db-layer" in result
+    assert len(edits) > 0
 
 
 # ── _fill_plan_gaps ───────────────────────────────────────────────────────────

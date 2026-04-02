@@ -23,11 +23,6 @@ def _write_artifact(todo_dir: Path, name: str, content: str) -> None:
     (todo_dir / f"{name}.md").write_text(content, encoding="utf-8")
 
 
-def _write_roadmap(todos_dir: Path, entries: list[dict[str, str | list[str]]]) -> None:
-    todos_dir.mkdir(parents=True, exist_ok=True)
-    (todos_dir / "roadmap.yaml").write_text(yaml.safe_dump(entries), encoding="utf-8")
-
-
 @pytest.mark.unit
 async def test_inserts_new_slug_from_filesystem(todos_db: TodosDb, tmp_path: Path) -> None:
     """Filesystem slug with no DB entry is inserted with correct state and artifacts."""
@@ -147,24 +142,6 @@ async def test_prefers_worktree_state_when_newer(todos_db: TodosDb, tmp_path: Pa
     state = await todos_db.read_state("my-slug")
     assert state is not None
     assert state["current"] == "finalize_handed_off"
-
-
-@pytest.mark.unit
-async def test_reconciles_roadmap_entries(todos_db: TodosDb, tmp_path: Path) -> None:
-    """Roadmap entries from roadmap.yaml are inserted into the DB."""
-    _write_roadmap(
-        tmp_path / "todos",
-        [
-            {"slug": "item-a", "description": "First item"},
-            {"slug": "item-b", "after": ["item-a"]},
-        ],
-    )
-
-    counts = await reconcile_filesystem_to_db(str(tmp_path), todos_db)
-
-    assert counts["roadmap_added"] == 2
-    assert await todos_db.slug_in_roadmap("item-a")
-    assert await todos_db.slug_in_roadmap("item-b")
 
 
 @pytest.mark.unit

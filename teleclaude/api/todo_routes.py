@@ -32,9 +32,9 @@ from teleclaude.core.next_machine.core import (
     _PREPARE_PHASE_VALUES,
     _PREPARE_VERDICT_PHASES,
     _PREPARE_VERDICT_VALUES,
-    detect_circular_dependency,
     has_uncommitted_changes,
 )
+from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation

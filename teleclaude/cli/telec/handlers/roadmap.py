@@ -392,7 +392,7 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
         raise SystemExit(1)
 
     if _run_db(slug, "freeze"):
-        print(f"Froze {slug} → icebox.yaml")
+        print(f"Froze {slug} → icebox")
 
     else:
         print(f"Slug not found in roadmap: {slug}")
@@ -427,7 +427,7 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
         raise SystemExit(1)
 
     if _run_db(slug, "unfreeze"):
-        print(f"Unfroze {slug} → roadmap.yaml")
+        print(f"Unfroze {slug} → roadmap")
 
     else:
         print(f"Slug not found in icebox: {slug}")
@@ -435,15 +435,8 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
 
 
 def _handle_roadmap_migrate_icebox(args: list[str]) -> None:  # pylint: disable=unused-argument
-    """Handle telec roadmap migrate-icebox."""
-    from teleclaude.core.next_machine.core import migrate_icebox_to_subfolder
-
-    project_root = Path.cwd()
-    count = migrate_icebox_to_subfolder(str(project_root))
-    if count == 0:
-        print("Already migrated (nothing to move).")
-    else:
-        print(f"Migrated {count} icebox item(s) to todos/_icebox/.")
+    """Handle telec roadmap migrate-icebox (deprecated — no-op after DB migration)."""
+    print("No-op: icebox migration is no longer needed (data lives in todos.db).")
 
 
 def _handle_roadmap_deliver(args: list[str]) -> None:

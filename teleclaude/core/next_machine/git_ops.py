@@ -151,7 +151,6 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
             ".teleclaude",
             ".teleclaude/",
             _WORKTREE_PREP_STATE_REL,
-            "todos/roadmap.yaml",
             f"todos/{slug}",
             f"todos/{slug}/",
         }
