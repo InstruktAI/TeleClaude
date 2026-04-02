@@ -1,5 +1,7 @@
 """Characterization tests for teleclaude.cli.tui.widgets.todo_file_row."""
 
+# pylint: disable=missing-function-docstring,protected-access
+
 from __future__ import annotations
 
 import pytest
@@ -13,27 +15,27 @@ def test_todo_file_row_is_importable() -> None:
 
 
 @pytest.mark.unit
-def test_todo_file_row_stores_filepath_and_filename() -> None:
-    row = TodoFileRow(filepath="/todos/my-todo/requirements.md", filename="requirements.md")
-    assert row.filepath == "/todos/my-todo/requirements.md"
+def test_todo_file_row_stores_artifact_key_and_filename() -> None:
+    row = TodoFileRow(artifact_key="requirements", filename="requirements.md")
+    assert row.artifact_key == "requirements"
     assert row.filename == "requirements.md"
 
 
 @pytest.mark.unit
 def test_todo_file_row_default_slug_is_empty() -> None:
-    row = TodoFileRow(filepath="/todos/roadmap.yaml", filename="roadmap.yaml")
+    row = TodoFileRow(artifact_key="roadmap", filename="roadmap.yaml")
     assert row.slug == ""
 
 
 @pytest.mark.unit
 def test_todo_file_row_default_is_last_is_false() -> None:
-    row = TodoFileRow(filepath="/todos/roadmap.yaml", filename="roadmap.yaml")
+    row = TodoFileRow(artifact_key="roadmap", filename="roadmap.yaml")
     assert row.is_last is False
 
 
 @pytest.mark.unit
 def test_todo_file_row_default_tree_lines_is_empty() -> None:
-    row = TodoFileRow(filepath="/todos/roadmap.yaml", filename="roadmap.yaml")
+    row = TodoFileRow(artifact_key="roadmap", filename="roadmap.yaml")
     assert row._tree_lines == []
 
 

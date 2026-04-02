@@ -24,7 +24,7 @@ from teleclaude.api_models import (
     SendResultRequest,
     VoiceInputRequest,
 )
-from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER, JobRole
+from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, JobRole
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import GetSessionDataCommand

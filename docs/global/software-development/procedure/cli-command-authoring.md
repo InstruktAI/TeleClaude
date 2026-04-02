@@ -35,14 +35,21 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 
 11. **Verify.** `make restart && make status` for daemon-backed commands. Smoke test the full flow.
 
-## Error handling
+## Preconditions
 
-`ToolAPIError` is caught at the CLI entry point (`teleclaude/cli/telec/__init__.py`). Handlers never catch API errors — they propagate naturally.
+- The daemon is running (`make status` returns HEALTHY) for daemon-backed commands.
+- The developer has identified the REST resource model for the new command.
 
-## Response format
+## Outputs
 
-All API responses return `{"status": "ok", ...}` on success. Errors propagate as HTTP status codes with a `detail` field.
+- A registered `CommandDef` in `CLI_SURFACE`.
+- A handler function in `teleclaude/cli/telec/handlers/`.
+- An API endpoint (if daemon-backed) in `teleclaude/api/`.
+- TDD tests covering arg parsing and API integration.
+- Updated indexes via `telec sync`.
 
-## Sync/async boundary
+## Recovery
 
-CLI handlers are sync. For direct DB access (no daemon), use `asyncio.run()` with full async init/close, or sync `TodosDb` methods (`read_state_sync`, `write_state_sync`, `deliver_sync`). Prefer daemon API calls over direct DB access.
+- If the handler fails at runtime, `ToolAPIError` is caught at the CLI entry point (`teleclaude/cli/telec/__init__.py`). Handlers never catch API errors — they propagate naturally.
+- All API responses return `{"status": "ok", ...}` on success. Errors propagate as HTTP status codes with a `detail` field.
+- CLI handlers are sync. For direct DB access (no daemon), use `asyncio.run()` with full async init/close, or sync `TodosDb` methods (`read_state_sync`, `write_state_sync`, `deliver_sync`). Prefer daemon API calls over direct DB access.

@@ -145,7 +145,7 @@ def test_integration_phase_label_queued_when_finalize_handed_off() -> None:
 @pytest.mark.unit
 def test_compute_col_widths_returns_zero_widths_for_empty_list() -> None:
     widths = TodoRow.compute_col_widths([])
-    assert all(v == 0 for v in widths.values())
+    assert all(v == 0 for k, v in widths.items() if k != "_max")
 
 
 @pytest.mark.unit
