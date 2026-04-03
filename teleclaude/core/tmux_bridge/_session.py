@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import os
 import re
+import shlex
 import shutil
 from pathlib import Path
 
@@ -217,13 +218,25 @@ async def _apply_shell_guardrails(session_name: str, teleclaude_bin: str) -> Non
 
     macOS zsh login shell startup (/etc/zprofile → path_helper, ~/.zshenv, ~/.zprofile)
     rewrites PATH after tmux's -e injection, pushing ~/.teleclaude/bin down. oh-my-zsh's
-    github plugin also sets `alias git=hub`, bypassing PATH entirely.
+    github plugin also sets `alias git=hub`, bypassing PATH entirely. Override
+    `git` inside TeleClaude-managed tmux sessions with a shell function pointing
+    at the wrapper so aliases and PATH drift cannot bypass interception.
 
     These keystrokes queue in the PTY input buffer and execute after shell init completes
     but before any agent CLI command arrives (sequential async ordering in bootstrap_session).
     """
     try:
-        guardrail_cmd = f'export PATH="{teleclaude_bin}:$PATH"; unalias git 2>/dev/null; clear'
+        wrapper_path = f"{teleclaude_bin}/git"
+        quoted_bin = shlex.quote(teleclaude_bin)
+        quoted_wrapper = shlex.quote(wrapper_path)
+        guardrail_cmd = (
+            f"TELECLAUDE_GIT_WRAPPER={quoted_wrapper}; "
+            f'export PATH={quoted_bin}:"$PATH"; '
+            "unalias git 2>/dev/null; "
+            'eval \'git() { "${TELECLAUDE_GIT_WRAPPER}" "$@"; }\'; '
+            "hash -r 2>/dev/null; "
+            "clear"
+        )
         cmd_text = [
             config.computer.tmux_binary,
             "send-keys",

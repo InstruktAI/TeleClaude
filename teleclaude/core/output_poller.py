@@ -21,6 +21,7 @@ _CONFIG_FOR_TESTS = config
 IDLE_SUMMARY_INTERVAL_S = 60.0
 PROCESS_START_GRACE_S = 3.0
 _TERMINAL_SESSION_STATUSES = frozenset({"closing", "closed"})
+_HOT_PATH_CAPTURE_LINES = 20
 
 
 @dataclass
@@ -319,7 +320,10 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
             while True:
                 poll_iteration += 1
 
-                snapshot = await tmux_bridge.collect_pane_snapshot(tmux_session_name)
+                snapshot = await tmux_bridge.collect_pane_snapshot(
+                    tmux_session_name,
+                    capture_lines=_HOT_PATH_CAPTURE_LINES,
+                )
                 session_exists_now, should_stop, missing_session_events = await self._check_session_presence(
                     session_id=session_id,
                     tmux_session_name=tmux_session_name,

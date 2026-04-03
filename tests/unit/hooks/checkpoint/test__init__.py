@@ -3,6 +3,7 @@
 
 This file intentionally stays narrow and focused for checkpoint coverage.
 """
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods
 
 from __future__ import annotations
 
@@ -27,12 +28,14 @@ class TestGetCheckpointContent:
 
         with (
             patch("teleclaude.hooks.checkpoint._is_checkpoint_project_supported", return_value=True),
-            patch("teleclaude.hooks.checkpoint._get_uncommitted_files", return_value=["src/app.py"]),
             patch(
                 "teleclaude.hooks.checkpoint.extract_effective_tool_calls",
                 return_value=timeline,
             ) as extract_effective_mock,
-            patch("teleclaude.hooks.checkpoint._scope_git_files_to_current_turn", return_value=["src/app.py"]),
+            patch(
+                "teleclaude.hooks.checkpoint._extract_turn_file_signals",
+                return_value=({"src/app.py"}, True),
+            ) as extract_files_mock,
             patch("teleclaude.hooks.checkpoint.run_heuristics", return_value=result),
         ):
             checkpoint_text = get_checkpoint_content(
@@ -50,5 +53,6 @@ class TestGetCheckpointContent:
             native_session_id="parent-thread",
             scope="turn",
         )
+        extract_files_mock.assert_called_once_with(timeline, "/repo")
         assert checkpoint_text is not None
         assert "Run targeted tests for changed behavior" in checkpoint_text

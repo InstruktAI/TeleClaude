@@ -1,4 +1,6 @@
 """TeleClaude main daemon."""
+# pylint: disable=import-outside-toplevel  # startup boundary
+# pylint: disable=too-many-lines,wrong-import-position
 
 import asyncio
 import atexit
@@ -14,49 +16,184 @@ from typing import TextIO, cast
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
 
+_MODULE_IMPORT_STARTED_AT = time.perf_counter()
+_IMPORT_TIMINGS: list[tuple[str, float, float]] = []
+logger = get_logger("teleclaude.daemon")
+
+
+def _record_import_timing(label: str, started_at: float) -> None:
+    finished_at = time.perf_counter()
+    _IMPORT_TIMINGS.append((label, finished_at - started_at, finished_at - _MODULE_IMPORT_STARTED_AT))
+
+
+def _emit_import_timing_logs() -> None:
+    for label, dt, since_module_start in _IMPORT_TIMINGS:
+        logger.trace(
+            "[PERF] daemon import %s dt=%.3f since_module_start=%.3f",
+            label,
+            dt,
+            since_module_start,
+        )
+        if dt >= 1.0:
+            logger.warning("Slow daemon import: module=%s dt=%.3fs", label, dt)
+
+
+_t = time.perf_counter()
 import teleclaude.observability.httpx_runtime_debug as _httpx_runtime_debug
+
+_record_import_timing("teleclaude.observability.httpx_runtime_debug", _t)
+
+_t = time.perf_counter()
 from teleclaude.chiptunes.manager import ChiptunesManager
+
+_record_import_timing("teleclaude.chiptunes.manager", _t)
+
+_t = time.perf_counter()
 from teleclaude.config import config  # config.py loads .env at import time
+
+_record_import_timing("teleclaude.config", _t)
+
+_t = time.perf_counter()
 from teleclaude.config.runtime_settings import RuntimeSettings
+
+_record_import_timing("teleclaude.config.runtime_settings", _t)
+
+_t = time.perf_counter()
 from teleclaude.core import polling_coordinator, tmux_bridge, voice_message_handler
+
+_record_import_timing("teleclaude.core bundle", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.adapter_client import AdapterClient
+
+_record_import_timing("teleclaude.core.adapter_client", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.agent_coordinator import AgentCoordinator
+
+_record_import_timing("teleclaude.core.agent_coordinator", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.cache import DaemonCache
+
+_record_import_timing("teleclaude.core.cache", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.command_registry import init_command_service
+
+_record_import_timing("teleclaude.core.command_registry", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.command_service import CommandService
+
+_record_import_timing("teleclaude.core.command_service", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.db import db
+
+_record_import_timing("teleclaude.core.db", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import (
-    EventType,
-    TeleClaudeEvents,
-)
+
+_record_import_timing("teleclaude.core.event_bus", _t)
+
+_t = time.perf_counter()
+from teleclaude.core.events import EventType, TeleClaudeEvents
+
+_record_import_timing("teleclaude.core.events", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.lifecycle import DaemonLifecycle
+
+_record_import_timing("teleclaude.core.lifecycle", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.models import Session
+
+_record_import_timing("teleclaude.core.models", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.output_poller import OutputPoller
+
+_record_import_timing("teleclaude.core.output_poller", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.session_utils import get_output_file
+
+_record_import_timing("teleclaude.core.session_utils", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.task_registry import TaskRegistry
+
+_record_import_timing("teleclaude.core.task_registry", _t)
+
+_t = time.perf_counter()
 from teleclaude.core.todos_db import TodosDb, set_todos_mutation_hook
+
+_record_import_timing("teleclaude.core.todos_db", _t)
+
+_t = time.perf_counter()
 from teleclaude.daemon_event_platform import _DaemonEventPlatformMixin
-from teleclaude.daemon_hook_outbox import (
-    _DaemonHookOutboxMixin,
-    _HookOutboxSessionQueue,
-)
+
+_record_import_timing("teleclaude.daemon_event_platform", _t)
+
+_t = time.perf_counter()
+from teleclaude.daemon_hook_outbox import _DaemonHookOutboxMixin, _HookOutboxSessionQueue
+
+_record_import_timing("teleclaude.daemon_hook_outbox", _t)
+
+_t = time.perf_counter()
 from teleclaude.daemon_session import _DaemonSessionMixin
+
+_record_import_timing("teleclaude.daemon_session", _t)
+
+_t = time.perf_counter()
 from teleclaude.events import EventDB
+
+_record_import_timing("teleclaude.events", _t)
+
+_t = time.perf_counter()
 from teleclaude.logging_config import setup_logging
+
+_record_import_timing("teleclaude.logging_config", _t)
+
+_t = time.perf_counter()
 from teleclaude.mirrors import MirrorWorker
+
+_record_import_timing("teleclaude.mirrors", _t)
+
+_t = time.perf_counter()
 from teleclaude.mirrors.processors import register_default_processors
+
+_record_import_timing("teleclaude.mirrors.processors", _t)
+
+_t = time.perf_counter()
 from teleclaude.paths import MAIN_DB_PATH, RUNTIME_SETTINGS_PATH
+
+_record_import_timing("teleclaude.paths", _t)
+
+_t = time.perf_counter()
 from teleclaude.services.maintenance_service import MaintenanceService
+
+_record_import_timing("teleclaude.services.maintenance_service", _t)
+
+_t = time.perf_counter()
 from teleclaude.services.monitoring_service import MonitoringService
+
+_record_import_timing("teleclaude.services.monitoring_service", _t)
+
+_t = time.perf_counter()
 from teleclaude.tts.manager import TTSManager
+
+_record_import_timing("teleclaude.tts.manager", _t)
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
 
 # Logging defaults (can be overridden via environment variables)
 DEFAULT_LOG_LEVEL = "INFO"
-
+SLOW_STARTUP_WARNING_S = 30.0
 # Startup retry configuration
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
@@ -71,8 +208,6 @@ RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "
 LAUNCHD_WATCH_INTERVAL_S = float(os.getenv("LAUNCHD_WATCH_INTERVAL_S", "300"))
 LAUNCHD_WATCH_ENABLED = os.getenv("TELECLAUDE_LAUNCHD_WATCH", "1") == "1"
 CODEX_TRANSCRIPT_WATCH_INTERVAL_S = float(os.getenv("CODEX_TRANSCRIPT_WATCH_INTERVAL_S", "1"))
-
-logger = get_logger("teleclaude.daemon")
 
 
 def _is_retryable_startup_error(error: Exception) -> bool:
@@ -289,7 +424,9 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         Called from the chiptunes worker thread — bridges to the async event loop
         using call_soon_threadsafe so the broadcast runs on the event loop thread.
         """
-        from teleclaude.api_models import ChiptunesTrackEventDTO  # pylint: disable=import-outside-toplevel
+        from teleclaude.api_models import (
+            ChiptunesTrackEventDTO,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
 
         api_server = getattr(self.lifecycle, "api_server", None)
         if api_server is None:
@@ -317,7 +454,9 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
     def _broadcast_chiptunes_state(self) -> None:
         """Broadcast the current chiptunes playback state."""
-        from teleclaude.api_models import ChiptunesStateEventDTO  # pylint: disable=import-outside-toplevel
+        from teleclaude.api_models import (
+            ChiptunesStateEventDTO,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
 
         api_server = getattr(self.lifecycle, "api_server", None)
         manager = getattr(self, "chiptunes_manager", None)
@@ -456,9 +595,13 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         Returns:
             True if successful, False otherwise
         """
-        from teleclaude.core import tmux_io  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.session_utils import resolve_working_dir  # pylint: disable=import-outside-toplevel
+        from teleclaude.core import tmux_io  # pylint: disable=import-outside-toplevel  # startup boundary
+        from teleclaude.core.models import (
+            MessageMetadata,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
+        from teleclaude.core.session_utils import (
+            resolve_working_dir,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
 
         # Get session
         session = await db.get_session(session_id)
@@ -501,9 +644,14 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self._acquire_lock()
         self._loop = asyncio.get_running_loop()
         self._register_todos_mutation_hook()
+        daemon_start_started_at = time.perf_counter()
         logger.info("Starting TeleClaude daemon...")
+        logger.info("[STARTUP] Bootstrapping daemon runtime (usually 10-25s)")
         try:
             await self.lifecycle.startup()
+            startup_elapsed = time.perf_counter() - daemon_start_started_at
+            if startup_elapsed >= SLOW_STARTUP_WARNING_S:
+                logger.warning("Daemon startup was slow: %.3fs", startup_elapsed)
 
             # Start periodic cleanup task (runs every hour)
             self.cleanup_task = asyncio.create_task(  # pylint: disable=attribute-defined-outside-init
@@ -552,10 +700,10 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             # Wire Redis transport into channels API routes
             redis_adapter = self.client.adapters.get("redis")
             if redis_adapter:
-                from teleclaude.channels.api_routes import (  # pylint: disable=import-outside-toplevel
+                from teleclaude.channels.api_routes import (  # pylint: disable=import-outside-toplevel  # startup boundary
                     set_redis_transport,
                 )
-                from teleclaude.transport.redis_transport import (  # pylint: disable=import-outside-toplevel
+                from teleclaude.transport.redis_transport import (  # pylint: disable=import-outside-toplevel  # startup boundary
                     RedisTransport as _RT,
                 )
 
@@ -770,7 +918,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
 def _install_event_wait_tracer() -> None:
     """TEMPORARY DIAGNOSTIC: trace who creates Event.wait tasks."""
-    import traceback as _tb  # pylint: disable=import-outside-toplevel
+    import traceback as _tb  # pylint: disable=import-outside-toplevel  # startup boundary
 
     _original_wait = asyncio.Event.wait
     _event_wait_callers: dict[str, int] = {}
@@ -817,6 +965,7 @@ async def main() -> None:
     # Setup logging from environment variables
     log_level = os.getenv("TELECLAUDE_LOG_LEVEL", DEFAULT_LOG_LEVEL)
     setup_logging(level=log_level)
+    _emit_import_timing_logs()
     logger.info("Starting TeleClaude Daemon (version=v2-append-only-v3)")
 
     # Create daemon

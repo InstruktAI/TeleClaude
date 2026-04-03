@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import shlex
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -443,8 +444,8 @@ class TestSessionsActionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_run_session_builds_worker_metadata_for_lifecycle_commands(self) -> None:
-        """Worker lifecycle commands carry initiator and slug metadata into the new session request."""
+    async def test_run_session_translates_codex_next_command_to_loader_message(self) -> None:
+        """Codex lifecycle workers keep slash metadata but inject the loader message."""
         request = RunSessionRequest(
             command="/next-review-build",
             args="chartest-api-routes --direct",
@@ -485,6 +486,13 @@ class TestSessionsActionsRoutes:
         expected_title = (
             "/next-review-build chartest-api-routes --direct\n\nADDITIONAL CONTEXT:\nTrace real route behavior."
         )
+        expected_startup_message = (
+            f"Read {Path.home() / '.codex' / 'prompts' / 'next-review-build.md'} and follow it exactly as "
+            "the active instruction set for this session.\n\n"
+            "Treat the following as provided inputs to that instruction set:\n"
+            "- slug: chartest-api-routes --direct\n\n"
+            "ADDITIONAL CONTEXT:\nTrace real route behavior."
+        )
         expected_role = sessions_actions_routes.COMMAND_ROLE_MAP[sessions_actions_routes.SlashCommand.NEXT_REVIEW_BUILD]
         assert command_name == "new_session"
         assert payload == {"skip_listener_registration": True, "initiator_session_id": "caller-123"}
@@ -494,9 +502,45 @@ class TestSessionsActionsRoutes:
         assert metadata.project_path == "/repo/demo"
         assert metadata.subdir == "api"
         assert metadata.origin_metadata is None
-        assert metadata.auto_command == f"agent_then_message codex med {shlex.quote(expected_title)}"
+        assert metadata.auto_command == f"agent_then_message codex med {shlex.quote(expected_startup_message)}"
         assert metadata.system_role == expected_role[0]
         assert metadata.job == expected_role[1].value
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_run_session_keeps_non_codex_next_command_as_raw_slash_message(self) -> None:
+        """Non-Codex agents still receive the original slash command plus args."""
+        request = RunSessionRequest(
+            command="/next-review-build",
+            args="chartest-api-routes --direct",
+            project="/repo/demo",
+            agent="claude",
+            thinking_mode="slow",
+        )
+        identity = _identity("caller-123", human_role="member", principal="human:member@example.com")
+        mapped_command = object()
+        service = SimpleNamespace(
+            create_session=AsyncMock(return_value={"session_id": "sess-run", "tmux_session_name": "tmux-run"})
+        )
+
+        with (
+            patch.object(sessions_actions_routes, "assert_agent_enabled", return_value="claude"),
+            patch.object(
+                sessions_actions_routes.CommandMapper,
+                "map_api_input",
+                return_value=mapped_command,
+            ) as map_api_input,
+            patch.object(sessions_actions_routes, "get_command_service", return_value=service),
+        ):
+            response = await sessions_actions_routes.run_session(request, identity=identity)
+
+        assert response.status == "success"
+
+        _command_name, _payload, metadata = map_api_input.call_args.args
+        expected_message = "/next-review-build chartest-api-routes --direct"
+        assert isinstance(metadata, MessageMetadata)
+        assert metadata.title == expected_message
+        assert metadata.auto_command == f"agent_then_message claude slow {shlex.quote(expected_message)}"
 
     @pytest.mark.unit
     @pytest.mark.asyncio

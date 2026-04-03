@@ -2,12 +2,14 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
+from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 
 if TYPE_CHECKING:
@@ -187,17 +189,122 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return message_id
 
-    async def force_session_output_pull(self, session: "Session") -> None:
-        """Trigger immediate output pull on all UI adapters before session termination.
+    async def broadcast_user_input(  # pylint: disable=too-many-arguments  # Reflection payload is adapter-facing API.
+        self,
+        session: "Session",
+        text: str,
+        source: str,
+        *,
+        actor_id: str | None = None,
+        actor_name: str | None = None,
+        actor_avatar_url: str | None = None,
+    ) -> None:
+        """Reflect user input to all UI adapters.
 
-        Ensures final transcript content is rendered before closed_at is set and
-        the session leaves the cadence loop's activity window.
+        Core sends raw text + metadata to every adapter. Each adapter owns
+        suppression (own-user echo) and presentation (headers, formatting).
         """
-        await self._broadcast_to_ui_adapters(
-            session,
-            "force_output_pull",
-            lambda adapter, s: adapter.force_output_pull(s),
+        if not source:
+            raise ValueError("broadcast_user_input requires a non-empty source")
+        fresh_session = await db.get_session(session.session_id)
+        session_to_use = fresh_session or session
+
+        identity = get_identity_resolver().resolve(source, session_to_use.get_origin_section(source))
+        normalized_actor_name = (actor_name or "").strip() or identity.display_name
+
+        reflection_origin = source.strip().lower()
+        reflection_metadata = MessageMetadata(
+            parse_mode=None,
+            reflection_actor_id=(actor_id or "").strip() or None,
+            reflection_actor_name=normalized_actor_name,
+            reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
+            reflection_origin=reflection_origin,
         )
+
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(
+                Awaitable[object],
+                adapter.send_message(
+                    lane_session,
+                    text,
+                    metadata=reflection_metadata,
+                ),
+            )
+
+        await self._broadcast_to_ui_adapters(
+            session_to_use,
+            "send_user_input_reflection",
+            make_task,
+        )
+
+    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        session: "Session",
+        output: str,
+        started_at: float,
+        last_output_changed_at: float,
+        is_final: bool = False,
+        exit_code: int | None = None,
+        render_markdown: bool = False,
+        multi_message: bool = False,
+        delivery_ts: datetime | None = None,
+    ) -> str | None:
+        """Push live output to all UI adapters.
+
+        The daemon owns hot-path output detection; adapters remain responsible
+        for platform-specific rendering and delivery.
+        """
+        result = await self._route_to_ui(
+            session,
+            "send_output_update",
+            output,
+            started_at,
+            last_output_changed_at,
+            is_final,
+            exit_code,
+            render_markdown,
+            multi_message,
+            delivery_ts,
+        )
+        return str(result) if result else None
+
+    async def reconcile_outstanding_final_outputs(self, computer_name: str) -> int:
+        """Repair persisted final output that never reached UI adapters."""
+        sessions = await db.list_sessions(
+            computer_name=computer_name,
+            include_closed=True,
+            include_headless=True,
+        )
+        repaired = 0
+        for session in sessions:
+            stop_at = session.last_agent_stop_at
+            if not isinstance(stop_at, datetime) or not session.last_output_raw:
+                continue
+
+            due_adapters: set[str] = set()
+            for adapter_type, adapter in self._ui_adapters():
+                if not session.get_origin_section(adapter_type):
+                    continue
+                delivered_at = adapter.get_last_delivered_at(session)
+                if delivered_at is None or delivered_at < stop_at:
+                    due_adapters.add(adapter_type)
+
+            if not due_adapters:
+                continue
+
+            await self._route_to_ui(
+                session,
+                "send_output_update",
+                session.last_output_raw,
+                0.0,
+                stop_at.timestamp(),
+                is_final=True,
+                include_adapters=due_adapters,
+                delivery_ts=stop_at,
+            )
+            repaired += 1
+
+        return repaired
 
     async def break_threaded_turn(self, session: "Session") -> None:
         """Drop pending QoS payloads on all UI adapters.

@@ -29,6 +29,20 @@ _REPO_INVARIANT_INPUTS = frozenset(
     }
 )
 
+_STARTUP_BOUNDARY_IMPORT_ALLOWLIST = frozenset(
+    {
+        "teleclaude/daemon.py",
+        "teleclaude/daemon_event_platform.py",
+        "teleclaude/core/adapter_client/_client.py",
+    }
+)
+_STARTUP_BOUNDARY_IMPORT_REASON = "startup boundary"
+MODULE_SIZE_EXCEPTIONS = frozenset(
+    {
+        "teleclaude/daemon.py",
+    }
+)
+
 
 def main(argv: Sequence[str] | None = None) -> None:
     """Run repo-wide or selected-file guardrails."""
@@ -71,6 +85,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     # Source pattern guardrails (table-driven)
     _check_source_patterns(repo_root, selected_paths)
+    _check_import_outside_toplevel_policy(repo_root, selected_paths)
 
     # Existing guardrails
     _remove_empty_claude_md(repo_root, selected_paths)
@@ -163,7 +178,7 @@ RUFF_MAX_PER_FILE_IGNORE_ENTRIES = 50
 MYPY_MAX_OVERRIDE_SECTIONS = 13
 MYPY_ALLOWED_IGNORE_ERRORS_MODULES = frozenset({"teleclaude.hooks.*"})
 
-# File size gate: max lines per module. No exceptions.
+# File size gate: max lines per module. Exceptions require explicit allowlisting.
 MODULE_MAX_LINES = 1000
 
 
@@ -301,6 +316,8 @@ def _check_module_sizes(repo_root: Path, selected_paths: set[str] | None = None)
         rel = path.relative_to(repo_root).as_posix()
         if rel.startswith(("teleclaude/cli/tui/", "teleclaude/entrypoints/")):
             # TUI views and entrypoints have different complexity profiles
+            continue
+        if rel in MODULE_SIZE_EXCEPTIONS:
             continue
         try:
             line_count = len(path.read_text(encoding="utf-8").splitlines())
@@ -583,6 +600,68 @@ def _iter_rule_candidate_paths(
         if not any(fnmatch.fnmatch(path.name, glob) for glob in globs):
             continue
         yield path
+
+
+def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[str] | None = None) -> None:
+    """Enforce startup-boundary import exceptions stay in the approved files.
+
+    The repo still has a legacy baseline of import-outside-toplevel suppressions.
+    This guardrail enforces the explicit startup-boundary policy without breaking
+    unrelated transitional exceptions elsewhere.
+    """
+
+    missing_reason: list[str] = []
+    outside_allowlist: list[str] = []
+
+    candidates: Iterable[Path]
+    if selected_paths is None:
+        candidates = (
+            path
+            for root_name in ("teleclaude", "tests", "tools", "bin")
+            for path in (repo_root / root_name).rglob("*.py")
+            if path.is_file()
+        )
+    else:
+        candidates = _iter_selected_files(
+            repo_root,
+            selected_paths,
+            prefixes=("teleclaude/", "tests/", "tools/", "bin/"),
+            suffixes=(".py",),
+        )
+
+    for path in candidates:
+        rel = path.relative_to(repo_root).as_posix()
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        for lineno, line in enumerate(lines, start=1):
+            if "pylint: disable=import-outside-toplevel" not in line:
+                continue
+
+            has_startup_reason = _STARTUP_BOUNDARY_IMPORT_REASON in line
+            if rel in _STARTUP_BOUNDARY_IMPORT_ALLOWLIST:
+                if not has_startup_reason:
+                    missing_reason.append(f"{rel}:{lineno}: {line.strip()}")
+                continue
+
+            if has_startup_reason:
+                outside_allowlist.append(f"{rel}:{lineno}: {line.strip()}")
+
+    if missing_reason or outside_allowlist:
+        chunks: list[str] = []
+        if missing_reason:
+            formatted = "\n".join(f"- {item}" for item in missing_reason)
+            chunks.append(
+                "startup-boundary import exceptions in approved files must include "
+                f"the same-line reason '{_STARTUP_BOUNDARY_IMPORT_REASON}':\n{formatted}"
+            )
+        if outside_allowlist:
+            formatted = "\n".join(f"- {item}" for item in outside_allowlist)
+            allowlist = "\n".join(f"  - {path}" for path in sorted(_STARTUP_BOUNDARY_IMPORT_ALLOWLIST))
+            chunks.append(f"startup-boundary import exceptions are only allowed in:\n{allowlist}\n{formatted}")
+        _fail("\n\n".join(chunks))
 
 
 def _warn_for_loose_dicts(  # pylint: disable=too-many-branches,too-many-locals

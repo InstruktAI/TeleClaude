@@ -363,9 +363,9 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         """Broadcast live agent availability changes to WS clients."""
         dto = AgentAvailabilityEventDTO(
             data=AgentAvailabilityDTO(
-                agent=context.agent,  # type: ignore[arg-type]
+                agent=context.agent,
                 available=context.available,
-                status=context.status,  # type: ignore[arg-type]
+                status=context.status,
                 unavailable_until=context.unavailable_until,
                 degraded_until=context.degraded_until,
                 reason=context.reason,

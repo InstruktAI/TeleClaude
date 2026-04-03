@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any, Literal
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.adapters.ui.output_cadence import OutputCadenceLoop
 from teleclaude.adapters.ui.output_delivery import _delivery_options_from_kwargs
 from teleclaude.adapters.ui.threaded_output import OverflowContext, OverflowPlan, ThreadDelivery
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
@@ -49,10 +48,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
     # Adapter key for metadata storage (subclasses MUST override)
     ADAPTER_KEY: str = "unknown"
-
-    # Output cadence interval in seconds. Subclasses set this to their
-    # platform's rate limit interval. 0 disables the cadence loop.
-    OUTPUT_CADENCE_SECONDS: float = 0.0
 
     # Optional command handler overrides: command -> handler method name
     COMMAND_HANDLER_OVERRIDES: dict[str, str] = {}
@@ -159,6 +154,8 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                 multi_message=multi_message,
                 _continuation_state=_continuation_state,
             )
+            if result and delivery_ts is not None:
+                await self.set_last_delivered_at(session, delivery_ts)
             logger.debug(
                 "[THREADED] Result: adapter=%s session=%s result=%s",
                 self.ADAPTER_KEY,
@@ -444,23 +441,8 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         # Set client (BaseAdapter has no __init__, just requires this attribute)
         self.client = client
 
-        # Output cadence loop — pulls transcripts and renders on adapter's own schedule.
-        self._output_cadence: OutputCadenceLoop | None = None
-        if self.OUTPUT_CADENCE_SECONDS > 0:
-            self._output_cadence = OutputCadenceLoop(self, self.OUTPUT_CADENCE_SECONDS)
-
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
-
-    def start_output_cadence(self) -> None:
-        """Start the output cadence loop (call after adapter.start())."""
-        if self._output_cadence is not None:
-            self._output_cadence.start()
-
-    async def stop_output_cadence(self) -> None:
-        """Stop the output cadence loop (call before adapter.stop())."""
-        if self._output_cadence is not None:
-            await self._output_cadence.stop()
 
     # === Adapter Metadata Helpers ===
 
@@ -589,10 +571,21 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         )
         logger.debug("Turn state cleared: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
 
-    async def force_output_pull(self, session: Session) -> None:
-        """Trigger an immediate output pull for a session outside the cadence schedule."""
-        if self._output_cadence is not None:
-            await self._output_cadence.pull_session(session)
+    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        session: Session,
+        output: str,
+        started_at: float,
+        last_output_changed_at: float,
+        is_final: bool = False,
+        exit_code: int | None = None,
+        render_markdown: bool = False,
+        multi_message: bool = False,
+        delivery_ts: datetime | None = None,
+    ) -> str | None:
+        """Handle live output pushed by the daemon-owned coordinator."""
+        _ = (started_at, last_output_changed_at, is_final, exit_code, render_markdown)
+        return await self.send_threaded_output(session, output, multi_message=multi_message, delivery_ts=delivery_ts)
 
     async def _clear_output_message_id(self, session: Session) -> None:
         """Clear output message ID in this adapter's origin_metadata section."""

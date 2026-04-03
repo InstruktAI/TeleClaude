@@ -438,7 +438,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_root": "~/.gemini/tmp",
         "session_pattern": "*/chats/*.json",
         "profiles": {
-            "default": "--yolo --allowed-mcp-server-names _none_",
+            "default": "--yolo",
             "restricted": f"--sandbox --include-directories {_GEMINI_MOUNT} --allowed-mcp-server-names _none_",
         },
         "model_flags": {

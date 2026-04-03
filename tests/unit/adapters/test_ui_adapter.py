@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -315,3 +316,20 @@ class TestClearTurnState:
         call_kwargs = set_origin_field.await_args[1]
         assert call_kwargs["output_message_id"] is None
         assert "last_delivered_at" in call_kwargs
+
+
+class TestSendThreadedOutput:
+    @pytest.mark.unit
+    async def test_stamps_last_delivered_at_after_successful_delivery(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        delivery_ts = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
+
+        with (
+            patch.object(adapter, "_sync_threaded_session_state", AsyncMock()),
+            patch.object(adapter, "_send_threaded_output_unlocked", AsyncMock(return_value="msg-1")),
+            patch.object(adapter, "set_last_delivered_at", AsyncMock()) as set_last_delivered_at,
+        ):
+            result = await adapter.send_threaded_output(session, "content", delivery_ts=delivery_ts)
+
+        assert result == "msg-1"
+        set_last_delivered_at.assert_awaited_once_with(session, delivery_ts)

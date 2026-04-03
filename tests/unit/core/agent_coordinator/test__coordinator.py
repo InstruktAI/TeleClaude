@@ -18,7 +18,7 @@ from teleclaude.core.models import Session
 def _make_coordinator() -> AgentCoordinator:
     client = MagicMock()
     client.break_threaded_turn = AsyncMock()
-    client.force_session_output_pull = AsyncMock()
+    client.send_output_update = AsyncMock()
     tts_manager = MagicMock()
     return AgentCoordinator(
         client=client,
@@ -518,7 +518,7 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
@@ -541,7 +541,7 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
@@ -562,7 +562,7 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._finalize_agent_stop = AsyncMock()
@@ -589,7 +589,7 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, "Summary text"))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, "Summary text", None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
@@ -613,7 +613,7 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
@@ -624,6 +624,26 @@ class TestHandleAgentStop:
         # loop owns the cursor and nulling it caused duplicate turn breaks.
         update_calls = mock_db.update_session.call_args_list
         assert not any("last_tool_done_at" in c.kwargs and c.kwargs["last_tool_done_at"] is None for c in update_calls)
+
+    @pytest.mark.unit
+    async def test_pushes_final_output_from_recorded_raw_output(self):
+        coord = _make_coordinator()
+        context = MagicMock()
+        context.session_id = "sess-001"
+        context.data.source_computer = None
+        session = _make_session()
+
+        with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            coord._record_agent_stop_input = AsyncMock()
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, "final output"))
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            coord._finalize_agent_stop = AsyncMock()
+            await coord.handle_agent_stop(context)
+
+        coord.client.send_output_update.assert_awaited_once()
 
 
 class TestHandleToolUse:
@@ -865,10 +885,11 @@ class TestRecordAgentStopOutput:
 
         with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
             mock_db.update_session = AsyncMock()
-            link_output, summary = await coord._record_agent_stop_output("sess-001", payload)
+            link_output, summary, raw_output = await coord._record_agent_stop_output("sess-001", payload)
 
         assert link_output is None
         assert summary is None
+        assert raw_output is None
         mock_db.update_session.assert_not_called()
 
     @pytest.mark.unit
@@ -887,10 +908,11 @@ class TestRecordAgentStopOutput:
         ):
             mock_config.terminal.strip_ansi = False
             mock_db.update_session = AsyncMock()
-            link_output, summary = await coord._record_agent_stop_output("sess-001", payload)
+            link_output, summary, raw_output = await coord._record_agent_stop_output("sess-001", payload)
 
         assert link_output == "Agent response here."
         assert summary == "Short summary."
+        assert raw_output == "Agent response here."
         mock_db.update_session.assert_called_once()
         coord._speak_agent_stop_summary.assert_called_once_with("sess-001", "Short summary.")
 
@@ -911,9 +933,10 @@ class TestRecordAgentStopOutput:
         ):
             mock_config.terminal.strip_ansi = False
             mock_db.update_session = AsyncMock()
-            link_output, _ = await coord._record_agent_stop_output("sess-001", payload)
+            link_output, _, raw_output = await coord._record_agent_stop_output("sess-001", payload)
 
         assert link_output is None
+        assert raw_output == "some output"
 
 
 class TestSpeakAgentStopSummary:

@@ -147,6 +147,7 @@ max-complexity = 20
 "teleclaude/core/integration/lease.py" = ["B904"]
 "teleclaude/core/tmux_bridge.py" = ["B904"]
 "teleclaude/core/codex_prompt_submit.py" = ["B023", "RUF001", "RUF002", "RUF003"]
+"teleclaude/daemon.py" = ["E402"]  # Import timing instrumentation intentionally interleaves imports
 "teleclaude/chiptunes/sid_cpu.py" = ["RUF001", "RUF002", "RUF003"]
 "teleclaude/chiptunes/sid_parser.py" = ["RUF001", "RUF002", "RUF003"]
 "teleclaude/cli/tui/animations/sprites/cars.py" = ["RUF001", "RUF002", "RUF003"]

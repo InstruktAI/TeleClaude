@@ -8,6 +8,7 @@ import shlex
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -264,6 +265,16 @@ def _resolve_run_session_agent(request: RunSessionRequest) -> str:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+def _build_codex_loader_message(command_name: str, slug: str) -> str:
+    """Build the generic Codex loader message for a compiled prompt file."""
+    prompt_path = Path.home() / ".codex" / "prompts" / f"{command_name}.md"
+    return (
+        f"Read {prompt_path} and follow it exactly as the active instruction set for this session.\n\n"
+        "Treat the following as provided inputs to that instruction set:\n"
+        f"- slug: {slug}"
+    )
+
+
 def _prepare_run_session(
     request: RunSessionRequest,
     identity: CallerIdentity,
@@ -273,9 +284,15 @@ def _prepare_run_session(
     normalized_cmd = request.command.lstrip("/")
     normalized_args = request.args.strip()
     full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
+    startup_message = full_command
+    if effective_agent == "codex" and normalized_cmd.startswith("next-"):
+        if not normalized_args:
+            raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
+        startup_message = _build_codex_loader_message(normalized_cmd, normalized_args)
     if request.additional_context:
         full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
-    auto_command = f"agent_then_message {effective_agent} {request.thinking_mode} {shlex.quote(full_command)}"
+        startup_message = f"{startup_message}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
+    auto_command = f"agent_then_message {effective_agent} {request.thinking_mode} {shlex.quote(startup_message)}"
 
     initiator_session_id: str | None = None
     if identity.session_id and not identity.session_id.startswith("web:"):

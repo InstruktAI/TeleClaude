@@ -179,7 +179,7 @@ def _extract_prompt_block(output: str) -> tuple[str, bool]:  # pylint: disable=t
     raw_after = prompt_line[marker_pos + len(CODEX_PROMPT_MARKER) :]
     raw_after_without_suggestion = _strip_suggestion_segments(raw_after)
     if _is_suggestion_styled(raw_after) and not _strip_ansi(raw_after_without_suggestion).strip():
-        logger.debug("[CODEX] Skipping suggestion-styled text: %r", _strip_ansi(raw_after).strip()[:30])
+        logger.trace("[CODEX] Skipping suggestion-styled text: %r", _strip_ansi(raw_after).strip()[:30])
         return "", False
 
     parts: list[str] = []

@@ -7,15 +7,19 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 logger = get_logger(__name__)
+
+_RECENT_DISCOVERY_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -38,9 +42,213 @@ class CodexTranscriptMeta:
     session_started_at: datetime | None
 
 
+class _CodexTranscriptIndex:  # pylint: disable=too-many-instance-attributes
+    """Process-local transcript index for fast family/path resolution."""
+
+    def __init__(self, sessions_dir: Path) -> None:
+        self._sessions_dir = sessions_dir
+        self._lock = threading.RLock()
+        self._bootstrapped = False
+        self._by_path: dict[str, CodexTranscriptMeta] = {}
+        self._by_thread_id: dict[str, CodexTranscriptMeta] = {}
+        self._children_by_parent: dict[str, list[CodexTranscriptMeta]] = {}
+        self._known_paths: set[str] = set()
+        self._dir_known_files: dict[str, set[str]] = {}
+
+    def discover_path(self, native_session_id: str) -> str | None:
+        """Resolve transcript path from indexed metadata."""
+        if not native_session_id:
+            return None
+        self._ensure_bootstrapped()
+        self._refresh_recent()
+        with self._lock:
+            meta = self._by_thread_id.get(native_session_id)
+            if meta is not None:
+                return meta.transcript_path
+        return self._scan_specific_thread(native_session_id)
+
+    def discover_family_meta(
+        self,
+        *,
+        root_transcript_path: str | None = None,
+        root_thread_id: str | None = None,
+    ) -> list[CodexTranscriptMeta]:
+        """Resolve parent and descendants from indexed transcript metadata."""
+        self._ensure_bootstrapped()
+        if root_transcript_path:
+            self._index_path(Path(root_transcript_path).expanduser())
+        self._refresh_recent()
+
+        family_meta: list[CodexTranscriptMeta] = []
+        seen_paths: set[str] = set()
+
+        def append_meta(meta: CodexTranscriptMeta | None) -> None:
+            if meta is None or meta.transcript_path in seen_paths:
+                return
+            family_meta.append(meta)
+            seen_paths.add(meta.transcript_path)
+
+        fallback_root_meta = None
+        root_meta_from_path = read_codex_transcript_meta(root_transcript_path)
+        if root_meta_from_path is None and root_transcript_path:
+            fallback_root_meta = CodexTranscriptMeta(
+                transcript_path=str(Path(root_transcript_path).expanduser()),
+                thread_id=None,
+                parent_thread_id=None,
+                session_started_at=None,
+            )
+        elif root_meta_from_path is not None:
+            fallback_root_meta = root_meta_from_path
+
+        resolved_root_thread_id = root_thread_id or (
+            root_meta_from_path.thread_id if root_meta_from_path and root_meta_from_path.thread_id else None
+        )
+        if not resolved_root_thread_id:
+            append_meta(fallback_root_meta)
+            return family_meta
+
+        root_path = self.discover_path(resolved_root_thread_id)
+        append_meta(read_codex_transcript_meta(root_path))
+        append_meta(fallback_root_meta)
+
+        with self._lock:
+            seen_threads: set[str] = set()
+            pending: deque[str] = deque([resolved_root_thread_id])
+
+            while pending:
+                parent_thread_id = pending.popleft()
+                if parent_thread_id in seen_threads:
+                    continue
+                seen_threads.add(parent_thread_id)
+
+                for child_meta in self._children_by_parent.get(parent_thread_id, []):
+                    append_meta(child_meta)
+                    if child_meta.thread_id and child_meta.thread_id not in seen_threads:
+                        pending.append(child_meta.thread_id)
+
+        return family_meta
+
+    def _ensure_bootstrapped(self) -> None:
+        with self._lock:
+            if self._bootstrapped:
+                return
+        self._scan_all()
+        with self._lock:
+            self._bootstrapped = True
+
+    def _scan_all(self) -> None:
+        sessions_dir = self._sessions_dir
+        if not sessions_dir.exists():
+            return
+        for transcript_file in _iter_codex_transcript_paths(sessions_dir):
+            self._index_path(transcript_file)
+
+    def _refresh_recent(self) -> None:
+        sessions_dir = self._sessions_dir
+        if not sessions_dir.exists():
+            return
+
+        today = datetime.now()
+        for days_back in range(_RECENT_DISCOVERY_DAYS):
+            try:
+                check_date = today - timedelta(days=days_back)
+                date_dir = sessions_dir / f"{check_date.year}" / f"{check_date.month:02d}" / f"{check_date.day:02d}"
+            except ValueError:
+                continue
+            self._refresh_directory(date_dir)
+
+    def _refresh_directory(self, date_dir: Path) -> None:
+        if not date_dir.exists():
+            return
+        try:
+            current_files = {str(path) for path in date_dir.glob("rollout-*.jsonl") if path.is_file()}
+        except OSError:
+            return
+
+        dir_key = str(date_dir)
+        with self._lock:
+            known_files = self._dir_known_files.get(dir_key, set())
+            new_files = current_files - known_files
+            self._dir_known_files[dir_key] = current_files
+
+        for file_path in sorted(new_files):
+            self._index_path(Path(file_path))
+
+    def _scan_specific_thread(self, native_session_id: str) -> str | None:
+        sessions_dir = self._sessions_dir
+        if not sessions_dir.exists():
+            return None
+
+        today = datetime.now()
+        for days_back in range(_RECENT_DISCOVERY_DAYS):
+            try:
+                check_date = today - timedelta(days=days_back)
+                date_dir = sessions_dir / f"{check_date.year}" / f"{check_date.month:02d}" / f"{check_date.day:02d}"
+                if not date_dir.exists():
+                    continue
+                for transcript_file in date_dir.glob(f"rollout-*-{native_session_id}.jsonl"):
+                    self._index_path(transcript_file)
+                    with self._lock:
+                        meta = self._by_thread_id.get(native_session_id)
+                        if meta is not None:
+                            return meta.transcript_path
+                    return str(transcript_file)
+            except (ValueError, OSError):
+                continue
+
+        for transcript_file in sessions_dir.rglob(f"rollout-*-{native_session_id}.jsonl"):
+            self._index_path(transcript_file)
+            with self._lock:
+                meta = self._by_thread_id.get(native_session_id)
+                if meta is not None:
+                    return meta.transcript_path
+            return str(transcript_file)
+        return None
+
+    def _index_path(self, transcript_path: Path) -> None:
+        path_str = str(transcript_path)
+        with self._lock:
+            if path_str in self._known_paths:
+                return
+
+        meta = read_codex_transcript_meta(transcript_path)
+        if meta is None:
+            return
+
+        with self._lock:
+            if path_str in self._known_paths:
+                return
+            self._known_paths.add(path_str)
+            self._by_path[path_str] = meta
+            if meta.thread_id:
+                self._by_thread_id[meta.thread_id] = meta
+            if meta.parent_thread_id:
+                children = self._children_by_parent.setdefault(meta.parent_thread_id, [])
+                children.append(meta)
+                children.sort(
+                    key=lambda item: (
+                        item.session_started_at is None,
+                        item.session_started_at.isoformat() if item.session_started_at else "",
+                        item.transcript_path,
+                    )
+                )
+
+
 def _codex_sessions_dir() -> Path:
     """Return the Codex transcript root directory."""
     return Path.home() / ".codex" / "sessions"
+
+
+@lru_cache(maxsize=4)
+def _build_transcript_index(sessions_root: str) -> _CodexTranscriptIndex:
+    """Build a transcript index for a specific sessions root."""
+    return _CodexTranscriptIndex(Path(sessions_root))
+
+
+def _get_transcript_index() -> _CodexTranscriptIndex:
+    """Return the process-local transcript index for the current sessions root."""
+    sessions_dir = _codex_sessions_dir()
+    return _build_transcript_index(str(sessions_dir))
 
 
 def _iter_codex_transcript_paths(sessions_dir: Path) -> Iterator[Path]:
@@ -74,12 +282,18 @@ def read_codex_transcript_meta(transcript_path: str | Path | None) -> CodexTrans
     path = Path(transcript_path).expanduser()
     try:
         with path.open(encoding="utf-8") as handle:
-            first_line = handle.readline().strip()
+            first_line = ""
+            for line in handle:
+                if line.strip():
+                    first_line = line.strip()
+                    break
+        if not first_line:
+            return None
         raw = json.loads(first_line)
     except (OSError, json.JSONDecodeError):
         return None
 
-    if not isinstance(raw, dict):
+    if not isinstance(raw, dict) or raw.get("type") != "session_meta":
         return None
     payload = raw.get("payload")
     if not isinstance(payload, dict):
@@ -109,85 +323,16 @@ def read_codex_transcript_meta(transcript_path: str | Path | None) -> CodexTrans
     )
 
 
-def _discover_codex_children_by_parent(sessions_dir: Path) -> dict[str, list[CodexTranscriptMeta]]:
-    """Index Codex child transcripts by parent thread id."""
-    children_by_parent: dict[str, list[CodexTranscriptMeta]] = {}
-
-    for transcript_file in _iter_codex_transcript_paths(sessions_dir):
-        meta = read_codex_transcript_meta(transcript_file)
-        if meta is None or not meta.parent_thread_id:
-            continue
-        children_by_parent.setdefault(meta.parent_thread_id, []).append(meta)
-
-    for children in children_by_parent.values():
-        children.sort(
-            key=lambda meta: (
-                meta.session_started_at is None,
-                meta.session_started_at.isoformat() if meta.session_started_at else "",
-                meta.transcript_path,
-            )
-        )
-
-    return children_by_parent
-
-
 def discover_codex_transcript_family_meta(
     *,
     root_transcript_path: str | None = None,
     root_thread_id: str | None = None,
 ) -> list[CodexTranscriptMeta]:
     """Resolve parent and descendant Codex transcript metadata recursively."""
-    family_meta: list[CodexTranscriptMeta] = []
-    seen_paths: set[str] = set()
-
-    def append_meta(meta: CodexTranscriptMeta | None) -> None:
-        if meta is None or meta.transcript_path in seen_paths:
-            return
-        family_meta.append(meta)
-        seen_paths.add(meta.transcript_path)
-
-    root_meta_from_path = read_codex_transcript_meta(root_transcript_path)
-    fallback_root_meta = None
-    if root_meta_from_path is None and root_transcript_path:
-        fallback_root_meta = CodexTranscriptMeta(
-            transcript_path=str(Path(root_transcript_path).expanduser()),
-            thread_id=None,
-            parent_thread_id=None,
-            session_started_at=None,
-        )
-    elif root_meta_from_path is not None:
-        fallback_root_meta = root_meta_from_path
-
-    resolved_root_thread_id = root_thread_id or (
-        root_meta_from_path.thread_id if root_meta_from_path and root_meta_from_path.thread_id else None
+    return _get_transcript_index().discover_family_meta(
+        root_transcript_path=root_transcript_path,
+        root_thread_id=root_thread_id,
     )
-    if not resolved_root_thread_id:
-        append_meta(fallback_root_meta)
-        return family_meta
-
-    append_meta(read_codex_transcript_meta(discover_codex_transcript_path(resolved_root_thread_id)))
-    append_meta(fallback_root_meta)
-
-    sessions_dir = _codex_sessions_dir()
-    if not sessions_dir.exists():
-        return family_meta
-
-    children_by_parent = _discover_codex_children_by_parent(sessions_dir)
-    seen_threads: set[str] = set()
-    pending: deque[str] = deque([resolved_root_thread_id])
-
-    while pending:
-        parent_thread_id = pending.popleft()
-        if parent_thread_id in seen_threads:
-            continue
-        seen_threads.add(parent_thread_id)
-
-        for child_meta in children_by_parent.get(parent_thread_id, []):
-            append_meta(child_meta)
-            if child_meta.thread_id and child_meta.thread_id not in seen_threads:
-                pending.append(child_meta.thread_id)
-
-    return family_meta
 
 
 def discover_codex_transcript_path(native_session_id: str) -> str | None:
@@ -207,35 +352,14 @@ def discover_codex_transcript_path(native_session_id: str) -> str | None:
         )
         return None
 
-    today = datetime.now()
-    for days_back in range(7):
-        try:
-            check_date = today - timedelta(days=days_back)
-            date_dir = sessions_dir / f"{check_date.year}" / f"{check_date.month:02d}" / f"{check_date.day:02d}"
-            if not date_dir.exists():
-                continue
-            for transcript_file in date_dir.glob(f"rollout-*-{native_session_id}.jsonl"):
-                logger.debug(
-                    "Codex transcript discovered",
-                    native_session_id=native_session_id,
-                    path=str(transcript_file),
-                )
-                return str(transcript_file)
-        except (ValueError, OSError) as exc:
-            logger.debug(
-                "Codex transcript date scan error",
-                days_back=days_back,
-                error=str(exc),
-            )
-
-    logger.debug("Falling back to recursive Codex transcript search", native_session_id=native_session_id)
-    for transcript_file in sessions_dir.rglob(f"rollout-*-{native_session_id}.jsonl"):
+    path = _get_transcript_index().discover_path(native_session_id)
+    if path:
         logger.debug(
-            "Codex transcript discovered (recursive)",
+            "Codex transcript discovered",
             native_session_id=native_session_id,
-            path=str(transcript_file),
+            path=path,
         )
-        return str(transcript_file)
+        return path
 
     logger.warning("Codex transcript not found", native_session_id=native_session_id)
     return None

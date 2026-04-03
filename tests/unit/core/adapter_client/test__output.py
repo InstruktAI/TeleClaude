@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -315,3 +316,41 @@ class TestChannelUpdates:
         assert result is True
         telegram.delete_channel.assert_awaited_once_with(session)
         discord.delete_channel.assert_awaited_once_with(session)
+
+
+class TestOutstandingFinalOutputRepair:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_reconciles_only_adapters_with_undelivered_final_output(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="terminal")
+        stop_at = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
+        session.last_output_raw = "final output"
+        session.last_agent_stop_at = stop_at
+        session.origin_metadata = {
+            "telegram": {"channel_id": "tg-1"},
+            "discord": {"last_delivered_at": "2026-04-03T12:01:00+00:00"},
+        }
+
+        telegram = _make_ui_adapter()
+        telegram.get_last_delivered_at.return_value = None
+        discord = _make_ui_adapter()
+        discord.get_last_delivered_at.return_value = datetime(2026, 4, 3, 12, 1, 0, tzinfo=UTC)
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+
+        with (
+            patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[session])),
+            patch.object(client, "_route_to_ui", AsyncMock(return_value="telegram-msg")) as route_to_ui,
+        ):
+            repaired = await client.reconcile_outstanding_final_outputs("local")
+
+        assert repaired == 1
+        route_to_ui.assert_awaited_once()
+        call = route_to_ui.await_args
+        assert call is not None
+        assert call.args[0] is session
+        assert call.args[1] == "send_output_update"
+        assert call.args[2] == "final output"
+        assert call.kwargs["include_adapters"] == {"telegram"}
+        assert call.kwargs["delivery_ts"] == stop_at

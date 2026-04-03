@@ -20,8 +20,10 @@ cd "$PROJECT_ROOT"
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
 LOG_FILE="/var/log/instrukt-ai/teleclaude/teleclaude.log"
 API_SOCKET="/tmp/teleclaude-api.sock"
-# Startup wait window in seconds (number of 1s readiness probes)
+# Startup soft warning threshold in seconds. Startup keeps waiting past this
+# threshold and emits warnings instead of failing hard.
 STARTUP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STARTUP_WAIT_S:-15}"
+STARTUP_STREAM_PID=""
 
 # Platform-specific config
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -55,15 +57,47 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Wait for daemon to come up with retries
-# Args: max_attempts (default STARTUP_WAIT_SECONDS), old_pid (optional - wait for this PID to die first)
-# Returns 0 if daemon started with new PID, 1 if timeout
-wait_for_daemon() {
-    local max_attempts=${1:-$STARTUP_WAIT_SECONDS}
-    local old_pid=${2:-""}
-    local attempt=1
+extract_log_message() {
+    printf '%s\n' "$1" | sed -n 's/.*msg="\([^"]*\)".*/\1/p'
+}
 
-    while [ $attempt -le $max_attempts ]; do
+start_startup_log_stream() {
+    if [ ! -r "$LOG_FILE" ]; then
+        return 0
+    fi
+
+    tail -n 0 -F "$LOG_FILE" 2>/dev/null | while IFS= read -r line; do
+        case "$line" in
+            *"[STARTUP]"*|*"Lifecycle startup completed"*|*"Daemon startup was slow"* )
+                message=$(extract_log_message "$line")
+                if [ -n "$message" ]; then
+                    log_info "$message"
+                fi
+                ;;
+        esac
+    done &
+    STARTUP_STREAM_PID=$!
+}
+
+stop_startup_log_stream() {
+    if [ -n "$STARTUP_STREAM_PID" ]; then
+        kill "$STARTUP_STREAM_PID" >/dev/null 2>&1 || true
+        wait "$STARTUP_STREAM_PID" 2>/dev/null || true
+        STARTUP_STREAM_PID=""
+    fi
+}
+
+# Wait for daemon to come up
+# Args: old_pid (optional - wait for this PID to die first)
+# Returns 0 if daemon started with new PID/socket, 1 if service unloaded
+wait_for_daemon() {
+    local old_pid=${1:-""}
+    local attempt=1
+    local next_warn_after=$STARTUP_WAIT_SECONDS
+
+    log_info "Waiting for API socket. Expected startup time is usually 10-25s."
+
+    while true; do
         if [ "$PLATFORM" = "macos" ]; then
             # Avoid `ps`/process enumeration (can be blocked by macOS sandboxes).
             # Consider the daemon "up" once the API socket exists and accepts a connection.
@@ -105,13 +139,20 @@ except Exception:
             fi
         fi
 
-        if [ $attempt -lt $max_attempts ]; then
-            log_info "Waiting for daemon to start (attempt $attempt/$max_attempts)..."
-            sleep 1
+        if ! is_service_loaded; then
+            return 1
         fi
+
+        if [ "$attempt" -ge "$next_warn_after" ]; then
+            log_warn "Daemon startup is taking longer than expected (${attempt}s elapsed). Still waiting..."
+            next_warn_after=$((next_warn_after + STARTUP_WAIT_SECONDS))
+        elif [ $((attempt % 5)) -eq 0 ]; then
+            log_info "Still waiting for daemon startup (${attempt}s elapsed)..."
+        fi
+
+        sleep 1
         attempt=$((attempt + 1))
     done
-    return 1
 }
 
 # Check if service is loaded/enabled
@@ -135,6 +176,8 @@ start_daemon() {
         exit 1
     fi
 
+    start_startup_log_stream
+
     if [ "$PLATFORM" = "macos" ]; then
         local domain="gui/$(id -u)"
         # Load service if not loaded
@@ -153,17 +196,25 @@ start_daemon() {
         sudo systemctl start "$SERVICE_LABEL"
     fi
 
-    # Wait for daemon to come up (up to STARTUP_WAIT_SECONDS)
-    if wait_for_daemon "$STARTUP_WAIT_SECONDS"; then
-        PID=$(cat "$PID_FILE")
-        log_info "Daemon started successfully (PID: $PID)"
+    # Wait for daemon to come up. This uses a soft warning threshold rather than
+    # a hard timeout because adapter startup can legitimately exceed 15 seconds.
+    if wait_for_daemon; then
+        stop_startup_log_stream
+        if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+            log_info "Daemon started successfully (PID: $PID)"
+        else
+            log_info "Daemon started successfully (API socket responding)"
+        fi
         log_info "Service manager will auto-restart if killed"
         return 0
     fi
 
-    # If not running after retries, check why
+    stop_startup_log_stream
+
+    # If the service unloaded before the API socket came up, surface that immediately.
     if is_service_loaded; then
-        log_error "Service loaded but daemon not running after ${STARTUP_WAIT_SECONDS} seconds"
+        log_error "Service loaded but daemon never exposed a healthy API socket"
         if [ "$PLATFORM" = "macos" ]; then
             log_error "Check status: launchctl list | grep teleclaude"
         else

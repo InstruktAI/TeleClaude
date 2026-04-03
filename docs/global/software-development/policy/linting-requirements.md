@@ -15,7 +15,7 @@ type: 'policy'
 
 1. **Fix all lint violations before commit**
 2. **Do not suppress lint errors** unless explicitly approved and documented
-3. **All imports at module top level** (no import-outside-toplevel)
+3. **All imports at module top level by default** (`import-outside-toplevel` is disallowed unless explicitly approved)
 4. No unused imports, variables, or arguments
 5. Respect configured formatter/linter defaults (do not override project config)
 
@@ -28,6 +28,13 @@ type: 'policy'
 - Only when required by a third-party limitation or transitional migration
 - Must include a concise comment explaining the reason and scope
 - Must include a follow-up todo for removal if temporary
+- Startup-boundary lazy imports are the only standing policy exception for performance reasons
+- Startup-boundary lazy imports are approved only in:
+  - `teleclaude/daemon.py`
+  - `teleclaude/daemon_event_platform.py`
+  - `teleclaude/core/adapter_client/_client.py`
+- Every startup-boundary `import-outside-toplevel` exception must include the same-line reason comment `startup boundary`
+- Existing legacy exceptions outside this allowlist are transitional debt and must not expand
 
 **CRITICAL**: Never commit with lint or type-check failures.
 

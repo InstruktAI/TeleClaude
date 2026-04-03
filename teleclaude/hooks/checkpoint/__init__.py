@@ -45,12 +45,10 @@ from teleclaude.hooks.checkpoint._git import (
     _extract_shell_touched_paths,
     _extract_turn_file_signals,
     _file_matches_category,
-    _get_uncommitted_files,
     _is_checkpoint_project_supported,
     _is_docs_only,
     _looks_like_path_token,
     _normalize_repo_path,
-    _scope_git_files_to_current_turn,
     _segment_tokens,
     _split_shell_segments,
     _transcript_observability,
@@ -89,7 +87,6 @@ __all__ = [
     "_extract_shell_touched_paths",
     "_extract_turn_file_signals",
     "_file_matches_category",
-    "_get_uncommitted_files",
     "_has_evidence",
     "_has_evidence_after_index",
     "_has_status_evidence",
@@ -99,7 +96,6 @@ __all__ = [
     "_last_category_mutation_index",
     "_looks_like_path_token",
     "_normalize_repo_path",
-    "_scope_git_files_to_current_turn",
     "_segment_matches_evidence",
     "_segment_tokens",
     "_split_shell_segments",
@@ -316,14 +312,6 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
             )
             return None
 
-        git_files = _get_uncommitted_files(project_path)
-        if git_files is None:
-            logger.warning(
-                "Checkpoint payload fallback to generic message (git unavailable)",
-                extra=base_extra,
-            )
-            return CHECKPOINT_MESSAGE  # git unavailable — fall back to generic
-
         timeline = extract_effective_tool_calls(
             transcript_path,
             agent_name,
@@ -331,11 +319,8 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
             scope="turn",
         )
 
-        effective_git_files = _scope_git_files_to_current_turn(
-            git_files,
-            timeline,
-            project_path,
-        )
+        touched_files, _saw_mutation_signal = _extract_turn_file_signals(timeline, project_path)
+        effective_files = sorted(touched_files)
 
         # Intentionally no full-session fallback:
         # checkpoint attribution must stay strictly turn-local.
@@ -348,16 +333,15 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
         )
         log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
 
-        result = run_heuristics(effective_git_files, timeline, context, log_since_window=log_since_window)
-        if not effective_git_files or _is_docs_only(effective_git_files):
+        result = run_heuristics(effective_files, timeline, context, log_since_window=log_since_window)
+        if not effective_files or _is_docs_only(effective_files):
             logger.info(
                 "Checkpoint payload skipped (no turn-local code changes)",
                 extra={
                     **base_extra,
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
-                    "dirty_files": len(git_files),
-                    "changed_files": len(effective_git_files),
+                    "changed_files": len(effective_files),
                     "categories": result.categories,
                     "required_actions": len(result.required_actions),
                     "observations": len(result.observations),
@@ -375,8 +359,7 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
                     **base_extra,
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
-                    "dirty_files": len(git_files),
-                    "changed_files": len(effective_git_files),
+                    "changed_files": len(effective_files),
                     "categories": result.categories,
                     "required_actions": len(result.required_actions),
                     "observations": len(result.observations),
@@ -387,10 +370,10 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
             )
             return None
 
-        message = _compose_checkpoint_message(effective_git_files, result)
+        message = _compose_checkpoint_message(effective_files, result)
         mode = (
             "docs_only"
-            if (not effective_git_files or _is_docs_only(effective_git_files))
+            if (not effective_files or _is_docs_only(effective_files))
             else ("all_clear" if result.is_all_clear else "actionable")
         )
         logger.info(
@@ -399,8 +382,7 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
                 **base_extra,
                 "timeline_has_data": timeline.has_data,
                 "timeline_records": len(timeline.tool_calls),
-                "dirty_files": len(git_files),
-                "changed_files": len(effective_git_files),
+                "changed_files": len(effective_files),
                 "categories": result.categories,
                 "required_actions": len(result.required_actions),
                 "observations": len(result.observations),

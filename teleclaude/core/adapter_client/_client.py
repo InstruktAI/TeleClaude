@@ -123,6 +123,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         # Discord adapter (guard for tests that patch config with older/minimal objects)
         discord_cfg = getattr(config, "discord", None)
         if discord_cfg is not None and bool(getattr(discord_cfg, "enabled", False)):
+            logger.info("[STARTUP] Starting Discord adapter (usually 2-8s)")
             discord = DiscordAdapter(self, task_registry=self.task_registry)
             await discord.start()  # Raises if fails -> daemon crashes
             self.adapters["discord"] = discord  # Register ONLY after success
@@ -131,6 +132,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         # Telegram adapter
         # Check for env token presence (adapter authenticates from env)
         if os.getenv("TELEGRAM_BOT_TOKEN"):
+            logger.info("[STARTUP] Starting Telegram adapter (usually 2-8s)")
             telegram = TelegramAdapter(self)
             await telegram.start()  # Raises if fails → daemon crashes
             self.adapters["telegram"] = telegram  # Register ONLY after success
@@ -143,6 +145,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             and getattr(whatsapp_cfg, "phone_number_id", None)
             and getattr(whatsapp_cfg, "access_token", None)
         ):
+            logger.info("[STARTUP] Starting WhatsApp adapter (usually 2-8s)")
             whatsapp = WhatsAppAdapter(self)
             await whatsapp.start()
             self.adapters["whatsapp"] = whatsapp
@@ -150,6 +153,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
 
         # Redis adapter
         if config.redis.enabled:
+            logger.info("[STARTUP] Starting Redis transport (usually <1s)")
             redis = RedisTransport(self, task_registry=self.task_registry)
             await redis.start()  # Raises if fails → daemon crashes
             self.adapters["redis"] = redis  # Register ONLY after success

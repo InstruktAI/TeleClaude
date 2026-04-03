@@ -416,9 +416,9 @@ def render_agent_output(  # pylint: disable=too-many-locals,too-many-arguments,t
 
     # Collect assistant activity from start_idx
     assistant_entries = entries[start_idx:]
-    logger.debug(
+    logger.trace(
         "Rendering incremental output",
-        extra={
+        {
             "session": transcript_path,
             "start_idx": start_idx,
             "total_entries": len(entries),

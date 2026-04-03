@@ -1,20 +1,22 @@
-"""Polling coordinator for tmux output streaming.
+"""Polling coordinator for tmux activity detection and transcript-driven fanout.
 
 Extracted from daemon.py to reduce file size and improve organization.
-Handles polling lifecycle orchestration and signals activity to adapters,
-which pull and render output on their own cadence.
+Handles polling lifecycle orchestration and central transcript-driven delivery.
 """
 
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
+from teleclaude.core.agent_coordinator._helpers import has_active_output_message
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
@@ -27,9 +29,16 @@ from teleclaude.core.output_poller import (
     ProcessExited,
 )
 from teleclaude.core.tool_activity import truncate_tool_preview
+from teleclaude.utils.transcript import (
+    count_renderable_assistant_blocks,
+    get_assistant_messages_since,
+    render_agent_output,
+    render_clean_agent_output,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
@@ -71,6 +80,54 @@ def _percentile(values: list[float], pct: float) -> float | None:
     index = round((len(ordered) - 1) * pct)
     index = max(0, min(index, len(ordered) - 1))
     return ordered[index]
+
+
+def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, bool] | None:
+    """Render transcript-backed output for one session turn."""
+    transcript_path = session.native_log_file
+    active_agent = session.active_agent
+    if not transcript_path or not active_agent:
+        return None
+
+    try:
+        agent_name = AgentName.from_str(active_agent)
+    except ValueError:
+        logger.warning("Invalid active_agent %r for transcript output", active_agent)
+        return None
+
+    turn_cursor = session.last_tool_done_at
+    assistant_messages = get_assistant_messages_since(transcript_path, agent_name, since_timestamp=turn_cursor)
+    if not assistant_messages:
+        return None
+
+    renderable_block_count = count_renderable_assistant_blocks(
+        transcript_path,
+        agent_name,
+        since_timestamp=turn_cursor,
+        include_tools=True,
+        include_tool_results=False,
+    )
+    is_multi = renderable_block_count > 1
+
+    if is_multi:
+        message, last_ts = render_agent_output(
+            transcript_path,
+            agent_name,
+            include_tools=True,
+            include_tool_results=False,
+            since_timestamp=turn_cursor,
+            include_timestamps=False,
+        )
+    else:
+        message, last_ts = render_clean_agent_output(
+            transcript_path,
+            agent_name,
+            since_timestamp=turn_cursor,
+        )
+
+    if not message or not isinstance(last_ts, datetime):
+        return None
+    return message, last_ts, is_multi
 
 
 def _log_output_metrics_summary(session_id: str, state: OutputMetricsState, *, reason: str) -> None:
@@ -363,11 +420,11 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
     get_output_file: Callable[[str], Path],
     _skip_register: bool = False,
 ) -> None:
-    """Poll tmux output and signal activity for session.
+    """Poll tmux activity and push transcript-derived output for a session.
 
-    Pure orchestration — consumes events from the poller and signals last_activity_at.
-    Adapters pull and render output on their own cadence.
-    SINGLE RESPONSIBILITY: Owns the polling lifecycle for a session.
+    Tmux is a liveness and visible-activity signal only. Durable payloads come
+    from the native transcript, except for Codex synthetic events derived from
+    terminal effects.
 
     Args:
         session_id: Session ID
@@ -438,14 +495,24 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                     except Exception as e:  # pylint: disable=broad-exception-caught
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
 
-                # Signal activity — adapters pull output on their own cadence.
                 await db.update_last_activity(event.session_id)
-                _record_output_tick(event.session_id, len(clean_output))
+                transcript_update = _build_transcript_output_update(session)
+                if transcript_update is not None:
+                    message, last_ts, is_multi = transcript_update
+                    await adapter_client.send_output_update(
+                        session,
+                        message,
+                        event.started_at,
+                        event.last_changed_at,
+                        multi_message=is_multi,
+                        delivery_ts=last_ts,
+                    )
+                    _record_output_tick(event.session_id, len(message))
+                    fresh = await db.get_session(event.session_id)
+                    if fresh is not None and not await has_active_output_message(fresh):
+                        await db.update_session(event.session_id, last_tool_done_at=last_ts.isoformat())
 
             elif isinstance(event, ProcessExited):
-                # Process exited - output is already clean from file
-                clean_final_output = event.final_output
-
                 # Fetch session once for all operations
                 session = await db.get_session(event.session_id)
                 if not session:
@@ -455,10 +522,8 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                     )
                     return
 
-                # Signal final activity — adapters handle final rendering on their own cadence.
                 if event.exit_code is not None:
                     await db.update_last_activity(event.session_id)
-                    _record_output_tick(event.session_id, len(clean_final_output))
                     tmux_alive = True
                     if session.tmux_session_name:
                         tmux_alive = await tmux_bridge.session_exists(
@@ -466,9 +531,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                             log_missing=False,
                         )
                     if not tmux_alive:
-                        # Pull final output before termination sets closed_at and
-                        # removes the session from the cadence loop's activity window.
-                        await adapter_client.force_session_output_pull(session)
                         await session_cleanup.terminate_session(
                             event.session_id,
                             adapter_client,

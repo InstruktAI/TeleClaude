@@ -64,6 +64,7 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
             logger.warning("Lifecycle startup already completed; skipping")
             return
         startup_started_at = time.perf_counter()
+        logger.info("[STARTUP] Initializing database (usually <1s)")
         await db.initialize()
         logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)
 
@@ -71,10 +72,12 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
         operations_service = OperationsService(db=db, task_registry=self.task_registry)
         set_operations_service(operations_service)
         operations_started_at = time.perf_counter()
+        logger.info("[STARTUP] Starting operations service (usually <1s)")
         await operations_service.start()
         logger.info("Operations service started in %.3fs", time.perf_counter() - operations_started_at)
 
         session_warm_started_at = time.perf_counter()
+        logger.info("[STARTUP] Warming local session cache (usually 1-4s)")
         await self._warm_local_sessions_cache()
         logger.info("Local session cache warm completed in %.3fs", time.perf_counter() - session_warm_started_at)
 
@@ -85,28 +88,36 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
             runtime_settings=self.runtime_settings,
         )
         api_started_at = time.perf_counter()
+        logger.info("[STARTUP] Starting API server (usually 1-3s)")
         await self.api_server.start()
         self.api_server.set_on_server_exit(self.handle_api_server_exit)
         logger.info("API server started and cache wired in %.3fs", time.perf_counter() - api_started_at)
 
         project_warm_started_at = time.perf_counter()
+        logger.info("[STARTUP] Warming local project cache (usually 2-5s)")
         await self._warm_local_projects_cache()
         logger.info("Local project cache warm completed in %.3fs", time.perf_counter() - project_warm_started_at)
 
         adapter_start_started_at = time.perf_counter()
+        logger.info("[STARTUP] Starting adapters (usually 3-12s total)")
         await self.client.start()
         logger.info("Adapter startup completed in %.3fs", time.perf_counter() - adapter_start_started_at)
+        repaired_output_count = await self.client.reconcile_outstanding_final_outputs(config.computer.name)
+        if repaired_output_count:
+            logger.info("Repaired final output delivery for %d session(s)", repaired_output_count)
 
         redis_transport_cache = self.client.adapters.get("redis")
         if redis_transport_cache and hasattr(redis_transport_cache, "cache"):
             redis_transport_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]
             logger.info("Wired cache to Redis transport")
 
+        logger.info("[STARTUP] Initializing voice handler (usually <1s)")
         self._init_voice_handler()
         logger.info("Voice handler initialized")
 
         from teleclaude.core.inbound_queue import get_inbound_queue_manager  # pylint: disable=import-outside-toplevel
 
+        logger.info("[STARTUP] Starting inbound queue manager (usually <1s)")
         await get_inbound_queue_manager().startup()
         logger.info("Inbound queue manager started")
 
@@ -115,20 +126,70 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
 
     async def _warm_local_sessions_cache(self) -> None:
         """Seed cache with current local sessions for initial UI state."""
+        warm_started_at = time.perf_counter()
+        logger.trace("[PERF] _warm_local_sessions_cache start computer=%s", config.computer.name)
         try:
+            list_started_at = time.perf_counter()
             sessions = await db.list_sessions(computer_name=config.computer.name, include_headless=True)
+            logger.trace(
+                "[PERF] _warm_local_sessions_cache list_sessions dt=%.3f count=%d computer=%s",
+                time.perf_counter() - list_started_at,
+                len(sessions),
+                config.computer.name,
+            )
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to warm session cache: %s", exc, exc_info=True)
             return
 
         if not sessions:
             logger.debug("No local sessions to seed in cache")
+            logger.trace(
+                "[PERF] _warm_local_sessions_cache done dt=%.3f count=0 computer=%s",
+                time.perf_counter() - warm_started_at,
+                config.computer.name,
+            )
             return
 
-        for session in sessions:
+        snapshot_total_dt = 0.0
+        cache_update_total_dt = 0.0
+        for idx, session in enumerate(sessions, start=1):
+            snapshot_started_at = time.perf_counter()
             snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+            snapshot_dt = time.perf_counter() - snapshot_started_at
+            snapshot_total_dt += snapshot_dt
+            cache_update_started_at = time.perf_counter()
             self.cache.update_session(snapshot)
+            cache_update_dt = time.perf_counter() - cache_update_started_at
+            cache_update_total_dt += cache_update_dt
+            logger.trace(
+                "[PERF] _warm_local_sessions_cache session=%s index=%d/%d snapshot_dt=%.3f cache_update_dt=%.3f",
+                session.session_id,
+                idx,
+                len(sessions),
+                snapshot_dt,
+                cache_update_dt,
+            )
 
+        warm_total_dt = time.perf_counter() - warm_started_at
+        logger.trace(
+            "[PERF] _warm_local_sessions_cache done dt=%.3f count=%d computer=%s",
+            warm_total_dt,
+            len(sessions),
+            config.computer.name,
+        )
+        if warm_total_dt >= 5.0:
+            logger.warning(
+                (
+                    "Local session cache warm was slow: total=%.3fs count=%d computer=%s "
+                    "snapshot_total=%.3fs cache_update_total=%.3fs other=%.3fs"
+                ),
+                warm_total_dt,
+                len(sessions),
+                config.computer.name,
+                snapshot_total_dt,
+                cache_update_total_dt,
+                max(0.0, warm_total_dt - snapshot_total_dt - cache_update_total_dt),
+            )
         logger.info("Seeded cache with %d local sessions", len(sessions))
 
     async def _warm_local_projects_cache(self) -> None:

@@ -129,6 +129,15 @@ Assert on data, structure, and behavior — never on how text reads. If the exac
 - **Forbidden:** exact-string assertions on any human-facing output — composed messages, CLI help text, formatted reports, notification content, error prose, checkpoint messages, status output, agent artifacts, documentation. If the wording can change without changing behavior, the assertion is a prose-lock.
 - **Preferred:** assert on the data structure the composer receives (action lists, category sets, flag values), return types, error codes/classes, presence of required fields — not on the string that gets rendered from them.
 
+### Literal Echo and Primitive Side-Effect Guardrail
+
+Tests must not merely mirror visible source literals or primitive library effects back to the reader.
+
+- **Forbidden:** literal-echo assertions — rebuilding an expected dict/list/string from values already obvious in the implementation or fixture and asserting equality without proving any decision, transformation, validation, or failure handling.
+- **Forbidden:** primitive side-effect assertions — proving only that a file/path/object/record exists after a direct library call when no application-owned branch, guard, validation, or error path was exercised.
+- **Forbidden:** pass-through assertions that only prove data, props, config, or arguments were forwarded unchanged unless that forwarding behavior is itself the explicit public contract at the boundary under test.
+- **Required question:** if the implementation were replaced with a constant, a trivial passthrough, or a single library call, would this test still pass? If yes, the test is weak and does not count as meaningful coverage.
+
 ### Test Levels (Required Strategy)
 
 Use a layered approach: **unit → functional → smoke**. Each layer proves a different slice of the system.
@@ -192,12 +201,15 @@ Every test must survive one question: **"What real bug in OUR code would this ca
 17. **Tautological assertions** — asserting that a data literal contains keys visible in the source. The code that consumes the structure catches missing keys — that is the real test
 18. **Truthy-check assertions** — `assert value` passes for any non-empty value. If a trivially wrong implementation satisfies the assertion, the assertion is worthless. Assert on specific expected values
 19. **Redundant coverage across files** — a function has one test home. Do not test the same function from multiple test files. Redundant tests multiply maintenance without adding safety
+20. **Literal-echo tests** — reconstructing an expected literal from source-visible values and asserting equality without proving semantics, branching, validation, or failure handling
+21. **Primitive side-effect tests** — only proving that a file/path/object/record was created or copied after a direct library call, without exercising application-owned logic
+22. **Passthrough-only tests** — proving data flowed through unchanged when the forwarding itself is not the real behavior or decision under test
 
-20. All tests run on every commit
-21. Tests must pass before merging to main branch
-22. Linting, type checking, and unit tests run automatically
-23. No commits with `--no-verify` to bypass hooks unless explicitly approved
-24. Keep test suite fast (< 10s for unit tests)
+23. All tests run on every commit
+24. Tests must pass before merging to main branch
+25. Linting, type checking, and unit tests run automatically
+26. No commits with `--no-verify` to bypass hooks unless explicitly approved
+27. Keep test suite fast (< 10s for unit tests)
 
 ### Test Specification Delivery
 

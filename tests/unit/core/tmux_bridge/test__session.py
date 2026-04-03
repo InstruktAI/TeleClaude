@@ -1,4 +1,5 @@
 """Characterization tests for tmux bridge session management."""
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
 
 from __future__ import annotations
 
@@ -66,6 +67,15 @@ class TestShellGuardrails:
     @pytest.mark.asyncio
     async def test_apply_shell_guardrails_sends_text_then_enter(self) -> None:
         teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
+        wrapper_path = f"{teleclaude_bin}/git"
+        expected_guardrail = (
+            f"TELECLAUDE_GIT_WRAPPER={wrapper_path}; "
+            f'export PATH={teleclaude_bin}:"$PATH"; '
+            "unalias git 2>/dev/null; "
+            'eval \'git() { "${TELECLAUDE_GIT_WRAPPER}" "$@"; }\'; '
+            "hash -r 2>/dev/null; "
+            "clear"
+        )
 
         with (
             patch(
@@ -87,7 +97,7 @@ class TestShellGuardrails:
             "tmux-alpha",
             "-l",
             "--",
-            f'export PATH="{teleclaude_bin}:$PATH"; unalias git 2>/dev/null; clear',
+            expected_guardrail,
         )
         assert mock_exec.await_args_list[1].args == (
             _session.config.computer.tmux_binary,

@@ -73,7 +73,6 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
 
     ADAPTER_KEY = "discord"
     OUTPUT_MESSAGE_ID_FIELD = "id"
-    OUTPUT_CADENCE_SECONDS = 1.0
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
 
@@ -175,15 +174,11 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
                     raise RuntimeError(f"Discord gateway failed to start: {task_exc}") from task_exc
             raise RuntimeError("Discord adapter did not become ready within 20 seconds") from exc
 
-        # Start adapter-owned output cadence loop.
-        self.start_output_cadence()
-
         # Start QoS scheduler (no-op if mode == "off").
         self._qos_scheduler.start()
 
     async def stop(self) -> None:
         """Stop Discord client and gateway task."""
-        await self.stop_output_cadence()
         await self._qos_scheduler.stop()
         self._tree = None
         self._launcher_registration_view = None

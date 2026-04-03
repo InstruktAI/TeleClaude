@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -105,7 +106,8 @@ async def inject_checkpoint_if_needed(  # pylint: disable=too-many-arguments,too
     except ValueError:
         agent_enum_ckpt = default_agent
 
-    checkpoint_text = checkpoint_module.get_checkpoint_content(
+    checkpoint_text = await asyncio.to_thread(
+        checkpoint_module.get_checkpoint_content,
         transcript_path=transcript_path,
         agent_name=agent_enum_ckpt,
         project_path=project_path,

@@ -1,4 +1,5 @@
 """Event platform and webhook service mixin for TeleClaudeDaemon."""
+# pylint: disable=import-outside-toplevel  # startup boundary
 
 from __future__ import annotations
 
@@ -107,7 +108,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
 
     def _iter_admin_people_configs(self) -> list[tuple[str, PersonConfig]]:
         """Load admin person configs from the global people directory."""
-        from teleclaude.config.loader import (  # pylint: disable=import-outside-toplevel
+        from teleclaude.config.loader import (  # pylint: disable=import-outside-toplevel  # startup boundary
             load_global_config,
             load_person_config,
         )
@@ -151,7 +152,9 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
         if not config.telegram:
             return
 
-        from teleclaude.services.telegram import send_telegram_dm  # pylint: disable=import-outside-toplevel
+        from teleclaude.services.telegram import (
+            send_telegram_dm,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
 
         try:
             for person_name, person_cfg in self._iter_admin_people_configs():
@@ -173,8 +176,12 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
         if not config.discord.enabled:
             return
 
-        from teleclaude.events.delivery.discord import DiscordDeliveryAdapter  # pylint: disable=import-outside-toplevel
-        from teleclaude.services.discord import send_discord_dm  # pylint: disable=import-outside-toplevel
+        from teleclaude.events.delivery.discord import (
+            DiscordDeliveryAdapter,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
+        from teleclaude.services.discord import (
+            send_discord_dm,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
 
         try:
             for person_name, person_cfg in self._iter_admin_people_configs():
@@ -196,12 +203,14 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
         if not config.whatsapp.enabled:
             return
 
-        from functools import partial  # pylint: disable=import-outside-toplevel
+        from functools import partial  # pylint: disable=import-outside-toplevel  # startup boundary
 
-        from teleclaude.events.delivery.whatsapp import (  # pylint: disable=import-outside-toplevel
+        from teleclaude.events.delivery.whatsapp import (  # pylint: disable=import-outside-toplevel  # startup boundary
             WhatsAppDeliveryAdapter,
         )
-        from teleclaude.services.whatsapp import send_whatsapp_message  # pylint: disable=import-outside-toplevel
+        from teleclaude.services.whatsapp import (
+            send_whatsapp_message,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
 
         try:
             for person_name, person_cfg in self._iter_admin_people_configs():
@@ -226,7 +235,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
 
     def _build_integration_trigger(self) -> IntegrationTriggerCartridge:
         """Create the integration trigger cartridge."""
-        from teleclaude.core.integration_bridge import (  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.integration_bridge import (  # pylint: disable=import-outside-toplevel  # startup boundary
             spawn_integrator_session,
         )
 
@@ -258,7 +267,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
         if event_domains_cfg is None:
             return None
         try:
-            from teleclaude.events.startup import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.startup import (  # pylint: disable=import-outside-toplevel  # startup boundary
                 build_domain_pipeline_runner,
             )
 
@@ -301,7 +310,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
     def _register_sandbox_bridge(self, pipeline: Pipeline, event_producer: EventProducer) -> None:
         """Register the optional sandbox bridge."""
         try:
-            from teleclaude.events.sandbox import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.sandbox import (  # pylint: disable=import-outside-toplevel  # startup boundary
                 SandboxBridgeCartridge,
                 SandboxContainerManager,
             )
@@ -388,26 +397,26 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
             return
 
         try:
-            import anthropic  # pylint: disable=import-outside-toplevel
+            import anthropic  # pylint: disable=import-outside-toplevel  # startup boundary
 
-            from teleclaude.events.cartridges.signal import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.cartridges.signal import (  # pylint: disable=import-outside-toplevel  # startup boundary
                 SignalClusterCartridge,
                 SignalIngestCartridge,
                 SignalSynthesizeCartridge,
             )
-            from teleclaude.events.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel  # startup boundary
                 SynthesizeConfig,
             )
-            from teleclaude.events.signal.ai import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.signal.ai import (  # pylint: disable=import-outside-toplevel  # startup boundary
                 DefaultSignalAIClient,
             )
-            from teleclaude.events.signal.clustering import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.signal.clustering import (  # pylint: disable=import-outside-toplevel  # startup boundary
                 ClusteringConfig,
             )
-            from teleclaude.events.signal.scheduler import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.signal.scheduler import (  # pylint: disable=import-outside-toplevel  # startup boundary
                 IngestScheduler,
             )
-            from teleclaude.events.signal.sources import (  # pylint: disable=import-outside-toplevel
+            from teleclaude.events.signal.sources import (  # pylint: disable=import-outside-toplevel  # startup boundary
                 SignalSourceConfig,
             )
 
@@ -606,7 +615,9 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
         triggered directly (github-source path calls execute_update before publishing).
         Remote daemons have different daemon_id values and will process the message normally.
         """
-        from teleclaude.hooks.webhook_models import HookEvent as _HookEvent  # pylint: disable=import-outside-toplevel
+        from teleclaude.hooks.webhook_models import (
+            HookEvent as _HookEvent,  # pylint: disable=import-outside-toplevel  # startup boundary
+        )
 
         last_id = "$"  # only new messages after startup
         logger.info("Deployment fanout consumer started (channel=%s)", DEPLOYMENT_FANOUT_CHANNEL)

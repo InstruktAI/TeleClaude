@@ -30,7 +30,9 @@ _spec.loader.exec_module(_mod)
 
 _SOURCE_PATTERN_RULES: list[Any] = _mod.SOURCE_PATTERN_RULES
 _check_source_patterns = _mod._check_source_patterns
+_check_import_outside_toplevel_policy = _mod._check_import_outside_toplevel_policy
 _warn_for_loose_dicts = _mod._warn_for_loose_dicts
+_STARTUP_BOUNDARY_IMPORT_REASON = _mod._STARTUP_BOUNDARY_IMPORT_REASON
 
 # Build test fixture strings via concatenation so the guardrails scanner
 # does not match them in THIS file (tests/ is in the scan scope).
@@ -72,6 +74,15 @@ def _run_loose_dict_check(tmp_path: Path, *, selected_paths: set[str] | None = N
     """Run _warn_for_loose_dicts and return the error message, or None if clean."""
     try:
         _warn_for_loose_dicts(tmp_path, selected_paths)
+        return None
+    except SystemExit as e:
+        return str(e)
+
+
+def _run_import_outside_toplevel_policy_check(tmp_path: Path, *, selected_paths: set[str] | None = None) -> str | None:
+    """Run import-outside-toplevel policy guardrail and return failure text if any."""
+    try:
+        _check_import_outside_toplevel_policy(tmp_path, selected_paths)
         return None
     except SystemExit as e:
         return str(e)
@@ -258,6 +269,49 @@ class TestPatternRuleIntegrity:
         """A rule with a nonexistent scan dir does not crash."""
         result = _run_scanner(tmp_path)
         assert result is None
+
+
+class TestImportOutsideTopLevelPolicy:
+    """Tests for startup-boundary import-outside-toplevel enforcement."""
+
+    @pytest.mark.unit
+    def test_allowlisted_file_with_reason_passes(self, tmp_path: Path) -> None:
+        """Approved startup-boundary file may use the suppression with the required reason."""
+        _write_file(
+            tmp_path,
+            "teleclaude/daemon.py",
+            "def f():\n"
+            "    from pkg import thing  # pylint: disable=import-outside-toplevel"
+            f"  # {_STARTUP_BOUNDARY_IMPORT_REASON}\n",
+        )
+        result = _run_import_outside_toplevel_policy_check(tmp_path)
+        assert result is None
+
+    @pytest.mark.unit
+    def test_allowlisted_file_without_reason_fails(self, tmp_path: Path) -> None:
+        """Approved startup-boundary file must include the required same-line reason."""
+        _write_file(
+            tmp_path,
+            "teleclaude/daemon_event_platform.py",
+            "def f():\n    from pkg import thing  # pylint: disable=import-outside-toplevel\n",
+        )
+        result = _run_import_outside_toplevel_policy_check(tmp_path)
+        assert result is not None
+        assert "same-line reason" in result
+
+    @pytest.mark.unit
+    def test_startup_boundary_reason_outside_allowlist_fails(self, tmp_path: Path) -> None:
+        """Startup-boundary reason is rejected outside the approved files."""
+        _write_file(
+            tmp_path,
+            "teleclaude/other.py",
+            "def f():\n"
+            "    from pkg import thing  # pylint: disable=import-outside-toplevel"
+            f"  # {_STARTUP_BOUNDARY_IMPORT_REASON}\n",
+        )
+        result = _run_import_outside_toplevel_policy_check(tmp_path)
+        assert result is not None
+        assert "only allowed" in result
 
 
 class TestLooseDictScoping:

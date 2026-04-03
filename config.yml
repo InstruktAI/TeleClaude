@@ -78,6 +78,9 @@ computer:
     desc: AI solutions for Amsterdam Canvas art supplies
     path: ${HOME}/Workspace/StadsAvonturen/AmsterdamCanvas
     discord_forum: 1475454909905240084
+  - name: Het Gordjn Atelier
+    path: /Users/Morriz/Workspace/customers/HetGordjnAtelier
+    discord_forum: 1489318615340552212
   - name: BookKeeping
     desc: Moz AI bookkeeping
     path: ${HOME}/Library/CloudStorage/GoogleDrive-mauricefaber.nl@gmail.com/My Drive/Bookkeeping

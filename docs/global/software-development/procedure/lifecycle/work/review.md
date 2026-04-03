@@ -153,6 +153,8 @@ If you cannot answer those questions concretely, the test is weak and does not c
 - Tests must verify behavior, not implementation details.
 - Reject tests whose primary assertion is prose, wording, formatting, or other human-facing text unless the exact token is execution-significant.
 - Reject tests whose primary assertion is shape, signatures, keys, properties, constants, configuration echoes, or literal structure checks without proving decision logic or behavior.
+- Reject tests that merely reconstruct an expected literal, structure, or payload from values already visible in the implementation or fixture and compare it back without proving semantics.
+- Reject tests that only confirm a primitive side effect or passthrough occurred when no application-owned branch, validation rule, guard, or failure path was exercised.
 - Reject tests whose only evidence is mock or spy interaction unless the interaction itself is the contract being tested at an architectural boundary.
 - Reject tests that primarily verify framework, library, serializer, ORM, or other third-party behavior instead of our logic.
 - Reject tests that pin private helpers, internal state, or refactor-sensitive implementation details when the same behavior can be checked at a public boundary.
@@ -165,9 +167,10 @@ Treat the following as common weak-test patterns:
 
 1. A test that only proves a string still reads the same.
 2. A test that only proves an object still has fields visible in the source literal.
-3. A test that only proves configuration or props were passed through unchanged.
-4. A test that only proves a mock was called with the same data the test itself constructed.
-5. A test that would stay green if the real branching logic were replaced with a constant.
+3. A test that only proves configuration, props, or data were passed through unchanged.
+4. A test that only proves a primitive artifact or side effect exists after a direct library call.
+5. A test that only proves a mock was called with the same data the test itself constructed.
+6. A test that would stay green if the real branching logic were replaced with a constant or trivial passthrough.
 
 Severity guidance:
 

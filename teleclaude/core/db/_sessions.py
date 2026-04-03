@@ -1,6 +1,7 @@
 """Mixin: DbSessionsMixin."""
 
 import json
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
@@ -203,7 +204,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
                 return None
             return self._to_core_session(row)
 
-    async def list_sessions(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Public filtering API is intentionally explicit.
+    async def list_sessions(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals  # Public filtering API is intentionally explicit.
         self,
         computer_name: str | None = None,
         last_input_origin: str | None = None,
@@ -224,6 +225,17 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         Returns:
             List of Session objects
         """
+        started_at = time.perf_counter()
+        logger.trace(
+            "[PERF] list_sessions start computer=%s origin=%s include_closed=%s "
+            "include_initializing=%s include_headless=%s initiator=%s",
+            computer_name,
+            last_input_origin,
+            include_closed,
+            include_initializing,
+            include_headless,
+            initiator_session_id,
+        )
         stmt = select(db_models.Session)
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
@@ -245,11 +257,75 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         if initiator_session_id:
             stmt = stmt.where(db_models.Session.initiator_session_id == initiator_session_id)
         stmt = stmt.order_by(db_models.Session.last_activity.desc())
+        stmt_built_dt = time.perf_counter() - started_at
+        logger.trace(
+            "[PERF] list_sessions stmt_built dt=%.3f computer=%s initiator=%s",
+            stmt_built_dt,
+            computer_name,
+            initiator_session_id,
+        )
 
+        session_open_started_at = time.perf_counter()
         async with self._session() as db_session:
+            session_open_dt = time.perf_counter() - session_open_started_at
+            logger.trace(
+                "[PERF] list_sessions db_session_open dt=%.3f computer=%s initiator=%s",
+                session_open_dt,
+                computer_name,
+                initiator_session_id,
+            )
+            exec_started_at = time.perf_counter()
             result = await db_session.exec(stmt)
+            exec_dt = time.perf_counter() - exec_started_at
+            logger.trace(
+                "[PERF] list_sessions exec dt=%.3f computer=%s initiator=%s",
+                exec_dt,
+                computer_name,
+                initiator_session_id,
+            )
+            rows_started_at = time.perf_counter()
             rows = result.all()
-            return [self._to_core_session(row) for row in rows]
+            rows_dt = time.perf_counter() - rows_started_at
+            logger.trace(
+                "[PERF] list_sessions rows_materialized dt=%.3f count=%d computer=%s initiator=%s",
+                rows_dt,
+                len(rows),
+                computer_name,
+                initiator_session_id,
+            )
+            convert_started_at = time.perf_counter()
+            sessions = [self._to_core_session(row) for row in rows]
+            convert_dt = time.perf_counter() - convert_started_at
+            total_dt = time.perf_counter() - started_at
+            logger.trace(
+                "[PERF] list_sessions convert dt=%.3f total=%.3f count=%d computer=%s initiator=%s",
+                convert_dt,
+                total_dt,
+                len(sessions),
+                computer_name,
+                initiator_session_id,
+            )
+            if total_dt >= 5.0:
+                logger.warning(
+                    (
+                        "list_sessions was slow: total=%.3fs stmt=%.3fs session_open=%.3fs exec=%.3fs "
+                        "rows=%.3fs convert=%.3fs count=%d computer=%s include_headless=%s "
+                        "include_closed=%s include_initializing=%s initiator=%s"
+                    ),
+                    total_dt,
+                    stmt_built_dt,
+                    session_open_dt,
+                    exec_dt,
+                    rows_dt,
+                    convert_dt,
+                    len(sessions),
+                    computer_name,
+                    include_headless,
+                    include_closed,
+                    include_initializing,
+                    initiator_session_id,
+                )
+            return sessions
 
     async def update_session(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements  # Centralized update path preserves existing event semantics.
         self,
