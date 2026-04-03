@@ -12,13 +12,15 @@ is due based on its last run timestamp and the configured schedule, and invokes
 due jobs.
 
 Jobs that have no entry in teleclaude.yml are skipped unless --force is used.
-Jobs that have never run execute immediately on first discovery.
+Jobs that have never run wait for their first real scheduled occurrence after
+discovery.
 """
 
 from __future__ import annotations
 
 import asyncio
 import atexit
+import calendar
 import os
 import re
 import subprocess
@@ -93,7 +95,7 @@ def _is_due(
         now = datetime.now(UTC)
 
     if last_run is None:
-        return True
+        return False
 
     if last_run.tzinfo is None:
         last_run = last_run.replace(tzinfo=UTC)
@@ -150,6 +152,92 @@ def _scheduled_occurrence(local_now: datetime, at_time_str: str) -> datetime | N
     except (ValueError, AttributeError):
         logger.error("invalid time format in config", at=at_time_str)
         return None
+
+
+def _next_daily_occurrence(after: datetime, preferred_hour: int) -> datetime:
+    candidate = after.replace(hour=preferred_hour, minute=0, second=0, microsecond=0)
+    if candidate < after:
+        candidate += timedelta(days=1)
+    return candidate
+
+
+def _next_weekly_occurrence(after: datetime, preferred_weekday: int, preferred_hour: int) -> datetime:
+    day_delta = (preferred_weekday - after.weekday()) % 7
+    candidate = (after + timedelta(days=day_delta)).replace(hour=preferred_hour, minute=0, second=0, microsecond=0)
+    if candidate < after:
+        candidate += timedelta(days=7)
+    return candidate
+
+
+def _next_monthly_occurrence(after: datetime, preferred_day: int, preferred_hour: int) -> datetime:
+    year = after.year
+    month = after.month
+    while True:
+        last_day = calendar.monthrange(year, month)[1]
+        day = min(preferred_day, last_day)
+        candidate = after.replace(year=year, month=month, day=day, hour=preferred_hour, minute=0, second=0, microsecond=0)
+        if candidate >= after:
+            return candidate
+        if month == 12:
+            year += 1
+            month = 1
+        else:
+            month += 1
+
+
+def _is_first_run_due(
+    schedule_config: JobScheduleConfig,
+    first_seen_at: datetime | None,
+    now: datetime,
+) -> bool:
+    if first_seen_at is None:
+        return False
+
+    if first_seen_at.tzinfo is None:
+        first_seen_at = first_seen_at.replace(tzinfo=UTC)
+
+    if schedule_config.when:
+        when = schedule_config.when
+        if when.every:
+            return now - first_seen_at >= _parse_duration(when.every)
+        if when.at:
+            local_now = now.astimezone()
+            local_first_seen = first_seen_at.astimezone()
+            if not _is_allowed_weekday(local_now, when.weekdays):  # type: ignore[arg-type]
+                return False
+            for at_time_str in [when.at] if isinstance(when.at, str) else when.at:
+                scheduled_today = _scheduled_occurrence(local_now, at_time_str)
+                if scheduled_today and local_first_seen <= scheduled_today <= local_now:
+                    return True
+            return False
+
+    schedule_str = schedule_config.schedule if schedule_config.schedule else "daily"
+    try:
+        schedule = Schedule(schedule_str)
+    except ValueError:
+        schedule = Schedule.DAILY
+
+    local_first_seen = first_seen_at.astimezone()
+    local_now = now.astimezone()
+
+    match schedule:
+        case Schedule.HOURLY:
+            return local_now >= (local_first_seen + timedelta(hours=1))
+        case Schedule.DAILY:
+            next_run = _next_daily_occurrence(local_first_seen, schedule_config.preferred_hour)
+        case Schedule.WEEKLY:
+            next_run = _next_weekly_occurrence(
+                local_first_seen,
+                schedule_config.preferred_weekday,
+                schedule_config.preferred_hour,
+            )
+        case Schedule.MONTHLY:
+            next_run = _next_monthly_occurrence(
+                local_first_seen,
+                schedule_config.preferred_day,
+                schedule_config.preferred_hour,
+            )
+    return local_now >= next_run
 
 
 def _is_legacy_schedule_due(
@@ -319,7 +407,10 @@ def _should_run_subscription_job(
             # Found an enabled subscriber; check schedule
             if sub.when:
                 schedule_cfg = JobScheduleConfig(when=sub.when)
-                if _is_due(schedule_cfg, job_state.last_run, now):
+                if job_state.last_run is None:
+                    if _is_first_run_due(schedule_cfg, job_state.first_seen_at, now):
+                        return True
+                elif _is_due(schedule_cfg, job_state.last_run, now):
                     return True
             else:
                 # No when config: always due if never run
@@ -485,7 +576,7 @@ def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-
             logger.debug("job has no schedule config, skipping", name=job_name)
             continue
 
-        job_state = state.get_job(job_name)
+        job_state = state.ensure_first_seen(job_name, now)
 
         # Determine if job is due
         if force:
@@ -493,7 +584,10 @@ def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-
         elif schedule_config and schedule_config.category == "subscription":
             is_due = _should_run_subscription_job(job_name, state, now, root=root)
         elif schedule_config:
-            is_due = _is_due(schedule_config, job_state.last_run, now)
+            if job_state.last_run is None:
+                is_due = _is_first_run_due(schedule_config, job_state.first_seen_at, now)
+            else:
+                is_due = _is_due(schedule_config, job_state.last_run, now)
         else:
             is_due = False
 

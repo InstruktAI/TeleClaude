@@ -146,7 +146,7 @@ other runners (log-bug-hunter) monitor daemon health.
 - Jobs are schedule-ignorant. They define `name` and `run()` only. All scheduling
   configuration lives in `teleclaude.yml`.
 - A job without a `teleclaude.yml` entry is never invoked (except with `--force`).
-- A job that has never run executes immediately on first discovery.
+- A job that has never run waits for its first scheduled occurrence after discovery.
 - State is persisted after every job execution, success or failure.
 - Agent jobs produce a run report every run, even when there is nothing to process.
 - Agent jobs fix forward within scope; they do not chase out-of-scope issues.
@@ -323,7 +323,8 @@ or the timeout is reached.
 | monthly  | 25 days          | `preferred_day` (1st) + `preferred_hour`       |
 
 A job only runs when both conditions are met: minimum interval elapsed AND preferred
-timing reached. Jobs that have never run execute immediately.
+timing reached. Jobs that have never run wait for the first scheduled occurrence
+after discovery.
 
 ### State Persistence
 

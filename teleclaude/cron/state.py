@@ -14,6 +14,7 @@ from teleclaude.paths import CRON_STATE_PATH
 class JobStateDict(TypedDict, total=False):
     """Serialized job state."""
 
+    first_seen_at: str | None
     last_run: str | None
     last_status: str
     last_error: str | None
@@ -30,6 +31,7 @@ class CronStateDict(TypedDict):
 class JobState:
     """State for a single job."""
 
+    first_seen_at: datetime | None = None
     last_run: datetime | None = None
     last_status: str = "never"  # "success", "failed", "never"
     last_error: str | None = None
@@ -38,6 +40,7 @@ class JobState:
     def to_dict(self) -> JobStateDict:
         """Serialize job state to a dictionary."""
         return {
+            "first_seen_at": self.first_seen_at.isoformat() if self.first_seen_at else None,
             "last_run": self.last_run.isoformat() if self.last_run else None,
             "last_status": self.last_status,
             "last_error": self.last_error,
@@ -47,6 +50,13 @@ class JobState:
     @classmethod
     def from_dict(cls, data: JobStateDict) -> JobState:
         """Deserialize job state from a dictionary."""
+        first_seen_at = None
+        first_seen_at_str = data.get("first_seen_at")
+        if first_seen_at_str:
+            try:
+                first_seen_at = datetime.fromisoformat(first_seen_at_str)
+            except (ValueError, TypeError):
+                pass
         last_run = None
         last_run_str = data.get("last_run")
         if last_run_str:
@@ -62,6 +72,7 @@ class JobState:
             except (ValueError, TypeError):
                 pass
         return cls(
+            first_seen_at=first_seen_at,
             last_run=last_run,
             last_status=data.get("last_status", "never"),
             last_error=data.get("last_error"),
@@ -107,6 +118,14 @@ class CronState:
         if name not in self.jobs:
             self.jobs[name] = JobState()
         return self.jobs[name]
+
+    def ensure_first_seen(self, name: str, seen_at: datetime | None = None) -> JobState:
+        """Persist a first-seen timestamp for jobs discovered by the runner."""
+        job = self.get_job(name)
+        if job.first_seen_at is None and job.last_run is None:
+            job.first_seen_at = seen_at or datetime.now(UTC)
+            self.save()
+        return job
 
     def mark_success(self, name: str) -> None:
         """Mark job as successfully completed."""

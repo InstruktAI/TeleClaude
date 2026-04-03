@@ -18,6 +18,7 @@ class TestJobState:
             cast(
                 JobStateDict,
                 {
+                    "first_seen_at": [],
                     "last_run": "not-a-datetime",
                     "last_status": "failed",
                     "last_error": "boom",
@@ -26,6 +27,7 @@ class TestJobState:
             )
         )
 
+        assert state.first_seen_at is None
         assert state.last_run is None
         assert state.last_status == "failed"
         assert state.last_error == "boom"
@@ -50,12 +52,14 @@ class TestCronState:
     @pytest.mark.unit
     def test_save_and_load_round_trip(self, tmp_path: Path) -> None:
         path = tmp_path / "cron-state.json"
+        first_seen_at = datetime(2024, 1, 1, 9, 0, tzinfo=UTC)
         last_run = datetime(2024, 1, 2, 9, 0, tzinfo=UTC)
         last_notified = datetime(2024, 1, 3, 9, 0, tzinfo=UTC)
         state = CronState(
             path=path,
             jobs={
                 "nightly": JobState(
+                    first_seen_at=first_seen_at,
                     last_run=last_run,
                     last_status="success",
                     last_error=None,
@@ -67,6 +71,7 @@ class TestCronState:
         state.save()
         loaded = CronState.load(path)
 
+        assert loaded.jobs["nightly"].first_seen_at == first_seen_at
         assert loaded.jobs["nightly"].last_run == last_run
         assert loaded.jobs["nightly"].last_status == "success"
         assert loaded.jobs["nightly"].last_error is None
@@ -80,6 +85,26 @@ class TestCronState:
 
         assert job_state.last_status == "never"
         assert state.jobs["digest"] is job_state
+
+    @pytest.mark.unit
+    def test_ensure_first_seen_persists_only_for_never_run_jobs(self, tmp_path: Path) -> None:
+        path = tmp_path / "cron-state.json"
+        state = CronState(path=path)
+        seen_at = datetime(2024, 1, 4, 10, 0, tzinfo=UTC)
+
+        state.ensure_first_seen("nightly", seen_at)
+        loaded = CronState.load(path).jobs["nightly"]
+
+        assert loaded.first_seen_at == seen_at
+        assert loaded.last_run is None
+
+        already_run = CronState(
+            path=path,
+            jobs={"hourly": JobState(last_run=datetime(2024, 1, 4, 11, 0, tzinfo=UTC))},
+        )
+        already_run.ensure_first_seen("hourly", seen_at)
+
+        assert already_run.jobs["hourly"].first_seen_at is None
 
     @pytest.mark.unit
     def test_mark_methods_update_state_and_persist(self, tmp_path: Path) -> None:
