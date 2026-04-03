@@ -9,6 +9,8 @@ The state machine is the authority on sequencing.
 The agent is the authority on intelligence. Neither does the other's job.
 """
 
+# pylint: disable=cyclic-import  # Integration machine still traverses next-machine orchestration modules.
+
 from __future__ import annotations
 
 import asyncio

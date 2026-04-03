@@ -3,6 +3,8 @@
 No imports from core.py (circular-import guard).
 """
 
+# pylint: disable=cyclic-import  # Orchestration module bridges legacy next-machine/service boundaries.
+
 from __future__ import annotations
 
 import asyncio

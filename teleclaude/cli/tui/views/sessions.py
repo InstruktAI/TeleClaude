@@ -204,6 +204,10 @@ class SessionsView(  # pylint: disable=too-many-instance-attributes
         if state_changed:
             self._notify_state_changed()
 
+    def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
+        """Update cached agent availability without rebuilding the view."""
+        self._availability = availability
+
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted state from state_store."""
         sticky_data = data.get("sticky_sessions", [])

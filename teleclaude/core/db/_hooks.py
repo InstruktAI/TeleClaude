@@ -27,7 +27,7 @@ class DbHooksMixin:
     """Agent availability and hook outbox persistence helpers."""
 
     @staticmethod
-    def _emit_agent_availability_event(
+    def _emit_agent_availability_event(  # pylint: disable=too-many-arguments
         *,
         agent: str,
         available: bool | None,

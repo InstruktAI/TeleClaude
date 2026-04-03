@@ -7,7 +7,7 @@ for backward compatibility so that existing imports from
 Do NOT add new code here — implement in the appropriate sub-module.
 """
 
-# pylint: disable=useless-import-alias,unused-import
+# pylint: disable=useless-import-alias,unused-import,cyclic-import
 
 from __future__ import annotations
 
@@ -217,6 +217,12 @@ from teleclaude.core.next_machine.prepare_steps import (
 
 # ── slug resolution ────────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.slug_resolution import (
+    get_item_phase as get_item_phase,
+)
+from teleclaude.core.next_machine.slug_resolution import (
+    is_ready_for_work as is_ready_for_work,
+)
+from teleclaude.core.next_machine.slug_resolution import (
     resolve_canonical_project_root as resolve_canonical_project_root,
 )
 from teleclaude.core.next_machine.slug_resolution import (
@@ -224,6 +230,9 @@ from teleclaude.core.next_machine.slug_resolution import (
 )
 from teleclaude.core.next_machine.slug_resolution import (
     set_item_phase as set_item_phase,
+)
+from teleclaude.core.next_machine.slug_resolution import (
+    slug_in_roadmap as slug_in_roadmap,
 )
 
 # ── state I/O ──────────────────────────────────────────────────────────────────

@@ -137,10 +137,10 @@ class TelecAppWsMixin:
             footer.update_availability(availability)
 
             sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
-            sessions_view._availability = availability  # type: ignore[attr-defined]
+            sessions_view.set_availability(availability)
 
             prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
-            prep_view._availability = availability  # type: ignore[attr-defined]
+            prep_view.set_availability(availability)
             return True
 
         if isinstance(event, SessionLifecycleStatusEventDTO):

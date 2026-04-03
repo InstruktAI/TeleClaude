@@ -3,6 +3,8 @@
 DB-backed roadmap assembly for CLI, API, and TUI.
 """
 
+# pylint: disable=duplicate-code  # Prepare-phase label map intentionally matches todo-show projection.
+
 import json
 import time
 from datetime import UTC, datetime, timedelta

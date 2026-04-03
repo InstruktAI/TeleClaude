@@ -21,7 +21,9 @@ def clean_command_message_text(text: str) -> str:
     return text
 
 
-def _clean_message_content(message: dict[str, object]) -> dict[str, object]:
+def _clean_message_content(
+    message: dict[str, object],  # guard: loose-dict - External message payload
+) -> dict[str, object]:  # guard: loose-dict - Normalized message payload
     """Return a new message dict with cleaned command texts, avoiding in-place mutation."""
     content = message.get("content")
     if isinstance(content, str):

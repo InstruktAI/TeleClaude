@@ -133,6 +133,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         if old_fp != new_fp or not self._nav_items:
             self._rebuild()
 
+    def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
+        """Update cached agent availability without rebuilding the view."""
+        self._availability = availability
+
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted expanded state."""
         expanded_todos = data.get("expanded_todos", [])

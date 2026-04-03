@@ -1,5 +1,6 @@
 """Leaf artifact helpers shared across prepare and state modules."""
-# pylint: disable=duplicate-code  # compute_artifact_diff/compute_todo_folder_diff also exist in prepare_helpers for backward compat
+
+# pylint: disable=duplicate-code,cyclic-import  # Backward-compat helpers mirror prepare_helpers; state_io cycle is legacy.
 
 from __future__ import annotations
 

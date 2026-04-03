@@ -29,6 +29,8 @@ Intentionally dropped data:
     - Non-list, non-string content on non-user-tool-result messages
 """
 
+# pylint: disable=cyclic-import  # Transcript projection/rendering still has a transitional package cycle.
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping

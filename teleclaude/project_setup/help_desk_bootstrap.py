@@ -1,5 +1,7 @@
 """Idempotent bootstrap for the help desk workspace."""
 
+# pylint: disable=cyclic-import  # Bootstrap/init flow still cross-import while setup stack is being untangled.
+
 from __future__ import annotations
 
 import shutil

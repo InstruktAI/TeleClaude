@@ -70,7 +70,7 @@ teleclaude.db-wal
 teleclaude.db-shm
 
 # TeleClaude worktree infrastructure state (changes with every prep cycle)
-.teleclaude/worktree-prep-state.json
+.teleclaude/
 
 AGENTS.md
 CLAUDE.md

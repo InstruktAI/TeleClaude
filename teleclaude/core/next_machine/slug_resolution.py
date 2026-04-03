@@ -3,6 +3,8 @@
 No imports from core.py (circular-import guard).
 """
 
+# pylint: disable=cyclic-import  # Legacy sync wrappers still depend on state_io helpers.
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -218,6 +220,58 @@ def resolve_canonical_project_root(cwd: str) -> str:
 # ── Legacy sync functions (retained for callers not yet migrated) ────────
 
 
+def get_item_phase(cwd: str, slug: str) -> str:
+    """Sync legacy: resolve item phase using todos.db-backed state."""
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+    todos_db = _get_todos_db_sync(cwd)
+    delivered = todos_db.delivered_slugs_sync()
+    is_delivered = slug in delivered
+    is_in_roadmap = todos_db.resolve_id_sync(slug) is not None
+
+    if is_delivered and is_in_roadmap:
+        msg = (
+            f"Slug '{slug}' found in both delivered and active roadmap. "
+            f"This is a data integrity issue — escalate to the user to resolve."
+        )
+        raise ValueError(msg)
+    if is_delivered:
+        return ItemPhase.DONE.value
+
+    state = todos_db.read_state_sync(slug)
+    if state is not None:
+        current = state.get("current")
+        if isinstance(current, str) and current:
+            return current
+        phase = state.get("phase")
+        if isinstance(phase, str) and phase:
+            return phase
+
+    if is_in_roadmap:
+        return ItemPhase.PENDING.value
+
+    msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in roadmap. Cannot determine phase."
+    raise ValueError(msg)
+
+
+def is_ready_for_work(cwd: str, slug: str) -> bool:
+    """Sync legacy: check whether an item is at or beyond prepared."""
+    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.work_lifecycle import LIFECYCLE_STATES  # pylint: disable=import-outside-toplevel
+
+    state = read_phase_state(cwd, slug)
+    current = str(state.get("current", ""))
+    try:
+        return LIFECYCLE_STATES.index(current) >= LIFECYCLE_STATES.index("prepared")
+    except ValueError:
+        return False
+
+
+async def slug_in_roadmap(todos_db: TodosDb, slug: str) -> bool:
+    """Compatibility shim for callers/tests that still patch module-level roadmap checks."""
+    return await todos_db.slug_in_roadmap(slug)
+
+
 def set_item_phase(cwd: str, slug: str, phase: str) -> None:
     """Sync legacy: set item phase on filesystem. Use set_item_phase_db for new code."""
     from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
@@ -233,10 +287,13 @@ def set_item_phase(cwd: str, slug: str, phase: str) -> None:
 __all__ = [
     "_get_item_phase_db",
     "_is_ready_for_work_db",
+    "get_item_phase",
+    "is_ready_for_work",
     "resolve_canonical_project_root",
     "resolve_first_runnable_holder_child_db",
     "resolve_holder_children_db",
     "resolve_slug_async",
     "set_item_phase",
     "set_item_phase_db",
+    "slug_in_roadmap",
 ]

@@ -4,6 +4,8 @@ All sub-modules import from here for shared definitions so that no circular
 dependencies arise from sub-modules importing from core.py.
 """
 
+# pylint: disable=cyclic-import  # Central type module participates in legacy next-machine import cycles.
+
 from __future__ import annotations
 
 import re

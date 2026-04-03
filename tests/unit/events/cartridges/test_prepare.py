@@ -462,6 +462,7 @@ def _make_mock_todos_db(requirements: str = "", plan: str = "") -> AsyncMock:
     """Return a mock todos_db wired for prepare cartridge tests."""
     mock_db = AsyncMock()
     mock_db.read_state.return_value = {}
+    mock_db.load_deps = AsyncMock(return_value={})
 
     async def _read_artifact(_: str, name: str) -> str:
         if name == "requirements":

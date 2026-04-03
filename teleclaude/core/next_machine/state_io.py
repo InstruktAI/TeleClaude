@@ -4,6 +4,8 @@ All state read/write, mark operations, review helpers, and phase status checks.
 No imports from core.py (circular-import guard).
 """
 
+# pylint: disable=cyclic-import  # State helpers and lifecycle/slug adapters still cross-reference during migration.
+
 from __future__ import annotations
 
 import copy

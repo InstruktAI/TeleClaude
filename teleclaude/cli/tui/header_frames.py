@@ -1,5 +1,7 @@
 """Shared header scene projection for animated TUI widgets."""
 
+# pylint: disable=duplicate-code  # Shares projection logic with banner/tab widgets by design.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,6 +10,7 @@ from rich.console import Group
 from rich.text import Text
 
 from teleclaude.cli.tui.animation_engine import AnimationEngine
+from teleclaude.cli.tui.animations.base import Z0
 from teleclaude.cli.tui.theme import is_dark_mode
 from teleclaude.cli.tui.widgets.banner import BANNER_LINES, Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
@@ -63,6 +66,7 @@ class HeaderSceneFrame:
             state["bg_entity_color"] if isinstance(state["bg_entity_color"], str) else None,
         )
 
+    # pylint: disable=too-many-return-statements,too-many-branches
     def scan_tab_entity(
         self,
         x: int,
@@ -102,6 +106,8 @@ class HeaderSceneFrame:
             return pending[0], scene_bg, pending[1]
         return None
 
+    # pylint: enable=too-many-return-statements,too-many-branches
+
 
 def build_header_scene_frame(
     *,
@@ -109,8 +115,6 @@ def build_header_scene_frame(
     width: int,
 ) -> HeaderSceneFrame:
     """Project the shared ``header`` animation target once for the current frame."""
-    from teleclaude.cli.tui.animations.base import Z0
-
     dark = is_dark_mode()
     sky_fallback = "#000000" if dark else "#C8E8F8"
     layers_by_cell: dict[tuple[int, int], tuple[tuple[int, str], ...]] = {}
@@ -144,7 +148,9 @@ def build_header_frames(*, banner: Banner, tab_bar: BoxTabBar) -> tuple[Text, Gr
     return banner_render, tab_render
 
 
-def _consume_sky_entity_value(state: dict[str, str | bool | None], val: str, z: int, dark_mode: bool) -> bool:
+def _consume_sky_entity_value(  # pylint: disable=too-many-return-statements
+    state: dict[str, str | bool | None], val: str, z: int, dark_mode: bool
+) -> bool:
     vlen = len(val)
     if vlen == 15 and val[0] == "#" and val[7] == "#":
         return _apply_sky_entity(state, val[14], val[0:7], val[7:14], partial=False)
