@@ -1,8 +1,23 @@
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "redis",
+#     "openai",
+#     "anthropic",
+#     "pyyaml",
+#     "python-dotenv",
+#     "aiosqlite",
+#     "sqlalchemy",
+#     "sqlmodel",
+# ]
+# ///
 """Session memory extraction job.
 
-Finds sessions needing processing (where help_desk_processed_at is
-older than last_activity or NULL), reads transcripts since the last extraction,
-and extracts personal + business memories plus actionable items.
+Finds sessions needing processing, reads transcripts since
+``last_memory_extraction_at``, and extracts personal + business memories plus
+actionable items. Closed sessions still use ``help_desk_processed_at`` to gate
+their final post-mortem pass.
 
 Memory extraction runs as an idempotent job with two scopes:
 - **Personal memories** are identity-scoped (tied to the user via identity_key).
@@ -34,7 +49,12 @@ from typing import Any, TypedDict, cast
 
 from redis.asyncio import Redis
 
-from jobs.base import Job, JobResult
+# Ensure repo root is in path for imports
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from jobs.base import Job, JobResult, run_job_cli
 from teleclaude.channels import publisher as channels_publisher
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
@@ -112,17 +132,13 @@ _ACTIONABLE_EXTRACTION_SCHEMA: dict[str, object] = {
     "additionalProperties": False,
 }
 
-# Ensure repo root is in path for imports
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
 
 class SessionMemoryExtractionJob(Job):
     """Extract memories and actionable items from long-lived sessions.
 
-    Scans for sessions where ``help_desk_processed_at`` is older than
-    ``last_activity`` (or NULL), reads the transcript delta, and runs
+    Scans for sessions that have transcript content beyond
+    ``last_memory_extraction_at`` (or, for closed sessions, still lack a final
+    ``help_desk_processed_at`` pass), reads the transcript delta, and runs
     AI-powered extraction for personal memories, business memories, and
     actionable items. Works for any session with a human_role — customers,
     members, and other long-lived session types.
@@ -176,11 +192,11 @@ class SessionMemoryExtractionJob(Job):
         )
 
     async def _find_sessions_needing_extraction(self) -> list[object]:
-        """Find sessions where help_desk_processed_at < last_activity or is NULL.
+        """Find sessions that have transcript content beyond the last extraction boundary.
 
-        Returns sessions with a human_role that have unprocessed transcript
-        content. This covers customer sessions, member sessions, and any
-        other long-lived session type.
+        Closed sessions need a final post-mortem pass when ``help_desk_processed_at``
+        is still NULL. Active long-lived sessions need extraction when
+        ``last_memory_extraction_at`` is older than ``last_activity`` (or unset).
         """
         from teleclaude.core.db import db
 
@@ -193,18 +209,28 @@ class SessionMemoryExtractionJob(Job):
             last_activity = getattr(session, "last_activity", None)
             if not last_activity:
                 continue
+            last_extracted_at = getattr(session, "last_memory_extraction_at", None)
             processed_at = getattr(session, "help_desk_processed_at", None)
-            if processed_at is None or processed_at < last_activity:
+            lifecycle_status = getattr(session, "lifecycle_status", None)
+            closed_at = getattr(session, "closed_at", None)
+            is_closed = closed_at is not None or lifecycle_status in {"closed", "stopped"}
+
+            if is_closed:
+                if processed_at is None:
+                    pending.append(session)
+                continue
+
+            if last_extracted_at is None or last_extracted_at < last_activity:
                 pending.append(session)
         return pending  # type: ignore[return-value]
 
     async def _process_session(self, session: object) -> None:
         """Process a single session: extract memories and actionable items."""
         session_id: str = session.session_id  # type: ignore[attr-defined]
-        last_processed_at = getattr(session, "help_desk_processed_at", None)
+        last_extracted_at = getattr(session, "last_memory_extraction_at", None)
 
         # Step 1: Read transcript since last extraction
-        transcript = await self._read_transcript_delta(session_id, since=last_processed_at)
+        transcript = await self._read_transcript_delta(session_id, since=last_extracted_at)
         if not transcript or not transcript.strip():
             return
 
@@ -424,6 +450,10 @@ class SessionMemoryExtractionJob(Job):
 
 # Job instance for discovery by runner
 JOB = SessionMemoryExtractionJob()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_job_cli(JOB))
 
 
 def _format_memory_transcript(messages: list[StructuredMessage]) -> list[str]:

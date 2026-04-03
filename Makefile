@@ -1,4 +1,6 @@
-.PHONY: help install init link certs format lint lint-cycles lint-topimports check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
+.PHONY: help install init link certs format lint lint-cycles lint-topimports check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status cron-smoke
+
+CRON_SMOKE_SINCE ?= 15m
 
 # Default target
 help:
@@ -28,6 +30,7 @@ help:
 	@echo "  make coverage         Run tests with coverage report"
 	@echo "  make coverage-html    Generate HTML coverage report"
 	@echo "  make coverage-report  Open HTML coverage report in browser"
+	@echo "  make cron-smoke       List configured jobs and check recent cron runner failures"
 	@echo ""
 	@echo "Daemon Control:"
 	@echo "  make start        Start daemon via launchd"
@@ -170,6 +173,13 @@ kill:
 
 status:
 	@./bin/daemon-control.sh status
+
+cron-smoke:
+	@echo "Listing configured cron jobs..."
+	@uv run --quiet scripts/cron_runner.py --list
+	@echo ""
+	@echo "Recent cron runner failures (last $(CRON_SMOKE_SINCE))..."
+	@instrukt-ai-logs teleclaude --since $(CRON_SMOKE_SINCE) --grep "failed to load job"
 
 bootstrap:
 	@./bin/install.sh --yes

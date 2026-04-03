@@ -34,6 +34,7 @@ dependencies = [
     "uvicorn>=0.34.0",
     "redis>=5.0.0",
     "psutil>=5.9.0",
+    "packaging>=24.0",
     "instrukt-ai-logger @ git+https://github.com/InstruktAI/python-logger.git@v0.3.5",
     "telegramify-markdown==0.5.4",
     "GitPython>=3.1.0",
@@ -74,7 +75,6 @@ dev = [
     "pylint>=3.0.0",
     "pre-commit>=3.6.0",
     "mypy>=1.8.0",
-    "packaging>=24.0",
 ]
 
 [tool.uv.sources]
@@ -380,3 +380,13 @@ output = "coverage/coverage.xml"
 
 [tool.coverage.json]
 output = "coverage/coverage.json"
+
+
+[tool.uv]
+override-dependencies = [
+  "attrs<26",
+  "confection<1",
+  "starlette<1",
+  "tzdata<2026",
+  "weasel<1",
+]

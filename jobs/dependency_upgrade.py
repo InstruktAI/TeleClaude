@@ -1,3 +1,11 @@
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "instruktai-python-logger",
+#     "packaging",
+# ]
+# ///
 """Nightly dependency upgrade job.
 
 Tries an aggressive full upgrade first (uv lock --upgrade), validates with
@@ -19,15 +27,16 @@ import tomllib
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
-from packaging.version import InvalidVersion, Version
-
-from jobs.base import Job, JobResult
-from teleclaude.constants import ROLE_SYSTEM
 
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+from packaging.version import InvalidVersion, Version
+
+from jobs.base import Job, JobResult, run_job_cli
+from teleclaude.constants import ROLE_SYSTEM
 
 logger = get_logger(__name__)
 
@@ -261,3 +270,7 @@ class DependencyUpgradeJob(Job):
 
 
 JOB = DependencyUpgradeJob()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_job_cli(JOB))

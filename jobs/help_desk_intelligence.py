@@ -1,3 +1,8 @@
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 """Help desk intelligence digest job.
 
 Queries recent business memories from the memory store, detects patterns
@@ -20,14 +25,14 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from jobs.base import Job, JobResult
-
-# from teleclaude.memory.store import MemoryStore
-
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+from jobs.base import Job, JobResult, run_job_cli
+
+# from teleclaude.memory.store import MemoryStore
 
 project_name = "help-desk"
 
@@ -178,3 +183,7 @@ class HelpDeskIntelligenceJob(Job):
 
 # Job instance for discovery by runner
 JOB = HelpDeskIntelligenceJob()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_job_cli(JOB))

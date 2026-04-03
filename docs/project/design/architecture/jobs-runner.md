@@ -52,15 +52,16 @@ scripts/cron_runner.py          CLI entry point
   ▼
 teleclaude/cron/runner.py       Engine: config → discover → schedule check → execute
   │  ├── _load_job_schedules()  Read schedule config from teleclaude.yml
-  │  ├── discover_jobs()        Dynamic import of jobs/*.py (python-type jobs)
+  │  ├── discover_jobs()        Read configured script jobs from teleclaude.yml
   │  ├── _run_agent_job()       Spawn agent subprocess (agent-type jobs)
+  │  ├── _run_script_job()      Execute script job via uv using the job's own PEP 723 header
   │  ├── _is_due()              Evaluate schedule against last run timestamp
   │  └── run_due_jobs()         Main loop: config → is_due() → run/spawn → mark state
   │
   ▼
 teleclaude.yml                  Schedule configuration (frequency, timing, execution mode)
   │
-  ├── script: jobs/foo.py       → Direct execution via run() (no agent)
+  ├── script: jobs/foo.py       → Standalone uv-run script execution (no agent)
   └── job: foo                  → Agent subprocess via run_job() (full tools + MCP)
   │
   ▼
@@ -71,14 +72,16 @@ teleclaude.yml                  Schedule configuration (frequency, timing, execu
 
 The `script` field is the discriminator. Its presence determines the execution mode:
 
-| Mode           | Function     | Characteristics                                                   |
-| -------------- | ------------ | ----------------------------------------------------------------- |
-| Script jobs    | `job.run()`  | Direct Python execution, no agent, returns `JobResult`            |
-| Agent jobs     | `run_job()`  | Full interactive subprocess with tools + MCP, role-aware          |
-| One-shot calls | `run_once()` | Lobotomized JSON-only invocation, no tools, no MCP (not for jobs) |
+| Mode           | Function     | Characteristics                                                       |
+| -------------- | ------------ | --------------------------------------------------------------------- |
+| Script jobs    | `uv run`     | Standalone script execution, no agent, returns serialized `JobResult` |
+| Agent jobs     | `run_job()`  | Full interactive subprocess with tools + MCP, role-aware              |
+| One-shot calls | `run_once()` | Lobotomized JSON-only invocation, no tools, no MCP (not for jobs)     |
 
-**Script jobs** (`script` present) — The runner executes the script directly. No
-agent is involved. Use for simple, deterministic jobs that need no AI reasoning.
+**Script jobs** (`script` present) — The runner executes the script via `uv run`
+against the script file itself. Each script owns its own PEP 723 dependency
+header and prints a serialized `JobResult` to stdout. No agent is involved.
+Use for simple, deterministic jobs that need no AI reasoning.
 
 **Agent jobs** (`script` absent, `job` required) — The runner spawns a subprocess
 via `run_job()`. This utilizes the standardized `teleclaude/helpers/agent_cli.py`
@@ -218,9 +221,9 @@ subscriptions.
 2. Write pidfile. Register cleanup via `atexit`.
 3. `cron_runner.py` invokes `run_due_jobs()`.
 4. Engine loads schedule config from `teleclaude.yml`.
-5. Engine discovers job modules from `jobs/*.py`.
-6. For each job with a config entry: load last run from state, evaluate `_is_due()`.
-7. If due: call `job.run()` (script) or `run_job()` (agent subprocess), persist result.
+5. Engine discovers configured script jobs from `teleclaude.yml`.
+6. For each configured job: load last run from state, evaluate `_is_due()`.
+7. If due: execute the script via `uv run` (script) or `run_job()` (agent subprocess), persist result.
 8. Jobs without config entries are silently skipped.
 9. Remove pidfile on exit.
 
@@ -235,7 +238,8 @@ regardless of config or last run time.
 
 Direct execution, no agent. For simple, deterministic work.
 
-1. Create a Python module in `jobs/` that subclasses `Job` and exports a `JOB` instance
+1. Create a Python script in `jobs/` with a PEP 723 header and a `__main__` entrypoint
+   that emits a serialized `JobResult`
 2. Register in `teleclaude.yml` with `script` pointing to the module
 
 ```yaml

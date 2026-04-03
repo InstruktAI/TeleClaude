@@ -3,25 +3,15 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "pyyaml",
-#     "aiohttp",
-#     "dateparser",
-#     "munch",
 #     "pydantic",
-#     "youtube-transcript-api",
 #     "instruktai-python-logger",
-#     "python-dotenv",
-#     "aiosqlite",
-#     "sqlalchemy",
-#     "sqlmodel",
-#     "httpx",
-#     "websockets",
 # ]
 # ///
 """
 Cron runner - executes scheduled jobs.
 
 This script is designed to be symlinked to ~/.teleclaude/scripts/ and called
-by launchd on an hourly schedule. It discovers jobs in the jobs/ directory
+by launchd on an hourly schedule. It reads configured jobs from teleclaude.yml
 and runs those that are due based on their schedules.
 
 Usage:
@@ -47,6 +37,21 @@ from instrukt_ai_logging import configure_logging, get_logger
 
 from teleclaude.cron.runner import _load_job_schedules, discover_jobs, run_due_jobs
 from teleclaude.cron.state import CronState
+
+
+def _describe_schedule(schedule: object) -> str:
+    when = getattr(schedule, "when", None)
+    if when is not None:
+        every = getattr(when, "every", None)
+        if every:
+            return f"every {every}"
+        at = getattr(when, "at", None)
+        if isinstance(at, list):
+            return ", ".join(f"at {item}" for item in at)
+        if at:
+            return f"at {at}"
+    schedule_str = getattr(schedule, "schedule", None)
+    return schedule_str or "none"
 
 
 def main() -> int:
@@ -101,14 +106,14 @@ def main() -> int:
         for job in python_jobs:
             job_state = state.get_job(job.name)
             sched = schedules.get(job.name)
-            schedule_str = sched.schedule if sched and sched.schedule else "none"
+            schedule_str = _describe_schedule(sched) if sched else "none"
             last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
             print(f"{job.name:<30} {'script':<8} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
 
         for name in agent_job_names:
             job_state = state.get_job(name)
             sched = schedules[name]
-            schedule_str = sched.schedule if sched.schedule else "none"
+            schedule_str = _describe_schedule(sched)
             last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
             print(f"{name:<30} {'agent':<8} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
 

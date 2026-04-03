@@ -1,3 +1,22 @@
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "pyyaml",
+#     "aiohttp",
+#     "dateparser",
+#     "munch",
+#     "pydantic",
+#     "youtube-transcript-api",
+#     "instruktai-python-logger",
+#     "python-dotenv",
+#     "aiosqlite",
+#     "sqlalchemy",
+#     "sqlmodel",
+#     "httpx",
+#     "websockets",
+# ]
+# ///
 """Nightly YouTube subscription tagger.
 
 Discovers all people (and global scope) with YouTube subscriptions configured
@@ -23,13 +42,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from jobs.base import Job, JobResult
-
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from jobs.base import Job, JobResult, run_job_cli
 from teleclaude.cron.discovery import discover_youtube_subscribers
 from teleclaude.tagging.youtube import sync_youtube_subscriptions
 
@@ -99,3 +117,7 @@ class YouTubeSyncJob(Job):
 
 # Job instance for discovery by runner
 JOB = YouTubeSyncJob()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_job_cli(JOB))

@@ -87,8 +87,9 @@ jobs:
 
 ### 5. For script jobs: write the script
 
-Place at `jobs/{job_slug}.py`. Must be importable by the cron runner with a `run()`
-entry point.
+Place at `jobs/{job_slug}.py`. It must be executable as a standalone `uv run`
+script with its own PEP 723 dependency header and a `__main__` entrypoint that
+emits the job result for the cron runner.
 
 ### 6. Sync and validate
 

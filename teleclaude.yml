@@ -7,11 +7,10 @@ business:
 
 jobs:
   help_desk_intelligence:
+    category: system
     when:
       at: '06:00'
-
-    agent: claude
-    thinking_mode: fast
+    script: jobs/help_desk_intelligence.py
 
   youtube_scraper:
     category: system
@@ -41,6 +40,7 @@ jobs:
     script: jobs/youtube_sync_subscriptions.py
 
   memory_review:
+    category: system
     schedule: weekly
     preferred_weekday: 0
     preferred_hour: 8
@@ -50,6 +50,7 @@ jobs:
     thinking_mode: fast
 
   log_bug_hunter:
+    category: system
     schedule: hourly
     type: agent
     job: log-bug-hunter

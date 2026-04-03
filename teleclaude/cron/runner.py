@@ -2,7 +2,7 @@
 
 Two job types are supported:
 
-1. **Python jobs** — modules in jobs/*.py that export a JOB instance.
+1. **Script jobs** — standalone `uv run` scripts declared in teleclaude.yml.
 2. **Agent jobs** — declared in teleclaude.yml with `type: agent`. The runner
    spawns a full interactive agent subprocess via run_job(). No daemon required.
 
@@ -19,24 +19,22 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-import importlib
 import os
 import re
+import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from jobs.base import JobResult
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import JobScheduleConfig
 from teleclaude.cron.notification_scan import find_undelivered_reports
 from teleclaude.cron.state import CronState
-
-if TYPE_CHECKING:
-    from jobs.base import Job
 
 logger = get_logger(__name__)
 
@@ -176,6 +174,14 @@ def _is_legacy_schedule_due(
 
 _DEFAULT_JOB_TIMEOUT_S = 1800  # 30 minutes
 _PIDFILE = Path.home() / ".teleclaude" / "cron_runner.pid"
+
+
+@dataclass(frozen=True)
+class ScriptJob:
+    """Configured standalone script job."""
+
+    name: str
+    script: str
 
 
 def _acquire_pidlock() -> bool:
@@ -350,37 +356,81 @@ def _scan_and_notify(
             state.mark_notified(job_name, latest_mtime)
 
 
-def discover_jobs(jobs_dir: Path | None = None) -> list[Job]:
-    """
-    Discover all job definitions from the jobs/ directory.
+def _resolve_script_path(script: str, root: Path | None = None) -> Path:
+    if root is None:
+        root = _REPO_ROOT
+    path = Path(script)
+    if not path.is_absolute():
+        path = root / path
+    return path
 
-    Each job module should export a JOB instance.
-    """
+
+def discover_jobs(jobs_dir: Path | None = None) -> list[ScriptJob]:
+    """Discover configured standalone script jobs from teleclaude.yml."""
     if jobs_dir is None:
-        jobs_dir = _REPO_ROOT / "jobs"
+        config_path = _REPO_ROOT / "teleclaude.yml"
+    else:
+        config_path = jobs_dir.parent / "teleclaude.yml"
+    config_root = config_path.parent
 
-    jobs: list[Job] = []
+    schedules = _load_job_schedules(config_path)
+    jobs: list[ScriptJob] = []
 
-    if not jobs_dir.is_dir():
-        logger.warning("jobs directory not found", path=str(jobs_dir))
-        return jobs
-
-    for job_file in sorted(jobs_dir.glob("*.py")):
-        if job_file.name.startswith("_"):
+    for name, config in schedules.items():
+        script = str(config.script or "").strip()
+        if not script:
             continue
-        if job_file.name == "base.py":
+        script_path = _resolve_script_path(script, root=config_root)
+        if not script_path.exists():
+            logger.error("configured job script not found", name=name, script=str(script_path))
             continue
-
-        module_name = f"jobs.{job_file.stem}"
-        try:
-            module = importlib.import_module(module_name)
-            if hasattr(module, "JOB"):
-                jobs.append(module.JOB)
-                logger.debug("discovered job", name=module.JOB.name)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("failed to load job", module=module_name, error=str(e))
+        jobs.append(ScriptJob(name=name, script=script))
+        logger.debug("discovered job", name=name, script=script)
 
     return jobs
+
+
+def _parse_script_job_result(stdout: str) -> JobResult | None:
+    for line in reversed(stdout.splitlines()):
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            return JobResult.from_json(raw)
+        except ValueError:
+            continue
+    return None
+
+
+def _run_script_job(job: ScriptJob, timeout_s: int | None = None) -> JobResult:
+    script_path = _resolve_script_path(job.script)
+    timeout = timeout_s or _DEFAULT_JOB_TIMEOUT_S
+
+    try:
+        completed = subprocess.run(
+            ["uv", "run", "--quiet", str(script_path)],
+            capture_output=True,
+            text=True,
+            cwd=str(_REPO_ROOT),
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return JobResult(success=False, message=f"{job.name} timed out after {timeout}s")
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        return JobResult(success=False, message=f"{job.name} failed to start: {exc}")
+
+    parsed = _parse_script_job_result(completed.stdout)
+    if parsed is not None:
+        return parsed
+
+    stderr = completed.stderr.strip()
+    stdout = completed.stdout.strip()
+    if completed.returncode == 0:
+        message = stdout or stderr or f"{job.name} completed"
+        return JobResult(success=True, message=message)
+
+    detail = stderr or stdout or f"script exited with code {completed.returncode}"
+    return JobResult(success=False, message=detail)
 
 
 def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
@@ -394,7 +444,7 @@ def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-
 
     Supports two job types:
 
-    - **Python jobs** — discovered from ``jobs/*.py`` modules.
+    - **Script jobs** — declared in ``teleclaude.yml`` with ``script`` entries.
     - **Agent jobs** — declared in ``teleclaude.yml`` with ``type: agent``.
 
     Subscription-category jobs are only run when at least one person has an
@@ -409,17 +459,17 @@ def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-
         return {}
 
     state = CronState.load()
-    python_jobs = discover_jobs()
+    script_jobs = discover_jobs()
     schedules = _load_job_schedules()
     now = datetime.now(UTC)
     results: dict[str, bool] = {}
 
     # Build a unified job list: Python modules + agent jobs from config
-    python_job_names = {job.name for job in python_jobs}
+    script_job_names = {job.name for job in script_jobs}
 
-    all_job_names: list[str] = [job.name for job in python_jobs]
+    all_job_names: list[str] = [job.name for job in script_jobs]
     for name, config in schedules.items():
-        if config.type == "agent" and name not in python_job_names:
+        if config.type == "agent" and name not in script_job_names:
             all_job_names.append(name)
 
     logger.info("checking jobs", count=len(all_job_names), force=force, dry_run=dry_run)
@@ -466,14 +516,14 @@ def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-
                 state.mark_failed(job_name, "agent session spawn failed")
             results[job_name] = success
         else:
-            python_job = next((j for j in python_jobs if j.name == job_name), None)
-            if not python_job:
-                logger.error("python job module not found", name=job_name)
+            script_job = next((j for j in script_jobs if j.name == job_name), None)
+            if not script_job:
+                logger.error("script job not found", name=job_name)
                 results[job_name] = False
                 continue
 
             try:
-                result = python_job.run()
+                result = _run_script_job(script_job, timeout_s=schedule_config.timeout if schedule_config else None)
                 if result.success:
                     state.mark_success(job_name)
                     logger.info(

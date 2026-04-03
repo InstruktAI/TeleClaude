@@ -1,3 +1,10 @@
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "instruktai-python-logger",
+# ]
+# ///
 """Reap stale Claude Code temp files.
 
 Claude Code writes background task outputs and tool results to
@@ -26,11 +33,11 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from jobs.base import Job, JobResult
-
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+from jobs.base import Job, JobResult, run_job_cli
 
 logger = get_logger(__name__)
 
@@ -163,3 +170,7 @@ class TempReaperJob(Job):
 
 
 JOB = TempReaperJob()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_job_cli(JOB))

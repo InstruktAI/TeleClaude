@@ -661,7 +661,7 @@ class TestSessionMemoryExtractionJob:
         session = _make_session(
             session_id="session-6",
             project_path="demo",
-            help_desk_processed_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
+            last_memory_extraction_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
         )
 
         await job._process_session(session)
@@ -683,7 +683,7 @@ class TestSessionMemoryExtractionJob:
         idle_session = _make_session(
             session_id="session-6",
             project_path="demo",
-            help_desk_processed_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
+            last_memory_extraction_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
             tmux_session_name="tmux-session-6",
         )
 
@@ -700,7 +700,7 @@ class TestSessionMemoryExtractionJob:
         session = _make_session(
             session_id="session-7",
             project_path="demo",
-            help_desk_processed_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
+            last_memory_extraction_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
             tmux_session_name="tmux-session-7",
         )
 
@@ -719,7 +719,7 @@ class TestSessionMemoryExtractionJob:
         session = _make_session(
             session_id="session-10",
             project_path="demo",
-            help_desk_processed_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
+            last_memory_extraction_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
         )
         failing_business = AsyncMock(side_effect=RuntimeError("boom"))
         bookkeeping = AsyncMock()
@@ -731,6 +731,19 @@ class TestSessionMemoryExtractionJob:
 
         failing_business.assert_awaited_once_with("User: keep this preference", session)
         bookkeeping.assert_not_awaited()
+
+    async def test_process_session_uses_last_memory_extraction_at_as_delta_boundary(self) -> None:
+        job = _SpyProcessSessionJob(transcript="User: keep this preference", identity_key="person:ada")
+        session = _make_session(
+            session_id="session-11",
+            project_path="demo",
+            help_desk_processed_at=datetime(2025, 1, 15, 12, 0, tzinfo=UTC),
+            last_memory_extraction_at=datetime(2025, 1, 15, 13, 0, tzinfo=UTC),
+        )
+
+        await job._process_session(session)
+
+        assert job.read_calls == [("session-11", datetime(2025, 1, 15, 13, 0, tzinfo=UTC))]
 
     async def test_run_async_continues_after_per_session_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = SessionMemoryExtractionJob()

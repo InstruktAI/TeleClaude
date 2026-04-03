@@ -1,3 +1,22 @@
+#!/usr/bin/env -S uv run --quiet
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "pyyaml",
+#     "aiohttp",
+#     "dateparser",
+#     "munch",
+#     "pydantic",
+#     "youtube-transcript-api",
+#     "instruktai-python-logger",
+#     "python-dotenv",
+#     "aiosqlite",
+#     "sqlalchemy",
+#     "sqlmodel",
+#     "httpx",
+#     "websockets",
+# ]
+# ///
 """Tag-filtered YouTube channel scraper job.
 
 Reads each subscriber's youtube.csv, selects channels whose tags intersect
@@ -20,13 +39,12 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from jobs.base import Job, JobResult
-
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from jobs.base import Job, JobResult, run_job_cli
 from teleclaude.config.loader import load_project_config
 from teleclaude.cron.discovery import Subscriber, discover_youtube_subscribers
 from teleclaude.helpers.youtube_helper import Video, youtube_search
@@ -178,3 +196,7 @@ class YouTubeScraperJob(Job):
 
 # Job instance for discovery by runner
 JOB = YouTubeScraperJob()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_job_cli(JOB))
