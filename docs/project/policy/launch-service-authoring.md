@@ -23,7 +23,7 @@ description: 'Launchd/systemd service templates must use replacement markers, ne
 | `{{WORKING_DIR}}`  | `$INSTALL_DIR` (repo root)       | `/home/user/project`                   |
 | `{{PATH}}`         | Constructed from known bin dirs  | `/opt/homebrew/bin:/usr/local/bin:...` |
 | `{{HOME}}`         | `$HOME`                          | `/home/user`                           |
-| `{{LABEL}}`        | Service-specific label string    | `ai.instrukt.teleclaude.cron`          |
+| `{{LABEL}}`        | Service-specific label string    | `ai.instrukt.teleclaude.docs.watch`    |
 | `{{COMMAND}}`      | Service-specific command         | `uv run --quiet ...`                   |
 | `{{WATCH_PATHS}}`  | Constructed from project paths   | XML plist array entries                |
 | `{{PROJECT_ROOT}}` | `$INSTALL_DIR` (systemd variant) | `/home/user/project`                   |
@@ -39,7 +39,7 @@ description: 'Launchd/systemd service templates must use replacement markers, ne
 ## Rationale
 
 - Hardcoded paths break on different machines, different users, and when binaries move (e.g., uv migrating from `~/.local/bin` to `/opt/homebrew/bin`).
-- The cron runner was dead for over a month because its template had a hardcoded uv path that stopped existing.
+- A retired helper service was dead for over a month because its template had a hardcoded uv path that stopped existing.
 
 ## Scope
 

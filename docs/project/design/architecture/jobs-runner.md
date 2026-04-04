@@ -41,13 +41,13 @@ See the Agent Job Hygiene procedure for the full contract.
 ### Architecture
 
 ```
-launchd (every 5 minutes)
+manual/API trigger
   │
   ├── pidfile check (~/.teleclaude/cron_runner.pid)
   │   └── If another instance running → exit cleanly
   │
   ▼
-scripts/cron_runner.py          CLI entry point
+scripts/cron_runner.py          CLI entry point (legacy/manual)
   │
   ▼
 teleclaude/cron/runner.py       Engine: config → discover → schedule check → execute
@@ -215,7 +215,7 @@ subscriptions.
 
 ## Primary Flows
 
-### Normal execution (5-minute launchd trigger)
+### Normal execution (manual/legacy trigger)
 
 1. Check pidfile at `~/.teleclaude/cron_runner.pid`. If another instance is alive, exit.
 2. Write pidfile. Register cleanup via `atexit`.
@@ -366,10 +366,8 @@ File: `~/.teleclaude/cron_todo state (todos.db)`
 
 ### Service Integration
 
-- **Launchd label**: `ai.instrukt.teleclaude.cron`
-- **Plist**: `templates/ai.instrukt.teleclaude.cron.plist`
-- **Trigger**: Every 5 minutes (`StartInterval` = 300)
-- **Installation**: `bin/init.sh` installs the cron plist alongside the daemon plist
+- The standalone launchd cron plist is retired and no longer installed by `telec init`.
+- Any remaining `ai.instrukt.teleclaude.cron` LaunchAgent on a machine is stale runtime state and must be removed separately.
 - **Working directory**: Repository root
 - **Logs**: `/var/log/instrukt-ai/teleclaude/cron.log`
 - **Overlap prevention**: Pidfile at `~/.teleclaude/cron_runner.pid`

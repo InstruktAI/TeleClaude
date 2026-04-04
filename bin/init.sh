@@ -521,43 +521,6 @@ install_launchd_service() {
     fi
 }
 
-# Install launchd cron runner (macOS)
-install_launchd_cron() {
-    local service_name="ai.instrukt.teleclaude.cron"
-    local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
-    local source_file="$INSTALL_DIR/templates/${service_name}.plist"
-
-    if [ ! -f "$source_file" ]; then
-        print_warning "Cron plist not found: $source_file"
-        return 0
-    fi
-
-    # Resolve uv binary path
-    local uv_path
-    uv_path="$(command -v uv 2>/dev/null || echo "/opt/homebrew/bin/uv")"
-
-    # Build PATH (same logic as install_launchd_service)
-    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    [ -d "/opt/homebrew/bin" ] && launchd_path="/opt/homebrew/bin:$launchd_path"
-    [ -d "/usr/local/bin" ] && launchd_path="/usr/local/bin:$launchd_path"
-    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
-
-    mkdir -p "$HOME/Library/LaunchAgents"
-    sed -e "s|{{UV_PATH}}|$uv_path|g" \
-        -e "s|{{WORKING_DIR}}|$INSTALL_DIR|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        -e "s|{{HOME}}|$HOME|g" \
-        "$source_file" > "$plist_file"
-
-    local domain="gui/$(id -u)"
-    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
-    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
-        launchctl load "$plist_file"
-    fi
-
-    print_success "Cron runner installed (5-minute interval)"
-}
-
 # Install service
 install_service() {
     print_header "Installing System Service"
@@ -603,7 +566,6 @@ main() {
     if [ "$CI_MODE" = false ]; then
         setup_log_file
         install_service
-        [ "$OS" = "macos" ] && install_launchd_cron
     fi
     
     setup_mcp_config
