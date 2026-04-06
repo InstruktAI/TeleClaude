@@ -63,6 +63,37 @@ fresh derivation:
 - Skip strategy selection (step 2) and triangulation (step 3); proceed directly to
   the quality standard check (step 4) and write the updated requirements (step 5).
 
+### 1c. Execute third-party research (when input contains unknowns)
+
+Scan `input.md` for questions about third-party tool behavior, API semantics,
+flag combinations, or external system capabilities. These are research questions
+— they ask "how does X work?" or "does X support Y?" about tools outside the
+project's control.
+
+**Discovery owns answering these questions, not deferring them.** A requirement
+that lists unanswered research questions is defective — it pushes unknowns to the
+builder, who will discover them at build time when the cost of rework is highest.
+
+When research questions are found:
+
+1. Check consolidated third-party docs first: `telec docs index --third-party`.
+   If a doc already covers the question, load it and extract the answer.
+2. If not covered, execute the third-party research procedure: search
+   authoritative sources (official docs, vendor references), fetch, extract
+   actionable facts, and index findings as a third-party doc snippet.
+3. If empirical testing is required (flag combinations, runtime behavior that
+   docs don't cover), run the test in a throwaway session and record the
+   findings. Document what was tested, what was observed, and what the
+   implications are for the requirements.
+4. If a research question cannot be answered (no docs, no way to test), that is
+   a blocker — write it to `dor-report.md` as a `needs_decision` item. Do not
+   convert it into a build-phase task. Unanswered research is a preparation
+   blocker, not a build task.
+
+Only after all research questions are answered (or explicitly blocked) should
+the worker proceed to writing requirements. Requirements must reference the
+research findings, not restate the questions.
+
 ### 2. Choose discovery strategy
 
 Decide how requirements should be produced:
@@ -107,6 +138,11 @@ artifact quality policy. In particular:
 - **Inferences marked**: anything inferred from codebase or docs rather than
   explicitly stated in `input.md` is marked `[inferred]`. The human can
   correct inferences without searching for them.
+- **Research resolved**: every third-party research question from `input.md` is
+  answered with indexed findings, not restated as a requirement. A requirement
+  that says "empirical testing required" or "research needed to determine X" is
+  a defect — it means discovery deferred its own job to the builder. DOR gate 5
+  (research complete) is enforced here, not at the gate phase.
 
 ### 5. Write requirements
 
@@ -143,7 +179,8 @@ If triangulation was used, end the partner session when convergence is done.
 
 1. `telec todo artifacts read {slug} requirements` — grounded, review-aware requirements.
 2. `todos.db` state — grounding metadata updated.
-3. Partner session ended after convergence when triangulation was used.
+3. Third-party doc snippets indexed (when research was executed in step 1c).
+4. Partner session ended after convergence when triangulation was used.
 
 ## Recovery
 
