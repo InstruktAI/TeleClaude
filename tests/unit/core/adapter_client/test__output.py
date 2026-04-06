@@ -258,6 +258,58 @@ class TestSendMessage:
         )
 
 
+class TestBroadcastUserInput:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_non_discord_origin_reflects_only_to_discord(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="telegram")
+        client.register_adapter("telegram", _make_ui_adapter())
+        client.register_adapter("discord", _make_ui_adapter())
+
+        with (
+            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
+            patch("teleclaude.core.adapter_client._output.get_identity_resolver") as mock_resolver,
+            patch.object(client, "_route_to_ui", AsyncMock()) as mock_route,
+        ):
+            resolver = MagicMock()
+            resolver.resolve.return_value = MagicMock(display_name="Alice")
+            mock_resolver.return_value = resolver
+
+            await client.broadcast_user_input(session, "hello", "telegram")
+
+        mock_route.assert_awaited_once()
+        assert mock_route.await_args.args == (
+            session,
+            "send_user_input_reflection",
+            "hello",
+        )
+        assert mock_route.await_args.kwargs["include_adapters"] == {"discord"}
+        metadata = mock_route.await_args.kwargs["metadata"]
+        assert metadata.reflection_origin == "telegram"
+        assert metadata.reflection_actor_name == "Alice"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_discord_origin_does_not_emit_duplicate_admin_reflection(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="discord")
+        client.register_adapter("discord", _make_ui_adapter())
+
+        with (
+            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
+            patch("teleclaude.core.adapter_client._output.get_identity_resolver") as mock_resolver,
+            patch.object(client, "_route_to_ui", AsyncMock()) as mock_route,
+        ):
+            resolver = MagicMock()
+            resolver.resolve.return_value = MagicMock(display_name="Alice")
+            mock_resolver.return_value = resolver
+
+            await client.broadcast_user_input(session, "hello", "discord")
+
+        mock_route.assert_not_awaited()
+
+
 class TestThreadState:
     @pytest.mark.unit
     @pytest.mark.asyncio

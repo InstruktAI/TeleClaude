@@ -1,5 +1,7 @@
 """Characterization tests for teleclaude.adapters.telegram.message_ops."""
 
+# pylint: disable=missing-function-docstring,protected-access
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -160,23 +162,19 @@ async def test_send_message_suppresses_telegram_reflection():
 
     assert result == "0"
     ops.bot.send_message.assert_not_awaited()
-    assert ops.waited_for_topic == []
+    assert not ops.waited_for_topic
 
 
-async def test_send_message_formats_cross_source_reflection_before_send():
+async def test_send_message_suppresses_cross_source_reflection():
     ops = _StubMessageOps()
     session = _make_session(topic_id=23)
     metadata = MessageMetadata(reflection_origin="discord", reflection_actor_name="Alice")
 
     result = await ops.send_message(session, "hello", metadata=metadata)
 
-    assert result == "101"
-    ops.bot.send_message.assert_awaited_once()
-    call = ops.bot.send_message.await_args
-    assert call.kwargs["message_thread_id"] == 23
-    assert call.kwargs["text"].startswith("Alice @ DISCORD:\n\nhello")
-    assert call.kwargs["text"].endswith("\n\n---\n")
-    assert ops.waited_for_topic == [(23, "Test Session")]
+    assert result == "0"
+    ops.bot.send_message.assert_not_awaited()
+    assert not ops.waited_for_topic
 
 
 async def test_send_message_returns_empty_when_topic_id_is_missing():

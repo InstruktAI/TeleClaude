@@ -149,20 +149,10 @@ class MessageOperationsMixin:
         if multi_message:
             logger.trace("send_message: multi_message requested for session %s", session.session_id)
 
-        # Reflection suppression: drop own-user reflections; format cross-source ones.
+        # Telegram is an origin/input adapter only; it never renders admin reflections.
         if metadata.reflection_origin is not None:
-            if metadata.reflection_origin == "telegram":
-                logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id)
-                return "0"
-            # Cross-source reflection: prepend attribution header and separator.
-            actor_name = (metadata.reflection_actor_name or "").strip()
-            origin_label = metadata.reflection_origin.upper() or "UNKNOWN"
-            if actor_name:
-                header = f"{actor_name} @ {origin_label}:\n\n"
-                if not text.startswith(header):
-                    text = f"{header}{text}"
-                if not text.endswith("---\n"):
-                    text = f"{text}\n\n---\n"
+            logger.debug("send_message: suppressing reflection for session %s", session.session_id)
+            return "0"
 
         # Skip when topic_id absent (channel still creating, or headless session without a topic).
         telegram_meta = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))

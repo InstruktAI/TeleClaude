@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
@@ -199,10 +199,11 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         actor_name: str | None = None,
         actor_avatar_url: str | None = None,
     ) -> None:
-        """Reflect user input to all UI adapters.
+        """Reflect user input to the Discord admin adapter.
 
-        Core sends raw text + metadata to every adapter. Each adapter owns
-        suppression (own-user echo) and presentation (headers, formatting).
+        The normal origin-path delivery remains unchanged elsewhere. This path
+        only creates the extra admin reflection, and only when the origin is
+        not already Discord.
         """
         if not source:
             raise ValueError("broadcast_user_input requires a non-empty source")
@@ -220,21 +221,15 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
             reflection_origin=reflection_origin,
         )
+        if reflection_origin == "discord":
+            return
 
-        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
-            return cast(
-                Awaitable[object],
-                adapter.send_message(
-                    lane_session,
-                    text,
-                    metadata=reflection_metadata,
-                ),
-            )
-
-        await self._broadcast_to_ui_adapters(
+        await self._route_to_ui(
             session_to_use,
             "send_user_input_reflection",
-            make_task,
+            text,
+            metadata=reflection_metadata,
+            include_adapters={"discord"},
         )
 
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
