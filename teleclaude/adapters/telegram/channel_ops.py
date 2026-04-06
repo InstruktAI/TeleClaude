@@ -265,7 +265,9 @@ class ChannelOperationsMixin:
         if fresh_session:
             tg = TelegramAdapterMetadata.from_dict(fresh_session.get_origin_section("telegram"))
             tg.topic_id = None
-            await db.update_origin_metadata(session.session_id, "telegram", tg.to_dict())
+            section = tg.to_dict()
+            section["topic_id"] = None
+            await db.update_origin_metadata(session.session_id, "telegram", section)
             logger.debug("Cleared topic_id for session %s", session.session_id)
 
         return True

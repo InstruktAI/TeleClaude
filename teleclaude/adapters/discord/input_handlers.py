@@ -557,7 +557,12 @@ class InputHandlersMixin:
             discord_meta.channel_id = None
             discord_meta.output_message_id = None
             discord_meta.thread_topper_message_id = None
-            await db.update_origin_metadata(session.session_id, "discord", discord_meta.to_dict())
+            clear_section = discord_meta.to_dict()
+            clear_section["thread_id"] = None
+            clear_section["channel_id"] = None
+            clear_section["output_message_id"] = None
+            clear_section["thread_topper_message_id"] = None
+            await db.update_origin_metadata(session.session_id, "discord", clear_section)
             raise AdapterError(f"Discord channel {destination_id} not found (metadata cleared)")
         return channel
 

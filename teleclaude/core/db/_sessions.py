@@ -454,9 +454,14 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
 
         Uses SQLite json_patch for a single-statement update, eliminating
         the read-modify-write race between concurrent adapter writes.
+
+        JSON Merge Patch semantics apply within the platform section:
+        - absent keys: leave existing values untouched
+        - non-None values: set/overwrite
+        - None values: delete the key from the stored section
         """
         patch: dict[str, object] = {}  # guard: loose-dict - JSON merge patch
-        if section_updates:
+        if section_updates is not None:
             patch[platform] = section_updates
 
         async with self._session() as db_session:

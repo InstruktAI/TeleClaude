@@ -3,10 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TypedDict
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord.input_handlers import InputHandlersMixin, _SessionCreationContext
+from teleclaude.core.models import DiscordAdapterMetadata, Session
 
 pytestmark = pytest.mark.unit
 
@@ -30,6 +33,17 @@ class DummyInputHandlers(InputHandlersMixin):
         self._parse_optional_int = lambda value: (
             int(str(value).strip()) if value is not None and str(value).strip().isdigit() else None
         )
+
+
+class DummyRoutingHandlers(InputHandlersMixin):
+    def __init__(self) -> None:
+        self._client = object()
+        self._parse_optional_int = lambda value: (
+            int(str(value).strip()) if value is not None and str(value).strip().isdigit() else None
+        )
+
+    async def _get_channel(self, _channel_id: int) -> object | None:
+        return None
 
 
 class _Metadata(TypedDict):
@@ -112,3 +126,36 @@ def test_resolve_team_session_target_uses_discord_identity_and_scaffolded_worksp
 
     assert path == "/tmp/alice-workspace"
     assert human_role == "member"
+
+
+@pytest.mark.asyncio
+async def test_resolve_destination_channel_clears_stale_discord_metadata_with_explicit_none_keys() -> None:
+    adapter = DummyRoutingHandlers()
+    session = Session(
+        session_id="sess-discord-stale",
+        computer_name="machine",
+        tmux_session_name="tmux-session",
+        title="Session",
+        origin_metadata={
+            "discord": DiscordAdapterMetadata(
+                channel_id=100,
+                thread_id=200,
+                output_message_id="out-1",
+                thread_topper_message_id="top-1",
+            ).to_dict()
+        },
+    )
+
+    with patch("teleclaude.adapters.discord.input_handlers.db") as mock_db:
+        mock_db.update_origin_metadata = AsyncMock()
+
+        with pytest.raises(AdapterError, match="metadata cleared"):
+            await adapter._resolve_destination_channel(session)
+
+    update_call = mock_db.update_origin_metadata.await_args
+    assert update_call is not None
+    section = update_call.args[2]
+    assert section["thread_id"] is None
+    assert section["channel_id"] is None
+    assert section["output_message_id"] is None
+    assert section["thread_topper_message_id"] is None

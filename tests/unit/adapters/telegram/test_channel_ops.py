@@ -254,6 +254,9 @@ async def test_delete_channel_returns_true_and_clears_persisted_topic_id():
 
     assert result is True
     mock_db.update_origin_metadata.assert_awaited_once()
+    update_call = mock_db.update_origin_metadata.await_args
+    assert update_call is not None
+    assert update_call.args[2]["topic_id"] is None
     ops._delete_forum_topic_with_retry.assert_awaited_once_with(55)
 
 
@@ -272,6 +275,9 @@ async def test_delete_channel_treats_topic_id_invalid_as_success_and_clears_meta
 
     assert result is True
     mock_db.update_origin_metadata.assert_awaited_once()
+    update_call = mock_db.update_origin_metadata.await_args
+    assert update_call is not None
+    assert update_call.args[2]["topic_id"] is None
 
 
 # ---------------------------------------------------------------------------

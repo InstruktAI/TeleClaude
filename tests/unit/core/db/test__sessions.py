@@ -394,6 +394,34 @@ async def test_update_origin_metadata_merges_within_platform_section(db: Db) -> 
     assert tg["user_id"] == 99
 
 
+async def test_update_origin_metadata_none_removes_existing_platform_keys(db: Db) -> None:
+    await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-001",
+        last_input_origin="telegram",
+        title="Delete Keys Test",
+        session_id="sess-delete-keys",
+        emit_session_started=False,
+    )
+    await db.update_origin_metadata(
+        "sess-delete-keys",
+        "telegram",
+        {"topic_id": 42, "output_message_id": "out-1", "char_offset": 7},
+    )
+    await db.update_origin_metadata(
+        "sess-delete-keys",
+        "telegram",
+        {"topic_id": None, "output_message_id": None, "char_offset": 0},
+    )
+    session = await db.get_session("sess-delete-keys")
+
+    assert session is not None
+    tg = _section(session.origin_metadata, "telegram")
+    assert "topic_id" not in tg
+    assert "output_message_id" not in tg
+    assert tg["char_offset"] == 0
+
+
 async def test_update_origin_metadata_on_no_prior_metadata(db: Db) -> None:
     await db.create_session(
         computer_name="builder-mac",

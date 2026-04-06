@@ -260,7 +260,10 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
                 reset_tg = self._tg(current)
                 reset_tg.topic_id = None
                 reset_tg.output_message_id = None
-                await db.update_origin_metadata(current.session_id, "telegram", reset_tg.to_dict())
+                reset_section = reset_tg.to_dict()
+                reset_section["topic_id"] = None
+                reset_section["output_message_id"] = None
+                await db.update_origin_metadata(current.session_id, "telegram", reset_section)
             await self.create_channel(current or session, title, metadata=ChannelMetadata())
 
         refreshed = await db.get_session(session.session_id)
@@ -297,7 +300,11 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         reset_tg.footer_message_id = None
         reset_tg.char_offset = 0
 
-        await db.update_origin_metadata(recovery_session.session_id, "telegram", reset_tg.to_dict())
+        reset_section = reset_tg.to_dict()
+        reset_section["topic_id"] = None
+        reset_section["output_message_id"] = None
+        reset_section["footer_message_id"] = None
+        await db.update_origin_metadata(recovery_session.session_id, "telegram", reset_section)
         await db.update_session(recovery_session.session_id, last_output_digest=None)
 
         try:
