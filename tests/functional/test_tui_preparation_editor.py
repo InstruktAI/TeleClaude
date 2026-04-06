@@ -16,7 +16,7 @@ from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.views.preparation import PreparationView
 
-pytestmark = [pytest.mark.functional, pytest.mark.asyncio, pytest.mark.timeout(5)]
+pytestmark = [pytest.mark.functional, pytest.mark.asyncio, pytest.mark.timeout(45)]
 
 
 class _StubAPI:

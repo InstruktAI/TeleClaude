@@ -1,95 +1,16 @@
-"""Characterization tests for teleclaude/cli/editor.py."""
-# pylint: disable=duplicate-code,import-outside-toplevel,missing-function-docstring,protected-access
+"""Behavioral coverage for teleclaude.cli.editor."""
+# pylint: disable=import-outside-toplevel,missing-function-docstring,protected-access
 
 from __future__ import annotations
 
+import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from textual.widgets import Markdown, TextArea
 
 from teleclaude.core.todos_db import TodosDb
-
-# ---------------------------------------------------------------------------
-# EditorApp class attributes — no instantiation needed
-# ---------------------------------------------------------------------------
-
-
-def test_editor_app_language_map_maps_py_to_python() -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    assert EditorApp._LANGUAGE_MAP[".py"] == "python"
-
-
-def test_editor_app_language_map_maps_yaml_extensions() -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    assert EditorApp._LANGUAGE_MAP[".yaml"] == "yaml"
-    assert EditorApp._LANGUAGE_MAP[".yml"] == "yaml"
-
-
-def test_editor_app_language_map_maps_json() -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    assert EditorApp._LANGUAGE_MAP[".json"] == "json"
-
-
-def test_editor_app_language_map_maps_toml() -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    assert EditorApp._LANGUAGE_MAP[".toml"] == "toml"
-
-
-def test_editor_app_language_map_maps_md_to_markdown() -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    assert EditorApp._LANGUAGE_MAP[".md"] == "markdown"
-
-
-def test_editor_app_markdown_exts_includes_md() -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    assert ".md" in EditorApp._MARKDOWN_EXTS
-
-
-def test_editor_app_markdown_exts_includes_txt() -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    assert ".txt" in EditorApp._MARKDOWN_EXTS
-
-
-# ---------------------------------------------------------------------------
-# EditorApp.__init__ — file existence check
-# ---------------------------------------------------------------------------
-
-
-def test_editor_app_raises_file_not_found_for_missing_file(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    missing = tmp_path / "nonexistent.md"
-    with pytest.raises(FileNotFoundError):
-        EditorApp(file_path=missing)
-
-
-def test_editor_app_stores_file_path_and_view_mode(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    test_file = tmp_path / "test.md"
-    test_file.write_text("# Hello\n")
-    app = EditorApp(file_path=test_file, view_mode=True)
-    assert app.file_path == test_file
-    assert app.view_mode is True
-
-
-def test_editor_app_view_mode_defaults_to_false(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    test_file = tmp_path / "test.md"
-    test_file.write_text("# Hello\n")
-    app = EditorApp(file_path=test_file)
-    assert app.view_mode is False
 
 
 def _seed_artifact_project(
@@ -99,12 +20,11 @@ def _seed_artifact_project(
     artifact_name: str = "requirements",
     content: str = "# Hello\n",
 ) -> tuple[Path, TodosDb]:
-    """Create a temporary project with a populated todos.db artifact."""
     project_root = tmp_path / "project"
     db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
     db.initialize_sync()
-    now = datetime.now(UTC).isoformat()
     row_id = str(uuid.uuid4())
+    now = datetime.now(UTC).isoformat()
     conn = db._sync_conn()  # pylint: disable=protected-access
     try:
         conn.execute(
@@ -119,36 +39,6 @@ def _seed_artifact_project(
         conn.close()
     db.write_artifact_sync(slug, artifact_name, content)
     return project_root, db
-
-
-# ---------------------------------------------------------------------------
-# EditorApp._save_if_changed — saves only when content differs
-# ---------------------------------------------------------------------------
-
-
-def test_save_if_changed_skips_save_when_content_unchanged(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    test_file = tmp_path / "test.md"
-    test_file.write_text("original content")
-    app = EditorApp(file_path=test_file)
-    # _last_saved_content is None until compose() is called
-    # Manually set to simulate post-compose state
-    app._last_saved_content = "original content"
-    app._save_if_changed("original content")
-    # Content unchanged — file should not be rewritten
-    assert test_file.read_text() == "original content"
-
-
-def test_save_if_changed_saves_when_content_differs(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    test_file = tmp_path / "test.md"
-    test_file.write_text("original content")
-    app = EditorApp(file_path=test_file)
-    app._last_saved_content = "original content"
-    app._save_if_changed("new content")
-    assert test_file.read_text() == "new content"
 
 
 def test_materialized_artifact_from_db_preserves_logical_artifact_name(tmp_path: Path) -> None:
@@ -168,62 +58,103 @@ def test_materialized_artifact_from_db_preserves_logical_artifact_name(tmp_path:
         materialized.cleanup()
 
 
-@pytest.mark.unit
-async def test_editor_app_view_mode_renders_markdown_preview(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
+def test_render_view_prints_header_and_content(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from teleclaude.cli.editor import _render_view
 
-    test_file = tmp_path / "test.md"
-    test_file.write_text("# Heading\n")
-    app = EditorApp(file_path=test_file, view_mode=True)
+    target = tmp_path / "input"
+    target.write_text("line 1\nline 2\n", encoding="utf-8")
 
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        assert len(app.query(Markdown)) == 1
-        assert len(app.query(TextArea)) == 0
+    _render_view(target, "input")
 
-
-@pytest.mark.unit
-async def test_editor_app_edit_mode_renders_text_area_and_save_persists_content(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
-    test_file = tmp_path / "test.md"
-    test_file.write_text("original content")
-    app = EditorApp(file_path=test_file)
-
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        editor = app.query_one("#editor-area", TextArea)
-        editor.text = "updated content"
-        app.action_save()
-        await pilot.pause()
-
-    assert test_file.read_text() == "updated content"
+    output = capsys.readouterr().out
+    assert "[VIEW] input" in output
+    assert "line 1" in output
+    assert "line 2" in output
 
 
-@pytest.mark.unit
-async def test_editor_app_save_callback_persists_artifact_back_to_db(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp, MaterializedArtifact
+def test_default_editor_command_prefers_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from teleclaude.cli.editor import _default_editor_command
 
-    project_root, db = _seed_artifact_project(tmp_path)
-    materialized = MaterializedArtifact.from_db(
-        project_root=project_root,
-        slug="todo-1",
-        artifact_name="requirements",
-    )
-    app = EditorApp(
-        file_path=materialized.file_path,
-        display_name=materialized.display_name,
-        save_callback=materialized.persist,
+    monkeypatch.setenv("TELECLAUDE_EDITOR_COMMAND", "sh -c 'exit 0' sh")
+    assert _default_editor_command() == ["sh", "-c", "exit 0", "sh"]
+
+
+def test_run_editor_uses_configured_command(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from teleclaude.cli.editor import _run_editor
+
+    target = tmp_path / "artifact"
+    target.write_text("original", encoding="utf-8")
+    monkeypatch.setenv(
+        "TELECLAUDE_EDITOR_COMMAND",
+        """sh -c 'printf updated > "$1"' sh""",
     )
 
-    try:
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            editor = app.query_one("#editor-area", TextArea)
-            editor.text = "updated artifact content"
-            app.action_save()
-            await pilot.pause()
+    exit_code = _run_editor(target)
 
-        assert db.read_artifact_sync("todo-1", "requirements") == "updated artifact content"
-    finally:
-        materialized.cleanup()
+    assert exit_code == 0
+    assert target.read_text(encoding="utf-8") == "updated"
+
+
+def test_main_view_mode_prints_artifact_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from teleclaude.cli import editor
+
+    project_root, _db = _seed_artifact_project(tmp_path, artifact_name="input", content="hello\n")
+    monkeypatch.setattr(editor, "_wait_until_terminated", lambda: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "teleclaude.cli.editor",
+            "--project-root",
+            str(project_root),
+            "--artifact-slug",
+            "todo-1",
+            "--artifact-name",
+            "input",
+            "--view",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        editor.main()
+
+    assert exc_info.value.code == 0
+    output = capsys.readouterr().out
+    assert "[VIEW] input" in output
+    assert "hello" in output
+
+
+def test_main_edit_mode_persists_artifact_back_to_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from teleclaude.cli import editor
+
+    project_root, db = _seed_artifact_project(tmp_path, artifact_name="requirements", content="before\n")
+    monkeypatch.setenv(
+        "TELECLAUDE_EDITOR_COMMAND",
+        """sh -c 'printf "after\n" > "$1"' sh""",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "teleclaude.cli.editor",
+            "--project-root",
+            str(project_root),
+            "--artifact-slug",
+            "todo-1",
+            "--artifact-name",
+            "requirements",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        editor.main()
+
+    assert exc_info.value.code == 0
+    assert db.read_artifact_sync("todo-1", "requirements") == "after\n"
