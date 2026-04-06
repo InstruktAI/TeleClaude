@@ -17,6 +17,7 @@ from teleclaude.core.next_machine._types import (
 )
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
+from teleclaude.project_root import resolve_main_repo_root
 from teleclaude.session_identity import get_session_id
 
 
@@ -80,7 +81,8 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
     now = datetime.now(UTC).isoformat()
     changed_set = set(changed_paths)
 
-    db = TodosDb(str(Path(cwd) / ".teleclaude" / "todos.db"))
+    project_root = resolve_main_repo_root(cwd)
+    db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
     db.initialize_sync()
     conn = db._sync_conn()  # pylint: disable=protected-access
 

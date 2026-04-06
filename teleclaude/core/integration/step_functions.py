@@ -34,6 +34,7 @@ from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
+from teleclaude.project_root import resolve_main_repo_root
 
 logger = get_logger(__name__)
 
@@ -54,7 +55,8 @@ def _get_todos_db_sync(cwd: str) -> Any:
     """
     from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
 
-    db_path = str(Path(cwd) / ".teleclaude" / "todos.db")
+    project_root = resolve_main_repo_root(cwd)
+    db_path = str(project_root / ".teleclaude" / "todos.db")
     db = TodosDb(db_path)
     db.initialize_sync()
     return db

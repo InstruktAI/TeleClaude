@@ -17,6 +17,7 @@ from teleclaude.core.next_machine._types import StateValue
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.producer import emit_event
+from teleclaude.project_root import resolve_main_repo_root
 
 logger = get_logger(__name__)
 
@@ -353,13 +354,8 @@ def _build_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too
 
 
 def _find_project_root() -> Path:
-    """Walk up from cwd to find the project root (where .teleclaude/ lives)."""
-    here = Path.cwd()
-    for candidate in [here, *here.parents]:
-        if (candidate / ".teleclaude").is_dir():
-            return candidate
-    logger.warning("prepare: no .teleclaude/ directory found, falling back to cwd", cwd=str(here))
-    return here
+    """Resolve the main repository root from cwd."""
+    return resolve_main_repo_root(Path.cwd())
 
 
 class PrepareCartridge:
