@@ -273,25 +273,3 @@ class TestCliCallersAlternativePath:
         monkeypatch.setattr(config_module, "read_current_session_email", lambda: "admin@example.com")
 
         config_module._check_customer_guard()
-
-    @pytest.mark.unit
-    def test_cartridge_cli_resolves_identity_from_terminal_email(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        mock_resolver = SimpleNamespace(
-            resolve_by_email=lambda email: SimpleNamespace(person_role="admin", email=email)
-        )
-        monkeypatch.setattr(
-            "teleclaude.core.identity.get_identity_resolver",
-            lambda: mock_resolver,
-        )
-        monkeypatch.setattr(
-            "teleclaude.cli.session_auth.read_current_session_email",
-            lambda: "admin@example.com",
-        )
-
-        import teleclaude.cli.cartridge_cli as cartridge_module
-
-        result = cartridge_module._caller_is_admin()
-        assert isinstance(result, bool)

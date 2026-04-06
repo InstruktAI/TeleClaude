@@ -4,22 +4,18 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.cartridge_loader import LoadedCartridge
 from teleclaude.events.domain_config import (
     AutonomyLevel,
     AutonomyMatrix,
     DomainConfig,
     DomainGuardianConfig,
 )
+from teleclaude.events.domain_handlers import DomainHandlerSpec
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
-
-if TYPE_CHECKING:
-    from teleclaude.events.personal_pipeline import PersonalPipeline
 
 logger = get_logger(__name__)
 
@@ -34,14 +30,14 @@ class DomainPipelineContext(PipelineContext):
 
 
 class DomainPipeline:
-    """Execute a topologically sorted set of cartridges for a single domain."""
+    """Execute a topologically sorted set of handlers for a single domain."""
 
-    def __init__(self, domain: DomainConfig, levels: list[list[LoadedCartridge]]) -> None:
+    def __init__(self, domain: DomainConfig, levels: list[list[DomainHandlerSpec]]) -> None:
         self._domain = domain
         self._levels = levels
 
     async def run(self, event: EventEnvelope, base_context: PipelineContext) -> EventEnvelope | None:
-        """Run all domain cartridges for an event using a domain-specific context copy."""
+        """Run all domain handlers for an event using a domain-specific context copy."""
         base_fields = {f.name: getattr(base_context, f.name) for f in fields(PipelineContext)}
         ctx = DomainPipelineContext(
             **base_fields,
@@ -58,11 +54,11 @@ class DomainPipeline:
 
             level_event = current
             results = await asyncio.gather(
-                *[self._run_cartridge(c, level_event, ctx) for c in level],
+                *[self._run_handler(handler, level_event, ctx) for handler in level],
                 return_exceptions=True,
             )
 
-            # Take last non-None result; exceptions already logged by _run_cartridge
+            # Take last non-None result; exceptions already logged by _run_handler
             last_result: EventEnvelope | None = None
             for r in results:
                 if isinstance(r, BaseException):
@@ -78,29 +74,29 @@ class DomainPipeline:
         """Return the configured domain name for this pipeline."""
         return self._domain.name
 
-    async def _run_cartridge(
+    async def _run_handler(
         self,
-        cartridge: LoadedCartridge,
+        handler: DomainHandlerSpec,
         event: EventEnvelope,
         ctx: DomainPipelineContext,
     ) -> EventEnvelope | None:
-        cartridge_id = cartridge.manifest.id
-        autonomy = ctx.autonomy_matrix.resolve(ctx.domain_name, cartridge_id, event.event)
+        handler_id = handler.handler_id
+        autonomy = ctx.autonomy_matrix.resolve(ctx.domain_name, handler_id, event.event)
 
         if autonomy == AutonomyLevel.MANUAL:
             logger.debug(
-                "Cartridge '%s' in domain '%s' skipped: autonomy=manual",
-                cartridge_id,
+                "Handler '%s' in domain '%s' skipped: autonomy=manual",
+                handler_id,
                 ctx.domain_name,
             )
             return None
 
         try:
-            result = await cartridge.process(event, ctx)
+            result = await handler.process(event, ctx)
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(
-                "Cartridge '%s' in domain '%s' raised an exception: %s",
-                cartridge_id,
+                "Handler '%s' in domain '%s' raised an exception: %s",
+                handler_id,
                 ctx.domain_name,
                 e,
                 exc_info=True,
@@ -109,14 +105,14 @@ class DomainPipeline:
 
         if autonomy == AutonomyLevel.NOTIFY and result is not None:
             logger.info(
-                "Cartridge '%s' in domain '%s' ran (notify mode); result produced",
-                cartridge_id,
+                "Handler '%s' in domain '%s' ran (notify mode); result produced",
+                handler_id,
                 ctx.domain_name,
             )
         elif autonomy == AutonomyLevel.AUTO_NOTIFY and result is None:
             logger.debug(
-                "Cartridge '%s' in domain '%s' returned None (auto_notify, suppressing notification)",
-                cartridge_id,
+                "Handler '%s' in domain '%s' returned None (auto_notify, suppressing notification)",
+                handler_id,
                 ctx.domain_name,
             )
 
@@ -124,24 +120,19 @@ class DomainPipeline:
 
 
 class DomainPipelineRunner:
-    """Coordinate system fan-out into domain and personal pipelines."""
+    """Coordinate system fan-out into domain pipelines."""
 
     def __init__(self) -> None:
         self._pipelines: dict[str, DomainPipeline] = {}
-        self._personal_pipelines: dict[str, PersonalPipeline] = {}
 
     def register_domain_pipeline(self, domain_name: str, pipeline: DomainPipeline) -> None:
         """Register a domain pipeline by domain name."""
         self._pipelines[domain_name] = pipeline
 
-    def register_personal_pipeline(self, member_id: str, pipeline: PersonalPipeline) -> None:
-        """Register a personal pipeline by member identifier."""
-        self._personal_pipelines[member_id] = pipeline
-
     async def run_all(self, event: EventEnvelope, context: PipelineContext) -> dict[str, EventEnvelope | None]:
-        """Run all registered domain pipelines, then personal pipelines, for an event."""
+        """Run all registered domain pipelines for an event."""
         results: dict[str, EventEnvelope | None] = {}
-        if not self._pipelines and not self._personal_pipelines:
+        if not self._pipelines:
             return results
 
         domain_results = await asyncio.gather(
@@ -155,16 +146,6 @@ class DomainPipelineRunner:
                 results[name] = None
             else:
                 results[name] = result
-
-        # Run personal pipelines in parallel after domain pipelines
-        if self._personal_pipelines:
-            personal_results = await asyncio.gather(
-                *[p.run(event, context) for p in self._personal_pipelines.values()],
-                return_exceptions=True,
-            )
-            for member_id, presult in zip(self._personal_pipelines.keys(), personal_results):
-                if isinstance(presult, BaseException):
-                    logger.error("Personal pipeline '%s' failed: %s", member_id, presult, exc_info=presult)
 
         return results
 

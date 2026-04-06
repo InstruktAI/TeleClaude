@@ -3,19 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from teleclaude.events.cartridge_loader import LoadedCartridge
-from teleclaude.events.cartridge_manifest import CartridgeManifest
 from teleclaude.events.domain_config import AutonomyLevel, AutonomyMatrix, DomainConfig
-from teleclaude.events.domain_pipeline import (
-    DomainPipeline,
-    DomainPipelineContext,
-    DomainPipelineRunner,
-)
+from teleclaude.events.domain_handlers import DomainHandlerSpec
+from teleclaude.events.domain_pipeline import DomainPipeline, DomainPipelineContext, DomainPipelineRunner
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.pipeline import PipelineContext
 
@@ -28,18 +22,12 @@ def _make_base_context() -> PipelineContext:
     return PipelineContext(catalog=MagicMock(), db=MagicMock())
 
 
-def _make_loaded_cartridge(
+def _make_handler(
     cid: str = "c1",
     result: EventEnvelope | None = None,
-    domain_affinity: list[str] | None = None,
-) -> LoadedCartridge:
+) -> DomainHandlerSpec:
     process = AsyncMock(return_value=result)
-    manifest = CartridgeManifest(
-        id=cid,
-        description="test",
-        domain_affinity=domain_affinity or [],
-    )
-    return LoadedCartridge(manifest=manifest, module_path=Path("."), process=process)
+    return DomainHandlerSpec(handler_id=cid, process=process)
 
 
 class TestDomainPipelineContext:
@@ -70,8 +58,7 @@ class TestDomainPipeline:
     async def test_run_calls_cartridge_process(self) -> None:
         event = _make_envelope()
         mock_process = AsyncMock(return_value=event)
-        manifest = CartridgeManifest(id="c1", description="test")
-        cartridge = LoadedCartridge(manifest=manifest, module_path=Path("."), process=mock_process)
+        cartridge = DomainHandlerSpec(handler_id="c1", process=mock_process)
         domain_cfg = DomainConfig(name="eng")
         pipeline = DomainPipeline(domain=domain_cfg, levels=[[cartridge]])
         await pipeline.run(event, _make_base_context())
@@ -81,7 +68,7 @@ class TestDomainPipeline:
     async def test_run_returns_cartridge_result(self) -> None:
         event = _make_envelope()
         output = _make_envelope()
-        cartridge = _make_loaded_cartridge("c1", result=output)
+        cartridge = _make_handler("c1", result=output)
         domain_cfg = DomainConfig(name="eng")
         pipeline = DomainPipeline(domain=domain_cfg, levels=[[cartridge]])
         result = await pipeline.run(event, _make_base_context())
@@ -97,8 +84,7 @@ class TestDomainPipeline:
             ),
         )
         mock_process = AsyncMock(return_value=event)
-        manifest = CartridgeManifest(id="c1", description="test")
-        cartridge = LoadedCartridge(manifest=manifest, module_path=Path("."), process=mock_process)
+        cartridge = DomainHandlerSpec(handler_id="c1", process=mock_process)
         pipeline = DomainPipeline(domain=domain_cfg, levels=[[cartridge]])
         result = await pipeline.run(event, _make_base_context())
         assert result is None
@@ -108,8 +94,7 @@ class TestDomainPipeline:
     async def test_run_handles_cartridge_exception(self) -> None:
         event = _make_envelope()
         mock_process = AsyncMock(side_effect=RuntimeError("boom"))
-        manifest = CartridgeManifest(id="c1", description="test")
-        cartridge = LoadedCartridge(manifest=manifest, module_path=Path("."), process=mock_process)
+        cartridge = DomainHandlerSpec(handler_id="c1", process=mock_process)
         domain_cfg = DomainConfig(name="eng")
         pipeline = DomainPipeline(domain=domain_cfg, levels=[[cartridge]])
         result = await pipeline.run(event, _make_base_context())
@@ -122,12 +107,6 @@ class TestDomainPipelineRunner:
         pipeline = MagicMock()
         runner.register_domain_pipeline("eng", pipeline)
         assert runner._pipelines["eng"] is pipeline
-
-    def test_register_personal_pipeline(self) -> None:
-        runner = DomainPipelineRunner()
-        personal = MagicMock()
-        runner.register_personal_pipeline("user@example.com", personal)
-        assert runner._personal_pipelines["user@example.com"] is personal
 
     @pytest.mark.asyncio
     async def test_run_all_empty_returns_empty_dict(self) -> None:

@@ -21,10 +21,6 @@ def _handle_config_command(args: list[str]) -> None:
     importlib.import_module("teleclaude.cli.config_cmd").handle_config_command(args)
 
 
-def _handle_cartridge_cli(args: list[str]) -> None:
-    importlib.import_module("teleclaude.cli.cartridge_cli").handle_cartridge_cli(args)
-
-
 def _handle_legacy_config_cli(args: list[str]) -> None:
     importlib.import_module("teleclaude.cli.config_cli").handle_config_cli(args)
 
@@ -52,8 +48,6 @@ def _handle_config(args: list[str]) -> None:
         _run_tui_config_mode(guided=True)
     elif subcommand in ("get", "patch"):
         _handle_config_command(args)
-    elif subcommand == "cartridges":
-        _handle_cartridge_cli(args[1:])
     elif subcommand in ("people", "env", "notify", "validate", "invite"):
         _handle_legacy_config_cli(args)
     else:

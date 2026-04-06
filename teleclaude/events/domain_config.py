@@ -60,18 +60,14 @@ class DomainConfig(BaseModel):
 
     name: str
     enabled: bool = True
-    cartridge_path: str | None = None  # defaults to ~/.teleclaude/company/domains/{name}/cartridges/
     guardian: DomainGuardianConfig = Field(default_factory=DomainGuardianConfig)
     autonomy: AutonomyMatrix = Field(default_factory=AutonomyMatrix)
 
 
 class DomainsConfig(BaseModel):
-    """Top-level configuration for all domain and personal event pipelines."""
+    """Top-level configuration for repo-owned domain event pipelines."""
 
     model_config = ConfigDict(extra="allow")
 
     enabled: bool = True
-    base_path: str = "~/.teleclaude/company"
-    personal_base_path: str = "~/.teleclaude/personal"
-    helpdesk_path: str = "~/.teleclaude/helpdesk"
     domains: dict[str, DomainConfig] = Field(default_factory=dict)

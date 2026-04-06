@@ -302,44 +302,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
             domain_runner=self._build_domain_runner(),  # type: ignore[arg-type]
         )
 
-    def _start_sandbox_watch_task(self, coro: object, task_name: str) -> None:
-        """Start and monitor a sandbox background task."""
-        task: asyncio.Task[None] = asyncio.create_task(coro, name=task_name)  # type: ignore[arg-type]
-        task.add_done_callback(self._log_background_task_exception(task_name))
-
-    def _register_sandbox_bridge(self, pipeline: Pipeline, event_producer: EventProducer) -> None:
-        """Register the optional sandbox bridge."""
-        try:
-            from teleclaude.events.sandbox import (  # pylint: disable=import-outside-toplevel  # startup boundary
-                SandboxBridgeCartridge,
-                SandboxContainerManager,
-            )
-        except ImportError:
-            logger.debug("Sandbox subsystem not available — skipping")
-            return
-
-        try:
-            sandbox_socket = getattr(config, "sandbox_socket_path", "/tmp/teleclaude-sandbox.sock")
-            sandbox_dir = getattr(config, "sandbox_cartridges_dir", "~/.teleclaude/sandbox-cartridges")
-            sandbox_manager = SandboxContainerManager(
-                socket_path=sandbox_socket,
-                cartridges_dir=sandbox_dir,
-                producer=event_producer,
-            )
-            pipeline.register(SandboxBridgeCartridge(manager=sandbox_manager))
-            self._start_sandbox_watch_task(
-                sandbox_manager.watch_cartridges_dir(self.shutdown_event),
-                "sandbox_cartridges_watcher",
-            )
-            self._start_sandbox_watch_task(
-                sandbox_manager.watch_health(self.shutdown_event),
-                "sandbox_health_watcher",
-            )
-            self._sandbox_manager = sandbox_manager
-            logger.info("Sandbox bridge cartridge registered (socket=%s, dir=%s)", sandbox_socket, sandbox_dir)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.error("Sandbox subsystem init failed — skipping: %s", exc, exc_info=True)
-
     def _start_event_processor(self, redis_client: object, pipeline: Pipeline) -> str:
         """Start the Redis-backed event processor."""
         computer_name = getattr(config, "computer", None)
@@ -479,7 +441,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
             context = self._build_pipeline_context(event_catalog, push_callbacks, event_producer)
             pipeline = self._build_pipeline(context, integration_trigger)
             self._event_pipeline = pipeline
-            self._register_sandbox_bridge(pipeline, event_producer)
             computer_label = self._start_event_processor(redis_client, pipeline)
             await self._emit_daemon_restarted_event(event_producer, computer_label)
             self._start_signal_pipeline(pipeline, context, event_producer)
