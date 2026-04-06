@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -72,51 +73,54 @@ def test_render_view_prints_header_and_content(tmp_path: Path, capsys: pytest.Ca
     assert "line 2" in output
 
 
-def test_inline_editor_session_save_if_changed_skips_identical_content(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import InlineEditorSession
+def test_persist_if_changed_skips_identical_content(tmp_path: Path) -> None:
+    from teleclaude.cli.editor import persist_if_changed
 
     target = tmp_path / "artifact"
     target.write_text("same\n", encoding="utf-8")
     saved: list[str] = []
-    session = InlineEditorSession(target, "artifact", save_callback=saved.append)
-
-    changed = session.save_if_changed()
+    changed = persist_if_changed(
+        target,
+        "same\n",
+        last_saved_content="same\n",
+        save_callback=saved.append,
+    )
 
     assert changed is False
     assert target.read_text(encoding="utf-8") == "same\n"
-    assert saved == []
+    assert not saved
 
 
-def test_inline_editor_session_save_if_changed_writes_and_calls_callback(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import InlineEditorSession
+def test_persist_if_changed_writes_and_calls_callback(tmp_path: Path) -> None:
+    from teleclaude.cli.editor import persist_if_changed
 
     target = tmp_path / "artifact"
     target.write_text("before\n", encoding="utf-8")
     saved: list[str] = []
-    session = InlineEditorSession(target, "artifact", save_callback=saved.append)
-    session.lines = ["after", ""]
-
-    changed = session.save_if_changed()
+    changed = persist_if_changed(
+        target,
+        "after\n",
+        last_saved_content="before\n",
+        save_callback=saved.append,
+    )
 
     assert changed is True
     assert target.read_text(encoding="utf-8") == "after\n"
     assert saved == ["after\n"]
 
 
-def test_inline_editor_session_escape_saves_and_exits(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import InlineEditorSession
+@pytest.mark.timeout(60)
+async def test_editor_app_enter_and_escape_persist_multiline_buffer(tmp_path: Path) -> None:
+    from teleclaude.cli.editor import EditorApp
 
     target = tmp_path / "artifact"
     target.write_text("before\n", encoding="utf-8")
-    saved: list[str] = []
-    session = InlineEditorSession(target, "artifact", save_callback=saved.append)
-    session.lines = ["after", ""]
+    app = EditorApp(target)
 
-    keep_running = session.handle_key("ESC")
+    async with app.run_test() as pilot:
+        await pilot.press("x", "enter", "y", "escape")
 
-    assert keep_running is False
-    assert target.read_text(encoding="utf-8") == "after\n"
-    assert saved == ["after\n"]
+    assert target.read_text(encoding="utf-8") == "x\nybefore\n"
 
 
 def test_main_view_mode_prints_artifact_content(
@@ -159,7 +163,13 @@ def test_main_edit_mode_persists_artifact_back_to_db(
     from teleclaude.cli import editor
 
     project_root, db = _seed_artifact_project(tmp_path, artifact_name="requirements", content="before\n")
-    def _fake_inline_editor(file_path: Path, display_name: str, *, save_callback: object = None) -> int:
+
+    def _fake_inline_editor(
+        file_path: Path,
+        display_name: str,
+        *,
+        save_callback: Callable[[str], None] | None = None,
+    ) -> int:
         assert display_name == "requirements"
         file_path.write_text("after\n", encoding="utf-8")
         assert save_callback is not None

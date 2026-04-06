@@ -1,5 +1,5 @@
 """Functional tmux-backed coverage for the inline document pane flow."""
-# pylint: disable=duplicate-code,too-many-locals
+# pylint: disable=duplicate-code,too-many-locals,protected-access
 
 from __future__ import annotations
 
@@ -198,14 +198,14 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
         )
         assert "# Hello" in edit_capture
         assert "Esc save+close" in edit_capture
-        _run_tmux(wrapper, "send-keys", "-t", preview_pane_id, "X", "Escape")
+        _run_tmux(wrapper, "send-keys", "-t", preview_pane_id, "X", "Enter", "Y", "Escape")
         persisted = _wait_for_artifact_content(
             db,
             slug,
             artifact_name,
-            lambda content: content.startswith("X# Hello"),
+            lambda content: content.startswith("X\nY# Hello"),
         )
-        assert persisted.startswith("X# Hello")
+        assert persisted.startswith("X\nY# Hello")
     finally:
         manager.cleanup()
         subprocess.run([str(wrapper), "kill-server"], check=False)

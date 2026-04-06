@@ -4,26 +4,27 @@ This command is launched in a tmux pane by the preparation view.
 
 - View mode prints the current file contents immediately and stays alive until
   tmux respawns or closes the pane.
-- Edit mode runs a lightweight inline curses editor. Escape saves if changed
-  and exits. For DB-backed artifacts, content is materialized into a temporary
-  file before editing and persisted back into todos.db on save/exit.
+- Edit mode uses a Textual text area with TeleClaude-owned save semantics.
+  Escape saves if changed and exits. For DB-backed artifacts, content is
+  materialized into a temporary file before editing and persisted back into
+  todos.db on save/exit.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
-import select
 import shutil
 import signal
-import sys
 import tempfile
-import termios
 import time
-import tty
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.events import AppBlur
+from textual.widgets import Label, TextArea
 
 from teleclaude.todo_artifacts import (
     artifact_display_filename,
@@ -70,184 +71,115 @@ class MaterializedArtifact:
         shutil.rmtree(self._temp_dir_path, ignore_errors=True)
 
 
-@dataclass
-class InlineEditorSession:
-    """Stateful inline editor model with save-on-escape semantics."""
+def persist_if_changed(
+    file_path: Path,
+    content: str,
+    *,
+    last_saved_content: str,
+    save_callback: Callable[[str], None] | None = None,
+) -> bool:
+    """Persist the buffer only when content differs from the last saved state."""
+    if content == last_saved_content:
+        return False
+    if save_callback is not None:
+        save_callback(content)
+    file_path.write_text(content, encoding="utf-8")
+    return True
 
-    file_path: Path
-    display_name: str
-    save_callback: Callable[[str], None] | None = None
 
-    def __post_init__(self) -> None:
-        initial_content = self.file_path.read_text(encoding="utf-8")
-        self.lines = initial_content.split("\n")
-        self.cursor_row = 0
-        self.cursor_col = 0
-        self.top_line = 0
-        self.col_offset = 0
-        self.status = "Esc save+close  Ctrl+S save"
-        self._last_saved_content = initial_content
+class EditorApp(App[None]):
+    """Inline Textual editor with save-on-escape semantics."""
 
-    lines: list[str] = None  # type: ignore[assignment]
-    cursor_row: int = 0
-    cursor_col: int = 0
-    top_line: int = 0
-    col_offset: int = 0
-    status: str = ""
-    _last_saved_content: str = ""
+    BINDINGS = [
+        Binding("escape", "save_and_quit", "Save & Quit", priority=True),
+        Binding("ctrl+s", "save", "Save"),
+    ]
 
-    def current_text(self) -> str:
-        """Return the current buffer text."""
-        return "\n".join(self.lines)
+    CSS = """
+    #editor-title {
+        height: 1;
+        background: $surface;
+        color: $text;
+        padding: 0 1;
+    }
+    #editor-area {
+        height: 1fr;
+    }
+    #editor-footer {
+        height: 1;
+        background: $surface;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    """
 
-    def save_if_changed(self) -> bool:
-        """Persist only when the content differs from the last saved state."""
-        content = self.current_text()
-        if content == self._last_saved_content:
-            self.status = "No changes"
+    def __init__(
+        self,
+        file_path: Path,
+        *,
+        display_name: str | None = None,
+        save_callback: Callable[[str], None] | None = None,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+        self.file_path = file_path
+        self.display_name = display_name or file_path.name
+        self._save_callback = save_callback
+        self._last_saved_content = self.file_path.read_text(encoding="utf-8")
+
+    def compose(self) -> ComposeResult:
+        yield Label(f" [EDIT] {self.display_name}", id="editor-title")
+        yield TextArea(
+            self._last_saved_content,
+            soft_wrap=True,
+            show_line_numbers=True,
+            tab_behavior="indent",
+            id="editor-area",
+        )
+        yield Label(" Esc save+close  Ctrl+S save", id="editor-footer")
+
+    def on_mount(self) -> None:
+        """Focus the editable buffer after the app mounts."""
+        self.query_one("#editor-area", TextArea).focus()
+
+    def on_app_blur(self, _event: AppBlur) -> None:
+        """Auto-save when the pane loses focus."""
+        self._save_current_buffer(notify_unchanged=False)
+
+    def action_save(self) -> None:
+        """Persist the current buffer without leaving the editor."""
+        self._save_current_buffer(notify_unchanged=True)
+
+    def action_save_and_quit(self) -> None:
+        """Persist the current buffer and exit the editor."""
+        if self._save_current_buffer(notify_unchanged=True):
+            self.exit()
+
+    def _set_status(self, message: str) -> None:
+        self.query_one("#editor-footer", Label).update(f" {message}")
+
+    def _save_current_buffer(self, *, notify_unchanged: bool) -> bool:
+        editor = self.query_one("#editor-area", TextArea)
+        content = editor.text
+        try:
+            changed = persist_if_changed(
+                self.file_path,
+                content,
+                last_saved_content=self._last_saved_content,
+                save_callback=self._save_callback,
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self._set_status(f"Save failed: {exc}")
             return False
-        self.file_path.write_text(content, encoding="utf-8")
-        if self.save_callback is not None:
-            self.save_callback(content)
-        self._last_saved_content = content
-        self.status = "Saved"
+        if changed:
+            self._last_saved_content = content
+            self._set_status("Saved")
+        elif notify_unchanged:
+            self._set_status("No changes")
         return True
-
-    def ensure_visible(self, height: int, width: int) -> None:
-        """Adjust viewport offsets so the cursor stays on-screen."""
-        if self.cursor_row < self.top_line:
-            self.top_line = self.cursor_row
-        elif self.cursor_row >= self.top_line + height:
-            self.top_line = self.cursor_row - height + 1
-
-        if self.cursor_col < self.col_offset:
-            self.col_offset = self.cursor_col
-        elif self.cursor_col >= self.col_offset + width:
-            self.col_offset = self.cursor_col - width + 1
-
-        self.top_line = max(0, self.top_line)
-        self.col_offset = max(0, self.col_offset)
-
-    def move_left(self) -> None:
-        if self.cursor_col > 0:
-            self.cursor_col -= 1
-        elif self.cursor_row > 0:
-            self.cursor_row -= 1
-            self.cursor_col = len(self.lines[self.cursor_row])
-
-    def move_right(self) -> None:
-        line = self.lines[self.cursor_row]
-        if self.cursor_col < len(line):
-            self.cursor_col += 1
-        elif self.cursor_row < len(self.lines) - 1:
-            self.cursor_row += 1
-            self.cursor_col = 0
-
-    def move_up(self) -> None:
-        if self.cursor_row > 0:
-            self.cursor_row -= 1
-            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_row]))
-
-    def move_down(self) -> None:
-        if self.cursor_row < len(self.lines) - 1:
-            self.cursor_row += 1
-            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_row]))
-
-    def insert_text(self, text: str) -> None:
-        line = self.lines[self.cursor_row]
-        self.lines[self.cursor_row] = line[: self.cursor_col] + text + line[self.cursor_col :]
-        self.cursor_col += len(text)
-
-    def insert_newline(self) -> None:
-        line = self.lines[self.cursor_row]
-        left = line[: self.cursor_col]
-        right = line[self.cursor_col :]
-        self.lines[self.cursor_row] = left
-        self.lines.insert(self.cursor_row + 1, right)
-        self.cursor_row += 1
-        self.cursor_col = 0
-
-    def backspace(self) -> None:
-        if self.cursor_col > 0:
-            line = self.lines[self.cursor_row]
-            self.lines[self.cursor_row] = line[: self.cursor_col - 1] + line[self.cursor_col :]
-            self.cursor_col -= 1
-            return
-        if self.cursor_row == 0:
-            return
-        current = self.lines.pop(self.cursor_row)
-        self.cursor_row -= 1
-        self.cursor_col = len(self.lines[self.cursor_row])
-        self.lines[self.cursor_row] += current
-
-    def delete(self) -> None:
-        line = self.lines[self.cursor_row]
-        if self.cursor_col < len(line):
-            self.lines[self.cursor_row] = line[: self.cursor_col] + line[self.cursor_col + 1 :]
-            return
-        if self.cursor_row >= len(self.lines) - 1:
-            return
-        self.lines[self.cursor_row] += self.lines.pop(self.cursor_row + 1)
-
-    def handle_key(self, key: str) -> bool:
-        """Apply one keystroke. Returns False when editing should end."""
-        if key == "LEFT":
-            self.move_left()
-        elif key == "RIGHT":
-            self.move_right()
-        elif key == "UP":
-            self.move_up()
-        elif key == "DOWN":
-            self.move_down()
-        elif key == "HOME":
-            self.cursor_col = 0
-        elif key == "END":
-            self.cursor_col = len(self.lines[self.cursor_row])
-        elif key == "BACKSPACE":
-            self.backspace()
-        elif key == "DELETE":
-            self.delete()
-        elif key == "ENTER":
-            self.insert_newline()
-        elif key == "TAB":
-            self.insert_text("    ")
-        elif key == "CTRL_S":
-            try:
-                self.save_if_changed()
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                self.status = f"Save failed: {exc}"
-        elif key == "ESC":
-            try:
-                self.save_if_changed()
-                return False
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                self.status = f"Save failed: {exc}"
-        elif key:
-            self.insert_text(key)
-        return True
-
-    def frame(self, height: int, width: int) -> tuple[str, int, int]:
-        """Return the current screen frame and cursor position."""
-        text_height = max(1, height - 2)
-        text_width = max(1, width)
-        self.ensure_visible(text_height, text_width)
-
-        header = f"[EDIT] {self.display_name}"
-        lines = [header[:width].ljust(width)]
-        for row in range(text_height):
-            line_index = self.top_line + row
-            if line_index >= len(self.lines):
-                lines.append("")
-                continue
-            visible = self.lines[line_index][self.col_offset : self.col_offset + text_width]
-            lines.append(visible)
-        lines.append(self.status[:width].ljust(width))
-
-        cursor_y = 1 + self.cursor_row - self.top_line
-        cursor_x = max(0, self.cursor_col - self.col_offset)
-        cursor_y = min(max(1, cursor_y), height - 2)
-        cursor_x = min(max(0, cursor_x), width - 1)
-        return ("\x1b[2J\x1b[H" + "\n".join(lines), cursor_y, cursor_x)
 
 
 def _render_view(file_path: Path, display_name: str) -> None:
@@ -276,78 +208,16 @@ def _wait_until_terminated() -> None:
             time.sleep(3600)
 
 
-def _terminal_size(fd: int) -> tuple[int, int]:
-    """Return the current terminal size with a sane fallback."""
-    try:
-        size = os.get_terminal_size(fd)
-        return size.lines, size.columns
-    except OSError:
-        return 24, 80
-
-
-def _read_key(fd: int) -> str | None:
-    """Read one keypress from the raw terminal."""
-    first = os.read(fd, 1)
-    if not first:
-        return None
-    if first == b"\x13":
-        return "CTRL_S"
-    if first in (b"\r", b"\n"):
-        return "ENTER"
-    if first == b"\t":
-        return "TAB"
-    if first in (b"\x7f", b"\x08"):
-        return "BACKSPACE"
-    if first != b"\x1b":
-        return first.decode("utf-8", errors="ignore") or None
-
-    sequence = b""
-    while select.select([fd], [], [], 0.01)[0]:
-        sequence += os.read(fd, 1)
-        if sequence.endswith(b"~") or sequence in {b"[A", b"[B", b"[C", b"[D", b"[H", b"[F", b"OH", b"OF"}:
-            break
-    mapping = {
-        b"[A": "UP",
-        b"[B": "DOWN",
-        b"[C": "RIGHT",
-        b"[D": "LEFT",
-        b"[H": "HOME",
-        b"[F": "END",
-        b"OH": "HOME",
-        b"OF": "END",
-        b"[3~": "DELETE",
-    }
-    if not sequence:
-        return "ESC"
-    return mapping.get(sequence, "ESC")
-
-
 def _run_inline_editor(
     file_path: Path,
     display_name: str,
     *,
     save_callback: Callable[[str], None] | None = None,
 ) -> int:
-    """Run the lightweight inline editor until Escape saves and exits."""
-    session = InlineEditorSession(file_path=file_path, display_name=display_name, save_callback=save_callback)
-    fd = sys.stdin.fileno()
-    original_attrs = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        os.write(fd, b"\x1b[?25h")
-        while True:
-            height, width = _terminal_size(fd)
-            frame, cursor_y, cursor_x = session.frame(height, width)
-            os.write(fd, frame.encode("utf-8", errors="ignore"))
-            os.write(fd, f"\x1b[{cursor_y + 1};{cursor_x + 1}H".encode("ascii"))
-            key = _read_key(fd)
-            if key is None:
-                continue
-            if not session.handle_key(key):
-                return 0
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, original_attrs)
-        os.write(fd, b"\x1b[0m\x1b[?25h")
+    """Run the inline Textual editor until Escape saves and exits."""
+    app = EditorApp(file_path=file_path, display_name=display_name, save_callback=save_callback)
+    app.run()
+    return 0
 
 
 def main() -> None:
