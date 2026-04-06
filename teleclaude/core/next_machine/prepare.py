@@ -143,6 +143,38 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
         try:
             phase = PreparePhase(raw_current)
         except ValueError:
+            # Unknown phase — verify prepare is actually complete before
+            # declaring PREPARED.  If plan_review lacks an approve verdict,
+            # the lifecycle was skipped (e.g. a phantom value landed in
+            # current).  Route back to the first incomplete gate.
+            plan_review = state.get("plan_review", {})
+            plan_approved = isinstance(plan_review, dict) and plan_review.get("verdict") == "approve"
+            if plan_approved:
+                return f"PREPARED: {resolved_slug} is past the prepare lifecycle (current={raw_current})."
+
+            has_plan = await todos_db.artifact_exists(resolved_slug, "implementation-plan")
+            if has_plan:
+                state["current"] = PreparePhase.PLAN_REVIEW.value
+                await todos_db.write_state(resolved_slug, state)
+                logger.warning(
+                    "PREPARE_RECOVERY: slug=%s invalid current=%s, unapproved plan_review, rerouting",
+                    resolved_slug,
+                    raw_current,
+                )
+                continue  # re-enter loop with corrected phase
+
+            req_review = state.get("requirements_review", {})
+            req_approved = isinstance(req_review, dict) and req_review.get("verdict") == "approve"
+            if req_approved:
+                state["current"] = PreparePhase.PLAN_DRAFTING.value
+                await todos_db.write_state(resolved_slug, state)
+                logger.warning(
+                    "PREPARE_RECOVERY: slug=%s had invalid current=%s with no plan, rerouting to plan_drafting",
+                    resolved_slug,
+                    raw_current,
+                )
+                continue
+
             return f"PREPARED: {resolved_slug} is past the prepare lifecycle (current={raw_current})."
 
         logger.info(
