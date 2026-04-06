@@ -173,10 +173,10 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
         preview_capture = _wait_for_capture(
             wrapper,
             preview_pane_id,
-            lambda output: "[VIEW] requirements" in output and "# Hello" in output,
+            lambda output: "Hello" in output and "1  # Hello" not in output,
         )
-        assert "[VIEW] requirements" in preview_capture
-        assert "# Hello" in preview_capture
+        assert "Hello" in preview_capture
+        assert "1  # Hello" not in preview_capture
 
         manager.apply_layout(
             active_session_id=None,
@@ -194,9 +194,9 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
         edit_capture = _wait_for_capture(
             wrapper,
             preview_pane_id,
-            lambda output: "# Hello" in output and "Esc save+close" in output,
+            lambda output: "1  # Hello" in output and "Esc save+close" in output,
         )
-        assert "# Hello" in edit_capture
+        assert "1  # Hello" in edit_capture
         assert "Esc save+close" in edit_capture
         _run_tmux(wrapper, "send-keys", "-t", preview_pane_id, "X", "Enter", "Y", "Escape")
         persisted = _wait_for_artifact_content(

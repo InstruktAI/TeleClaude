@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from textual.widgets import Markdown, TextArea
 
 from teleclaude.core.todos_db import TodosDb
 
@@ -59,18 +60,34 @@ def test_materialized_artifact_from_db_preserves_logical_artifact_name(tmp_path:
         materialized.cleanup()
 
 
-def test_render_view_prints_header_and_content(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from teleclaude.cli.editor import _render_view
+@pytest.mark.unit
+async def test_editor_app_view_mode_renders_markdown_and_uses_requested_theme(tmp_path: Path) -> None:
+    from teleclaude.cli.editor import EditorApp
 
     target = tmp_path / "input"
-    target.write_text("line 1\nline 2\n", encoding="utf-8")
+    target.write_text("# Heading\n", encoding="utf-8")
+    app = EditorApp(target, view_mode=True, theme_name="teleclaude-light-agent")
 
-    _render_view(target, "input")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.theme == "teleclaude-light-agent"
+        assert len(app.query(Markdown)) == 1
+        assert len(app.query(TextArea)) == 0
 
-    output = capsys.readouterr().out
-    assert "[VIEW] input" in output
-    assert "line 1" in output
-    assert "line 2" in output
+
+@pytest.mark.unit
+async def test_editor_app_edit_mode_renders_markdown_text_area(tmp_path: Path) -> None:
+    from teleclaude.cli.editor import EditorApp
+
+    target = tmp_path / "artifact"
+    target.write_text("# Heading\n", encoding="utf-8")
+    app = EditorApp(target, theme_name="teleclaude-dark-agent")
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one("#editor-area", TextArea)
+        assert editor.language == "markdown"
+        assert app.theme == "teleclaude-dark-agent"
 
 
 def test_persist_if_changed_skips_identical_content(tmp_path: Path) -> None:
@@ -123,20 +140,34 @@ async def test_editor_app_enter_and_escape_persist_multiline_buffer(tmp_path: Pa
     assert target.read_text(encoding="utf-8") == "x\nybefore\n"
 
 
-def test_main_view_mode_prints_artifact_content(
+def test_main_view_mode_launches_themed_markdown_preview(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from teleclaude.cli import editor
 
     project_root, _db = _seed_artifact_project(tmp_path, artifact_name="input", content="hello\n")
-    monkeypatch.setattr(editor, "_wait_until_terminated", lambda: None)
+    calls: list[tuple[Path, str, bool, str, object]] = []
+
+    def _fake_inline_editor(
+        file_path: Path,
+        display_name: str,
+        *,
+        view_mode: bool = False,
+        theme_name: str = "teleclaude-dark",
+        save_callback: object = None,
+    ) -> int:
+        calls.append((file_path, display_name, view_mode, theme_name, save_callback))
+        return 0
+
+    monkeypatch.setattr(editor, "_run_inline_editor", _fake_inline_editor)
     monkeypatch.setattr(
         sys,
         "argv",
         [
             "teleclaude.cli.editor",
+            "--theme",
+            "teleclaude-light-agent",
             "--project-root",
             str(project_root),
             "--artifact-slug",
@@ -151,9 +182,12 @@ def test_main_view_mode_prints_artifact_content(
         editor.main()
 
     assert exc_info.value.code == 0
-    output = capsys.readouterr().out
-    assert "[VIEW] input" in output
-    assert "hello" in output
+    assert len(calls) == 1
+    _file_path, display_name, view_mode, theme_name, save_callback = calls[0]
+    assert display_name == "input"
+    assert view_mode is True
+    assert theme_name == "teleclaude-light-agent"
+    assert save_callback is None
 
 
 def test_main_edit_mode_persists_artifact_back_to_db(
@@ -168,9 +202,13 @@ def test_main_edit_mode_persists_artifact_back_to_db(
         file_path: Path,
         display_name: str,
         *,
+        view_mode: bool = False,
+        theme_name: str = "teleclaude-dark",
         save_callback: Callable[[str], None] | None = None,
     ) -> int:
         assert display_name == "requirements"
+        assert view_mode is False
+        assert theme_name == "teleclaude-dark"
         file_path.write_text("after\n", encoding="utf-8")
         assert save_callback is not None
         save_callback("after\n")

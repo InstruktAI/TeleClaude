@@ -1,31 +1,35 @@
-"""Standalone temporary-file viewer/editor for todo artifacts.
+"""Standalone themed markdown viewer/editor for todo artifacts.
 
 This command is launched in a tmux pane by the preparation view.
 
-- View mode prints the current file contents immediately and stays alive until
-  tmux respawns or closes the pane.
-- Edit mode uses a Textual text area with TeleClaude-owned save semantics.
-  Escape saves if changed and exits. For DB-backed artifacts, content is
-  materialized into a temporary file before editing and persisted back into
-  todos.db on save/exit.
+- View mode runs a themed Textual markdown preview.
+- Edit mode runs a themed Textual markdown editor with TeleClaude-owned save
+  semantics. Escape saves if changed and exits.
+- For DB-backed artifacts, content is materialized into a temporary file before
+  editing and persisted back into todos.db on save/exit.
 """
 
 from __future__ import annotations
 
 import argparse
 import shutil
-import signal
 import tempfile
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.containers import VerticalScroll
 from textual.events import AppBlur
-from textual.widgets import Label, TextArea
+from textual.widgets import Label, Markdown, TextArea
 
+from teleclaude.cli.tui.theme import (
+    _TELECLAUDE_DARK_AGENT_THEME,
+    _TELECLAUDE_DARK_THEME,
+    _TELECLAUDE_LIGHT_AGENT_THEME,
+    _TELECLAUDE_LIGHT_THEME,
+)
 from teleclaude.todo_artifacts import (
     artifact_display_filename,
     read_artifact_content,
@@ -88,7 +92,7 @@ def persist_if_changed(
 
 
 class EditorApp(App[None]):
-    """Inline Textual editor with save-on-escape semantics."""
+    """Themed markdown editor with TeleClaude-owned save semantics."""
 
     BINDINGS = [
         Binding("escape", "save_and_quit", "Save & Quit", priority=True),
@@ -105,6 +109,10 @@ class EditorApp(App[None]):
     #editor-area {
         height: 1fr;
     }
+    #view-area {
+        height: 1fr;
+        padding: 0 1;
+    }
     #editor-footer {
         height: 1;
         background: $surface;
@@ -113,27 +121,42 @@ class EditorApp(App[None]):
     }
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         file_path: Path,
         *,
+        view_mode: bool = False,
+        theme_name: str = "teleclaude-dark",
         display_name: str | None = None,
         save_callback: Callable[[str], None] | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)  # type: ignore[arg-type]
+        self.register_theme(_TELECLAUDE_DARK_THEME)
+        self.register_theme(_TELECLAUDE_LIGHT_THEME)
+        self.register_theme(_TELECLAUDE_DARK_AGENT_THEME)
+        self.register_theme(_TELECLAUDE_LIGHT_AGENT_THEME)
+        self.theme = theme_name
+
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         self.file_path = file_path
+        self.view_mode = view_mode
         self.display_name = display_name or file_path.name
         self._save_callback = save_callback
         self._last_saved_content = self.file_path.read_text(encoding="utf-8")
 
     def compose(self) -> ComposeResult:
-        yield Label(f" [EDIT] {self.display_name}", id="editor-title")
+        mode_label = "VIEW" if self.view_mode else "EDIT"
+        yield Label(f" [{mode_label}] {self.display_name}", id="editor-title")
+        if self.view_mode:
+            with VerticalScroll(id="view-area"):
+                yield Markdown(self._last_saved_content)
+            return
         yield TextArea(
             self._last_saved_content,
+            language="markdown",
             soft_wrap=True,
             show_line_numbers=True,
             tab_behavior="indent",
@@ -143,18 +166,27 @@ class EditorApp(App[None]):
 
     def on_mount(self) -> None:
         """Focus the editable buffer after the app mounts."""
+        if self.view_mode:
+            return
         self.query_one("#editor-area", TextArea).focus()
 
     def on_app_blur(self, _event: AppBlur) -> None:
         """Auto-save when the pane loses focus."""
+        if self.view_mode:
+            return
         self._save_current_buffer(notify_unchanged=False)
 
     def action_save(self) -> None:
         """Persist the current buffer without leaving the editor."""
+        if self.view_mode:
+            return
         self._save_current_buffer(notify_unchanged=True)
 
     def action_save_and_quit(self) -> None:
         """Persist the current buffer and exit the editor."""
+        if self.view_mode:
+            self.exit()
+            return
         if self._save_current_buffer(notify_unchanged=True):
             self.exit()
 
@@ -182,57 +214,38 @@ class EditorApp(App[None]):
         return True
 
 
-def _render_view(file_path: Path, display_name: str) -> None:
-    """Print a static preview that is visible immediately in the tmux pane."""
-    content = file_path.read_text(encoding="utf-8")
-    rule = "=" * min(max(len(display_name) + 8, 24), 80)
-    print(f"[VIEW] {display_name}")
-    print(rule)
-    if content:
-        print(content, end="" if content.endswith("\n") else "\n")
-
-
-def _wait_until_terminated() -> None:
-    """Keep the preview pane alive until tmux closes or respawns it."""
-
-    def _exit(_signum: int, _frame: object) -> None:
-        raise SystemExit(0)
-
-    signal.signal(signal.SIGTERM, _exit)
-    signal.signal(signal.SIGINT, _exit)
-    try:
-        while True:
-            signal.pause()
-    except AttributeError:
-        while True:
-            time.sleep(3600)
-
-
 def _run_inline_editor(
     file_path: Path,
     display_name: str,
     *,
+    view_mode: bool = False,
+    theme_name: str = "teleclaude-dark",
     save_callback: Callable[[str], None] | None = None,
 ) -> int:
-    """Run the inline Textual editor until Escape saves and exits."""
-    app = EditorApp(file_path=file_path, display_name=display_name, save_callback=save_callback)
+    """Run the themed Textual markdown app until the user exits."""
+    app = EditorApp(
+        file_path=file_path,
+        view_mode=view_mode,
+        theme_name=theme_name,
+        display_name=display_name,
+        save_callback=save_callback,
+    )
     app.run()
     return 0
 
 
 def main() -> None:
     """CLI entry point for the standalone viewer/editor."""
-    parser = argparse.ArgumentParser(description="Standalone temporary-file viewer/editor")
+    parser = argparse.ArgumentParser(description="Standalone themed markdown viewer/editor")
     parser.add_argument("filepath", nargs="?", type=Path, help="Path to a real file")
     parser.add_argument("-v", "--view", action="store_true", help="View mode (read-only)")
-    parser.add_argument("--theme", default="teleclaude-dark", help="Reserved for compatibility")
+    parser.add_argument("--theme", default="teleclaude-dark", help="Textual theme name")
     parser.add_argument("--project-root", type=Path, help="Project root that owns the artifact database")
     parser.add_argument("--artifact-slug", help="Todo slug for DB-backed artifact editing")
     parser.add_argument("--artifact-name", help="Logical artifact name in todos.db")
 
     args = parser.parse_args()
     materialized: MaterializedArtifact | None = None
-    exit_code = 0
 
     artifact_mode = args.project_root is not None and args.artifact_slug is not None and args.artifact_name is not None
     if args.filepath and artifact_mode:
@@ -254,15 +267,13 @@ def main() -> None:
         display_name = file_path.name
 
     try:
-        if args.view:
-            _render_view(file_path, display_name)
-            _wait_until_terminated()
-        else:
-            exit_code = _run_inline_editor(
-                file_path,
-                display_name,
-                save_callback=None if materialized is None else materialized.persist,
-            )
+        exit_code = _run_inline_editor(
+            file_path,
+            display_name,
+            view_mode=args.view,
+            theme_name=args.theme,
+            save_callback=None if args.view or materialized is None else materialized.persist,
+        )
     finally:
         if materialized is not None:
             materialized.cleanup()
