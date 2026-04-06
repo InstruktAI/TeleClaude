@@ -26,7 +26,7 @@ Boundaries
 
 - No cross-computer orchestration responsibilities.
 - No domain policy decisions; UI is translation and presentation only.
-- No core-level routing assumptions; adapters own all local routing decisions for reflections and admin channels.
+- No core-level routing assumptions for origin continuity; the extra admin reflection is routed upstream and only Discord renders it.
 
 Invariants
 
@@ -58,7 +58,7 @@ Invariants
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
 - **Single Output Message**: One persistent output message per session, edited repeatedly; message_id tracked in adapter_metadata namespace.
 - **Scope Contract**: Core defines recipients via delivery scope. Adapters must not broaden `ORIGIN_ONLY` recipient sets.
-- **Reflection Routing Ownership**: Each adapter receives all reflections (including those originating from its own users) and decides locally how to route them — admin channel, suppress, or platform-specific rendering. Core never makes this decision.
+- **Reflection Contract**: Discord is the single admin adapter. Core sends the extra admin reflection only to Discord when the origin is not Discord. Telegram suppresses reflections entirely.
 - **Origin Endpoint UX**: `ORIGIN_ONLY` messages appear only at the origin endpoint.
 - **Summary Rule**: `last_output_summary` is origin-only and non-threaded only (in-edit UX path).
 
@@ -223,25 +223,29 @@ sequenceDiagram
     UiAdapter->>User: "📎 Sent file: {filename}"
 ```
 
-### 10. Reflection Routing (Adapter-Local)
+### 10. Reflection Routing
 
-Each adapter receives all user input reflections from core — including reflections that originated from its own users. The adapter decides locally how to handle them.
+Core creates only the extra admin reflection, and only for Discord. The normal origin-path delivery is separate.
 
 ```mermaid
 flowchart TD
-    Reflection["Reflection received from core<br/>(origin, actor_id, text)"]
-    IsSource{Originated from<br/>this adapter?}
-    AdminRoute["Route to admin channel<br/>(observability)"]
-    Suppress["Suppress<br/>(user sees native input)"]
-    Render["Render with attribution<br/>(webhook, name, avatar)"]
+    Origin["Origin input arrives"]
+    IsDiscord{Origin is Discord?}
+    NoExtra["No extra reflection copy"]
+    DiscordOnly["Send extra reflection to Discord only"]
+    Render["Discord renders with attribution<br/>(webhook, name, avatar)"]
+    Telegram["Telegram suppresses reflections"]
 
-    Reflection --> IsSource
-    IsSource -->|Yes| Suppress
-    IsSource -->|No| AdminRoute
-    AdminRoute --> Render
+    Origin --> IsDiscord
+    IsDiscord -->|Yes| NoExtra
+    IsDiscord -->|No| DiscordOnly
+    DiscordOnly --> Render
+    DiscordOnly --> Telegram
 ```
 
-The decision tree is adapter-local. Core broadcasts to all adapters unconditionally and attaches source metadata. The adapter inspects the origin to decide its own routing.
+- Discord remains the only admin adapter.
+- Telegram is an origin/input adapter only.
+- Reflection suppression now happens before broad UI fanout, which avoids unnecessary lane work.
 
 ## Failure modes
 
