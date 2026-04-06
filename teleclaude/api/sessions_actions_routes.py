@@ -576,13 +576,8 @@ async def run_session(
 
     Creates a new session with an auto_command derived from the given
     slash command, arguments, project, agent, and thinking mode.
-    Requires dual-factor caller identity (X-Caller-Session-Id + X-Tmux-Session).
+    Clearance is enforced by the clearance_sessions_run dependency.
     """
-    if not identity.session_id:
-        raise HTTPException(
-            status_code=400,
-            detail="sessions/run requires caller session identity",
-        )
     if not request.command.startswith("/"):
         raise HTTPException(status_code=400, detail="command must start with '/'")
     if not request.project:

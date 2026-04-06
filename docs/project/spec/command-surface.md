@@ -37,4 +37,5 @@ description: 'Command surface contract for TeleClaude client interfaces.'
 
 - Some commands are adapter-specific (e.g., Telegram-only UX actions).
 - Availability depends on adapter registration and permissions.
-- `telec sessions run` requires caller session identity; it fails closed when invoked without `x-caller-session-id`.
+- `telec sessions run` accepts either a verified caller session identity or a verified terminal identity.
+- When `x-caller-session-id` is absent, the request still runs if `verify_caller` resolves terminal identity from `x-telec-email` (or the single-user fallback); only child-session lineage is omitted.

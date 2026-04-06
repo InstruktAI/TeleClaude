@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
-from teleclaude.core.agent_coordinator._helpers import has_active_output_message
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -496,7 +495,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
 
                 await db.update_last_activity(event.session_id)
-                transcript_update = _build_transcript_output_update(session)
+                transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
                 if transcript_update is not None:
                     message, last_ts, is_multi = transcript_update
                     await adapter_client.send_output_update(
@@ -509,7 +508,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                     )
                     _record_output_tick(event.session_id, len(message))
                     fresh = await db.get_session(event.session_id)
-                    if fresh is not None and not await has_active_output_message(fresh):
+                    if fresh is not None:
                         await db.update_session(event.session_id, last_tool_done_at=last_ts.isoformat())
 
             elif isinstance(event, ProcessExited):

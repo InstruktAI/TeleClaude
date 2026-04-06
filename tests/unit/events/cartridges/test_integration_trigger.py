@@ -93,7 +93,7 @@ async def test_deployment_started_triggers_spawn():
     result = await cartridge.process(event, ctx)
 
     assert result is event
-    spawn.assert_called_once_with("my-slug", "my-slug", "deadbeef1234")
+    spawn.assert_called_once_with("my-slug", "my-slug", "deadbeef1234", "o-001")
 
 
 @pytest.mark.asyncio

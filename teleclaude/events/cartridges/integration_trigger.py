@@ -33,7 +33,7 @@ INTEGRATION_EVENT_TYPES = frozenset(
     }
 )
 
-IntegratorSpawnCallback = Callable[[str, str, str], Coroutine[Any, Any, Any] | None]
+IntegratorSpawnCallback = Callable[[str, str, str, str], Coroutine[Any, Any, Any] | None]
 
 
 class IntegrationTriggerCartridge:
@@ -75,7 +75,8 @@ class IntegrationTriggerCartridge:
         )
 
         if event.event == _SPAWN_EVENT and self._spawn_callback is not None:
-            await self._spawn_integrator(slug, branch, sha)
+            caller_session_id = str(payload.get("orchestrator_session_id", ""))
+            await self._spawn_integrator(slug, branch, sha, caller_session_id)
 
         return event
 
@@ -83,16 +84,17 @@ class IntegrationTriggerCartridge:
         """Return the stable cartridge identifier."""
         return self.name
 
-    async def _spawn_integrator(self, slug: str, branch: str, sha: str) -> None:
+    async def _spawn_integrator(self, slug: str, branch: str, sha: str, caller_session_id: str) -> None:
         """Spawn or wake the singleton integrator session."""
         logger.info(
-            "Integration trigger: spawning integrator for slug=%s branch=%s sha=%s",
+            "Integration trigger: spawning integrator for slug=%s branch=%s sha=%s caller=%s",
             slug,
             branch,
             sha[:8] if sha else "",
+            caller_session_id or "unknown",
         )
         try:
-            result = self._spawn_callback(slug, branch, sha)
+            result = self._spawn_callback(slug, branch, sha, caller_session_id)
             if asyncio.iscoroutine(result):
                 await result
             logger.info("Integration trigger: spawn callback completed for %s", slug)
