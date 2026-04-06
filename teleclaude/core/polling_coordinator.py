@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
-from teleclaude.core.agent_coordinator._helpers import has_active_output_message
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -128,6 +127,18 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
     if not message or not isinstance(last_ts, datetime):
         return None
     return message, last_ts, is_multi
+
+
+def _has_active_output_message(session: "Session") -> bool:
+    """Return True when any adapter lane still has a live threaded output message.
+
+    This stays local to the polling coordinator because it is part of central
+    output-delivery state, not generic agent-coordinator behavior.
+    """
+    for section in session.origin_metadata.values():
+        if isinstance(section, dict) and section.get("output_message_id"):
+            return True
+    return False
 
 
 def _log_output_metrics_summary(session_id: str, state: OutputMetricsState, *, reason: str) -> None:
@@ -509,7 +520,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                     )
                     _record_output_tick(event.session_id, len(message))
                     fresh = await db.get_session(event.session_id)
-                    if fresh is not None and not await has_active_output_message(fresh):
+                    if fresh is not None and not _has_active_output_message(fresh):
                         await db.update_session(event.session_id, last_tool_done_at=last_ts.isoformat())
 
             elif isinstance(event, ProcessExited):

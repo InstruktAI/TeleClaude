@@ -9,7 +9,11 @@ from unittest.mock import patch
 import pytest
 
 from teleclaude.core.models import Session
-from teleclaude.core.polling_coordinator import _build_transcript_output_update, _percentile
+from teleclaude.core.polling_coordinator import (
+    _build_transcript_output_update,
+    _has_active_output_message,
+    _percentile,
+)
 
 
 class TestPercentile:
@@ -70,3 +74,35 @@ class TestBuildTranscriptOutputUpdate:
             update = _build_transcript_output_update(session)
 
         assert update == ("rendered", last_ts, True)
+
+
+class TestHasActiveOutputMessage:
+    @pytest.mark.unit
+    def test_returns_true_when_any_origin_section_has_output_message_id(self):
+        session = Session(
+            session_id="sess-1",
+            computer_name="local",
+            tmux_session_name="tmux-sess-1",
+            title="Demo",
+            origin_metadata={
+                "discord": {"output_message_id": "msg-123"},
+                "telegram": {},
+            },
+        )
+
+        assert _has_active_output_message(session) is True
+
+    @pytest.mark.unit
+    def test_returns_false_when_no_origin_section_has_output_message_id(self):
+        session = Session(
+            session_id="sess-1",
+            computer_name="local",
+            tmux_session_name="tmux-sess-1",
+            title="Demo",
+            origin_metadata={
+                "discord": {"output_message_id": None},
+                "telegram": {},
+            },
+        )
+
+        assert _has_active_output_message(session) is False
