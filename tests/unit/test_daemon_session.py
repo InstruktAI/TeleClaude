@@ -1,5 +1,10 @@
 """Characterization tests for teleclaude.daemon_session."""
 
+# pylint: disable=consider-using-from-import
+# pylint: disable=too-many-instance-attributes,too-few-public-methods
+# pylint: disable=missing-function-docstring,protected-access
+# pylint: disable=import-outside-toplevel,unused-argument
+
 from __future__ import annotations
 
 import asyncio
@@ -288,8 +293,11 @@ async def test_bootstrap_writes_human_role_without_email(monkeypatch: pytest.Mon
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("agent_name", "thinking_mode"), [("claude", "slow"), ("gemini", "fast"), ("codex", "fast")])
 async def test_handle_agent_then_message_passes_session_and_constants_to_detector(
     monkeypatch: pytest.MonkeyPatch,
+    agent_name: str,
+    thinking_mode: str,
 ) -> None:
     daemon_inst = _TestDaemon()
     session = MagicMock(
@@ -297,7 +305,7 @@ async def test_handle_agent_then_message_passes_session_and_constants_to_detecto
         tmux_session_name="tc_sess-1",
         project_path="/tmp",
         subdir="",
-        active_agent="claude",
+        active_agent=agent_name,
     )
     db_stub = SimpleNamespace(
         update_session=AsyncMock(),
@@ -316,11 +324,11 @@ async def test_handle_agent_then_message_passes_session_and_constants_to_detecto
     monkeypatch.setattr(daemon_inst, "_poll_and_send_output", AsyncMock())
     monkeypatch.setattr(daemon_inst, "_confirm_command_acceptance", AsyncMock(return_value=True))
 
-    result = await daemon_inst._handle_agent_then_message("sess-1", ["claude", "slow", "hello"])
+    result = await daemon_inst._handle_agent_then_message("sess-1", [agent_name, thinking_mode, "hello"])
 
     assert result["status"] == "success"
     ready_mock.assert_awaited_once_with(
-        "claude",
+        agent_name,
         session,
         daemon_session.AGENT_PROMPT_READY_TIMEOUT_S,
         daemon_session.AGENT_START_STABILIZE_QUIET_S,

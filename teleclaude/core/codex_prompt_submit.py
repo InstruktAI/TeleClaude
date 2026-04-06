@@ -230,18 +230,34 @@ def _has_agent_marker(output: str) -> bool:
 
 
 def _has_live_prompt_marker(output: str) -> bool:
+    return _find_live_prompt_line_index(output) is not None
+
+
+def _find_live_prompt_line_index(output: str) -> int | None:
     lines = output.rstrip().split("\n")
-    for line in reversed(lines[-10:]):
+    start_index = max(0, len(lines) - 10)
+    for idx in range(len(lines) - 1, start_index - 1, -1):
+        line = lines[idx]
         clean_line = _strip_ansi(line).strip()
         if not clean_line:
             continue
         if clean_line.startswith(CODEX_PROMPT_MARKER):
-            return True
+            return idx
         if clean_line.startswith("?") and "shortcut" in clean_line.lower():
             continue
         if clean_line[0] in CODEX_AGENT_MARKERS:
-            return False
-    return False
+            return None
+    return None
+
+
+def has_live_prompt_marker(output: str) -> bool:
+    """Public readiness helper for detecting a live Codex prompt."""
+    return _has_live_prompt_marker(output)
+
+
+def find_live_prompt_line_index(output: str) -> int | None:
+    """Return the visible line index of the last live Codex prompt, if present."""
+    return _find_live_prompt_line_index(output)
 
 
 def _is_live_agent_marker_line(line: str) -> bool:

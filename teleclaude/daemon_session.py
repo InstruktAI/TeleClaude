@@ -107,7 +107,7 @@ AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stab
 AGENT_START_POST_STABILIZE_DELAY_S = 0.5  # Safety buffer after stabilization
 GEMINI_START_EXTRA_DELAY_S = float(os.getenv("GEMINI_START_EXTRA_DELAY_S", "3"))
 
-AGENT_PROMPT_READY_TIMEOUT_S = 20.0
+AGENT_PROMPT_READY_TIMEOUT_S = float(os.getenv("AGENT_PROMPT_READY_TIMEOUT_S", "60"))
 
 
 @dataclass(frozen=True)
