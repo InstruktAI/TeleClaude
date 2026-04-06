@@ -79,7 +79,12 @@ The log-bug-hunter is one bug _source_ feeding the same pipeline that
    dispatched, or recorded). Do not stop while unprocessed errors remain.
 
 8. When all errors are processed, write the run report to
-   `~/.teleclaude/jobs/log-bug-hunter/runs/{YYMMDD-HHMMSS}.md` and stop.
+   `~/.teleclaude/jobs/log-bug-hunter/runs/{YYMMDD-HHMMSS}.md`.
+   - If the run completed without operational anomalies (all tools and `telec` commands
+     functioned correctly), end the session: `telec sessions end self`.
+   - If the agent encountered anomalies during its own operation (tool errors, `telec`
+     command failures, unexpected CLI output), stay alive as a signal session for
+     human inspection. Do not self-end.
 
 ## Outputs
 
