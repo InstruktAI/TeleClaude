@@ -1,8 +1,10 @@
 """Characterization tests for teleclaude.core.codex_transcript."""
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name
 
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -10,11 +12,13 @@ from unittest.mock import patch
 import pytest
 
 from teleclaude.core.codex_transcript import (
+    CodexRecentTranscriptCandidate,
     HookTranscriptMetadata,
     discover_codex_transcript_family,
     discover_codex_transcript_family_meta,
     discover_codex_transcript_path,
     discover_current_codex_transcript_path,
+    discover_recent_unclaimed_codex_transcript,
     is_codex_subagent_transcript,
     read_codex_transcript_meta,
     resolve_hook_transcript_metadata,
@@ -42,8 +46,6 @@ class TestDiscoverCodexTranscriptPath:
 
     @pytest.mark.unit
     def test_finds_transcript_in_todays_dir(self, tmp_path: Path) -> None:
-        from datetime import datetime
-
         today = datetime.now()
         date_dir = tmp_path / ".codex" / "sessions" / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
         date_dir.mkdir(parents=True)
@@ -64,6 +66,86 @@ class TestDiscoverCodexTranscriptPath:
             result = discover_codex_transcript_path("nonexistent-session")
 
         assert result is None
+
+    @pytest.mark.unit
+    def test_discovers_unique_recent_unclaimed_transcript(self, tmp_path: Path) -> None:
+        created_at = datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC)
+        date_dir = tmp_path / ".codex" / "sessions" / "2026" / "04" / "06"
+        date_dir.mkdir(parents=True)
+        candidate = date_dir / "rollout-2026-04-06T12-05-14-019d6240-e7ec-7c83-958e-a713996de5a6.jsonl"
+        candidate.write_text("{}\n", encoding="utf-8")
+        ts = created_at.timestamp() + 30
+        candidate.touch()
+        candidate.chmod(0o644)
+        os.utime(candidate, (ts, ts))
+
+        with (
+            patch("teleclaude.core.codex_transcript.Path.home", return_value=tmp_path),
+            patch("teleclaude.core.codex_transcript.datetime", wraps=datetime) as mock_datetime,
+        ):
+            mock_datetime.now.return_value = created_at
+            result = discover_recent_unclaimed_codex_transcript(
+                session_created_at=created_at,
+                claimed_native_session_ids=set(),
+            )
+
+        assert result == CodexRecentTranscriptCandidate(
+            transcript_path=str(candidate),
+            native_session_id="019d6240-e7ec-7c83-958e-a713996de5a6",
+        )
+
+    @pytest.mark.unit
+    def test_recent_unclaimed_discovery_returns_none_when_ambiguous(self, tmp_path: Path) -> None:
+        created_at = datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC)
+        date_dir = tmp_path / ".codex" / "sessions" / "2026" / "04" / "06"
+        date_dir.mkdir(parents=True)
+        first = date_dir / "rollout-2026-04-06T12-05-14-019d6240-e7ec-7c83-958e-a713996de5a6.jsonl"
+        second = date_dir / "rollout-2026-04-06T12-05-15-019d62d0-1f23-74a2-8364-025c84215f05.jsonl"
+        first.write_text("{}\n", encoding="utf-8")
+        second.write_text("{}\n", encoding="utf-8")
+
+        with (
+            patch("teleclaude.core.codex_transcript.Path.home", return_value=tmp_path),
+            patch("teleclaude.core.codex_transcript.datetime", wraps=datetime) as mock_datetime,
+        ):
+            mock_datetime.now.return_value = created_at
+            result = discover_recent_unclaimed_codex_transcript(
+                session_created_at=created_at,
+                claimed_native_session_ids=set(),
+            )
+
+        assert result is None
+
+    @pytest.mark.unit
+    def test_recent_unclaimed_discovery_excludes_claimed_and_older_files(self, tmp_path: Path) -> None:
+        created_at = datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC)
+        date_dir = tmp_path / ".codex" / "sessions" / "2026" / "04" / "06"
+        date_dir.mkdir(parents=True)
+        older = date_dir / "rollout-2026-04-06T11-59-00-019d6240-e7ec-7c83-958e-a713996de5a6.jsonl"
+        claimed = date_dir / "rollout-2026-04-06T12-05-14-019d62d0-1f23-74a2-8364-025c84215f05.jsonl"
+        valid = date_dir / "rollout-2026-04-06T12-05-16-019d62ef-1f23-74a2-8364-025c84215f06.jsonl"
+        for path in (older, claimed, valid):
+            path.write_text("{}\n", encoding="utf-8")
+        older_ts = created_at.timestamp() - 30
+        valid_ts = created_at.timestamp() + 30
+        os.utime(older, (older_ts, older_ts))
+        os.utime(claimed, (valid_ts, valid_ts))
+        os.utime(valid, (valid_ts + 1, valid_ts + 1))
+
+        with (
+            patch("teleclaude.core.codex_transcript.Path.home", return_value=tmp_path),
+            patch("teleclaude.core.codex_transcript.datetime", wraps=datetime) as mock_datetime,
+        ):
+            mock_datetime.now.return_value = created_at
+            result = discover_recent_unclaimed_codex_transcript(
+                session_created_at=created_at,
+                claimed_native_session_ids={"019d62d0-1f23-74a2-8364-025c84215f05"},
+            )
+
+        assert result == CodexRecentTranscriptCandidate(
+            transcript_path=str(valid),
+            native_session_id="019d62ef-1f23-74a2-8364-025c84215f06",
+        )
 
 
 class TestCodexSubagentDetection:
@@ -116,8 +198,6 @@ class TestCodexSubagentDetection:
 
     @pytest.mark.unit
     def test_discovers_codex_transcript_family_recursively(self, tmp_path: Path) -> None:
-        from datetime import datetime
-
         today = datetime.now()
         date_dir = tmp_path / ".codex" / "sessions" / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
         date_dir.mkdir(parents=True)
@@ -194,8 +274,6 @@ class TestCodexSubagentDetection:
 
     @pytest.mark.unit
     def test_discovers_codex_transcript_family_meta_with_timestamps(self, tmp_path: Path) -> None:
-        from datetime import datetime
-
         today = datetime.now()
         date_dir = tmp_path / ".codex" / "sessions" / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
         date_dir.mkdir(parents=True)

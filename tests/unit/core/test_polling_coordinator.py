@@ -4,14 +4,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from teleclaude.core.models import Session
 from teleclaude.core.polling_coordinator import (
+    CodexInputState,
     _build_transcript_output_update,
     _has_active_output_message,
+    _maybe_emit_codex_session_start,
     _percentile,
 )
 
@@ -106,3 +108,93 @@ class TestHasActiveOutputMessage:
         )
 
         assert _has_active_output_message(session) is False
+
+
+class TestMaybeEmitCodexSessionStart:
+    @pytest.mark.unit
+    async def test_emits_when_recent_unclaimed_candidate_resolves(self):
+        session = Session(
+            session_id="sess-1",
+            computer_name="local",
+            tmux_session_name="tmux-sess-1",
+            title="Demo",
+            active_agent="codex",
+            created_at=datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC),
+        )
+        emit_agent_event = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator._codex_input_state",
+                {"sess-1": CodexInputState(last_emitted_prompt="hello")},
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.db.list_sessions",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.discover_recent_unclaimed_codex_transcript",
+                return_value=type(
+                    "Candidate",
+                    (),
+                    {
+                        "native_session_id": "019d6240-e7ec-7c83-958e-a713996de5a6",
+                        "transcript_path": "/tmp/rollout.jsonl",
+                    },
+                )(),
+            ),
+        ):
+            result = await _maybe_emit_codex_session_start(session, emit_agent_event)
+
+        assert result is True
+        payload = emit_agent_event.await_args.args[0].data
+        assert payload.session_id == "019d6240-e7ec-7c83-958e-a713996de5a6"
+        assert payload.transcript_path == "/tmp/rollout.jsonl"
+
+    @pytest.mark.unit
+    async def test_uses_existing_native_session_id_to_fill_missing_path(self):
+        session = Session(
+            session_id="sess-1",
+            computer_name="local",
+            tmux_session_name="tmux-sess-1",
+            title="Demo",
+            active_agent="codex",
+            created_at=datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC),
+            native_session_id="019d6240-e7ec-7c83-958e-a713996de5a6",
+        )
+        emit_agent_event = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator._codex_input_state",
+                {"sess-1": CodexInputState(last_emitted_prompt="hello")},
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
+                return_value="/tmp/rollout.jsonl",
+            ),
+        ):
+            result = await _maybe_emit_codex_session_start(session, emit_agent_event)
+
+        assert result is True
+        payload = emit_agent_event.await_args.args[0].data
+        assert payload.session_id == "019d6240-e7ec-7c83-958e-a713996de5a6"
+        assert payload.transcript_path == "/tmp/rollout.jsonl"
+
+    @pytest.mark.unit
+    async def test_skips_when_no_synthetic_submit_has_been_emitted(self):
+        session = Session(
+            session_id="sess-1",
+            computer_name="local",
+            tmux_session_name="tmux-sess-1",
+            title="Demo",
+            active_agent="codex",
+            created_at=datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC),
+        )
+        emit_agent_event = AsyncMock()
+
+        with patch("teleclaude.core.polling_coordinator._codex_input_state", {}):
+            result = await _maybe_emit_codex_session_start(session, emit_agent_event)
+
+        assert result is False
+        emit_agent_event.assert_not_awaited()

@@ -15,11 +15,16 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
+from teleclaude.core.codex_transcript import (
+    discover_codex_transcript_path,
+    discover_recent_unclaimed_codex_transcript,
+)
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentOutputPayload,
+    AgentSessionStartPayload,
 )
 from teleclaude.core.output_poller import (
     OutputChanged,
@@ -54,6 +59,18 @@ class CodexTurnState:
 
 
 _codex_turn_state: dict[str, CodexTurnState] = {}
+
+
+@dataclass
+class CodexNativeDiscoveryState:
+    """Bounded per-session state for early Codex native metadata discovery."""
+
+    attempts: int = 0
+    session_start_emitted: bool = False
+
+
+_codex_native_discovery_state: dict[str, CodexNativeDiscoveryState] = {}
+_CODEX_NATIVE_DISCOVERY_MAX_ATTEMPTS = 3
 
 
 @dataclass
@@ -352,6 +369,82 @@ def _cleanup_codex_input_state(session_id: str) -> None:
     """Clean up Codex input tracking state when session ends."""
     codex_prompt_submit.cleanup_codex_prompt_state(session_id)
     _codex_turn_state.pop(session_id, None)
+    _codex_native_discovery_state.pop(session_id, None)
+
+
+async def _maybe_emit_codex_session_start(
+    session: "Session",
+    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
+) -> bool:
+    """Resolve early Codex native metadata once transcript activity proves the run exists."""
+    if (session.active_agent or "").lower() != AgentName.CODEX.value:
+        return False
+
+    if session.native_session_id and session.native_log_file:
+        return False
+
+    input_state = _codex_input_state.get(session.session_id)
+    if input_state is None or not input_state.last_emitted_prompt:
+        return False
+
+    state = _codex_native_discovery_state.get(session.session_id)
+    if state is None:
+        state = CodexNativeDiscoveryState()
+        _codex_native_discovery_state[session.session_id] = state
+    if state.session_start_emitted or state.attempts >= _CODEX_NATIVE_DISCOVERY_MAX_ATTEMPTS:
+        return False
+
+    state.attempts += 1
+
+    native_session_id = (session.native_session_id or "").strip() or None
+    transcript_path = (session.native_log_file or "").strip() or None
+
+    if native_session_id and not transcript_path:
+        transcript_path = discover_codex_transcript_path(native_session_id)
+    elif not native_session_id:
+        sessions = await db.list_sessions(include_closed=True, include_initializing=True, include_headless=True)
+        claimed_ids = {
+            existing.native_session_id
+            for existing in sessions
+            if existing.session_id != session.session_id and existing.native_session_id
+        }
+        candidate = discover_recent_unclaimed_codex_transcript(
+            session_created_at=session.created_at,
+            claimed_native_session_ids=claimed_ids,
+        )
+        if candidate is not None:
+            native_session_id = candidate.native_session_id
+            transcript_path = candidate.transcript_path
+
+    if not native_session_id or not transcript_path:
+        return False
+
+    raw = {
+        "synthetic": True,
+        "source": "codex_native_discovery",
+        "session_id": native_session_id,
+        "transcript_path": transcript_path,
+    }
+    await emit_agent_event(
+        AgentEventContext(
+            session_id=session.session_id,
+            event_type=AgentHookEvents.AGENT_SESSION_START,
+            data=AgentSessionStartPayload(
+                session_id=native_session_id,
+                transcript_path=transcript_path,
+                raw=raw,
+            ),
+        )
+    )
+    state.session_start_emitted = True
+    logger.info(
+        "Emitted synthetic Codex session_start from transcript discovery",
+        session_id=session.session_id,
+        native_session_id=native_session_id,
+        transcript_path=transcript_path,
+        attempt=state.attempts,
+    )
+    return True
 
 
 _active_pollers: set[str] = set()
@@ -496,6 +589,10 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                             output_changed=True,  # OutputChanged event means output changed
                             emit_agent_event=emit_handler,
                         )
+                        if await _maybe_emit_codex_session_start(session, emit_handler):
+                            refreshed = await db.get_session(event.session_id)
+                            if refreshed is not None:
+                                session = refreshed
                     except Exception as e:  # pylint: disable=broad-exception-caught
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
 
