@@ -1,3 +1,7 @@
+"""Unit tests for Discord adapter helpers."""
+
+# pylint: disable=missing-function-docstring,protected-access
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -5,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord_adapter import DiscordAdapter
 from teleclaude.core.models import DiscordAdapterMetadata, Session
 
@@ -77,3 +82,34 @@ async def test_get_output_message_id_reads_from_origin_metadata() -> None:
         result = await adapter._get_output_message_id(session)
 
     assert result == "fresh-discord-msg"
+
+
+@pytest.mark.asyncio
+async def test_recover_lane_error_swallows_stale_metadata_cleanup() -> None:
+    adapter = _make_adapter()
+    session = _make_session()
+
+    with patch("teleclaude.adapters.discord_adapter.logger") as mock_logger:
+        result = await adapter.recover_lane_error(
+            session,
+            AdapterError("Discord channel 123 not found (metadata cleared)"),
+            AsyncMock(),
+            "Session",
+        )
+
+    assert result is None
+    mock_logger.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_recover_lane_error_re_raises_unknown_errors() -> None:
+    adapter = _make_adapter()
+    session = _make_session()
+
+    with pytest.raises(AdapterError, match="boom"):
+        await adapter.recover_lane_error(
+            session,
+            AdapterError("boom"),
+            AsyncMock(),
+            "Session",
+        )

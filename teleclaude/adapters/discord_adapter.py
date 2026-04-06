@@ -235,6 +235,26 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
                 session.session_id,
             )
 
+    async def recover_lane_error(
+        self,
+        session: Session,
+        error: Exception,
+        task_factory: Callable[[UiAdapter, Session], Awaitable[object]],
+        display_title: str,
+    ) -> object | None:
+        """Treat stale Discord channel metadata cleanup as a handled lane outcome."""
+        del task_factory, display_title
+
+        if isinstance(error, AdapterError) and "metadata cleared" in str(error):
+            logger.warning(
+                "[DISCORD_RECOVER] Lane skipped after stale Discord metadata was cleared for session %s: %s",
+                session.session_id,
+                error,
+            )
+            return None
+
+        raise error
+
     async def _send_session_badge(self, session: Session) -> None:
         """No-op — Discord sends thread topper at channel creation."""
 
