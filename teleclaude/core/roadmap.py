@@ -194,7 +194,6 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
                     integration_phase=integration_phase,
                     finalize_status=finalize_status,
                     files=[ar[0] for ar in artifact_rows],
-                    todo_path=str(Path(project_path) / "workspace" / slug),
                 )
             )
             todo_build_total_dt += time.perf_counter() - todo_build_started_at

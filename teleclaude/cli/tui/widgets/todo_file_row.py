@@ -1,4 +1,4 @@
-"""File row within an expanded todo — navigable, previewable."""
+"""Artifact row within an expanded todo."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ _CONNECTOR = Style(color=CONNECTOR_COLOR)
 
 
 class TodoFileRow(TelecMixin, Widget):
-    """Single file entry in an expanded todo's file tree."""
+    """Single artifact entry in an expanded todo's tree."""
 
     class Pressed(Message):
         """Posted when a file row is clicked."""
@@ -36,17 +36,19 @@ class TodoFileRow(TelecMixin, Widget):
     def __init__(
         self,
         *,
-        artifact_key: str,
+        artifact_name: str,
         filename: str,
-        slug: str = "",
+        slug: str,
+        project_path: str,
         is_last: bool = False,
         tree_lines: list[bool] | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        self.artifact_key = artifact_key
+        self.artifact_name = artifact_name
         self.filename = filename
         self.slug = slug
+        self.project_path = project_path
         self.is_last = is_last
         self._tree_lines = tree_lines or []
 

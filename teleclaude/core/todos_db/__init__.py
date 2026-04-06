@@ -1,8 +1,4 @@
-"""Todo lifecycle database — state, artifacts, and roadmap.
-
-Replaces filesystem-based state.yaml, roadmap.yaml, delivered.yaml,
-and todos/{slug}/*.md artifact files with a single SQLite store.
-"""
+"""Todo lifecycle database for roadmap state and text artifacts."""
 
 from __future__ import annotations
 

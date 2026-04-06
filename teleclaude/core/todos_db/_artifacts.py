@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -18,7 +19,7 @@ def _sha256(content: str) -> str:
 
 
 class TodosDbArtifactsMixin:
-    """Read/write/version todo artifacts (replaces filesystem todos/{slug}/*.md)."""
+    """Read, write, and version todo artifacts."""
 
     conn: aiosqlite.Connection | None
     _on_mutation: Callable[[], None]
@@ -46,6 +47,30 @@ class TodosDbArtifactsMixin:
             return ""
         result: str = row[0]
         return result
+
+    def _resolve_artifact_id_sync(self, conn: sqlite3.Connection, slug: str) -> str:
+        """Resolve slug to roadmap id for synchronous artifact operations."""
+        row = conn.execute(
+            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+        return row[0] if row else slug
+
+    def read_artifact_sync(self, slug: str, name: str) -> str:
+        """Read artifact content synchronously. Returns empty string if not found."""
+        conn = self._sync_conn()  # type: ignore[attr-defined]
+        try:
+            row_id = self._resolve_artifact_id_sync(conn, slug)
+            row = conn.execute(
+                "SELECT content FROM todo_artifacts WHERE id = ? AND name = ?",  # guard: raw-sql
+                (row_id, name),
+            ).fetchone()
+            if row is None:
+                return ""
+            result: str = row[0]
+            return result
+        finally:
+            conn.close()
 
     async def write_artifact(
         self,
@@ -79,6 +104,40 @@ class TodosDbArtifactsMixin:
             (row_id, slug, name, content, digest, updated_by, now),
         )
         await self.conn.commit()
+        self._on_mutation()
+
+    def write_artifact_sync(
+        self,
+        slug: str,
+        name: str,
+        content: str,
+        *,
+        updated_by: str | None = None,
+    ) -> None:
+        """Upsert artifact content synchronously and append to version history."""
+        now = datetime.now(UTC).isoformat()
+        digest = _sha256(content)
+        conn = self._sync_conn()  # type: ignore[attr-defined]
+        try:
+            row_id = self._resolve_artifact_id_sync(conn, slug)
+            conn.execute(
+                "INSERT INTO todo_artifact_versions "  # guard: raw-sql
+                "(id, slug, name, content, digest, updated_by, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (row_id, slug, name, content, digest, updated_by, now),
+            )
+            conn.execute(
+                "INSERT INTO todo_artifacts "
+                "(id, slug, name, content, digest, updated_by, updated_at) "  # guard: raw-sql
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id, name) DO UPDATE SET "
+                "content = excluded.content, digest = excluded.digest, "
+                "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+                (row_id, slug, name, content, digest, updated_by, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
         self._on_mutation()
 
     async def artifact_digest(self, slug: str, name: str) -> str:

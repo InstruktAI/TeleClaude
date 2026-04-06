@@ -15,27 +15,48 @@ def test_todo_file_row_is_importable() -> None:
 
 
 @pytest.mark.unit
-def test_todo_file_row_stores_artifact_key_and_filename() -> None:
-    row = TodoFileRow(artifact_key="requirements", filename="requirements.md")
-    assert row.artifact_key == "requirements"
+def test_todo_file_row_stores_artifact_name_and_filename() -> None:
+    row = TodoFileRow(
+        artifact_name="requirements",
+        filename="requirements.md",
+        slug="todo-1",
+        project_path="/tmp/project",
+    )
+    assert row.artifact_name == "requirements"
     assert row.filename == "requirements.md"
+    assert row.project_path == "/tmp/project"
 
 
 @pytest.mark.unit
-def test_todo_file_row_default_slug_is_empty() -> None:
-    row = TodoFileRow(artifact_key="roadmap", filename="roadmap.yaml")
-    assert row.slug == ""
+def test_todo_file_row_stores_slug() -> None:
+    row = TodoFileRow(
+        artifact_name="roadmap",
+        filename="roadmap.yaml",
+        slug="todo-1",
+        project_path="/tmp/project",
+    )
+    assert row.slug == "todo-1"
 
 
 @pytest.mark.unit
 def test_todo_file_row_default_is_last_is_false() -> None:
-    row = TodoFileRow(artifact_key="roadmap", filename="roadmap.yaml")
+    row = TodoFileRow(
+        artifact_name="roadmap",
+        filename="roadmap.yaml",
+        slug="todo-1",
+        project_path="/tmp/project",
+    )
     assert row.is_last is False
 
 
 @pytest.mark.unit
 def test_todo_file_row_default_tree_lines_is_empty() -> None:
-    row = TodoFileRow(artifact_key="roadmap", filename="roadmap.yaml")
+    row = TodoFileRow(
+        artifact_name="roadmap",
+        filename="roadmap.yaml",
+        slug="todo-1",
+        project_path="/tmp/project",
+    )
     assert row._tree_lines == []
 
 

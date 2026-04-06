@@ -1,5 +1,7 @@
 """Todo item model for TUI views."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 from teleclaude.cli.tui.types import TodoStatus
@@ -25,11 +27,5 @@ class TodoItem:  # pylint: disable=too-many-instance-attributes
     prepare_phase: str | None = None
     integration_phase: str | None = None
     finalize_status: str | None = None
-    todo_path: str | None = None  # Always set by assemble_roadmap; None = contract violation
+    project_path: str | None = None
     children_statuses: list[str] = field(default_factory=list)
-
-    def file_path(self, filename: str) -> str:
-        """Resolve the absolute path for a file within this todo."""
-        if self.todo_path is None:
-            raise ValueError(f"todo_path not set for '{self.slug}'")
-        return f"{self.todo_path}/{filename}"

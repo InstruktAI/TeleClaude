@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import time as _t
 
 from instrukt_ai_logging import get_logger
@@ -27,6 +28,7 @@ from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
+from teleclaude.todo_artifacts import artifact_display_filename
 
 
 class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
@@ -183,7 +185,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         prepare_phase=t.prepare_phase,
                         integration_phase=t.integration_phase,
                         finalize_status=t.finalize_status,
-                        todo_path=t.todo_path,
+                        project_path=t.project_path or p.path,
                     )
                 )
         # Populate children_statuses for holder todos
@@ -266,18 +268,18 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     self._nav_items.append(row)
 
                     # Collect file rows for expanded todos
-                    if node.slug in self._expanded_todos and node.todo.files and node.todo.todo_path:
+                    if node.slug in self._expanded_todos and node.todo.files:
                         # File tree_lines = parent's lines + parent's own branch continuation
                         file_tree_lines = node.tree_lines + [not is_last_sibling]
                         sorted_files = sorted(node.todo.files)
                         file_widgets: list[Widget] = []
-                        for fi, filename in enumerate(sorted_files):
+                        for fi, artifact_name in enumerate(sorted_files):
                             f_last = fi == len(sorted_files) - 1
-                            filepath = node.todo.file_path(filename)
                             file_row = TodoFileRow(
-                                artifact_key=filepath,
-                                filename=filename,
+                                artifact_name=artifact_name,
+                                filename=artifact_display_filename(artifact_name),
                                 slug=node.slug,
+                                project_path=project.path,
                                 is_last=f_last,
                                 tree_lines=file_tree_lines,
                             )
@@ -311,13 +313,14 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         row_idx = self._nav_items.index(todo_row)
         # File tree_lines = parent's lines + parent's own branch continuation
         file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]  # pylint: disable=protected-access
-        for i, filename in enumerate(sorted_files):
+        project_path = todo_row.todo.project_path or self._resolve_project_root()
+        for i, artifact_name in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
-            filepath = todo_row.todo.file_path(filename)
             file_row = TodoFileRow(
-                artifact_key=filepath,
-                filename=filename,
+                artifact_name=artifact_name,
+                filename=artifact_display_filename(artifact_name),
                 slug=todo_row.slug,
+                project_path=project_path,
                 is_last=is_last,
                 tree_lines=file_tree_lines,
             )
@@ -390,18 +393,40 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         item = self._current_item()
         return item if isinstance(item, ProjectHeader) else None
 
-    def _editor_command(self, filepath: str, *, view: bool = False) -> str:
-        """Build an editor command with absolute path for tmux pane."""
-        flags = []
+    @staticmethod
+    def _artifact_doc_id(project_path: str, slug: str, artifact_name: str) -> str:
+        """Build a stable document id for a todo artifact."""
+        return f"artifact:{project_path}:{slug}:{artifact_name}"
+
+    def _editor_command(
+        self,
+        *,
+        project_path: str,
+        slug: str,
+        artifact_name: str,
+        view: bool = False,
+    ) -> str:
+        """Build an editor command that materializes a DB artifact into a temp file."""
+        args = [
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "teleclaude.cli.editor",
+            "--project-root",
+            project_path,
+            "--artifact-slug",
+            slug,
+            "--artifact-name",
+            artifact_name,
+        ]
         if view:
-            flags.append("--view")
+            args.append("--view")
 
-        # Pass current theme to editor subprocess so it matches the TUI
         if self.app and self.app.theme:
-            flags.append(f"--theme {self.app.theme}")
+            args.extend(["--theme", self.app.theme])
 
-        flag_str = " " + " ".join(flags) if flags else ""
-        return f"uv run python -m teleclaude.cli.editor{flag_str} {filepath}"
+        return shlex.join(args)
 
     def _find_parent_todo(self, file_row: TodoFileRow) -> TodoRow | None:
         """Find the TodoRow that owns a file row."""
