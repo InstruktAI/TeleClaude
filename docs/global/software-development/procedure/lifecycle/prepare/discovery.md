@@ -63,36 +63,39 @@ fresh derivation:
 - Skip strategy selection (step 2) and triangulation (step 3); proceed directly to
   the quality standard check (step 4) and write the updated requirements (step 5).
 
-### 1c. Execute third-party research (when input contains unknowns)
+### 1c. Resolve unknowns
 
-Scan `input.md` for questions about third-party tool behavior, API semantics,
-flag combinations, or external system capabilities. These are research questions
-— they ask "how does X work?" or "does X support Y?" about tools outside the
-project's control.
+Scan `input.md` for questions — anything that asks "how does X work?", "does X
+support Y?", "what happens when Z?" These are unknowns. They may be about
+third-party tools, internal APIs, runtime behavior, architectural constraints,
+or anything else the input doesn't already answer.
 
-**Discovery owns answering these questions, not deferring them.** A requirement
-that lists unanswered research questions is defective — it pushes unknowns to the
-builder, who will discover them at build time when the cost of rework is highest.
+**Discovery owns resolving all unknowns, not deferring them.** A requirement
+that contains an unanswered question is defective — it pushes the unknown to the
+builder, who will discover it at build time when the cost of rework is highest.
 
-When research questions are found:
+Resolve each unknown using the appropriate method:
 
-1. Check consolidated third-party docs first: `telec docs index --third-party`.
-   If a doc already covers the question, load it and extract the answer.
-2. If not covered, execute the third-party research procedure: search
-   authoritative sources (official docs, vendor references), fetch, extract
-   actionable facts, and index findings as a third-party doc snippet.
-3. If empirical testing is required (flag combinations, runtime behavior that
-   docs don't cover), run the test in a throwaway session and record the
+1. **Codebase investigation**: read the actual source, trace the call chain,
+   verify behavior from code. Most internal unknowns resolve here.
+2. **Existing documentation**: check consolidated docs (`telec docs index`,
+   `telec docs index --third-party`). If a doc already covers the question,
+   load it and extract the answer.
+3. **Third-party research**: when the unknown is about external tools or
+   libraries not yet documented, execute the third-party research procedure —
+   search authoritative sources, fetch, extract facts, and index findings.
+4. **Empirical testing**: when docs don't cover the question (flag
+   combinations, runtime behavior, edge cases), run the test and record the
    findings. Document what was tested, what was observed, and what the
    implications are for the requirements.
-4. If a research question cannot be answered (no docs, no way to test), that is
-   a blocker — write it to `dor-report.md` as a `needs_decision` item. Do not
-   convert it into a build-phase task. Unanswered research is a preparation
-   blocker, not a build task.
+5. **Blocker**: if an unknown cannot be resolved by any of the above, it is a
+   preparation blocker — write it to `dor-report.md` as a `needs_decision`
+   item. Do not convert it into a build-phase task. Unanswered unknowns are
+   preparation blockers, not build tasks.
 
-Only after all research questions are answered (or explicitly blocked) should
-the worker proceed to writing requirements. Requirements must reference the
-research findings, not restate the questions.
+Only after all unknowns are resolved (or explicitly blocked) should the worker
+proceed to writing requirements. Requirements must reference findings, not
+restate questions.
 
 ### 2. Choose discovery strategy
 
@@ -138,11 +141,12 @@ artifact quality policy. In particular:
 - **Inferences marked**: anything inferred from codebase or docs rather than
   explicitly stated in `input.md` is marked `[inferred]`. The human can
   correct inferences without searching for them.
-- **Research resolved**: every third-party research question from `input.md` is
-  answered with indexed findings, not restated as a requirement. A requirement
-  that says "empirical testing required" or "research needed to determine X" is
-  a defect — it means discovery deferred its own job to the builder. DOR gate 5
-  (research complete) is enforced here, not at the gate phase.
+- **Unknowns resolved**: every question from `input.md` is answered with
+  findings, not restated as a requirement. A requirement that says "empirical
+  testing required", "research needed to determine X", or "to be confirmed
+  during build" is a defect — it means discovery deferred its own job to the
+  builder. DOR gates 4 (approach known) and 5 (research complete) are enforced
+  here, not at the gate phase.
 
 ### 5. Write requirements
 
