@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -29,7 +28,7 @@ class TestOutputPoller:
         monkeypatch.setattr("teleclaude.core.output_poller.asyncio.sleep", AsyncMock())
 
         poller = OutputPoller()
-        events = [event async for event in poller.poll("session-1", "tmux-alpha", Path("/tmp/output.log"))]
+        events = [event async for event in poller.poll("session-1", "tmux-alpha")]
 
         assert collect_snapshot.await_count == 2
         assert any(isinstance(event, OutputChanged) and event.output == "hello\n" for event in events)
@@ -44,7 +43,7 @@ class TestOutputPoller:
         monkeypatch.setattr("teleclaude.core.output_poller.db.get_session", AsyncMock(return_value=None))
 
         poller = OutputPoller()
-        events = [event async for event in poller.poll("session-1", "tmux-alpha", Path("/tmp/output.log"))]
+        events = [event async for event in poller.poll("session-1", "tmux-alpha")]
 
         assert collect_snapshot.await_count == 1
         assert len(events) == 1

@@ -280,33 +280,3 @@ def strip_ansi_codes(text: str) -> str:
         r")"
     )
     return ansi_pattern.sub("", text)
-
-
-def get_filtered_output(output_file: Path, max_len: int) -> tuple[str, bool]:
-    """Get filtered output from raw file (strips ANSI codes).
-
-    Args:
-        output_file: Path to raw output file
-        max_len: Maximum length to return (gets last N chars)
-
-    Returns:
-        Tuple of (filtered_output, is_truncated)
-    """
-    if not output_file.exists():
-        return ("", False)
-
-    try:
-        raw_output = output_file.read_text(encoding="utf-8")
-    except OSError as e:
-        logger.warning("Failed to read output file %s: %s", output_file, e)
-        return ("", False)
-
-    # Strip ANSI codes
-    filtered = strip_ansi_codes(raw_output)
-
-    # Truncate to last N chars
-    is_truncated = len(filtered) > max_len
-    if is_truncated:
-        filtered = filtered[-max_len:]
-
-    return (filtered, is_truncated)

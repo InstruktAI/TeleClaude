@@ -26,7 +26,6 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.models import MessageMetadata
-from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
@@ -770,28 +769,8 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
         Returns:
             Platform-specific identifier/link if download UI created, None otherwise
-
-        NOTE: This is different from _get_output_file_path() which returns local file PATH.
         """
         return None  # Default: no download functionality
-
-    def _get_output_file_path(self, session_id: str) -> Path:
-        """Get local file system PATH to session output file.
-
-        Used internally by UI adapters that need to READ the output file
-        (e.g., for uploading, processing, voice status appending).
-
-        Delegates to session_utils for centralized path management.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            Path object pointing to local file (e.g., "workspace/abc123/tmux.txt")
-
-        NOTE: This is different from get_session_file() which creates download UI.
-        """
-        return get_output_file(session_id)
 
     # ==================== Event Handlers ====================
 

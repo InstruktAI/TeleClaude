@@ -17,7 +17,7 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_utils import get_output_file, resolve_working_dir
+from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
 
 if TYPE_CHECKING:
@@ -168,7 +168,6 @@ class MaintenanceService:
                 tmux_session_name=session.tmux_session_name,
                 output_poller=self._output_poller,
                 adapter_client=self._client,
-                get_output_file=self._get_output_file_path,
             )
 
     async def _cleanup_inactive_sessions(self) -> None:
@@ -325,7 +324,3 @@ class MaintenanceService:
         if voice:
             env_vars.update(get_voice_env_vars(voice))
         return env_vars
-
-    @staticmethod
-    def _get_output_file_path(session_id: str) -> Path:
-        return get_output_file(session_id)

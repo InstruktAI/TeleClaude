@@ -67,7 +67,6 @@ def get_session_output_dir(session_id: str) -> Path:
 
     Creates workspace/{session_id} directory if it doesn't exist.
     This directory stores all session-related files:
-    - tmux.txt: Tmux output
     - Subdirectories for file downloads, etc.
 
     Args:
@@ -79,26 +78,6 @@ def get_session_output_dir(session_id: str) -> Path:
     session_dir = OUTPUT_DIR / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_dir
-
-
-def get_output_file(session_id: str) -> Path:
-    """Get output file for a session, creating it if needed.
-
-    Creates workspace/{session_id} directory and tmux.txt file if they don't exist.
-    Output file stores RAW tmux output for:
-    1. Delta calculation (ignore old scrollback noise)
-    2. Download functionality
-    3. Daemon restart recovery (checkpoint)
-
-    Args:
-        session_id: Session identifier
-
-    Returns:
-        Path to output file (workspace/{session_id}/tmux.txt)
-    """
-    output_file = get_session_output_dir(session_id) / "tmux.txt"
-    output_file.touch(exist_ok=True)
-    return output_file
 
 
 def build_computer_prefix(

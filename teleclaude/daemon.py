@@ -119,11 +119,6 @@ from teleclaude.core.output_poller import OutputPoller
 _record_import_timing("teleclaude.core.output_poller", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.session_utils import get_output_file
-
-_record_import_timing("teleclaude.core.session_utils", _t)
-
-_t = time.perf_counter()
 from teleclaude.core.task_registry import TaskRegistry
 
 _record_import_timing("teleclaude.core.task_registry", _t)
@@ -893,7 +888,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             tmux_session_name=tmux_session_name,
             output_poller=self.output_poller,
             adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
-            get_output_file=get_output_file,
         )
 
     async def _ensure_output_polling(self, session: Session) -> None:

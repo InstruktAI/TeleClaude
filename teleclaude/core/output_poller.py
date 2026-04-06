@@ -8,7 +8,6 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
@@ -255,14 +254,12 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
         self,
         session_id: str,
         tmux_session_name: str,
-        output_file: Path,  # pylint: disable=unused-argument
     ) -> AsyncIterator[OutputEvent]:
         """Poll tmux output and yield events.
 
         Args:
             session_id: Session ID
             tmux_session_name: tmux session name
-            output_file: Reserved for future file-based polling; currently unused.
 
         Yields:
             OutputEvent subclasses (OutputChanged, ProcessExited)
@@ -356,7 +353,6 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
                     last_output_changed_at = time.time()
                     pending_output = True
                     pending_idle_flush = True
-                    # Output file persistence removed; downloads now use native session logs.
 
                 (
                     output_event,

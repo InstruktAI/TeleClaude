@@ -95,7 +95,7 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
     except Exception:
         pass
 
-    # Isolate workspace output files for polling and cleanup.
+    # Isolate session workspaces for polling-related cleanup and file storage.
     try:
         from teleclaude.core import session_cleanup, session_utils
 

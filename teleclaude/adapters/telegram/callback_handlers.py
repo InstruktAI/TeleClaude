@@ -243,7 +243,7 @@ class CallbackHandlersMixin:
             # Track download message for cleanup when next feedback is sent
             await db.add_pending_deletion(session_id, str(doc_message.message_id), deletion_type="feedback")
         except (BadRequest, OSError, RuntimeError, TypeError, ValueError) as error:
-            logger.error("Failed to send output file: %s", error)
+            logger.error("Failed to send transcript document: %s", error)
             await self._edit_callback_message(query, f"❌ Error sending file: {error}", parse_mode="Markdown")
 
     async def _handle_session_select(self, query: object) -> None:
