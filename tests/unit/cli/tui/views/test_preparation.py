@@ -92,7 +92,7 @@ async def test_preparation_view_keyboard_preview_and_edit_file_rows() -> None:
     assert "--artifact-slug todo-1" in preview_command
     assert "--artifact-name requirements" in preview_command
     assert "--project-root /tmp/project" in preview_command
-    assert preview_title == "requirements.md"
+    assert preview_title == "requirements"
 
     edit_kind, edit_doc_id, edit_command, edit_title = app.doc_events[1]
     assert edit_kind == "edit"
@@ -102,4 +102,4 @@ async def test_preparation_view_keyboard_preview_and_edit_file_rows() -> None:
     assert "--artifact-slug todo-1" in edit_command
     assert "--artifact-name requirements" in edit_command
     assert "--project-root /tmp/project" in edit_command
-    assert edit_title == "Editing: requirements.md"
+    assert edit_title == "Editing: requirements"

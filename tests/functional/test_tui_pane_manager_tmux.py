@@ -156,7 +156,7 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
             active_doc_preview=DocPreviewState(
                 doc_id=doc_id,
                 command=view_command,
-                title="requirements.md",
+                title="requirements",
             ),
             focus=False,
         )
@@ -177,7 +177,7 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
             active_doc_preview=DocPreviewState(
                 doc_id=doc_id,
                 command=edit_command,
-                title="requirements.md",
+                title="requirements",
             ),
             focus=False,
         )

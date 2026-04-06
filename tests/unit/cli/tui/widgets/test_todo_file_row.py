@@ -18,12 +18,12 @@ def test_todo_file_row_is_importable() -> None:
 def test_todo_file_row_stores_artifact_name_and_filename() -> None:
     row = TodoFileRow(
         artifact_name="requirements",
-        filename="requirements.md",
+        filename="requirements",
         slug="todo-1",
         project_path="/tmp/project",
     )
     assert row.artifact_name == "requirements"
-    assert row.filename == "requirements.md"
+    assert row.filename == "requirements"
     assert row.project_path == "/tmp/project"
 
 

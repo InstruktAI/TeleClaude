@@ -151,7 +151,7 @@ def test_save_if_changed_saves_when_content_differs(tmp_path: Path) -> None:
     assert test_file.read_text() == "new content"
 
 
-def test_materialized_artifact_from_db_uses_temp_markdown_file(tmp_path: Path) -> None:
+def test_materialized_artifact_from_db_preserves_logical_artifact_name(tmp_path: Path) -> None:
     from teleclaude.cli.editor import MaterializedArtifact
 
     project_root, _db = _seed_artifact_project(tmp_path)
@@ -161,8 +161,8 @@ def test_materialized_artifact_from_db_uses_temp_markdown_file(tmp_path: Path) -
         artifact_name="requirements",
     )
     try:
-        assert materialized.display_name == "requirements.md"
-        assert materialized.file_path.name == "requirements.md"
+        assert materialized.display_name == "requirements"
+        assert materialized.file_path.name == "requirements"
         assert materialized.file_path.read_text(encoding="utf-8") == "# Hello\n"
     finally:
         materialized.cleanup()

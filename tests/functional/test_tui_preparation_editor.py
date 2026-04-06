@@ -130,7 +130,7 @@ async def test_telec_app_preparation_artifact_preview_and_edit_flow(monkeypatch:
         assert "--artifact-slug todo-1" in preview.command
         assert "--artifact-name requirements" in preview.command
         assert "--project-root /tmp/project" in preview.command
-        assert preview.title == "requirements.md"
+        assert preview.title == "requirements"
 
         await pilot.press("enter")
         for _ in range(3):
@@ -144,7 +144,7 @@ async def test_telec_app_preparation_artifact_preview_and_edit_flow(monkeypatch:
         assert "--artifact-slug todo-1" in edit_preview.command
         assert "--artifact-name requirements" in edit_preview.command
         assert "--project-root /tmp/project" in edit_preview.command
-        assert edit_preview.title == "Editing: requirements.md"
+        assert edit_preview.title == "Editing: requirements"
 
         await app.action_quit()
 
