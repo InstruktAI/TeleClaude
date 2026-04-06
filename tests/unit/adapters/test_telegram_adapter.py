@@ -1,5 +1,7 @@
 """Characterization tests for teleclaude.adapters.telegram_adapter."""
 
+# pylint: disable=missing-function-docstring,redefined-outer-name,protected-access
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -214,6 +216,51 @@ def test_build_project_keyboard_returns_empty_when_no_trusted_dirs(adapter: Tele
     adapter.trusted_dirs = []
     keyboard = adapter._build_project_keyboard("s")
     assert len(keyboard.inline_keyboard) == 0
+
+
+# ---------------------------------------------------------------------------
+# send_threaded_output QoS wiring
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_threaded_output_off_mode_calls_ui_adapter_directly(adapter: TelegramAdapter) -> None:
+    adapter._qos_scheduler._policy.mode = "off"
+    session = _make_session()
+
+    with patch(
+        "teleclaude.adapters.telegram_adapter.UiAdapter.send_threaded_output", AsyncMock(return_value="msg-1")
+    ) as mock_send:
+        result = await adapter.send_threaded_output(session, "hello")
+
+    assert result == "msg-1"
+    mock_send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_threaded_output_qos_enqueues_deferred_lane_work(adapter: TelegramAdapter) -> None:
+    adapter._qos_scheduler._policy.mode = "coalesce_only"
+    adapter._qos_scheduler.enqueue = MagicMock()
+    adapter.client._run_deferred_ui_lane = AsyncMock(return_value="msg-2")
+    session = _make_session()
+
+    result = await adapter.send_threaded_output(session, "hello", delivery_ts=None)
+
+    assert result is None
+    adapter._qos_scheduler.enqueue.assert_called_once()
+    args = adapter._qos_scheduler.enqueue.call_args.args
+    kwargs = adapter._qos_scheduler.enqueue.call_args.kwargs
+    assert args[0] == session.session_id
+    dispatch = args[1]
+    assert kwargs["is_final"] is False
+
+    dispatched = await dispatch()
+
+    assert dispatched == "msg-2"
+    adapter.client._run_deferred_ui_lane.assert_awaited_once()
+    lane_args = adapter.client._run_deferred_ui_lane.await_args.args
+    assert lane_args[0] is session
+    assert lane_args[1] == "telegram"
 
 
 # ---------------------------------------------------------------------------

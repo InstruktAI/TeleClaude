@@ -492,15 +492,23 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         _multi = multi_message
         _delivery_ts = delivery_ts
 
-        async def _dispatch() -> str | None:
-            return await UiAdapter.send_threaded_output(
-                _self,
-                _session,
+        def _task_factory(adapter: UiAdapter, lane_session: Session) -> Awaitable[object]:
+            return UiAdapter.send_threaded_output(
+                adapter,
+                lane_session,
                 _text,
                 _multi,
                 MARKDOWN_V2_INITIAL_STATE,
                 delivery_ts=_delivery_ts,
             )
+
+        async def _dispatch() -> str | None:
+            result = await _self.client._run_deferred_ui_lane(
+                _session,
+                _self.ADAPTER_KEY,
+                _task_factory,
+            )
+            return str(result) if result is not None else None
 
         # Threaded output chunks are non-final (the coordinator handles completion separately).
         self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=False)
