@@ -84,7 +84,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
         include_adapters: set[str] | None = None,
     ) -> list[tuple[str, object]]:
-        """Send operation to all UI adapters sequentially.
+        """Send operation to the selected UI adapters sequentially.
 
         Serialized (not parallel) to prevent concurrent adapter_metadata blob
         writes from clobbering each other — each adapter reads the previous
@@ -235,14 +235,15 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         include_adapters: set[str] | None = None,
         **kwargs: object,
     ) -> object:
-        """Send operation to all UI adapters, returning the entry point result.
+        """Send operation to the selected UI adapters, returning the entry point result.
 
-        All UI adapters receive the operation in parallel. The return value
+        Matching UI adapters receive the operation. The return value
         comes from the adapter matching session.last_input_origin (if it's a
         UI adapter), otherwise from the first successful adapter.
 
-        Channel provisioning (ensure_channel) determines which adapters
-        participate — not the routing layer.
+        Channel provisioning prepares the selected adapters. Narrow routing
+        flows must pass explicit include_adapters rather than relying on
+        implicit all-adapter fanout.
         """
         session = await self.ensure_ui_channels(session, include_adapters=include_adapters)
 

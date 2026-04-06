@@ -12,12 +12,12 @@ description: 'Canonical routing contract for session messages across origin UX a
 
 This spec defines the routing contract for session messages across origin UX and admin visibility paths.
 
-Core decides delivery scope and broadcasts accordingly. Adapters decide how to present messages (threaded, edit-in-place, multi-placement) and how to route them internally (admin channels, origin UX, suppression).
+Core decides delivery scope and targeted recipients accordingly. Adapters decide how to present messages (threaded, edit-in-place, multi-placement) and how to route them internally (admin channels, origin UX, suppression).
 
 ### Mental model: three lanes
 
 1. **Origin UX lane**: direct user continuity (reply, notice, summary context).
-2. **Dual output lane**: assistant operational output visible at origin and admin destinations.
+2. **Live output lane**: assistant operational output routed only to the origin UI endpoint.
 3. **Reflection lane**: mirrored user/actor input sent only to the Discord admin adapter when the origin is not Discord. The normal origin-path delivery remains separate.
 
 ## Canonical fields
@@ -27,8 +27,8 @@ Core decides delivery scope and broadcasts accordingly. Adapters decide how to p
 | Field                         | Meaning                                                                 |
 | ----------------------------- | ----------------------------------------------------------------------- |
 | `origin_endpoint`             | The single endpoint that receives direct user-facing replies.           |
-| `admin_lane_destinations`     | Admin or observer destinations that mirror operational stream traffic.  |
-| `delivery_scope`              | Recipient policy for a message: `ORIGIN_ONLY`, `DUAL`, or `CTRL`.       |
+| `admin_lane_destinations`     | Admin or observer destinations that receive explicit admin reflections. |
+| `delivery_scope`              | Recipient policy for a message: `ORIGIN_ONLY`, `ADMIN_ONLY`, or `CTRL`. |
 | `message_intent`              | Semantic category used to choose delivery scope.                        |
 | `cleanup_trigger`             | Message lifetime policy only (deletion timing). Never recipient policy. |
 | `reflection_actor_id`         | Stable actor identity used for reflection attribution.                  |
@@ -40,7 +40,7 @@ Core decides delivery scope and broadcasts accordingly. Adapters decide how to p
 | Scope         | Recipients                                    | Rule                                            |
 | ------------- | --------------------------------------------- | ----------------------------------------------- |
 | `ORIGIN_ONLY` | `origin_endpoint` only                        | Never fan out to non-origin admin destinations. |
-| `DUAL`        | `origin_endpoint` + `admin_lane_destinations` | Used for operational output flow.               |
+| `ADMIN_ONLY`  | `admin_lane_destinations` only                | Used for explicit admin reflection traffic.     |
 | `CTRL`        | Internal control channels only                | Not part of user/admin UI fan-out.              |
 
 ### Message intent to scope mapping
@@ -49,10 +49,10 @@ Core decides delivery scope and broadcasts accordingly. Adapters decide how to p
 | ------------------------------------ | ------------- | ------------------------------------------------------------------------------------- |
 | `feedback_notice_error_status`       | `ORIGIN_ONLY` | Includes notices, feedback prompts, and user-facing errors.                           |
 | `last_output_summary`                | `ORIGIN_ONLY` | Origin UX only, non-threaded/in-edit presentation only.                               |
-| `output_stream_chunk_final_threaded` | `DUAL`        | Includes incremental chunks, final output, and threaded blocks.                       |
-| `input_reflection_text`              | `DUAL`        | Extra admin reflection goes to Discord only when origin is not Discord.               |
-| `input_reflection_voice`             | `DUAL`        | Same reflection lane policy as text input.                                            |
-| `input_reflection_mcp`               | `DUAL`        | Same reflection lane policy as text/voice input.                                      |
+| `output_stream_chunk_final_threaded` | `ORIGIN_ONLY` | Includes incremental chunks, final output, and threaded blocks.                       |
+| `input_reflection_text`              | `ADMIN_ONLY`  | Extra admin reflection goes to Discord only when origin is not Discord.               |
+| `input_reflection_voice`             | `ADMIN_ONLY`  | Same reflection lane policy as text input.                                            |
+| `input_reflection_mcp`               | `ADMIN_ONLY`  | Same reflection lane policy as text/voice input.                                      |
 | `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not UI content. |
 
 ### Reflection lane contract
@@ -97,7 +97,7 @@ Current canonical origins are `telegram`, `discord`, `redis`, `api`, and `termin
 
 ## Allowed values
 
-- `delivery_scope`: `ORIGIN_ONLY`, `DUAL`, `CTRL`
+- `delivery_scope`: `ORIGIN_ONLY`, `ADMIN_ONLY`, `CTRL`
 - `cleanup_trigger`: `next_notice`, `next_turn`
 - `message_intent`: `feedback_notice_error_status`, `last_output_summary`, `output_stream_chunk_final_threaded`, `input_reflection_text`, `input_reflection_voice`, `input_reflection_mcp`, `ctrl_activity`
 
@@ -108,3 +108,4 @@ Current canonical origins are `telegram`, `discord`, `redis`, `api`, and `termin
 - Discord reflection webhook rendering is best-effort and falls back to normal bot send when unavailable.
 - Telegram does not render admin reflections.
 - Admin-lane recipients can still render multiple internal placements. That is adapter behavior, not core routing policy.
+- Command acknowledgements and lifecycle chatter are not cross-adapter broadcasts. Targeted origin delivery and Discord admin reflection are the only supported UI routing patterns.

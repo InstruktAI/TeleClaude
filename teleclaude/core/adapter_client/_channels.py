@@ -180,67 +180,6 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         """Run UI post-handler after executing a user command."""
         await self._call_post_handler(session, "command", message_id, source_adapter)
 
-    async def broadcast_command_action(
-        self,
-        session: "Session",
-        command_name: str,
-        payload: dict[str, object],  # guard: loose-dict - Command payload for UI adapters
-        source_adapter: str | None = None,
-    ) -> None:
-        """Broadcast user command actions to other UI adapters (echo prevention)."""
-        command_payload = dict(payload)
-        command_payload["command_name"] = command_name
-        await self._broadcast_action(session, "command", command_payload, source_adapter)
-
-    async def _broadcast_action(
-        self,
-        session: "Session",
-        event: str,
-        payload: dict[str, object],  # guard: loose-dict - Event payload from/to adapters
-        source_adapter: str | None = None,
-    ) -> None:
-        """Broadcast user actions to other UI adapters (echo prevention)."""
-        action_text = self._format_event_text(event, payload)
-        if not action_text:
-            return
-
-        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
-            return cast(
-                Awaitable[object],
-                adapter.send_message(
-                    session=lane_session,
-                    text=action_text,
-                    metadata=MessageMetadata(),
-                ),
-            )
-
-        await self._fanout_excluding(
-            session,
-            f"broadcast_action:{event}",
-            make_task,
-            exclude=source_adapter,
-        )
-
-    def _format_event_text(
-        self,
-        event: str,
-        payload: dict[str, object],  # guard: loose-dict - Event payload
-    ) -> str | None:
-        """Format event as human-readable text for UI adapters.
-
-        Returns formatted text or None if event should not be broadcast.
-        Only meaningful lifecycle events are broadcast; key presses are noise.
-        """
-        command_name = None
-        if event == "command":
-            command_name = cast(str | None, payload.get("command_name"))
-
-        if command_name == "create_session":
-            title = cast(str, payload.get("title", "Untitled"))
-            return f"→ [Created session: {title}]"
-
-        return None
-
     async def create_channel(  # pylint: disable=too-many-locals  # Fanout bookkeeping is intentionally explicit.
         self,
         session: "Session",

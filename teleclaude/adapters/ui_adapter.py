@@ -694,7 +694,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         if message_id:
             await self.client.post_handle_command(session, message_id, metadata.origin)
 
-        await self.client.broadcast_command_action(session, command_name, payload, metadata.origin)
         return result
 
     # ==================== Voice Support ====================

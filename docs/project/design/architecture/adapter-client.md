@@ -10,7 +10,7 @@ type: 'design'
 ## Purpose
 
 - Own adapter lifecycle and message delivery across adapters.
-- Resolve message intent into delivery scope (`ORIGIN_ONLY`, `DUAL`, `CTRL`).
+- Resolve message intent into delivery scope (`ORIGIN_ONLY`, `ADMIN_ONLY`, `CTRL`).
 - Preserve direct reply continuity to the origin endpoint.
 - Apply UI cleanup hooks and observer notifications around user input and AI output.
 - Leave rendering and placement strategy to adapters.
@@ -45,7 +45,7 @@ flowchart TB
 
 - Scope-based delivery to UI adapters
 - Origin-only delivery for notices and user-facing feedback
-- Dual-lane delivery for operational output stream traffic
+- Origin-only delivery for operational output stream traffic
 - UI channel creation requests (fire-and-forget)
 - Deletion operations for message cleanup
 - Cross-computer command routing via Redis transport
@@ -96,8 +96,7 @@ sequenceDiagram
     AC->>AC: Resolve delivery_scope
     alt ORIGIN_ONLY
         AC->>Origin: send_message()
-    else DUAL
-        AC->>Origin: send_message()
+    else ADMIN_ONLY
         AC->>Admin: send_message()
     else CTRL
         Note over AC: Internal control path only
@@ -166,5 +165,6 @@ sequenceDiagram
 - **Channel Metadata Missing**: Attempting to send to non-origin adapter without channel fails. AC creates channel (fire-and-forget) and queues message for retry.
 - **Transport Unavailable**: Cross-computer command fails immediately. Returns error to caller. Local operations unaffected.
 - **Cleanup Hook Failure**: Pre/post hooks fail to delete messages or track IDs. Stale messages accumulate in UI. Does not block message delivery.
+- **Stale Broad Fanout Assumption**: Invalid. AdapterClient must choose explicit targets up front. `_route_to_ui()` is an execution helper, not a policy engine.
 - **Parallel Delivery Timeout**: One adapter blocks indefinitely. Other adapters complete normally. Stuck adapter logged and skipped.
 - **Discovery Failure**: No remote computers found. Commands targeting specific computer fail with "not found" error. Local sessions continue.

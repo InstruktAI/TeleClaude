@@ -61,6 +61,7 @@ Invariants
 - **Reflection Contract**: Discord is the single admin adapter. Core sends the extra admin reflection only to Discord when the origin is not Discord. Telegram suppresses reflections entirely.
 - **Origin Endpoint UX**: `ORIGIN_ONLY` messages appear only at the origin endpoint.
 - **Summary Rule**: `last_output_summary` is origin-only and non-threaded only (in-edit UX path).
+- **No Command Rebroadcast**: UI adapters do not rebroadcast command acknowledgements or lifecycle chatter to peer adapters.
 
 ## Primary flows
 
@@ -246,6 +247,7 @@ flowchart TD
 - Discord remains the only admin adapter.
 - Telegram is an origin/input adapter only.
 - Reflection suppression now happens before broad UI fanout, which avoids unnecessary lane work.
+- Live output is now targeted at the origin UI adapter only. UI adapters never broaden that routing decision.
 
 ## Failure modes
 

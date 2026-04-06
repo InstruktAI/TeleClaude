@@ -44,6 +44,16 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             **kwargs: object,
         ) -> object: ...
 
+    def _resolve_origin_ui_adapter(self, session: "Session") -> str | None:
+        """Return the session's origin adapter when it is a registered UI adapter."""
+        origin_adapter = (session.last_input_origin or "").strip()
+        if not origin_adapter:
+            return None
+        adapter = self.adapters.get(origin_adapter)
+        if not isinstance(adapter, UiAdapter):
+            return None
+        return origin_adapter
+
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
         """Send error feedback to all UI adapters, surfacing failures."""
         ui_adapters = [
@@ -226,7 +236,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         await self._route_to_ui(
             session_to_use,
-            "send_user_input_reflection",
+            "send_message",
             text,
             metadata=reflection_metadata,
             include_adapters={"discord"},
@@ -244,11 +254,16 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         multi_message: bool = False,
         delivery_ts: datetime | None = None,
     ) -> str | None:
-        """Push live output to all UI adapters.
+        """Push live output only to the origin UI adapter."""
+        origin_adapter = self._resolve_origin_ui_adapter(session)
+        if origin_adapter is None:
+            logger.debug(
+                "Skipping live UI output for non-UI origin: session=%s origin=%s",
+                session.session_id,
+                (session.last_input_origin or "").strip() or "<none>",
+            )
+            return None
 
-        The daemon owns hot-path output detection; adapters remain responsible
-        for platform-specific rendering and delivery.
-        """
         result = await self._route_to_ui(
             session,
             "send_output_update",
@@ -260,6 +275,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             render_markdown,
             multi_message,
             delivery_ts,
+            include_adapters={origin_adapter},
         )
         return str(result) if result else None
 

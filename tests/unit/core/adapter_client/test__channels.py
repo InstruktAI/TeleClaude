@@ -84,46 +84,6 @@ class TestCommandLifecycleHooks:
         telegram._post_handle_user_input.assert_awaited_once_with(session, "msg-1")
 
 
-class TestBroadcastCommandAction:
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_create_session_command_broadcasts_to_non_source_ui_adapters(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="telegram")
-        telegram = _make_ui_adapter()
-        discord = _make_ui_adapter()
-        client.register_adapter("telegram", telegram)
-        client.register_adapter("discord", discord)
-
-        await client.broadcast_command_action(
-            session,
-            "create_session",
-            {"title": "Roadmap"},
-            source_adapter="telegram",
-        )
-
-        assert telegram.send_message.await_count == 0
-        discord.send_message.assert_awaited_once()
-        call = discord.send_message.await_args
-        assert call.kwargs["session"] is session
-        assert isinstance(call.kwargs["metadata"], MessageMetadata)
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_non_broadcastable_command_does_not_send_messages(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="telegram")
-        telegram = _make_ui_adapter()
-        discord = _make_ui_adapter()
-        client.register_adapter("telegram", telegram)
-        client.register_adapter("discord", discord)
-
-        await client.broadcast_command_action(session, "list_sessions", {}, source_adapter="telegram")
-
-        assert telegram.send_message.await_count == 0
-        assert discord.send_message.await_count == 0
-
-
 class TestCreateChannel:
     @pytest.mark.unit
     @pytest.mark.asyncio

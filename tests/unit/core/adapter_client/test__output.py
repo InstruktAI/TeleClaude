@@ -281,7 +281,7 @@ class TestBroadcastUserInput:
         mock_route.assert_awaited_once()
         assert mock_route.await_args.args == (
             session,
-            "send_user_input_reflection",
+            "send_message",
             "hello",
         )
         assert mock_route.await_args.kwargs["include_adapters"] == {"discord"}
@@ -331,6 +331,39 @@ class TestThreadState:
         discord.drop_pending_output.assert_called_once_with(session.session_id)
         telegram.clear_turn_state.assert_not_awaited()
         discord.clear_turn_state.assert_not_awaited()
+
+
+class TestSendOutputUpdate:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_live_output_routes_only_to_origin_ui_adapter(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="telegram")
+        client.register_adapter("telegram", _make_ui_adapter())
+
+        with patch.object(client, "_route_to_ui", AsyncMock(return_value="telegram-msg")) as route_to_ui:
+            result = await client.send_output_update(session, "hello", 1.0, 2.0)
+
+        assert result == "telegram-msg"
+        route_to_ui.assert_awaited_once()
+        call = route_to_ui.await_args
+        assert call is not None
+        assert call.args[0] is session
+        assert call.args[1] == "send_output_update"
+        assert call.kwargs["include_adapters"] == {"telegram"}
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_live_output_with_non_ui_origin_is_dropped(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="terminal")
+        client.register_adapter("telegram", _make_ui_adapter())
+
+        with patch.object(client, "_route_to_ui", AsyncMock()) as route_to_ui:
+            result = await client.send_output_update(session, "hello", 1.0, 2.0)
+
+        assert result is None
+        route_to_ui.assert_not_awaited()
 
 
 class TestChannelUpdates:
