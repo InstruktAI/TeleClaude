@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shlex
+import sys
 import time as _t
 
 from instrukt_ai_logging import get_logger
@@ -408,9 +409,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     ) -> str:
         """Build an editor command that materializes a DB artifact into a temp file."""
         args = [
-            "uv",
-            "run",
-            "python",
+            sys.executable,
             "-m",
             "teleclaude.cli.editor",
             "--project-root",

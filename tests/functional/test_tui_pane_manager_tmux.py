@@ -6,7 +6,6 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
-import sys
 import time
 import uuid
 from collections.abc import Callable
@@ -18,6 +17,7 @@ import pytest
 from teleclaude import config as config_module
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
 from teleclaude.cli.tui.state import DocPreviewState
+from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.core.todos_db import TodosDb
 
 pytestmark = [pytest.mark.functional, pytest.mark.timeout(10)]
@@ -105,6 +105,18 @@ def _wait_for_artifact_content(
     raise AssertionError(f"Artifact content did not satisfy predicate. Last content:\n{latest}")
 
 
+def _editor_command(*, project_root: Path, slug: str, artifact_name: str, view: bool) -> str:
+    """Return the exact artifact editor command emitted by the preparation view."""
+    prep = type("_PrepCommandStub", (), {"app": None})()
+    return PreparationView._editor_command(
+        prep,
+        project_path=str(project_root),
+        slug=slug,
+        artifact_name=artifact_name,
+        view=view,
+    )
+
+
 @pytest.mark.functional
 def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
     tmp_path: Path,
@@ -119,7 +131,7 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
     wrapper = tmp_path / "tmux-wrapper"
     _write_tmux_wrapper(wrapper, socket_name)
 
-    subprocess.run([str(wrapper), "new-session", "-d", "-s", session_name, "sh"], check=True)
+    subprocess.run([str(wrapper), "new-session", "-d", "-c", "/tmp", "-s", session_name, "sh"], check=True)
     pane_id = _run_tmux(wrapper, "list-panes", "-t", session_name, "-F", "#{pane_id}")
 
     monkeypatch.setenv("TMUX", "functional-test")
@@ -129,21 +141,11 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
 
     project_root = tmp_path / "project"
     db = _seed_project_artifact(project_root)
-    root = Path.cwd()
-    python_bin = shlex.quote(sys.executable)
-    root_arg = shlex.quote(str(root))
-    project_arg = shlex.quote(str(project_root))
     slug = "todo-1"
     artifact_name = "requirements"
     doc_id = f"artifact:{project_root}:{slug}:{artifact_name}"
-    view_command = (
-        f"env PYTHONPATH={root_arg} {python_bin} -m teleclaude.cli.editor "
-        f"--project-root {project_arg} --artifact-slug {slug} --artifact-name {artifact_name} --view"
-    )
-    edit_command = (
-        f"env PYTHONPATH={root_arg} {python_bin} -m teleclaude.cli.editor "
-        f"--project-root {project_arg} --artifact-slug {slug} --artifact-name {artifact_name}"
-    )
+    view_command = _editor_command(project_root=project_root, slug=slug, artifact_name=artifact_name, view=True)
+    edit_command = _editor_command(project_root=project_root, slug=slug, artifact_name=artifact_name, view=False)
 
     manager = TmuxPaneManager()
     try:

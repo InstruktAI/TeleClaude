@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import shlex
+import sys
+
 import pytest
 from textual.app import App, ComposeResult
 
@@ -84,6 +87,7 @@ async def test_preparation_view_keyboard_preview_and_edit_file_rows() -> None:
     preview_kind, preview_doc_id, preview_command, preview_title = app.doc_events[0]
     assert preview_kind == "preview"
     assert preview_doc_id == expected_doc_id
+    assert preview_command.startswith(f"{shlex.quote(sys.executable)} -m teleclaude.cli.editor ")
     assert "--view" in preview_command
     assert "--artifact-slug todo-1" in preview_command
     assert "--artifact-name requirements" in preview_command
@@ -93,6 +97,7 @@ async def test_preparation_view_keyboard_preview_and_edit_file_rows() -> None:
     edit_kind, edit_doc_id, edit_command, edit_title = app.doc_events[1]
     assert edit_kind == "edit"
     assert edit_doc_id == expected_doc_id
+    assert edit_command.startswith(f"{shlex.quote(sys.executable)} -m teleclaude.cli.editor ")
     assert "--view" not in edit_command
     assert "--artifact-slug todo-1" in edit_command
     assert "--artifact-name requirements" in edit_command

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import shlex
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -123,6 +125,7 @@ async def test_telec_app_preparation_artifact_preview_and_edit_flow(monkeypatch:
         preview = bridge._active_doc_preview
         assert preview is not None
         assert preview.doc_id == expected_doc_id
+        assert preview.command.startswith(f"{shlex.quote(sys.executable)} -m teleclaude.cli.editor ")
         assert "--view" in preview.command
         assert "--artifact-slug todo-1" in preview.command
         assert "--artifact-name requirements" in preview.command
@@ -136,6 +139,7 @@ async def test_telec_app_preparation_artifact_preview_and_edit_flow(monkeypatch:
         edit_preview = bridge._active_doc_preview
         assert edit_preview is not None
         assert edit_preview.doc_id == expected_doc_id
+        assert edit_preview.command.startswith(f"{shlex.quote(sys.executable)} -m teleclaude.cli.editor ")
         assert "--view" not in edit_preview.command
         assert "--artifact-slug todo-1" in edit_preview.command
         assert "--artifact-name requirements" in edit_preview.command
