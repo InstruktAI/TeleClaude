@@ -76,18 +76,17 @@ Reflection is a UX observability feature, not a direct reply. Core creates only 
 
 ### Channel provisioning
 
-Channel provisioning still determines whether an adapter can receive delivery. Routing scope determines who should receive delivery.
+Channel provisioning determines whether a UI adapter can receive delivery. It does not expand routing scope, and transport metadata is not part of the UI origin model.
 
-| Session type | Fan-out targets                           |
-| ------------ | ----------------------------------------- |
-| Admin/member | Telegram + Discord for operational output |
-| Customer     | Discord only (Telegram has no channel)    |
+- Live output and final-output repair target only the origin UI adapter.
+- Discord admin reflection is the only extra admin UI lane.
+- Transport metadata such as Redis `target_computer` is not a session origin and does not participate in UI routing.
 
 ### Entry point (`last_input_origin`)
 
 `last_input_origin` records the most recent interaction source for session continuity. It supports direct replies to the origin endpoint.
 
-Current canonical origins are `telegram`, `discord`, `redis`, `api`, and `terminal`.
+Current canonical origins are `telegram`, `discord`, `whatsapp`, `web`, and `terminal`.
 
 ### Actor attribution expectations
 

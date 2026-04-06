@@ -23,7 +23,7 @@ class TestAdapterMetadata:
 
     @pytest.mark.unit
     def test_optional_fields_default_to_none(self):
-        m = AdapterMetadata(origin="api")  # type: ignore[call-arg]
+        m = AdapterMetadata(origin="terminal")  # type: ignore[call-arg]
         assert m.user_id is None
         assert m.message_id is None
         assert m.last_input_origin is None

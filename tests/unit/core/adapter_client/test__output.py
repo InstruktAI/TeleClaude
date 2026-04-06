@@ -406,7 +406,7 @@ class TestChannelUpdates:
 class TestOutstandingFinalOutputRepair:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_reconciles_only_adapters_with_undelivered_final_output(self):
+    async def test_skips_non_ui_origins_even_if_historical_ui_metadata_exists(self):
         client = AdapterClient()
         session = _make_session(last_input_origin="terminal")
         stop_at = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
@@ -426,7 +426,38 @@ class TestOutstandingFinalOutputRepair:
 
         with (
             patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[session])),
+            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
             patch.object(client, "_route_to_ui", AsyncMock(return_value="telegram-msg")) as route_to_ui,
+        ):
+            repaired = await client.reconcile_outstanding_final_outputs("local")
+
+        assert repaired == 0
+        route_to_ui.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_reconciles_only_origin_ui_adapter_when_final_output_is_undelivered(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="discord")
+        stop_at = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
+        session.last_output_raw = "final output"
+        session.last_agent_stop_at = stop_at
+        session.origin_metadata = {
+            "telegram": {"topic_id": 42},
+            "discord": {"thread_id": 99},
+        }
+
+        telegram = _make_ui_adapter()
+        telegram.get_last_delivered_at.return_value = None
+        discord = _make_ui_adapter()
+        discord.get_last_delivered_at.return_value = None
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+
+        with (
+            patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[session])),
+            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
+            patch.object(client, "_route_to_ui", AsyncMock(return_value="discord-msg")) as route_to_ui,
         ):
             repaired = await client.reconcile_outstanding_final_outputs("local")
 
@@ -437,5 +468,78 @@ class TestOutstandingFinalOutputRepair:
         assert call.args[0] is session
         assert call.args[1] == "send_output_update"
         assert call.args[2] == "final output"
-        assert call.kwargs["include_adapters"] == {"telegram"}
+        assert call.kwargs["include_adapters"] == {"discord"}
         assert call.kwargs["delivery_ts"] == stop_at
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_skips_origin_ui_adapter_when_final_output_already_delivered_after_stop(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="discord")
+        stop_at = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
+        session.last_output_raw = "final output"
+        session.last_agent_stop_at = stop_at
+        session.origin_metadata = {"discord": {"thread_id": 99}}
+
+        discord = _make_ui_adapter()
+        discord.get_last_delivered_at.return_value = datetime(2026, 4, 3, 12, 1, 0, tzinfo=UTC)
+        client.register_adapter("discord", discord)
+
+        with (
+            patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[session])),
+            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
+            patch.object(client, "_route_to_ui", AsyncMock(return_value="discord-msg")) as route_to_ui,
+        ):
+            repaired = await client.reconcile_outstanding_final_outputs("local")
+
+        assert repaired == 0
+        route_to_ui.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_skips_origin_ui_adapter_when_destination_metadata_has_been_cleared(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="discord")
+        stop_at = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
+        session.last_output_raw = "final output"
+        session.last_agent_stop_at = stop_at
+        session.origin_metadata = {"discord": {"last_delivered_at": "2026-04-03T11:00:00+00:00"}}
+
+        discord = _make_ui_adapter()
+        client.register_adapter("discord", discord)
+
+        with (
+            patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[session])),
+            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
+            patch.object(client, "_route_to_ui", AsyncMock(return_value="discord-msg")) as route_to_ui,
+        ):
+            repaired = await client.reconcile_outstanding_final_outputs("local")
+
+        assert repaired == 0
+        route_to_ui.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_reconciliation_uses_refreshed_session_before_targeting(self):
+        client = AdapterClient()
+        stale_session = _make_session(last_input_origin="discord")
+        fresh_session = _make_session(last_input_origin="terminal")
+        stop_at = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
+        stale_session.last_output_raw = "final output"
+        stale_session.last_agent_stop_at = stop_at
+        stale_session.origin_metadata = {"discord": {"thread_id": 99}}
+        fresh_session.last_output_raw = "final output"
+        fresh_session.last_agent_stop_at = stop_at
+
+        discord = _make_ui_adapter()
+        client.register_adapter("discord", discord)
+
+        with (
+            patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[stale_session])),
+            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=fresh_session)),
+            patch.object(client, "_route_to_ui", AsyncMock(return_value="discord-msg")) as route_to_ui,
+        ):
+            repaired = await client.reconcile_outstanding_final_outputs("local")
+
+        assert repaired == 0
+        route_to_ui.assert_not_awaited()

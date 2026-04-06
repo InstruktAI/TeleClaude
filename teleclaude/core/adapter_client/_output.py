@@ -10,7 +10,13 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.models import CleanupTrigger, MessageMetadata
+from teleclaude.core.models import (
+    CleanupTrigger,
+    DiscordAdapterMetadata,
+    MessageMetadata,
+    TelegramAdapterMetadata,
+    WhatsAppAdapterMetadata,
+)
 
 if TYPE_CHECKING:
     from teleclaude.adapters.base_adapter import BaseAdapter
@@ -53,6 +59,27 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         if not isinstance(adapter, UiAdapter):
             return None
         return origin_adapter
+
+    def _resolve_final_output_targets(self, session: "Session") -> set[str]:
+        """Return the explicit UI adapters eligible for final-output repair."""
+        origin_adapter = self._resolve_origin_ui_adapter(session)
+        if origin_adapter is None:
+            return set()
+        origin_section = session.get_origin_section(origin_adapter)
+        if not origin_section:
+            return set()
+        if origin_adapter == "telegram":
+            if TelegramAdapterMetadata.from_dict(origin_section).topic_id is None:
+                return set()
+        elif origin_adapter == "discord":
+            discord_meta = DiscordAdapterMetadata.from_dict(origin_section)
+            if discord_meta.thread_id is None and discord_meta.channel_id is None:
+                return set()
+        elif origin_adapter == "whatsapp":
+            whatsapp_meta = WhatsAppAdapterMetadata.from_dict(origin_section)
+            if whatsapp_meta.conversation_id is None and whatsapp_meta.phone_number is None:
+                return set()
+        return {origin_adapter}
 
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
         """Send error feedback to all UI adapters, surfacing failures."""
@@ -288,19 +315,23 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         )
         repaired = 0
         for session in sessions:
+            fresh_session = await db.get_session(session.session_id)
+            if fresh_session is not None:
+                session = fresh_session
             stop_at = session.last_agent_stop_at
             if not isinstance(stop_at, datetime) or not session.last_output_raw:
                 continue
 
-            due_adapters: set[str] = set()
-            for adapter_type, adapter in self._ui_adapters():
-                if not session.get_origin_section(adapter_type):
-                    continue
-                delivered_at = adapter.get_last_delivered_at(session)
-                if delivered_at is None or delivered_at < stop_at:
-                    due_adapters.add(adapter_type)
-
+            due_adapters = self._resolve_final_output_targets(session)
             if not due_adapters:
+                continue
+
+            adapter_type = next(iter(due_adapters))
+            adapter = self.adapters.get(adapter_type)
+            if not isinstance(adapter, UiAdapter):
+                continue
+            delivered_at = adapter.get_last_delivered_at(session)
+            if delivered_at is not None and delivered_at >= stop_at:
                 continue
 
             await self._route_to_ui(

@@ -360,7 +360,7 @@ class TestProcessMessage:
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text="ship it",
-            origin="api",
+            origin="web",
             actor_id="actor-1",
             actor_name="Bob",
             source_message_id="msg-1",
@@ -371,7 +371,7 @@ class TestProcessMessage:
 
         manager.enqueue.assert_awaited_once_with(
             session_id=session.session_id,
-            origin="api",
+            origin="web",
             content="ship it",
             actor_id="actor-1",
             actor_name="Bob",

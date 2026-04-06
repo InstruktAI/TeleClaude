@@ -248,14 +248,15 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         if not entry_point_channel_id:
             entry_point_channel_id = ""
 
-        # Store all adapter channel_ids in origin_metadata.
-        # Telegram stores topic_id (int), Discord stores thread_id (int), Redis stores channel_id (str).
+        # Store only meaningful adapter-provided channel identifiers in origin_metadata.
+        # UI adapters provide persistent identifiers; transport-only adapters may return "".
         channel_field: dict[str, tuple[str, type]] = {
             "telegram": ("topic_id", int),
             "discord": ("thread_id", int),
-            "redis": ("channel_id", str),
         }
         for adapter_type, channel_id in all_channel_ids.items():
+            if not channel_id:
+                continue
             field_name, coerce = channel_field.get(adapter_type, ("channel_id", str))
             await db.update_origin_metadata(session_id, adapter_type, {field_name: coerce(channel_id)})
         logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id)

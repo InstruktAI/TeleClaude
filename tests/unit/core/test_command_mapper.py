@@ -73,7 +73,7 @@ class TestCommandMapperRedis:
     def test_message_command_returns_process_message(self):
         cmd = CommandMapper.map_redis_input(
             "message hello world",
-            origin="api",
+            origin="terminal",
             session_id="sess-2",
         )
         assert isinstance(cmd, ProcessMessageCommand)
@@ -88,36 +88,36 @@ class TestCommandMapperRedis:
     @pytest.mark.unit
     def test_unknown_redis_command_raises(self):
         with pytest.raises(ValueError, match="Unknown redis command"):
-            CommandMapper.map_redis_input("unknown_xyz_command", origin="api")
+            CommandMapper.map_redis_input("unknown_xyz_command", origin="terminal")
 
     @pytest.mark.unit
     def test_end_session_returns_close_command(self):
-        cmd = CommandMapper.map_redis_input("end_session", origin="api", session_id="sess-4")
+        cmd = CommandMapper.map_redis_input("end_session", origin="terminal", session_id="sess-4")
         assert isinstance(cmd, CloseSessionCommand)
 
 
 class TestCommandMapperApi:
     @pytest.mark.unit
     def test_new_session_returns_create_command(self):
-        metadata = MessageMetadata(project_path="/tmp/proj", origin="api")
+        metadata = MessageMetadata(project_path="/tmp/proj", origin="web")
         cmd = CommandMapper.map_api_input("new_session", {}, metadata)
         assert isinstance(cmd, CreateSessionCommand)
 
     @pytest.mark.unit
     def test_message_returns_process_command(self):
-        metadata = MessageMetadata(origin="api")
+        metadata = MessageMetadata(origin="web")
         cmd = CommandMapper.map_api_input("message", {"session_id": "s1", "text": "hi"}, metadata)
         assert isinstance(cmd, ProcessMessageCommand)
         assert cmd.text == "hi"
 
     @pytest.mark.unit
     def test_end_session_returns_close_command(self):
-        metadata = MessageMetadata(origin="api")
+        metadata = MessageMetadata(origin="web")
         cmd = CommandMapper.map_api_input("end_session", {"session_id": "s1"}, metadata)
         assert isinstance(cmd, CloseSessionCommand)
 
     @pytest.mark.unit
     def test_unknown_api_command_raises(self):
-        metadata = MessageMetadata(origin="api")
+        metadata = MessageMetadata(origin="web")
         with pytest.raises(ValueError, match="Unknown api command"):
             CommandMapper.map_api_input("not_a_command", {}, metadata)

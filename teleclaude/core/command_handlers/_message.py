@@ -15,6 +15,7 @@ from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
@@ -51,7 +52,7 @@ async def handle_voice(
         await client.pre_handle_command(session, cmd.origin)
 
     # Update origin BEFORE sending feedback so routing targets the correct adapter.
-    # Without this, stale last_input_origin (e.g. "api" from TUI) causes feedback
+    # Without this, stale last_input_origin (e.g. "web" from a different edge) causes feedback
     # to broadcast and track wrong message_ids, preventing cleanup.
     if cmd.origin:
         await db.update_session(cmd.session_id, last_input_origin=cmd.origin)
@@ -121,7 +122,7 @@ async def handle_voice(
         ProcessMessageCommand(
             session_id=cmd.session_id,
             text=transcribed,
-            origin=cmd.origin or "api",
+            origin=cmd.origin or InputOrigin.TERMINAL.value,
             actor_id=cmd.actor_id,
             actor_name=cmd.actor_name,
             actor_avatar_url=cmd.actor_avatar_url,
