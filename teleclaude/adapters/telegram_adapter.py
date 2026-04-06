@@ -290,6 +290,13 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         refreshed = await db.get_session(session.session_id)
         recovery_session = refreshed or session
 
+        # Evict stale topic from readiness cache so subsequent sends don't
+        # skip the wait and immediately hit "thread not found" again.
+        stale_tg = self._tg(recovery_session)
+        if stale_tg.topic_id:
+            self._topic_ready_cache.discard(stale_tg.topic_id)
+            self._topic_ready_events.pop(stale_tg.topic_id, None)
+
         reset_tg = self._tg(recovery_session)
         reset_tg.topic_id = None
         reset_tg.output_message_id = None
@@ -301,6 +308,13 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
 
         try:
             retry_session = await self.ensure_channel(recovery_session)
+
+            # Wait for the new topic to be ready before retrying, preventing
+            # the retry from failing immediately with "thread not found".
+            new_tg = self._tg(retry_session)
+            if new_tg.topic_id:
+                await self._wait_for_topic_ready(new_tg.topic_id, retry_session.title)
+
             result = await task_factory(self, retry_session)
             logger.info(
                 "[TG_RECOVER] Recovered lane after missing thread for session %s",

@@ -1,5 +1,7 @@
 """Characterization tests for teleclaude.adapters.telegram_adapter."""
 
+# pylint: disable=missing-function-docstring,redefined-outer-name,protected-access
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -244,3 +246,73 @@ async def test_post_handle_user_input_tracks_message_for_next_cleanup(adapter: T
         await adapter._post_handle_user_input(session, "42")
 
     mock_db.add_pending_deletion.assert_awaited_once_with(session.session_id, "42")
+
+
+# ---------------------------------------------------------------------------
+# recover_lane_error — stale cache and readiness
+# ---------------------------------------------------------------------------
+
+
+def _make_session_with_topic(session_id: str = "sess-1", topic_id: int = 999) -> Session:
+    """Create a session with Telegram origin metadata containing a topic_id."""
+    session = _make_session(session_id)
+    session.origin_metadata = {"telegram": {"topic_id": topic_id, "output_message_id": "42", "char_offset": 10}}
+    return session
+
+
+@pytest.mark.unit
+async def test_recover_lane_error_clears_stale_topic_from_ready_cache(adapter: TelegramAdapter) -> None:
+    """Recovery must evict old topic_id from _topic_ready_cache so subsequent
+    sends to the same (stale) topic_id trigger proper readiness waits."""
+    session = _make_session_with_topic(topic_id=999)
+    adapter._topic_ready_cache.add(999)
+
+    # New topic created during recovery
+    new_session = _make_session_with_topic(topic_id=5000)
+
+    with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_origin_metadata = AsyncMock()
+        mock_db.update_session = AsyncMock()
+
+        adapter.ensure_channel = AsyncMock(return_value=new_session)
+        adapter._wait_for_topic_ready = AsyncMock()
+        task_factory = AsyncMock(return_value="ok")
+
+        error = TimeoutError("message thread not found")
+        await adapter.recover_lane_error(session, error, task_factory, "title")
+
+    assert 999 not in adapter._topic_ready_cache
+
+
+@pytest.mark.unit
+async def test_recover_lane_error_waits_for_new_topic_readiness(adapter: TelegramAdapter) -> None:
+    """Recovery must wait for the newly created topic to be ready before
+    retrying the task factory, preventing immediate 'thread not found'."""
+    old_session = _make_session_with_topic(topic_id=999)
+    new_session = _make_session_with_topic(topic_id=5000)
+    call_order: list[str] = []
+
+    async def wait_side_effect(*_args: object) -> None:
+        call_order.append("wait")
+
+    async def factory_side_effect(*_args: object) -> str:
+        call_order.append("factory")
+        return "ok"
+
+    with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=old_session)
+        mock_db.update_origin_metadata = AsyncMock()
+        mock_db.update_session = AsyncMock()
+
+        adapter.ensure_channel = AsyncMock(return_value=new_session)
+        adapter._wait_for_topic_ready = AsyncMock(side_effect=wait_side_effect)
+        task_factory = AsyncMock(side_effect=factory_side_effect)
+
+        error = TimeoutError("message thread not found")
+        await adapter.recover_lane_error(old_session, error, task_factory, "title")
+
+    adapter._wait_for_topic_ready.assert_awaited_once_with(5000, new_session.title)
+    assert call_order == ["wait", "factory"], (
+        f"task_factory must not run before readiness gate; got order: {call_order}"
+    )
