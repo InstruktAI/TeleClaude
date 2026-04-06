@@ -97,10 +97,6 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Scaffolding a todo is work planning. Workers don't plan. Contributors can scaffold work items.                       |
 | `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                    |
 | `telec todo validate`         | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Validation is a read/check operation. Workers can validate their own work. Customers have no todo context.           |
-| `telec todo demo list`        | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Listing demos is a read operation. Workers may need to see available demos.                                          |
-| `telec todo demo validate`    | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Validating a demo is a read/check operation.                                                                         |
-| `telec todo demo run`         | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Running a demo executes code. Workers may need to run demos as part of their task. Newcomers should not execute.     |
-| `telec todo demo create`      | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Promoting a demo is a write operation. Workers don't create demos.                                                   |
 | `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members. |
 | `telec todo work`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the work state machine is orchestration. Same as prepare.                                                    |
 | `telec todo mark-phase`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Marking a phase is state machine management. Same as prepare/work.                                                   |
@@ -205,7 +201,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec todo create`           | Newcomers, customers                        |
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo validate`         | Customers                                   |
-| `telec todo demo *`           | Various per subcommand                      |
 | `telec todo verify-artifacts` | Customers                                   |
 | `telec todo dump`             | Newcomers, customers                        |
 | `telec roadmap list`          | Customers                                   |

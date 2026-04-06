@@ -236,7 +236,6 @@ For each queued candidate:
 4. If merge succeeds:
    - push canonical `main`,
    - run delivery bookkeeping for non-bug slugs,
-   - run demo snapshot/cleanup lifecycle,
    - emit `integration_completed`.
 
 ### Self-End Authorization Matrix

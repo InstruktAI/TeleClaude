@@ -35,28 +35,19 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
    ```
 
 3. Resolve conflicts in the worktree where code context is available.
-4. Promote demo artifact (worktree-contained):
-
-   ```bash
-   telec todo demo create {slug}
-   ```
-
-   This stamps `demos/{slug}/snapshot.json` next to the existing `demo.md`.
-   Stage and commit promoted demo files if any were created.
-
-5. Publish the finalized branch:
+4. Publish the finalized branch:
 
    ```bash
    git push origin HEAD:{slug}
    ```
 
-6. Report exactly:
+5. Report exactly:
 
    ```
    FINALIZE_READY: {slug}
    ```
 
-7. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
+6. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
    The orchestrator records durable finalize-ready state after verifying the report.
 
 ### Stage B — Orchestrator: finalize handoff

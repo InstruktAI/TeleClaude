@@ -46,8 +46,8 @@ review-awareness before advancing.
 
 ### 4. Plan drafting (single-agent)
 
-From approved requirements, a single agent produces `implementation-plan.md` and
-`demo.md`. The plan is rationale-rich and review-aware — anticipating what the
+From approved requirements, a single agent produces `implementation-plan.md`.
+The plan is rationale-rich and review-aware — anticipating what the
 reviewer will check so the builder produces no surprises.
 
 ### 5. Plan review
@@ -101,7 +101,6 @@ and `prepare.phase_skipped` are emitted per child.
 
 - `telec todo artifacts read {slug} requirements` — triangulated, reviewed, approved.
 - `telec todo artifacts read {slug} implementation-plan` — review-aware, rationale-rich, reviewed, approved.
-- `telec todo artifacts read {slug} demo` — draft demonstration plan.
 - `telec todo artifacts read {slug} dor-report` — gate assessment.
 - `todos.db` state — grounding metadata and DOR verdict.
 - Events emitted at each phase transition (see below).

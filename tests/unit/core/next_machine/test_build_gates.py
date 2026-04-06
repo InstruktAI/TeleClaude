@@ -85,10 +85,7 @@ def test_collect_scoped_test_targets_maps_changed_sources_and_tests(tmp_path: Pa
 
 def test_run_build_gates_skips_when_no_scoped_tests_are_selected(tmp_path: Path) -> None:
     """Zero selected tests should skip the gate instead of failing it."""
-    with (
-        patch("teleclaude.core.next_machine.build_gates._collect_scoped_test_targets", return_value=[]),
-        patch("teleclaude.cli.demo_validation.validate_demo", return_value=(True, False, "demo ok")),
-    ):
+    with patch("teleclaude.core.next_machine.build_gates._collect_scoped_test_targets", return_value=[]):
         passed, output = run_build_gates(str(tmp_path), "slug")
 
     assert passed is True
@@ -103,7 +100,6 @@ def test_run_build_gates_retries_last_failed_tests_before_failing_the_gate(tmp_p
             return_value=["tests/unit/foo/test_bar.py"],
         ),
         patch("teleclaude.core.next_machine.build_gates._run_pytest_in_child_process") as run_pytest,
-        patch("teleclaude.cli.demo_validation.validate_demo", return_value=(True, False, "demo ok")),
     ):
         run_pytest.side_effect = [
             _PytestRunResult(returncode=1, stdout="1 failed, 10 passed", stderr=""),

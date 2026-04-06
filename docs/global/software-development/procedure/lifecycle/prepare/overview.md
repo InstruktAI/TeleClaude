@@ -102,7 +102,7 @@ Requirements and test specifications are approved but `implementation-plan.md` d
 Dispatch `next-prepare-draft` to a worker session. The draft agent grounds the
 approved requirements and test specs, decides whether the work is atomic, and either:
 
-- writes `implementation-plan.md` and `demo.md`, or
+- writes `implementation-plan.md`, or
 - splits the todo into dependent child work items and updates the holder breakdown.
 
 After the plan is written or the split is materialized, call
@@ -203,7 +203,7 @@ overlap after an integration delivery.
 
 1. Preparation artifacts produced through the state machine phases:
    `requirements.md`, test specification files (expected-failure-marked),
-   `implementation-plan.md`, `demo.md`.
+   `implementation-plan.md`.
 2. Each artifact reviewed and approved before the next phase begins.
 3. Grounding metadata in `todo state (todos.db)` for staleness detection.
 4. All sessions ended on completion.

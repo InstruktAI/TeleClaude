@@ -401,36 +401,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=["If slug is omitted, all active todos are checked."],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
-            "demo": CommandDef(
-                desc="Manage and run demo artifacts",
-                subcommands={
-                    "list": CommandDef(
-                        desc="List available demos",
-                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-                    ),
-                    "validate": CommandDef(
-                        desc="Validate demo artifact for a slug",
-                        args="<slug>",
-                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-                    ),
-                    "run": CommandDef(
-                        desc="Execute demo bash blocks for a slug",
-                        args="<slug>",
-                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
-                    ),
-                    "create": CommandDef(
-                        desc="Promote demo artifact for a slug",
-                        args="<slug>",
-                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),
-                    ),
-                },
-                notes=[
-                    "Use 'list' explicitly to list available demos.",
-                    "validate <slug>: check todos/{slug}/demo.md has executable bash blocks.",
-                    "run <slug>: execute bash blocks from demos/{slug}/demo.md.",
-                    "create <slug>: promote todos/{slug}/demo.md to demos/{slug}/demo.md.",
-                ],
-            ),
             "prepare": CommandDef(
                 desc="Run the Phase A (prepare) state machine",
                 args="[<slug>]",
@@ -501,7 +471,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Exits 0 on pass, 1 on failure.",
-                    "Checks artifact presence and consistency — does not run tests or demo.",
+                    "Checks artifact presence and consistency — does not run tests.",
                     "Integrated into next_work() before dispatching review.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),

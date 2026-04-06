@@ -13,7 +13,7 @@ TUI_SESSION_NAME = "tc_tui"
 class _ConfigProxy:
     """Lazily resolve runtime config on first attribute access.
 
-    This keeps low-dependency commands (for example `telec todo demo validate`)
+    This keeps low-dependency commands
     usable even when runtime config loading would fail.
     """
 

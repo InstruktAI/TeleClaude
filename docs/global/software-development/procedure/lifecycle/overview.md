@@ -21,23 +21,22 @@ Sequential artifact production with review gates:
 - **Requirements review** — validate requirements against quality standard
 - **Test specification** — write expected-failure test specs encoding behavioral requirements
 - **Test spec review** — validate test specs for behavioral focus and convention compliance
-- **Plan drafting** — produce `implementation-plan.md` and `demo.md` (or split the todo); plan tasks reference specific expected-failure tests they make GREEN
+- **Plan drafting** — produce `implementation-plan.md` (or split the todo); plan tasks reference specific expected-failure tests they make GREEN
 - **Plan review** — validate plan against policies, DoD gates, review lanes
 - **Readiness gate** — formal DOR validation on the complete artifact set
 - **Grounding check** — verify freshness of referenced files and policies
 
-Outputs: `requirements.md`, test specification files (expected-failure-marked), `implementation-plan.md`, `demo.md`.
+Outputs: `requirements.md`, test specification files (expected-failure-marked), `implementation-plan.md`.
 
 ### 2. Work (`telec todo work`)
 
 Build-review-fix-finalize cycle:
 
 - **Build** — satisfy existing test specifications by implementing the code they specify; execute implementation plan task-by-task, commit per task
-- **Review** — parallel review lanes (scope, code, principles, security, tests, errors, types, comments, demo, docs)
+- **Review** — parallel review lanes (scope, code, principles, security, tests, errors, types, comments, docs)
 - **Fix** — address review findings minimally, re-review (capped at `max_review_rounds`)
 - **Finalize** — integrate latest main, push branch, hand off to integration
 - **Deferrals** — process deferred items into new todos
-- **Demo** — validate during build, execute after merge, present via `/next-demo`
 - **Bug fix** — systematic debugging for bug-type work items
 
 ### 3. Integrate (`telec todo integrate`)
@@ -47,7 +46,7 @@ Merge candidates to canonical main:
 - **Squash merge** — single commit capturing full delivery intent
 - **Conflict resolution** — resolve in integration worktree
 - **Push** — advance `origin/main`
-- **Delivery bookkeeping** — roadmap update, demo snapshot, worktree cleanup
+- **Delivery bookkeeping** — roadmap update and worktree cleanup
 
 ### Principles
 

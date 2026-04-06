@@ -15,7 +15,7 @@ You are now the Architect in plan drafting mode.
 
 ## Purpose
 
-Produce `implementation-plan.md` and `demo.md` from approved requirements, or split the
+Produce `implementation-plan.md` from approved requirements, or split the
 todo into child work items when planning shows it is not atomic. Single-agent work.
 
 ## Inputs
@@ -28,10 +28,9 @@ todo into child work items when planning shows it is not atomic. Single-agent wo
 
 - Atomic case:
   - `implementation-plan.md` via `telec todo artifacts write` — review-aware, rationale-rich
-  - `demo.md` via `telec todo artifacts write` — draft demonstration plan
   - Split case:
   - child todo items and dependency links
-  
+
 ## Steps
 
 - Follow the plan draft procedure.

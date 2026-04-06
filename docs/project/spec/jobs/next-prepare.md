@@ -37,7 +37,7 @@ Hard rule: draft and gate must never run in the same worker session.
 
 - `scope`: active todo slugs under `todos/`; excludes `todos/_icebox/` and delivered items; runs idempotently.
 - `purpose`: improves preparation artifacts only (not feature implementation). Discovery handles requirements, draft handles planning and breakdown, gate handles formal DOR validation.
-- `outputs` per processed slug: `requirements.md`, `implementation-plan.md`, `demo.md`, `dor-report.md`, `todo state (todos.db)`.
+- `outputs` per processed slug: `requirements.md`, `implementation-plan.md`, `dor-report.md`, `todo state (todos.db)`.
 
 ### `state.json.dor` schema
 

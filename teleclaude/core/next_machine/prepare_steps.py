@@ -427,7 +427,7 @@ async def _prepare_step_plan_drafting(
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
                 f"Ground the approved requirements for todos/{slug}. If the work is atomic, "
-                f"write todos/{slug}/implementation-plan.md and demo.md. If planning shows the "
+                f"write todos/{slug}/implementation-plan.md. If planning shows the "
                 "parent is too large, split it into child todos and update the holder breakdown."
             ),
             next_call=f"telec todo prepare {slug}",

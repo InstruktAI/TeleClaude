@@ -79,7 +79,7 @@ Common gaps:
 - Requirement implies new config → config wizard, sample, and spec updates.
 - Requirement implies security boundaries → validation and auth expectations.
 - Requirement implies documentation changes → doc update expectations.
-- Requirement implies user-visible behavior → demo coverage.
+- Requirement implies user-visible behavior → user-facing verification coverage.
 
 ### Test specification quality
 
@@ -129,7 +129,7 @@ Plans must provide enough detail for a builder to execute without guessing:
 ## Scope
 
 - Applies to all preparation artifacts: `requirements.md`,
-  `implementation-plan.md`, `demo.md`, and `dor-report.md`.
+  `implementation-plan.md` and `dor-report.md`.
 - Applies to all agents creating or reviewing these artifacts: discovery
   workers, draft workers, requirements reviewers, plan reviewers, and
   gate assessors.

@@ -129,9 +129,6 @@ more to fix than they cost to prevent.
 If the todo stays atomic, write:
 
 - `telec todo artifacts read {slug} implementation-plan` — the full plan with tasks, rationale, and verification.
-- `telec todo artifacts read {slug} demo` — draft demonstration plan: what medium (CLI, TUI, web, API),
-  what the user observes, what commands validate it works. The draft doesn't need to be
-  perfect — the builder refines it with real implementation knowledge.
 
 Update `todos.db` state:
 
@@ -154,7 +151,7 @@ If the todo is split instead:
 ## Outputs
 
 1. Atomic case:
-   `telec todo artifacts read {slug} implementation-plan`, `telec todo artifacts read {slug} demo`, and updated
+   `telec todo artifacts read {slug} implementation-plan` and updated
    `todos.db` state.
 2. Split case:
    child todos, dependency links, and updated holder `breakdown`.

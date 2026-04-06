@@ -96,7 +96,6 @@ without findings:
   README updates where the requirements imply user-facing changes?
 - **Config surface**: if new config keys are introduced, does the plan include
   wizard, sample, and spec updates?
-- **Demo**: does the plan include demo artifact updates?
 
 Missing lane coverage is an Important finding.
 
@@ -138,7 +137,7 @@ Auto-remediate **trivial** findings inline. Localized means all of the following
 
 - No requirement intent changes.
 - No new architectural decision is introduced.
-- Scope stays within the reviewed plan/demo artifacts and related grounding metadata.
+- Scope stays within the reviewed planning artifacts and related grounding metadata.
 - The reviewer can fully validate the fix from current context.
 
 Not allowed — assign `substantive` or `architectural` severity instead:

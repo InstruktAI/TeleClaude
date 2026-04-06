@@ -32,7 +32,6 @@ The state machine dispatches a builder worker via `next-build`. The builder:
 
 - Executes the implementation plan task-by-task
 - Commits per task
-- Validates demo artifacts
 - Reports BUILD COMPLETE when done
 
 When the builder reports success, the orchestrator persists the build transition
@@ -45,7 +44,7 @@ gate failures back to the builder, and retries the same post-completion loop.
 
 After build completes, the state machine dispatches a reviewer via `next-review-build`.
 The reviewer runs parallel review lanes (scope, code, principles, security, tests,
-errors, types, comments, demo, docs) and delivers a verdict.
+errors, types, comments, docs) and delivers a verdict.
 
 The orchestrator persists the review transition before advancing:
 
@@ -82,12 +81,7 @@ is ended and `telec todo work [slug]` is called again.
 If `deferrals.md` exists, the state machine dispatches deferral resolution via
 `next-defer` before or after finalize. New todos are created from justified deferrals.
 
-### 7. Demo
-
-Demo validation happens during build. Demo execution (`telec todo demo run`) happens
-after merge on main. Demo presentation happens via `next-demo`.
-
-### 8. Bug fix
+### 7. Bug fix
 
 For bug-type work items, the state machine dispatches `next-bugs-fix` instead of
 the standard build flow. The bug fixer follows systematic debugging methodology.
@@ -116,5 +110,4 @@ build-gate failures until they pass or a blocker remains.
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/fix-review.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/finalize.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/deferrals.md
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/work/demo.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/bug-fix.md

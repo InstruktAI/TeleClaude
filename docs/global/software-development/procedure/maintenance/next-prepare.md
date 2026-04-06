@@ -68,7 +68,7 @@ Requirements are approved but `implementation-plan.md` does not exist or is stal
 Dispatch `next-prepare-draft` to a worker session. The draft agent grounds the
 approved requirements, decides whether the work is atomic, and either:
 
-- writes `implementation-plan.md` and `demo.md`, or
+- writes `implementation-plan.md`, or
 - splits the todo into dependent child work items and updates the holder breakdown.
 
 The dispatch note includes `additional_context` when:
@@ -179,7 +179,7 @@ After dispatching a worker:
 ## Outputs
 
 1. Preparation artifacts produced through the state machine phases:
-   `requirements.md`, `implementation-plan.md`, `demo.md`.
+   `requirements.md`, `implementation-plan.md`.
 2. Each artifact reviewed and approved before the next phase begins.
 3. Grounding metadata in `todo state (todos.db)` for staleness detection.
 4. All sessions ended on completion.

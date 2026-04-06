@@ -127,11 +127,6 @@ subcommands:
           - slug: 'string (optional)'
         flags:
           --project-root: 'Project root (default: cwd).'
-      demo:
-        args:
-          - slug: 'string (optional)'
-        flags:
-          --project-root: 'Project root (default: cwd).'
       split:
         description: 'Split a todo into child items. Children inherit the parent approved prepare phase: requirements-approved → children start at plan_drafting; plan-approved → children start at prepared (ready for build).'
         args:

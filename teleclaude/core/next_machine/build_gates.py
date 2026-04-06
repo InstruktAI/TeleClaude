@@ -1,4 +1,4 @@
-"""Build gates — test execution, demo validation, artifact verification.
+"""Build gates — test execution and artifact verification.
 
 No imports from core.py (circular-import guard).
 """
@@ -18,12 +18,11 @@ from typing import Any, NamedTuple, TypedDict, cast
 import pytest
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli import demo_validation
 from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName, StateValue
 from teleclaude.core.next_machine.path_checks import (
     _has_from_main_marker,
 )
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync, is_bug_todo
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync
 from teleclaude.git import GitCommandError, Repo
 
 logger = get_logger(__name__)
@@ -181,8 +180,8 @@ def _run_pytest_in_child_process(
     )
 
 
-def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint: disable=too-many-branches,too-many-locals
-    """Run build gates (tests + demo validation) in the worktree.
+def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint: disable=unused-argument
+    """Run build gates in the worktree.
 
     Returns (all_passed, output_details).
     """
@@ -229,19 +228,6 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint
     except (GitCommandError, OSError) as exc:
         all_passed = False
         results.append(f"GATE FAILED: scoped tests (error: {exc})")
-
-    # Gate 2: Demo structure validation (inline — no subprocess)
-    if is_bug_todo(worktree_cwd, slug):
-        results.append("GATE SKIPPED: demo validate (bug workflow)")
-    else:
-        passed, is_no_demo, message = demo_validation.validate_demo(slug, Path(worktree_cwd))
-        if not passed:
-            all_passed = False
-            results.append(f"GATE FAILED: demo validate\n{message}")
-        elif is_no_demo:
-            results.append(f"GATE WARNING: demo validate — no-demo marker used, reviewer must verify\n{message}")
-        else:
-            results.append(f"GATE PASSED: demo validate\n{message.strip()}")
 
     return all_passed, "\n".join(results)
 
@@ -327,7 +313,7 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str, *, is_bug: bool =
     """Mechanically verify artifacts for a given phase.
 
     Checks presence and completeness of artifacts for build or review phase.
-    Does not replace functional gates (scoped tests, demo validate) — complements
+    Does not replace functional gates (scoped tests) — complements
     them with artifact presence and consistency checks.
 
     When is_bug=True, checks bug.md instead of implementation-plan.md and

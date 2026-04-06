@@ -61,7 +61,6 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
 
 def _handle_todo(args: list[str]) -> None:
     """Handle telec todo commands."""
-    from teleclaude.cli.telec.handlers.demo import _handle_todo_demo
     from teleclaude.cli.tool_commands import (
         handle_todo_create,
         handle_todo_integrate,
@@ -82,8 +81,6 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_remove(args[1:])
     elif subcommand == "validate":
         _handle_todo_validate(args[1:])
-    elif subcommand == "demo":
-        _handle_todo_demo(args[1:])
     elif subcommand == "prepare":
         handle_todo_prepare(args[1:])
     elif subcommand == "work":

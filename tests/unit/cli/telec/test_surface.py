@@ -1,8 +1,12 @@
+"""CLI surface metadata tests."""
+
 from __future__ import annotations
 
 import importlib
 
 surface = importlib.import_module("teleclaude.cli.telec.surface")
+
+# pylint: disable=missing-function-docstring
 
 
 def test_cli_surface_exposes_expected_top_level_commands() -> None:
@@ -17,10 +21,8 @@ def test_sessions_revive_metadata_includes_attach_flag() -> None:
     assert [flag.long for flag in revive.flags] == ["--help", "--agent", "--attach"]
 
 
-def test_todo_demo_surface_lists_management_subcommands() -> None:
-    demo = surface.CLI_SURFACE["todo"].subcommands["demo"]
-
-    assert sorted(demo.subcommands) == ["create", "list", "run", "validate"]
+def test_todo_surface_does_not_expose_demo_subcommand() -> None:
+    assert "demo" not in surface.CLI_SURFACE["todo"].subcommands
 
 
 def test_hidden_commands_are_marked_hidden_in_surface() -> None:

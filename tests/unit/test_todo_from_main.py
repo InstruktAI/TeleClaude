@@ -122,13 +122,18 @@ class TestCreateFromMainSkeleton:
         requirements = (todo_dir / "requirements.md").read_text(encoding="utf-8")
         implementation_plan = (todo_dir / "implementation-plan.md").read_text(encoding="utf-8")
         quality_checklist = (todo_dir / "quality-checklist.md").read_text(encoding="utf-8")
-        demo = (todo_dir / "demo.md").read_text(encoding="utf-8")
 
         assert requirements.startswith("<!-- from-main:")
         assert "Test changes" in requirements
         assert implementation_plan.startswith("<!-- from-main:")
         assert quality_checklist.startswith("<!-- from-main:")
-        assert demo.startswith("<!-- no-demo: from-main")
+        assert sorted(path.name for path in todo_dir.iterdir()) == [
+            "implementation-plan.md",
+            "input.md",
+            "quality-checklist.md",
+            "requirements.md",
+            "state.yaml",
+        ]
 
         # Verify files were transferred to worktree
         assert (worktree_path / "src" / "app.py").exists()

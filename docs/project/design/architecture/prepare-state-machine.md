@@ -52,7 +52,6 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 - `telec todo artifacts read {slug} requirements` — triangulated, reviewed, approved requirements
 - Test specification files — expected-failure-marked tests encoding behavioral requirements
 - `telec todo artifacts read {slug} implementation-plan` — review-aware, rationale-rich, reviewed, approved plan
-- `telec todo artifacts read {slug} demo` — draft demonstration plan
 - `telec todo artifacts read {slug} dor-report` — gate assessment
 - `todos.db` state — updated with grounding metadata and DOR verdict
 - `prepare.*` lifecycle events at each phase transition
@@ -63,7 +62,6 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 | `requirements.md`        | Discovery worker (`/next-prepare-discovery`) | Requirements reviewer (`/next-review-requirements`) |
 | Test spec files          | Test spec worker (`/next-prepare-test-spec`) | Test spec reviewer (`/next-review-test-spec`)       |
 | `implementation-plan.md` | Draft worker (`/next-prepare-draft`)         | Plan reviewer (`/next-review-plan`)                 |
-| `demo.md`                | Draft worker                                 | —                                                   |
 | `dor-report.md`          | Gate worker (`/next-prepare-gate`)           | —                                                   |
 
 ## Invariants
@@ -292,7 +290,7 @@ Each state dispatches a specific worker command via `telec sessions run`:
 | `REQUIREMENTS_REVIEW` | `/next-review-requirements` | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
 | `TEST_SPEC_BUILD`     | `/next-prepare-test-spec`   | Architect   | `slow`        | Test spec files (expected-failure-marked)             |
 | `TEST_SPEC_REVIEW`    | `/next-review-test-spec`    | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
-| `PLAN_DRAFTING`       | `/next-prepare-draft`       | Architect   | `slow`        | `implementation-plan.md`, `demo.md`                   |
+| `PLAN_DRAFTING`       | `/next-prepare-draft`       | Architect   | `slow`        | `implementation-plan.md`                              |
 | `PLAN_REVIEW`         | `/next-review-plan`         | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
 | `GATE`                | `/next-prepare-gate`        | Assessor    | `slow`        | `dor-report.md`, DOR score in `todo state (todos.db)` |
 | `RE_GROUNDING`        | `/next-prepare-draft`       | Architect   | `slow`        | Updated `implementation-plan.md`                      |

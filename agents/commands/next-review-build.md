@@ -47,7 +47,7 @@ Review code changes against requirements and architecture and produce a verdict.
 
 - **Ad-hoc item detection:** If `requirements.md` contains the marker text `telec todo from-main`,
   this is an ad-hoc submission (code committed directly, no formal requirements or planning).
-  Skip the scope lane, demo lane, and completeness checks. Run all other lanes. Note
+  Skip the scope lane and completeness checks. Run all other lanes. Note
   "Ad-hoc review (via from-main)" in the findings header. Focus on whether the delivered
   code adheres to project policies.
 - Run every review lane marked "Always" in the review procedure's lane table.

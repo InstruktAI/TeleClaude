@@ -1,3 +1,5 @@
+"""CLI surface type tests."""
+
 from __future__ import annotations
 
 import importlib
@@ -5,6 +7,8 @@ import importlib
 from teleclaude.constants import HUMAN_ROLE_MEMBER, ROLE_SYSTEM
 
 surface_types = importlib.import_module("teleclaude.cli.telec.surface_types")
+
+# pylint: disable=missing-function-docstring,protected-access
 
 
 def test_command_auth_prefers_system_roles_for_agent_callers() -> None:
@@ -23,7 +27,7 @@ def test_flag_as_tuple_preserves_short_long_and_description() -> None:
 
 def test_command_def_visible_flags_omits_hidden_flags() -> None:
     command = surface_types.CommandDef(
-        desc="demo",
+        desc="visible flags",
         flags=[surface_types.Flag("--project"), surface_types.Flag("--help", hidden=True)],
     )
 

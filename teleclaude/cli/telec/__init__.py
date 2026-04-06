@@ -41,16 +41,6 @@ from teleclaude.cli.telec.handlers.bugs import (
 )
 from teleclaude.cli.telec.handlers.config import _handle_config
 from teleclaude.cli.telec.handlers.content import _handle_content, _handle_content_dump
-from teleclaude.cli.telec.handlers.demo import (
-    _check_no_demo_marker,
-    _demo_create,
-    _demo_list,
-    _demo_run,
-    _demo_validate,
-    _extract_demo_blocks,
-    _find_demo_md,
-    _handle_todo_demo,
-)
 from teleclaude.cli.telec.handlers.docs import _handle_docs, _handle_docs_get, _handle_docs_index
 from teleclaude.cli.telec.handlers.events_signals import (
     _handle_events,
@@ -168,19 +158,12 @@ __all__ = [
     "TelecCommand",
     "_ConfigProxy",
     "_attach_tmux_session",
-    "_check_no_demo_marker",
     "_complete_flags",
     "_complete_subcmd",
-    "_demo_create",
-    "_demo_list",
-    "_demo_run",
-    "_demo_validate",
     "_ensure_tmux_mouse_on",
     "_ensure_tmux_status_hidden_for_tui",
     "_example_commands",
     "_example_positionals",
-    "_extract_demo_blocks",
-    "_find_demo_md",
     "_flag_matches",
     "_flag_used",
     "_git_short_commit_hash",
@@ -225,7 +208,6 @@ __all__ = [
     "_handle_signals_status",
     "_handle_sync",
     "_handle_todo",
-    "_handle_todo_demo",
     "_handle_todo_dump",
     "_handle_todo_remove",
     "_handle_todo_split",

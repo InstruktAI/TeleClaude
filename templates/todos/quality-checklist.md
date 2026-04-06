@@ -16,7 +16,6 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate {slug}` exits 0, or exception noted)
 - [ ] User-facing verification evidence recorded
 - [ ] Browser-based frontend or web UI changes smoke-tested with Playwright
 - [ ] Working tree clean
@@ -26,7 +25,6 @@ Ownership:
 
 - [ ] Requirements traced to implemented behavior
 - [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
 - [ ] Findings written in `review-findings.md`
 - [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
 - [ ] Critical issues resolved or explicitly blocked

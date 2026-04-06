@@ -51,7 +51,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 - Instruction blocks for the orchestrator to execute (dispatch worker, mark phase, handoff)
 - Lifecycle events at each phase transition (consumed by automation and notifications)
 - Delivered code on canonical `main` (Phase C pushes from integration worktree)
-- Delivery bookkeeping (roadmap updates, demo promotion, cleanup)
+- Delivery bookkeeping (roadmap updates and cleanup)
 
 ## Invariants
 

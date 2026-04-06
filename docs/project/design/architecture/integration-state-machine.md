@@ -51,7 +51,7 @@ The Integration state machine is the **only role authorized to push canonical `m
 **Outputs:**
 
 - Updated `origin/main` with squash-merged feature content (pushed from `trees/_integration/`)
-- Delivery bookkeeping on repo root: `roadmap (todos.db)` → `delivered.yaml` transitions, demo promotion
+- Delivery bookkeeping on repo root: `roadmap (todos.db)` → `delivered.yaml` transitions and cleanup
 - Cleanup: worktree removal, branch deletion, todo directory removal
 - `integration.*` lifecycle events at each state transition
 - Final status with metrics (`items_processed`, `items_blocked`, `duration_ms`)
@@ -166,7 +166,7 @@ flowchart TD
 
     CommitCheck{"HEAD advanced?<br/>(new commit detected)"}
 
-    Bookkeeping["DELIVERY_BOOKKEEPING<br/>- roadmap deliver slug<br/>- demo create slug<br/>- commit bookkeeping"]
+    Bookkeeping["DELIVERY_BOOKKEEPING<br/>- roadmap deliver slug<br/>- commit bookkeeping"]
 
     Push["git push origin HEAD:main"]
 
@@ -277,7 +277,7 @@ sequenceDiagram
 
     SM->>SM: Detect HEAD advanced - COMMITTED
     SM->>SM: DELIVERY_BOOKKEEPING
-    Note over SM: roadmap deliver my-feature<br/>demo create my-feature
+    Note over SM: roadmap deliver my-feature
     SM->>WT: git push origin HEAD:main
     Note over Origin: Push succeeds
 
@@ -453,7 +453,6 @@ flowchart TD
     IsBug{"Is bug slug?"}
 
     Deliver["telec roadmap deliver slug<br/>(roadmap (todos.db) - delivered.yaml)"]
-    DemoCreate["telec todo demo create slug<br/>(if demo.md exists)"]
 
     Stage["git add<br/>todos.db<br/>(roadmap + delivered)"]
     Commit["git commit<br/>'chore: deliver slug'"]

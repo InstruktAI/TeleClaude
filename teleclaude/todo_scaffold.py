@@ -50,7 +50,6 @@ def create_todo_skeleton(  # pylint: disable=too-many-locals,unused-argument
     - todos/{slug}/requirements.md
     - todos/{slug}/implementation-plan.md
     - todos/{slug}/quality-checklist.md
-    - todos/{slug}/demo.md
     - todos/{slug}/state.yaml
 
     Optionally registers the slug in todos/roadmap.yaml when ``after`` or ``group`` is provided.
@@ -69,14 +68,12 @@ def create_todo_skeleton(  # pylint: disable=too-many-locals,unused-argument
     plan = _read_template("implementation-plan.md").format(slug=slug)
     checklist = _read_template("quality-checklist.md").format(slug=slug)
     input_md = seed_input if seed_input is not None else _read_template("input.md").format(slug=slug)
-    demo_md = _read_template("demo.md").format(slug=slug)
     state_content = yaml.dump(_DEFAULT_STATE, default_flow_style=False, sort_keys=False)
 
     _write_file(todo_dir / "requirements.md", req)
     _write_file(todo_dir / "implementation-plan.md", plan)
     _write_file(todo_dir / "quality-checklist.md", checklist)
     _write_file(todo_dir / "input.md", input_md)
-    _write_file(todo_dir / "demo.md", demo_md)
     _write_file(todo_dir / "state.yaml", state_content)
 
     return todo_dir
@@ -637,7 +634,6 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
     _write_file(todo_dir / "requirements.md", f"{from_main_marker}\n# Requirements: {slug}\n\n{desc_text}\n")
     _write_file(todo_dir / "implementation-plan.md", f"{from_main_marker}\n# Implementation Plan: {slug}\n")
     _write_file(todo_dir / "quality-checklist.md", f"{from_main_marker}\n# Quality Checklist: {slug}\n")
-    _write_file(todo_dir / "demo.md", f"<!-- no-demo: from-main inline work -->\n# Demo: {slug}\n")
 
     # --- 5d. Create worktree ---
     created = _create_or_attach_worktree(cwd, slug)

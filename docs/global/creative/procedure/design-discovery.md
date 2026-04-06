@@ -85,7 +85,7 @@ dimensions rather than browsing generically:
 **Scroll animation references** — browse for motion language and interaction patterns:
 
 - **Scroll-Driven Animations**: [scroll-driven-animations.style](https://scroll-driven-animations.style/)
-  — pure CSS scroll animation demos and techniques.
+  — pure CSS scroll animation examples and techniques.
 - **Awwwards Scrolling**: [awwwards.com/websites/scrolling](https://www.awwwards.com/websites/scrolling/)
   — award-winning scroll-based sites, free to browse.
 - **FreeFrontend**: [freefrontend.com/css-scroll-driven](https://freefrontend.com/css-scroll-driven/)

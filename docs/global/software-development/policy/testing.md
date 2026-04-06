@@ -158,7 +158,7 @@ Use a layered approach: **unit → functional → smoke**. Each layer proves a d
 Browser-rendered user-facing behavior must be verified in a real browser.
 
 - When a delivery changes browser-based frontend or web UI behavior, run a Playwright smoke test that exercises the changed path.
-- This is required in addition to unit and functional coverage; demo validation is not a substitute.
+- This is required in addition to unit and functional coverage.
 - The builder records the exercised path and observed result in `quality-checklist.md`.
 - The reviewer follows the same browser smoke verification path during review when feasible, and missing browser-smoke verification is a finding.
 

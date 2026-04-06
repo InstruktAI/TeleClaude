@@ -68,7 +68,6 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 | types      | Types added/modified        | next-type-design-analyzer  | Validate type design                                              |
 | comments   | Code changed                | next-comment-analyzer      | Check accuracy of comments on changed code                        |
 | logging    | Always                      | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes                |
-| demo       | Always                      | _(reviewer direct)_        | Verify demo.md has real executable blocks (see below)             |
 | docs       | CLI, config, or API changed | _(reviewer direct)_        | Verify help text, config surface, README reflect changes          |
 | simplify   | After other lanes pass      | next-code-simplifier       | Simplify without behavior changes                                 |
 
@@ -83,7 +82,7 @@ incomplete — stop and execute the missing lane before writing the verdict.
 #### Ad-hoc items (from-main)
 
 Items created via `telec todo from-main` have stub requirements and implementation plans.
-For these items, the scope and demo lanes are not applicable — skip them and note "Ad-hoc
+For these items, the scope lane is not applicable — skip it and note "Ad-hoc
 review" in the findings header. All other lanes remain mandatory. The reviewer should focus
 on whether the delivered code meets project quality policies.
 
@@ -183,26 +182,6 @@ Severity guidance:
 Missing tests for new behavior are **Important** findings.
 Missing browser-smoke verification for browser-based frontend changes is an **Important** finding.
 
-#### Demo artifact review
-
-Read `telec todo artifacts read {slug} demo` (or `demos/{slug}/demo.md`). For each executable bash block, cross-check against the actual implementation:
-
-- Do the commands, flags, and subcommands actually exist in the codebase?
-- Does expected output match what the code would produce?
-- Does the demo exercise features that were actually implemented — not planned, not old behavior?
-
-**Findings:**
-
-- Block uses nonexistent flags or commands -> **Critical**.
-- Demo is shallow, expected output is fabricated, or demo could pass validation while being functionally wrong -> **Important**.
-
-**No-demo marker (`<!-- no-demo: reason -->`) is a hard gate:**
-
-- Valid only for pure internal refactors with zero user-visible behavior change.
-- If delivery touches CLI, TUI, config, API, or messaging -> no-demo marker is invalid -> **Critical**.
-- "Requires live terminal interaction" is never valid — the AI presenter can drive TUI, Playwright, and APIs.
-- If justification is legitimate, explicitly note acceptance in findings.
-
 #### Documentation and config surface check
 
 When the delivery changes CLI subcommands, config keys, API endpoints, or user-facing behavior:
@@ -253,7 +232,7 @@ Auto-remediation is appropriate when all of the following are true:
 
 1. The fix does not change requirement intent or approved scope.
 2. The fix does not introduce a new architectural decision.
-3. The fix is localized (for example: typing, docs/help text, plan/demo
+3. The fix is localized (for example: typing, docs/help text, plan
    consistency, straightforward bug fix in touched area).
 4. The reviewer can re-run the relevant checks and validate correctness.
 
