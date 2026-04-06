@@ -3,10 +3,8 @@
 
 from __future__ import annotations
 
-import shlex
 import shutil
 import subprocess
-import sys
 import time
 import uuid
 from collections.abc import Callable
@@ -52,7 +50,16 @@ def _wait_for_capture(
     deadline = time.monotonic() + timeout_seconds
     latest = ""
     while time.monotonic() < deadline:
-        latest = _run_tmux(wrapper, "capture-pane", "-p", "-t", pane_id)
+        result = subprocess.run(
+            [str(wrapper), "capture-pane", "-p", "-t", pane_id],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            time.sleep(0.2)
+            continue
+        latest = result.stdout.strip()
         if predicate(latest):
             return latest
         time.sleep(0.2)
@@ -131,17 +138,9 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
     session_name = f"tc_tui_func_{uuid.uuid4().hex[:6]}"
     wrapper = tmp_path / "tmux-wrapper"
     _write_tmux_wrapper(wrapper, socket_name)
-    test_editor_command = (
-        f"{shlex.quote(sys.executable)} -c "
-        f"{shlex.quote('from pathlib import Path; import sys; p=Path(sys.argv[1]); p.write_text("X" + p.read_text(encoding="utf-8"), encoding="utf-8")')}"
-    )
 
     subprocess.run([str(wrapper), "new-session", "-d", "-c", "/tmp", "-s", session_name, "sh"], check=True)
     pane_id = _run_tmux(wrapper, "list-panes", "-t", session_name, "-F", "#{pane_id}")
-    subprocess.run(
-        [str(wrapper), "set-environment", "-g", "TELECLAUDE_EDITOR_COMMAND", test_editor_command],
-        check=True,
-    )
 
     monkeypatch.setenv("TMUX", "functional-test")
     monkeypatch.setenv("TMUX_PANE", pane_id)
@@ -192,6 +191,14 @@ def test_tmux_pane_manager_renders_preview_then_editor_in_same_doc_pane(
         )
 
         assert manager.state.session_to_pane[f"doc:{doc_id}"] == preview_pane_id
+        edit_capture = _wait_for_capture(
+            wrapper,
+            preview_pane_id,
+            lambda output: "# Hello" in output and "Esc save+close" in output,
+        )
+        assert "# Hello" in edit_capture
+        assert "Esc save+close" in edit_capture
+        _run_tmux(wrapper, "send-keys", "-t", preview_pane_id, "X", "Escape")
         persisted = _wait_for_artifact_content(
             db,
             slug,

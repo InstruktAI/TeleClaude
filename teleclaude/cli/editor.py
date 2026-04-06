@@ -4,21 +4,24 @@ This command is launched in a tmux pane by the preparation view.
 
 - View mode prints the current file contents immediately and stays alive until
   tmux respawns or closes the pane.
-- Edit mode opens a real terminal editor on the target file. For DB-backed
-  artifacts, content is materialized into a temporary file before editing and
-  persisted back into todos.db when the editor exits successfully.
+- Edit mode runs a lightweight inline curses editor. Escape saves if changed
+  and exits. For DB-backed artifacts, content is materialized into a temporary
+  file before editing and persisted back into todos.db on save/exit.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
-import shlex
+import select
 import shutil
 import signal
-import subprocess
+import sys
 import tempfile
+import termios
 import time
+import tty
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,6 +70,186 @@ class MaterializedArtifact:
         shutil.rmtree(self._temp_dir_path, ignore_errors=True)
 
 
+@dataclass
+class InlineEditorSession:
+    """Stateful inline editor model with save-on-escape semantics."""
+
+    file_path: Path
+    display_name: str
+    save_callback: Callable[[str], None] | None = None
+
+    def __post_init__(self) -> None:
+        initial_content = self.file_path.read_text(encoding="utf-8")
+        self.lines = initial_content.split("\n")
+        self.cursor_row = 0
+        self.cursor_col = 0
+        self.top_line = 0
+        self.col_offset = 0
+        self.status = "Esc save+close  Ctrl+S save"
+        self._last_saved_content = initial_content
+
+    lines: list[str] = None  # type: ignore[assignment]
+    cursor_row: int = 0
+    cursor_col: int = 0
+    top_line: int = 0
+    col_offset: int = 0
+    status: str = ""
+    _last_saved_content: str = ""
+
+    def current_text(self) -> str:
+        """Return the current buffer text."""
+        return "\n".join(self.lines)
+
+    def save_if_changed(self) -> bool:
+        """Persist only when the content differs from the last saved state."""
+        content = self.current_text()
+        if content == self._last_saved_content:
+            self.status = "No changes"
+            return False
+        self.file_path.write_text(content, encoding="utf-8")
+        if self.save_callback is not None:
+            self.save_callback(content)
+        self._last_saved_content = content
+        self.status = "Saved"
+        return True
+
+    def ensure_visible(self, height: int, width: int) -> None:
+        """Adjust viewport offsets so the cursor stays on-screen."""
+        if self.cursor_row < self.top_line:
+            self.top_line = self.cursor_row
+        elif self.cursor_row >= self.top_line + height:
+            self.top_line = self.cursor_row - height + 1
+
+        if self.cursor_col < self.col_offset:
+            self.col_offset = self.cursor_col
+        elif self.cursor_col >= self.col_offset + width:
+            self.col_offset = self.cursor_col - width + 1
+
+        self.top_line = max(0, self.top_line)
+        self.col_offset = max(0, self.col_offset)
+
+    def move_left(self) -> None:
+        if self.cursor_col > 0:
+            self.cursor_col -= 1
+        elif self.cursor_row > 0:
+            self.cursor_row -= 1
+            self.cursor_col = len(self.lines[self.cursor_row])
+
+    def move_right(self) -> None:
+        line = self.lines[self.cursor_row]
+        if self.cursor_col < len(line):
+            self.cursor_col += 1
+        elif self.cursor_row < len(self.lines) - 1:
+            self.cursor_row += 1
+            self.cursor_col = 0
+
+    def move_up(self) -> None:
+        if self.cursor_row > 0:
+            self.cursor_row -= 1
+            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_row]))
+
+    def move_down(self) -> None:
+        if self.cursor_row < len(self.lines) - 1:
+            self.cursor_row += 1
+            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_row]))
+
+    def insert_text(self, text: str) -> None:
+        line = self.lines[self.cursor_row]
+        self.lines[self.cursor_row] = line[: self.cursor_col] + text + line[self.cursor_col :]
+        self.cursor_col += len(text)
+
+    def insert_newline(self) -> None:
+        line = self.lines[self.cursor_row]
+        left = line[: self.cursor_col]
+        right = line[self.cursor_col :]
+        self.lines[self.cursor_row] = left
+        self.lines.insert(self.cursor_row + 1, right)
+        self.cursor_row += 1
+        self.cursor_col = 0
+
+    def backspace(self) -> None:
+        if self.cursor_col > 0:
+            line = self.lines[self.cursor_row]
+            self.lines[self.cursor_row] = line[: self.cursor_col - 1] + line[self.cursor_col :]
+            self.cursor_col -= 1
+            return
+        if self.cursor_row == 0:
+            return
+        current = self.lines.pop(self.cursor_row)
+        self.cursor_row -= 1
+        self.cursor_col = len(self.lines[self.cursor_row])
+        self.lines[self.cursor_row] += current
+
+    def delete(self) -> None:
+        line = self.lines[self.cursor_row]
+        if self.cursor_col < len(line):
+            self.lines[self.cursor_row] = line[: self.cursor_col] + line[self.cursor_col + 1 :]
+            return
+        if self.cursor_row >= len(self.lines) - 1:
+            return
+        self.lines[self.cursor_row] += self.lines.pop(self.cursor_row + 1)
+
+    def handle_key(self, key: str) -> bool:
+        """Apply one keystroke. Returns False when editing should end."""
+        if key == "LEFT":
+            self.move_left()
+        elif key == "RIGHT":
+            self.move_right()
+        elif key == "UP":
+            self.move_up()
+        elif key == "DOWN":
+            self.move_down()
+        elif key == "HOME":
+            self.cursor_col = 0
+        elif key == "END":
+            self.cursor_col = len(self.lines[self.cursor_row])
+        elif key == "BACKSPACE":
+            self.backspace()
+        elif key == "DELETE":
+            self.delete()
+        elif key == "ENTER":
+            self.insert_newline()
+        elif key == "TAB":
+            self.insert_text("    ")
+        elif key == "CTRL_S":
+            try:
+                self.save_if_changed()
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                self.status = f"Save failed: {exc}"
+        elif key == "ESC":
+            try:
+                self.save_if_changed()
+                return False
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                self.status = f"Save failed: {exc}"
+        elif key:
+            self.insert_text(key)
+        return True
+
+    def frame(self, height: int, width: int) -> tuple[str, int, int]:
+        """Return the current screen frame and cursor position."""
+        text_height = max(1, height - 2)
+        text_width = max(1, width)
+        self.ensure_visible(text_height, text_width)
+
+        header = f"[EDIT] {self.display_name}"
+        lines = [header[:width].ljust(width)]
+        for row in range(text_height):
+            line_index = self.top_line + row
+            if line_index >= len(self.lines):
+                lines.append("")
+                continue
+            visible = self.lines[line_index][self.col_offset : self.col_offset + text_width]
+            lines.append(visible)
+        lines.append(self.status[:width].ljust(width))
+
+        cursor_y = 1 + self.cursor_row - self.top_line
+        cursor_x = max(0, self.cursor_col - self.col_offset)
+        cursor_y = min(max(1, cursor_y), height - 2)
+        cursor_x = min(max(0, cursor_x), width - 1)
+        return ("\x1b[2J\x1b[H" + "\n".join(lines), cursor_y, cursor_x)
+
+
 def _render_view(file_path: Path, display_name: str) -> None:
     """Print a static preview that is visible immediately in the tmux pane."""
     content = file_path.read_text(encoding="utf-8")
@@ -93,23 +276,78 @@ def _wait_until_terminated() -> None:
             time.sleep(3600)
 
 
-def _default_editor_command() -> list[str]:
-    """Choose a real terminal editor without depending on Textual startup."""
-    env_editor = os.environ.get("TELECLAUDE_EDITOR_COMMAND") or os.environ.get("VISUAL") or os.environ.get("EDITOR")
-    if env_editor:
-        return shlex.split(env_editor)
-    for candidate in ("nvim", "vim", "nano", "vi"):
-        path = shutil.which(candidate)
-        if path:
-            return [path]
-    raise RuntimeError("No terminal editor found. Set TELECLAUDE_EDITOR_COMMAND or EDITOR.")
+def _terminal_size(fd: int) -> tuple[int, int]:
+    """Return the current terminal size with a sane fallback."""
+    try:
+        size = os.get_terminal_size(fd)
+        return size.lines, size.columns
+    except OSError:
+        return 24, 80
 
 
-def _run_editor(file_path: Path) -> int:
-    """Open the file in the configured terminal editor and return its exit code."""
-    command = [*_default_editor_command(), str(file_path)]
-    result = subprocess.run(command, check=False)
-    return int(result.returncode)
+def _read_key(fd: int) -> str | None:
+    """Read one keypress from the raw terminal."""
+    first = os.read(fd, 1)
+    if not first:
+        return None
+    if first == b"\x13":
+        return "CTRL_S"
+    if first in (b"\r", b"\n"):
+        return "ENTER"
+    if first == b"\t":
+        return "TAB"
+    if first in (b"\x7f", b"\x08"):
+        return "BACKSPACE"
+    if first != b"\x1b":
+        return first.decode("utf-8", errors="ignore") or None
+
+    sequence = b""
+    while select.select([fd], [], [], 0.01)[0]:
+        sequence += os.read(fd, 1)
+        if sequence.endswith(b"~") or sequence in {b"[A", b"[B", b"[C", b"[D", b"[H", b"[F", b"OH", b"OF"}:
+            break
+    mapping = {
+        b"[A": "UP",
+        b"[B": "DOWN",
+        b"[C": "RIGHT",
+        b"[D": "LEFT",
+        b"[H": "HOME",
+        b"[F": "END",
+        b"OH": "HOME",
+        b"OF": "END",
+        b"[3~": "DELETE",
+    }
+    if not sequence:
+        return "ESC"
+    return mapping.get(sequence, "ESC")
+
+
+def _run_inline_editor(
+    file_path: Path,
+    display_name: str,
+    *,
+    save_callback: Callable[[str], None] | None = None,
+) -> int:
+    """Run the lightweight inline editor until Escape saves and exits."""
+    session = InlineEditorSession(file_path=file_path, display_name=display_name, save_callback=save_callback)
+    fd = sys.stdin.fileno()
+    original_attrs = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        os.write(fd, b"\x1b[?25h")
+        while True:
+            height, width = _terminal_size(fd)
+            frame, cursor_y, cursor_x = session.frame(height, width)
+            os.write(fd, frame.encode("utf-8", errors="ignore"))
+            os.write(fd, f"\x1b[{cursor_y + 1};{cursor_x + 1}H".encode("ascii"))
+            key = _read_key(fd)
+            if key is None:
+                continue
+            if not session.handle_key(key):
+                return 0
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, original_attrs)
+        os.write(fd, b"\x1b[0m\x1b[?25h")
 
 
 def main() -> None:
@@ -150,9 +388,11 @@ def main() -> None:
             _render_view(file_path, display_name)
             _wait_until_terminated()
         else:
-            exit_code = _run_editor(file_path)
-            if exit_code == 0 and materialized is not None:
-                materialized.persist(file_path.read_text(encoding="utf-8"))
+            exit_code = _run_inline_editor(
+                file_path,
+                display_name,
+                save_callback=None if materialized is None else materialized.persist,
+            )
     finally:
         if materialized is not None:
             materialized.cleanup()
