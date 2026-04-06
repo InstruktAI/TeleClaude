@@ -43,6 +43,7 @@ from teleclaude.core.integration.step_functions import (
     _step_push_succeeded,
     _tls,
 )
+from teleclaude.project_root import resolve_main_repo_root
 
 logger = get_logger(__name__)
 
@@ -70,17 +71,10 @@ def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
     """Synchronous state machine loop. Returns instruction string for the agent."""
     _tls.loop = loop
 
-    # Resolve cwd to the main repo root so callers inside worktrees don't
-    # cause double-nested paths (e.g. trees/_integration/trees/_integration).
-    # --path-format=absolute ensures git returns an absolute path regardless
-    # of whether cwd is the repo root (.git → relative) or a worktree (absolute).
-    # The parent of the common git dir is the main repo root.
-    rc, common_dir_out, _ = _run_git(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=cwd)
-    if rc == 0 and common_dir_out.strip():
-        resolved = str(Path(common_dir_out.strip()).parent)
-        if resolved != cwd:
-            logger.info("Resolved cwd from worktree %s to repo root %s", cwd, resolved)
-            cwd = resolved
+    resolved = str(resolve_main_repo_root(cwd))
+    if resolved != cwd:
+        logger.info("Resolved cwd from worktree %s to repo root %s", cwd, resolved)
+        cwd = resolved
     checkpoint_path = state_dir / "integrate-state.json"
     lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
 

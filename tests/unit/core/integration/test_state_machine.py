@@ -81,25 +81,28 @@ def test_dispatch_resets_stale_counters_on_idle_entry(_mock_git: object, tmp_pat
 
 def test_dispatch_resolves_worktree_cwd_to_repo_root(tmp_path: Path) -> None:
     """When cwd is inside a worktree, _dispatch_sync resolves it to the
-    main repo root via git rev-parse --path-format=absolute --git-common-dir.
+    main repo root via the shared canonical project-root resolver.
 
     This prevents double-nested paths like trees/_integration/trees/_integration.
     """
     worktree_cwd = str(tmp_path / "trees" / "some-worktree")
     repo_root = str(tmp_path / "repo-root")
-    repo_git_dir = repo_root + "/.git"
 
     _write_stale_idle_checkpoint(tmp_path, items_processed=0, items_blocked=0)
 
     git_calls: list[tuple[list[str], str]] = []
 
     def mock_run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        _ = timeout
         git_calls.append((list(args), cwd))
-        if "--git-common-dir" in args:
-            return 0, repo_git_dir + "\n", ""
         return 0, "", ""
 
-    with patch("teleclaude.core.integration.state_machine._run_git", side_effect=mock_run_git):
+    with (
+        patch(
+            "teleclaude.core.integration.state_machine.resolve_main_repo_root", return_value=Path(repo_root)
+        ) as resolve,
+        patch("teleclaude.core.integration.state_machine._run_git", side_effect=mock_run_git),
+    ):
         _dispatch_sync(
             session_id="test-session",
             slug=None,
@@ -108,9 +111,8 @@ def test_dispatch_resolves_worktree_cwd_to_repo_root(tmp_path: Path) -> None:
             started=perf_counter(),
         )
 
-    # After cwd resolution, subsequent git calls must use the resolved repo root
-    post_resolve_calls = git_calls[1:]  # skip the --git-common-dir call itself
-    for args, call_cwd in post_resolve_calls:
+    resolve.assert_called_once_with(worktree_cwd)
+    for args, call_cwd in git_calls:
         assert call_cwd == repo_root, f"Expected cwd={repo_root} after resolution, got {call_cwd} for git {args}"
 
 

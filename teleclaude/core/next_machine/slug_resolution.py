@@ -7,11 +7,10 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase
-from teleclaude.git import GitCommandError, Repo
+from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -200,21 +199,7 @@ def resolve_canonical_project_root(cwd: str) -> str:
     Accepts either the project root or a path inside a git worktree. Falls back
     to the provided cwd when git metadata is unavailable.
     """
-    try:
-        repo = Repo(cwd)
-        raw_common_dir = repo.git.rev_parse("--git-common-dir").strip()
-    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
-        return cwd
-    if not raw_common_dir:
-        return cwd
-
-    common_dir = Path(raw_common_dir)
-    if not common_dir.is_absolute():
-        common_dir = (Path(cwd) / common_dir).resolve()
-    else:
-        common_dir = common_dir.resolve()
-
-    return str((common_dir / "..").resolve())
+    return str(resolve_main_repo_root(cwd))
 
 
 # ── Legacy sync functions (retained for callers not yet migrated) ────────

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from teleclaude.cli.telec.help import _usage
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
     from teleclaude.api_models import TodoDTO
@@ -65,9 +66,10 @@ def _handle_roadmap_show(args: list[str]) -> None:
     from teleclaude.core.roadmap import assemble_roadmap_from_db
 
     parsed = _parse_roadmap_show_args(args)
+    project_root = _resolve_roadmap_project_root()
 
     todos = assemble_roadmap_from_db(
-        str(Path.cwd()),
+        str(project_root),
         include_icebox=parsed["include_icebox"],
         icebox_only=parsed["icebox_only"],
         include_delivered=parsed["include_delivered"],
@@ -168,12 +170,17 @@ def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
     return result
 
 
-def _run_db(slug: str, method: str, **kwargs: object) -> object:  # pylint: disable=too-many-arguments
+def _resolve_roadmap_project_root() -> Path:
+    """Resolve the canonical project root for roadmap commands."""
+    return resolve_main_repo_root(Path.cwd())
+
+
+def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:  # pylint: disable=too-many-arguments
     """Run a TodosDb method synchronously via asyncio.run."""
     import asyncio  # pylint: disable=import-outside-toplevel
 
     async def _execute() -> object:
-        db = TodosDb(str(Path.cwd() / ".teleclaude" / "todos.db"))
+        db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
         await db.initialize()
         try:
             fn = getattr(db, method)
@@ -229,7 +236,10 @@ def _handle_roadmap_add(args: list[str]) -> None:
         print(_usage("roadmap", "add"))
         raise SystemExit(1)
 
-    if _run_db(slug, "add_to_roadmap", group_slug=group, after=after, description=description, before=before):
+    project_root = _resolve_roadmap_project_root()
+    if _run_db(
+        project_root, slug, "add_to_roadmap", group_slug=group, after=after, description=description, before=before
+    ):
         print(f"Added {slug} to roadmap.")
     else:
         print(f"Slug already exists in roadmap: {slug}")
@@ -263,7 +273,8 @@ def _handle_roadmap_remove(args: list[str]) -> None:
         print(_usage("roadmap", "remove"))
         raise SystemExit(1)
 
-    if _run_db(slug, "remove_from_roadmap"):
+    project_root = _resolve_roadmap_project_root()
+    if _run_db(project_root, slug, "remove_from_roadmap"):
         print(f"Removed {slug} from roadmap.")
     else:
         print(f"Slug not found in roadmap: {slug}")
@@ -311,7 +322,8 @@ def _handle_roadmap_move(args: list[str]) -> None:
         print(_usage("roadmap", "move"))
         raise SystemExit(1)
 
-    if _run_db(slug, "move_in_roadmap", before=before, after=after):
+    project_root = _resolve_roadmap_project_root()
+    if _run_db(project_root, slug, "move_in_roadmap", before=before, after=after):
         target = before or after
         direction = "before" if before else "after"
         print(f"Moved {slug} {direction} {target}.")
@@ -357,7 +369,8 @@ def _handle_roadmap_deps(args: list[str]) -> None:
         print(_usage("roadmap", "deps"))
         raise SystemExit(1)
 
-    _run_db(slug, "set_deps", after=after)
+    project_root = _resolve_roadmap_project_root()
+    _run_db(project_root, slug, "set_deps", after=after)
     if after:
         print(f"Set dependencies for {slug}: {', '.join(after)}")
     else:
@@ -391,7 +404,8 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
         print(_usage("roadmap", "freeze"))
         raise SystemExit(1)
 
-    if _run_db(slug, "freeze"):
+    project_root = _resolve_roadmap_project_root()
+    if _run_db(project_root, slug, "freeze"):
         print(f"Froze {slug} → icebox")
 
     else:
@@ -426,7 +440,8 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
         print(_usage("roadmap", "unfreeze"))
         raise SystemExit(1)
 
-    if _run_db(slug, "unfreeze"):
+    project_root = _resolve_roadmap_project_root()
+    if _run_db(project_root, slug, "unfreeze"):
         print(f"Unfroze {slug} → roadmap")
 
     else:
@@ -474,9 +489,10 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
         print(_usage("roadmap", "deliver"))
         raise SystemExit(1)
 
-    if not _run_db(slug, "deliver", commit=commit):
+    project_root = _resolve_roadmap_project_root()
+    if not _run_db(project_root, slug, "deliver", commit=commit):
         print(f"Slug not found in roadmap: {slug}")
         raise SystemExit(1)
 
-    cleanup_delivered_slug(str(Path.cwd()), slug)
+    cleanup_delivered_slug(str(project_root), slug)
     print(f"Delivered {slug} (cleanup complete)")

@@ -19,7 +19,7 @@ from typing import Any
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
-from teleclaude.hooks.receiver._repo_root import resolve_main_repo_root
+from teleclaude.project_root import resolve_main_repo_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
 WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"

@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
-from unittest.mock import patch
 
 from teleclaude.core.next_machine.slug_resolution import (
     get_item_phase,
@@ -52,11 +51,12 @@ def test_is_ready_for_work_accepts_pending_item_with_completed_build(tmp_path: P
     assert is_ready_for_work(str(tmp_path), "from-main-slug") is True
 
 
-def test_resolve_canonical_project_root_falls_back_to_requested_cwd_on_git_error() -> None:
-    with patch("subprocess.run", side_effect=Exception("git error")):
-        root = resolve_canonical_project_root("/repo/trees/slug")
+def test_resolve_canonical_project_root_falls_back_to_requested_cwd_without_git_metadata(tmp_path: Path) -> None:
+    cwd = tmp_path / "repo" / "trees" / "slug"
+    cwd.mkdir(parents=True)
+    root = resolve_canonical_project_root(str(cwd))
 
-    assert root == "/repo/trees/slug"
+    assert root == str(cwd)
 
 
 def test_get_item_phase_returns_done_for_delivered_slug(tmp_path: Path) -> None:

@@ -34,6 +34,7 @@ from teleclaude.core.next_machine.file_io import (
     read_text_sync,
     write_text_sync,
 )
+from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -47,11 +48,7 @@ logger = get_logger(__name__)
 
 def _project_root_from_cwd(cwd: str) -> str:
     """Resolve project root from a path that may be inside a worktree."""
-    p = Path(cwd)
-    if WORKTREE_DIR in p.parts:
-        idx = p.parts.index(WORKTREE_DIR)
-        return str(Path(*p.parts[:idx]))
-    return cwd
+    return str(resolve_main_repo_root(cwd))
 
 
 _db_cache: dict[str, TodosDb] = {}
