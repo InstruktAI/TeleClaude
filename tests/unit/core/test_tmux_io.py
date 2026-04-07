@@ -34,12 +34,11 @@ class TestWrapBracketedPaste:
         assert result == "hello world"
 
     @pytest.mark.unit
-    def test_codex_next_command_normalized(self):
+    def test_codex_slash_command_passed_through(self):
         result = wrap_bracketed_paste("/next-build my-slug", active_agent="codex")
-        # After normalization, /next-build becomes /prompts:next-build
-        assert "/prompts:next-build" in result
+        assert "/next-build" in result
 
     @pytest.mark.unit
-    def test_non_codex_agent_not_normalized(self):
+    def test_non_codex_agent_passed_through(self):
         result = wrap_bracketed_paste("/next-build my-slug", active_agent="claude")
         assert result.strip().startswith("/next-build")

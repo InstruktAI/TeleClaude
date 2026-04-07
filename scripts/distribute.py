@@ -54,10 +54,6 @@ Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
-CODEX_NEXT_COMMAND_RE = re.compile(
-    r"(^|[\s`'\"(\[])\/(next-[a-z0-9-]+)(?=$|[\s`'\"),.:;!?])",
-    re.MULTILINE,
-)
 CONTEXT_PRESERVATION_START = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->"
 CONTEXT_PRESERVATION_END = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->"
 
@@ -184,21 +180,6 @@ def _format_markdown(paths: list[str]) -> None:
     subprocess.run(["npx", "--yes", "prettier", "--write", *md_files], check=False)
 
 
-def _rewrite_codex_next_prompt_tokens(content: str) -> str:
-    """Rewrite executable /next-* command tokens for Codex custom prompts.
-
-    This intentionally rewrites command tokens only and avoids touching path-like
-    references such as /Users/.../next-prepare.md.
-    """
-
-    def _replace(match: re.Match[str]) -> str:
-        prefix = match.group(1)
-        command = match.group(2)
-        return f"{prefix}/prompts:{command}"
-
-    return CODEX_NEXT_COMMAND_RE.sub(_replace, content)
-
-
 ArtifactFrontmatter = TypedDict(
     "ArtifactFrontmatter",
     {
@@ -253,7 +234,7 @@ def transform_to_codex(post: Post) -> str:
     # a compatibility workaround for intermittent frontmatter false positives.
     # Note: GitHub issue openai/codex#11495 tracks removal of this workaround.
     content = _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(post))
-    return _rewrite_codex_next_prompt_tokens(content)
+    return content
 
 
 def transform_to_gemini(post: Post) -> str:
@@ -290,7 +271,7 @@ def transform_skill_to_codex(post: Post, name: str) -> str:
     metadata["description"] = metadata.get("description", "")
     transformed_post = Post(post.content, **metadata)
     content = _normalize_frontmatter_single_quotes_for_codex(dump_frontmatter(transformed_post))
-    return _rewrite_codex_next_prompt_tokens(content)
+    return content
 
 
 def transform_skill_to_gemini(post: Post, name: str) -> str:
@@ -812,14 +793,14 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
         },
         "codex": {
             "check_dir": os.path.expanduser("~/.codex"),
-            "prefix": "~/.codex/prompts/",
+            "prefix": "~/.teleclaude/commands/",
             "master_dest": os.path.join(dist_dir, "codex", "CODEX.md"),
             "commands_dest_dir": os.path.join(dist_dir, "codex", "prompts"),
             "agents_dest_dir": os.path.join(dist_dir, "codex", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "codex", "skills"),
             "skills_ext": ".md",
             "deploy_master_dest": os.path.join(os.path.expanduser("~/.codex"), "CODEX.md"),
-            "deploy_commands_dest": os.path.join(os.path.expanduser("~/.codex"), "prompts"),
+            "deploy_commands_dest": os.path.join(os.path.expanduser("~/.teleclaude"), "commands"),
             "deploy_agents_dest": os.path.join(os.path.expanduser("~/.codex"), "agents"),
             "deploy_skills_dest": os.path.join(os.path.expanduser("~/.codex"), "skills"),
             "ext": ".md",
@@ -1039,8 +1020,6 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
                 combined_agents_content = expanded_body
             if combined_agents_content:
                 combined_agents_content = combined_agents_content.rstrip() + addendum_suffix
-            if combined_agents_content and agent_name == "codex":
-                combined_agents_content = _rewrite_codex_next_prompt_tokens(combined_agents_content)
             if combined_agents_content:
                 master_dest_dir = os.path.dirname(master_dest_path)
                 if master_dest_dir:
@@ -1148,6 +1127,18 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
 
                 dist_agent_root = os.path.join(dist_dir, agent_name)
                 shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True)
+
+                # Deploy artifact types to explicit targets when they differ from copytree
+                for spec in artifact_specs:
+                    deploy_dest = str(config.get(spec.deploy_dir_key) or "")
+                    if not deploy_dest:
+                        continue
+                    dest_dir_basename = os.path.basename(str(config.get(spec.dest_dir_key) or ""))
+                    dist_src = os.path.join(dist_agent_root, dest_dir_basename)
+                    copytree_dest = os.path.join(target_root, dest_dir_basename)
+                    if os.path.normpath(deploy_dest) != os.path.normpath(copytree_dest) and os.path.isdir(dist_src):
+                        os.makedirs(deploy_dest, exist_ok=True)
+                        shutil.copytree(dist_src, deploy_dest, dirs_exist_ok=True)
 
             print("Deployment complete.")
 

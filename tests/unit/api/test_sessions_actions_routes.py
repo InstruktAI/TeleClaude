@@ -487,7 +487,7 @@ class TestSessionsActionsRoutes:
             "/next-review-build chartest-api-routes --direct\n\nADDITIONAL CONTEXT:\nTrace real route behavior."
         )
         expected_startup_message = (
-            f"Read {Path.home() / '.codex' / 'prompts' / 'next-review-build.md'} and follow it exactly as "
+            f"Read {Path.home() / '.teleclaude' / 'commands' / 'next-review-build.md'} and follow it exactly as "
             "the active instruction set for this session.\n\n"
             "Treat the following as provided inputs to that instruction set:\n"
             "- slug: chartest-api-routes --direct\n\n"
