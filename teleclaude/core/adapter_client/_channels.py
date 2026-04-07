@@ -114,6 +114,23 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return None
 
+    async def _run_deferred_ui_lane(
+        self,
+        session: "Session",
+        adapter_type: str,
+        task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+    ) -> object | None:
+        """Execute deferred UI work through the normal lane recovery envelope."""
+        adapter = self.adapters.get(adapter_type)
+        if adapter is None or not isinstance(adapter, UiAdapter):
+            logger.warning(
+                "[UI_LANE] Skipping deferred lane for missing adapter=%s session=%s",
+                adapter_type,
+                session.session_id,
+            )
+            return None
+        return await self._run_ui_lane(session, adapter_type, adapter, task_factory)
+
     @staticmethod
     def _summarize_output(output: str) -> str:
         """Summarize output for last_output display (single-line tail)."""
