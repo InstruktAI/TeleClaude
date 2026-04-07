@@ -1,6 +1,6 @@
 """Characterization tests for teleclaude.project_setup.sync."""
 
-# pylint: disable=missing-function-docstring,protected-access
+# pylint: disable=protected-access
 from __future__ import annotations
 
 from pathlib import Path

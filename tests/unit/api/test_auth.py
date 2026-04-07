@@ -1,5 +1,5 @@
 """Tests for teleclaude.api.auth — verify_caller token path, clearance checks, principal wiring."""
-# pylint: disable=missing-function-docstring,import-outside-toplevel
+# pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
 

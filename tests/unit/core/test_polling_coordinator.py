@@ -1,20 +1,22 @@
 """Tests for teleclaude.core.polling_coordinator helpers."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods
+# pylint: disable=protected-access  # tests access module-private state sets intentionally
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import teleclaude.core.polling_coordinator as pc
 from teleclaude.core.models import Session
 from teleclaude.core.polling_coordinator import (
-    CodexInputState,
     _build_transcript_output_update,
-    _has_active_output_message,
-    _maybe_emit_codex_session_start,
+    _cleanup_codex_input_state,
+    _emit_codex_session_start,
     _percentile,
+    _try_bind_codex_transcript,
 )
 
 
@@ -43,6 +45,157 @@ class TestPercentile:
     def test_p0_returns_minimum(self):
         result = _percentile([5.0, 3.0, 1.0, 4.0, 2.0], 0.0)
         assert result == 1.0
+
+
+def _make_session(
+    *,
+    session_id: str = "sess-codex-1",
+    computer_name: str = "local",
+    tmux_session_name: str = "tmux-1",
+    title: str = "Codex Test",
+    active_agent: str | None = "codex",
+    native_session_id: str | None = "native-sess-1",
+    native_log_file: str | None = None,
+) -> Session:
+    return Session(
+        session_id=session_id,
+        computer_name=computer_name,
+        tmux_session_name=tmux_session_name,
+        title=title,
+        active_agent=active_agent,
+        native_session_id=native_session_id,
+        native_log_file=native_log_file,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _reset_codex_sets() -> Generator[None, None, None]:  # pylint: disable=protected-access
+    pc._codex_session_start_emitted.clear()
+    pc._codex_transcript_bind_attempted.clear()
+    yield
+    pc._codex_session_start_emitted.clear()
+    pc._codex_transcript_bind_attempted.clear()
+
+
+class TestEmitCodexSessionStart:
+    @pytest.mark.unit
+    async def test_non_codex_session_is_noop(self):
+        session = _make_session(active_agent="claude")
+        emit = AsyncMock()
+        with patch("teleclaude.core.polling_coordinator.discover_codex_transcript_path"):
+            await _emit_codex_session_start(session, emit)
+        emit.assert_not_called()
+        assert session.session_id not in pc._codex_session_start_emitted
+
+    @pytest.mark.unit
+    async def test_first_call_emits_event_and_sets_guard(self):
+        session = _make_session()
+        emit = AsyncMock()
+        with patch(
+            "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
+            return_value="/tmp/transcript.jsonl",
+        ):
+            await _emit_codex_session_start(session, emit)
+        emit.assert_called_once()
+        assert session.session_id in pc._codex_session_start_emitted
+
+    @pytest.mark.unit
+    async def test_second_call_same_session_is_noop(self):
+        session = _make_session()
+        emit = AsyncMock()
+        with patch(
+            "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
+            return_value="/tmp/transcript.jsonl",
+        ):
+            await _emit_codex_session_start(session, emit)
+            await _emit_codex_session_start(session, emit)
+        emit.assert_called_once()
+
+    @pytest.mark.unit
+    async def test_guard_not_set_on_emission_failure(self):
+        session = _make_session()
+        emit = AsyncMock(side_effect=RuntimeError("emit failed"))
+        with patch(
+            "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
+            return_value="/tmp/transcript.jsonl",
+        ):
+            with pytest.raises(RuntimeError):
+                await _emit_codex_session_start(session, emit)
+        assert session.session_id not in pc._codex_session_start_emitted
+
+
+class TestTryBindCodexTranscript:
+    @pytest.mark.unit
+    async def test_non_codex_session_returns_false(self):
+        session = _make_session(active_agent="claude")
+        result = await _try_bind_codex_transcript(session)
+        assert result is False
+        assert session.session_id not in pc._codex_transcript_bind_attempted
+
+    @pytest.mark.unit
+    async def test_transcript_found_calls_db_update_and_returns_true(self):
+        session = _make_session()
+        mock_db = AsyncMock()
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
+                return_value="/tmp/transcript.jsonl",
+            ),
+            patch("teleclaude.core.polling_coordinator.db", mock_db),
+        ):
+            result = await _try_bind_codex_transcript(session)
+        assert result is True
+        mock_db.update_session.assert_called_once_with(session.session_id, native_log_file="/tmp/transcript.jsonl")
+        assert session.session_id in pc._codex_transcript_bind_attempted
+
+    @pytest.mark.unit
+    async def test_transcript_not_found_returns_false_and_sets_guard(self):
+        session = _make_session()
+        with patch(
+            "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
+            return_value=None,
+        ):
+            result = await _try_bind_codex_transcript(session)
+        assert result is False
+        assert session.session_id in pc._codex_transcript_bind_attempted
+
+    @pytest.mark.unit
+    async def test_already_attempted_returns_false(self):
+        session = _make_session()
+        pc._codex_transcript_bind_attempted.add(session.session_id)
+        mock_discover = patch("teleclaude.core.polling_coordinator.discover_codex_transcript_path")
+        with mock_discover as discover:
+            result = await _try_bind_codex_transcript(session)
+        discover.assert_not_called()
+        assert result is False
+
+    @pytest.mark.unit
+    async def test_guard_not_set_when_db_update_fails(self):
+        session = _make_session()
+        mock_db = AsyncMock()
+        mock_db.update_session.side_effect = RuntimeError("db error")
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
+                return_value="/tmp/transcript.jsonl",
+            ),
+            patch("teleclaude.core.polling_coordinator.db", mock_db),
+        ):
+            with pytest.raises(RuntimeError):
+                await _try_bind_codex_transcript(session)
+        assert session.session_id not in pc._codex_transcript_bind_attempted
+
+
+class TestCleanupCodexInputState:
+    @pytest.mark.unit
+    def test_discards_from_both_state_sets(self):
+        sid = "sess-cleanup-1"
+        pc._codex_session_start_emitted.add(sid)
+        pc._codex_transcript_bind_attempted.add(sid)
+        with patch("teleclaude.core.polling_coordinator.codex_prompt_submit"):
+            _cleanup_codex_input_state(sid)
+        assert sid not in pc._codex_session_start_emitted
+        assert sid not in pc._codex_transcript_bind_attempted
 
 
 class TestBuildTranscriptOutputUpdate:
@@ -76,125 +229,3 @@ class TestBuildTranscriptOutputUpdate:
             update = _build_transcript_output_update(session)
 
         assert update == ("rendered", last_ts, True)
-
-
-class TestHasActiveOutputMessage:
-    @pytest.mark.unit
-    def test_returns_true_when_any_origin_section_has_output_message_id(self):
-        session = Session(
-            session_id="sess-1",
-            computer_name="local",
-            tmux_session_name="tmux-sess-1",
-            title="Demo",
-            origin_metadata={
-                "discord": {"output_message_id": "msg-123"},
-                "telegram": {},
-            },
-        )
-
-        assert _has_active_output_message(session) is True
-
-    @pytest.mark.unit
-    def test_returns_false_when_no_origin_section_has_output_message_id(self):
-        session = Session(
-            session_id="sess-1",
-            computer_name="local",
-            tmux_session_name="tmux-sess-1",
-            title="Demo",
-            origin_metadata={
-                "discord": {"output_message_id": None},
-                "telegram": {},
-            },
-        )
-
-        assert _has_active_output_message(session) is False
-
-
-class TestMaybeEmitCodexSessionStart:
-    @pytest.mark.unit
-    async def test_emits_when_recent_unclaimed_candidate_resolves(self):
-        session = Session(
-            session_id="sess-1",
-            computer_name="local",
-            tmux_session_name="tmux-sess-1",
-            title="Demo",
-            active_agent="codex",
-            created_at=datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC),
-        )
-        emit_agent_event = AsyncMock()
-
-        with (
-            patch(
-                "teleclaude.core.polling_coordinator._codex_input_state",
-                {"sess-1": CodexInputState(last_emitted_prompt="hello")},
-            ),
-            patch(
-                "teleclaude.core.polling_coordinator.db.list_sessions",
-                AsyncMock(return_value=[]),
-            ),
-            patch(
-                "teleclaude.core.polling_coordinator.discover_recent_unclaimed_codex_transcript",
-                return_value=type(
-                    "Candidate",
-                    (),
-                    {
-                        "native_session_id": "019d6240-e7ec-7c83-958e-a713996de5a6",
-                        "transcript_path": "/tmp/rollout.jsonl",
-                    },
-                )(),
-            ),
-        ):
-            result = await _maybe_emit_codex_session_start(session, emit_agent_event)
-
-        assert result is True
-        payload = emit_agent_event.await_args.args[0].data
-        assert payload.session_id == "019d6240-e7ec-7c83-958e-a713996de5a6"
-        assert payload.transcript_path == "/tmp/rollout.jsonl"
-
-    @pytest.mark.unit
-    async def test_uses_existing_native_session_id_to_fill_missing_path(self):
-        session = Session(
-            session_id="sess-1",
-            computer_name="local",
-            tmux_session_name="tmux-sess-1",
-            title="Demo",
-            active_agent="codex",
-            created_at=datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC),
-            native_session_id="019d6240-e7ec-7c83-958e-a713996de5a6",
-        )
-        emit_agent_event = AsyncMock()
-
-        with (
-            patch(
-                "teleclaude.core.polling_coordinator._codex_input_state",
-                {"sess-1": CodexInputState(last_emitted_prompt="hello")},
-            ),
-            patch(
-                "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
-                return_value="/tmp/rollout.jsonl",
-            ),
-        ):
-            result = await _maybe_emit_codex_session_start(session, emit_agent_event)
-
-        assert result is True
-        payload = emit_agent_event.await_args.args[0].data
-        assert payload.session_id == "019d6240-e7ec-7c83-958e-a713996de5a6"
-        assert payload.transcript_path == "/tmp/rollout.jsonl"
-
-    @pytest.mark.unit
-    async def test_skips_when_no_synthetic_submit_has_been_emitted(self):
-        session = Session(
-            session_id="sess-1",
-            computer_name="local",
-            tmux_session_name="tmux-sess-1",
-            title="Demo",
-            active_agent="codex",
-            created_at=datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC),
-        )
-        emit_agent_event = AsyncMock()
-
-        with patch("teleclaude.core.polling_coordinator._codex_input_state", {}):
-            result = await _maybe_emit_codex_session_start(session, emit_agent_event)
-
-        assert result is False
-        emit_agent_event.assert_not_awaited()

@@ -1,6 +1,6 @@
 """Characterization tests for teleclaude.cli.tui.widgets.todo_row."""
 
-# pylint: disable=missing-function-docstring,import-outside-toplevel
+# pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
 

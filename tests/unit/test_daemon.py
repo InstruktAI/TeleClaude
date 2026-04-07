@@ -80,7 +80,6 @@ async def test_stop_awaits_webhook_delivery_task_gracefully() -> None:
     daemon_instance.poller_watch_task = None
     daemon_instance.hook_outbox_task = None
     daemon_instance.mirror_worker_task = None
-    daemon_instance.codex_transcript_watch_task = None
     daemon_instance.channel_subscription_worker_task = None
     daemon_instance.resource_monitor_task = None
     daemon_instance._wal_checkpoint_task = None

@@ -1,4 +1,3 @@
-# pylint: disable=missing-class-docstring,missing-function-docstring
 """Characterization tests for teleclaude.core.session_launcher."""
 
 from __future__ import annotations

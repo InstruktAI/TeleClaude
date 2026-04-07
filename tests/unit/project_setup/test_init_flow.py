@@ -1,4 +1,4 @@
-# pylint: disable=missing-function-docstring,protected-access,consider-using-from-import
+# pylint: disable=protected-access,consider-using-from-import
 """Characterization tests for teleclaude.project_setup.init_flow."""
 
 from __future__ import annotations

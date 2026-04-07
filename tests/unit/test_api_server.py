@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.api_server public boundaries."""
-# pylint: disable=missing-function-docstring,protected-access,import-outside-toplevel
+# pylint: disable=protected-access,import-outside-toplevel
 
 from __future__ import annotations
 

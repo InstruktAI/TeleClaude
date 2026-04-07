@@ -1,6 +1,6 @@
 """Characterization tests for teleclaude.core.agent_coordinator._coordinator."""
-# pylint: disable=missing-function-docstring,missing-class-docstring,protected-access
-# pylint: disable=too-few-public-methods,line-too-long,use-implicit-booleaness-not-comparison,unused-argument
+# pylint: disable=protected-access
+# pylint: disable=line-too-long,use-implicit-booleaness-not-comparison,unused-argument
 
 from __future__ import annotations
 
@@ -885,11 +885,10 @@ class TestRecordAgentStopOutput:
 
         with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
             mock_db.update_session = AsyncMock()
-            link_output, summary, raw_output = await coord._record_agent_stop_output("sess-001", payload)
+            link_output, summary = await coord._record_agent_stop_output("sess-001", payload)
 
         assert link_output is None
         assert summary is None
-        assert raw_output is None
         mock_db.update_session.assert_not_called()
 
     @pytest.mark.unit
@@ -908,11 +907,10 @@ class TestRecordAgentStopOutput:
         ):
             mock_config.terminal.strip_ansi = False
             mock_db.update_session = AsyncMock()
-            link_output, summary, raw_output = await coord._record_agent_stop_output("sess-001", payload)
+            link_output, summary = await coord._record_agent_stop_output("sess-001", payload)
 
         assert link_output == "Agent response here."
         assert summary == "Short summary."
-        assert raw_output == "Agent response here."
         mock_db.update_session.assert_called_once()
         coord._speak_agent_stop_summary.assert_called_once_with("sess-001", "Short summary.")
 
@@ -933,10 +931,9 @@ class TestRecordAgentStopOutput:
         ):
             mock_config.terminal.strip_ansi = False
             mock_db.update_session = AsyncMock()
-            link_output, _, raw_output = await coord._record_agent_stop_output("sess-001", payload)
+            link_output, _ = await coord._record_agent_stop_output("sess-001", payload)
 
         assert link_output is None
-        assert raw_output == "some output"
 
 
 class TestSpeakAgentStopSummary:

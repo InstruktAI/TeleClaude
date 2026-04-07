@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.adapters.ui_adapter."""
-# pylint: disable=protected-access,redefined-outer-name,missing-class-docstring,missing-function-docstring,too-few-public-methods,invalid-name,too-many-arguments,unused-argument,unreachable,use-implicit-booleaness-not-comparison
+# pylint: disable=protected-access,invalid-name,unused-argument,unreachable,use-implicit-booleaness-not-comparison
 
 from __future__ import annotations
 

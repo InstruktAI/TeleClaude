@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.core.identity."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods,import-outside-toplevel
+# pylint: disable=protected-access,import-outside-toplevel
 
 from __future__ import annotations
 

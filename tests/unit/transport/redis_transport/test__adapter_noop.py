@@ -1,4 +1,3 @@
-# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,too-few-public-methods
 """Characterization tests for teleclaude.transport.redis_transport._adapter_noop."""
 
 from __future__ import annotations

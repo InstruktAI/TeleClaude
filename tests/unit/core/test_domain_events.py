@@ -1,4 +1,4 @@
-# pylint: disable=import-outside-toplevel,missing-function-docstring,protected-access,too-few-public-methods,too-many-locals,no-value-for-parameter
+# pylint: disable=import-outside-toplevel,protected-access,too-many-locals,no-value-for-parameter
 # guard: no-companion
 """Test specifications for FR-4: Domain event emission for fire-and-forget mutations.
 
@@ -7,7 +7,7 @@ All new events must follow the existing domain event pattern (typed payload data
 The 202 response for fire-and-forget endpoints includes the completion_event name.
 """
 
-# pylint: disable=import-outside-toplevel,missing-function-docstring,no-value-for-parameter,protected-access,too-few-public-methods,too-many-locals
+# pylint: disable=import-outside-toplevel,no-value-for-parameter,protected-access,too-many-locals
 
 from __future__ import annotations
 

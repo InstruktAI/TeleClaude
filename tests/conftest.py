@@ -1,6 +1,6 @@
 """Pytest configuration for TeleClaude tests."""
 # pylint: disable=wrong-import-position,broad-exception-caught,unused-argument
-# pylint: disable=import-outside-toplevel,too-many-arguments,too-many-positional-arguments
+# pylint: disable=import-outside-toplevel,too-many-positional-arguments
 # Pytest fixture modules intentionally use dynamic imports and callback signatures.
 
 import logging

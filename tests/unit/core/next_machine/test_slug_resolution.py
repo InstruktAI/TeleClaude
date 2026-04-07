@@ -1,5 +1,4 @@
 """Characterization tests for slug resolution and readiness gating."""
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

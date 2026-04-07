@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.core.command_handlers._message."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,protected-access,too-many-arguments
+# pylint: disable=protected-access
 
 from __future__ import annotations
 

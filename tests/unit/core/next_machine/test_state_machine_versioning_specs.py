@@ -1,6 +1,5 @@
 # guard: no-companion
 """State machine v1→v2 migration and is_ready_for_work characterization tests."""
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

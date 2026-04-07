@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.core.command_handlers._session."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,too-many-arguments
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.transport.redis_transport._pull."""
-# pylint: disable=missing-function-docstring,missing-class-docstring,protected-access,redefined-outer-name,too-few-public-methods
+# pylint: disable=protected-access
 
 from __future__ import annotations
 

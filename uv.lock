@@ -7,6 +7,15 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+overrides = [
+    { name = "attrs", specifier = "<26" },
+    { name = "confection", specifier = "<1" },
+    { name = "starlette", specifier = "<1" },
+    { name = "tzdata", specifier = "<2026" },
+    { name = "weasel", specifier = "<1" },
+]
+
 [[package]]
 name = "addict"
 version = "2.4.0"
@@ -3000,6 +3009,7 @@ dependencies = [
     { name = "nest-asyncio" },
     { name = "num2words", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "openai" },
+    { name = "packaging" },
     { name = "pathspec" },
     { name = "phonemizer-fork", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "psutil" },
@@ -3028,7 +3038,6 @@ dev = [
     { name = "aiohttp" },
     { name = "coverage" },
     { name = "mypy" },
-    { name = "packaging" },
     { name = "pre-commit" },
     { name = "pylint" },
     { name = "pyright" },
@@ -3060,6 +3069,7 @@ requires-dist = [
     { name = "nest-asyncio", specifier = ">=1.6.0" },
     { name = "num2words", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "openai", specifier = ">=2.6.1" },
+    { name = "packaging", specifier = ">=24.0" },
     { name = "pathspec", specifier = ">=0.12.0" },
     { name = "phonemizer-fork", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=3.3.2" },
     { name = "psutil", specifier = ">=5.9.0" },
@@ -3088,7 +3098,6 @@ dev = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.4.0" },
     { name = "mypy", specifier = ">=1.8.0" },
-    { name = "packaging", specifier = ">=24.0" },
     { name = "pre-commit", specifier = ">=3.6.0" },
     { name = "pylint", specifier = ">=3.0.0" },
     { name = "pyright", specifier = ">=1.1.0" },
@@ -3310,7 +3319,7 @@ name = "tzlocal"
 version = "5.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "sys_platform == 'win32'" },
+    { name = "tzdata" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8b/2e/c14812d3d4d9cd1773c6be938f89e5735a1f11a9f184ac3639b93cef35d5/tzlocal-5.3.1.tar.gz", hash = "sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd", size = 30761, upload-time = "2025-03-05T21:17:41.549Z" }
 wheels = [

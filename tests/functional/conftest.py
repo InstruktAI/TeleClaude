@@ -1,6 +1,6 @@
 """Functional test fixtures — real FastAPI app, real auth, real DB, no network."""
 # pylint: disable=import-outside-toplevel,too-many-locals,too-many-statements
-# pylint: disable=too-few-public-methods,too-many-arguments,too-many-positional-arguments,unused-argument
+# pylint: disable=too-many-positional-arguments,unused-argument
 
 from __future__ import annotations
 

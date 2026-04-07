@@ -394,7 +394,7 @@ def discover_codex_transcript_path(native_session_id: str) -> str | None:
         )
         return path
 
-    logger.warning("Codex transcript not found", native_session_id=native_session_id)
+    logger.debug("Codex transcript not found", native_session_id=native_session_id)
     return None
 
 

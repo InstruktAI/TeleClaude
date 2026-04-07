@@ -202,7 +202,6 @@ API_RESTART_BACKOFF_S = float(os.getenv("API_RESTART_BACKOFF_S", "1"))
 RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))
 LAUNCHD_WATCH_INTERVAL_S = float(os.getenv("LAUNCHD_WATCH_INTERVAL_S", "300"))
 LAUNCHD_WATCH_ENABLED = os.getenv("TELECLAUDE_LAUNCHD_WATCH", "1") == "1"
-CODEX_TRANSCRIPT_WATCH_INTERVAL_S = float(os.getenv("CODEX_TRANSCRIPT_WATCH_INTERVAL_S", "1"))
 
 
 def _is_retryable_startup_error(error: Exception) -> bool:
@@ -318,7 +317,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             client=self.client,
             output_poller=self.output_poller,
             poller_watch_interval_s=5.0,
-            codex_transcript_watch_interval_s=CODEX_TRANSCRIPT_WATCH_INTERVAL_S,
         )
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
@@ -384,7 +382,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self._event_db: EventDB | None = None
         self.mirror_worker_task: asyncio.Task[object] | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
-        self.codex_transcript_watch_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
         self._ingest_scheduler_task: asyncio.Task[object] | None = None
@@ -671,18 +668,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             self._track_background_task(self.mirror_worker_task, "mirror-worker")
             logger.info("Mirror worker started")
 
-            if CODEX_TRANSCRIPT_WATCH_INTERVAL_S > 0:
-                self.codex_transcript_watch_task = asyncio.create_task(
-                    self.maintenance_service.codex_transcript_watch_loop(),
-                    name="codex-transcript-watch",
-                )
-                self.codex_transcript_watch_task.add_done_callback(
-                    self._log_background_task_exception("codex_transcript_watch")
-                )
-                logger.info("Codex transcript watch task started (interval=%.1fs)", CODEX_TRANSCRIPT_WATCH_INTERVAL_S)
-            else:
-                logger.info("Codex transcript watch disabled (interval=%.1fs)", CODEX_TRANSCRIPT_WATCH_INTERVAL_S)
-
             # Initialize event platform
             await self._start_event_platform()
 
@@ -742,7 +727,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             ("poller_watch_task", "Poller watch task stopped"),
             ("hook_outbox_task", "Hook outbox worker stopped"),
             ("mirror_worker_task", "Mirror worker stopped"),
-            ("codex_transcript_watch_task", "Codex transcript watch task stopped"),
         ):
             await self._cancel_task_attr(attr_name, log_message)
 

@@ -9,16 +9,14 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
-from teleclaude.core.codex_transcript import (
-    discover_codex_transcript_path,
-    discover_recent_unclaimed_codex_transcript,
-)
+from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
@@ -59,18 +57,6 @@ class CodexTurnState:
 
 
 _codex_turn_state: dict[str, CodexTurnState] = {}
-
-
-@dataclass
-class CodexNativeDiscoveryState:
-    """Bounded per-session state for early Codex native metadata discovery."""
-
-    attempts: int = 0
-    session_start_emitted: bool = False
-
-
-_codex_native_discovery_state: dict[str, CodexNativeDiscoveryState] = {}
-_CODEX_NATIVE_DISCOVERY_MAX_ATTEMPTS = 3
 
 
 @dataclass
@@ -353,85 +339,83 @@ async def _maybe_emit_codex_input(
     )
 
 
+_codex_session_start_emitted: set[str] = set()
+_codex_transcript_bind_attempted: set[str] = set()
+
+
 def _cleanup_codex_input_state(session_id: str) -> None:
     """Clean up Codex input tracking state when session ends."""
     codex_prompt_submit.cleanup_codex_prompt_state(session_id)
     _codex_turn_state.pop(session_id, None)
-    _codex_native_discovery_state.pop(session_id, None)
+    _codex_session_start_emitted.discard(session_id)
+    _codex_transcript_bind_attempted.discard(session_id)
 
 
-async def _maybe_emit_codex_session_start(
+async def _emit_codex_session_start(
     session: "Session",
     emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
-) -> bool:
-    """Resolve early Codex native metadata once transcript activity proves the run exists."""
-    if (session.active_agent or "").lower() != AgentName.CODEX.value:
-        return False
-
-    if session.native_session_id and session.native_log_file:
-        return False
-
-    input_state = _codex_input_state.get(session.session_id)
-    if input_state is None or not input_state.last_emitted_prompt:
-        return False
-
-    state = _codex_native_discovery_state.get(session.session_id)
-    if state is None:
-        state = CodexNativeDiscoveryState()
-        _codex_native_discovery_state[session.session_id] = state
-    if state.session_start_emitted or state.attempts >= _CODEX_NATIVE_DISCOVERY_MAX_ATTEMPTS:
-        return False
-
-    state.attempts += 1
+) -> None:
+    """Emit synthetic session_start for Codex, enriched with transcript if available."""
+    if not session.active_agent or session.active_agent.lower() != AgentName.CODEX.value:
+        return
+    if session.session_id in _codex_session_start_emitted:
+        return
 
     native_session_id = (session.native_session_id or "").strip() or None
     transcript_path = (session.native_log_file or "").strip() or None
 
     if native_session_id and not transcript_path:
         transcript_path = discover_codex_transcript_path(native_session_id)
-    elif not native_session_id:
-        sessions = await db.list_sessions(include_closed=True, include_initializing=True, include_headless=True)
-        claimed_ids = {
-            existing.native_session_id
-            for existing in sessions
-            if existing.session_id != session.session_id and existing.native_session_id
-        }
-        candidate = discover_recent_unclaimed_codex_transcript(
-            session_created_at=session.created_at,
-            claimed_native_session_ids=claimed_ids,
-        )
-        if candidate is not None:
-            native_session_id = candidate.native_session_id
-            transcript_path = candidate.transcript_path
-
-    if not native_session_id or not transcript_path:
-        return False
 
     raw = {
         "synthetic": True,
         "source": "codex_native_discovery",
-        "session_id": native_session_id,
-        "transcript_path": transcript_path,
+        "session_id": native_session_id or "",
+        "transcript_path": transcript_path or "",
     }
+
     await emit_agent_event(
         AgentEventContext(
             session_id=session.session_id,
             event_type=AgentHookEvents.AGENT_SESSION_START,
             data=AgentSessionStartPayload(
-                session_id=native_session_id,
+                session_id=native_session_id or "",
                 transcript_path=transcript_path,
                 raw=raw,
             ),
         )
     )
-    state.session_start_emitted = True
-    logger.info(
-        "Emitted synthetic Codex session_start from transcript discovery",
+    _codex_session_start_emitted.add(session.session_id)
+    logger.debug(
+        "Emitted synthetic Codex session_start",
         session_id=session.session_id,
         native_session_id=native_session_id,
         transcript_path=transcript_path,
-        attempt=state.attempts,
     )
+
+
+async def _try_bind_codex_transcript(session: "Session") -> bool:
+    """One-shot opportunistic transcript binding for Codex sessions.
+
+    Returns True when the DB was updated with a discovered transcript path.
+    """
+    if not session.active_agent or session.active_agent.lower() != AgentName.CODEX.value:
+        return False
+    if session.session_id in _codex_transcript_bind_attempted:
+        return False
+    native_session_id = (session.native_session_id or "").strip()
+    if not native_session_id:
+        return False
+    if (session.native_log_file or "").strip():
+        return False
+
+    transcript_path = discover_codex_transcript_path(native_session_id)
+    if not transcript_path:
+        # Not found — mark attempted so we don't rescan the filesystem every tick.
+        _codex_transcript_bind_attempted.add(session.session_id)
+        return False
+    await db.update_session(session.session_id, native_log_file=transcript_path)
+    _codex_transcript_bind_attempted.add(session.session_id)
     return True
 
 
@@ -475,6 +459,7 @@ async def schedule_polling(
     tmux_session_name: str,
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
+    get_output_file: Callable[[str], Path],
 ) -> bool:
     """Schedule polling in the background with an in-memory guard.
 
@@ -493,6 +478,7 @@ async def schedule_polling(
             tmux_session_name=tmux_session_name,
             output_poller=output_poller,
             adapter_client=adapter_client,
+            get_output_file=get_output_file,
             _skip_register=True,
         ),
         name=f"poll-output-{session_id}",
@@ -506,6 +492,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
     tmux_session_name: str,
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
+    get_output_file: Callable[[str], Path],
     _skip_register: bool = False,
 ) -> None:
     """Poll tmux activity and push transcript-derived output for a session.
@@ -519,6 +506,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
         tmux_session_name: tmux session name
         output_poller: Output poller instance
         adapter_client: AdapterClient instance
+        get_output_file: Function to get output file path for session
     """
     if not _skip_register:
         if not await _register_polling(session_id):
@@ -528,9 +516,11 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
             )
             return
 
+    # Get output file
+    output_file = get_output_file(session_id)
     try:
         # Consume events from pure poller
-        async for event in output_poller.poll(session_id, tmux_session_name):
+        async for event in output_poller.poll(session_id, tmux_session_name, output_file):
             if isinstance(event, OutputChanged):
                 logger.debug(
                     "[COORDINATOR %s] Received OutputChanged event from poller",
@@ -577,12 +567,13 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                             output_changed=True,  # OutputChanged event means output changed
                             emit_agent_event=emit_handler,
                         )
-                        if await _maybe_emit_codex_session_start(session, emit_handler):
+                        await _emit_codex_session_start(session, emit_handler)
+                        if await _try_bind_codex_transcript(session):
                             refreshed = await db.get_session(event.session_id)
                             if refreshed is not None:
                                 session = refreshed
                     except Exception as e:  # pylint: disable=broad-exception-caught
-                        logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
+                        logger.error("[CODEX] Error in Codex event processing: %s", e, exc_info=True)
 
                 await db.update_last_activity(event.session_id)
                 transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
@@ -634,7 +625,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                         )
                     else:
                         logger.info(
-                            "Polling stopped for %s (exit code: %d); transcript downloads remain available",
+                            "Polling stopped for %s (exit code: %d), output file kept for downloads",
                             event.session_id,
                             event.exit_code,
                         )

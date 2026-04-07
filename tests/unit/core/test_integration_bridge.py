@@ -4,7 +4,7 @@ Covers spawn_integrator_session guard (already running) and spawn branches,
 plus Db._to_core_session system_role/job column reads.
 """
 
-# pylint: disable=import-outside-toplevel,missing-function-docstring,protected-access
+# pylint: disable=import-outside-toplevel,protected-access
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """Characterization tests for teleclaude.sync."""
 
-# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
+# pylint: disable=protected-access
 from __future__ import annotations
 
 import os

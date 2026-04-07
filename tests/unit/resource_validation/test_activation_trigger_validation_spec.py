@@ -1,6 +1,6 @@
 # guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false
-# pylint: disable=import-outside-toplevel,too-few-public-methods
+# pylint: disable=import-outside-toplevel
 """Test spec for R2: ``activation_trigger`` frontmatter field validation.
 
 Procedure snippets may declare an optional ``activation_trigger`` field.

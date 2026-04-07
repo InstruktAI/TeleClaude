@@ -1,6 +1,5 @@
 """Characterization tests for teleclaude.cli.tui.widgets.project_header."""
 
-# pylint: disable=missing-function-docstring
 from __future__ import annotations
 
 import pytest

@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.helpers.git_repo_helper."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods,unused-argument
+# pylint: disable=protected-access,unused-argument
 
 from __future__ import annotations
 
