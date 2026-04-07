@@ -163,6 +163,23 @@ Current stash list:
 NEXT: Pop the orphaned stash on repo root, resolve conflicts, then call telec todo integrate"""
 
 
+def _format_repo_root_diverged(stderr: str, project_root: str) -> str:
+    return f"""INTEGRATION DECISION: REPO ROOT SYNC REQUIRED
+
+Repo root main has diverged from origin/main after delivery push.
+
+git pull --ff-only output:
+{stderr.strip()}
+
+Resolve per the CONFLICT RESOLUTION REQUIRED section (already loaded).
+All git commands targeting repo root must use: `git -C {project_root}`
+
+Remember, if dirty files block the merge, STOP and ask the human —
+uncommitted work has no recovery path after overwrite.
+
+NEXT: Resolve divergence on repo root, then call telec todo integrate"""
+
+
 def _format_error(code: str, message: str) -> str:
     return f"INTEGRATION ERROR: {code}\n{message}"
 
@@ -176,4 +193,5 @@ __all__ = [
     "_format_lease_busy",
     "_format_push_rejected",
     "_format_queue_empty",
+    "_format_repo_root_diverged",
 ]
