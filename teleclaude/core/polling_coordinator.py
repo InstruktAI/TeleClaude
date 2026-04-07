@@ -9,7 +9,6 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -459,7 +458,6 @@ async def schedule_polling(
     tmux_session_name: str,
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
-    get_output_file: Callable[[str], Path],
 ) -> bool:
     """Schedule polling in the background with an in-memory guard.
 
@@ -478,7 +476,6 @@ async def schedule_polling(
             tmux_session_name=tmux_session_name,
             output_poller=output_poller,
             adapter_client=adapter_client,
-            get_output_file=get_output_file,
             _skip_register=True,
         ),
         name=f"poll-output-{session_id}",
@@ -492,7 +489,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
     tmux_session_name: str,
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
-    get_output_file: Callable[[str], Path],
     _skip_register: bool = False,
 ) -> None:
     """Poll tmux activity and push transcript-derived output for a session.
@@ -506,7 +502,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
         tmux_session_name: tmux session name
         output_poller: Output poller instance
         adapter_client: AdapterClient instance
-        get_output_file: Function to get output file path for session
     """
     if not _skip_register:
         if not await _register_polling(session_id):
@@ -516,11 +511,9 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
             )
             return
 
-    # Get output file
-    output_file = get_output_file(session_id)
     try:
         # Consume events from pure poller
-        async for event in output_poller.poll(session_id, tmux_session_name, output_file):
+        async for event in output_poller.poll(session_id, tmux_session_name):
             if isinstance(event, OutputChanged):
                 logger.debug(
                     "[COORDINATOR %s] Received OutputChanged event from poller",
