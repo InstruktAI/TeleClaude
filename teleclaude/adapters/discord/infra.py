@@ -482,12 +482,26 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disa
         try:
             await self._require_async_callable(edit_fn, label="Discord thread edit (pin)")(pinned=True)
         except Exception as exc:
+            if self._is_thread_pin_limit_error(exc):
+                logger.info(
+                    "Skipped pinning Discord launcher thread %s in forum %s: forum pin limit already reached",
+                    thread_id,
+                    forum_id,
+                )
+                return
             logger.warning(
                 "Failed to pin Discord launcher thread %s in forum %s: %s",
                 thread_id,
                 forum_id,
                 exc,
             )
+
+    def _is_thread_pin_limit_error(self, exc: Exception) -> bool:
+        """Return True when Discord rejects pinning because the forum already has its one pinned thread."""
+        code = getattr(exc, "code", None)
+        if code == 30047:
+            return True
+        return "Maximum number pinned threads in this channel reached" in str(exc)
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
         """Create a forum for each trusted dir that lacks a valid discord_forum ID."""

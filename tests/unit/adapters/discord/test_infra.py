@@ -10,6 +10,12 @@ from teleclaude.adapters.discord.infra import InfrastructureMixin
 pytestmark = pytest.mark.unit
 
 
+class DummyDiscordError(Exception):
+    def __init__(self, message: str, *, code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class DummyInfrastructure(InfrastructureMixin):
     def __init__(self) -> None:
         self._parse_optional_int = lambda value: (
@@ -18,6 +24,7 @@ class DummyInfrastructure(InfrastructureMixin):
         self._get_channel = AsyncMock(return_value=SimpleNamespace(id=123))
         self._get_enabled_agents = lambda: ["alpha", "beta"]
         self._handle_launcher_click = AsyncMock()
+        self._require_async_callable = lambda fn, *, label: fn
 
 
 def test_extract_forum_thread_result_handles_tuple_and_thread_object() -> None:
@@ -60,3 +67,34 @@ async def test_build_session_launcher_view_uses_enabled_agents_for_button_labels
     buttons = [(child.label, child.custom_id) for child in view.children]
 
     assert buttons == [("Alpha", "launch:alpha"), ("Beta", "launch:beta")]
+
+
+@pytest.mark.asyncio
+async def test_pin_launcher_thread_suppresses_pin_limit_warning(caplog: pytest.LogCaptureFixture) -> None:
+    adapter = DummyInfrastructure()
+    thread = SimpleNamespace(
+        id=42,
+        edit=AsyncMock(
+            side_effect=DummyDiscordError(
+                "400 Bad Request (error code: 30047): Maximum number pinned threads in this channel reached (1).",
+                code=30047,
+            )
+        ),
+    )
+
+    with caplog.at_level("INFO"):
+        await adapter._pin_launcher_thread(thread, forum_id=99)
+
+    assert "Skipped pinning Discord launcher thread 42 in forum 99" in caplog.text
+    assert "Failed to pin Discord launcher thread 42 in forum 99" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_pin_launcher_thread_logs_unexpected_failures(caplog: pytest.LogCaptureFixture) -> None:
+    adapter = DummyInfrastructure()
+    thread = SimpleNamespace(id=42, edit=AsyncMock(side_effect=DummyDiscordError("boom", code=99999)))
+
+    with caplog.at_level("WARNING"):
+        await adapter._pin_launcher_thread(thread, forum_id=99)
+
+    assert "Failed to pin Discord launcher thread 42 in forum 99: boom" in caplog.text
