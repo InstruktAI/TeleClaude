@@ -8,12 +8,12 @@ plus Db._to_core_session system_role/job column reads.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole
+from teleclaude.core.models import SessionLaunchKind
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -80,8 +80,18 @@ def test_to_core_session_reads_role_columns():
 # ---------------------------------------------------------------------------
 
 
-async def test_spawn_integrator_session_notifies_running_session():
-    """Guard branch: if an integrator session is already running, send it a ProcessMessageCommand."""
+@pytest.mark.asyncio
+async def test_spawn_rejects_missing_caller_identity():
+    """Missing caller_session_id raises ValueError — no orphan sessions."""
+    from teleclaude.core.integration_bridge import spawn_integrator_session
+
+    with pytest.raises(ValueError, match="missing caller session identity"):
+        await spawn_integrator_session("my-slug", "my-branch", "abc123", "")
+
+
+@pytest.mark.asyncio
+async def test_spawn_notifies_running_integrator():
+    """If an integrator session is already running, send it a ProcessMessageCommand."""
     running = MagicMock()
     running.session_id = "dead-beef-1234"
     running.job = JobRole.INTEGRATOR
@@ -96,17 +106,17 @@ async def test_spawn_integrator_session_notifies_running_session():
     ):
         from teleclaude.core.integration_bridge import spawn_integrator_session
 
-        result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456")
+        result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "caller-sess")
 
     assert result is None
-    mock_svc.run_slash_command.assert_not_called()
     mock_svc.process_message.assert_awaited_once()
     cmd = mock_svc.process_message.call_args[0][0]
     assert cmd.session_id == "dead-beef-1234"
 
 
-async def test_spawn_integrator_session_notify_failure_returns_none():
-    """If process_message raises, return None — exception is swallowed, candidate stays queued."""
+@pytest.mark.asyncio
+async def test_spawn_notify_failure_raises():
+    """If process_message raises, exception propagates — no silent swallowing."""
     running = MagicMock()
     running.session_id = "dead-beef-1234"
     running.job = JobRole.INTEGRATOR
@@ -121,86 +131,85 @@ async def test_spawn_integrator_session_notify_failure_returns_none():
     ):
         from teleclaude.core.integration_bridge import spawn_integrator_session
 
-        result = await spawn_integrator_session("my-slug", "my-branch", "abc123")
+        with pytest.raises(RuntimeError, match="session gone"):
+            await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
 
-    assert result is None
 
-
-@pytest.mark.unit
 @pytest.mark.asyncio
-async def test_spawn_integrator_session_spawns_when_none_running():
-    """Spawn branch: when no integrator is active, the edge API is used to run /next-integrate."""
-    captured = SimpleNamespace(
-        connected=False,
-        closed=False,
-        command=None,
-        project_path=None,
-        detach=None,
-    )
-
-    async def _connect() -> None:
-        captured.connected = True
-
-    async def _close() -> None:
-        captured.closed = True
-
-    async def _run_session(**kwargs: object) -> dict[str, str]:
-        captured.command = str(kwargs["command"])
-        captured.project_path = str(kwargs["project_path"])
-        captured.detach = bool(kwargs["detach"])
-        return {"session_id": "new", "tmux_session_name": "tmux-new"}
-
-    def _fake_api_client() -> SimpleNamespace:
-        return SimpleNamespace(connect=_connect, close=_close, run_session=_run_session)
-
+async def test_spawn_creates_session_with_identity():
+    """When no integrator is active, create session via command service with caller identity."""
     non_integrator = MagicMock()
     non_integrator.job = "builder"
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[non_integrator])
     mock_svc = MagicMock()
-    mock_svc.run_slash_command = AsyncMock(side_effect=AssertionError("spawn must not call run_slash_command"))
+    mock_svc.create_session = AsyncMock(
+        return_value={"session_id": "new-int", "tmux_session_name": "tmux-int"},
+    )
 
     with (
         patch("teleclaude.core.db.db", mock_db),
         patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
-        patch("teleclaude.cli.api_client.TelecAPIClient", _fake_api_client),
+        patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         from teleclaude.core.integration_bridge import spawn_integrator_session
 
-        result = await spawn_integrator_session("my-slug", "my-branch", "abc123")
+        result = await spawn_integrator_session("my-slug", "my-branch", "abc123", "orchestrator-sess-1")
 
     assert result is not None
     assert result.get("status") == "spawned"
     assert result.get("slug") == "my-slug"
-    assert captured.connected is True
-    assert captured.closed is True
-    assert captured.command == "/next-integrate"
-    assert captured.project_path == "/project"
-    assert captured.detach is True
-    mock_svc.run_slash_command.assert_not_called()
+
+    mock_svc.create_session.assert_awaited_once()
+    cmd = mock_svc.create_session.call_args[0][0]
+    assert cmd.system_role == ROLE_INTEGRATOR
+    assert cmd.job == JobRole.INTEGRATOR.value
+    assert cmd.initiator_session_id == "orchestrator-sess-1"
+    assert cmd.skip_listener_registration is True
+    assert cmd.project_path == "/project"
+    assert cmd.launch_intent is not None
+    assert cmd.launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
+    assert cmd.launch_intent.message == "/next-integrate"
 
 
-async def test_spawn_integrator_session_db_error_falls_through_to_spawn():
-    """If db.list_sessions raises, proceed to spawn (optimistic fallback)."""
-
-    async def _run_session(**_kwargs: object) -> dict[str, str]:
-        return {"session_id": "new", "tmux_session_name": "tmux-new"}
-
-    def _fake_api_client() -> SimpleNamespace:
-        return SimpleNamespace(connect=AsyncMock(), close=AsyncMock(), run_session=_run_session)
-
+@pytest.mark.asyncio
+async def test_spawn_failure_raises():
+    """Spawn failure propagates — no silent error swallowing."""
     mock_db = MagicMock()
-    mock_db.list_sessions = AsyncMock(side_effect=RuntimeError("DB unavailable"))
+    mock_db.list_sessions = AsyncMock(return_value=[])
+    mock_svc = MagicMock()
+    mock_svc.create_session = AsyncMock(side_effect=RuntimeError("tmux creation failed"))
 
     with (
         patch("teleclaude.core.db.db", mock_db),
-        patch("teleclaude.cli.api_client.TelecAPIClient", _fake_api_client),
+        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         from teleclaude.core.integration_bridge import spawn_integrator_session
 
-        result = await spawn_integrator_session("my-slug", "my-branch", "abc123")
+        with pytest.raises(RuntimeError, match="tmux creation failed"):
+            await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
 
-    assert result is not None
-    assert result.get("status") == "spawned"
+
+@pytest.mark.asyncio
+async def test_spawn_db_error_raises():
+    """If db.list_sessions raises, fail fast instead of risking a duplicate spawn."""
+    mock_db = MagicMock()
+    mock_db.list_sessions = AsyncMock(side_effect=RuntimeError("DB unavailable"))
+    mock_svc = MagicMock()
+    mock_svc.create_session = AsyncMock()
+
+    with (
+        patch("teleclaude.core.db.db", mock_db),
+        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
+        patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
+    ):
+        from teleclaude.core.integration_bridge import spawn_integrator_session
+
+        with pytest.raises(RuntimeError, match="DB unavailable"):
+            await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
+
+    mock_svc.create_session.assert_not_awaited()

@@ -141,11 +141,11 @@ Role clearance is daemon-side only (`verify_caller` + `require_clearance`):
 
 ### 7) Session lineage invariant (child sessions)
 
-Child worker sessions must be linked to parent orchestrator session identity.
+Child worker sessions should be linked to parent orchestrator session identity when a caller session exists.
 
-- `/sessions/run` requires non-empty caller session identity.
-- When present, `initiator_session_id` is written into channel metadata for child-session linkage.
-- Requests without caller session identity are rejected instead of creating unlinked children.
+- `/sessions/run` accepts terminal/TUI callers whose identity is resolved by `verify_caller` even when `x-caller-session-id` is empty.
+- When a caller session identity is present, `initiator_session_id` is written for child-session linkage.
+- Requests without caller session identity remain valid, but they create unlinked sessions because terminal/TUI callers do not have a parent TeleClaude session.
 
 ## Known caveats
 

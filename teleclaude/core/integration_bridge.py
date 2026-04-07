@@ -254,19 +254,21 @@ class _SpawnResult(TypedDict, total=False):
 # ---------------------------------------------------------------------------
 
 
-async def spawn_integrator_session(
+async def spawn_integrator_session(  # pylint: disable=too-many-locals
     slug: str,
     branch: str,
     sha: str,
+    caller_session_id: str,
 ) -> _SpawnResult | None:
     """Spawn or wake the singleton integrator session.
 
     Checks if an integrator session is already running via the DB directly.
     If one is running, sends it a message to process the new candidate — whether
     the session is legitimately mid-work or a zombie that failed to self-terminate.
-    If none is running, spawns a fresh integrator.
+    If none is running, spawns a fresh integrator via the command service.
 
     Returns session info dict on spawn, or None if integrator was notified.
+    Raises on spawn failure — the caller (cartridge) is responsible for handling.
     """
     from teleclaude.constants import JobRole  # pylint: disable=import-outside-toplevel
     from teleclaude.core.command_registry import get_command_service  # pylint: disable=import-outside-toplevel
@@ -274,57 +276,61 @@ async def spawn_integrator_session(
     from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
     from teleclaude.types.commands import ProcessMessageCommand  # pylint: disable=import-outside-toplevel
 
+    if not caller_session_id:
+        raise ValueError(f"Cannot spawn integrator for {slug}: missing caller session identity")
+
     # If an integrator session is already active, wake it with a message instead of
     # spawning a duplicate. This handles both the mid-work case and zombie sessions
     # that failed to call `telec sessions end self`.
     try:
         sessions = await db.list_sessions()
-        integrator_session = next(
-            (s for s in sessions if s.job == JobRole.INTEGRATOR),
-            None,
-        )
-        if integrator_session:
-            logger.info(
-                "Integrator session %s already running; notifying of new candidate %s",
-                integrator_session.session_id,
-                slug,
-            )
-            try:
-                cmd = ProcessMessageCommand(
-                    session_id=integrator_session.session_id,
-                    text=(
-                        f"New integration candidate ready: {slug} ({branch}@{sha[:8]}). "
-                        "Please run `telec todo integrate` to drain the queue."
-                    ),
-                    origin=InputOrigin.TERMINAL.value,
-                )
-                await get_command_service().process_message(cmd)
-            except Exception:  # pylint: disable=broad-exception-caught
-                logger.exception(
-                    "Failed to notify integrator session %s of candidate %s; candidate is queued",
-                    integrator_session.session_id,
-                    slug,
-                )
-            return None
     except Exception:  # pylint: disable=broad-exception-caught
-        logger.warning("Could not check for running integrator sessions; proceeding to spawn")
+        logger.exception("Could not check for running integrator sessions for %s; refusing duplicate spawn", slug)
+        raise
+
+    integrator_session = next(
+        (s for s in sessions if s.job == JobRole.INTEGRATOR),
+        None,
+    )
+    if integrator_session:
+        logger.info(
+            "Integrator session %s already running; notifying of new candidate %s",
+            integrator_session.session_id,
+            slug,
+        )
+        msg_cmd = ProcessMessageCommand(
+            session_id=integrator_session.session_id,
+            text=(
+                f"New integration candidate ready: {slug} ({branch}@{sha[:8]}). "
+                "Please run `telec todo integrate` to drain the queue."
+            ),
+            origin=InputOrigin.TERMINAL.value,
+        )
+        await get_command_service().process_message(msg_cmd)
+        return None
+
+    from teleclaude.constants import ROLE_INTEGRATOR  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.agents import get_default_agent  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind  # pylint: disable=import-outside-toplevel
+    from teleclaude.types.commands import CreateSessionCommand  # pylint: disable=import-outside-toplevel
 
     project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
-    try:
-        from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
 
-        api = TelecAPIClient()
-        await api.connect()
-        try:
-            await api.run_session(
-                command="/next-integrate",
-                project_path=project_path,
-                detach=True,
-            )
-        finally:
-            await api.close()
-        logger.info("Spawned integrator session for %s", slug)
-        return _SpawnResult(status="spawned", slug=slug)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.error("Integrator spawn failed: %s", exc)
-        return None
+    cmd = CreateSessionCommand(
+        project_path=project_path,
+        origin=InputOrigin.TERMINAL.value,
+        title="/next-integrate",
+        launch_intent=SessionLaunchIntent(
+            kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+            agent=get_default_agent(),
+            thinking_mode="slow",
+            message="/next-integrate",
+        ),
+        system_role=ROLE_INTEGRATOR,
+        job=JobRole.INTEGRATOR.value,
+        skip_listener_registration=True,
+        initiator_session_id=caller_session_id,
+    )
+    await get_command_service().create_session(cmd)
+    logger.info("Spawned integrator session for %s (caller=%s)", slug, caller_session_id)
+    return _SpawnResult(status="spawned", slug=slug)

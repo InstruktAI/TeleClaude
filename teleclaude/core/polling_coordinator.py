@@ -145,18 +145,6 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
     return message, last_ts, is_multi
 
 
-def _has_active_output_message(session: "Session") -> bool:
-    """Return True when any adapter lane still has a live threaded output message.
-
-    This stays local to the polling coordinator because it is part of central
-    output-delivery state, not generic agent-coordinator behavior.
-    """
-    for section in session.origin_metadata.values():
-        if isinstance(section, dict) and section.get("output_message_id"):
-            return True
-    return False
-
-
 def _log_output_metrics_summary(session_id: str, state: OutputMetricsState, *, reason: str) -> None:
     if state.ticks <= 0:
         return
@@ -597,7 +585,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
 
                 await db.update_last_activity(event.session_id)
-                transcript_update = _build_transcript_output_update(session)
+                transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
                 if transcript_update is not None:
                     message, last_ts, is_multi = transcript_update
                     await adapter_client.send_output_update(
@@ -610,7 +598,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                     )
                     _record_output_tick(event.session_id, len(message))
                     fresh = await db.get_session(event.session_id)
-                    if fresh is not None and not _has_active_output_message(fresh):
+                    if fresh is not None:
                         await db.update_session(event.session_id, last_tool_done_at=last_ts.isoformat())
 
             elif isinstance(event, ProcessExited):

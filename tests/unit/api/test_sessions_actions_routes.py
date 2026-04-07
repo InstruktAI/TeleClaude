@@ -674,6 +674,36 @@ class TestSessionsActionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_run_session_accepts_terminal_identity_without_session_id(self) -> None:
+        """Terminal/TUI callers with human_role but no session_id are accepted.
+
+        Clearance is enforced by the dependency — the endpoint must not
+        additionally require a session_id, since CLI and TUI callers
+        legitimately lack one.
+        """
+        request = RunSessionRequest(
+            command="/next-integrate",
+            args="",
+            project="/repo/demo",
+        )
+        identity = _identity("", human_role="admin")
+
+        service = MagicMock()
+        service.create_session = AsyncMock(
+            return_value={"session_id": "sess-integrator", "tmux_session_name": "tmux-int"},
+        )
+
+        with (
+            patch.object(sessions_actions_routes, "get_command_service", return_value=service),
+        ):
+            response = await sessions_actions_routes.run_session(request, identity=identity)
+
+        assert response.status == "success"
+        assert response.session_id == "sess-integrator"
+        service.create_session.assert_awaited_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_escalate_session_returns_503_without_discord_adapter(self) -> None:
         """Escalation returns 503 when CommandService raises ValueError (no Discord adapter)."""
         request = EscalateRequest(customer_name="Taylor", reason="handoff")
