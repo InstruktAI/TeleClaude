@@ -3,7 +3,7 @@ id: 'project/spec/jobs/log-bug-hunter'
 type: 'spec'
 domain: 'software-development'
 scope: 'project'
-description: 'Hourly agent job that scans daemon logs for errors, fixes inline or dispatches to bug pipeline.'
+description: 'Daily agent job that scans daemon logs for errors, fixes inline or dispatches to bug pipeline.'
 ---
 
 # Log Bug Hunter — Spec
@@ -22,6 +22,6 @@ The procedure doc defines the full workflow. This spec defines the job contract.
 
 ## Canonical fields
 
-- `trigger`: hourly cron schedule.
+- `trigger`: daily scheduled run at the configured wall-clock time.
 - `scan_source`: daemon logs (instrukt-ai-logs / journald).
 - `output`: bug pipeline entry via `telec bugs report` for each discovered error.

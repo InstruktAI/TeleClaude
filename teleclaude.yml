@@ -18,8 +18,8 @@ jobs:
       at: '06:00'
     script: jobs/youtube_scraper.py
     tags:
-    - ai
-    - devtools
+      - ai
+      - devtools
 
   temp_reaper:
     category: system
@@ -39,19 +39,10 @@ jobs:
       at: '06:00'
     script: jobs/youtube_sync_subscriptions.py
 
-  memory_review:
-    category: system
-    schedule: weekly
-    preferred_weekday: 0
-    preferred_hour: 8
-    type: agent
-    job: memory-review
-    agent: claude
-    thinking_mode: fast
-
   log_bug_hunter:
     category: system
-    schedule: hourly
+    when:
+      at: '03:00'
     type: agent
     job: log-bug-hunter
     agent: codex

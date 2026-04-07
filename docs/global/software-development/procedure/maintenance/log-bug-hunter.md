@@ -19,7 +19,7 @@ Proactively discover errors in daemon logs before they become user-visible incid
 Fix what can be fixed inline; dispatch what cannot to the bug pipeline.
 
 This procedure is the automated equivalent of the "check current health" step from
-the maintenance cadence — run continuously so weekly passes find fewer surprises.
+the maintenance cadence — run on the configured daily cadence so weekly passes find fewer surprises.
 The log-bug-hunter is one bug _source_ feeding the same pipeline that
 `telec bugs report` feeds from interactive sessions.
 
