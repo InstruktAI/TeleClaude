@@ -124,6 +124,24 @@ On approval it ends the reviewer session and calls `telec todo prepare [slug]` a
 On NEEDS WORK it keeps the reviewer alive, dispatches the fixer flow, and when the
 fixer reports done it marks `implementation_plan` complete before calling again.
 
+#### GATE REQUIRED
+
+All artifacts exist and are approved. The state machine requests a DOR gate
+assessment. Dispatch `next-prepare-gate` to a worker session.
+
+The gate worker validates the full artifact set, stamps a verdict, and goes
+idle. The orchestrator reads the verdict and acts on the **status**, not the
+score:
+
+- **`pass`** → call `telec todo prepare [slug]` again (expects PREPARED or
+  GROUNDING CHECK).
+- **`needs_work`** → the gate listed exact blockers. Dispatch a fixer to the
+  appropriate phase (discovery if research is missing, draft if the plan is
+  defective, test-spec if specs have bugs). After the fixer completes, re-run
+  the gate. **The orchestrator never overrides `needs_work` to `pass`.** The
+  score is informational — only the status determines the next action.
+- **`needs_decision`** → escalate to the human. Report the blockers and stop.
+
 #### GROUNDING CHECK
 
 All artifacts exist and are approved. The machine checks freshness:

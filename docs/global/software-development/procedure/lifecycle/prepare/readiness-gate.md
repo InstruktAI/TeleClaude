@@ -93,10 +93,19 @@ dor:
     implementation_plan_updated: false
 ```
 
-Threshold constants:
+Decision rules:
 
-- Target quality: score >= 8 for pass.
-- Decision required: score < 7 triggers `needs_decision`.
+- **`pass`**: all DOR gates satisfied, zero unresolved blockers. The score
+  reflects overall quality but does not determine the verdict — zero blockers
+  does. A score of 10 with one blocker is still `needs_work`.
+- **`needs_work`**: one or more blockers exist that agents can resolve. List
+  exact fixes in `blockers[]`. The orchestrator will dispatch a fixer.
+- **`needs_decision`**: blockers exist that require human judgment — genuine
+  ambiguity, missing domain knowledge, or unresolvable trade-offs. The
+  orchestrator escalates to the human.
+
+The score (1-10) is informational context for the human and for trend tracking.
+It never overrides the status. The orchestrator reads the status, not the score.
 
 ### 6. Write gate report
 
