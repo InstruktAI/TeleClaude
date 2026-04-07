@@ -867,3 +867,26 @@ def _strip_heading_icons(text: str) -> str:
         lines.append(line)
 
     return "\n".join(lines)
+
+
+def discordify_markdown(text: str) -> str:
+    """Normalize generic markdown into Discord-friendly text.
+
+    Discord supports a useful subset of markdown, but not custom link syntax.
+    Convert markdown links into readable plain-text references while preserving
+    common formatting that Discord already renders well.
+    """
+    converted = text
+    converted = re.sub(
+        r"!\[([^\]]*)\]\(([^)]+)\)", lambda m: f"{m.group(1)}: {m.group(2)}" if m.group(1) else m.group(2), converted
+    )
+
+    def _replace_link(match: re.Match[str]) -> str:
+        label = match.group(1).strip()
+        target = match.group(2).strip()
+        if target.startswith("/"):
+            return f"`{label}`: `{target}`" if label else f"`{target}`"
+        return f"{label}: {target}" if label else target
+
+    converted = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _replace_link, converted)
+    return converted

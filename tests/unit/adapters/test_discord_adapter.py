@@ -113,3 +113,16 @@ async def test_recover_lane_error_re_raises_unknown_errors() -> None:
             AsyncMock(),
             "Session",
         )
+
+
+@pytest.mark.asyncio
+async def test_convert_markdown_for_platform_normalizes_markdown_links() -> None:
+    adapter = _make_adapter()
+
+    rendered = adapter._convert_markdown_for_platform(
+        "[session-output-routing.md](/Users/test/project/docs/project/spec/session-output-routing.md)"
+    )
+
+    assert rendered == (
+        "`session-output-routing.md`: `/Users/test/project/docs/project/spec/session-output-routing.md`"
+    )

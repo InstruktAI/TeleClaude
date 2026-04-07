@@ -42,8 +42,6 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
             SessionField.TITLE.value,
             SessionField.PROJECT_PATH.value,
             SessionField.SUBDIR.value,
-            "active_agent",
-            "thinking_mode",
         }
 
         if not updated_fields.keys() & title_affecting_fields:

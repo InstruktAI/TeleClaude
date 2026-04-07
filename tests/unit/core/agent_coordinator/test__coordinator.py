@@ -518,10 +518,9 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -541,10 +540,9 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -562,7 +560,7 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._finalize_agent_stop = AsyncMock()
@@ -589,10 +587,9 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, "Summary text", None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, "Summary text"))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -613,10 +610,9 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, None))
+            coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
-            coord._maybe_send_incremental_output = AsyncMock(return_value=False)  # pyright: ignore[reportAttributeAccessIssue]
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
@@ -626,7 +622,7 @@ class TestHandleAgentStop:
         assert not any("last_tool_done_at" in c.kwargs and c.kwargs["last_tool_done_at"] is None for c in update_calls)
 
     @pytest.mark.unit
-    async def test_pushes_final_output_from_recorded_raw_output(self):
+    async def test_finalizes_stop_with_recorded_link_output(self):
         coord = _make_coordinator()
         context = MagicMock()
         context.session_id = "sess-001"
@@ -637,13 +633,15 @@ class TestHandleAgentStop:
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
             coord._record_agent_stop_input = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=(None, None, "final output"))
+            coord._record_agent_stop_output = AsyncMock(return_value=("final output", None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
-        coord.client.send_output_update.assert_awaited_once()
+        coord._finalize_agent_stop.assert_awaited_once()
+        finalize_args = coord._finalize_agent_stop.await_args.args
+        assert finalize_args[3] == "final output"
 
 
 class TestHandleToolUse:

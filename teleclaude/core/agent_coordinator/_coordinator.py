@@ -9,6 +9,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
+from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -100,11 +101,12 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         task.add_done_callback(_on_done)
 
     async def _signal_headless_activity(self, session_id: str) -> None:
-        """Update last_activity for headless sessions so adapter cadence loops pick them up."""
+        """Drive one transcript projection pass for a headless session."""
         session = await db.get_session(session_id)
         if not session or session.lifecycle_status != "headless":
             return
         await db.update_last_activity(session_id)
+        await polling_coordinator.schedule_headless_projection(session_id, self.client)
 
     def _emit_activity_event(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Event contract fields
         self,
@@ -339,9 +341,8 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
     ) -> None:
         """Handle user prompt submission.
 
-        For ALL sessions: write last_message_sent to DB, refresh title,
-        update last_activity, and drop pending QoS payloads.
-        Adapters pull from transcripts on their own cadence.
+        Hook payloads are a signal only. Canonical prompt content, ordering,
+        and title derivation come from transcript projection.
         """
         session_id = context.session_id
         payload = cast(UserPromptSubmitPayload, context.data)
@@ -370,7 +371,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         # Prepare batched update
         now = datetime.now(UTC)
-        should_update_last_message = True
         if is_codex_synthetic:
             existing_input = (session.last_message_sent or "").strip()
             incoming_input = prompt_text.strip()
@@ -383,7 +383,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 and len(existing_input) > len(incoming_input)
                 and existing_input.startswith(incoming_input)
             ):
-                should_update_last_message = False
                 logger.debug(
                     "Skipping synthetic Codex prompt overwrite for session %s (existing=%r incoming=%r)",
                     session_id,
@@ -392,13 +391,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 )
 
         update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
-        if should_update_last_message:
-            update_kwargs.update(
-                {
-                    "last_message_sent": prompt_text[:200],
-                    "last_message_sent_at": now.isoformat(),
-                }
-            )
 
         # Terminal input bypasses the command pipeline — set origin here.
         # UI adapter edge handlers set last_input_origin at dispatch time,
@@ -421,13 +413,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             session_id,
             prompt_text[:50],
         )
-
-        # Title update is non-critical and must not block hook ordering.
-        if should_update_last_message:
-            self._queue_background_task(
-                self._update_session_title_async(session_id, now, prompt_text),
-                f"title-summary:{session_id}",
-            )
 
         # Drop pending QoS payloads on user input.
         await self.client.break_threaded_turn(session)
@@ -463,6 +448,9 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         await self._record_agent_stop_input(session_id, payload, session)
         link_output, summary = await self._record_agent_stop_output(session_id, payload)
+        session = await db.get_session(session_id)
+        if session is not None:
+            session = await polling_coordinator.refresh_session_title_from_transcript(session)
 
         # Emit activity event for UI updates (summary flows to TUI via event, not DB)
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
@@ -473,7 +461,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         # Immediate headless pull on stop — final output must be captured.
         await self._signal_headless_activity(session_id)
 
-        session = await db.get_session(session_id)
         await self._finalize_agent_stop(session_id, session, payload, link_output, source_computer)
 
     async def _record_agent_stop_input(

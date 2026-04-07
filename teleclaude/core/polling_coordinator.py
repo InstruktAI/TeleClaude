@@ -8,7 +8,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -23,14 +23,18 @@ from teleclaude.core.events import (
     AgentOutputPayload,
     AgentSessionStartPayload,
 )
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import (
     OutputChanged,
     OutputPoller,
     ProcessExited,
 )
+from teleclaude.core.summarizer import generate_session_title
 from teleclaude.core.tool_activity import truncate_tool_preview
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
+    extract_last_user_message_with_timestamp,
+    extract_recent_transcript_turns,
     get_assistant_messages_since,
     render_agent_output,
     render_clean_agent_output,
@@ -70,6 +74,7 @@ class OutputMetricsState:
 
 
 _output_metrics_state: dict[str, OutputMetricsState] = {}
+_title_projection_signatures: dict[str, tuple[tuple[str, str], ...]] = {}
 
 
 def _percentile(values: list[float], pct: float) -> float | None:
@@ -174,6 +179,7 @@ def _clear_output_metrics(session_id: str) -> None:
     state = _output_metrics_state.pop(session_id, None)
     if state:
         _log_output_metrics_summary(session_id, state, reason="final")
+    _title_projection_signatures.pop(session_id, None)
 
 
 def _mark_codex_turn_started(session_id: str) -> None:
@@ -420,6 +426,8 @@ async def _try_bind_codex_transcript(session: "Session") -> bool:
 
 _active_pollers: set[str] = set()
 _poller_lock = asyncio.Lock()
+_active_headless_projections: set[str] = set()
+_headless_projection_lock = asyncio.Lock()
 
 
 def _handle_background_poller_result(task: asyncio.Task[None], session_id: str) -> None:
@@ -451,6 +459,157 @@ async def _unregister_polling(session_id: str) -> None:
     """Unregister a poller task."""
     async with _poller_lock:
         _active_pollers.discard(session_id)
+
+
+async def _register_headless_projection(session_id: str) -> bool:
+    """Register a headless projection task if one isn't active."""
+    async with _headless_projection_lock:
+        if session_id in _active_headless_projections:
+            return False
+        _active_headless_projections.add(session_id)
+        return True
+
+
+async def _unregister_headless_projection(session_id: str) -> None:
+    """Unregister a headless projection task."""
+    async with _headless_projection_lock:
+        _active_headless_projections.discard(session_id)
+
+
+async def _project_user_reflection(
+    session: "Session",
+    adapter_client: "AdapterClient",
+) -> "Session":
+    """Project the latest authoritative user message from transcript into canonical state."""
+    transcript_path = session.native_log_file
+    active_agent = session.active_agent
+    if not transcript_path or not active_agent:
+        return session
+
+    try:
+        agent_name = AgentName.from_str(active_agent)
+    except ValueError:
+        return session
+
+    extracted = await asyncio.to_thread(extract_last_user_message_with_timestamp, transcript_path, agent_name)
+    if not extracted:
+        return session
+
+    user_text, transcript_ts = extracted
+    normalized_text = user_text.strip()
+    if not normalized_text:
+        return session
+
+    current_text = (session.last_message_sent or "").strip()
+    current_ts = session.last_message_sent_at
+    transcript_iso = transcript_ts.astimezone(UTC).isoformat() if isinstance(transcript_ts, datetime) else None
+    current_iso = current_ts.astimezone(UTC).isoformat() if isinstance(current_ts, datetime) else None
+    changed = normalized_text != current_text or transcript_iso != current_iso
+    if not changed:
+        return session
+
+    source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
+    if source != InputOrigin.DISCORD.value:
+        await adapter_client.broadcast_user_input(session, user_text, source)
+
+    update_kwargs: dict[str, object] = {
+        "last_message_sent": user_text[:200],
+    }
+    if transcript_iso:
+        update_kwargs["last_message_sent_at"] = transcript_iso
+    await db.update_session(session.session_id, **update_kwargs)
+    refreshed = await db.get_session(session.session_id)
+    return refreshed or session
+
+
+async def refresh_session_title_from_transcript(session: "Session") -> "Session":
+    """Recompute semantic title from transcript truth when the recent turn set changes."""
+    current_title = (session.title or "").strip()
+    if current_title.startswith("/"):
+        return session
+
+    transcript_path = session.native_log_file
+    active_agent = session.active_agent
+    if not transcript_path or not active_agent:
+        return session
+
+    try:
+        agent_name = AgentName.from_str(active_agent)
+    except ValueError:
+        return session
+
+    recent_turns = await asyncio.to_thread(
+        extract_recent_transcript_turns, transcript_path, agent_name, max_turns_per_role=3
+    )
+    if not recent_turns:
+        return session
+    turn_signature = tuple((role, text) for role, text in recent_turns)
+    if _title_projection_signatures.get(session.session_id) == turn_signature:
+        return session
+
+    try:
+        new_title = await generate_session_title(recent_turns)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.warning("Title summarization failed: %s", exc)
+        return session
+
+    _title_projection_signatures[session.session_id] = turn_signature
+    if not new_title or new_title == current_title:
+        return session
+
+    await db.update_session(session.session_id, title=new_title)
+    logger.info("Updated session title from transcript: %s", new_title)
+    refreshed = await db.get_session(session.session_id)
+    return refreshed or session
+
+
+async def project_session_from_transcript(
+    session: "Session",
+    adapter_client: "AdapterClient",
+    *,
+    started_at: float = 0.0,
+    last_changed_at: float | None = None,
+) -> "Session":
+    """Project transcript truth into canonical session state and outbound delivery."""
+    session = await _project_user_reflection(session, adapter_client)
+
+    transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
+    if transcript_update is not None:
+        message, last_ts, is_multi = transcript_update
+        changed_at = last_changed_at if last_changed_at is not None else last_ts.timestamp()
+        await adapter_client.send_output_update(
+            session,
+            message,
+            started_at,
+            changed_at,
+            multi_message=is_multi,
+            delivery_ts=last_ts,
+        )
+        _record_output_tick(session.session_id, len(message))
+        await db.update_session(session.session_id, last_tool_done_at=last_ts.isoformat())
+        refreshed = await db.get_session(session.session_id)
+        if refreshed is not None:
+            session = refreshed
+    return session
+
+
+async def schedule_headless_projection(session_id: str, adapter_client: "AdapterClient") -> bool:
+    """Schedule one transcript projection pass for a headless session."""
+    if not await _register_headless_projection(session_id):
+        return False
+
+    async def _run() -> None:
+        try:
+            session = await db.get_session(session_id)
+            if not session or session.lifecycle_status != "headless":
+                return
+            await project_session_from_transcript(session, adapter_client)
+        finally:
+            await _unregister_headless_projection(session_id)
+
+    task = asyncio.create_task(_run(), name=f"project-headless-{session_id}")
+    task.add_done_callback(lambda t, sid=session_id: _handle_background_poller_result(t, sid))  # type: ignore[misc]
+    return True
 
 
 async def schedule_polling(
@@ -569,21 +728,12 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                         logger.error("[CODEX] Error in Codex event processing: %s", e, exc_info=True)
 
                 await db.update_last_activity(event.session_id)
-                transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
-                if transcript_update is not None:
-                    message, last_ts, is_multi = transcript_update
-                    await adapter_client.send_output_update(
-                        session,
-                        message,
-                        event.started_at,
-                        event.last_changed_at,
-                        multi_message=is_multi,
-                        delivery_ts=last_ts,
-                    )
-                    _record_output_tick(event.session_id, len(message))
-                    fresh = await db.get_session(event.session_id)
-                    if fresh is not None:
-                        await db.update_session(event.session_id, last_tool_done_at=last_ts.isoformat())
+                await project_session_from_transcript(
+                    session,
+                    adapter_client,
+                    started_at=event.started_at,
+                    last_changed_at=event.last_changed_at,
+                )
 
             elif isinstance(event, ProcessExited):
                 # Fetch session once for all operations

@@ -17,6 +17,8 @@ from teleclaude.core.polling_coordinator import (
     _emit_codex_session_start,
     _percentile,
     _try_bind_codex_transcript,
+    project_session_from_transcript,
+    refresh_session_title_from_transcript,
 )
 
 
@@ -72,9 +74,11 @@ def _make_session(
 def _reset_codex_sets() -> Generator[None, None, None]:  # pylint: disable=protected-access
     pc._codex_session_start_emitted.clear()
     pc._codex_transcript_bind_attempted.clear()
+    pc._title_projection_signatures.clear()
     yield
     pc._codex_session_start_emitted.clear()
     pc._codex_transcript_bind_attempted.clear()
+    pc._title_projection_signatures.clear()
 
 
 class TestEmitCodexSessionStart:
@@ -229,3 +233,151 @@ class TestBuildTranscriptOutputUpdate:
             update = _build_transcript_output_update(session)
 
         assert update == ("rendered", last_ts, True)
+
+
+class TestProjectSessionFromTranscript:
+    @pytest.mark.unit
+    async def test_projects_transcript_user_message_to_discord_reflection(self):
+        session = Session(
+            session_id="sess-user-1",
+            computer_name="local",
+            tmux_session_name="tmux-user-1",
+            title="Untitled",
+            active_agent="codex",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="terminal",
+        )
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("ship it", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.extract_recent_transcript_turns",
+                return_value=[],
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_awaited_once_with(session, "ship it", "terminal")
+        mock_db.update_session.assert_awaited_once_with(
+            "sess-user-1",
+            last_message_sent="ship it",
+            last_message_sent_at=transcript_ts.isoformat(),
+        )
+
+    @pytest.mark.unit
+    async def test_projects_transcript_output(self):
+        session = Session(
+            session_id="sess-title-1",
+            computer_name="local",
+            tmux_session_name="tmux-title-1",
+            title="Old title",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="telegram",
+        )
+        delivery_ts = datetime(2026, 4, 7, 12, 3, 0, tzinfo=UTC)
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=None,
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=("assistant text", delivery_ts, False),
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
+
+        mock_db.update_session.assert_any_await("sess-title-1", last_tool_done_at=delivery_ts.isoformat())
+        adapter_client.send_output_update.assert_awaited_once_with(
+            session,
+            "assistant text",
+            1.0,
+            2.0,
+            multi_message=False,
+            delivery_ts=delivery_ts,
+        )
+
+    @pytest.mark.unit
+    async def test_refresh_session_title_from_transcript_updates_canonical_title(self):
+        session = Session(
+            session_id="sess-title-1",
+            computer_name="local",
+            tmux_session_name="tmux-title-1",
+            title="Old title",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="telegram",
+        )
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_recent_transcript_turns",
+                return_value=[("user", "hello"), ("assistant", "world")],
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.generate_session_title",
+                AsyncMock(return_value="New title"),
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            refreshed = Session(
+                session_id=session.session_id,
+                computer_name=session.computer_name,
+                tmux_session_name=session.tmux_session_name,
+                title="New title",
+                active_agent=session.active_agent,
+                native_log_file=session.native_log_file,
+                last_input_origin=session.last_input_origin,
+            )
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=refreshed)
+            result = await refresh_session_title_from_transcript(session)
+
+        mock_db.update_session.assert_awaited_once_with("sess-title-1", title="New title")
+        assert result.title == "New title"
+
+    @pytest.mark.unit
+    async def test_refresh_session_title_from_transcript_skips_known_turn_signature(self):
+        session = Session(
+            session_id="sess-title-2",
+            computer_name="local",
+            tmux_session_name="tmux-title-2",
+            title="Current title",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+        )
+        turns = [("user", "hello"), ("assistant", "world")]
+        pc._title_projection_signatures[session.session_id] = tuple(turns)
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_recent_transcript_turns",
+                return_value=turns,
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.generate_session_title",
+                AsyncMock(),
+            ) as mock_generate,
+        ):
+            result = await refresh_session_title_from_transcript(session)
+
+        mock_generate.assert_not_awaited()
+        assert result.title == "Current title"

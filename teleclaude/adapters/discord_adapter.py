@@ -33,6 +33,7 @@ from teleclaude.core.models import DiscordAdapterMetadata
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
     continuation_prefix_for_gfm_state,
+    discordify_markdown,
     scan_gfm_state,
     truncate_gfm_with_consumed,
 )
@@ -91,6 +92,10 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
 
     def _scan_markdown_state(self, consumed: str, state: object) -> object:
         return scan_gfm_state(consumed, initial_state=state)
+
+    def _convert_markdown_for_platform(self, text: str) -> str:
+        """Convert generic markdown into Discord-friendly markdown/text."""
+        return discordify_markdown(text)
 
     # -------------------------------------------------------------------------
 
