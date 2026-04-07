@@ -8,6 +8,7 @@ import yaml
 # Marker strings used for idempotent hook block insertion.
 DOCS_CHECK_MARKER = "teleclaude-docs-check"
 STASH_PREVENTION_MARKER = "teleclaude-stash-prevention"
+RESTAGE_MARKER = "teleclaude-format-restage"
 _OLD_OVERLAP_MARKER = "teleclaude-overlap-guard"
 
 # Guard that blocks commits when ANY unstaged changes to tracked files exist.
@@ -33,6 +34,35 @@ if [ -n "$_staged" ] && [ -n "$_unstaged" ]; then
     exit 1
   fi
 fi
+"""
+
+# Captures staged files before hooks, runs pre-commit as a regular call (not exec),
+# then restages formatter-modified files so they're included in the commit.
+RESTAGE_BLOCK = f"""\
+# {RESTAGE_MARKER}: capture staged files before hooks run
+_pre_staged="$(git diff --cached --name-only --diff-filter=ACM)"
+
+# Run pre-commit hooks (no exec — we need control back for restaging)
+if [ -x "$INSTALL_PYTHON" ]; then
+    "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
+    _rc=$?
+elif command -v pre-commit > /dev/null; then
+    pre-commit "${{ARGS[@]}}"
+    _rc=$?
+else
+    echo '`pre-commit` not found.  Did you forget to activate your virtualenv?' 1>&2
+    exit 1
+fi
+
+# Restage files that formatters modified
+if [ $_rc -eq 0 ] && [ -n "$_pre_staged" ]; then
+    if ! printf '%s\\n' "$_pre_staged" | xargs git add; then
+        echo "ERROR: failed to restage formatted files — aborting commit." >&2
+        exit 1
+    fi
+fi
+
+exit $_rc
 """
 
 # Check command that detects hardcoded HOME paths in staged .md files
@@ -188,11 +218,12 @@ def _append_block_if_missing(hook_file: Path, marker: str, block: str) -> bool:
 
 
 def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
-    """Inject stash prevention guard into pre-commit's generated git hook wrapper.
+    """Inject stash prevention and format-restage blocks into pre-commit's generated hook wrapper.
 
-    This guard only blocks partial staging — when the same file has both staged
-    and unstaged changes. Completely unstaged files with no overlap to staged
-    files are safe and are not blocked.
+    Two blocks are injected:
+    1. Stash prevention — blocks commits with partially staged files.
+    2. Format restage — replaces the ``exec`` tail with a regular call so
+       formatter-modified files are restaged before the commit completes.
 
     Migrates from the old overlap guard if present.
     """
@@ -201,9 +232,9 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
         return
 
     content = precommit_hook_file.read_text(encoding="utf-8")
-    anchor = '\nif [ -x "$INSTALL_PYTHON" ]; then'
+    exec_anchor = '\nif [ -x "$INSTALL_PYTHON" ]; then'
 
-    # Detect existing guard (current or old marker)
+    # --- 1. Stash prevention block ---
     existing_marker = None
     for marker in (STASH_PREVENTION_MARKER, _OLD_OVERLAP_MARKER):
         if marker in content:
@@ -214,17 +245,23 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
         start = content.find(f"# {existing_marker}")
         if start == -1:
             return
-        end = content.find(anchor, start)
+        end = content.find(exec_anchor, start)
         if end == -1:
             return
-        patched = content[:start].rstrip("\n") + "\n\n" + STASH_PREVENTION_BLOCK + content[end:]
+        content = content[:start].rstrip("\n") + "\n\n" + STASH_PREVENTION_BLOCK + content[end:]
     else:
-        idx = content.find(anchor)
+        idx = content.find(exec_anchor)
         if idx == -1:
-            patched = content.rstrip("\n") + "\n" + STASH_PREVENTION_BLOCK + "\n"
+            content = content.rstrip("\n") + "\n" + STASH_PREVENTION_BLOCK + "\n"
         else:
-            patched = content[:idx] + "\n" + STASH_PREVENTION_BLOCK + content[idx:]
+            content = content[:idx] + "\n" + STASH_PREVENTION_BLOCK + content[idx:]
 
-    precommit_hook_file.write_text(patched, encoding="utf-8")
+    # --- 2. Format restage block (replaces exec tail) ---
+    if RESTAGE_MARKER not in content:
+        exec_tail_start = content.find('\nif [ -x "$INSTALL_PYTHON" ]; then')
+        if exec_tail_start != -1:
+            content = content[: exec_tail_start + 1] + RESTAGE_BLOCK
+
+    precommit_hook_file.write_text(content, encoding="utf-8")
     precommit_hook_file.chmod(precommit_hook_file.stat().st_mode | 0o111)
     print("telec init: pre-commit entrypoint guard installed.")

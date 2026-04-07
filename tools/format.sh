@@ -66,8 +66,4 @@ for claude_md in $(find "$REPO_ROOT" -name "CLAUDE.md" -not -path "*/trees/*" -n
   fi
 done
 
-# Auto-add formatted files back to staging area (pre-commit hook)
-if [ $# -gt 0 ]; then
-  rm -f .git/index.lock
-  git add $files
-fi
+# Restaging after format is handled by the pre-commit wrapper (.git/hooks/pre-commit)
