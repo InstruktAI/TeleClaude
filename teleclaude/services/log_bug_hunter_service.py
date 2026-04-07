@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -33,6 +34,16 @@ _CANDIDATE_ERROR_SIGNAL_RE = re.compile(
 )
 
 
+class LogBugHunterStateDict(TypedDict):
+    """Serialized log bug hunter state."""
+
+    last_checked_at: str | None
+    last_dispatched_at: str | None
+    last_status: str
+    last_error: str | None
+    last_session_id: str | None
+
+
 @dataclass
 class LogBugHunterState:
     """Persisted daemon-side state for the bug-hunter scheduler."""
@@ -43,7 +54,8 @@ class LogBugHunterState:
     last_error: str | None = None
     last_session_id: str | None = None
 
-    def to_dict(self) -> dict[str, str | None]:
+    def to_dict(self) -> LogBugHunterStateDict:
+        """Serialize state for JSON persistence."""
         return {
             "last_checked_at": self.last_checked_at.isoformat() if self.last_checked_at else None,
             "last_dispatched_at": self.last_dispatched_at.isoformat() if self.last_dispatched_at else None,
@@ -53,25 +65,24 @@ class LogBugHunterState:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "LogBugHunterState":
-        def _parse_dt(key: str) -> datetime | None:
-            raw = data.get(key)
-            if not isinstance(raw, str) or not raw:
+    def from_dict(cls, data: LogBugHunterStateDict) -> LogBugHunterState:
+        """Deserialize persisted JSON state."""
+
+        def _parse_dt(key: Literal["last_checked_at", "last_dispatched_at"]) -> datetime | None:
+            raw = data[key]
+            if not raw:
                 return None
             try:
                 return datetime.fromisoformat(raw)
             except ValueError:
                 return None
 
-        last_status = data.get("last_status")
-        last_error = data.get("last_error")
-        last_session_id = data.get("last_session_id")
         return cls(
             last_checked_at=_parse_dt("last_checked_at"),
             last_dispatched_at=_parse_dt("last_dispatched_at"),
-            last_status=str(last_status) if isinstance(last_status, str) else "never",
-            last_error=str(last_error) if isinstance(last_error, str) else None,
-            last_session_id=str(last_session_id) if isinstance(last_session_id, str) else None,
+            last_status=data["last_status"],
+            last_error=data["last_error"],
+            last_session_id=data["last_session_id"],
         )
 
 
@@ -98,6 +109,7 @@ class LogBugHunterService:
             try:
                 await self.maybe_dispatch()
             except asyncio.CancelledError:
+                logger.debug("log bug hunter scheduler loop cancelled")
                 raise
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.error("log bug hunter scheduler iteration failed: %s", exc, exc_info=True)
@@ -163,6 +175,7 @@ class LogBugHunterService:
         try:
             completed = subprocess.run(
                 ["instrukt-ai-logs", "teleclaude", "--since", LOG_BUG_HUNTER_LOG_WINDOW],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -223,7 +236,7 @@ class LogBugHunterService:
             return LogBugHunterState()
         if not isinstance(raw, dict):
             return LogBugHunterState()
-        return LogBugHunterState.from_dict(raw)
+        return LogBugHunterState.from_dict(cast(LogBugHunterStateDict, raw))
 
     def _save_state(self) -> None:
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
