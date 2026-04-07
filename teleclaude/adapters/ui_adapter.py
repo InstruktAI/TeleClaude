@@ -132,6 +132,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         text: str,
         multi_message: bool = False,
         _continuation_state: Any = None,
+        delivery_ts: datetime | None = None,
     ) -> str | None:
         """Send or edit threaded output message with smart pagination."""
         if _continuation_state is None:

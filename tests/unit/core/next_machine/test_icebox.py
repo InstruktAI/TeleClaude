@@ -1,5 +1,5 @@
 """Characterization tests for icebox manifest and folder movement behavior."""
-# pylint: disable=missing-function-docstring,use-implicit-booleaness-not-comparison
+# pylint: disable=use-implicit-booleaness-not-comparison
 
 from __future__ import annotations
 

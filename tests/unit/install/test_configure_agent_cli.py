@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
+# pylint: disable=protected-access
 """Test specifications for teleclaude.install.configure_agent_cli.
 
 Covers:

@@ -42,8 +42,6 @@ class TestDiscoverCodexTranscriptPath:
 
     @pytest.mark.unit
     def test_finds_transcript_in_todays_dir(self, tmp_path: Path) -> None:
-        from datetime import datetime
-
         today = datetime.now()
         date_dir = tmp_path / ".codex" / "sessions" / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
         date_dir.mkdir(parents=True)
@@ -64,6 +62,17 @@ class TestDiscoverCodexTranscriptPath:
             result = discover_codex_transcript_path("nonexistent-session")
 
         assert result is None
+
+    @pytest.mark.unit
+    def test_not_found_does_not_log_warning(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+        sessions_dir = tmp_path / ".codex" / "sessions"
+        sessions_dir.mkdir(parents=True)
+
+        with patch("teleclaude.core.codex_transcript.Path.home", return_value=tmp_path):
+            discover_codex_transcript_path("nonexistent-session")
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert not warnings
 
 
 class TestCodexSubagentDetection:
@@ -116,8 +125,6 @@ class TestCodexSubagentDetection:
 
     @pytest.mark.unit
     def test_discovers_codex_transcript_family_recursively(self, tmp_path: Path) -> None:
-        from datetime import datetime
-
         today = datetime.now()
         date_dir = tmp_path / ".codex" / "sessions" / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
         date_dir.mkdir(parents=True)
@@ -194,8 +201,6 @@ class TestCodexSubagentDetection:
 
     @pytest.mark.unit
     def test_discovers_codex_transcript_family_meta_with_timestamps(self, tmp_path: Path) -> None:
-        from datetime import datetime
-
         today = datetime.now()
         date_dir = tmp_path / ".codex" / "sessions" / str(today.year) / f"{today.month:02d}" / f"{today.day:02d}"
         date_dir.mkdir(parents=True)

@@ -107,12 +107,23 @@ case "$component" in
         pid_mypy=$!
 
         # Pylint (staged-file scoped when invoked by pre-commit)
+        # Test files get pytest-structural checks disabled via CLI args;
+        # pyproject.toml remains the single config source.
+        PYLINT_TEST_DISABLE="missing-module-docstring,missing-class-docstring,missing-function-docstring,too-few-public-methods,redefined-outer-name,too-many-arguments"
         (if [ $# -gt 0 ]; then
-            if $PYLINT "$@" > "$tmpdir/pylint.out" 2>&1; then
-                echo 0 > "$tmpdir/pylint.rc"
-            else
-                echo $? > "$tmpdir/pylint.rc"
+            src_files=""
+            test_files=""
+            for f in "$@"; do
+                case "$f" in tests/*) test_files="$test_files $f" ;; *) src_files="$src_files $f" ;; esac
+            done
+            pylint_ok=true
+            if [ -n "$src_files" ]; then
+                $PYLINT $src_files >> "$tmpdir/pylint.out" 2>&1 || pylint_ok=false
             fi
+            if [ -n "$test_files" ]; then
+                $PYLINT --disable="$PYLINT_TEST_DISABLE" $test_files >> "$tmpdir/pylint.out" 2>&1 || pylint_ok=false
+            fi
+            if $pylint_ok; then echo 0 > "$tmpdir/pylint.rc"; else echo 1 > "$tmpdir/pylint.rc"; fi
         else
             if $PYLINT teleclaude > "$tmpdir/pylint.out" 2>&1; then
                 echo 0 > "$tmpdir/pylint.rc"

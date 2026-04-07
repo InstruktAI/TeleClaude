@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude/cli/demo_validation.py."""
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

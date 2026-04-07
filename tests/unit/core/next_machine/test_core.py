@@ -1,5 +1,5 @@
 """Tests for teleclaude.core.next_machine.core — phase derivation, dispatch, verdicts, artifacts."""
-# pylint: disable=import-outside-toplevel,unused-argument,invalid-name,too-few-public-methods,duplicate-code
+# pylint: disable=import-outside-toplevel,unused-argument,invalid-name,duplicate-code
 
 from __future__ import annotations
 

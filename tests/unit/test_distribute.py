@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=missing-function-docstring,duplicate-code
+# pylint: disable=duplicate-code
 """Characterization and regression tests for scripts/distribute.py."""
 
 from __future__ import annotations

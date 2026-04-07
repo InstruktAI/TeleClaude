@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.cli.telec.handlers.demo."""
-# pylint: disable=missing-function-docstring,protected-access,unnecessary-lambda
+# pylint: disable=protected-access,unnecessary-lambda
 
 from __future__ import annotations
 

@@ -1,5 +1,4 @@
 # guard: no-companion
-# pylint: disable=too-few-public-methods
 """Spec tests (non-xfail) for cadence-file-authority - R10: Preserved behaviors.
 
 These tests assert that existing behaviors are NOT broken by the file-authority

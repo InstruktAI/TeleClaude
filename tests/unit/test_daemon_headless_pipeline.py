@@ -1,4 +1,4 @@
-# pylint: disable=consider-using-from-import,import-outside-toplevel,missing-function-docstring,protected-access,too-few-public-methods,too-many-instance-attributes
+# pylint: disable=consider-using-from-import,import-outside-toplevel,protected-access,too-many-instance-attributes
 # guard: no-companion
 """Specification tests for headless session creation and terminal identity cleanup."""
 

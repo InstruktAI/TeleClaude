@@ -1,5 +1,4 @@
 # guard: no-companion
-# pylint: disable=too-few-public-methods
 """Test spec for R5/R6/R7/R8/R9: content, annotations, and cleanup.
 
 R5: The 6 procedure references are removed from baseline-progressive.md.

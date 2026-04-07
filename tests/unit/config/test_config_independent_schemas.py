@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel,missing-function-docstring,unsupported-membership-test,use-implicit-booleaness-not-comparison
+# pylint: disable=import-outside-toplevel,unsupported-membership-test,use-implicit-booleaness-not-comparison
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false, reportUnusedImport=false, reportUnusedVariable=false
 """Test specs (xfail) for config-independent-schemas.
 

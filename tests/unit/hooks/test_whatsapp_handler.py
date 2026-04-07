@@ -1,7 +1,5 @@
-# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,consider-using-from-import
+# pylint: disable=consider-using-from-import
 """Characterization tests for teleclaude.hooks.whatsapp_handler."""
-
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

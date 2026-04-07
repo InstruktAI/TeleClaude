@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.core.integration.formatters."""
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

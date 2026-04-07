@@ -1,7 +1,5 @@
 """Characterization tests for teleclaude.core.command_service."""
 
-# pylint: disable=missing-function-docstring
-
 from __future__ import annotations
 
 import ast

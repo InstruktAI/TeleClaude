@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=missing-function-docstring,wrong-import-position
+# pylint: disable=wrong-import-position
 """Test specifications for scripts/distribute.py — context-preservation marker wrapping.
 
 Covers:

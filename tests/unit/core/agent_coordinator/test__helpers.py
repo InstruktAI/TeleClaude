@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.core.agent_coordinator._helpers."""
-# pylint: disable=missing-class-docstring,missing-function-docstring
 
 from __future__ import annotations
 

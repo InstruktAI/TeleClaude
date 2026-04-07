@@ -1,4 +1,4 @@
-# pylint: disable=missing-module-docstring,missing-function-docstring,protected-access,too-few-public-methods,too-many-instance-attributes,use-implicit-booleaness-not-comparison,import-outside-toplevel,duplicate-code
+# pylint: disable=protected-access,too-many-instance-attributes,use-implicit-booleaness-not-comparison,import-outside-toplevel,duplicate-code
 from __future__ import annotations
 
 from unittest.mock import Mock

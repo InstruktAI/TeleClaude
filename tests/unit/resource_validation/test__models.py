@@ -1,6 +1,6 @@
 """Characterization tests for teleclaude.resource_validation._models."""
 
-# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
+# pylint: disable=protected-access
 from __future__ import annotations
 
 from pathlib import Path

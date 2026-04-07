@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.core.models._snapshot."""
-# pylint: disable=missing-function-docstring,missing-class-docstring,too-few-public-methods
 
 from __future__ import annotations
 

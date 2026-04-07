@@ -1,5 +1,4 @@
 # guard: no-companion
-# pylint: disable=too-few-public-methods
 """Spec tests (xfail) for cadence-file-authority - R9: Removal of superseded mechanisms.
 
 Structural tests verifying that code paths made redundant by file-derived rendering

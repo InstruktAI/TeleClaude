@@ -23,7 +23,6 @@ def _make_service() -> MaintenanceService:
         client=client,
         output_poller=SimpleNamespace(),
         poller_watch_interval_s=1.0,
-        codex_transcript_watch_interval_s=1.0,
     )
 
 
@@ -70,34 +69,6 @@ class _FakeUiAdapter:
 
 
 class TestMaintenanceService:
-    @pytest.mark.unit
-    async def test_codex_transcript_watch_binds_missing_logs(self, tmp_path: Path) -> None:
-        existing_log = tmp_path / "existing.log"
-        existing_log.write_text("existing", encoding="utf-8")
-        target = _make_session("target", active_agent="codex", native_session_id="native-1")
-        skipped = _make_session(
-            "skipped",
-            active_agent="codex",
-            native_session_id="native-2",
-            native_log_file=str(existing_log),
-        )
-        service = _make_service()
-
-        with (
-            patch(
-                "teleclaude.services.maintenance_service.db.list_sessions",
-                new=AsyncMock(return_value=[target, skipped]),
-            ),
-            patch(
-                "teleclaude.services.maintenance_service.discover_codex_transcript_path",
-                side_effect=["/tmp/discovered.log", None],
-            ),
-            patch("teleclaude.services.maintenance_service.db.update_session", new=AsyncMock()) as update_mock,
-        ):
-            await service._codex_transcript_watch_iteration()
-
-        update_mock.assert_awaited_once_with("target", native_log_file="/tmp/discovered.log")
-
     @pytest.mark.unit
     async def test_poller_watch_schedules_polling_without_lane_provisioning(self) -> None:
         session = _make_session("session-1", topic_id=None)

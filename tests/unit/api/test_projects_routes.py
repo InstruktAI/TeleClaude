@@ -1,5 +1,4 @@
 """Characterization tests for project listing routes."""
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

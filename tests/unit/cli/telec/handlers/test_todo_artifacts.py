@@ -1,7 +1,7 @@
 # guard: no-companion
 """Tests for telec todo artifacts {list|read|write} and telec todo stamp."""
 
-# pylint: disable=missing-function-docstring,import-outside-toplevel
+# pylint: disable=import-outside-toplevel
 from __future__ import annotations
 
 from unittest.mock import patch

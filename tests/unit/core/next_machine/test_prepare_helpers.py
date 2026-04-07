@@ -1,5 +1,5 @@
 """Tests for Task 2: prepare_helpers module — artifact lifecycle helpers."""
-# pylint: disable=missing-function-docstring,import-outside-toplevel,duplicate-code
+# pylint: disable=import-outside-toplevel,duplicate-code
 
 from __future__ import annotations
 

@@ -5,7 +5,7 @@ The integration state machine scans todo state from todos.db to find
 finalize-ready candidates. Tests mock _get_todos_db_sync to inject a
 test-scoped TodosDb instance.
 """
-# pylint: disable=missing-function-docstring,redefined-outer-name,unused-argument,use-implicit-booleaness-not-comparison
+# pylint: disable=unused-argument,use-implicit-booleaness-not-comparison
 
 from __future__ import annotations
 

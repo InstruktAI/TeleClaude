@@ -1,5 +1,4 @@
 """Characterization tests for next-work precondition and routing helpers."""
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

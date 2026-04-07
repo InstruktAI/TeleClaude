@@ -1,4 +1,4 @@
-# pylint: disable=missing-module-docstring,missing-function-docstring,protected-access,unused-argument
+# pylint: disable=protected-access,unused-argument
 from __future__ import annotations
 
 from dataclasses import dataclass, field

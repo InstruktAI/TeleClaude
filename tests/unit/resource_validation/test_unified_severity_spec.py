@@ -1,6 +1,6 @@
 # guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false, reportUnknownLambdaType=false
-# pylint: disable=import-outside-toplevel,protected-access,too-few-public-methods
+# pylint: disable=import-outside-toplevel,protected-access
 """Test spec for R1: Unified validation severity.
 
 The resource validation pipeline must use a single severity level for all
