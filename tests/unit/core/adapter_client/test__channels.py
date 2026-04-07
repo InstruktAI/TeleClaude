@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.core.adapter_client._channels."""
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
 
 from __future__ import annotations
 
@@ -127,7 +128,7 @@ class TestBroadcastCommandAction:
 class TestCreateChannel:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_returns_entry_point_channel_id_and_persists_all_adapter_ids(self):
+    async def test_returns_entry_point_channel_id_after_adapter_fanout(self):
         client = AdapterClient()
         session = _make_session()
         telegram = _make_ui_adapter()
@@ -137,20 +138,16 @@ class TestCreateChannel:
         client.register_adapter("telegram", telegram)
         client.register_adapter("redis", redis)
 
-        with patch("teleclaude.core.adapter_client._channels.db") as mock_db:
-            mock_db.update_origin_metadata = AsyncMock()
-
-            result = await client.create_channel(
-                session,
-                "Roadmap",
-                last_input_origin="telegram",
-                target_computer="worker-1",
-            )
+        result = await client.create_channel(
+            session,
+            "Roadmap",
+            last_input_origin="telegram",
+            target_computer="worker-1",
+        )
 
         assert result == "42"
         telegram.create_channel.assert_awaited_once()
         redis.create_channel.assert_awaited_once()
-        assert mock_db.update_origin_metadata.await_count == 2
 
     @pytest.mark.unit
     @pytest.mark.asyncio

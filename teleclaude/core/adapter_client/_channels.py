@@ -54,8 +54,11 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
             return
 
         display_title = await get_display_title_for_session(session)
-        await self.update_channel_title(session, display_title)  # type: ignore[attr-defined]
-        logger.info("Synced display title for session %s: %s", context.session_id, display_title)
+        success = await self.update_channel_title(session, display_title)  # type: ignore[attr-defined]
+        if success:
+            logger.info("Synced display title for session %s: %s", context.session_id, display_title)
+        else:
+            logger.warning("Failed to sync display title for session %s", context.session_id)
 
     if TYPE_CHECKING:
         adapters: dict[str, BaseAdapter]
@@ -270,8 +273,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        entry_point_channel_id = None
-        all_channel_ids: dict[str, str] = {}
+        entry_point_channel_id: str | None = None
 
         for adapter_type, result in zip(adapter_types, results):
             if isinstance(result, Exception):
@@ -282,29 +284,13 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                     ) from result
             else:
                 channel_id = str(result)
-                all_channel_ids[adapter_type] = channel_id
                 logger.debug("Created channel in %s for session %s: %s", adapter_type, session_id, channel_id)
                 if adapter_type == entry_point:
                     entry_point_channel_id = channel_id
 
         if entry_point_is_ui and not entry_point_channel_id:
             raise ValueError(f"Entry point adapter {last_input_origin} did not return channel_id")
-        if not entry_point_channel_id:
-            entry_point_channel_id = ""
-
-        # Store all adapter channel_ids in origin_metadata.
-        # Telegram stores topic_id (int), Discord stores thread_id (int), Redis stores channel_id (str).
-        channel_field: dict[str, tuple[str, type]] = {
-            "telegram": ("topic_id", int),
-            "discord": ("thread_id", int),
-            "redis": ("channel_id", str),
-        }
-        for adapter_type, channel_id in all_channel_ids.items():
-            field_name, coerce = channel_field.get(adapter_type, ("channel_id", str))
-            await db.update_origin_metadata(session_id, adapter_type, {field_name: coerce(channel_id)})
-        logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id)
-
-        return entry_point_channel_id
+        return entry_point_channel_id or ""
 
     async def ensure_ui_channels(
         self,
