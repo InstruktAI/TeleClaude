@@ -175,6 +175,12 @@ class ChannelOperationsMixin:
         try:
             await self._edit_forum_topic_with_retry(topic_id, title)
             return True
+        except BadRequest as e:
+            if "topic_not_modified" in str(e).lower():
+                logger.debug("Topic %s title already matches %r; treating as no-op", topic_id, title)
+                return True
+            logger.error("Failed to update topic title: %s", e)
+            return False
         except TelegramError as e:
             logger.error("Failed to update topic title: %s", e)
             return False

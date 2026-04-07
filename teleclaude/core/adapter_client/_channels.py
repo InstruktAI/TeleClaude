@@ -54,8 +54,11 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
             return
 
         display_title = await get_display_title_for_session(session)
-        await self.update_channel_title(session, display_title)  # type: ignore[attr-defined]
-        logger.info("Synced display title for session %s: %s", context.session_id, display_title)
+        success = await self.update_channel_title(session, display_title)  # type: ignore[attr-defined]
+        if success:
+            logger.info("Synced display title for session %s: %s", context.session_id, display_title)
+        else:
+            logger.warning("Failed to sync display title for session %s", context.session_id)
 
     if TYPE_CHECKING:
         adapters: dict[str, BaseAdapter]
@@ -111,23 +114,6 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return None
 
-    async def _run_deferred_ui_lane(
-        self,
-        session: "Session",
-        adapter_type: str,
-        task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
-    ) -> object | None:
-        """Execute deferred UI work through the normal lane recovery envelope."""
-        adapter = self.adapters.get(adapter_type)
-        if adapter is None or not isinstance(adapter, UiAdapter):
-            logger.warning(
-                "[UI_LANE] Skipping deferred lane for missing adapter=%s session=%s",
-                adapter_type,
-                session.session_id,
-            )
-            return None
-        return await self._run_ui_lane(session, adapter_type, adapter, task_factory)
-
     @staticmethod
     def _summarize_output(output: str) -> str:
         """Summarize output for last_output display (single-line tail)."""
@@ -180,6 +166,67 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         """Run UI post-handler after executing a user command."""
         await self._call_post_handler(session, "command", message_id, source_adapter)
 
+    async def broadcast_command_action(
+        self,
+        session: "Session",
+        command_name: str,
+        payload: dict[str, object],  # guard: loose-dict - Command payload for UI adapters
+        source_adapter: str | None = None,
+    ) -> None:
+        """Broadcast user command actions to other UI adapters (echo prevention)."""
+        command_payload = dict(payload)
+        command_payload["command_name"] = command_name
+        await self._broadcast_action(session, "command", command_payload, source_adapter)
+
+    async def _broadcast_action(
+        self,
+        session: "Session",
+        event: str,
+        payload: dict[str, object],  # guard: loose-dict - Event payload from/to adapters
+        source_adapter: str | None = None,
+    ) -> None:
+        """Broadcast user actions to other UI adapters (echo prevention)."""
+        action_text = self._format_event_text(event, payload)
+        if not action_text:
+            return
+
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(
+                Awaitable[object],
+                adapter.send_message(
+                    session=lane_session,
+                    text=action_text,
+                    metadata=MessageMetadata(),
+                ),
+            )
+
+        await self._fanout_excluding(
+            session,
+            f"broadcast_action:{event}",
+            make_task,
+            exclude=source_adapter,
+        )
+
+    def _format_event_text(
+        self,
+        event: str,
+        payload: dict[str, object],  # guard: loose-dict - Event payload
+    ) -> str | None:
+        """Format event as human-readable text for UI adapters.
+
+        Returns formatted text or None if event should not be broadcast.
+        Only meaningful lifecycle events are broadcast; key presses are noise.
+        """
+        command_name = None
+        if event == "command":
+            command_name = cast(str | None, payload.get("command_name"))
+
+        if command_name == "create_session":
+            title = cast(str, payload.get("title", "Untitled"))
+            return f"→ [Created session: {title}]"
+
+        return None
+
     async def create_channel(  # pylint: disable=too-many-locals  # Fanout bookkeeping is intentionally explicit.
         self,
         session: "Session",
@@ -226,8 +273,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        entry_point_channel_id = None
-        all_channel_ids: dict[str, str] = {}
+        entry_point_channel_id: str | None = None
 
         for adapter_type, result in zip(adapter_types, results):
             if isinstance(result, Exception):
@@ -238,30 +284,13 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                     ) from result
             else:
                 channel_id = str(result)
-                all_channel_ids[adapter_type] = channel_id
                 logger.debug("Created channel in %s for session %s: %s", adapter_type, session_id, channel_id)
                 if adapter_type == entry_point:
                     entry_point_channel_id = channel_id
 
         if entry_point_is_ui and not entry_point_channel_id:
             raise ValueError(f"Entry point adapter {last_input_origin} did not return channel_id")
-        if not entry_point_channel_id:
-            entry_point_channel_id = ""
-
-        # Store only meaningful adapter-provided channel identifiers in origin_metadata.
-        # UI adapters provide persistent identifiers; transport-only adapters may return "".
-        channel_field: dict[str, tuple[str, type]] = {
-            "telegram": ("topic_id", int),
-            "discord": ("thread_id", int),
-        }
-        for adapter_type, channel_id in all_channel_ids.items():
-            if not channel_id:
-                continue
-            field_name, coerce = channel_field.get(adapter_type, ("channel_id", str))
-            await db.update_origin_metadata(session_id, adapter_type, {field_name: coerce(channel_id)})
-        logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id)
-
-        return entry_point_channel_id
+        return entry_point_channel_id or ""
 
     async def ensure_ui_channels(
         self,

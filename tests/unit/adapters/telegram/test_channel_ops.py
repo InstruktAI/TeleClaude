@@ -1,4 +1,5 @@
 """Characterization tests for teleclaude.adapters.telegram.channel_ops."""
+# pylint: disable=protected-access,missing-function-docstring,too-many-instance-attributes
 
 from __future__ import annotations
 
@@ -172,6 +173,28 @@ async def test_update_channel_title_returns_false_on_telegram_error():
     ops._edit_forum_topic_with_retry = AsyncMock(side_effect=TelegramError("boom"))
 
     result = await ops.update_channel_title(session, "Broken")
+
+    assert result is False
+
+
+async def test_update_channel_title_treats_topic_not_modified_as_noop_success():
+    """Topic_not_modified means title already matches — treat as successful no-op, not an error."""
+    ops = _StubChannelOps()
+    session = _make_session(topic_id=42)
+    ops._edit_forum_topic_with_retry = AsyncMock(side_effect=BadRequest("Topic_not_modified"))
+
+    result = await ops.update_channel_title(session, "Same Title")
+
+    assert result is True
+
+
+async def test_update_channel_title_returns_false_on_other_bad_request():
+    """Other BadRequest errors (not topic_not_modified) must return False, not be swallowed as success."""
+    ops = _StubChannelOps()
+    session = _make_session(topic_id=42)
+    ops._edit_forum_topic_with_retry = AsyncMock(side_effect=BadRequest("Chat not found"))
+
+    result = await ops.update_channel_title(session, "Any Title")
 
     assert result is False
 
