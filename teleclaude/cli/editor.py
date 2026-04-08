@@ -12,7 +12,9 @@ This command is launched in a tmux pane by the preparation view.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import shutil
+import signal
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -165,7 +167,13 @@ class EditorApp(App[None]):
         yield Label(" Esc save+close  Ctrl+S save", id="editor-footer")
 
     def on_mount(self) -> None:
-        """Focus the editable buffer after the app mounts."""
+        """Install shutdown handlers and focus the editable buffer."""
+        try:
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGHUP, signal.SIGTERM):
+                loop.add_signal_handler(sig, self.exit)
+        except (ValueError, OSError):
+            pass  # not in asyncio context or signal unavailable
         if self.view_mode:
             return
         self.query_one("#editor-area", TextArea).focus()
