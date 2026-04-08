@@ -25,8 +25,8 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-_PREBUFFER_SECONDS = 2.5  # seconds of audio pre-buffered before stream starts
-_QUEUE_MAX_CHUNKS = 400  # maximum queue depth (~400 frames at 50Hz ≈ 8s)
+_PREBUFFER_SECONDS = 5.0  # seconds of audio pre-buffered before stream starts
+_QUEUE_MAX_CHUNKS = 1000  # maximum queue depth (~1000 frames at 50Hz ≈ 20s)
 _SAMPLE_RATE = 48000
 _DEVICE_POLL_INTERVAL_S = 2.0  # how often to check for default output device changes
 _FADE_DURATION_S = 3.0  # fade-out window before track end
