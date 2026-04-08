@@ -432,7 +432,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                         if playback_elapsed >= fade_start:
                             factor = max(0.0, 1.0 - (playback_elapsed - fade_start) / _FADE_DURATION_S)
                             if factor <= 0.0:
-                                logger.info("ChipTunes: track duration reached (%.1fs), advancing", max_duration)
+                                print(f"[CHIPTUNES] FADE COMPLETE: elapsed={playback_elapsed:.1f}s max_duration={max_duration}", flush=True)
                                 done = True
                                 break
                             pcm = _apply_fade(pcm, factor)
@@ -448,6 +448,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 if done:
                     break
             except Exception as exc:  # pylint: disable=broad-exception-caught
+                print(f"[CHIPTUNES] EMULATION ERROR: {exc}", flush=True)
                 logger.warning("Emulation error (skipping track): %s", exc)
                 self._notify_track_end("emulation_error")
                 break
@@ -460,8 +461,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
         self._playing = False
         reason = self._last_track_end_reason or ("stopped" if self._stop_event.is_set() else "track_completed")
-        logger.info("ChipTunes: END reason=%s elapsed=%.1fs max_duration=%s",
-                     reason, playback_elapsed, max_duration)
+        print(f"[CHIPTUNES] END: reason={reason} elapsed={playback_elapsed:.1f}s max_duration={max_duration}", flush=True)
         if not self._stop_event.is_set() and self._last_track_end_reason is None:
             self._notify_track_end("track_completed")
 
