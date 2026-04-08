@@ -229,6 +229,9 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
             return
         target_session = await db.get_session(target_session_id)
         display_title = title_override or (target_session.title if target_session else "Unknown")
+        # Strip additional context appended during session dispatch — it bloats notifications.
+        if "\n\nADDITIONAL CONTEXT" in display_title:
+            display_title = display_title.split("\n\nADDITIONAL CONTEXT")[0]
         computer = source_computer or LOCAL_COMPUTER
         notified = await notify_stop(target_session_id, computer, title=display_title)
         if notified:
