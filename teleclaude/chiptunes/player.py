@@ -26,7 +26,8 @@ except ImportError:
 logger = get_logger(__name__)
 
 _PREBUFFER_SECONDS = 5.0  # seconds of audio pre-buffered before stream starts
-_QUEUE_MAX_CHUNKS = 1000  # maximum queue depth (~1000 frames at 50Hz ≈ 20s)
+_QUEUE_MAX_CHUNKS = 200  # maximum queue depth (each chunk is a batch of frames)
+_BATCH_FRAMES = 25  # render 25 frames (~500ms at 50Hz) per queue chunk to reduce GIL contention
 _SAMPLE_RATE = 48000
 _DEVICE_POLL_INTERVAL_S = 2.0  # how often to check for default output device changes
 _FADE_DURATION_S = 3.0  # fade-out window before track end
@@ -414,32 +415,47 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             if self._stop_event.is_set():
                 break
             try:
-                writes = driver.play_frame()
-                pcm = renderer.render_frame(writes, frame_duration)
-                if max_duration is not None:
-                    fade_start = max_duration - _FADE_DURATION_S
-                    if playback_elapsed >= fade_start:
-                        factor = max(0.0, 1.0 - (playback_elapsed - fade_start) / _FADE_DURATION_S)
-                        if factor <= 0.0:
-                            logger.info("ChipTunes: track duration reached (%.1fs), advancing", max_duration)
-                            break
-                        pcm = _apply_fade(pcm, factor)
-                playback_elapsed += frame_duration
-                with self._position_lock:
-                    self._playback_position_seconds = playback_elapsed
-                if not self._enqueue_pcm(pcm, frame_duration):
-                    continue
+                # Batch-render multiple frames into one PCM chunk to reduce
+                # GIL contention between the emulation thread and the audio
+                # callback thread. Each queue item is ~500ms of audio.
+                batch_pcm = bytearray()
+                done = False
+                for _ in range(_BATCH_FRAMES):
+                    if self._stop_event.is_set():
+                        done = True
+                        break
+                    writes = driver.play_frame()
+                    pcm = renderer.render_frame(writes, frame_duration)
+                    if max_duration is not None:
+                        fade_start = max_duration - _FADE_DURATION_S
+                        if playback_elapsed >= fade_start:
+                            factor = max(0.0, 1.0 - (playback_elapsed - fade_start) / _FADE_DURATION_S)
+                            if factor <= 0.0:
+                                logger.info("ChipTunes: track duration reached (%.1fs), advancing", max_duration)
+                                done = True
+                                break
+                            pcm = _apply_fade(pcm, factor)
+                    batch_pcm.extend(pcm)
+                    playback_elapsed += frame_duration
+                    with self._position_lock:
+                        self._playback_position_seconds = playback_elapsed
+                if done and not batch_pcm:
+                    break
+                if batch_pcm:
+                    if not self._enqueue_pcm(bytes(batch_pcm), frame_duration * _BATCH_FRAMES):
+                        pass
+                if done:
+                    break
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("Emulation error (skipping track): %s", exc)
                 self._notify_track_end("emulation_error")
                 break
-            # Adaptive pacing: run flat-out when buffer is low, yield CPU when healthy.
-            # This prevents 100% CPU usage from starving the audio callback thread.
+            # Adaptive pacing: yield CPU when buffer is healthy.
             qsize = self._pcm_queue.qsize()
             if qsize > _QUEUE_MAX_CHUNKS // 2:
-                self._stop_event.wait(frame_duration)
+                self._stop_event.wait(frame_duration * _BATCH_FRAMES)
             elif qsize > _QUEUE_MAX_CHUNKS // 4:
-                self._stop_event.wait(frame_duration * 0.5)
+                self._stop_event.wait(frame_duration * _BATCH_FRAMES * 0.5)
 
         self._playing = False
         if not self._stop_event.is_set() and self._last_track_end_reason is None:
