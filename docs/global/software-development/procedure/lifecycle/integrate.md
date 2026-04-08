@@ -8,6 +8,10 @@ description: 'Integration phase. Drive the integration state machine, handle squ
 
 # Integration — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/policy/commits.md
+
 ## Goal
 
 Merge candidate branches to canonical main via the integration state machine, handling

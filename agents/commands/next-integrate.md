@@ -15,7 +15,6 @@ future delivery._
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/integrate.md
 
 ## Purpose
