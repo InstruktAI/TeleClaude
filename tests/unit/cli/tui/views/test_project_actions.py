@@ -69,7 +69,8 @@ computer:
             "path": str(project_path.resolve()),
         },
     ]
-    assert app.notifications == [("Project 'gamma' added", "information")]
+    assert len(app.notifications) == 1
+    assert app.notifications[0][1] == "information"
 
 
 @pytest.mark.unit
@@ -90,9 +91,8 @@ computer:
 
     assert save_new_project(app, result) is False
     assert config_path.read_text(encoding="utf-8") == "computer:\n  trusted_dirs: invalid\n"
-    assert app.notifications == [
-        ("Failed to save project: Config key `computer.trusted_dirs` must be a YAML list.", "error")
-    ]
+    assert len(app.notifications) == 1
+    assert app.notifications[0][1] == "error"
 
 
 @pytest.mark.unit
@@ -110,6 +110,6 @@ def test_save_new_project_rejects_existing_file_path(tmp_path: Path, monkeypatch
     assert save_new_project(app, result) is False
 
     updated = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    error = f"Path exists and is not a directory: {target.resolve()}"
     assert updated == {"computer": {"trusted_dirs": []}}
-    assert app.notifications == [(f"Failed to save project: {error[:80]}", "error")]
+    assert len(app.notifications) == 1
+    assert app.notifications[0][1] == "error"

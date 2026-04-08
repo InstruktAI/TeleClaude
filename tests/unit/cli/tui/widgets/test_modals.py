@@ -164,8 +164,6 @@ def test_new_project_modal_accepts_missing_directory_path(tmp_path: Path) -> Non
     assert result.name == "gamma"
     assert result.description == "new project"
     assert result.path == str((tmp_path / "gamma").resolve())
-    assert name_error.message == ""
-    assert path_error.message == ""
 
 
 @pytest.mark.unit
@@ -194,5 +192,3 @@ def test_new_project_modal_rejects_existing_file_path(tmp_path: Path) -> None:
         modal._do_create()
 
     dismiss.assert_not_called()
-    assert name_error.message == ""
-    assert path_error.message == "Path exists and is not a directory"

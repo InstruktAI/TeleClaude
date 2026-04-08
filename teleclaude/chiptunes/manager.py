@@ -292,6 +292,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         if was_connected:
             self._disconnect()
             self._cached_state.playback = "cold"
+            self._cached_state.position_seconds = 0.0
             logger.info("ChipTunes: worker connection lost, playback state reset to cold")
             self._notify_state_change()
 
