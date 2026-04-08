@@ -481,6 +481,7 @@ async def _project_user_reflection(
     adapter_client: "AdapterClient",
 ) -> "Session":
     """Project the latest authoritative user message from transcript into canonical state."""
+    # pylint: disable=too-many-locals
     transcript_path = session.native_log_file
     active_agent = session.active_agent
     if not transcript_path or not active_agent:
@@ -512,18 +513,24 @@ async def _project_user_reflection(
     if source != InputOrigin.DISCORD.value:
         await adapter_client.broadcast_user_input(session, user_text, source)
 
-    update_kwargs: dict[str, object] = {
-        "last_message_sent": user_text[:200],
-    }
     if transcript_iso:
-        update_kwargs["last_message_sent_at"] = transcript_iso
-    await db.update_session(session.session_id, **update_kwargs)
+        await db.update_session(
+            session.session_id,
+            last_message_sent=user_text[:200],
+            last_message_sent_at=transcript_iso,
+        )
+    else:
+        await db.update_session(
+            session.session_id,
+            last_message_sent=user_text[:200],
+        )
     refreshed = await db.get_session(session.session_id)
     return refreshed or session
 
 
 async def refresh_session_title_from_transcript(session: "Session") -> "Session":
     """Recompute semantic title from transcript truth when the recent turn set changes."""
+    # pylint: disable=too-many-return-statements
     current_title = (session.title or "").strip()
     if current_title.startswith("/"):
         return session
