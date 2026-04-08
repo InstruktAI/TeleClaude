@@ -481,9 +481,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug> <content>",
                 flags=[
                     Flag("--after", desc="Comma-separated dependency slugs"),
+                    Flag("--draft", desc="Create silently — skip domain event so no cartridge picks it up"),
                 ],
                 notes=[
                     "Emits todo.dumped notification for autonomous processing.",
+                    "Use --draft to stage an idea without triggering autonomous pickup.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

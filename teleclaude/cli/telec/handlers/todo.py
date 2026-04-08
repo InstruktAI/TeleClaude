@@ -199,7 +199,7 @@ def _handle_todo_verify_artifacts(args: list[str]) -> None:
 
 
 def _handle_todo_dump(args: list[str]) -> None:
-    """Handle telec todo dump <slug> <content> [--after <deps>].
+    """Handle telec todo dump <slug> <content> [--after <deps>] [--draft].
 
     Creates a todo in todos.db: state, input artifact, and roadmap entry.
     No filesystem writes. No git commits.
@@ -211,6 +211,7 @@ def _handle_todo_dump(args: list[str]) -> None:
     slug: str | None = None
     content: str | None = None
     after: list[str] | None = None
+    draft = False
 
     i = 0
     while i < len(args):
@@ -218,6 +219,9 @@ def _handle_todo_dump(args: list[str]) -> None:
         if arg == "--after" and i + 1 < len(args):
             after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
             i += 2
+        elif arg == "--draft":
+            draft = True
+            i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "dump"))
@@ -255,6 +259,9 @@ def _handle_todo_dump(args: list[str]) -> None:
     else:
         print(f"Error: unexpected response: {result}")
         raise SystemExit(1)
+
+    if draft:
+        return
 
     # Emit planning.todo_dumped notification
     _log = get_logger(__name__)
