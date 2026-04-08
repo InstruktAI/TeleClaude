@@ -35,6 +35,7 @@ import time
 from pathlib import Path
 
 from teleclaude.chiptunes.player import ChiptunesPlayer
+from teleclaude.chiptunes.sid_parser import parse_sid_file
 from teleclaude.chiptunes.songlengths import load_songlengths, lookup_duration
 from teleclaude.paths import CHIPTUNES_STATE_PATH
 
@@ -323,8 +324,6 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
 
             track_label = track.stem.replace("_", " ")
             # Use the SID's default subtune (start_song is 1-based)
-            from teleclaude.chiptunes.sid_parser import parse_sid_file  # pylint: disable=import-outside-toplevel
-
             try:
                 sid_header = parse_sid_file(track)
                 default_subtune = max(0, sid_header.start_song - 1)
