@@ -306,12 +306,13 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
         self.chiptunes_manager.on_state_change = self._on_chiptunes_state_change
+        self.chiptunes_manager.on_command_done = self._on_chiptunes_command_done
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
+        self.chiptunes_manager.start()
         logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
 
         # Mutable runtime settings with debounced JSON persistence
-        self.runtime_settings = RuntimeSettings(RUNTIME_SETTINGS_PATH, self.tts_manager, self.chiptunes_manager)
-        self.runtime_settings.bootstrap_chiptunes()
+        self.runtime_settings = RuntimeSettings(RUNTIME_SETTINGS_PATH, self.tts_manager)
 
         self.maintenance_service = MaintenanceService(
             client=self.client,
@@ -432,20 +433,24 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         else:
             logger.debug("ChipTunes: no running event loop, skipping track broadcast")
 
-    def _on_chiptunes_state_change(self) -> None:
+    def _on_chiptunes_state_change(self, state: dict[str, object]) -> None:
         """Broadcast chiptunes_state WebSocket events from worker thread callbacks."""
         if hasattr(self, "tts_manager"):
             self.tts_manager.on_chiptunes_state_change()
-        if hasattr(self, "runtime_settings"):
-            self.runtime_settings.sync_chiptunes_state()
         loop = getattr(self, "_loop", None)
         if loop is not None and loop.is_running():
             loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
         else:
             logger.debug("ChipTunes: no running event loop, skipping state broadcast")
 
+    def _on_chiptunes_command_done(self, command_id: str) -> None:
+        """Clear pending command in routes when worker completes it."""
+        from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
+        chiptunes_routes.clear_pending(command_id)
+
     def _broadcast_chiptunes_state(self) -> None:
         """Broadcast the current chiptunes playback state."""
+        from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
         from teleclaude.api_models import (
             ChiptunesStateEventDTO,  # pylint: disable=import-outside-toplevel  # startup boundary
         )
@@ -455,22 +460,22 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         if api_server is None or manager is None:
             return
 
-        runtime_state = manager.capture_runtime_state()
-        state_version = 0
-        runtime_settings = getattr(self, "runtime_settings", None)
-        if runtime_settings is not None:
-            state_version = runtime_settings.chiptunes_state_version
+        state = manager.last_state
+        track_path = str(state.get("track_path", ""))
+        track_label = Path(track_path).stem.replace("_", " ") if track_path else ""
+        playback = str(state.get("playback", "cold"))
+        chiptunes_routes.increment_state_version()
         payload = ChiptunesStateEventDTO(
-            playback=runtime_state.playback,
-            state_version=state_version,
+            playback=playback,  # type: ignore[arg-type]
+            state_version=chiptunes_routes._state_version,  # pylint: disable=protected-access
             loaded=manager.enabled,
-            playing=manager.is_playing,
-            paused=manager.is_paused,
-            position_seconds=runtime_state.position_seconds,
-            track=manager.current_track,
-            sid_path=manager.current_sid_path,
-            pending_command_id=runtime_state.pending_command_id,
-            pending_action=runtime_state.pending_action,
+            playing=playback == "playing",
+            paused=playback == "paused",
+            position_seconds=float(state.get("position_seconds", 0.0)),
+            track=track_label,
+            sid_path=track_path,
+            pending_command_id=chiptunes_routes._pending_command_id,  # pylint: disable=protected-access
+            pending_action=chiptunes_routes._pending_action,  # pylint: disable=protected-access  # type: ignore[arg-type]
         ).model_dump()
         api_server._broadcast_payload("chiptunes_state", payload)  # pylint: disable=protected-access
 
@@ -641,6 +646,10 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         logger.info("[STARTUP] Bootstrapping daemon runtime (usually 10-25s)")
         try:
             await self.lifecycle.startup()
+
+            from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
+            chiptunes_routes.configure(manager=self.chiptunes_manager)
+
             startup_elapsed = time.perf_counter() - daemon_start_started_at
             if startup_elapsed >= SLOW_STARTUP_WARNING_S:
                 logger.warning("Daemon startup was slow: %.3fs", startup_elapsed)

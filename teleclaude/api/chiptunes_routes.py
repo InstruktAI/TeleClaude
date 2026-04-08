@@ -4,80 +4,95 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import ChiptunesCommandReceiptDTO, ChiptunesStatusDTO
-from teleclaude.config.runtime_settings import RuntimeSettings
 
 if TYPE_CHECKING:
     from teleclaude.chiptunes.manager import ChiptunesManager
 
 logger = get_logger(__name__)
 
-_RUNTIME_SETTINGS: dict[str, RuntimeSettings | None] = {"value": None}
+_MANAGER: dict[str, ChiptunesManager | None] = {"value": None}
+
+# Module-level state tracking (owned by routes, not manager)
+_state_version: int = 0
+_pending_command_id: str = ""
+_pending_action: str = ""
 
 router = APIRouter(prefix="/api/chiptunes", tags=["chiptunes"])
 
 
-def configure(runtime_settings: RuntimeSettings | None) -> None:
-    """Wire runtime_settings; called from APIServer at construction."""
-    _RUNTIME_SETTINGS["value"] = runtime_settings
+def configure(manager: ChiptunesManager | None) -> None:
+    """Wire chiptunes manager; called from daemon after lifecycle start."""
+    _MANAGER["value"] = manager
 
 
-def _require_runtime_settings() -> RuntimeSettings:
-    """Return the configured runtime settings or raise service unavailable."""
-    runtime_settings = _RUNTIME_SETTINGS["value"]
-    if runtime_settings is None:
-        raise HTTPException(503, "Runtime settings not available")
-    return runtime_settings
+def increment_state_version() -> None:
+    """Increment the state version counter (called by daemon on state change)."""
+    global _state_version  # noqa: PLW0603
+    _state_version += 1
 
 
-def _require_chiptunes_manager(runtime_settings: RuntimeSettings) -> ChiptunesManager:
-    """Return the configured chiptunes manager or raise service unavailable."""
-    manager: ChiptunesManager | None = getattr(runtime_settings, "_chiptunes_manager", None)
+def clear_pending(command_id: str) -> None:
+    """Clear pending command if it matches (called by daemon on command_done)."""
+    global _pending_command_id, _pending_action  # noqa: PLW0603
+    if command_id == _pending_command_id:
+        _pending_command_id = ""
+        _pending_action = ""
+
+
+def _require_manager() -> ChiptunesManager:
+    """Return the configured manager or raise service unavailable."""
+    manager = _MANAGER["value"]
     if manager is None:
         raise HTTPException(503, "Chiptunes manager not available")
     return manager
 
 
 def _build_chiptunes_status() -> ChiptunesStatusDTO:
-    """Build the current chiptunes status DTO from runtime settings."""
-    runtime_settings = _require_runtime_settings()
-    manager = _require_chiptunes_manager(runtime_settings)
-    runtime_state = runtime_settings.get_state().chiptunes
-    track_label = Path(runtime_state.track_path).stem.replace("_", " ") if runtime_state.track_path else ""
-    sid_path = runtime_state.track_path
-    playing = runtime_state.playback == "playing"
-    paused = runtime_state.playback == "paused"
-    if manager.enabled:
-        runtime_state = manager.capture_runtime_state()
-        track_label = manager.current_track
-        sid_path = manager.current_sid_path
-        playing = manager.is_playing
-        paused = manager.is_paused
+    """Build the current chiptunes status DTO from manager state."""
+    manager = _require_manager()
+    state = manager.last_state
+    track_path = str(state.get("track_path", ""))
+    track_label = Path(track_path).stem.replace("_", " ") if track_path else ""
+    playback = str(state.get("playback", "cold"))
+    playing = playback == "playing"
+    paused = playback == "paused"
+    position = float(state.get("position_seconds", 0.0))
     return ChiptunesStatusDTO(
-        playback=runtime_state.playback,
-        state_version=runtime_settings.chiptunes_state_version,
+        playback=playback,  # type: ignore[arg-type]
+        state_version=_state_version,
         loaded=manager.enabled,
         playing=playing,
         paused=paused,
-        position_seconds=runtime_state.position_seconds,
+        position_seconds=position,
         track=track_label,
-        sid_path=sid_path,
-        pending_command_id=runtime_state.pending_command_id,
-        pending_action=runtime_state.pending_action,
+        sid_path=track_path,
+        pending_command_id=_pending_command_id,
+        pending_action=_pending_action,  # type: ignore[arg-type]
     )
+
+
+def _issue_command(action: str) -> ChiptunesCommandReceiptDTO:
+    """Generate uuid, enqueue command on manager, return receipt."""
+    global _state_version, _pending_command_id, _pending_action  # noqa: PLW0603
+    manager = _require_manager()
+    command_id = uuid4().hex
+    _pending_command_id = command_id
+    _pending_action = action
+    _state_version += 1
+    manager.enqueue_command(command_id, action)  # type: ignore[arg-type]
+    return ChiptunesCommandReceiptDTO(command_id=command_id, action=action)  # type: ignore[arg-type]
 
 
 @router.post("/next", status_code=202)
 async def chiptunes_next() -> ChiptunesCommandReceiptDTO:
     """Queue "next track" command and return receipt."""
-    runtime_settings = _require_runtime_settings()
-    _require_chiptunes_manager(runtime_settings)
-    command_id = runtime_settings.issue_chiptunes_command("next")
-    return ChiptunesCommandReceiptDTO(command_id=command_id, action="next")
+    return _issue_command("next")
 
 
 @router.get("/status")
@@ -89,25 +104,16 @@ async def chiptunes_status() -> ChiptunesStatusDTO:
 @router.post("/prev", status_code=202)
 async def chiptunes_prev() -> ChiptunesCommandReceiptDTO:
     """Queue "previous track" command and return receipt."""
-    runtime_settings = _require_runtime_settings()
-    _require_chiptunes_manager(runtime_settings)
-    command_id = runtime_settings.issue_chiptunes_command("prev")
-    return ChiptunesCommandReceiptDTO(command_id=command_id, action="prev")
+    return _issue_command("prev")
 
 
 @router.post("/pause", status_code=202)
 async def chiptunes_pause() -> ChiptunesCommandReceiptDTO:
     """Queue pause command and return receipt."""
-    runtime_settings = _require_runtime_settings()
-    _require_chiptunes_manager(runtime_settings)
-    command_id = runtime_settings.issue_chiptunes_command("pause")
-    return ChiptunesCommandReceiptDTO(command_id=command_id, action="pause")
+    return _issue_command("pause")
 
 
 @router.post("/resume", status_code=202)
 async def chiptunes_resume() -> ChiptunesCommandReceiptDTO:
     """Queue resume command and return receipt."""
-    runtime_settings = _require_runtime_settings()
-    _require_chiptunes_manager(runtime_settings)
-    command_id = runtime_settings.issue_chiptunes_command("resume")
-    return ChiptunesCommandReceiptDTO(command_id=command_id, action="resume")
+    return _issue_command("resume")

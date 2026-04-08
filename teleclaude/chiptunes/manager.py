@@ -1,7 +1,8 @@
-"""ChiptunesManager — manages a subprocess worker for SID playback.
+"""ChiptunesManager — thin relay between daemon and subprocess worker.
 
 The worker runs as an independent process with its own GIL, communicating
 via a Unix domain socket. Music continues playing through daemon restarts.
+The manager relays commands and mirrors state; it owns no playback logic.
 """
 
 from __future__ import annotations
@@ -14,31 +15,27 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from instrukt_ai_logging import get_logger
-
-from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
 logger = get_logger(__name__)
 
+CommandAction = Literal["resume", "pause", "next", "prev"]
+
 SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
 PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 
 
 class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
-    """Manages chiptunes playback via a subprocess worker.
+    """Thin relay between daemon and chiptunes subprocess worker.
 
-    The worker process owns all playback state: player, history, track
-    navigation, and audio output. The manager is a thin IPC client that
-    relays commands and receives state events over a Unix socket.
-
-    On daemon shutdown, the manager disconnects without killing the worker,
-    so music continues playing. On daemon restart, it reconnects and
-    resynchronises state.
+    Relays commands to the worker via Unix socket and mirrors state events
+    back to the daemon. Owns no playback logic — the worker subprocess is
+    the sole authority on playback state.
     """
 
     def __init__(self, music_dir: Path, volume: float = 0.5) -> None:
@@ -48,14 +45,14 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         self._sock: socket.socket | None = None
         self._reader_thread: threading.Thread | None = None
         self._lock = threading.Lock()
-        # Cached state from worker events
-        self._cached_state = ChiptunesRuntimeState()
-        self._state_version = 0
+        # Last state mirror from worker events
+        self._last_state: dict[str, Any] = {}
         self.on_track_start: Callable[[str, str], None] | None = None
-        self.on_state_change: Callable[[], None] | None = None
+        self.on_state_change: Callable[[dict[str, Any]], None] | None = None
+        self.on_command_done: Callable[[str], None] | None = None
 
     # ------------------------------------------------------------------ #
-    # Public API — matches the interface expected by daemon + routes       #
+    # Public API                                                           #
     # ------------------------------------------------------------------ #
 
     @property
@@ -63,31 +60,19 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         """Return True if chiptunes playback is enabled."""
         return self._enabled
 
-    def start(self, *, paused: bool = False) -> None:
-        """Start playback (launches worker if needed, connects, sends start)."""
+    @property
+    def last_state(self) -> dict[str, Any]:
+        """Return the last known worker state dict."""
+        return self._last_state
+
+    def start(self) -> None:
+        """Ensure worker is running and connect (no start command)."""
         self._enabled = True
         threading.Thread(
-            target=self._start_playback,
-            args=(paused,),
+            target=self._ensure_and_connect,
             daemon=True,
             name="chiptunes-start",
         ).start()
-
-    def start_from_runtime_state(self, state: ChiptunesRuntimeState) -> None:
-        """Start from persisted runtime state (daemon bootstrap)."""
-        self._enabled = True
-        self._cached_state = state
-        threading.Thread(
-            target=self._start_from_state,
-            args=(state,),
-            daemon=True,
-            name="chiptunes-restore",
-        ).start()
-
-    def restore_runtime_state(self, state: ChiptunesRuntimeState) -> None:
-        """Restore non-playing runtime context without starting audio."""
-        self._cached_state = state
-        self._enabled = False
 
     def stop(self) -> None:
         """Stop playback and terminate the worker."""
@@ -95,15 +80,10 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         self._send_cmd({"cmd": "stop"})
         self._disconnect()
         self._kill_worker()
-        self._cached_state = ChiptunesRuntimeState()
+        self._last_state = {}
 
     def shutdown(self) -> None:
-        """Disconnect from worker without killing it (daemon restart).
-
-        Music continues playing in the subprocess. On next daemon start,
-        bootstrap_chiptunes() reconnects.
-        """
-        self._send_cmd({"cmd": "capture_state"})
+        """Disconnect from worker without killing it (daemon restart)."""
         self._disconnect()
 
     def pause(self) -> None:
@@ -130,66 +110,15 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
             self._connect()
         self._send_cmd({"cmd": action, "command_id": command_id})
 
-    @property
-    def is_playing(self) -> bool:
-        """Return True if a track is currently playing."""
-        return self._cached_state.playback == "playing"
-
-    @property
-    def is_paused(self) -> bool:
-        """Return True if a track is loaded but currently paused."""
-        return self._cached_state.playback == "paused"
-
-    @property
-    def current_track(self) -> str:
-        """Return the current track label, if any."""
-        path = self._cached_state.track_path
-        if not path:
-            return ""
-        return Path(path).stem.replace("_", " ")
-
-    @property
-    def current_sid_path(self) -> str:
-        """Return the current SID path, if any."""
-        return self._cached_state.track_path
-
-    def capture_runtime_state(self) -> ChiptunesRuntimeState:
-        """Return the last known worker state for persistence."""
-        state = self._cached_state
-        if state.playback == "cold":
-            self._enabled = False
-        else:
-            self._enabled = True
-        return state
-
     # ------------------------------------------------------------------ #
     # Worker lifecycle                                                     #
     # ------------------------------------------------------------------ #
 
-    def _start_playback(self, paused: bool = False) -> None:
+    def _ensure_and_connect(self) -> None:
         if not self._enabled:
             return
         self._ensure_worker()
         self._connect()
-        self._send_cmd({"cmd": "start", "paused": paused})
-
-    def _start_from_state(self, state: ChiptunesRuntimeState) -> None:
-        if not self._enabled:
-            return
-        self._ensure_worker()
-        self._connect()
-        self._send_cmd(
-            {
-                "cmd": "start_from_state",
-                "state": {
-                    "playback": state.playback,
-                    "track_path": state.track_path,
-                    "position_seconds": state.position_seconds,
-                    "history": state.history,
-                    "history_index": state.history_index,
-                },
-            }
-        )
 
     def _ensure_worker(self) -> None:
         """Launch the worker subprocess if not already running."""
@@ -291,10 +220,14 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
             was_connected = self._sock is not None
         if was_connected:
             self._disconnect()
-            self._cached_state.playback = "cold"
-            self._cached_state.position_seconds = 0.0
+            # Preserve track_path for recovery, reset playback to cold
+            self._last_state = {
+                **self._last_state,
+                "playback": "cold",
+                "position_seconds": 0.0,
+            }
             logger.info("ChipTunes: worker connection lost, playback state reset to cold")
-            self._notify_state_change()
+            self._fire_state_change()
 
     def _handle_event(self, line: str) -> None:
         try:
@@ -307,52 +240,33 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         if event == "track_start":
             track_label = str(raw.get("track", ""))
             sid_path = str(raw.get("sid_path", ""))
-            self._cached_state.track_path = sid_path
-            self._cached_state.playback = "playing"
+            self._last_state["track_path"] = sid_path
+            self._last_state["playback"] = "playing"
             logger.info("ChipTunes: playing %s", track_label)
             if self.on_track_start is not None:
                 try:
                     self.on_track_start(track_label, sid_path)
                 except Exception:  # pylint: disable=broad-exception-caught
                     logger.debug("on_track_start callback error", exc_info=True)
-            self._notify_state_change()
+            self._fire_state_change()
         elif event == "state_update":
-            self._apply_state_update(raw)
-            self._notify_state_change()
+            state = raw.get("state")
+            if isinstance(state, dict):
+                self._last_state = state
+            self._fire_state_change()
         elif event == "command_done":
             command_id = str(raw.get("command_id", ""))
-            if command_id == self._cached_state.pending_command_id:
-                self._cached_state.pending_command_id = ""
-                self._cached_state.pending_action = ""
-            self._notify_state_change()
+            if self.on_command_done is not None:
+                try:
+                    self.on_command_done(command_id)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.debug("on_command_done callback error", exc_info=True)
+            self._fire_state_change()
 
-    def _apply_state_update(self, msg: object) -> None:
-        """Update cached state from a worker state_update event."""
-        if not isinstance(msg, dict):
-            return
-        state = msg.get("state")
-        if not isinstance(state, dict):
-            return
-        playback = state.get("playback")
-        if isinstance(playback, str):
-            self._cached_state.playback = playback  # type: ignore[assignment]
-        track_path = state.get("track_path")
-        if isinstance(track_path, str):
-            self._cached_state.track_path = track_path
-        position = state.get("position_seconds")
-        if isinstance(position, int | float):
-            self._cached_state.position_seconds = max(0.0, float(position))
-        history = state.get("history")
-        if isinstance(history, list):
-            self._cached_state.history = [str(h) for h in history]
-        history_index = state.get("history_index")
-        if isinstance(history_index, int):
-            self._cached_state.history_index = history_index
-
-    def _notify_state_change(self) -> None:
+    def _fire_state_change(self) -> None:
         if self.on_state_change is not None:
             try:
-                self.on_state_change()
+                self.on_state_change(self._last_state)
             except Exception:  # pylint: disable=broad-exception-caught
                 logger.warning("on_state_change callback error", exc_info=True)
 

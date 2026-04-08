@@ -115,7 +115,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         computers_routes.configure(cache=cache)
         projects_routes.configure(cache=cache)
         settings_routes.configure(runtime_settings=runtime_settings)
-        chiptunes_routes.configure(runtime_settings=runtime_settings)
+        # chiptunes_routes are wired by the daemon after lifecycle start
         self.app.include_router(sessions_routes.router)
         self.app.include_router(sessions_actions_routes.router)
         self.app.include_router(computers_routes.router)

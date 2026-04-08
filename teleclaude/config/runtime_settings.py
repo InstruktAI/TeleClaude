@@ -4,22 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
-from uuid import uuid4
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 if TYPE_CHECKING:
-    from teleclaude.chiptunes.manager import ChiptunesManager
     from teleclaude.tts.manager import TTSManager
 
 logger = get_logger(__name__)
 
 FLUSH_DELAY_S = 0.5
-PlaybackState = Literal["cold", "loading", "playing", "paused"]
-CommandAction = Literal["resume", "pause", "next", "prev"]
 
 
 @dataclass
@@ -30,25 +26,10 @@ class TTSSettings:
 
 
 @dataclass
-class ChiptunesRuntimeState:
-    """Persisted chiptunes runtime state."""
-
-    playback: PlaybackState = "cold"
-    track_path: str = ""
-    position_seconds: float = 0.0
-    history: list[str] = field(default_factory=list)
-    history_index: int = -1
-    pending_command_id: str = ""
-    pending_action: Literal["", "resume", "pause", "next", "prev"] = ""
-
-
-@dataclass
 class SettingsState:
     """Full mutable runtime state."""
 
     tts: TTSSettings
-    chiptunes: ChiptunesRuntimeState = field(default_factory=ChiptunesRuntimeState)
-    chiptunes_state_version: int = 0
 
 
 @dataclass
@@ -72,11 +53,9 @@ class RuntimeSettings:
         self,
         settings_path: Path,
         tts_manager: TTSManager,
-        chiptunes_manager: ChiptunesManager | None = None,
     ) -> None:
         self._settings_path = settings_path
         self._tts_manager = tts_manager
-        self._chiptunes_manager = chiptunes_manager
         self._state = SettingsState(tts=TTSSettings(enabled=tts_manager.enabled))
         self._flush_task: asyncio.Task[None] | None = None
         self._load_from_disk()
@@ -89,11 +68,6 @@ class RuntimeSettings:
     def get_state(self) -> SettingsState:
         """Return current mutable settings."""
         return self._state
-
-    @property
-    def chiptunes_state_version(self) -> int:
-        """Monotonic version for chiptunes runtime state updates."""
-        return self._state.chiptunes_state_version
 
     def patch(self, updates: SettingsPatch) -> SettingsState:
         """Apply validated updates and schedule persistence."""
@@ -111,95 +85,6 @@ class RuntimeSettings:
 
         self._schedule_flush()
         return self.get_state()
-
-    def bootstrap_chiptunes(self) -> None:
-        """Apply persisted chiptunes state to manager on daemon startup."""
-        manager = self._chiptunes_manager
-        if manager is None:
-            return
-        # Clear stale pending commands from previous daemon session —
-        # the worker that would have completed them is gone.
-        if self._state.chiptunes.pending_command_id:
-            logger.debug(
-                "Clearing stale chiptunes pending command: %s (%s)",
-                self._state.chiptunes.pending_command_id,
-                self._state.chiptunes.pending_action,
-            )
-        self._state.chiptunes.pending_command_id = ""
-        self._state.chiptunes.pending_action = ""
-        if not manager._worker_alive():  # pylint: disable=protected-access
-            self._state.chiptunes.position_seconds = 0.0
-        manager.restore_runtime_state(self._state.chiptunes)
-        if self._state.chiptunes.playback == "playing":
-            manager.start_from_runtime_state(self._state.chiptunes)
-
-    def set_chiptunes_paused(self, paused: bool) -> SettingsState:
-        """Pause/resume chiptunes while preserving track position and state."""
-        manager = self._chiptunes_manager
-        if manager is None:
-            return self.get_state()
-
-        if paused:
-            if manager.is_playing:
-                self._tts_manager.on_chiptunes_user_pause()
-                manager.pause()
-            self._state.chiptunes = manager.capture_runtime_state()
-            self._state.chiptunes.playback = "paused"
-        else:
-            # Resume from memory when loaded, otherwise cold-start from persisted state.
-            if manager.enabled:
-                manager.resume()
-            else:
-                resume_state = self._state.chiptunes
-                if not resume_state.track_path:
-                    manager.start(paused=False)
-                else:
-                    manager.start_from_runtime_state(resume_state)
-            self._state.chiptunes = manager.capture_runtime_state()
-            self._state.chiptunes.playback = "playing"
-
-        logger.info("Runtime chiptunes.playback -> %s", self._state.chiptunes.playback)
-        self._state.chiptunes_state_version += 1
-        self._schedule_flush()
-        return self.get_state()
-
-    def issue_chiptunes_command(self, action: CommandAction) -> str:
-        """Enqueue a chiptunes command and return its receipt command_id."""
-        manager = self._chiptunes_manager
-        if manager is None:
-            raise ValueError("Chiptunes manager not available")
-
-        command_id = uuid4().hex
-        self._state.chiptunes.pending_command_id = command_id
-        self._state.chiptunes.pending_action = action
-        self._state.chiptunes_state_version += 1
-
-        # Cold start: if the worker isn't running, launch it before sending.
-        if action == "resume" and not manager.enabled:
-            resume_state = self._state.chiptunes
-            if not resume_state.track_path:
-                manager.start(paused=False)
-            else:
-                manager.start_from_runtime_state(resume_state)
-            # Playback starts directly — no command_done event will arrive,
-            # so clear the pending receipt to avoid a stuck TUI indicator.
-            logger.debug("Cold start resume: clearing pending chiptunes command receipt")
-            self._state.chiptunes.pending_command_id = ""
-            self._state.chiptunes.pending_action = ""
-        else:
-            manager.enqueue_command(command_id, action)
-
-        self._schedule_flush()
-        return command_id
-
-    def sync_chiptunes_state(self) -> None:
-        """Mirror manager runtime state into persisted in-memory state."""
-        manager = self._chiptunes_manager
-        if manager is None:
-            return
-        self._state.chiptunes = manager.capture_runtime_state()
-        self._state.chiptunes_state_version += 1
-        self._schedule_flush()
 
     @staticmethod
     def parse_patch(raw: object) -> SettingsPatch:
@@ -233,7 +118,7 @@ class RuntimeSettings:
 
         return SettingsPatch(tts=tts_patch)
 
-    def _load_from_disk(self) -> None:  # pylint: disable=too-many-branches
+    def _load_from_disk(self) -> None:
         data = self._read_settings_file()
         if data is None:
             return
@@ -244,39 +129,6 @@ class RuntimeSettings:
             if isinstance(enabled_raw, bool):
                 self._state.tts.enabled = enabled_raw
                 self._tts_manager.enabled = enabled_raw
-
-        chiptunes_raw = data.get("chiptunes")
-        if isinstance(chiptunes_raw, dict):
-            playback = chiptunes_raw.get("playback")
-            if playback in {"cold", "loading", "playing", "paused"}:
-                self._state.chiptunes.playback = playback
-            track_path = chiptunes_raw.get("track_path")
-            if isinstance(track_path, str):
-                self._state.chiptunes.track_path = track_path
-            position = chiptunes_raw.get("position_seconds")
-            if isinstance(position, int | float):
-                self._state.chiptunes.position_seconds = max(0.0, float(position))
-            history = chiptunes_raw.get("history")
-            if isinstance(history, list):
-                self._state.chiptunes.history = [item for item in history if isinstance(item, str)]
-            history_index = chiptunes_raw.get("history_index")
-            if isinstance(history_index, int):
-                self._state.chiptunes.history_index = history_index
-            pending_command_id = chiptunes_raw.get("pending_command_id")
-            if isinstance(pending_command_id, str):
-                self._state.chiptunes.pending_command_id = pending_command_id
-            pending_action = chiptunes_raw.get("pending_action")
-            if pending_action in {"", "resume", "pause", "next", "prev"}:
-                self._state.chiptunes.pending_action = pending_action
-            state_version = chiptunes_raw.get("state_version")
-            if isinstance(state_version, int):
-                self._state.chiptunes_state_version = max(0, state_version)
-
-        # "loading" is a transient in-memory phase; never restore it from disk.
-        if self._state.chiptunes.playback == "loading":
-            self._state.chiptunes.playback = "cold"
-            self._state.chiptunes.pending_command_id = ""
-            self._state.chiptunes.pending_action = ""
 
     def _read_settings_file(self) -> dict[str, object] | None:
         try:
@@ -307,16 +159,6 @@ class RuntimeSettings:
             self._settings_path.parent.mkdir(parents=True, exist_ok=True)
             payload = {
                 "tts": {"enabled": self._state.tts.enabled},
-                "chiptunes": {
-                    "state_version": self._state.chiptunes_state_version,
-                    "playback": self._state.chiptunes.playback,
-                    "track_path": self._state.chiptunes.track_path,
-                    "position_seconds": self._state.chiptunes.position_seconds,
-                    "history": self._state.chiptunes.history,
-                    "history_index": self._state.chiptunes.history_index,
-                    "pending_command_id": self._state.chiptunes.pending_command_id,
-                    "pending_action": self._state.chiptunes.pending_action,
-                },
             }
             self._settings_path.write_text(f"{json.dumps(payload, indent=2, sort_keys=True)}\n", encoding="utf-8")
             logger.info("Runtime settings flushed to %s", self._settings_path)

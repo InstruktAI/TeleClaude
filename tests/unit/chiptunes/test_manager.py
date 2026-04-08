@@ -8,6 +8,7 @@ import socket
 import threading
 from collections.abc import Generator, Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -135,7 +136,7 @@ class TestChiptunesManagerIPC:
         assert any(msg.get("cmd") == "pause" for msg in fake_worker.received)
         manager._disconnect()
 
-    def test_handle_track_start_event_updates_cached_state(
+    def test_handle_track_start_event_updates_last_state(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
@@ -158,8 +159,8 @@ class TestChiptunesManagerIPC:
         )
         threading.Event().wait(0.3)
 
-        assert manager._cached_state.track_path == "/music/Lazy_Jones.sid"
-        assert manager._cached_state.playback == "playing"
+        assert manager._last_state.get("track_path") == "/music/Lazy_Jones.sid"
+        assert manager._last_state.get("playback") == "playing"
         assert started == [("Lazy Jones", "/music/Lazy_Jones.sid")]
         manager._disconnect()
 
@@ -171,8 +172,8 @@ class TestChiptunesManagerIPC:
     ) -> None:
         sock_path = fake_worker._socket_path
         manager = _make_manager(monkeypatch, tmp_path, sock_path)
-        changes: list[str] = []
-        manager.on_state_change = lambda: changes.append("changed")
+        changes: list[dict[str, Any]] = []
+        manager.on_state_change = lambda state: changes.append(state)
 
         manager._connect()
         threading.Event().wait(0.2)
@@ -191,9 +192,9 @@ class TestChiptunesManagerIPC:
         )
         threading.Event().wait(0.3)
 
-        assert manager._cached_state.playback == "paused"
-        assert manager._cached_state.track_path == "/music/Delta.sid"
-        assert manager._cached_state.position_seconds == 12.5
+        assert manager._last_state.get("playback") == "paused"
+        assert manager._last_state.get("track_path") == "/music/Delta.sid"
+        assert manager._last_state.get("position_seconds") == 12.5
         assert changes
         manager._disconnect()
 
@@ -225,8 +226,8 @@ class TestChiptunesManagerIPC:
     ) -> None:
         sock_path = fake_worker._socket_path
         manager = _make_manager(monkeypatch, tmp_path, sock_path)
-        changes: list[str] = []
-        manager.on_state_change = lambda: changes.append("changed")
+        changes: list[dict[str, Any]] = []
+        manager.on_state_change = lambda state: changes.append(state)
 
         manager._connect()
         threading.Event().wait(0.1)
@@ -240,17 +241,17 @@ class TestChiptunesManagerIPC:
             }
         )
         threading.Event().wait(0.1)
-        assert manager._cached_state.playback == "playing"
+        assert manager._last_state.get("playback") == "playing"
         changes.clear()
 
         # Kill the fake worker connection — reader thread should detect and clean up
         fake_worker.stop()
         threading.Event().wait(0.3)
 
-        assert manager._cached_state.playback == "cold"  # type: ignore[comparison-overlap]
+        assert manager._last_state.get("playback") == "cold"
         assert manager._sock is None
         # Track path preserved for recovery
-        assert manager._cached_state.track_path == "/music/Test.sid"
+        assert manager._last_state.get("track_path") == "/music/Test.sid"
         assert changes, "on_state_change should have been called"
 
     def test_enqueue_command_reconnects_when_socket_is_none(
@@ -277,33 +278,15 @@ class TestChiptunesManagerIPC:
 
 @pytest.mark.unit
 class TestChiptunesManagerProperties:
-    def test_is_playing_reflects_cached_state(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_last_state_returns_empty_by_default(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
-        assert manager.is_playing is False
+        assert manager.last_state == {}
 
-        manager._cached_state.playback = "playing"
-        assert manager.is_playing is True
-
-    def test_is_paused_reflects_cached_state(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_enabled_reflects_internal_flag(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
-        manager._cached_state.playback = "paused"
-        assert manager.is_paused is True
-
-    def test_current_track_extracts_label_from_path(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
-        manager._cached_state.track_path = "/music/Great_Giana_Sisters.sid"
-        assert manager.current_track == "Great Giana Sisters"
-
-    def test_capture_runtime_state_toggles_enabled(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        manager = _make_manager(monkeypatch, tmp_path, "/nonexistent")
-        manager._cached_state.playback = "playing"
-        state = manager.capture_runtime_state()
-        assert state.playback == "playing"
-        assert manager.enabled is True
-
-        manager._cached_state.playback = "cold"
-        state = manager.capture_runtime_state()
         assert manager.enabled is False
+        manager._enabled = True
+        assert manager.enabled is True
 
 
 @pytest.mark.unit

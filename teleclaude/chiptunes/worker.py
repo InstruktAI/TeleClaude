@@ -29,7 +29,9 @@ import queue
 import random
 import signal
 import socket
+import tempfile
 import threading
+import time
 from pathlib import Path
 
 from teleclaude.chiptunes.player import ChiptunesPlayer
@@ -37,6 +39,8 @@ from teleclaude.chiptunes.player import ChiptunesPlayer
 SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
 PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 _RSID_MAGIC = b"RSID"
+STATE_PATH = Path.home() / ".teleclaude" / "chiptunes_state.json"
+_PERSIST_INTERVAL_SECONDS = 2.0
 
 
 def _is_rsid(path: Path) -> bool:
@@ -78,6 +82,9 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
         self._command_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self._command_worker = threading.Thread(target=self._command_loop, daemon=True, name="chiptunes-commands")
         self._command_worker.start()
+        # State persistence
+        self._state_dirty = False
+        self._last_persist_time: float = 0.0
 
     # ------------------------------------------------------------------ #
     # Socket server                                                        #
@@ -99,6 +106,8 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
             self._request_stop()
 
         signal.signal(signal.SIGTERM, _term_handler)
+
+        self._self_resume()
 
         while self._running:
             try:
@@ -138,6 +147,9 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 try:
                     data = conn.recv(4096)
                 except TimeoutError:
+                    if self._enabled and self._player is not None and self._player.is_playing:
+                        self._state_dirty = True
+                    self._flush_dirty_state()
                     continue
                 except OSError:
                     break
@@ -216,6 +228,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 self._player = None
             self._current_track = None
             self._paused_position_seconds = 0.0
+        self._persist_state(immediate=True)
         self._emit_state_update()
 
     def _do_pause(self) -> None:
@@ -228,6 +241,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 self._paused_position_seconds = player.playback_position_seconds
         if player is not None:
             player.pause()
+        self._persist_state(immediate=True)
         self._emit_state_update()
 
     def _do_resume(self) -> None:
@@ -239,6 +253,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
             start_pos = self._paused_position_seconds
         if player is not None:
             player.resume()
+            self._persist_state(immediate=True)
             self._emit_state_update()
             return
         if current_track is not None:
@@ -313,6 +328,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 paused_requested = self._paused_requested
             if paused_requested and not start_paused:
                 player.pause()
+            self._persist_state(immediate=True)
             self._emit_state_update()
 
     def _play_next(self) -> None:
@@ -366,7 +382,11 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
 
     def _command_loop(self) -> None:
         while True:
-            command_id, action = self._command_queue.get()
+            try:
+                command_id, action = self._command_queue.get(timeout=_PERSIST_INTERVAL_SECONDS)
+            except queue.Empty:
+                self._flush_dirty_state()
+                continue
             try:
                 self._run_command(command_id, action)
             except Exception:  # pylint: disable=broad-exception-caught
@@ -419,6 +439,24 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
 
     def _emit_state_update(self) -> None:
         """Emit the full playback state to the daemon."""
+        self._emit("state_update", state=self._build_state_snapshot())
+
+    # ------------------------------------------------------------------ #
+    # State persistence and self-resume                                    #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _load_state() -> dict[str, object]:
+        """Read state JSON file. Returns dict or empty dict on error."""
+        try:
+            if STATE_PATH.exists():
+                return json.loads(STATE_PATH.read_text(encoding="utf-8"))  # type: ignore[return-value]
+        except (json.JSONDecodeError, OSError):
+            pass
+        return {}
+
+    def _build_state_snapshot(self) -> dict[str, object]:
+        """Assemble current state dict under lock."""
         with self._lock:
             player = self._player
             position = self._paused_position_seconds
@@ -431,16 +469,75 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 playback = "paused"
             else:
                 playback = "cold"
-        self._emit(
-            "state_update",
-            state={
+            return {
                 "playback": playback,
                 "track_path": str(self._current_track) if self._current_track else "",
                 "position_seconds": max(0.0, position),
                 "history": [str(p) for p in self._history],
                 "history_index": self._history_index,
-            },
-        )
+            }
+
+    def _persist_state(self, *, immediate: bool = False) -> None:
+        """Write state to disk via tempfile+rename. Debounced unless immediate."""
+        now = time.monotonic()
+        if not immediate and (now - self._last_persist_time) < _PERSIST_INTERVAL_SECONDS:
+            self._state_dirty = True
+            return
+        snapshot = self._build_state_snapshot()
+        try:
+            STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=str(STATE_PATH.parent), suffix=".tmp")
+            try:
+                os.write(fd, (json.dumps(snapshot) + "\n").encode())
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            os.rename(tmp, str(STATE_PATH))
+        except OSError:
+            pass
+        self._last_persist_time = now
+        self._state_dirty = False
+
+    def _flush_dirty_state(self) -> None:
+        """Flush if dirty and interval elapsed."""
+        if self._state_dirty and (time.monotonic() - self._last_persist_time) >= _PERSIST_INTERVAL_SECONDS:
+            self._persist_state(immediate=True)
+
+    def _self_resume(self) -> None:
+        """Resume from state file on startup (before any daemon connects)."""
+        state = self._load_state()
+        if not state:
+            return
+        playback = state.get("playback")
+        if playback == "playing":
+            # Restore history and track, start playing from position 0
+            with self._lock:
+                self._history = [Path(p) for p in state.get("history", []) if p]  # type: ignore[union-attr]
+                self._history_index = int(state.get("history_index", -1))  # type: ignore[arg-type]
+                track_path_str = state.get("track_path", "")
+                self._current_track = Path(track_path_str) if track_path_str else None  # type: ignore[arg-type]
+                self._enabled = True
+                self._paused_requested = False
+            if self._current_track is not None:
+                threading.Thread(
+                    target=self._play_track,
+                    args=(self._current_track,),
+                    kwargs={"start_position_seconds": 0.0},
+                    daemon=True,
+                    name="chiptunes-self-resume",
+                ).start()
+            else:
+                threading.Thread(target=self._play_next, daemon=True, name="chiptunes-self-resume-next").start()
+        elif playback == "paused":
+            # Restore context, wait for commands
+            with self._lock:
+                self._history = [Path(p) for p in state.get("history", []) if p]  # type: ignore[union-attr]
+                self._history_index = int(state.get("history_index", -1))  # type: ignore[arg-type]
+                track_path_str = state.get("track_path", "")
+                self._current_track = Path(track_path_str) if track_path_str else None  # type: ignore[arg-type]
+                self._paused_requested = True
+                self._paused_position_seconds = max(0.0, float(state.get("position_seconds", 0.0)))  # type: ignore[arg-type]
+                self._enabled = True
 
 
 # ------------------------------------------------------------------ #
