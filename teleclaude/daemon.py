@@ -422,16 +422,20 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         )
 
         api_server = getattr(self.lifecycle, "api_server", None)
+        loop = getattr(self, "_loop", None)
+        logger.info("ChipTunes: track_start callback fired (track=%s, api_server=%s, loop=%s, loop_running=%s)",
+                     track_label, api_server is not None, loop is not None,
+                     loop.is_running() if loop else False)
         if api_server is None:
             return
 
         payload = ChiptunesTrackEventDTO(track=track_label, sid_path=sid_path).model_dump()
-        loop = getattr(self, "_loop", None)
         if loop is not None and loop.is_running():
+            logger.info("ChipTunes: scheduling WS broadcast (ws_clients=%d)", len(api_server._ws_clients))  # pylint: disable=protected-access
             loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)  # pylint: disable=protected-access
             loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
         else:
-            logger.debug("ChipTunes: no running event loop, skipping track broadcast")
+            logger.warning("ChipTunes: no running event loop, skipping track broadcast")
 
     def _on_chiptunes_state_change(self, state: dict[str, object]) -> None:
         """Broadcast chiptunes_state WebSocket events from worker thread callbacks."""

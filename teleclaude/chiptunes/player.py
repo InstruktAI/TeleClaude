@@ -163,12 +163,13 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         """Wait for pre-buffer, then open the sounddevice stream."""
         pal = is_pal(header)
         frame_rate = 50.0 if pal else 60.0
-        prebuffer_frames = int(_PREBUFFER_SECONDS * frame_rate)
+        # Each queue item is a batch of _BATCH_FRAMES frames
+        prebuffer_chunks = max(1, int(_PREBUFFER_SECONDS * frame_rate / _BATCH_FRAMES))
 
-        # Block until enough frames are buffered or stop is signalled
+        # Block until enough chunks are buffered or stop is signalled
         deadline = time.monotonic() + _PREBUFFER_SECONDS
         while time.monotonic() < deadline and not self._stop_event.is_set():
-            if self._pcm_queue.qsize() >= prebuffer_frames:
+            if self._pcm_queue.qsize() >= prebuffer_chunks:
                 break
             self._stop_event.wait(0.05)
 
@@ -176,12 +177,12 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             logger.debug("ChipTunes: prebuffer aborted (stop event)")
             return
         buffered = self._pcm_queue.qsize()
-        if buffered < prebuffer_frames:
+        if buffered < prebuffer_chunks:
             logger.warning(
-                "ChipTunes: prebuffer incomplete (%d/%d frames) — opening stream anyway", buffered, prebuffer_frames
+                "ChipTunes: prebuffer incomplete (%d/%d chunks) — opening stream anyway", buffered, prebuffer_chunks
             )
         else:
-            logger.debug("ChipTunes: prebuffer complete (%d frames), opening stream", buffered)
+            logger.debug("ChipTunes: prebuffer complete (%d chunks), opening stream", buffered)
         with self._pause_lock:
             paused = self._paused
         if paused:

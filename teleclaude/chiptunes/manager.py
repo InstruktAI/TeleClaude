@@ -251,7 +251,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
                 try:
                     self.on_track_start(track_label, sid_path)
                 except Exception:  # pylint: disable=broad-exception-caught
-                    logger.debug("on_track_start callback error", exc_info=True)
+                    logger.warning("on_track_start callback error", exc_info=True)
             self._fire_state_change()
         elif event == "state_update":
             state = raw.get("state")
@@ -264,7 +264,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
                 try:
                     self.on_command_done(command_id)
                 except Exception:  # pylint: disable=broad-exception-caught
-                    logger.debug("on_command_done callback error", exc_info=True)
+                    logger.warning("on_command_done callback error", exc_info=True)
             self._fire_state_change()
 
     def _fire_state_change(self) -> None:
