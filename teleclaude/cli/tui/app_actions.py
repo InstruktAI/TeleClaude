@@ -210,6 +210,7 @@ class TelecAppActionsMixin:
             "chiptunes_play_pause": self._chiptunes_play_pause,  # type: ignore[attr-defined]
             "chiptunes_next": self._chiptunes_next,  # type: ignore[attr-defined]
             "chiptunes_prev": self._chiptunes_prev,  # type: ignore[attr-defined]
+            "chiptunes_stop": self._chiptunes_stop,  # type: ignore[attr-defined]
             "chiptunes_favorite": self._chiptunes_favorite,  # type: ignore[attr-defined]
         }
         action = simple_actions.get(key)
@@ -268,6 +269,14 @@ class TelecAppActionsMixin:
         box_tabs.active_tab = tab_id
         self._focus_active_view(tab_id)
         if old_tab != tab_id:
+            # Kill doc preview pane when leaving the preparation tab
+            if old_tab == "preparation":
+                try:
+                    pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
+                    if self._bridge_has_doc_preview(pane_bridge):
+                        self._clear_bridge_preview(pane_bridge)
+                except APP_QUERY_ERRORS:
+                    pass
             self.post_message(StateChanged())  # type: ignore[attr-defined]
         self.call_after_refresh(  # type: ignore[attr-defined]
             lambda: logger.trace("[PERF] action_switch_tab(%s) PAINTED dt=%.3f", tab_id, _t.monotonic() - _sw0)

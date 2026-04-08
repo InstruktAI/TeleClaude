@@ -117,3 +117,11 @@ async def chiptunes_pause() -> ChiptunesCommandReceiptDTO:
 async def chiptunes_resume() -> ChiptunesCommandReceiptDTO:
     """Queue resume command and return receipt."""
     return _issue_command("resume")
+
+
+@router.post("/stop", status_code=200)
+async def chiptunes_stop() -> dict[str, str]:
+    """Stop playback and kill the worker process."""
+    manager = _require_manager()
+    manager.stop()
+    return {"status": "stopped"}

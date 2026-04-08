@@ -156,6 +156,7 @@ class TelecFooter(Widget):
 
     #footer-prev,
     #footer-play,
+    #footer-stop,
     #footer-next {
         width: 1;
     }
@@ -206,6 +207,7 @@ class TelecFooter(Widget):
                 yield Static("", id="footer-tts-toggle", classes="footer-token")
                 yield FooterActionButton("\u23ee", id="footer-prev", classes="footer-action-button")
                 yield FooterActionButton("\u25b6", id="footer-play", classes="footer-action-button")
+                yield FooterActionButton("\u23f9", id="footer-stop", classes="footer-action-button")
                 yield FooterActionButton("\u23ed", id="footer-next", classes="footer-action-button")
                 yield FooterActionButton("\u2b50", id="footer-fav", classes="footer-action-button -last-action")
                 yield Static("", id="footer-anim-toggle", classes="footer-token -last-token")
@@ -325,6 +327,7 @@ class TelecFooter(Widget):
     def _refresh_transport_buttons(self) -> None:
         prev_button = self.query_one("#footer-prev", FooterActionButton)
         play_button = self.query_one("#footer-play", FooterActionButton)
+        stop_button = self.query_one("#footer-stop", FooterActionButton)
         next_button = self.query_one("#footer-next", FooterActionButton)
         fav_button = self.query_one("#footer-fav", FooterActionButton)
 
@@ -337,12 +340,14 @@ class TelecFooter(Widget):
             play_button.icon = "\u23f8"
         else:
             play_button.icon = "\u25b6"
+        stop_button.icon = "\u23f9"
         next_button.icon = "\u23ed"
         fav_button.icon = "\u2705" if self.chiptunes_favorited else "\u2b50"
 
         controls_loaded = self.chiptunes_loaded
         pending = bool(self.chiptunes_pending_command_id)
         prev_button.disabled = (not controls_loaded) or pending
+        stop_button.disabled = not controls_loaded
         next_button.disabled = (not controls_loaded) or pending
         play_button.disabled = pending
         fav_button.disabled = (not controls_loaded) or pending
@@ -372,6 +377,7 @@ class TelecFooter(Widget):
         action_map: dict[str, tuple[str, object]] = {
             "footer-prev": ("chiptunes_prev", None),
             "footer-play": ("chiptunes_play_pause", None),
+            "footer-stop": ("chiptunes_stop", None),
             "footer-next": ("chiptunes_next", None),
             "footer-fav": ("chiptunes_favorite", None),
         }
@@ -383,6 +389,9 @@ class TelecFooter(Widget):
         button_id = event.button.id
         if button_id == "footer-play":
             self.post_message(SettingsChanged("chiptunes_play_pause", None))
+            return
+        if button_id == "footer-stop":
+            self.post_message(SettingsChanged("chiptunes_stop", None))
             return
         if not self.chiptunes_loaded:
             return

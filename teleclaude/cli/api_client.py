@@ -743,6 +743,10 @@ class _TelecRuntimeAPI:
         resp = await self._request("POST", "/api/chiptunes/resume")
         return TypeAdapter(ChiptunesCommandReceiptDTO).validate_json(resp.text)
 
+    async def chiptunes_stop(self) -> None:
+        """Stop chiptunes playback and kill the worker process."""
+        await self._request("POST", "/api/chiptunes/stop")
+
     async def get_chiptunes_status(self) -> ChiptunesStatusDTO:
         """Fetch current chiptunes playback state."""
         resp = await self._request("GET", "/api/chiptunes/status")

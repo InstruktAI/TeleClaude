@@ -135,6 +135,25 @@ class TelecAppMediaMixin:
         except Exception as e:
             self.notify(f"Failed to go to previous track: {e}", severity="error")  # type: ignore[attr-defined]
 
+    @work(exclusive=False, group="settings")
+    async def _chiptunes_stop(self) -> None:
+        """Stop chiptunes playback and kill the worker process."""
+        try:
+            await self.api.chiptunes_stop()  # type: ignore[attr-defined]
+            self._apply_chiptunes_footer_state(
+                loaded=False,
+                playback="cold",
+                state_version=None,
+                playing=False,
+                track="",
+                sid_path="",
+                pending_command_id="",
+                pending_action="",
+            )
+            self._cancel_chiptunes_reconcile()
+        except Exception as e:
+            self.notify(f"Failed to stop: {e}", severity="error")  # type: ignore[attr-defined]
+
     def _apply_chiptunes_footer_state(
         self,
         *,
