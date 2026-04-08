@@ -33,7 +33,7 @@ from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.todo_artifacts import artifact_display_filename
 
 
-class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
+class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):  # pylint: disable=too-many-instance-attributes
     """Preparation tab view showing todo items grouped by project.
 
     Navigation: arrows, left/right expand/collapse, Enter = toggle expand,
@@ -176,9 +176,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             for t in p.todos or []:
                 item = TodoItem(
                     slug=t.slug,
-                    status=TodoStatus(t.status)
-                    if t.status in {s.value for s in TodoStatus}
-                    else TodoStatus.PENDING,
+                    status=TodoStatus(t.status) if t.status in {s.value for s in TodoStatus} else TodoStatus.PENDING,
                     description=t.description,
                     has_requirements=t.has_requirements,
                     has_impl_plan=t.has_impl_plan,
@@ -231,9 +229,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             projects_in_comp = computer_to_projects[comp_name]
 
             # Count active todos (exclude icebox) across all projects under this computer
-            comp_todo_count = sum(
-                sum(1 for t in (p.todos or []) if t.status != "icebox") for p in projects_in_comp
-            )
+            comp_todo_count = sum(sum(1 for t in (p.todos or []) if t.status != "icebox") for p in projects_in_comp)
             comp_info = ComputerDTO(
                 name=comp_name,
                 status="online",
@@ -305,7 +301,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 project_icebox = icebox_items_by_project.get(project.path, [])
                 show_icebox = project.path in self._icebox_projects and project_icebox
                 if show_icebox:
-                    widgets_to_mount.append(IceboxSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
+                    # Match TodoRow total width after ├: ─(1) + square(1) + space(1) + slug + dots(2+indent) + columns
+                    sep_width = 1 + 1 + 1 + slug_width + 2 + (max_depth * 2) + col_widths.get("_max", 0)
+                    widgets_to_mount.append(IceboxSeparator(line_width=sep_width))
                     for ice_item in project_icebox:
                         # Depth-0: use ├─ (GroupSeparator closes the tree)
                         ice_row = TodoRow(

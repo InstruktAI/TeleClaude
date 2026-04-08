@@ -1,4 +1,4 @@
-"""Simple horizontal separator between active todos and icebox items."""
+"""Tree-connected separator between active todos and icebox items."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from teleclaude.cli.tui.theme import CONNECTOR_COLOR
 
 
 class IceboxSeparator(TelecMixin, Static):
-    """Plain horizontal line separating active todos from icebox items."""
+    """Branch-style separator within the todo tree for icebox section."""
 
     DEFAULT_CSS = """
     IceboxSeparator {
@@ -21,13 +21,15 @@ class IceboxSeparator(TelecMixin, Static):
     }
     """
 
-    def __init__(self, connector_col: int = 2, **kwargs: object) -> None:
+    def __init__(self, line_width: int = 40, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self._connector_col = connector_col
+        self._line_width = line_width
 
     def render(self) -> Text:
-        width = max(self.size.width, 40)
-        line = Text()
+        line = Text(no_wrap=True)
         sep_style = Style(color=CONNECTOR_COLOR)
-        line.append("\u2500" * width, style=sep_style)
+        # Match TodoRow tree prefix: 2-space margin + ├ + ─ for full row width
+        line.append("  ", style=sep_style)
+        line.append("\u251c", style=sep_style)
+        line.append("\u2500" * self._line_width, style=sep_style)
         return line
