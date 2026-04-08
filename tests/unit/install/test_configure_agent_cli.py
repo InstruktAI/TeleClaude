@@ -39,14 +39,17 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_configure_agent_cli_module_is_importable() -> None:
+    """The renamed module must be importable from teleclaude.install.configure_agent_cli."""
     assert configure_agent_cli.__file__
 
 
 def test_configure_codex_callable_from_renamed_module() -> None:
+    """configure_codex must be accessible from the renamed module."""
     assert callable(configure_codex)
 
 
 def test_configure_claude_and_gemini_callable_from_renamed_module() -> None:
+    """configure_claude and configure_gemini must be accessible from the renamed module."""
     assert callable(configure_claude)
     assert callable(configure_gemini)
 
@@ -57,6 +60,7 @@ def test_configure_claude_and_gemini_callable_from_renamed_module() -> None:
 
 
 def test_configure_codex_writes_compaction_prompt_to_codex_dir(tmp_path: Path) -> None:
+    """configure_codex copies the repo-owned compaction prompt to ~/.codex/CODEX.compaction.md."""
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
@@ -77,6 +81,7 @@ def test_configure_codex_writes_compaction_prompt_to_codex_dir(tmp_path: Path) -
 
 
 def test_configure_codex_sets_compact_prompt_toml_key(tmp_path: Path) -> None:
+    """configure_codex writes experimental_compact_prompt_file as an absolute path in config.toml."""
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
@@ -92,9 +97,16 @@ def test_configure_codex_sets_compact_prompt_toml_key(tmp_path: Path) -> None:
     assert COMPACT_PROMPT_TOML_KEY in config, f"config.toml must contain '{COMPACT_PROMPT_TOML_KEY}'"
     value = config[COMPACT_PROMPT_TOML_KEY]
     assert isinstance(value, str) and value.strip(), f"'{COMPACT_PROMPT_TOML_KEY}' must be a non-empty file path string"
+    # The value must be the absolute path to the deployed prompt — a relative path would silently break Codex
+    expected_absolute_path = str(codex_dir / COMPACTION_PROMPT_FILENAME)
+    assert value == expected_absolute_path, (
+        f"'{COMPACT_PROMPT_TOML_KEY}' must be the absolute deployed path, not a relative placeholder. "
+        f"Expected: {expected_absolute_path!r}. Got: {value!r}"
+    )
 
 
 def test_configure_codex_compaction_prompt_deployment_is_idempotent(tmp_path: Path) -> None:
+    """Running configure_codex twice produces identical config.toml output."""
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
@@ -114,34 +126,42 @@ def test_configure_codex_compaction_prompt_deployment_is_idempotent(tmp_path: Pa
 
 
 def test_compact_prompt_key_sourced_from_settings_override(tmp_path: Path) -> None:
-    """The experimental_compact_prompt_file value in config.toml must match settings/codex.json — verifying the
-    override mechanism is the actual delivery path, not incidental hardcoding."""
-    settings_path = Path(configure_agent_cli.__file__).parent / "settings" / "codex.json"
-    assert settings_path.exists(), "teleclaude/install/settings/codex.json must exist"
-    settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert COMPACT_PROMPT_TOML_KEY in settings, (
-        f"settings/codex.json must contain '{COMPACT_PROMPT_TOML_KEY}' "
-        "so the existing override mechanism delivers it to config.toml"
+    """The experimental_compact_prompt_file key must be absent from config.toml when
+    absent from settings/codex.json — even when the prompt source file exists.
+    This proves the key is delivered exclusively through the settings override
+    mechanism, not hardcoded in configure_codex()."""
+    # Build a custom settings dir whose codex.json deliberately omits the key.
+    # The prompt source file IS present so compaction_prompt_available=True —
+    # the only missing ingredient is the key in codex.json.
+    custom_settings_dir = tmp_path / "custom-settings"
+    custom_settings_dir.mkdir()
+    (custom_settings_dir / COMPACTION_PROMPT_FILENAME).write_text("# compaction prompt\n", encoding="utf-8")
+    (custom_settings_dir / "codex.json").write_text(
+        json.dumps({"sandbox_mode": "danger-full-access"}), encoding="utf-8"
     )
 
-    # End-to-end: verify the deployed config.toml value is sourced from the override, not hardcoded
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     receiver.parent.mkdir(parents=True)
     receiver.touch()
 
-    with patch("pathlib.Path.home", return_value=tmp_path):
+    with (
+        patch("pathlib.Path.home", return_value=tmp_path),
+        patch.object(configure_agent_cli, "SETTINGS_DIR", custom_settings_dir),
+    ):
         configure_codex(tmp_path)
 
     config = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
-    assert config[COMPACT_PROMPT_TOML_KEY] == settings[COMPACT_PROMPT_TOML_KEY], (
-        f"config.toml['{COMPACT_PROMPT_TOML_KEY}'] must equal settings/codex.json['{COMPACT_PROMPT_TOML_KEY}'] — "
-        "the settings override mechanism must be the delivery path"
+    assert COMPACT_PROMPT_TOML_KEY not in config, (
+        f"config.toml must NOT contain '{COMPACT_PROMPT_TOML_KEY}' when the key is "
+        "absent from settings/codex.json — the key must be delivered exclusively "
+        "through the settings override mechanism, not hardcoded in configure_codex()"
     )
 
 
 def test_configure_codex_omits_compact_prompt_key_when_prompt_source_missing(tmp_path: Path) -> None:
+    """configure_codex skips experimental_compact_prompt_file when the source prompt file is missing."""
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
@@ -279,6 +299,8 @@ def test_prototype_codex_compaction_md_not_in_repository() -> None:
 
 
 class TestExtractReceiverScript:
+    """Tests for _extract_receiver_script."""
+
     @pytest.mark.parametrize(
         ("command", "expected"),
         [
@@ -288,11 +310,15 @@ class TestExtractReceiverScript:
         ],
     )
     def test_normalizes_receiver_variants(self, command: str | list[object], expected: str) -> None:
+        """_extract_receiver_script normalizes all receiver script path variants to 'receiver'."""
         assert configure_agent_cli._extract_receiver_script(command) == expected
 
 
 class TestMergeHooks:
+    """Tests for merge_hooks."""
+
     def test_replaces_existing_receiver_hook_but_keeps_foreign_hooks(self) -> None:
+        """merge_hooks replaces an existing receiver hook but preserves non-receiver hooks."""
         existing = {
             "Stop": [
                 {
@@ -313,7 +339,10 @@ class TestMergeHooks:
 
 
 class TestPruneAgentHooks:
+    """Tests for _prune_agent_hooks."""
+
     def test_removes_teleclaude_hooks_from_disallowed_events(self) -> None:
+        """_prune_agent_hooks removes receiver hooks for events not in allowed_events."""
         existing = {
             "Stop": [{"matcher": "*", "hooks": [{"command": "/tmp/receiver.py --agent claude"}]}],
             "SessionStart": [{"matcher": "*", "hooks": [{"command": "/tmp/receiver.py --agent claude"}]}],
@@ -328,7 +357,10 @@ class TestPruneAgentHooks:
 
 
 class TestCodexMcpConfig:
+    """Tests for _ensure_codex_mcp_servers."""
+
     def test_ensure_codex_mcp_servers_appends_stdio_sections(self) -> None:
+        """_ensure_codex_mcp_servers adds type=stdio MCP server sections."""
         content = ""
 
         updated = configure_agent_cli._ensure_codex_mcp_servers(
@@ -342,7 +374,10 @@ class TestCodexMcpConfig:
 
 
 class TestResolveMainRepoRoot:
+    """Tests for resolve_main_repo_root."""
+
     def test_follows_worktree_gitdir_to_main_repository(self, tmp_path: Path) -> None:
+        """resolve_main_repo_root follows gitdir pointer in worktrees to find the main repo."""
         main_repo = tmp_path / "main"
         worktree = tmp_path / "worktree"
         gitdir = main_repo / ".git" / "worktrees" / "demo"

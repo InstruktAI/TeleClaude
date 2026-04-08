@@ -116,9 +116,18 @@ else
 fi
 
 echo "Running pylint"
+# Test files get pytest-structural checks disabled; matches the same list in precommit-hook.sh.
+PYLINT_TEST_DISABLE="missing-module-docstring,missing-class-docstring,missing-function-docstring,too-few-public-methods,redefined-outer-name,too-many-arguments,protected-access,too-many-locals,too-many-instance-attributes,consider-using-from-import"
 if [ -n "$SCOPED_FILES" ]; then
+    src_files=""
+    test_files=""
+    for f in $SCOPED_FILES; do
+        case "$f" in tests/*) test_files="$test_files $f" ;; *) src_files="$src_files $f" ;; esac
+    done
     # shellcheck disable=SC2086
-    $PYLINT $SCOPED_FILES
+    [ -n "$src_files" ] && $PYLINT $src_files
+    # shellcheck disable=SC2086
+    [ -n "$test_files" ] && $PYLINT --disable="$PYLINT_TEST_DISABLE" $test_files
 else
     $PYLINT teleclaude
 fi
