@@ -8,9 +8,9 @@ import aiosqlite
 
 async def up(db: aiosqlite.Connection) -> None:
     """Add the stop timestamp used for deterministic turn-settled checks."""
-    async with db.execute("PRAGMA table_info(sessions)") as cursor:
+    async with db.execute("SELECT name FROM pragma_table_info('sessions')") as cursor:
         rows = await cursor.fetchall()
-    columns = {str(row[1]) for row in rows}
+    columns = {str(row[0]) for row in rows}
     if "last_agent_stop_at" in columns:
         return
     await db.execute("ALTER TABLE sessions ADD COLUMN last_agent_stop_at TEXT")

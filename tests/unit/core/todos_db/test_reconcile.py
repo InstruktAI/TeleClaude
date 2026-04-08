@@ -88,6 +88,7 @@ async def test_skips_state_when_db_is_newer(todos_db: TodosDb, tmp_path: Path) -
 @pytest.mark.unit
 async def test_updates_artifact_when_filesystem_is_newer(todos_db: TodosDb, tmp_path: Path) -> None:
     """Artifact with newer filesystem mtime overwrites the DB copy."""
+    await todos_db.add_to_roadmap("my-slug")
     await todos_db.write_artifact("my-slug", "requirements", "old content")
 
     todo_dir = tmp_path / "todos" / "my-slug"
@@ -107,6 +108,7 @@ async def test_updates_artifact_when_filesystem_is_newer(todos_db: TodosDb, tmp_
 async def test_skips_artifact_when_content_identical(todos_db: TodosDb, tmp_path: Path) -> None:
     """Artifact with identical digest is skipped even when filesystem mtime is newer."""
     content = "same content"
+    await todos_db.add_to_roadmap("my-slug")
     await todos_db.write_artifact("my-slug", "requirements", content)
 
     todo_dir = tmp_path / "todos" / "my-slug"
@@ -119,6 +121,20 @@ async def test_skips_artifact_when_content_identical(todos_db: TodosDb, tmp_path
     counts = await reconcile_filesystem_to_db(str(tmp_path), todos_db)
 
     assert counts["artifacts_updated"] == 0
+
+
+@pytest.mark.unit
+async def test_artifact_only_slug_gets_roadmap_before_reconcile_write(todos_db: TodosDb, tmp_path: Path) -> None:
+    """Artifact-only filesystem slugs are materialized via the roadmap helper, not write_artifact()."""
+    todo_dir = tmp_path / "todos" / "artifact-only"
+    _write_artifact(todo_dir, "requirements", "fresh content")
+
+    counts = await reconcile_filesystem_to_db(str(tmp_path), todos_db)
+
+    assert counts["artifacts_inserted"] == 1
+    assert counts["roadmap_added"] == 1
+    assert await todos_db.slug_in_roadmap("artifact-only") is True
+    assert await todos_db.read_artifact("artifact-only", "requirements") == "fresh content"
 
 
 @pytest.mark.unit

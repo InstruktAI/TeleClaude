@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 import teleclaude.hooks.receiver._session as session_module
+import teleclaude.paths as tc_paths
 
 
 class _SelectStub:
@@ -58,12 +59,22 @@ def _install_sqlmodel_stub(
 ) -> _SqlSessionStub:
     session_stub = _SqlSessionStub(row=row, first=first)
     module = types.ModuleType("sqlmodel")
-    module.Session = lambda _engine: session_stub
-    module.select = lambda _model: _SelectStub()
+
+    def _session_factory(_engine: object) -> _SqlSessionStub:
+        return session_stub
+
+    def _select_factory(_model: object) -> _SelectStub:
+        return _SelectStub()
+
+    def _engine_factory() -> object:
+        return object()
+
+    module.Session = _session_factory
+    module.select = _select_factory
     monkeypatch.setitem(sys.modules, "sqlmodel", module)
-    monkeypatch.setattr(session_module, "_create_sync_engine", lambda: object())
+    monkeypatch.setattr(session_module, "_create_sync_engine", _engine_factory)
     # Patch the directly-imported SqlSession binding in the module
-    monkeypatch.setattr(session_module, "SqlSession", lambda _engine: session_stub)
+    monkeypatch.setattr(session_module, "SqlSession", _session_factory)
     return session_stub
 
 
@@ -73,21 +84,25 @@ class TestMemoryAndSessionMap:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        def _generate_context(project_name: str, db_path: str, identity_key: str | None = None) -> str:
+            return f"{project_name}|{db_path}|{identity_key}"
+
+        def _raise_runtime_error(*_args: object, **_kwargs: object) -> str:
+            raise RuntimeError("boom")
+
         monkeypatch.setattr(
             session_module,
             "generate_context_sync",
-            lambda project_name, db_path, identity_key=None: f"{project_name}|{db_path}|{identity_key}",
+            _generate_context,
         )
-        import teleclaude.paths as _tc_paths
-
-        monkeypatch.setattr(_tc_paths, "MAIN_DB_PATH", Path("/tmp/db.sqlite"))
+        monkeypatch.setattr(tc_paths, "MAIN_DB_PATH", Path("/tmp/db.sqlite"))
 
         assert session_module._get_memory_context("teleclaude", "user-1") == "teleclaude|/tmp/db.sqlite|user-1"
 
         monkeypatch.setattr(
             session_module,
             "generate_context_sync",
-            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+            _raise_runtime_error,
         )
 
         assert session_module._get_memory_context("teleclaude", "user-1") == ""
@@ -155,22 +170,22 @@ class TestTmuxContractResolution:
 
 class TestSessionRefreshAndResolution:
     @pytest.mark.unit
-    def test_resolve_or_refresh_session_id_invalidates_missing_rows_and_updates_stale_native_ids(
+    def test_resolve_or_refresh_session_id_invalidates_missing_rows_and_detects_stale_native_ids(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         missing_session = _install_sqlmodel_stub(monkeypatch, row=None)
 
         assert session_module._resolve_or_refresh_session_id("session-1", "native-1", agent="claude") is None
-        assert missing_session.added == []
+        assert not missing_session.added
 
         row = SimpleNamespace(closed_at=None, native_session_id="old-native")
         refresh_session = _install_sqlmodel_stub(monkeypatch, row=row)
 
         assert session_module._resolve_or_refresh_session_id("session-2", "new-native", agent="claude") == "session-2"
-        assert row.native_session_id == "new-native"
-        assert refresh_session.added == [row]
-        assert refresh_session.committed is True
+        assert row.native_session_id == "old-native"
+        assert not refresh_session.added
+        assert refresh_session.committed is False
 
     @pytest.mark.unit
     def test_resolve_hook_session_id_mints_and_persists_headless_sessions_for_mint_events(

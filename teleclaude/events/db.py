@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import aiosqlite
 
+from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventEnvelope
 
@@ -162,16 +163,17 @@ class EventDB:
     async def init(self) -> None:
         """Initialize the SQLite database and all event-related tables."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        bootstrap_engine = create_sync_db_engine(self._db_path)
+        bootstrap_engine.dispose()
         self._conn = await aiosqlite.connect(str(self._db_path))
         self._conn.row_factory = aiosqlite.Row
-        await self._conn.execute("PRAGMA journal_mode=WAL;")
         await self._conn.execute(_CREATE_TABLE)
         await self._conn.execute(_CREATE_QUARANTINED_TABLE)
         await self._conn.execute(_CREATE_CORRELATION_TABLE)
         for idx_sql in _CREATE_INDEXES:
             await self._conn.execute(idx_sql)
         await self._conn.commit()
-        # Initialize signal pipeline tables (same DB, WAL already active)
+        # Initialize signal pipeline tables after the shared engine bootstraps the DB file.
         await _signal_db_class()(self._conn).init()
 
     @property

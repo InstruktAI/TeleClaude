@@ -7,11 +7,12 @@ import uuid
 from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import create_engine, text  # guard: raw-sql - Sync memory access
+from sqlalchemy import text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
 from teleclaude.core import db_models
 from teleclaude.core.db import db
+from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.types import ObservationInput, ObservationResult
 
@@ -62,11 +63,9 @@ class MemoryStore:
         title = inp.title or _auto_title(inp.text)
         session_id = self._get_or_create_manual_session_sync(project, db_path)
 
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(db_path)
         try:
             with SqlSession(engine) as session:
-                session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
-                session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
                 obs = db_models.MemoryObservation(
                     memory_session_id=session_id,
                     project=project,
@@ -169,11 +168,9 @@ class MemoryStore:
 
     def _get_or_create_manual_session_sync(self, project: str, db_path: str) -> str:
         """Get or create a manual session synchronously."""
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(db_path)
         try:
             with SqlSession(engine) as session:
-                session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
-                session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
                 result = session.exec(  # type: ignore[call-overload]
                     text(  # guard: raw-sql
                         "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"

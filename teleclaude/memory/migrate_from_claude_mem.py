@@ -17,6 +17,7 @@ import argparse
 import sqlite3
 from pathlib import Path
 
+from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.memory.types import ObservationType
 
 _VALID_TYPES = {t.value for t in ObservationType}
@@ -43,10 +44,9 @@ def migrate(source_db: str, target_db: str) -> dict[str, int]:  # pylint: disabl
     Returns: {"observations": N, "summaries": N, "sessions": N}
     """
     source = sqlite3.connect(source_db)
+    bootstrap_engine = create_sync_db_engine(target_db)
+    bootstrap_engine.dispose()
     target = sqlite3.connect(target_db)
-
-    target.execute("PRAGMA journal_mode = WAL")
-    target.execute("PRAGMA busy_timeout = 5000")
 
     counts = {"observations": 0, "summaries": 0, "sessions": 0}
 

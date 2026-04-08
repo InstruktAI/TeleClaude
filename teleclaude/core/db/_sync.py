@@ -5,12 +5,12 @@ These are standalone functions, not class methods.
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+from teleclaude.core.db.connection_factory import create_sync_db_engine
 
 from .. import db_models
 
@@ -34,11 +34,9 @@ def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | Non
     if field not in valid_fields:
         raise ValueError(f"Invalid field '{field}' for Session lookup. Valid fields: {sorted(valid_fields)}")
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_sync_db_engine(db_path)
     try:
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # guard: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # guard: raw-sql
             column = getattr(db_models.Session, field, None)
             if column is None:
                 raise ValueError(f"Invalid field '{field}' for Session lookup")
@@ -82,11 +80,9 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
     if field not in valid_fields:
         raise ValueError(f"Invalid field '{field}' for Session lookup. Valid fields: {sorted(valid_fields)}")
 
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_sync_db_engine(db_path)
     try:
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # guard: raw-sql
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # guard: raw-sql
             column = getattr(db_models.Session, field, None)
             if column is None:
                 raise ValueError(f"Invalid field '{field}'")

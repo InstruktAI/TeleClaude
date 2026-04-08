@@ -34,6 +34,9 @@ AgentHookEventType = Literal[
     "agent_stop",
     "session_end",
     "error",
+    "checkpoint_seen",
+    "native_metadata_update",
+    "native_session_refresh",
     "before_agent",
     "before_model",
     "before_tool_selection",
@@ -58,6 +61,9 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
     AGENT_STOP: AgentHookEventType = "agent_stop"
     AGENT_SESSION_END: AgentHookEventType = "session_end"
     AGENT_ERROR: AgentHookEventType = "error"
+    CHECKPOINT_SEEN: AgentHookEventType = "checkpoint_seen"
+    NATIVE_METADATA_UPDATE: AgentHookEventType = "native_metadata_update"
+    NATIVE_SESSION_REFRESH: AgentHookEventType = "native_session_refresh"
 
     # Additional hook events (captured for future-proofing, no active handlers yet)
     BEFORE_AGENT: AgentHookEventType = "before_agent"
@@ -129,6 +135,9 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
         AGENT_STOP,
         AGENT_SESSION_END,
         AGENT_ERROR,
+        CHECKPOINT_SEEN,
+        NATIVE_METADATA_UPDATE,
+        NATIVE_SESSION_REFRESH,
         BEFORE_AGENT,
         BEFORE_MODEL,
         TOOL_USE,

@@ -9,10 +9,9 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
-from sqlalchemy import event, text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import DB_IN_MEMORY
@@ -21,6 +20,7 @@ from teleclaude.core.migrations.runner import run_pending_migrations
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
 from ..models import Session
+from .connection_factory import create_async_db_engine, get_outbox_db_path
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -112,6 +112,8 @@ class DbBase:
         self.db_path = db_path
         self._engine: AsyncEngine | None = None
         self._sessionmaker: object | None = None
+        self._outbox_engine: AsyncEngine | None = None
+        self._outbox_sessionmaker: object | None = None
         self.conn: aiosqlite.Connection | None = None
         self._temp_db_path: str | None = None
 
@@ -126,17 +128,14 @@ class DbBase:
             with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
                 self._temp_db_path = temp_file.name
             db_path = self._temp_db_path
+        outbox_db_path = str(get_outbox_db_path(Path(db_path).expanduser().parent))
 
         # Ensure schema + migrations via aiosqlite (single-shot bootstrap)
         self.conn = await aiosqlite.connect(db_path, uri=use_uri)
         self.conn.row_factory = aiosqlite.Row
-        await self.conn.execute("PRAGMA journal_mode = WAL")  # guard: raw-sql
-        await self.conn.execute("PRAGMA synchronous = NORMAL")  # guard: raw-sql
-        await self.conn.execute("PRAGMA busy_timeout = 5000")  # guard: raw-sql
 
         schema_path = Path(__file__).parent.parent / "schema.sql"
-        with open(schema_path, encoding="utf-8") as f:
-            schema_sql = f.read()
+        schema_sql = schema_path.read_text(encoding="utf-8")
 
         await self.conn.executescript(schema_sql)  # guard: raw-sql
         await self.conn.commit()
@@ -148,33 +147,22 @@ class DbBase:
         self.conn = None
 
         # Async engine for runtime access
-        db_url = f"sqlite+aiosqlite:///{db_path}"
-
-        connect_args = {"uri": True} if use_uri else {}
-        self._engine = create_async_engine(
-            db_url,
-            future=True,
-            connect_args=connect_args,
-            poolclass=NullPool,
-        )
+        self._engine = create_async_db_engine(db_path)
         self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
-
-        # Apply PRAGMAs to every new connection via pool event listener.
-        # This ensures all pooled connections have WAL mode, busy timeout, etc.
-        @event.listens_for(self._engine.sync_engine, "connect")
-        def _set_sqlite_pragmas(dbapi_conn, _connection_record):  # type: ignore[no-untyped-def]
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA journal_mode = WAL")  # guard: raw-sql
-            cursor.execute("PRAGMA synchronous = NORMAL")  # guard: raw-sql
-            cursor.execute("PRAGMA busy_timeout = 5000")  # guard: raw-sql
-            cursor.execute("PRAGMA cache_size = -8000")  # guard: raw-sql  8MB per connection
-            cursor.close()
+        self._outbox_engine = create_async_db_engine(outbox_db_path)
+        self._outbox_sessionmaker = sessionmaker(self._outbox_engine, expire_on_commit=False, class_=SqlAsyncSession)
 
     def _session(self) -> SqlAsyncSession:
         """Create an async ORM session from the initialized session factory."""
         if self._sessionmaker is None:
             raise RuntimeError("Database not initialized - call initialize() first")
         return self._sessionmaker()  # type: ignore[call-arg]
+
+    def _outbox_session(self) -> SqlAsyncSession:
+        """Create an async ORM session bound to the dedicated outbox database."""
+        if self._outbox_sessionmaker is None:
+            raise RuntimeError("Database not initialized - call initialize() first")
+        return self._outbox_sessionmaker()  # type: ignore[call-arg]
 
     def is_initialized(self) -> bool:
         """Return whether the async session factory has been initialized."""
@@ -196,6 +184,8 @@ class DbBase:
         """Close database connection."""
         if self._engine:
             await self._engine.dispose()
+        if self._outbox_engine:
+            await self._outbox_engine.dispose()
         if self.conn:
             await self.conn.close()
         if self._temp_db_path:

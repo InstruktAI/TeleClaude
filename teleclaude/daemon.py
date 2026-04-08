@@ -134,7 +134,8 @@ from teleclaude.daemon_event_platform import _DaemonEventPlatformMixin
 _record_import_timing("teleclaude.daemon_event_platform", _t)
 
 _t = time.perf_counter()
-from teleclaude.daemon_hook_outbox import _DaemonHookOutboxMixin, _HookOutboxSessionQueue
+from teleclaude.core.hook_outbox_queue import HookOutboxSessionQueue
+from teleclaude.daemon_hook_outbox import _DaemonHookOutboxMixin
 
 _record_import_timing("teleclaude.daemon_hook_outbox", _t)
 
@@ -365,7 +366,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
         # Per-session outbox processing: one serial worker per session, parallel across sessions.
-        self._session_outbox_queues: dict[str, _HookOutboxSessionQueue] = {}
+        self._session_outbox_queues: dict[str, HookOutboxSessionQueue] = {}
         self._session_outbox_workers: dict[str, asyncio.Task[None]] = {}
         self._hook_outbox_processed_count = 0
         self._hook_outbox_coalesced_count = 0
@@ -423,9 +424,13 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
         api_server = getattr(self.lifecycle, "api_server", None)
         loop = getattr(self, "_loop", None)
-        logger.info("ChipTunes: track_start callback fired (track=%s, api_server=%s, loop=%s, loop_running=%s)",
-                     track_label, api_server is not None, loop is not None,
-                     loop.is_running() if loop else False)
+        logger.info(
+            "ChipTunes: track_start callback fired (track=%s, api_server=%s, loop=%s, loop_running=%s)",
+            track_label,
+            api_server is not None,
+            loop is not None,
+            loop.is_running() if loop else False,
+        )
         if api_server is None:
             return
 
@@ -437,7 +442,10 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         else:
             logger.warning("ChipTunes: no running event loop, skipping track broadcast")
 
-    def _on_chiptunes_state_change(self, state: dict[str, object]) -> None:
+    def _on_chiptunes_state_change(  # pylint: disable=unused-argument
+        self,
+        state: dict[str, object],  # guard: loose-dict — chiptunes worker callback payload
+    ) -> None:
         """Broadcast chiptunes_state WebSocket events from worker thread callbacks."""
         if hasattr(self, "tts_manager"):
             self.tts_manager.on_chiptunes_state_change()
@@ -450,6 +458,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
     def _on_chiptunes_command_done(self, command_id: str) -> None:
         """Clear pending command in routes when worker completes it."""
         from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
+
         chiptunes_routes.clear_pending(command_id)
 
     def _broadcast_chiptunes_state(self) -> None:
@@ -479,7 +488,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             track=track_label,
             sid_path=track_path,
             pending_command_id=chiptunes_routes._pending_command_id,  # pylint: disable=protected-access
-            pending_action=chiptunes_routes._pending_action,  # pylint: disable=protected-access  # type: ignore[arg-type]
+            pending_action=chiptunes_routes._pending_action,  # type: ignore[arg-type]  # pylint: disable=protected-access
         ).model_dump()
         api_server._broadcast_payload("chiptunes_state", payload)  # pylint: disable=protected-access
 
@@ -652,6 +661,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             await self.lifecycle.startup()
 
             from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
+
             chiptunes_routes.configure(manager=self.chiptunes_manager)
 
             startup_elapsed = time.perf_counter() - daemon_start_started_at
@@ -803,7 +813,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         if not hasattr(self, "_sandbox_manager"):
             return
         try:
-            await self._sandbox_manager.stop()
+            await self._sandbox_manager.stop()  # pylint: disable=no-member  # pyright: ignore[reportAttributeAccessIssue]
             logger.info("Sandbox container stopped")
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Sandbox container stop error during shutdown: %s", exc)

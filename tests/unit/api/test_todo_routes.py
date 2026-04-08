@@ -238,6 +238,26 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_write_artifact_returns_404_when_slug_not_in_roadmap(self) -> None:
+        """Artifact writes reject unknown slugs instead of materializing roadmap rows."""
+        mock_db = AsyncMock()
+        mock_db.slug_in_roadmap = AsyncMock(return_value=False)
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.write_artifact(
+                    slug="missing-slug",
+                    name="requirements",
+                    content="content",
+                    cwd="/repo",
+                    updated_by="tester",
+                )
+
+        assert exc_info.value.status_code == 404
+        mock_db.write_artifact.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_mark_phase_target_404_when_build_terminal_and_no_worktree(self, tmp_path: Path) -> None:
         """target= path returns 404 when a build-terminal target requires a worktree that is absent."""
         with (

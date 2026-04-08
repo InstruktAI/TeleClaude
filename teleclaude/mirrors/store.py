@@ -8,16 +8,25 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 from urllib.parse import quote
+
+from sqlalchemy import Engine, text
+from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import OperationalError as SqlAlchemyOperationalError
 
 from teleclaude import paths as tc_paths
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime, parse_iso_datetime
+from teleclaude.core.db.connection_factory import create_sync_db_engine
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 _schema_initialized: set[str] = set()
+_rw_engines: dict[str, Engine] = {}
+_ro_engines: dict[str, Engine] = {}
+_main_ro_engines: dict[str, Engine] = {}
 
 
 @dataclass(frozen=True)
@@ -167,26 +176,66 @@ END;
 """
 
 
-def _connect_rw(db: str | Path | None = None) -> sqlite3.Connection:
-    path = str(Path(db).expanduser()) if db is not None else str(tc_paths.MIRRORS_DB_PATH)
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+def _connect_rw(db: str | Path | None = None) -> sqlite3.Connection:  # pyright: ignore[reportUnusedFunction]
+    conn = cast(sqlite3.Connection, _get_rw_engine(db).raw_connection())
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout = 5000")
-    _ensure_schema(conn, path)
     return conn
 
 
-def _connect_ro(db: str | Path | None = None) -> sqlite3.Connection:
+def _connect_ro(db: str | Path | None = None) -> sqlite3.Connection:  # pyright: ignore[reportUnusedFunction]
+    conn = cast(sqlite3.Connection, _get_ro_engine(db).raw_connection())
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _resolve_mirrors_db_path(db: str | Path | None = None) -> str:
+    """Resolve a mirrors database path and ensure the parent directory exists."""
     resolved = Path(db).expanduser().resolve() if db is not None else tc_paths.MIRRORS_DB_PATH.resolve()
-    # Ensure schema and migrations are applied (also creates DB if missing).
-    if str(resolved) not in _schema_initialized:
-        _connect_rw(db).close()
-    uri = f"file:{quote(str(resolved))}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout = 5000")
-    return conn
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    return str(resolved)
+
+
+def _read_only_sqlite_uri(path: str) -> str:
+    """Build a read-only SQLite URI for SQLAlchemy."""
+    return f"file:{quote(path)}?mode=ro&uri=true"
+
+
+def _get_rw_engine(db: str | Path | None = None) -> Engine:
+    """Return the cached writable mirrors engine, initializing schema on first use."""
+    path = _resolve_mirrors_db_path(db)
+    engine = _rw_engines.get(path)
+    if engine is None:
+        engine = create_sync_db_engine(path)
+        _rw_engines[path] = engine
+    if path not in _schema_initialized:
+        with engine.raw_connection() as raw_conn:
+            conn = cast(sqlite3.Connection, raw_conn)
+            _ensure_schema(conn, path)
+            conn.commit()
+    return engine
+
+
+def _get_ro_engine(db: str | Path | None = None) -> Engine:
+    """Return the cached read-only mirrors engine, bootstrapping schema via the RW engine."""
+    path = _resolve_mirrors_db_path(db)
+    if path not in _schema_initialized:
+        _get_rw_engine(path)
+    target = _read_only_sqlite_uri(path)
+    engine = _ro_engines.get(target)
+    if engine is None:
+        engine = create_sync_db_engine(target)
+        _ro_engines[target] = engine
+    return engine
+
+
+def _get_main_ro_engine() -> Engine:
+    """Return the cached read-only main teleclaude.db engine for session lookups."""
+    target = _read_only_sqlite_uri(str(tc_paths.MAIN_DB_PATH.resolve()))
+    engine = _main_ro_engines.get(target)
+    if engine is None:
+        engine = create_sync_db_engine(target)
+        _main_ro_engines[target] = engine
+    return engine
 
 
 def _agent_values(agents: Sequence[AgentName | str]) -> list[str]:
@@ -211,7 +260,7 @@ def _format_search_timestamp(value: str | None) -> str:
     return format_local_datetime(parsed, include_date=True)
 
 
-def _topic_for_row(row: sqlite3.Row) -> str:
+def _topic_for_row(row: RowMapping) -> str:
     snippet = row["snippet"]
     if isinstance(snippet, str) and snippet.strip():
         return snippet
@@ -222,6 +271,95 @@ def _topic_for_row(row: sqlite3.Row) -> str:
     if isinstance(conversation, str):
         return conversation[:70]
     return ""
+
+
+def _is_missing_table_error(exc: SqlAlchemyOperationalError | sqlite3.OperationalError) -> bool:
+    """Return whether an exception indicates an absent SQLite table."""
+    cause = exc.orig if isinstance(exc, SqlAlchemyOperationalError) else exc
+    return "no such table" in str(cause).lower()
+
+
+def _parse_metadata(value: object) -> dict[str, JsonValue]:
+    """Parse a metadata JSON blob into the public typed shape."""
+    if not isinstance(value, str) or not value:
+        return {}
+    try:
+        parsed: object = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict) or not all(isinstance(key, str) for key in parsed):
+        return {}
+    return cast(dict[str, JsonValue], parsed)
+
+
+def _optional_str(value: object) -> str | None:
+    """Return a string value or None when the database value is null/empty."""
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def _int_value(value: object) -> int:
+    """Return an integer value from a row mapping cell."""
+    if isinstance(value, int):
+        return value
+    if value in (None, ""):
+        return 0
+    return int(str(value))
+
+
+def _mirror_search_result_from_row(row: RowMapping) -> MirrorSearchResult:
+    """Convert a SQLAlchemy row mapping into the public search dataclass."""
+    sort_timestamp = str(row.get("sort_timestamp") or "")
+    return MirrorSearchResult(
+        session_id=str(row["session_id"]),
+        computer=str(row["computer"]),
+        agent=str(row["agent"]),
+        project=str(row["project"]),
+        title=str(row["title"] or ""),
+        sort_timestamp=sort_timestamp,
+        timestamp=_format_search_timestamp(sort_timestamp),
+        topic=_topic_for_row(row),
+        conversation_text=str(row["conversation_text"] or ""),
+        metadata=_parse_metadata(row.get("metadata")),
+        human_email=_optional_str(row.get("human_email")),
+        visibility=str(row.get("visibility") or "private"),
+        source_identity=_optional_str(row.get("source_identity")),
+    )
+
+
+def _mirror_record_from_row(row: RowMapping) -> MirrorRecord:
+    """Convert a SQLAlchemy row mapping into the public mirror dataclass."""
+    return MirrorRecord(
+        session_id=str(row["session_id"]),
+        computer=str(row["computer"]),
+        agent=str(row["agent"]),
+        project=str(row["project"]),
+        title=str(row.get("title") or ""),
+        timestamp_start=_optional_str(row.get("timestamp_start")),
+        timestamp_end=_optional_str(row.get("timestamp_end")),
+        conversation_text=str(row.get("conversation_text") or ""),
+        message_count=_int_value(row.get("message_count")),
+        metadata=_parse_metadata(row.get("metadata")),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+        source_identity=_optional_str(row.get("source_identity")),
+        summary=_optional_str(row.get("summary")),
+        human_email=_optional_str(row.get("human_email")),
+        visibility=str(row.get("visibility") or "private"),
+    )
+
+
+def _tombstone_from_row(row: RowMapping) -> MirrorTombstoneRecord:
+    """Convert a SQLAlchemy row mapping into the public tombstone dataclass."""
+    return MirrorTombstoneRecord(
+        source_identity=str(row["source_identity"]),
+        agent=str(row["agent"]),
+        transcript_path=str(row["transcript_path"]),
+        file_size=_int_value(row["file_size"]),
+        file_mtime=str(row["file_mtime"]),
+        created_at=str(row["created_at"]),
+    )
 
 
 def search_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
@@ -239,19 +377,27 @@ def search_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
     if not match_query:
         return []
 
-    clauses = ["mirrors_fts MATCH ?"]
-    params: list[object] = [match_query]
+    clauses = ["mirrors_fts MATCH :match_query"]
+    params: dict[str, object] = {  # guard: loose-dict - SQL bind params are assembled dynamically.
+        "limit": limit,
+        "match_query": match_query,
+    }
     agent_values = _agent_values(agents)
     if agent_values:
-        placeholders = ", ".join("?" for _ in agent_values)
-        clauses.append(f"mirrors.agent IN ({placeholders})")
-        params.extend(agent_values)
+        placeholders: list[str] = []
+        for index, agent in enumerate(agent_values):
+            key = f"agent_{index}"
+            placeholders.append(f":{key}")
+            params[key] = agent
+        clauses.append(f"mirrors.agent IN ({', '.join(placeholders)})")
     if computers:
-        placeholders = ", ".join("?" for _ in computers)
-        clauses.append(f"mirrors.computer IN ({placeholders})")
-        params.extend(computers)
+        placeholders = []
+        for index, computer in enumerate(computers):
+            key = f"computer_{index}"
+            placeholders.append(f":{key}")
+            params[key] = computer
+        clauses.append(f"mirrors.computer IN ({', '.join(placeholders)})")
     _apply_role_filter(clauses, params, caller_email, caller_role)
-    params.append(limit)
 
     sql = f"""
         SELECT
@@ -271,41 +417,18 @@ def search_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
         JOIN mirrors ON mirrors_fts.rowid = mirrors.id
         WHERE {" AND ".join(clauses)}
         ORDER BY COALESCE(mirrors.timestamp_start, mirrors.updated_at) DESC
-        LIMIT ?
+        LIMIT :limit
     """
 
     try:
-        with _connect_ro(db) as conn:
-            rows = conn.execute(sql, params).fetchall()
-    except sqlite3.OperationalError as exc:
-        if "no such table" in str(exc).lower():
+        with _get_ro_engine(db).connect() as conn:
+            rows = conn.execute(text(sql), params).mappings().all()
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
             return []
         raise
 
-    results: list[MirrorSearchResult] = []
-    for row in rows:
-        try:
-            metadata = json.loads(row["metadata"] or "{}")
-        except json.JSONDecodeError:
-            metadata = {}
-        results.append(
-            MirrorSearchResult(
-                session_id=str(row["session_id"]),
-                computer=str(row["computer"]),
-                agent=str(row["agent"]),
-                project=str(row["project"]),
-                title=str(row["title"] or ""),
-                sort_timestamp=str(row["sort_timestamp"] or ""),
-                timestamp=_format_search_timestamp(row["sort_timestamp"]),
-                topic=_topic_for_row(row),
-                conversation_text=str(row["conversation_text"] or ""),
-                metadata=metadata if isinstance(metadata, dict) else {},
-                human_email=str(row["human_email"]) if row["human_email"] else None,
-                visibility=str(row["visibility"] or "private"),
-                source_identity=str(row["source_identity"]) if row["source_identity"] else None,
-            )
-        )
-    return results
+    return [_mirror_search_result_from_row(row) for row in rows]
 
 
 def get_mirror(  # pylint: disable=too-many-arguments
@@ -319,16 +442,23 @@ def get_mirror(  # pylint: disable=too-many-arguments
 ) -> MirrorRecord | None:
     """Fetch a mirror by exact or prefix session id."""
     clauses: list[str]
-    params: list[object]
+    params: dict[str, object]  # guard: loose-dict - SQL bind params vary by lookup path.
     if source_identity:
-        clauses = ["source_identity = ?"]
-        params = [source_identity]
+        clauses = ["source_identity = :source_identity"]
+        params = {
+            "session_id_exact": None,
+            "session_id_prefix": "",
+            "source_identity": source_identity,
+        }
     elif session_id:
-        clauses = ["(session_id = ? OR session_id LIKE ?)"]
-        params = [session_id, f"{session_id}%"]
+        clauses = ["(session_id = :session_id_exact OR session_id LIKE :session_id_prefix)"]
+        params = {
+            "session_id_exact": session_id,
+            "session_id_prefix": f"{session_id}%",
+        }
         if computer:
-            clauses.append("computer = ?")
-            params.append(computer)
+            clauses.append("computer = :computer")
+            params["computer"] = computer
     else:
         return None
 
@@ -356,50 +486,27 @@ def get_mirror(  # pylint: disable=too-many-arguments
         WHERE {" AND ".join(clauses)}
         ORDER BY
             CASE
-                WHEN ? IS NOT NULL AND session_id = ? THEN 0
-                WHEN ? IS NOT NULL AND session_id LIKE ? THEN 1
+                WHEN :session_id_exact IS NOT NULL AND session_id = :session_id_exact THEN 0
+                WHEN :session_id_exact IS NOT NULL AND session_id LIKE :session_id_prefix THEN 1
                 ELSE 0
             END,
             LENGTH(session_id),
             updated_at DESC
         LIMIT 1
     """
-    params.extend([session_id, session_id, session_id, f"{session_id}%" if session_id else ""])
 
     try:
-        with _connect_ro(db) as conn:
-            row = conn.execute(sql, params).fetchone()
-    except sqlite3.OperationalError as exc:
-        if "no such table" in str(exc).lower():
+        with _get_ro_engine(db).connect() as conn:
+            row = conn.execute(text(sql), params).mappings().first()
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
             return None
         raise
 
     if row is None:
         return None
 
-    try:
-        metadata = json.loads(row["metadata"] or "{}")
-    except json.JSONDecodeError:
-        metadata = {}
-
-    return MirrorRecord(
-        session_id=str(row["session_id"]),
-        source_identity=str(row["source_identity"]) if row["source_identity"] else None,
-        computer=str(row["computer"]),
-        agent=str(row["agent"]),
-        project=str(row["project"]),
-        title=str(row["title"] or ""),
-        timestamp_start=row["timestamp_start"],
-        timestamp_end=row["timestamp_end"],
-        conversation_text=str(row["conversation_text"] or ""),
-        message_count=int(row["message_count"] or 0),
-        metadata=metadata if isinstance(metadata, dict) else {},
-        created_at=str(row["created_at"]),
-        updated_at=str(row["updated_at"]),
-        summary=str(row["summary"]) if row["summary"] else None,
-        human_email=str(row["human_email"]) if row["human_email"] else None,
-        visibility=str(row["visibility"] or "private"),
-    )
+    return _mirror_record_from_row(row)
 
 
 def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None:
@@ -409,41 +516,28 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
         raise ValueError(msg)
 
     metadata_json = json.dumps(record.metadata, sort_keys=True)
-    payload = (
-        record.session_id,
-        record.source_identity,
-        record.computer,
-        record.agent,
-        record.project,
-        record.title,
-        record.timestamp_start,
-        record.timestamp_end,
-        record.conversation_text,
-        record.message_count,
-        metadata_json,
-        record.created_at,
-        record.updated_at,
-        record.summary,
-        record.human_email,
-        record.visibility,
-        record.session_id,
-        record.computer,
-        record.agent,
-        record.project,
-        record.title,
-        record.timestamp_start,
-        record.timestamp_end,
-        record.conversation_text,
-        record.message_count,
-        metadata_json,
-        record.updated_at,
-        record.summary,
-        record.human_email,
-        record.visibility,
-    )
-    with _connect_rw(db) as conn:
+    payload = {
+        "agent": record.agent,
+        "computer": record.computer,
+        "content": record.conversation_text,
+        "created_at": record.created_at,
+        "human_email": record.human_email,
+        "message_count": record.message_count,
+        "metadata": metadata_json,
+        "project": record.project,
+        "session_id": record.session_id,
+        "source_identity": record.source_identity,
+        "summary": record.summary,
+        "timestamp_end": record.timestamp_end,
+        "timestamp_start": record.timestamp_start,
+        "title": record.title,
+        "updated_at": record.updated_at,
+        "visibility": record.visibility,
+    }
+    with _get_rw_engine(db).begin() as conn:
         conn.execute(
-            """
+            text(
+                """
             INSERT INTO mirrors (
                 session_id,
                 source_identity,
@@ -462,26 +556,43 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
                 human_email,
                 visibility
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                :session_id,
+                :source_identity,
+                :computer,
+                :agent,
+                :project,
+                :title,
+                :timestamp_start,
+                :timestamp_end,
+                :content,
+                :message_count,
+                :metadata,
+                :created_at,
+                :updated_at,
+                :summary,
+                :human_email,
+                :visibility
+            )
             ON CONFLICT(source_identity) DO UPDATE SET
-                session_id = ?,
-                computer = ?,
-                agent = ?,
-                project = ?,
-                title = ?,
-                timestamp_start = ?,
-                timestamp_end = ?,
-                conversation_text = ?,
-                message_count = ?,
-                metadata = ?,
-                updated_at = ?,
-                summary = ?,
-                human_email = ?,
-                visibility = ?
-            """,
+                session_id = :session_id,
+                computer = :computer,
+                agent = :agent,
+                project = :project,
+                title = :title,
+                timestamp_start = :timestamp_start,
+                timestamp_end = :timestamp_end,
+                conversation_text = :content,
+                message_count = :message_count,
+                metadata = :metadata,
+                updated_at = :updated_at,
+                summary = :summary,
+                human_email = :human_email,
+                visibility = :visibility
+            """
+            ),
             payload,
         )
-        conn.commit()
 
 
 def delete_mirror(
@@ -493,17 +604,19 @@ def delete_mirror(
     """Delete a mirror row if it exists."""
     if not session_id and not source_identity:
         return
-    with _connect_rw(db) as conn:
+    with _get_rw_engine(db).begin() as conn:
         if source_identity:
-            conn.execute("DELETE FROM mirrors WHERE source_identity = ?", (source_identity,))
+            conn.execute(
+                text("DELETE FROM mirrors WHERE source_identity = :source_identity"),
+                {"source_identity": source_identity},
+            )
         else:
-            conn.execute("DELETE FROM mirrors WHERE session_id = ?", (session_id,))
-        conn.commit()
+            conn.execute(text("DELETE FROM mirrors WHERE session_id = :session_id"), {"session_id": session_id})
 
 
 def _apply_role_filter(
     clauses: list[str],
-    params: list[object],
+    params: dict[str, object],  # guard: loose-dict - SQL bind params are mutated by caller filters.
     caller_email: str | None,
     caller_role: str | None,
 ) -> None:
@@ -511,11 +624,11 @@ def _apply_role_filter(
     if caller_role is None or caller_role == "admin":
         return
     if caller_role == "member":
-        clauses.append("(human_email = ? OR visibility = 'shared')")
-        params.append(caller_email)
+        clauses.append("(human_email = :caller_email OR visibility = 'shared')")
+        params["caller_email"] = caller_email
     else:
-        clauses.append("human_email = ?")
-        params.append(caller_email)
+        clauses.append("human_email = :caller_email")
+        params["caller_email"] = caller_email
 
 
 def list_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
@@ -529,19 +642,18 @@ def list_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
 ) -> list[MirrorRecord]:
     """List mirror records with optional filtering and role-based access control."""
     clauses: list[str] = []
-    params: list[object] = []
+    params: dict[str, object] = {"limit": limit}  # guard: loose-dict - optional filters add bind keys.
 
     if identity:
-        clauses.append("(human_email = ? OR source_identity = ?)")
-        params.extend([identity, identity])
+        clauses.append("(human_email = :identity OR source_identity = :identity)")
+        params["identity"] = identity
     if project:
-        clauses.append("project = ?")
-        params.append(project)
+        clauses.append("project = :project")
+        params["project"] = project
 
     _apply_role_filter(clauses, params, caller_email, caller_role)
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    params.append(limit)
 
     sql = f"""
         SELECT
@@ -551,54 +663,18 @@ def list_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
         FROM mirrors
         {where}
         ORDER BY COALESCE(timestamp_start, updated_at) DESC
-        LIMIT ?
+        LIMIT :limit
     """
 
     try:
-        with _connect_ro(db) as conn:
-            rows = conn.execute(sql, params).fetchall()
-    except sqlite3.OperationalError as exc:
-        if "no such table" in str(exc).lower():
+        with _get_ro_engine(db).connect() as conn:
+            rows = conn.execute(text(sql), params).mappings().all()
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
             return []
         raise
 
-    results: list[MirrorRecord] = []
-    for row in rows:
-        try:
-            metadata = json.loads(row["metadata"] or "{}")
-        except json.JSONDecodeError:
-            metadata = {}
-        results.append(
-            MirrorRecord(
-                session_id=str(row["session_id"]),
-                source_identity=str(row["source_identity"]) if row["source_identity"] else None,
-                computer=str(row["computer"]),
-                agent=str(row["agent"]),
-                project=str(row["project"]),
-                title=str(row["title"] or ""),
-                timestamp_start=row["timestamp_start"],
-                timestamp_end=row["timestamp_end"],
-                conversation_text=str(row["conversation_text"] or ""),
-                message_count=int(row["message_count"] or 0),
-                metadata=metadata if isinstance(metadata, dict) else {},
-                created_at=str(row["created_at"]),
-                updated_at=str(row["updated_at"]),
-                summary=str(row["summary"]) if row["summary"] else None,
-                human_email=str(row["human_email"]) if row["human_email"] else None,
-                visibility=str(row["visibility"] or "private"),
-            )
-        )
-    return results
-
-
-def _connect_main_ro() -> sqlite3.Connection:
-    """Read-only connection to the main teleclaude.db for session lookups."""
-    path = tc_paths.MAIN_DB_PATH.resolve()
-    uri = f"file:{quote(str(path))}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout = 5000")
-    return conn
+    return [_mirror_record_from_row(row) for row in rows]
 
 
 def get_session_context(
@@ -611,28 +687,29 @@ def get_session_context(
         return None
 
     clauses: list[str] = []
-    params: list[object] = []
+    params: dict[str, object] = {  # guard: loose-dict - session lookup binds depend on provided selectors.
+        "order_session_id": session_id or ""
+    }
     if session_id:
-        clauses.append("session_id = ?")
-        params.append(session_id)
+        clauses.append("session_id = :session_id")
+        params["session_id"] = session_id
     if transcript_path:
-        clauses.append("native_log_file = ?")
-        params.append(transcript_path)
+        clauses.append("native_log_file = :transcript_path")
+        params["transcript_path"] = transcript_path
     sql = f"""
         SELECT session_id, computer_name, active_agent, project_path, native_log_file,
                human_email, visibility, last_input_origin, adapter_metadata
         FROM sessions
         WHERE {" OR ".join(clauses)}
-        ORDER BY CASE WHEN session_id = ? THEN 0 ELSE 1 END, created_at DESC
+        ORDER BY CASE WHEN session_id = :order_session_id THEN 0 ELSE 1 END, created_at DESC
         LIMIT 1
     """
-    params.append(session_id or "")
 
     try:
-        with _connect_main_ro() as conn:
-            row = conn.execute(sql, params).fetchone()
-    except sqlite3.OperationalError as exc:
-        if "no such table" in str(exc).lower():
+        with _get_main_ro_engine().connect() as conn:
+            row = conn.execute(text(sql), params).mappings().first()
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
             return None
         raise
 
@@ -642,76 +719,72 @@ def get_session_context(
     return SessionMirrorContext(
         session_id=str(row["session_id"]),
         computer=str(row["computer_name"] or ""),
-        agent=row["active_agent"],
+        agent=_optional_str(row.get("active_agent")),
         project=str(row["project_path"] or ""),
-        transcript_path=row["native_log_file"],
-        human_email=row["human_email"] if row["human_email"] else None,
-        visibility=row["visibility"] if row["visibility"] else None,
-        last_input_origin=row["last_input_origin"] if row["last_input_origin"] else None,
-        adapter_metadata_json=row["adapter_metadata"] if row["adapter_metadata"] else None,
+        transcript_path=_optional_str(row.get("native_log_file")),
+        human_email=_optional_str(row.get("human_email")),
+        visibility=_optional_str(row.get("visibility")),
+        last_input_origin=_optional_str(row.get("last_input_origin")),
+        adapter_metadata_json=_optional_str(row.get("adapter_metadata")),
     )
 
 
 def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, tuple[str | None, str]]:
     """Return transcript-path keyed mirror state for reconciliation."""
     try:
-        with _connect_ro(db) as conn:
-            rows = conn.execute("SELECT source_identity, metadata, updated_at FROM mirrors").fetchall()
-    except sqlite3.OperationalError as exc:
-        if "no such table" in str(exc).lower():
+        with _get_ro_engine(db).connect() as conn:
+            rows = conn.execute(text("SELECT source_identity, metadata, updated_at FROM mirrors")).mappings().all()
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
             return {}
         raise
 
     state: dict[str, tuple[str | None, str]] = {}
     for row in rows:
-        try:
-            metadata = json.loads(row["metadata"] or "{}")
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(metadata, dict):
-            continue
+        metadata = _parse_metadata(row.get("metadata"))
         transcript_path = metadata.get("transcript_path")
-        if isinstance(transcript_path, str) and transcript_path:
-            source_identity = str(row["source_identity"]) if row["source_identity"] else None
-            state[transcript_path] = (source_identity, str(row["updated_at"]))
+        updated_at = _optional_str(row.get("updated_at"))
+        if not isinstance(transcript_path, str) or not transcript_path or updated_at is None:
+            continue
+        state[transcript_path] = (_optional_str(row.get("source_identity")), updated_at)
     return state
 
 
 def get_mirror_tombstone(source_identity: str, *, db: str | Path | None = None) -> MirrorTombstoneRecord | None:
     """Fetch a tombstone by source identity."""
     try:
-        with _connect_ro(db) as conn:
-            row = conn.execute(
-                """
+        with _get_ro_engine(db).connect() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
                 SELECT source_identity, agent, transcript_path, file_size, file_mtime, created_at
                 FROM mirror_tombstones
-                WHERE source_identity = ?
-                """,
-                (source_identity,),
-            ).fetchone()
-    except sqlite3.OperationalError as exc:
-        if "no such table" in str(exc).lower():
+                WHERE source_identity = :source_identity
+                """
+                    ),
+                    {"source_identity": source_identity},
+                )
+                .mappings()
+                .first()
+            )
+    except SqlAlchemyOperationalError as exc:
+        if _is_missing_table_error(exc):
             return None
         raise
 
     if row is None:
         return None
 
-    return MirrorTombstoneRecord(
-        source_identity=str(row["source_identity"]),
-        agent=str(row["agent"]),
-        transcript_path=str(row["transcript_path"]),
-        file_size=int(row["file_size"]),
-        file_mtime=str(row["file_mtime"]),
-        created_at=str(row["created_at"]),
-    )
+    return _tombstone_from_row(row)
 
 
 def upsert_mirror_tombstone(record: MirrorTombstoneRecord, *, db: str | Path | None = None) -> None:
     """Insert or update an empty-transcript tombstone."""
-    with _connect_rw(db) as conn:
+    with _get_rw_engine(db).begin() as conn:
         conn.execute(
-            """
+            text(
+                """
             INSERT INTO mirror_tombstones (
                 source_identity,
                 agent,
@@ -720,28 +793,37 @@ def upsert_mirror_tombstone(record: MirrorTombstoneRecord, *, db: str | Path | N
                 file_mtime,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (
+                :source_identity,
+                :agent,
+                :transcript_path,
+                :file_size,
+                :file_mtime,
+                :created_at
+            )
             ON CONFLICT(source_identity) DO UPDATE SET
                 agent = excluded.agent,
                 transcript_path = excluded.transcript_path,
                 file_size = excluded.file_size,
                 file_mtime = excluded.file_mtime,
                 created_at = excluded.created_at
-            """,
-            (
-                record.source_identity,
-                record.agent,
-                record.transcript_path,
-                record.file_size,
-                record.file_mtime,
-                record.created_at,
+            """
             ),
+            {
+                "agent": record.agent,
+                "created_at": record.created_at,
+                "file_mtime": record.file_mtime,
+                "file_size": record.file_size,
+                "source_identity": record.source_identity,
+                "transcript_path": record.transcript_path,
+            },
         )
-        conn.commit()
 
 
 def delete_mirror_tombstone(source_identity: str, *, db: str | Path | None = None) -> None:
     """Delete a tombstone if it exists."""
-    with _connect_rw(db) as conn:
-        conn.execute("DELETE FROM mirror_tombstones WHERE source_identity = ?", (source_identity,))
-        conn.commit()
+    with _get_rw_engine(db).begin() as conn:
+        conn.execute(
+            text("DELETE FROM mirror_tombstones WHERE source_identity = :source_identity"),
+            {"source_identity": source_identity},
+        )

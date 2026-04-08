@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import sys
 import uuid
 from pathlib import Path
@@ -12,14 +11,13 @@ from typing import Any, cast
 
 import sqlmodel
 from instrukt_ai_logging import get_logger
-from sqlalchemy import create_engine
-from sqlalchemy import event as sa_event
+from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.pool import NullPool
 from sqlmodel import Session as SqlSession
 
 from teleclaude import paths as tc_paths
 from teleclaude.core import db_models
+from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.memory.context import generate_context_sync
 from teleclaude.session_identity import get_session_id
 
@@ -46,6 +44,7 @@ _SESSION_EXPORTS = [
     "_resolve_or_refresh_session_id",
     "_session_map_key",
     "_write_session_map_atomic",
+    "get_outbox_session",
 ]
 
 __all__ = [
@@ -64,41 +63,37 @@ __all__ = [
     "_resolve_or_refresh_session_id",
     "_session_map_key",
     "_write_session_map_atomic",
+    "get_outbox_session",
 ]
 
 
-_sync_engine: object | None = None  # pylint: disable=invalid-name
+_sync_engine: Engine | None = None  # pylint: disable=invalid-name
+_outbox_engines: dict[str, Engine] = {}
 
 
-def _create_sync_engine() -> object:
-    """Return a shared sync SQLAlchemy engine with SQLite PRAGMAs set at connect time.
-
-    Reuses a module-level singleton to avoid leaking connection pools — each
-    ``create_engine()`` call allocates a pool that holds open file descriptors
-    on the database file.  Without reuse, high-frequency callers (hook
-    receiver) exhaust system FD limits within minutes.
-    """
+def _create_sync_engine() -> Engine:
+    """Return a shared main-database engine for receiver read paths."""
     global _sync_engine  # pylint: disable=global-statement
     if _sync_engine is not None:
         return _sync_engine
 
-    engine = create_engine(
-        f"sqlite:///{tc_paths.MAIN_DB_PATH}",
-        poolclass=NullPool,
-    )
+    _sync_engine = create_sync_db_engine(tc_paths.MAIN_DB_PATH)
+    return _sync_engine
 
-    @sa_event.listens_for(engine, "connect")
-    def _set_sqlite_pragmas(  # pyright: ignore[reportUnusedFunction]
-        dbapi_connection: sqlite3.Connection,
-        _connection_record: object,
-    ) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode = WAL")
-        cursor.execute("PRAGMA busy_timeout = 5000")
-        cursor.close()
 
-    _sync_engine = engine
+def _get_outbox_engine(outbox_db_path: str | Path) -> Engine:
+    """Return a cached sync engine for the dedicated outbox database."""
+    normalized_path = str(Path(outbox_db_path).expanduser())
+    engine = _outbox_engines.get(normalized_path)
+    if engine is None:
+        engine = create_sync_db_engine(normalized_path)
+        _outbox_engines[normalized_path] = engine
     return engine
+
+
+def get_outbox_session(outbox_db_path: str) -> SqlSession:
+    """Open a sync SQLModel session bound to the dedicated outbox database."""
+    return SqlSession(_get_outbox_engine(outbox_db_path))
 
 
 def _get_sqlmodel_module() -> Any:
@@ -257,12 +252,7 @@ def _resolve_or_refresh_session_id(
     *,
     agent: str,
 ) -> str | None:
-    """Validate cached session id against current DB state.
-
-    Checks only that the session exists and is not closed.  If the DB has a
-    stale native_session_id (e.g. after a Claude Code restart), update it to
-    the incoming value so future DB lookups also resolve correctly.
-    """
+    """Validate cached session id against current DB state without mutating it."""
     if not candidate_session_id or not raw_native_session_id:
         return candidate_session_id
 
@@ -289,13 +279,11 @@ def _resolve_or_refresh_session_id(
                 return None
 
             if row.native_session_id and row.native_session_id != raw_native_session_id:
-                row.native_session_id = raw_native_session_id
-                session.add(row)
-                session.commit()
                 logger.info(
-                    "Updated stale native_session_id in DB",
+                    "Detected stale native_session_id mapping",
                     agent=agent,
                     session_id=candidate_session_id,
+                    previous_native_session_id=(row.native_session_id or ""),
                     new_native_session_id=raw_native_session_id,
                 )
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import create_engine, text  # guard: raw-sql - Sync memory access
+from sqlalchemy import text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
 from teleclaude.core import db_models
 from teleclaude.core.db import db
+from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.context.compiler import compile_timeline, filter_by_recency
 from teleclaude.memory.context.renderer import render_context
@@ -34,12 +35,9 @@ async def generate_context(project: str, identity_key: str | None = None) -> str
 
 def generate_context_sync(project: str, db_path: str, identity_key: str | None = None) -> str:
     """Generate memory context markdown (sync, for hook receiver)."""
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_engine(db_path)
     try:
         with SqlSession(engine) as session:
-            session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]
-            session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]
-
             # Recent observations (identity-scoped)
             obs_sql = "SELECT * FROM memory_observations WHERE project = :project"
             obs_params: dict[str, str | int] = {"project": project}

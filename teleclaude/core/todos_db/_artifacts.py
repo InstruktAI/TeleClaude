@@ -3,108 +3,138 @@
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
+
+from teleclaude.core.todos_db._models import (
+    ROADMAP_TABLE,
+    TODO_ARTIFACT_TABLE,
+    TODO_ARTIFACT_VERSION_TABLE,
+    TodoArtifact,
+    TodoArtifactVersion,
+    TodoRoadmap,
+)
 from teleclaude.core.todos_db._rows import ArtifactVersionRow
-
-if TYPE_CHECKING:
-    import aiosqlite
 
 
 def _sha256(content: str) -> str:
+    """Return a stable content digest."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 class TodosDbArtifactsMixin:
     """Read, write, and version todo artifacts."""
 
-    conn: aiosqlite.Connection | None
     _on_mutation: Callable[[], None]
 
-    async def _resolve_artifact_id(self, slug: str) -> str:
-        """Resolve slug to roadmap id for artifact operations. Falls back to slug."""
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
-            (slug,),
-        ) as cursor:
-            row = await cursor.fetchone()
-        return row[0] if row else slug
+    async def _resolve_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
+        """Resolve slug to roadmap id for artifact reads. Falls back to the slug itself."""
+        result = await session.exec(
+            select(TodoRoadmap.id)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status != "delivered")
+            .limit(1)
+        )
+        row_id = result.one_or_none()
+        return str(row_id) if row_id is not None else slug
+
+    async def _ensure_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
+        """Resolve slug to roadmap id for artifact writes. Raises if slug has no active roadmap entry."""
+        result = await session.exec(
+            select(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status != "delivered")
+            .limit(1)
+        )
+        entry = result.first()
+        if entry is not None:
+            return entry.id
+
+        msg = f"Cannot write artifact: no active roadmap entry for slug {slug!r}"
+        raise ValueError(msg)
 
     async def read_artifact(self, slug: str, name: str) -> str:
         """Read artifact content. Returns empty string if not found."""
-        assert self.conn is not None
-        row_id = await self._resolve_artifact_id(slug)
-        async with self.conn.execute(
-            "SELECT content FROM todo_artifacts WHERE id = ? AND name = ?",  # guard: raw-sql
-            (row_id, name),
-        ) as cursor:
-            row = await cursor.fetchone()
-        if row is None:
-            return ""
-        result: str = row[0]
-        return result
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_artifact_id(slug, session)
+            artifact = await session.get(TodoArtifact, (row_id, name))
+            return artifact.content if artifact is not None else ""
 
-    def _resolve_artifact_id_sync(self, conn: sqlite3.Connection, slug: str) -> str:
+    def _resolve_artifact_id_sync(self, slug: str) -> str:
         """Resolve slug to roadmap id for synchronous artifact operations."""
-        row = conn.execute(
-            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
-            (slug,),
-        ).fetchone()
-        return row[0] if row else slug
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            row_id = session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "delivered")
+                .limit(1)
+            ).one_or_none()
+            return str(row_id) if row_id is not None else slug
 
     def read_artifact_sync(self, slug: str, name: str) -> str:
         """Read artifact content synchronously. Returns empty string if not found."""
-        conn = self._sync_conn()  # type: ignore[attr-defined]
-        try:
-            row_id = self._resolve_artifact_id_sync(conn, slug)
-            row = conn.execute(
-                "SELECT content FROM todo_artifacts WHERE id = ? AND name = ?",  # guard: raw-sql
-                (row_id, name),
-            ).fetchone()
-            if row is None:
-                return ""
-            result: str = row[0]
-            return result
-        finally:
-            conn.close()
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            row_id = self._resolve_artifact_id_sync(slug)
+            artifact = session.get(TodoArtifact, (row_id, name))
+            return artifact.content if artifact is not None else ""
 
-    async def write_artifact(
+    async def write_artifact(  # pylint: disable=too-many-arguments
         self,
         slug: str,
         name: str,
         content: str,
         *,
         updated_by: str | None = None,
+        session: SqlAsyncSession | None = None,
     ) -> None:
         """Upsert artifact content and append to version history."""
-        assert self.conn is not None
-        now = datetime.now(UTC).isoformat()
-        digest = _sha256(content)
-        row_id = await self._resolve_artifact_id(slug)
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            now = datetime.now(UTC).isoformat()
+            digest = _sha256(content)
+            row_id = await self._ensure_artifact_id(slug, db_session)
 
-        # Version history entry (append before upsert)
-        await self.conn.execute(
-            "INSERT INTO todo_artifact_versions "  # guard: raw-sql
-            "(id, slug, name, content, digest, updated_by, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (row_id, slug, name, content, digest, updated_by, now),
-        )
+            db_session.add(
+                TodoArtifactVersion(
+                    id=row_id,
+                    slug=slug,
+                    name=name,
+                    content=content,
+                    digest=digest,
+                    updated_by=updated_by,
+                    created_at=now,
+                )
+            )
 
-        # Upsert current
-        await self.conn.execute(
-            "INSERT INTO todo_artifacts (id, slug, name, content, digest, updated_by, updated_at) "  # guard: raw-sql
-            "VALUES (?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(id, name) DO UPDATE SET "
-            "content = excluded.content, digest = excluded.digest, "
-            "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
-            (row_id, slug, name, content, digest, updated_by, now),
-        )
-        await self.conn.commit()
-        self._on_mutation()
+            artifact = await db_session.get(TodoArtifact, (row_id, name))
+            if artifact is None:
+                artifact = TodoArtifact(
+                    id=row_id,
+                    slug=slug,
+                    name=name,
+                    content=content,
+                    digest=digest,
+                    updated_by=updated_by,
+                    updated_at=now,
+                )
+            else:
+                artifact.slug = slug
+                artifact.content = content
+                artifact.digest = digest
+                artifact.updated_by = updated_by
+                artifact.updated_at = now
+            db_session.add(artifact)
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+        finally:
+            if owns_session:
+                await db_session.close()
 
     def write_artifact_sync(
         self,
@@ -115,98 +145,118 @@ class TodosDbArtifactsMixin:
         updated_by: str | None = None,
     ) -> None:
         """Upsert artifact content synchronously and append to version history."""
-        now = datetime.now(UTC).isoformat()
-        digest = _sha256(content)
-        conn = self._sync_conn()  # type: ignore[attr-defined]
-        try:
-            row_id = self._resolve_artifact_id_sync(conn, slug)
-            conn.execute(
-                "INSERT INTO todo_artifact_versions "  # guard: raw-sql
-                "(id, slug, name, content, digest, updated_by, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (row_id, slug, name, content, digest, updated_by, now),
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            result = session.exec(
+                select(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "delivered")
+                .limit(1)
             )
-            conn.execute(
-                "INSERT INTO todo_artifacts "
-                "(id, slug, name, content, digest, updated_by, updated_at) "  # guard: raw-sql
-                "VALUES (?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(id, name) DO UPDATE SET "
-                "content = excluded.content, digest = excluded.digest, "
-                "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
-                (row_id, slug, name, content, digest, updated_by, now),
+            entry = result.first()
+            if entry is None:
+                msg = f"Cannot write artifact: no active roadmap entry for slug {slug!r}"
+                raise ValueError(msg)
+
+            now = datetime.now(UTC).isoformat()
+            digest = _sha256(content)
+            session.add(
+                TodoArtifactVersion(
+                    id=entry.id,
+                    slug=slug,
+                    name=name,
+                    content=content,
+                    digest=digest,
+                    updated_by=updated_by,
+                    created_at=now,
+                )
             )
-            conn.commit()
-        finally:
-            conn.close()
+
+            artifact = session.get(TodoArtifact, (entry.id, name))
+            if artifact is None:
+                artifact = TodoArtifact(
+                    id=entry.id,
+                    slug=slug,
+                    name=name,
+                    content=content,
+                    digest=digest,
+                    updated_by=updated_by,
+                    updated_at=now,
+                )
+            else:
+                artifact.slug = slug
+                artifact.content = content
+                artifact.digest = digest
+                artifact.updated_by = updated_by
+                artifact.updated_at = now
+            session.add(artifact)
+            session.commit()
         self._on_mutation()
 
     async def artifact_digest(self, slug: str, name: str) -> str:
         """Return SHA-256 digest of current artifact content. Empty string if not found."""
-        assert self.conn is not None
-        row_id = await self._resolve_artifact_id(slug)
-        async with self.conn.execute(
-            "SELECT digest FROM todo_artifacts WHERE id = ? AND name = ?",  # guard: raw-sql
-            (row_id, name),
-        ) as cursor:
-            row = await cursor.fetchone()
-        if row is None:
-            return ""
-        digest: str = row[0]
-        return digest
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_artifact_id(slug, session)
+            artifact = await session.get(TodoArtifact, (row_id, name))
+            return artifact.digest if artifact is not None else ""
 
     async def artifact_exists(self, slug: str, name: str) -> bool:
         """Check if an artifact exists for a slug."""
-        assert self.conn is not None
-        row_id = await self._resolve_artifact_id(slug)
-        async with self.conn.execute(
-            "SELECT 1 FROM todo_artifacts WHERE id = ? AND name = ?",  # guard: raw-sql
-            (row_id, name),
-        ) as cursor:
-            return await cursor.fetchone() is not None
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_artifact_id(slug, session)
+            artifact = await session.get(TodoArtifact, (row_id, name))
+            return artifact is not None
 
     async def list_artifacts(self, slug: str) -> list[str]:
         """Return artifact names for a slug."""
-        assert self.conn is not None
-        row_id = await self._resolve_artifact_id(slug)
-        async with self.conn.execute(
-            "SELECT name FROM todo_artifacts WHERE id = ? ORDER BY name",  # guard: raw-sql
-            (row_id,),
-        ) as cursor:
-            rows = await cursor.fetchall()
-        return [row[0] for row in rows]
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_artifact_id(slug, session)
+            result = await session.exec(
+                select(TodoArtifact.name).where(TODO_ARTIFACT_TABLE.c.id == row_id).order_by(TODO_ARTIFACT_TABLE.c.name)
+            )
+            return [str(name) for name in result.all()]
 
     async def artifact_versions(self, slug: str, name: str, *, limit: int = 50) -> list[ArtifactVersionRow]:
         """Return version history for an artifact, newest first."""
-        assert self.conn is not None
-        row_id = await self._resolve_artifact_id(slug)
-        async with self.conn.execute(
-            "SELECT content, digest, updated_by, created_at "  # guard: raw-sql
-            "FROM todo_artifact_versions WHERE id = ? AND name = ? "
-            "ORDER BY created_at DESC LIMIT ?",
-            (row_id, name, limit),
-        ) as cursor:
-            rows = await cursor.fetchall()
-        return [
-            ArtifactVersionRow(
-                content=row[0],
-                digest=row[1],
-                updated_by=row[2] or "",
-                created_at=row[3],
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_artifact_id(slug, session)
+            result = await session.exec(
+                select(TodoArtifactVersion)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.id == row_id)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.name == name)
+                .order_by(TODO_ARTIFACT_VERSION_TABLE.c.created_at.desc())
+                .limit(limit)
             )
-            for row in rows
-        ]
+            return [
+                ArtifactVersionRow(
+                    content=version.content,
+                    digest=version.digest,
+                    updated_by=version.updated_by or "",
+                    created_at=version.created_at,
+                )
+                for version in result.all()
+            ]
 
-    async def delete_artifacts(self, slug: str) -> None:
+    async def list_artifact_versions(self, slug: str, name: str, *, limit: int = 50) -> list[ArtifactVersionRow]:
+        """Compatibility wrapper used by the SQLAlchemy migration spec."""
+        return await self.artifact_versions(slug, name, limit=limit)
+
+    async def delete_artifacts(self, slug: str, *, session: SqlAsyncSession | None = None) -> None:
         """Delete all artifacts and version history for a slug."""
-        assert self.conn is not None
-        row_id = await self._resolve_artifact_id(slug)
-        await self.conn.execute(
-            "DELETE FROM todo_artifacts WHERE id = ?",  # guard: raw-sql
-            (row_id,),
-        )
-        await self.conn.execute(
-            "DELETE FROM todo_artifact_versions WHERE id = ?",  # guard: raw-sql
-            (row_id,),
-        )
-        await self.conn.commit()
-        self._on_mutation()
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            row_id = await self._resolve_artifact_id(slug, db_session)
+            artifacts = await db_session.exec(select(TodoArtifact).where(TodoArtifact.id == row_id))
+            for artifact in artifacts.all():
+                await db_session.delete(artifact)
+
+            versions = await db_session.exec(select(TodoArtifactVersion).where(TodoArtifactVersion.id == row_id))
+            for version in versions.all():
+                await db_session.delete(version)
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+        finally:
+            if owns_session:
+                await db_session.close()

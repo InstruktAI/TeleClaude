@@ -5,20 +5,85 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+
+from sqlalchemy import delete, func, update
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.todos_db._base import _generate_id
+from teleclaude.core.todos_db._models import (
+    ROADMAP_DEPS_TABLE,
+    ROADMAP_TABLE,
+    RoadmapDep,
+    TodoRoadmap,
+    TodoStateModel,
+)
 from teleclaude.core.todos_db._rows import RoadmapRow
 
-if TYPE_CHECKING:
-    import aiosqlite
+
+def _roadmap_row(model: TodoRoadmap) -> RoadmapRow:
+    """Convert a roadmap ORM model to the public typed row shape."""
+    children = json.loads(model.children) if model.children else None
+    return RoadmapRow(
+        id=model.id,
+        slug=model.slug,
+        position=model.position,
+        group_slug=model.group_slug,
+        description=model.description,
+        status=model.status,
+        delivered_at=model.delivered_at,
+        delivered_commit=model.delivered_commit,
+        children=children if isinstance(children, list) else None,
+    )
 
 
 class TodosDbRoadmapMixin:
     """Roadmap CRUD, ordering, deps, delivery, icebox (replaces roadmap.yaml)."""
 
-    conn: aiosqlite.Connection | None
     _on_mutation: Callable[[], None]
+
+    async def _next_position(self, session: SqlAsyncSession) -> int:
+        """Return the next available position value."""
+        result = await session.exec(select(func.coalesce(func.max(ROADMAP_TABLE.c.position), -1) + 1))
+        return int(result.one())
+
+    async def _active_entry(self, session: SqlAsyncSession, slug: str) -> TodoRoadmap | None:
+        """Return the active or icebox roadmap entry for a slug."""
+        result = await session.exec(
+            select(TodoRoadmap)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status != "delivered")
+            .limit(1)
+        )
+        return result.first()
+
+    async def _list_roadmap_models(
+        self,
+        *,
+        include_icebox: bool = False,
+        include_delivered: bool = False,
+        delivered_only: bool = False,
+        session: SqlAsyncSession | None = None,
+    ) -> list[TodoRoadmap]:
+        """Fetch roadmap ORM rows for the requested visibility filters."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            stmt = select(TodoRoadmap)
+            if delivered_only:
+                stmt = stmt.where(ROADMAP_TABLE.c.status == "delivered").order_by(ROADMAP_TABLE.c.delivered_at.desc())
+            else:
+                allowed = ["active"]
+                if include_icebox:
+                    allowed.append("icebox")
+                if include_delivered:
+                    allowed.append("delivered")
+                stmt = stmt.where(ROADMAP_TABLE.c.status.in_(allowed)).order_by(ROADMAP_TABLE.c.position)
+            result = await db_session.exec(stmt)
+            return list(result.all())
+        finally:
+            if owns_session:
+                await db_session.close()
 
     async def list_roadmap(
         self,
@@ -28,50 +93,22 @@ class TodosDbRoadmapMixin:
         delivered_only: bool = False,
     ) -> list[RoadmapRow]:
         """List roadmap entries ordered by position (active) or delivery date (delivered)."""
-        assert self.conn is not None
-        if delivered_only:
-            conditions = ["status = 'delivered'"]
-        else:
-            conditions = ["status = 'active'"]
-            if include_icebox:
-                conditions.append("status = 'icebox'")
-            if include_delivered:
-                conditions.append("status = 'delivered'")
-        where = " OR ".join(conditions)
-        order = "delivered_at DESC" if delivered_only else "position"
-        async with self.conn.execute(
-            f"SELECT id, slug, position, group_slug, description, status, "  # guard: raw-sql
-            f"delivered_at, delivered_commit, children "
-            f"FROM roadmap WHERE {where} ORDER BY {order}",
-        ) as cursor:
-            rows = await cursor.fetchall()
-        return [
-            RoadmapRow(
-                id=row[0],
-                slug=row[1],
-                position=row[2],
-                group_slug=row[3],
-                description=row[4],
-                status=row[5],
-                delivered_at=row[6],
-                delivered_commit=row[7],
-                children=json.loads(row[8]) if row[8] else None,
-            )
-            for row in rows
-        ]
+        models = await self._list_roadmap_models(
+            include_icebox=include_icebox,
+            include_delivered=include_delivered,
+            delivered_only=delivered_only,
+        )
+        return [_roadmap_row(model) for model in models]
 
-    async def _next_position(self) -> int:
-        """Return the next available position value."""
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT COALESCE(MAX(position), -1) + 1 FROM roadmap",  # guard: raw-sql
-        ) as cursor:
-            row = await cursor.fetchone()
-        assert row is not None
-        position: int = row[0]
-        return position
+    async def list_entries(self) -> list[TodoRoadmap]:
+        """Return active roadmap entries as ORM models."""
+        return await self._list_roadmap_models()
 
-    async def add_to_roadmap(  # pylint: disable=too-many-arguments
+    async def add_entry(self, *, slug: str, position: int, description: str | None = None) -> bool:
+        """Compatibility wrapper used by the SQLAlchemy migration spec."""
+        return await self.add_to_roadmap(slug, description=description, position=position)
+
+    async def add_to_roadmap(  # pylint: disable=too-many-arguments,too-many-locals
         self,
         slug: str,
         *,
@@ -79,217 +116,236 @@ class TodosDbRoadmapMixin:
         after: list[str] | None = None,
         description: str | None = None,
         before: str | None = None,
+        position: int | None = None,
+        session: SqlAsyncSession | None = None,
     ) -> bool:
         """Add a slug to the roadmap. Returns False if an active/icebox entry already exists."""
-        assert self.conn is not None
-        if await self.slug_in_roadmap(slug):
-            return False
-
-        now = datetime.now(UTC).isoformat()
-        new_id = _generate_id()
-
-        if before:
-            # Insert before target: get target position, shift others down
-            async with self.conn.execute(
-                "SELECT position FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-                (before,),
-            ) as cursor:
-                target_row = await cursor.fetchone()
-            if target_row:
-                position = target_row[0]
-                await self.conn.execute(
-                    "UPDATE roadmap SET position = position + 1 WHERE position >= ?",  # guard: raw-sql
-                    (position,),
-                )
-            else:
-                position = await self._next_position()
-        else:
-            position = await self._next_position()
-
-        await self.conn.execute(
-            "INSERT INTO roadmap "  # guard: raw-sql
-            "(id, slug, position, group_slug, description, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, 'active', ?, ?)",
-            (new_id, slug, position, group_slug, description, now, now),
-        )
-
-        if after:
-            for dep in after:
-                await self.conn.execute(
-                    "INSERT OR IGNORE INTO roadmap_deps (slug, depends_on) VALUES (?, ?)",  # guard: raw-sql
-                    (slug, dep),
-                )
-
-        await self.conn.commit()
-        self._on_mutation()
-        return True
-
-    async def remove_from_roadmap(self, slug: str) -> bool:
-        """Remove an active/icebox slug from the roadmap. Returns False if not found."""
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT 1 FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-            (slug,),
-        ) as cursor:
-            if await cursor.fetchone() is None:
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            if await self._active_entry(db_session, slug) is not None:
                 return False
 
-        await self.conn.execute(
-            "DELETE FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-            (slug,),
-        )
-        await self.conn.execute(
-            "DELETE FROM roadmap_deps WHERE slug = ?",  # guard: raw-sql
-            (slug,),
-        )
-        await self.conn.commit()
-        self._on_mutation()
-        return True
+            now = datetime.now(UTC).isoformat()
+            new_id = _generate_id()
+            resolved_position = await self._next_position(db_session)
+            if before:
+                target = await self._active_entry(db_session, before)
+                if target is not None:
+                    resolved_position = target.position
+                    await db_session.exec(
+                        update(TodoRoadmap)
+                        .where(ROADMAP_TABLE.c.position >= resolved_position)
+                        .values(position=ROADMAP_TABLE.c.position + 1)
+                    )
+            elif position is not None:
+                requested_position = max(position - 1, 0)
+                next_position = await self._next_position(db_session)
+                resolved_position = min(requested_position, next_position)
+                if resolved_position < next_position:
+                    await db_session.exec(
+                        update(TodoRoadmap)
+                        .where(ROADMAP_TABLE.c.position >= resolved_position)
+                        .values(position=ROADMAP_TABLE.c.position + 1)
+                    )
+
+            db_session.add(
+                TodoRoadmap(
+                    id=new_id,
+                    slug=slug,
+                    position=resolved_position,
+                    group_slug=group_slug,
+                    description=description,
+                    status="active",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+            for dep in after or []:
+                db_session.add(RoadmapDep(slug=slug, depends_on=dep))
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+            return True
+        finally:
+            if owns_session:
+                await db_session.close()
+
+    async def remove_from_roadmap(self, slug: str, *, session: SqlAsyncSession | None = None) -> bool:
+        """Remove an active/icebox slug from the roadmap. Returns False if not found."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            entry = await self._active_entry(db_session, slug)
+            if entry is None:
+                return False
+
+            await db_session.delete(entry)
+            await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.slug == slug))
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+            return True
+        finally:
+            if owns_session:
+                await db_session.close()
 
     async def slug_in_roadmap(self, slug: str) -> bool:
         """Check if an active/icebox slug exists in the roadmap."""
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT 1 FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-            (slug,),
-        ) as cursor:
-            return await cursor.fetchone() is not None
+        async with self._session() as session:  # type: ignore[attr-defined]
+            return await self._active_entry(session, slug) is not None
 
     async def resolve_id(self, slug: str) -> str | None:
         """Resolve an active/icebox slug to its roadmap id. Returns None if not found."""
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-            (slug,),
-        ) as cursor:
-            row = await cursor.fetchone()
-        result: str | None = row[0] if row else None
-        return result
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await self._active_entry(session, slug)
+            return entry.id if entry is not None else None
 
     def resolve_id_sync(self, slug: str) -> str | None:
         """Sync version of resolve_id."""
-        conn = self._sync_conn()  # type: ignore[attr-defined]
-        try:
-            row = conn.execute(
-                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-                (slug,),
-            ).fetchone()
-            result: str | None = row[0] if row else None
-            return result
-        finally:
-            conn.close()
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            entry_id = session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "delivered")
+                .limit(1)
+            ).first()
+            return str(entry_id) if entry_id is not None else None
 
-    async def deliver(
+    async def deliver(  # pylint: disable=too-many-arguments
         self,
         slug: str,
         *,
         commit: str | None = None,
         children: list[str] | None = None,
         delivered_at: str | None = None,
+        session: SqlAsyncSession | None = None,
     ) -> bool:
         """Mark a slug as delivered and advance todo_state.current to 'delivered'."""
-        assert self.conn is not None
-        now = delivered_at or datetime.now(UTC).isoformat()
-        children_json = json.dumps(children) if children else None
-        result = await self.conn.execute(
-            "UPDATE roadmap SET status = 'delivered', delivered_at = ?, "  # guard: raw-sql
-            "delivered_commit = ?, children = ?, updated_at = ? "
-            "WHERE slug = ? AND status != 'delivered'",
-            (now, commit, children_json, now, slug),
-        )
-        if result.rowcount > 0:
-            async with self.conn.execute(
-                "SELECT id, state FROM todo_state WHERE slug = ?",  # guard: raw-sql
-                (slug,),
-            ) as cursor:
-                row = await cursor.fetchone()
-            if row:
-                state = json.loads(row[1])
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            entry = await self._active_entry(db_session, slug)
+            if entry is None:
+                return False
+
+            now = delivered_at or datetime.now(UTC).isoformat()
+            entry.status = "delivered"
+            entry.delivered_at = now
+            entry.delivered_commit = commit
+            entry.children = json.dumps(children) if children else None
+            entry.updated_at = now
+            db_session.add(entry)
+
+            state_model = await db_session.get(TodoStateModel, entry.id)
+            if state_model is not None:
+                state = json.loads(state_model.state)
                 state["current"] = "delivered"
                 state["phase"] = "delivered"
                 state["integration_phase"] = "candidate_delivered"
-                await self.conn.execute(
-                    "UPDATE todo_state SET state = ?, updated_at = ? WHERE id = ?",  # guard: raw-sql
-                    (json.dumps(state), now, row[0]),
-                )
-        await self.conn.commit()
-        if result.rowcount > 0:
-            self._on_mutation()
-        return result.rowcount > 0
+                state_model.state = json.dumps(state)
+                state_model.updated_at = now
+                db_session.add(state_model)
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+            return True
+        finally:
+            if owns_session:
+                await db_session.close()
 
     async def delivered_slugs(self) -> set[str]:
         """Return set of delivered slugs."""
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT slug FROM roadmap WHERE status = 'delivered'",  # guard: raw-sql
-        ) as cursor:
-            rows = await cursor.fetchall()
-        return {row[0] for row in rows}
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
+            return {str(slug) for slug in result.all()}
 
     async def freeze(self, slug: str) -> bool:
         """Move a slug to icebox. Returns False if not found."""
-        assert self.conn is not None
-        now = datetime.now(UTC).isoformat()
-        result = await self.conn.execute(
-            "UPDATE roadmap SET status = 'icebox', updated_at = ? "  # guard: raw-sql
-            "WHERE slug = ? AND status != 'delivered'",
-            (now, slug),
-        )
-        await self.conn.commit()
-        if result.rowcount > 0:
-            self._on_mutation()
-        return result.rowcount > 0
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await self._active_entry(session, slug)
+            if entry is None:
+                return False
+            entry.status = "icebox"
+            entry.updated_at = datetime.now(UTC).isoformat()
+            session.add(entry)
+            await session.commit()
+        self._on_mutation()
+        return True
 
     async def unfreeze(self, slug: str) -> bool:
         """Restore a slug from icebox to active. Returns False if not found."""
-        assert self.conn is not None
-        now = datetime.now(UTC).isoformat()
-        result = await self.conn.execute(
-            "UPDATE roadmap SET status = 'active', updated_at = ? "  # guard: raw-sql
-            "WHERE slug = ? AND status = 'icebox'",
-            (now, slug),
-        )
-        await self.conn.commit()
-        if result.rowcount > 0:
-            self._on_mutation()
-        return result.rowcount > 0
-
-    async def set_deps(self, slug: str, *, after: list[str]) -> None:
-        """Replace dependencies for a slug."""
-        assert self.conn is not None
-        await self.conn.execute(
-            "DELETE FROM roadmap_deps WHERE slug = ?",  # guard: raw-sql
-            (slug,),
-        )
-        for dep in after:
-            await self.conn.execute(
-                "INSERT OR IGNORE INTO roadmap_deps (slug, depends_on) VALUES (?, ?)",  # guard: raw-sql
-                (slug, dep),
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(
+                select(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status == "icebox")
+                .limit(1)
             )
-        await self.conn.commit()
+            entry = result.first()
+            if entry is None:
+                return False
+            entry.status = "active"
+            entry.updated_at = datetime.now(UTC).isoformat()
+            session.add(entry)
+            await session.commit()
         self._on_mutation()
+        return True
+
+    async def set_deps(
+        self,
+        slug: str,
+        *,
+        after: list[str],
+        session: SqlAsyncSession | None = None,
+    ) -> None:
+        """Replace dependencies for a slug."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.slug == slug))
+            for dep in after:
+                db_session.add(RoadmapDep(slug=slug, depends_on=dep))
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+        finally:
+            if owns_session:
+                await db_session.close()
+
+    async def get_deps(self, slug: str) -> list[str]:
+        """Return dependency slugs for one roadmap entry."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(
+                select(RoadmapDep.depends_on).where(RoadmapDep.slug == slug).order_by(RoadmapDep.depends_on)
+            )
+            return [str(dep) for dep in result.all()]
 
     async def load_deps(self) -> dict[str, list[str]]:
         """Return dependency graph: {slug: [depends_on, ...]}."""
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT slug, depends_on FROM roadmap_deps ORDER BY slug, depends_on",  # guard: raw-sql
-        ) as cursor:
-            rows = await cursor.fetchall()
-        deps: dict[str, list[str]] = {}
-        for row in rows:
-            deps.setdefault(row[0], []).append(row[1])
-        return deps
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(select(RoadmapDep).order_by(RoadmapDep.slug, RoadmapDep.depends_on))
+            deps: dict[str, list[str]] = {}
+            for dep in result.all():
+                deps.setdefault(dep.slug, []).append(dep.depends_on)
+            return deps
 
-    async def clean_dep_references(self, slug: str) -> None:
+    async def clean_dep_references(self, slug: str, *, session: SqlAsyncSession | None = None) -> None:
         """Remove a slug from all dependency lists."""
-        assert self.conn is not None
-        await self.conn.execute(
-            "DELETE FROM roadmap_deps WHERE depends_on = ?",  # guard: raw-sql
-            (slug,),
-        )
-        await self.conn.commit()
-        self._on_mutation()
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.depends_on == slug))
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+        finally:
+            if owns_session:
+                await db_session.close()
 
     async def move_in_roadmap(
         self,
@@ -299,118 +355,90 @@ class TodosDbRoadmapMixin:
         after: str | None = None,
     ) -> bool:
         """Reorder a slug in the roadmap. Returns False if slug or target not found."""
-        assert self.conn is not None
-
-        # Get current position (active/icebox only)
-        async with self.conn.execute(
-            "SELECT position FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-            (slug,),
-        ) as cursor:
-            source_row = await cursor.fetchone()
-        if source_row is None:
-            return False
-
         target_slug = before or after
-        async with self.conn.execute(
-            "SELECT position FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-            (target_slug,),
-        ) as cursor:
-            target_row = await cursor.fetchone()
-        if target_row is None:
+        if target_slug is None:
             return False
 
-        # Remove source from current position
-        old_pos = source_row[0]
-        await self.conn.execute(
-            "UPDATE roadmap SET position = position - 1 WHERE position > ?",  # guard: raw-sql
-            (old_pos,),
-        )
+        async with self._session() as session:  # type: ignore[attr-defined]
+            source = await self._active_entry(session, slug)
+            target = await self._active_entry(session, target_slug)
+            if source is None or target is None:
+                return False
 
-        # Re-read target position after shift
-        async with self.conn.execute(
-            "SELECT position FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
-            (target_slug,),
-        ) as cursor:
-            target_row = await cursor.fetchone()
-        assert target_row is not None
+            old_position = source.position
+            await session.exec(
+                update(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.position > old_position)
+                .values(position=ROADMAP_TABLE.c.position - 1)
+            )
 
-        if before:
-            new_pos = target_row[0]
-        else:
-            new_pos = target_row[0] + 1
+            refreshed_target = await self._active_entry(session, target_slug)
+            if refreshed_target is None:
+                return False
+            new_position = refreshed_target.position if before else refreshed_target.position + 1
 
-        # Make room at new position
-        await self.conn.execute(
-            "UPDATE roadmap SET position = position + 1 "  # guard: raw-sql
-            "WHERE position >= ? AND slug != ?",
-            (new_pos, slug),
-        )
+            await session.exec(
+                update(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.position >= new_position)
+                .where(ROADMAP_TABLE.c.slug != slug)
+                .values(position=ROADMAP_TABLE.c.position + 1)
+            )
 
-        # Place slug at new position
-        now = datetime.now(UTC).isoformat()
-        await self.conn.execute(
-            "UPDATE roadmap SET position = ?, updated_at = ? "  # guard: raw-sql
-            "WHERE slug = ? AND status != 'delivered'",
-            (new_pos, now, slug),
-        )
-        await self.conn.commit()
+            source.position = new_position
+            source.updated_at = datetime.now(UTC).isoformat()
+            session.add(source)
+            await session.commit()
+
         self._on_mutation()
         return True
 
-    # --- Sync methods for integration thread ---
+    async def move_entry(self, slug: str, *, before: str | None = None, after: str | None = None) -> bool:
+        """Compatibility wrapper used by the SQLAlchemy migration spec."""
+        return await self.move_in_roadmap(slug, before=before, after=after)
 
     def delivered_slugs_sync(self) -> set[str]:
         """Sync version of delivered_slugs for use from worker threads."""
-        conn = self._sync_conn()  # type: ignore[attr-defined]
-        try:
-            rows = conn.execute(
-                "SELECT slug FROM roadmap WHERE status = 'delivered'",  # guard: raw-sql
-            ).fetchall()
-            return {row[0] for row in rows}
-        finally:
-            conn.close()
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            result = session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
+            return {str(slug) for slug in result.all()}
 
-    def deliver_sync(
+    def deliver_sync(  # pylint: disable=too-many-arguments
         self,
         slug: str,
         *,
         commit: str | None = None,
         children: list[str] | None = None,
     ) -> bool:
-        """Sync version of deliver for use from worker threads.
+        """Sync version of deliver for use from worker threads."""
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            entry = session.exec(
+                select(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "delivered")
+                .limit(1)
+            ).first()
+            if entry is None:
+                return False
 
-        Updates both the roadmap status and the todo_state.current to
-        'delivered' so the state record is self-consistent.
-        """
-        now = datetime.now(UTC).isoformat()
-        children_json = json.dumps(children) if children else None
-        conn = self._sync_conn()  # type: ignore[attr-defined]
-        try:
-            cursor = conn.execute(
-                "UPDATE roadmap SET status = 'delivered', delivered_at = ?, "  # guard: raw-sql
-                "delivered_commit = ?, children = ?, updated_at = ? "
-                "WHERE slug = ? AND status != 'delivered'",
-                (now, commit, children_json, now, slug),
-            )
-            if cursor.rowcount > 0:
-                # Advance lifecycle state to terminal
-                row = conn.execute(
-                    "SELECT id, state FROM todo_state WHERE slug = ?",  # guard: raw-sql
-                    (slug,),
-                ).fetchone()
-                if row:
-                    state = json.loads(row[1])
-                    state["current"] = "delivered"
-                    state["phase"] = "delivered"
-                    state["integration_phase"] = "candidate_delivered"
-                    conn.execute(
-                        "UPDATE todo_state SET state = ?, updated_at = ? WHERE id = ?",  # guard: raw-sql
-                        (json.dumps(state), now, row[0]),
-                    )
-            conn.commit()
-            delivered: bool = cursor.rowcount > 0
-        finally:
-            conn.close()
-        if delivered:
-            self._on_mutation()
-        return delivered
+            now = datetime.now(UTC).isoformat()
+            entry.status = "delivered"
+            entry.delivered_at = now
+            entry.delivered_commit = commit
+            entry.children = json.dumps(children) if children else None
+            entry.updated_at = now
+            session.add(entry)
+
+            state_model = session.get(TodoStateModel, entry.id)
+            if state_model is not None:
+                state = json.loads(state_model.state)
+                state["current"] = "delivered"
+                state["phase"] = "delivered"
+                state["integration_phase"] = "candidate_delivered"
+                state_model.state = json.dumps(state)
+                state_model.updated_at = now
+                session.add(state_model)
+
+            session.commit()
+
+        self._on_mutation()
+        return True

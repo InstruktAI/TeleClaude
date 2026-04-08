@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import pytest
 from sqlmodel import select
 
@@ -118,4 +120,48 @@ async def test_setting_status_and_cleanup_close_links_and_remove_members(db: Db)
 
     assert closed is not None
     assert closed.closed_at is not None
-    assert list(remaining_members) == []
+    assert not list(remaining_members)
+
+
+async def test_sever_conversation_link_rolls_back_when_member_delete_fails(db: Db) -> None:
+    link = await db.create_conversation_link(mode="direct_link", created_by_session_id="sess-owner")
+    await db.upsert_conversation_link_member(link_id=link.link_id, session_id="sess-a")
+    await db.upsert_conversation_link_member(link_id=link.link_id, session_id="sess-b")
+
+    original_session = db._session  # pylint: disable=protected-access
+    exec_count = 0
+
+    @asynccontextmanager
+    async def _failing_session():
+        nonlocal exec_count
+        async with original_session() as session:
+            original_exec = session.exec
+
+            async def _wrapped_exec(statement, *args, **kwargs):
+                nonlocal exec_count
+                exec_count += 1
+                if exec_count == 2:
+                    raise RuntimeError("delete failed")
+                return await original_exec(statement, *args, **kwargs)
+
+            session.exec = _wrapped_exec
+            yield session
+
+    db._session = _failing_session  # pylint: disable=protected-access
+    with pytest.raises(RuntimeError, match="delete failed"):
+        await db.sever_conversation_link(link.link_id)
+
+    async with original_session() as session:
+        persisted_link = await session.get(db_models.ConversationLinkRow, link.link_id)
+        persisted_members = (
+            await session.exec(
+                select(db_models.ConversationLinkMemberRow).where(
+                    db_models.ConversationLinkMemberRow.link_id == link.link_id
+                )
+            )
+        ).all()
+
+    assert persisted_link is not None
+    assert persisted_link.status == "active"
+    assert persisted_link.closed_at is None
+    assert sorted(member.session_id for member in persisted_members) == ["sess-a", "sess-b"]

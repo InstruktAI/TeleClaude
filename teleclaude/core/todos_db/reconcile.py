@@ -9,12 +9,15 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.todos_db import TodosDb
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -33,6 +36,14 @@ def _parse_db_timestamp(ts: str | None) -> float:
         return datetime.fromisoformat(ts).timestamp()
     except (ValueError, TypeError):
         return 0.0
+
+
+async def _ensure_slug_in_roadmap(slug: str, todos_db: TodosDb, counts: dict[str, int]) -> None:
+    """Ensure artifact/state writes have a roadmap parent without inventing one in write_artifact()."""
+    if await todos_db.slug_in_roadmap(slug):
+        return
+    if await todos_db.add_to_roadmap(slug):
+        counts["roadmap_added"] += 1
 
 
 async def reconcile_filesystem_to_db(project_root: str, todos_db: TodosDb) -> dict[str, int]:
@@ -146,7 +157,7 @@ async def _reconcile_slug_state(  # pylint: disable=too-many-locals
 
     # write_state requires an active roadmap entry; ensure one exists for slugs
     # not covered by roadmap.yaml (e.g. worktree-only slugs)
-    await todos_db.add_to_roadmap(slug)
+    await _ensure_slug_in_roadmap(slug, todos_db, counts)
     await todos_db.write_state(slug, fs_state)
     if db_state is None:
         counts["state_inserted"] += 1
@@ -214,11 +225,13 @@ async def _reconcile_slug_artifacts(  # pylint: disable=too-many-locals
             # Skip if DB is newer or content is identical
             if fs_mtime <= db_mtime or fs_digest == db_digest:
                 continue
+            await _ensure_slug_in_roadmap(slug, todos_db, counts)
             await todos_db.write_artifact(slug, name, content, updated_by="reconcile")
             counts["artifacts_updated"] += 1
             logger.info("Updated artifact %s/%s (filesystem newer)", slug, name)
         else:
             # Not in DB — insert
+            await _ensure_slug_in_roadmap(slug, todos_db, counts)
             await todos_db.write_artifact(slug, name, content, updated_by="reconcile")
             counts["artifacts_inserted"] += 1
             logger.info("Inserted artifact %s/%s", slug, name)

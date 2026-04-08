@@ -7,6 +7,7 @@ with dual-factor caller identity enforcement.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -427,6 +428,8 @@ async def write_artifact(
     """Write (create or update) a todo artifact."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    if not await todos_db.slug_in_roadmap(slug):
+        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
     await todos_db.write_artifact(slug, name, content, updated_by=updated_by)
     return _ArtifactWriteResponse(status="ok", slug=slug, name=name)
 
@@ -477,15 +480,18 @@ async def todo_dump(
         if kind == "bug":
             state["kind"] = "bug"
 
-        # Roadmap first — write_artifact resolves slug→UUID via the roadmap.
-        await todos_db.add_to_roadmap(slug, after=after if after else None)
-        await todos_db.write_state(slug, state)
+        async with todos_db._session() as session:  # pylint: disable=protected-access
+            async with session.begin():
+                await todos_db.add_to_roadmap(slug, after=after if after else None, session=session)
+                await todos_db.write_state(slug, state, session=session)
 
-        if kind == "bug":
-            await todos_db.write_artifact(slug, "bug", content)
-        else:
-            input_content = f"# {slug} — Input\n\n{content}\n"
-            await todos_db.write_artifact(slug, "input", input_content)
+                if kind == "bug":
+                    await todos_db.write_artifact(slug, "bug", content, session=session)
+                else:
+                    input_content = f"# {slug} — Input\n\n{content}\n"
+                    await todos_db.write_artifact(slug, "input", input_content, session=session)
+
+        todos_db._on_mutation()  # pylint: disable=protected-access
 
         return _SlugStatusResponse(status="ok", slug=slug)
     except HTTPException:
@@ -512,21 +518,23 @@ async def todo_split(
     if parent_state is None:
         raise HTTPException(status_code=404, detail=f"Parent todo '{slug}' not found")
 
-    # Create children
-    for child_slug in children:
-        existing = await todos_db.read_state(child_slug)
-        if existing is not None:
-            raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
-        await todos_db.add_to_roadmap(child_slug, group_slug=slug)
-        await todos_db.write_state(child_slug, default_state())
-        # Copy parent input to child
-        parent_input = await todos_db.read_artifact(slug, "input")
-        if parent_input:
-            await todos_db.write_artifact(child_slug, "input", parent_input)
-
-    # Update parent breakdown
+    parent_input = await todos_db.read_artifact(slug, "input")
     parent_state["breakdown"] = {"assessed": True, "todos": list(children)}  # type: ignore[dict-item]
-    await todos_db.write_state(slug, parent_state)
+
+    async with todos_db._session() as session:  # pylint: disable=protected-access
+        async with session.begin():
+            for child_slug in children:
+                existing = await todos_db.read_state(child_slug)
+                if existing is not None:
+                    raise HTTPException(status_code=409, detail=f"Child todo '{child_slug}' already exists")
+                await todos_db.add_to_roadmap(child_slug, group_slug=slug, session=session)
+                await todos_db.write_state(child_slug, default_state(), session=session)
+                if parent_input:
+                    await todos_db.write_artifact(child_slug, "input", parent_input, session=session)
+
+            await todos_db.write_state(slug, parent_state, session=session)
+
+    todos_db._on_mutation()  # pylint: disable=protected-access
 
     return _SplitResponse(status="ok", slug=slug, children=",".join(children))
 
@@ -545,14 +553,17 @@ async def todo_remove(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
-    # Delete from DB
-    await todos_db.delete_state(slug)
-    await todos_db.delete_artifacts(slug)
-    await todos_db.remove_from_roadmap(slug)
-    await todos_db.clean_dep_references(slug)
+    async with todos_db._session() as session:  # pylint: disable=protected-access
+        async with session.begin():
+            await todos_db.delete_state(slug, session=session)
+            await todos_db.delete_artifacts(slug, session=session)
+            await todos_db.remove_from_roadmap(slug, session=session)
+            await todos_db.clean_dep_references(slug, session=session)
+
+    todos_db._on_mutation()  # pylint: disable=protected-access
 
     # Clean up worktree and branch (filesystem/git cleanup stays — these are code branches)
-    cleanup_delivered_slug(effective_cwd, slug)
+    await asyncio.to_thread(cleanup_delivered_slug, effective_cwd, slug)
 
     return _SlugStatusResponse(status="ok", slug=slug)
 

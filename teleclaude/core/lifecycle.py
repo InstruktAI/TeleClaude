@@ -12,8 +12,11 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_server import APIServer
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.db.connection_factory import get_outbox_db_path
+from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.operations import OperationsService, set_operations_service
+from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
 
 if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.config.runtime_settings import RuntimeSettings
@@ -64,6 +67,7 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
             logger.warning("Lifecycle startup already completed; skipping")
             return
         startup_started_at = time.perf_counter()
+        migrate_outbox_on_startup(str(MAIN_DB_PATH), str(get_outbox_db_path(TELECLAUDE_HOME)))
         logger.info("[STARTUP] Initializing database (usually <1s)")
         await db.initialize()
         logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)

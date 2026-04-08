@@ -127,7 +127,7 @@ async def test_hook_outbox_batch_claim_retry_and_delivery_follow_persisted_state
     ]
 
     # Delivered rows are hard-deleted, not soft-marked.
-    async with db._session() as session:
+    async with db._outbox_session() as session:  # pylint: disable=protected-access
         delivered = await session.get(db_models.HookOutbox, second_id)
 
     assert delivered is None

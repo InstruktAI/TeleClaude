@@ -13,11 +13,12 @@ import pytest
 import teleclaude.daemon_hook_outbox as daemon_hook_outbox
 from teleclaude.core.db import HookOutboxRow
 from teleclaude.core.events import AgentEventContext
+from teleclaude.core.hook_outbox_queue import HookOutboxQueueItem, HookOutboxSessionQueue
 from teleclaude.core.models import Session
 from teleclaude.transport.redis_transport import RedisTransport
 
 
-class _FakeRedisTransport(RedisTransport):
+class _FakeRedisTransport(RedisTransport):  # pylint: disable=too-many-ancestors
     """Marker subclass used for isinstance checks."""
 
 
@@ -25,7 +26,7 @@ class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
     def __init__(self) -> None:
         self.shutdown_event = None  # pyright: ignore[reportAttributeAccessIssue]
         self._background_tasks = set()
-        self._session_outbox_queues: dict[str, daemon_hook_outbox._HookOutboxSessionQueue] = {}
+        self._session_outbox_queues: dict[str, HookOutboxSessionQueue] = {}
         self._session_outbox_workers = {}
         self._hook_outbox_processed_count = 0
         self._hook_outbox_coalesced_count = 0
@@ -55,8 +56,8 @@ class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
         raise NotImplementedError
 
 
-def _queue_item(row_id: int, event_type: str, classification: str) -> daemon_hook_outbox._HookOutboxQueueItem:
-    return daemon_hook_outbox._HookOutboxQueueItem(
+def _queue_item(row_id: int, event_type: str, classification: str) -> HookOutboxQueueItem:
+    return HookOutboxQueueItem(
         row={
             "id": row_id,
             "session_id": "sess-1",
@@ -122,7 +123,7 @@ def test_enqueue_bursty_item_replaces_latest_matching_item_after_critical_bounda
 async def test_should_pause_hook_outbox_claims_uses_watermark_hysteresis() -> None:
     daemon_instance = _TestDaemon()
     session_id = "sess-1"
-    queue_state = daemon_hook_outbox._HookOutboxSessionQueue()
+    queue_state = HookOutboxSessionQueue()
     queue_state.pending = [
         _queue_item(index, daemon_hook_outbox.AgentHookEvents.TOOL_USE, "bursty")
         for index in range(daemon_hook_outbox.HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK)
@@ -210,9 +211,9 @@ async def test_worker_passes_paused_sessions_to_db_fetch() -> None:
     captured_exclude: list[frozenset[str] | None] = []
 
     async def fake_fetch(
-        now_iso: str,
-        limit: int,
-        lock_cutoff_iso: str,
+        _now_iso: str,
+        _limit: int,
+        _lock_cutoff_iso: str,
         exclude_session_ids: frozenset[str] | None = None,
     ) -> list[HookOutboxRow]:
         captured_exclude.append(exclude_session_ids)
@@ -243,10 +244,10 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
 
     deleted_row_ids: list[int] = []
 
-    async def fake_fetch(
-        now_iso: str,
-        limit: int,
-        lock_cutoff_iso: str,
+    async def fake_fetch(  # pylint: disable=unused-argument
+        _now_iso: str,
+        _limit: int,
+        _lock_cutoff_iso: str,
         exclude_session_ids: frozenset[str] | None = None,
     ) -> list[HookOutboxRow]:
         nonlocal iteration_count
@@ -259,7 +260,7 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
     async def fake_delete(row_id: int) -> None:
         deleted_row_ids.append(row_id)
 
-    async def fake_claim_batch(row_ids: list[int], now_iso: str, lock_cutoff_iso: str) -> set[int]:
+    async def fake_claim_batch(row_ids: list[int], _now_iso: str, _lock_cutoff_iso: str) -> set[int]:
         return set(row_ids)
 
     with (

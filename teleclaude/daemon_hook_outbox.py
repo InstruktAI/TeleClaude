@@ -7,7 +7,6 @@ import json
 import os
 import time
 from collections.abc import Callable, Coroutine, Mapping
-from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -32,6 +31,13 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     build_agent_payload,
 )
+from teleclaude.core.hook_outbox_handlers import (
+    handle_checkpoint_seen,
+    handle_native_metadata_update,
+    handle_native_session_refresh,
+    optional_payload_str_value,
+)
+from teleclaude.core.hook_outbox_queue import HookOutboxQueueItem, HookOutboxSessionQueue
 from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
@@ -44,13 +50,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-
-def _optional_str_value(data: Mapping[str, object], key: str) -> str | None:
-    """Return a non-empty string value from a loose hook payload."""
-    value = data.get(key)
-    return value if isinstance(value, str) and value else None
-
-
 # Hook outbox worker
 HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
 HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))
@@ -61,16 +60,10 @@ HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION
 HOOK_OUTBOX_SESSION_MAX_PENDING: int = int(os.getenv("HOOK_OUTBOX_SESSION_MAX_PENDING", "32"))
 HOOK_OUTBOX_SESSION_CRITICAL_RESERVE: int = int(os.getenv("HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", "8"))  # pylint: disable=invalid-name
 HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK: int = int(  # pylint: disable=invalid-name
-    os.getenv(
-        "HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK",
-        str(max(1, HOOK_OUTBOX_SESSION_MAX_PENDING - 8)),
-    )
+    os.getenv("HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK", str(max(1, HOOK_OUTBOX_SESSION_MAX_PENDING - 8)))
 )
 HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK: int = int(
-    os.getenv(
-        "HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK",
-        str(max(0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK // 3)),
-    )
+    os.getenv("HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK", str(max(0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK // 3)))
 )
 HOOK_OUTBOX_SUMMARY_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_SUMMARY_INTERVAL_S", "15"))
 HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD: int = int(os.getenv("HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD", "20"))
@@ -89,8 +82,7 @@ HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
 )
 
 HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK = min(  # pyright: ignore[reportConstantRedefinition]  # pylint: disable=invalid-name
-    HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK,
-    HOOK_OUTBOX_SESSION_MAX_PENDING,
+    HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK, HOOK_OUTBOX_SESSION_MAX_PENDING
 )
 if HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK >= HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK:
     HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK = max(  # pyright: ignore[reportConstantRedefinition]
@@ -107,33 +99,12 @@ HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_SESSION_END,
         AgentHookEvents.AGENT_ERROR,
+        AgentHookEvents.CHECKPOINT_SEEN,
+        AgentHookEvents.NATIVE_METADATA_UPDATE,
+        AgentHookEvents.NATIVE_SESSION_REFRESH,
     }
 )
-HOOK_EVENT_CLASS_BURSTY: frozenset[str] = frozenset(
-    {
-        AgentHookEvents.TOOL_USE,
-        AgentHookEvents.TOOL_DONE,
-    }
-)
-
-
-@dataclass
-class _HookOutboxQueueItem:
-    """In-memory queue payload for per-session hook outbox processing."""
-
-    row: HookOutboxRow
-    event_type: str
-    classification: Literal["critical", "bursty"]
-
-
-@dataclass
-class _HookOutboxSessionQueue:
-    """Per-session hook queue state."""
-
-    pending: list[_HookOutboxQueueItem] = field(default_factory=list)
-    claimed_row_ids: set[int] = field(default_factory=set)
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    notify: asyncio.Event = field(default_factory=asyncio.Event)
+HOOK_EVENT_CLASS_BURSTY: frozenset[str] = frozenset({AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE})
 
 
 class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Mixin only exposes private hooks.
@@ -142,7 +113,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
     if TYPE_CHECKING:
         shutdown_event: asyncio.Event
         _background_tasks: set[asyncio.Task[object]]
-        _session_outbox_queues: dict[str, _HookOutboxSessionQueue]
+        _session_outbox_queues: dict[str, HookOutboxSessionQueue]
         _session_outbox_workers: dict[str, asyncio.Task[None]]
         _hook_outbox_processed_count: int
         _hook_outbox_coalesced_count: int
@@ -241,7 +212,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         return ordered[index]
 
     @staticmethod
-    def _find_bursty_coalesce_index(pending: list[_HookOutboxQueueItem], event_type: str) -> int | None:
+    def _find_bursty_coalesce_index(pending: list[HookOutboxQueueItem], event_type: str) -> int | None:
         """Find a same-type bursty item after the latest critical boundary."""
         last_critical = -1
         for idx in range(len(pending) - 1, -1, -1):
@@ -256,14 +227,14 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         return None
 
     @staticmethod
-    def _find_oldest_bursty_index(pending: list[_HookOutboxQueueItem]) -> int | None:
+    def _find_oldest_bursty_index(pending: list[HookOutboxQueueItem]) -> int | None:
         for idx, item in enumerate(pending):
             if item.classification == "bursty":
                 return idx
         return None
 
     @staticmethod
-    def _bursty_item_count(pending: list[_HookOutboxQueueItem]) -> int:
+    def _bursty_item_count(pending: list[HookOutboxQueueItem]) -> int:
         return sum(1 for item in pending if item.classification == "bursty")
 
     @staticmethod
@@ -401,10 +372,14 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     ) -> Session:
         """Create a headless session row for standalone hook events."""
-        native_log_file = _optional_str_value(data, "native_log_file") or _optional_str_value(data, "transcript_path")
-        native_session_id = _optional_str_value(data, "native_session_id") or _optional_str_value(data, "session_id")
-        agent_str = _optional_str_value(data, "agent_name")
-        workdir = _optional_str_value(data, "cwd")
+        native_log_file = optional_payload_str_value(data, "native_log_file") or optional_payload_str_value(
+            data, "transcript_path"
+        )
+        native_session_id = optional_payload_str_value(data, "native_session_id") or optional_payload_str_value(
+            data, "session_id"
+        )
+        agent_str = optional_payload_str_value(data, "agent_name")
+        workdir = optional_payload_str_value(data, "cwd")
         project_path, subdir = self._resolve_headless_project_context(workdir)
         title = get_short_project_name(project_path, subdir) if project_path else "Standalone"
 
@@ -470,6 +445,24 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         raw_native_session_id = data.get("native_session_id")
         return isinstance(raw_native_session_id, str) and bool(raw_native_session_id.strip())
 
+    async def _handle_session_state_mutation_event(
+        self,
+        session_id: str,
+        event_type: str,
+        data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+    ) -> bool:
+        """Handle outbox events whose only effect is session-row mutation."""
+        if event_type == AgentHookEvents.CHECKPOINT_SEEN:
+            await handle_checkpoint_seen(db, session_id=session_id, payload=data)
+            return True
+        if event_type == AgentHookEvents.NATIVE_METADATA_UPDATE:
+            await handle_native_metadata_update(db, session_id=session_id, payload=data)
+            return True
+        if event_type == AgentHookEvents.NATIVE_SESSION_REFRESH:
+            await handle_native_session_refresh(db, session_id=session_id, payload=data)
+            return True
+        return False
+
     async def _dispatch_hook_event(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         self,
         session_id: str,
@@ -499,6 +492,9 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         elif session.lifecycle_status == "headless" and session.last_input_origin != InputOrigin.TERMINAL.value:
             await db.update_session(session_id, last_input_origin=InputOrigin.TERMINAL.value)
             session = await db.get_session(session_id) or session
+
+        if await self._handle_session_state_mutation_event(session_id, event_type, data):
+            return
 
         transcript_path = data.get("transcript_path")
         native_session_id = data.get("native_session_id")
@@ -570,12 +566,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         update_kwargs = {}
         if normalized_agent_name in AgentName.choices() and session.active_agent != normalized_agent_name:
             update_kwargs["active_agent"] = normalized_agent_name
-        if isinstance(transcript_path, str) and transcript_path:
-            update_kwargs["native_log_file"] = transcript_path
-        if isinstance(native_log_file, str) and native_log_file:
-            update_kwargs["native_log_file"] = native_log_file
-        if isinstance(native_session_id, str) and native_session_id:
-            update_kwargs["native_session_id"] = native_session_id
 
         if update_kwargs:
             await db.update_session(session_id, **update_kwargs)
@@ -703,17 +693,17 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         finally:
             self._maybe_log_hook_outbox_summary(force=True)
 
-    def _get_or_create_session_outbox_queue(self, session_id: str) -> _HookOutboxSessionQueue:
+    def _get_or_create_session_outbox_queue(self, session_id: str) -> HookOutboxSessionQueue:
         """Return the in-memory queue state for a session."""
         queue_state = self._session_outbox_queues.get(session_id)
         if queue_state is None:
-            queue_state = _HookOutboxSessionQueue()
+            queue_state = HookOutboxSessionQueue()
             self._session_outbox_queues[session_id] = queue_state
         return queue_state
 
     @staticmethod
     def _discard_claimed_row(
-        pending: list[_HookOutboxQueueItem],
+        pending: list[HookOutboxQueueItem],
         claimed_row_ids: set[int],
         drop_idx: int,
         dropped_rows: list[HookOutboxRow],
@@ -727,9 +717,9 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
 
     @staticmethod
     def _append_queue_item(
-        pending: list[_HookOutboxQueueItem],
+        pending: list[HookOutboxQueueItem],
         claimed_row_ids: set[int],
-        queue_item: _HookOutboxQueueItem,
+        queue_item: HookOutboxQueueItem,
         row_id: int,
     ) -> None:
         """Append a queue item and track its claimed row ID."""
@@ -739,9 +729,9 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
 
     def _enqueue_bursty_item(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Parameters are explicit for clarity. Parameters are explicit for clarity.
         self,
-        pending: list[_HookOutboxQueueItem],
+        pending: list[HookOutboxQueueItem],
         claimed_row_ids: set[int],
-        queue_item: _HookOutboxQueueItem,
+        queue_item: HookOutboxQueueItem,
         row: HookOutboxRow,
         row_id: int,
         event_type: str,
@@ -783,9 +773,9 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
 
     def _enqueue_critical_item(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Parameters are explicit for clarity. Parameters are explicit for clarity.
         self,
-        pending: list[_HookOutboxQueueItem],
+        pending: list[HookOutboxQueueItem],
         claimed_row_ids: set[int],
-        queue_item: _HookOutboxQueueItem,
+        queue_item: HookOutboxQueueItem,
         row_id: int,
         dropped_rows: list[HookOutboxRow],
     ) -> tuple[bool, bool]:
@@ -858,7 +848,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]  # pylint: d
         enqueued = False
         requeue_claimed_critical = False
         duplicate_claimed_row = False
-        queue_item = _HookOutboxQueueItem(
+        queue_item = HookOutboxQueueItem(
             row=row,
             event_type=event_type,
             classification=classification,

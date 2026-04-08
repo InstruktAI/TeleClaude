@@ -172,11 +172,18 @@ class DbLinksMixin:
 
     async def sever_conversation_link(self, link_id: str) -> bool:
         """Close link and remove all active members."""
-        changed = await self.set_conversation_link_status(link_id=link_id, status="closed")
+        now = datetime.now(UTC).isoformat()
+        update_stmt = (
+            update(db_models.ConversationLinkRow)
+            .where(db_models.ConversationLinkRow.link_id == link_id)
+            .values(status="closed", updated_at=now, closed_at=now)
+        )
         stmt = delete(db_models.ConversationLinkMemberRow).where(db_models.ConversationLinkMemberRow.link_id == link_id)
         async with self._session() as db_session:
+            changed_result = await db_session.exec(update_stmt)
             result = await db_session.exec(stmt)
             await db_session.commit()
+            changed = (changed_result.rowcount or 0) > 0  # type: ignore[union-attr]
             deleted = (result.rowcount or 0) > 0  # type: ignore[union-attr]
         return changed or deleted
 

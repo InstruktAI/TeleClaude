@@ -6,10 +6,11 @@ import json
 from typing import Any
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import create_engine, text  # guard: raw-sql - Sync memory access
+from sqlalchemy import text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
 from teleclaude.core.db import db
+from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
 from teleclaude.memory.types import ObservationType, SearchResult
 
 logger = get_logger(__name__)
@@ -226,12 +227,9 @@ class MemorySearch:
         db_path: str = "",
     ) -> list[SearchResult]:
         """Sync search for hook receiver context generation."""
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(db_path)
         try:
             with SqlSession(engine) as session:
-                session.exec(text("PRAGMA journal_mode = WAL"))  # type: ignore[call-overload]    # guard: raw-sql
-                session.exec(text("PRAGMA busy_timeout = 5000"))  # type: ignore[call-overload]    # guard: raw-sql
-
                 # Try FTS5 first
                 try:
                     sql = (

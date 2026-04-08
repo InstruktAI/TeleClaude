@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,12 +16,13 @@ from instrukt_ai_logging import configure_logging, get_logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session as SqlSession
 
+from teleclaude import paths as tc_paths
 from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
-from teleclaude.output_projection.visibility import is_internal_user_text
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import should_persist_codex_native_metadata
+from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import JsonDict
@@ -50,7 +52,9 @@ from teleclaude.hooks.receiver._session import (
     _resolve_or_refresh_session_id,
     _session_map_key,
     _write_session_map_atomic,
+    get_outbox_session,
 )
+from teleclaude.output_projection.visibility import is_internal_user_text
 from teleclaude.utils.transcript import extract_workdir_from_transcript
 
 if TYPE_CHECKING:
@@ -70,7 +74,15 @@ _SESSION_EXPORT_BINDINGS = (
     _write_session_map_atomic,
 )
 
-HOOK_RECEIVER_EXPORTS = [*_SESSION_EXPORTS, "_read_stdin", "_render_person_header", "_write_session_map_atomic", "main"]
+HOOK_RECEIVER_EXPORTS = [
+    *_SESSION_EXPORTS,
+    "_read_stdin",
+    "_render_person_header",
+    "_write_session_map_atomic",
+    "enqueue_checkpoint_seen",
+    "enqueue_hook_event",
+    "main",
+]
 
 # Only these events are forwarded to daemon processing. Others are dropped.
 # This prevents noisy intermediate hook traffic from reaching command handlers.
@@ -79,11 +91,12 @@ _HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLE
 
 
 @dataclass(frozen=True)
-class _NativeMetadataChange:
-    previous_native_session_id: str | None
-    previous_native_log_file: str | None
-    native_session_id: str | None
-    native_log_file: str | None
+class _ReceiverOutboxContext:
+    """Shared receiver metadata for mutation events emitted to the outbox."""
+
+    agent: str
+    event_type: str
+    outbox_db: str
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -93,6 +106,11 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _get_default_outbox_db() -> str:
+    """Return the canonical receiver outbox database path."""
+    return str(get_outbox_db_path(tc_paths.TELECLAUDE_HOME))
 
 
 def _load_session_row(session_id: str) -> db_models.Session | None:
@@ -116,16 +134,6 @@ def _resolve_agent_enum(agent: str) -> AgentName:
         return AgentName.from_str(agent)
     except ValueError:
         return AgentName.from_str(get_default_agent())
-
-
-def _mark_checkpoint_seen(session_id: str, now: datetime) -> None:
-    """Persist the latest checkpoint timestamp for a session."""
-    with SqlSession(_create_sync_engine()) as db_session:
-        update_row = db_session.get(db_models.Session, session_id)
-        if update_row:
-            update_row.last_checkpoint_at = now
-            db_session.add(update_row)
-            db_session.commit()
 
 
 def _resolve_turn_start(row: db_models.Session) -> datetime | None:
@@ -200,6 +208,8 @@ def _maybe_checkpoint_output(
     session_id: str,
     agent: str,
     raw_data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+    *,
+    outbox_db: str,
 ) -> str | None:
     """Evaluate whether to block an agent_stop with a checkpoint instruction.
 
@@ -256,10 +266,11 @@ def _maybe_checkpoint_output(
     if stop_hook_active:
         set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
 
-    try:
-        _mark_checkpoint_seen(session_id, now)
-    except SQLAlchemyError as exc:
-        logger.warning("Checkpoint DB update failed: %s", exc)
+    enqueue_checkpoint_seen(
+        session_id=session_id,
+        checkpoint_at=now.isoformat(),
+        outbox_db=outbox_db,
+    )
     logger.info(
         "Checkpoint payload prepared",
         route="hook",
@@ -371,16 +382,27 @@ def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:
         )
 
 
-def _enqueue_hook_event(
+def _serialize_outbox_payload(
+    payload: str | Mapping[str, object],  # guard: loose-dict - Hook payload is dynamic JSON.
+) -> str:
+    """Serialize an outbox payload while accepting pre-encoded JSON for tests."""
+    if isinstance(payload, str):
+        return payload
+    return json.dumps(dict(payload))
+
+
+def enqueue_hook_event(
     session_id: str,
     event_type: str,
-    data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON.
+    payload: str | Mapping[str, object],  # guard: loose-dict - Hook payload is dynamic JSON.
+    *,
+    outbox_db: str,
 ) -> None:
     """Persist hook event to local outbox for durable delivery."""
     now = datetime.now(UTC).isoformat()
-    payload_json = json.dumps(data)
+    payload_json = _serialize_outbox_payload(payload)
 
-    with SqlSession(_create_sync_engine()) as session:
+    with get_outbox_session(outbox_db) as session:
         row = db_models.HookOutbox(
             session_id=session_id,
             event_type=event_type,
@@ -393,102 +415,18 @@ def _enqueue_hook_event(
         session.commit()
 
 
-def _append_transcript_history(row: db_models.Session, previous_native_log_file: str) -> None:
-    """Append the replaced transcript path to transcript_files."""
-    try:
-        loaded_chain = json.loads(row.transcript_files or "[]")
-    except (json.JSONDecodeError, TypeError):
-        loaded_chain = []
-    chain = loaded_chain if isinstance(loaded_chain, list) else []
-    if previous_native_log_file not in chain:
-        chain.append(previous_native_log_file)
-    row.transcript_files = json.dumps(chain)
-
-
-def _path_exists(path_value: str | None) -> bool:
-    """Return whether a path exists without surfacing filesystem resolution errors."""
-    if not path_value:
-        return False
-    try:
-        return Path(path_value).expanduser().exists()
-    except (OSError, RuntimeError, ValueError):
-        return False
-
-
-def _log_native_metadata_change(
-    *,
-    session_id: str,
-    agent: str,
-    event_type: str,
-    change: _NativeMetadataChange,
-) -> None:
-    """Log native metadata changes after the session row has been updated."""
-    session_changed = bool(change.native_session_id and change.previous_native_session_id != change.native_session_id)
-    native_log_changed = bool(change.native_log_file and change.previous_native_log_file != change.native_log_file)
-    if not session_changed and not native_log_changed:
-        return
-
-    logger.info(
-        "Native session metadata changed",
-        session_id=session_id,
-        agent=agent,
-        event_type=event_type,
-        native_session_id_before=(change.previous_native_session_id or ""),
-        native_session_id_after=(change.native_session_id or ""),
-        native_session_changed=session_changed,
-        native_log_file_before=change.previous_native_log_file or "",
-        native_log_file_after=change.native_log_file or "",
-        native_log_changed=native_log_changed,
-        old_path_exists=_path_exists(change.previous_native_log_file),
-        new_path_exists=_path_exists(change.native_log_file),
-    )
-
-
-def _update_session_native_fields(
+def enqueue_checkpoint_seen(
     session_id: str,
     *,
-    agent: str,
-    event_type: str,
-    native_log_file: str | None = None,
-    native_session_id: str | None = None,
+    checkpoint_at: str,
+    outbox_db: str,
 ) -> None:
-    """Update native session fields directly on the session row.
-
-    When native_log_file changes and the previous value is non-empty,
-    the old path is appended to transcript_files before replacing native_log_file.
-    """
-    if not native_log_file and not native_session_id:
-        return
-
-    with SqlSession(_create_sync_engine()) as session:
-        row = session.get(db_models.Session, session_id)
-        if not row:
-            return
-        previous_native_session_id = row.native_session_id
-        previous_native_log_file = row.native_log_file
-
-        # Chain accumulation: preserve old transcript path before replacing
-        if native_log_file and previous_native_log_file and previous_native_log_file != native_log_file:
-            _append_transcript_history(row, previous_native_log_file)
-
-        if native_log_file:
-            row.native_log_file = native_log_file
-        if native_session_id:
-            row.native_session_id = native_session_id
-        session.add(row)
-        session.commit()
-
-    change = _NativeMetadataChange(
-        previous_native_session_id=previous_native_session_id,
-        previous_native_log_file=previous_native_log_file,
-        native_session_id=native_session_id,
-        native_log_file=native_log_file,
-    )
-    _log_native_metadata_change(
-        session_id=session_id,
-        agent=agent,
-        event_type=event_type,
-        change=change,
+    """Persist a checkpoint_seen mutation event to the outbox."""
+    enqueue_hook_event(
+        session_id,
+        AgentHookEvents.CHECKPOINT_SEEN,
+        {"checkpoint_at": checkpoint_at},
+        outbox_db=outbox_db,
     )
 
 
@@ -519,7 +457,7 @@ def _emit_receiver_error_best_effort(
                 message=message,
             )
             return
-        _enqueue_hook_event(
+        enqueue_hook_event(
             session_id,
             "error",
             _build_receiver_error_payload(
@@ -529,6 +467,7 @@ def _emit_receiver_error_best_effort(
                 event_type=getattr(args, "event_type", None),
                 details=details,
             ),
+            outbox_db=_get_default_outbox_db(),
         )
     except SQLAlchemyError as exc:
         logger.error("Receiver error reporting failed", error=str(exc), code=code)
@@ -626,30 +565,76 @@ def _resolve_receiver_session_id(
     return None
 
 
+def _enqueue_native_metadata_update(
+    *,
+    session_id: str,
+    raw_native_session_id: str | None,
+    raw_native_log_file: str | None,
+    context: _ReceiverOutboxContext,
+) -> None:
+    payload: JsonDict = {
+        "agent": context.agent,
+        "source_event_type": context.event_type,
+    }
+    if raw_native_session_id is not None:
+        payload["native_session_id"] = raw_native_session_id
+    if raw_native_log_file is not None:
+        payload["native_log_file"] = raw_native_log_file
+    enqueue_hook_event(
+        session_id,
+        AgentHookEvents.NATIVE_METADATA_UPDATE,
+        payload,
+        outbox_db=context.outbox_db,
+    )
+
+
+def _enqueue_native_session_refresh(
+    *,
+    session_id: str,
+    native_session_id: str | None,
+    context: _ReceiverOutboxContext,
+) -> None:
+    enqueue_hook_event(
+        session_id,
+        AgentHookEvents.NATIVE_SESSION_REFRESH,
+        {
+            "agent": context.agent,
+            "source_event_type": context.event_type,
+            "native_session_id": native_session_id,
+        },
+        outbox_db=context.outbox_db,
+    )
+
+
 def _persist_native_metadata(
     *,
     session_id: str,
-    agent: str,
-    event_type: str,
     raw_native_session_id: str | None,
     raw_native_log_file: str | None,
+    context: _ReceiverOutboxContext,
 ) -> None:
-    if raw_native_session_id:
-        _update_session_native_fields(
-            session_id,
-            agent=agent,
-            event_type=event_type,
-            native_log_file=raw_native_log_file,
-            native_session_id=raw_native_session_id,
-        )
+    if not raw_native_session_id and not raw_native_log_file:
         return
-    if raw_native_log_file:
-        _update_session_native_fields(
-            session_id,
-            agent=agent,
-            event_type=event_type,
-            native_log_file=raw_native_log_file,
+
+    row = _load_session_row(session_id)
+    if (
+        row
+        and raw_native_session_id is not None
+        and row.native_session_id
+        and row.native_session_id != raw_native_session_id
+    ):
+        _enqueue_native_session_refresh(
+            session_id=session_id,
+            native_session_id=raw_native_session_id,
+            context=context,
         )
+
+    _enqueue_native_metadata_update(
+        session_id=session_id,
+        raw_native_session_id=raw_native_session_id,
+        raw_native_log_file=raw_native_log_file,
+        context=context,
+    )
 
 
 def _handle_user_prompt_submit(
@@ -706,20 +691,20 @@ def _maybe_emit_checkpoint_response(
     event_type: str,
     adapter: object,
     session_id: str,
-    agent: str,
     raw_data: JsonDict,
+    context: _ReceiverOutboxContext,
 ) -> None:
     if event_type != AgentHookEvents.AGENT_STOP or not adapter.supports_hook_checkpoint:  # type: ignore[union-attr]
         return
     checkpoint_reason: str | None = None
     try:
-        checkpoint_reason = _maybe_checkpoint_output(session_id, agent, raw_data)
+        checkpoint_reason = _maybe_checkpoint_output(session_id, context.agent, raw_data, outbox_db=context.outbox_db)
     except (AttributeError, TypeError, ValueError, SQLAlchemyError) as exc:
         logger.warning(
             "Checkpoint eval crashed (ignored)",
             event_type=event_type,
             session_id=session_id,
-            agent=agent,
+            agent=context.agent,
             error=str(exc),
         )
     if not checkpoint_reason:
@@ -747,12 +732,10 @@ def main() -> None:
     adapter = get_adapter(args.agent)
 
     raw_input, raw_event_type, raw_data = _parse_receiver_input(args, adapter)
-
-    # log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
-    log_raw = True
-    _log_raw_input(raw_input, log_raw=log_raw)
+    _log_raw_input(raw_input, log_raw=True)
 
     event_type = _map_hook_event_type(args.agent, raw_event_type)
+    outbox_context = _ReceiverOutboxContext(agent=args.agent, event_type=event_type, outbox_db=_get_default_outbox_db())
 
     if event_type not in _HANDLED_EVENTS:
         logger.debug(
@@ -806,10 +789,9 @@ def main() -> None:
         try:
             _persist_native_metadata(
                 session_id=teleclaude_session_id,
-                agent=args.agent,
-                event_type=event_type,
                 raw_native_session_id=raw_native_session_id,
                 raw_native_log_file=raw_native_log_file,
+                context=outbox_context,
             )
         except SQLAlchemyError as exc:
             logger.warning(
@@ -851,14 +833,14 @@ def main() -> None:
         event_type=event_type,
         adapter=adapter,
         session_id=teleclaude_session_id,
-        agent=args.agent,
         raw_data=raw_data,
+        context=outbox_context,
     )
 
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(UTC).isoformat()
 
-    _enqueue_hook_event(teleclaude_session_id, event_type, data)
+    enqueue_hook_event(teleclaude_session_id, event_type, data, outbox_db=outbox_context.outbox_db)
 
 
 _RECEIVER_EXPORT_BINDINGS = (_read_stdin, _render_person_header)

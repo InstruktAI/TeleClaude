@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import teleclaude.daemon_hook_outbox as daemon_hook_outbox
+from teleclaude.core import hook_outbox_queue
 from teleclaude.core.command_handlers import _session as session_handler
 from teleclaude.core.events import AgentEventContext
 from teleclaude.core.models import Session
@@ -29,7 +30,7 @@ class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
     def __init__(self) -> None:
         self.shutdown_event = None  # pyright: ignore[reportAttributeAccessIssue]
         self._background_tasks: set[asyncio.Task[object]] = set()
-        self._session_outbox_queues: dict[str, daemon_hook_outbox._HookOutboxSessionQueue] = {}  # guard: loose-dict
+        self._session_outbox_queues: dict[str, hook_outbox_queue.HookOutboxSessionQueue] = {}  # guard: loose-dict
         self._session_outbox_workers: dict[str, asyncio.Task[None]] = {}  # guard: loose-dict
         self._hook_outbox_processed_count = 0
         self._hook_outbox_coalesced_count = 0

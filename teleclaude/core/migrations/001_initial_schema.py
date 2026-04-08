@@ -90,21 +90,6 @@ CREATE TABLE IF NOT EXISTS session_listeners (
 
 CREATE INDEX IF NOT EXISTS idx_session_listeners_caller ON session_listeners(caller_session_id);
 
--- Hook outbox (durable hook event delivery)
-CREATE TABLE IF NOT EXISTS hook_outbox (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT NOT NULL,
-    event_type TEXT NOT NULL,
-    payload TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    attempt_count INTEGER DEFAULT 0,
-    last_error TEXT,
-    locked_at TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(next_attempt_at);
-
 -- Inbound message queue
 CREATE TABLE IF NOT EXISTS inbound_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -405,7 +390,6 @@ async def down(db: aiosqlite.Connection) -> None:
         "operations",
         "pending_message_deletions",
         "inbound_queue",
-        "hook_outbox",
         "session_listeners",
         "session_tokens",
         "sessions",

@@ -251,7 +251,7 @@ class DbHooksMixin:
         """Persist a hook event in the outbox for durable delivery."""
         now = datetime.now(UTC).isoformat()
         payload_json = json.dumps(payload)
-        async with self._session() as db_session:
+        async with self._outbox_session() as db_session:
             row = db_models.HookOutbox(
                 session_id=session_id,
                 event_type=event_type,
@@ -283,7 +283,7 @@ class DbHooksMixin:
         if exclude_session_ids:
             stmt = stmt.where(db_models.HookOutbox.session_id.notin_(exclude_session_ids))
         stmt = stmt.order_by(db_models.HookOutbox.created_at).limit(limit)
-        async with self._session() as db_session:
+        async with self._outbox_session() as db_session:
             result = await db_session.exec(stmt)
             rows = result.all()
             return [
@@ -311,7 +311,7 @@ class DbHooksMixin:
             )
             .values(locked_at=now_iso)
         )
-        async with self._session() as db_session:
+        async with self._outbox_session() as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return (result.rowcount or 0) == 1
@@ -335,7 +335,7 @@ class DbHooksMixin:
             )
             .values(locked_at=now_iso)
         )
-        async with self._session() as db_session:
+        async with self._outbox_session() as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             claimed_count = result.rowcount or 0
@@ -349,14 +349,14 @@ class DbHooksMixin:
             db_models.HookOutbox.id.in_(row_ids),
             db_models.HookOutbox.locked_at == now_iso,
         )
-        async with self._session() as db_session:
+        async with self._outbox_session() as db_session:
             result = await db_session.exec(stmt_check)
             return {int(row_id) for row_id in result.all()}
 
     async def delete_hook_outbox_row(self, row_id: int) -> None:
         """Delete a processed hook outbox row."""
         stmt = delete(db_models.HookOutbox).where(db_models.HookOutbox.id == row_id)
-        async with self._session() as db_session:
+        async with self._outbox_session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
 
@@ -378,7 +378,7 @@ class DbHooksMixin:
                 locked_at=None,
             )
         )
-        async with self._session() as db_session:
+        async with self._outbox_session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
 

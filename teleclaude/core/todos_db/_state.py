@@ -5,108 +5,138 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import cast
+
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.next_machine._types import StateValue
 
-if TYPE_CHECKING:
-    import aiosqlite
+from ._models import ROADMAP_TABLE, TODO_STATE_TABLE, TodoRoadmap, TodoStateModel
 
 
 class TodosDbStateMixin:
     """Read/write todo lifecycle state (replaces state_io.py)."""
 
-    conn: aiosqlite.Connection | None
     _on_mutation: Callable[[], None]
+
+    async def _resolve_active_row_id(self, session: SqlAsyncSession, slug: str) -> str | None:
+        """Resolve an active or icebox roadmap slug to its stable row id."""
+        result = await session.exec(
+            select(TodoRoadmap.id)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status != "delivered")
+            .limit(1)
+        )
+        row_id = result.one_or_none()
+        return str(row_id) if row_id is not None else None
 
     async def read_state(self, slug: str) -> dict[str, StateValue] | None:
         """Read state JSON for a slug (active/icebox). Returns None if not found."""
-        assert self.conn is not None
-        # Resolve slug → id via roadmap (active/icebox only — delivered slugs
-        # can be reused, so we must not return stale delivery-cycle state)
-        async with self.conn.execute(
-            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
-            (slug,),
-        ) as cursor:
-            id_row = await cursor.fetchone()
-        if id_row is None:
-            return None
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_active_row_id(session, slug)
+            if row_id is None:
+                return None
+            state_model = await session.get(TodoStateModel, row_id)
+            if state_model is None:
+                return None
+            return cast(dict[str, StateValue], json.loads(state_model.state))
 
-        async with self.conn.execute(
-            "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
-            (id_row[0],),
-        ) as cursor:
-            row = await cursor.fetchone()
-        if row is None:
-            return None
-        result: dict[str, StateValue] = json.loads(row[0])
-        return result
+    async def get_state(self, slug: str) -> dict[str, StateValue] | None:
+        """Compatibility wrapper used by the SQLAlchemy migration spec."""
+        return await self.read_state(slug)
 
-    async def write_state(self, slug: str, state: dict[str, StateValue]) -> None:
+    async def write_state(
+        self,
+        slug: str,
+        state: dict[str, StateValue],
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> None:
         """Upsert state JSON for a slug."""
-        assert self.conn is not None
-        now = datetime.now(UTC).isoformat()
-        state_json = json.dumps(state, default=str)
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            row_id = await self._resolve_active_row_id(db_session, slug)
+            if row_id is None:
+                msg = f"write_state: no active/icebox roadmap entry for slug {slug!r}"
+                raise ValueError(msg)
 
-        # Resolve slug → id
-        async with self.conn.execute(
-            "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
-            (slug,),
-        ) as cursor:
-            id_row = await cursor.fetchone()
+            now = datetime.now(UTC).isoformat()
+            state_model = await db_session.get(TodoStateModel, row_id)
+            if state_model is None:
+                state_model = TodoStateModel(
+                    id=row_id,
+                    slug=slug,
+                    state=json.dumps(state, default=str),
+                    created_at=now,
+                    updated_at=now,
+                )
+            else:
+                state_model.slug = slug
+                state_model.state = json.dumps(state, default=str)
+                state_model.updated_at = now
+            db_session.add(state_model)
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+        finally:
+            if owns_session:
+                await db_session.close()
 
-        if id_row is None:
-            msg = f"write_state: no active/icebox roadmap entry for slug {slug!r}"
-            raise ValueError(msg)
-        row_id = id_row[0]
-
-        await self.conn.execute(
-            "INSERT INTO todo_state (id, slug, state, created_at, updated_at) "  # guard: raw-sql
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
-            (row_id, slug, state_json, now, now),
-        )
-        await self.conn.commit()
-        self._on_mutation()
+    async def set_state(self, slug: str, state: str | dict[str, StateValue]) -> None:
+        """Compatibility wrapper used by the SQLAlchemy migration spec."""
+        if isinstance(state, str):
+            parsed = json.loads(state)
+            if not isinstance(parsed, dict):
+                msg = "set_state expects a JSON object payload"
+                raise ValueError(msg)
+            typed_state: dict[str, StateValue] = parsed
+        else:
+            typed_state = state
+        await self.write_state(slug, typed_state)
 
     async def read_state_delivered(self, slug: str) -> dict[str, StateValue] | None:
-        """Read state for a delivered slug via roadmap ID join.
+        """Read state for a delivered slug via roadmap ID join."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(
+                select(TODO_STATE_TABLE.c.state)
+                .join(ROADMAP_TABLE, TODO_STATE_TABLE.c.id == ROADMAP_TABLE.c.id)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status == "delivered")
+                .order_by(ROADMAP_TABLE.c.delivered_at.desc())
+                .limit(1)
+            )
+            state_json = result.one_or_none()
+            if state_json is None:
+                return None
+            return cast(dict[str, StateValue], json.loads(str(state_json)))
 
-        Unlike read_state (active/icebox only), this targets delivered entries.
-        Used by display paths that render delivered items.
-        """
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT ts.state FROM todo_state ts "  # guard: raw-sql
-            "JOIN roadmap r ON ts.id = r.id "
-            "WHERE r.slug = ? AND r.status = 'delivered' "
-            "ORDER BY r.delivered_at DESC LIMIT 1",
-            (slug,),
-        ) as cursor:
-            row = await cursor.fetchone()
-        if row is None:
-            return None
-        result: dict[str, StateValue] = json.loads(row[0])
-        return result
-
-    async def delete_state(self, slug: str) -> None:
+    async def delete_state(self, slug: str, *, session: SqlAsyncSession | None = None) -> None:
         """Delete state for a slug."""
-        assert self.conn is not None
-        await self.conn.execute(
-            "DELETE FROM todo_state WHERE slug = ?",  # guard: raw-sql
-            (slug,),
-        )
-        await self.conn.commit()
-        self._on_mutation()
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            row_id = await self._resolve_active_row_id(db_session, slug)
+            if row_id is None:
+                if owns_session:
+                    await db_session.commit()
+                return
+            state_model = await db_session.get(TodoStateModel, row_id)
+            if state_model is not None:
+                await db_session.delete(state_model)
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation()
+        finally:
+            if owns_session:
+                await db_session.close()
 
     async def list_slugs(self) -> list[str]:
         """Return all slugs with stored state."""
-        assert self.conn is not None
-        async with self.conn.execute(
-            "SELECT slug FROM todo_state ORDER BY slug",  # guard: raw-sql
-        ) as cursor:
-            rows = await cursor.fetchall()
-        return [row[0] for row in rows]
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(select(TodoStateModel.slug).order_by(TODO_STATE_TABLE.c.slug))
+            return [str(slug) for slug in result.all()]
 
     async def is_bug_todo(self, slug: str) -> bool:
         """Check if a todo has kind='bug'."""
@@ -125,54 +155,49 @@ class TodosDbStateMixin:
         exists: bool = await self.artifact_exists(slug, "deferrals")  # type: ignore[attr-defined]
         return exists
 
-    # --- Sync methods for integration thread ---
-
     def read_state_sync(self, slug: str) -> dict[str, StateValue] | None:
         """Sync version of read_state for use from worker threads."""
-        conn = self._sync_conn()  # type: ignore[attr-defined]
-        try:
-            # Resolve slug → id (active/icebox only — delivered slugs can be reused)
-            id_row = conn.execute(
-                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
-                (slug,),
-            ).fetchone()
-            if id_row is None:
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            row_id = session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "delivered")
+                .limit(1)
+            ).one_or_none()
+            if row_id is None:
                 return None
-
-            row = conn.execute(
-                "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
-                (id_row[0],),
-            ).fetchone()
-            if row is None:
+            state_model = session.get(TodoStateModel, str(row_id))
+            if state_model is None:
                 return None
-            result: dict[str, StateValue] = json.loads(row[0])
-            return result
-        finally:
-            conn.close()
+            return cast(dict[str, StateValue], json.loads(state_model.state))
 
     def write_state_sync(self, slug: str, state: dict[str, StateValue]) -> None:
         """Sync version of write_state for use from worker threads."""
-        now = datetime.now(UTC).isoformat()
-        state_json = json.dumps(state, default=str)
-        conn = self._sync_conn()  # type: ignore[attr-defined]
-        try:
-            # Resolve slug → id
-            id_row = conn.execute(
-                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
-                (slug,),
-            ).fetchone()
-            if id_row is None:
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            row_id = session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "delivered")
+                .limit(1)
+            ).one_or_none()
+            if row_id is None:
                 msg = f"write_state_sync: no active/icebox roadmap entry for slug {slug!r}"
                 raise ValueError(msg)
-            row_id = id_row[0]
 
-            conn.execute(
-                "INSERT INTO todo_state (id, slug, state, created_at, updated_at) "  # guard: raw-sql
-                "VALUES (?, ?, ?, ?, ?) "
-                "ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
-                (row_id, slug, state_json, now, now),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+            now = datetime.now(UTC).isoformat()
+            state_model = session.get(TodoStateModel, str(row_id))
+            if state_model is None:
+                state_model = TodoStateModel(
+                    id=str(row_id),
+                    slug=slug,
+                    state=json.dumps(state, default=str),
+                    created_at=now,
+                    updated_at=now,
+                )
+            else:
+                state_model.slug = slug
+                state_model.state = json.dumps(state, default=str)
+                state_model.updated_at = now
+            session.add(state_model)
+            session.commit()
         self._on_mutation()
