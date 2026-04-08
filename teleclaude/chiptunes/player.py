@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import array
 import queue
 import threading
 import time
@@ -28,6 +29,17 @@ _PREBUFFER_SECONDS = 2.5  # seconds of audio pre-buffered before stream starts
 _QUEUE_MAX_CHUNKS = 400  # maximum queue depth (~400 frames at 50Hz ≈ 8s)
 _SAMPLE_RATE = 48000
 _DEVICE_POLL_INTERVAL_S = 2.0  # how often to check for default output device changes
+_SILENCE_THRESHOLD = 32  # int16 amplitude (~-60dB noise floor)
+_SILENCE_TIMEOUT_S = 3.0  # seconds of consecutive silence before track is considered done
+
+
+def _is_silence(pcm: bytes, threshold: int = _SILENCE_THRESHOLD) -> bool:
+    """Return True if all int16 samples in the PCM frame are below the noise floor."""
+    if len(pcm) < 2:
+        return True
+    samples = array.array("h")
+    samples.frombytes(pcm)
+    return all(abs(s) < threshold for s in samples)
 
 
 def _get_default_output_device() -> int | None:  # used by ChiptunesPlayer._open_stream and _device_monitor_loop
@@ -378,6 +390,9 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             self._notify_track_end("init_failed")
             return
 
+        silent_frames = 0
+        silence_limit = int(_SILENCE_TIMEOUT_S * frame_rate)
+
         playback_elapsed = 0.0
         if start_position_seconds > 0.0:
             target_frames = int(start_position_seconds / frame_duration)
@@ -397,6 +412,16 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             try:
                 writes = driver.play_frame()
                 pcm = renderer.render_frame(writes, frame_duration)
+                if _is_silence(pcm):
+                    silent_frames += 1
+                    if silent_frames >= silence_limit:
+                        logger.info(
+                            "ChipTunes: %.1fs silence detected, track complete",
+                            silent_frames / frame_rate,
+                        )
+                        break
+                else:
+                    silent_frames = 0
                 playback_elapsed += frame_duration
                 with self._position_lock:
                     self._playback_position_seconds = playback_elapsed
@@ -415,7 +440,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 self._stop_event.wait(frame_duration * 0.5)
 
         self._playing = False
-        if not self._stop_event.is_set():
+        if not self._stop_event.is_set() and self._last_track_end_reason is None:
             self._notify_track_end("track_completed")
 
     def stop(self) -> None:

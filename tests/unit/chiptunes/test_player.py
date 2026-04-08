@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import array
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,11 +10,12 @@ from types import SimpleNamespace
 import pytest
 
 import teleclaude.chiptunes.player as player_module
+from teleclaude.chiptunes.player import _is_silence
 from teleclaude.chiptunes.sid_parser import SIDHeader
 
 
 class _RecordingThread:
-    def __init__(
+    def __init__(  # pylint: disable=too-many-positional-arguments
         self,
         target: Callable[..., object],
         args: tuple[object, ...] = (),
@@ -31,7 +33,7 @@ class _RecordingThread:
     def start(self) -> None:
         self.started = True
 
-    def join(self, timeout: float | None = None) -> None:
+    def join(self, timeout: float | None = None) -> None:  # pylint: disable=unused-argument
         return None
 
     def is_alive(self) -> bool:
@@ -115,8 +117,8 @@ class TestChiptunesPlayer:
         player.play(Path("song.sid"), start_paused=True, start_position_seconds=1.5)
 
         assert isinstance(player._thread, _RecordingThread)
-        assert player._thread.started is True
-        assert player._thread.args == (_header(flags=4), 1.5)
+        assert player._thread.started is True  # pylint: disable=no-member
+        assert player._thread.args == (_header(flags=4), 1.5)  # pylint: disable=no-member
         assert player.is_paused is True
         assert player.playback_position_seconds == 1.5
         assert player._stream_blocksize == int(48000 * (1.0 / 50.0)) * 4
@@ -184,5 +186,90 @@ class TestChiptunesPlayer:
         assert driver.init_calls == [0]
         assert renderer.frames == [([(0, 1)], 1.0 / 50.0)]
         assert player.playback_position_seconds == pytest.approx(1.0 / 50.0)
+        assert player.track_end_reason == "emulation_error"
+        assert reasons == ["emulation_error"]
+
+    def test_silence_detection_triggers_track_completion(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Sustained silence in rendered PCM should end the track."""
+
+        class _SilentRenderer(_FakeRenderer):
+            def render_frame(self, writes: list[tuple[int, int]], frame_duration_s: float) -> bytes:
+                self.frames.append((writes, frame_duration_s))
+                return array.array("h", [0] * 960).tobytes()
+
+        driver = _FakeDriver(_header(flags=4))
+        renderer = _SilentRenderer(sample_rate=48000, pal=True, volume=0.5)
+        monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
+        monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
+
+        player = player_module.ChiptunesPlayer()
+        reasons: list[str | None] = []
+        player.on_track_end = reasons.append
+        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
+
+        player._emulation_loop(_header(flags=4))
+
         assert player.track_end_reason == "track_completed"
-        assert reasons == ["emulation_error", "track_completed"]
+        assert reasons == ["track_completed"]
+        # 3s * 50Hz = 150 silent frames triggers completion
+        assert driver.play_calls == 150
+
+    def test_non_silent_frames_reset_silence_counter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Non-silent audio resets the silence counter — no premature track end."""
+        frame_count = 0
+
+        class _IntermittentRenderer(_FakeRenderer):
+            def render_frame(self, writes: list[tuple[int, int]], frame_duration_s: float) -> bytes:
+                nonlocal frame_count
+                self.frames.append((writes, frame_duration_s))
+                frame_count += 1
+                if frame_count % 100 == 0:
+                    return array.array("h", [1000] * 960).tobytes()
+                return array.array("h", [0] * 960).tobytes()
+
+        class _BoundedDriver(_FakeDriver):
+            def play_frame(self) -> list[tuple[int, int]]:
+                self.play_calls += 1
+                if self.play_calls > 400:
+                    raise RuntimeError("test limit reached")
+                return [(0, self.play_calls)]
+
+        driver = _BoundedDriver(_header(flags=4))
+        renderer = _IntermittentRenderer(sample_rate=48000, pal=True, volume=0.5)
+        monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
+        monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
+
+        player = player_module.ChiptunesPlayer()
+        reasons: list[str | None] = []
+        player.on_track_end = reasons.append
+        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
+
+        player._emulation_loop(_header(flags=4))
+
+        # Non-silent frame every 100 frames resets counter. Ends at 401 via exception.
+        assert driver.play_calls == 401
+        assert reasons == ["emulation_error"]
+
+
+@pytest.mark.unit
+class TestIsSilence:
+    """Tests for the _is_silence PCM helper."""
+
+    def test_empty_bytes_is_silence(self) -> None:
+        assert _is_silence(b"") is True
+
+    def test_all_zeros_is_silence(self) -> None:
+        pcm = array.array("h", [0, 0, 0]).tobytes()
+        assert _is_silence(pcm) is True
+
+    def test_loud_sample_is_not_silence(self) -> None:
+        pcm = array.array("h", [0, 100, 0]).tobytes()
+        assert _is_silence(pcm) is False
+
+    def test_below_threshold_is_silence(self) -> None:
+        pcm = array.array("h", [31, -31, 0]).tobytes()
+        assert _is_silence(pcm) is True
+
+    def test_at_threshold_is_not_silence(self) -> None:
+        pcm = array.array("h", [32, 0, 0]).tobytes()
+        assert _is_silence(pcm) is False

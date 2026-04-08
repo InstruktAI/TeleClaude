@@ -229,7 +229,7 @@ class TestChiptunesManagerIPC:
         manager.on_state_change = lambda: changes.append("changed")
 
         manager._connect()
-        threading.Event().wait(0.2)
+        threading.Event().wait(0.1)
 
         # Set state to playing via a track_start event
         fake_worker.send_event(
@@ -239,13 +239,13 @@ class TestChiptunesManagerIPC:
                 "sid_path": "/music/Test.sid",
             }
         )
-        threading.Event().wait(0.3)
+        threading.Event().wait(0.1)
         assert manager._cached_state.playback == "playing"
         changes.clear()
 
         # Kill the fake worker connection — reader thread should detect and clean up
         fake_worker.stop()
-        threading.Event().wait(0.5)
+        threading.Event().wait(0.3)
 
         assert manager._cached_state.playback == "cold"  # type: ignore[comparison-overlap]
         assert manager._sock is None
