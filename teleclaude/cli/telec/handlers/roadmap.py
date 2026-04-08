@@ -237,12 +237,8 @@ def _handle_roadmap_add(args: list[str]) -> None:
         raise SystemExit(1)
 
     project_root = _resolve_roadmap_project_root()
-    if _run_db(
-        project_root, slug, "add_to_roadmap", group_slug=group, after=after, description=description, before=before
-    ):
-        print(f"Added {slug} to roadmap.")
-    else:
-        print(f"Slug already exists in roadmap: {slug}")
+    _run_db(project_root, slug, "add_to_roadmap", group_slug=group, after=after, description=description, before=before)
+    print(f"Added {slug} to roadmap.")
 
 
 def _handle_roadmap_remove(args: list[str]) -> None:

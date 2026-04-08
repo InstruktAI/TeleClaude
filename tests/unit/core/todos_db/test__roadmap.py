@@ -23,10 +23,28 @@ async def test_add_to_roadmap_creates_entry(todos_db: TodosDb) -> None:
     assert items[0]["status"] == "active"
 
 
-async def test_add_duplicate_slug_returns_false(todos_db: TodosDb) -> None:
+async def test_add_duplicate_slug_is_idempotent(todos_db: TodosDb) -> None:
     await todos_db.add_to_roadmap("my-slug")
-    added = await todos_db.add_to_roadmap("my-slug")
-    assert added is False
+    result = await todos_db.add_to_roadmap("my-slug")
+    assert result is True
+    items = await todos_db.list_roadmap()
+    assert len(items) == 1
+
+
+async def test_add_duplicate_slug_updates_group(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("my-slug")
+    await todos_db.add_to_roadmap("my-slug", group_slug="my-group")
+    items = await todos_db.list_roadmap()
+    assert len(items) == 1
+    assert items[0]["group_slug"] == "my-group"
+
+
+async def test_add_duplicate_slug_updates_description(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("my-slug", description="old")
+    await todos_db.add_to_roadmap("my-slug", description="new")
+    items = await todos_db.list_roadmap()
+    assert len(items) == 1
+    assert items[0]["description"] == "new"
 
 
 async def test_roadmap_preserves_insertion_order(todos_db: TodosDb) -> None:

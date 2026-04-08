@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import TypedDict
 
 from sqlalchemy import delete, func, update
 from sqlmodel import select
@@ -35,6 +36,29 @@ def _roadmap_row(model: TodoRoadmap) -> RoadmapRow:
         delivered_commit=model.delivered_commit,
         children=children if isinstance(children, list) else None,
     )
+
+
+class _EntryUpdates(TypedDict, total=False):
+    """Subset of roadmap fields eligible for idempotent update."""
+
+    group_slug: str
+    description: str
+    updated_at: str
+
+
+def _collect_entry_updates(
+    existing: TodoRoadmap,
+    *,
+    group_slug: str | None,
+    description: str | None,
+) -> _EntryUpdates:
+    """Build a dict of fields that differ from the existing entry."""
+    values = _EntryUpdates()
+    if group_slug is not None and existing.group_slug != group_slug:
+        values["group_slug"] = group_slug
+    if description is not None and existing.description != description:
+        values["description"] = description
+    return values
 
 
 class TodosDbRoadmapMixin:
@@ -119,12 +143,24 @@ class TodosDbRoadmapMixin:
         position: int | None = None,
         session: SqlAsyncSession | None = None,
     ) -> bool:
-        """Add a slug to the roadmap. Returns False if an active/icebox entry already exists."""
+        """Add or update a slug in the roadmap. Idempotent — returns True on success."""
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
-            if await self._active_entry(db_session, slug) is not None:
-                return False
+            existing = await self._active_entry(db_session, slug)
+            if existing is not None:
+                values = _collect_entry_updates(existing, group_slug=group_slug, description=description)
+                if values:
+                    values["updated_at"] = datetime.now(UTC).isoformat()
+                    await db_session.exec(
+                        update(TodoRoadmap)
+                        .where(ROADMAP_TABLE.c.slug == slug, ROADMAP_TABLE.c.status.in_(("active", "icebox")))
+                        .values(**values)
+                    )
+                if owns_session:
+                    await db_session.commit()
+                    self._on_mutation()
+                return True
 
             now = datetime.now(UTC).isoformat()
             new_id = _generate_id()
