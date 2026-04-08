@@ -122,4 +122,6 @@ class TestPrecommitHookWiring:
         content = _read(_PRECOMMIT_SH)
         assert 'if $PYRIGHT "$@" > "$tmpdir/pyright.out" 2>&1; then' in content
         assert 'if $MYPY "$@" > "$tmpdir/mypy.out" 2>&1; then' in content
-        assert 'if $PYLINT "$@" > "$tmpdir/pylint.out" 2>&1; then' in content
+        # Pylint splits test vs src files for separate disable flags
+        assert '$PYLINT $src_files >> "$tmpdir/pylint.out"' in content
+        assert '$PYLINT --disable="$PYLINT_TEST_DISABLE" $test_files >> "$tmpdir/pylint.out"' in content
