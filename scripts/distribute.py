@@ -91,7 +91,7 @@ def dump_frontmatter(post: Post) -> str:
     parameters = post.metadata.pop("parameters", None)
     if parameters:
         post.content = _inject_parameter_preamble(post.content, parameters)
-    return frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)
+    return str(frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER))
 
 
 def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:

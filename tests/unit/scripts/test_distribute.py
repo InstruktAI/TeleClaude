@@ -35,18 +35,21 @@ MARKER_END = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->"
 
 
 def test_markdown_wrapped_content_contains_start_marker() -> None:
+    """wrap_with_context_markers adds the start marker to markdown output."""
     result = wrap_with_context_markers("# Hello\n\nBody.", is_markdown=True)
 
     assert MARKER_START in result
 
 
 def test_markdown_wrapped_content_contains_end_marker() -> None:
+    """wrap_with_context_markers adds the end marker to markdown output."""
     result = wrap_with_context_markers("# Hello\n\nBody.", is_markdown=True)
 
     assert MARKER_END in result
 
 
 def test_start_marker_precedes_content_body() -> None:
+    """Start marker must appear before the document body."""
     content = "# My Heading"
     result = wrap_with_context_markers(content, is_markdown=True)
 
@@ -56,6 +59,7 @@ def test_start_marker_precedes_content_body() -> None:
 
 
 def test_end_marker_follows_content_body() -> None:
+    """End marker must appear after the document body."""
     content = "# My Heading"
     result = wrap_with_context_markers(content, is_markdown=True)
 
@@ -65,6 +69,7 @@ def test_end_marker_follows_content_body() -> None:
 
 
 def test_toml_content_not_wrapped_with_markers() -> None:
+    """wrap_with_context_markers passes TOML content through unmodified."""
     toml_content = "description = \"\"\"A prompt.\"\"\"\nprompt = '''\nDo something.\n'''\n"
     result = wrap_with_context_markers(toml_content, is_markdown=False)
 
@@ -73,6 +78,7 @@ def test_toml_content_not_wrapped_with_markers() -> None:
 
 
 def test_original_content_preserved_inside_markers() -> None:
+    """wrap_with_context_markers preserves the original body exactly and adds only the outer markers."""
     content = "# Title\n\nParagraph one.\n\nParagraph two.\n\n"
     result = wrap_with_context_markers(content, is_markdown=True)
 
@@ -86,9 +92,8 @@ def test_original_content_preserved_inside_markers() -> None:
 # ---------------------------------------------------------------------------
 
 
-
-
 def test_codex_transform_output_keeps_single_quoted_frontmatter_scalars() -> None:
+    """transform_to_codex normalizes frontmatter scalar strings to single-quoted YAML."""
     post = frontmatter.loads("---\nname: test-cmd\ndescription: Test.\n---\nDo the thing.\n")
     output = transform_to_codex(post)
 

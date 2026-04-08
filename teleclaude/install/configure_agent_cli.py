@@ -519,7 +519,13 @@ def configure_codex(  # pylint: disable=too-many-branches,too-many-locals,too-ma
     content = _remove_codex_mcp_config(content)
     content = _ensure_codex_mcp_servers(content, managed_mcp_servers)
     skipped_override_keys = frozenset({CODEX_COMPACTION_PROMPT_KEY}) if not compaction_prompt_available else frozenset()
-    content = _apply_codex_settings_overrides(content, skip_keys=skipped_override_keys)
+    compaction_value_overrides: dict[str, object] = {}
+    if compaction_prompt_available:
+        # Resolve to absolute path so Codex can locate the prompt regardless of working directory.
+        compaction_value_overrides[CODEX_COMPACTION_PROMPT_KEY] = str(compaction_prompt_target)
+    content = _apply_codex_settings_overrides(
+        content, skip_keys=skipped_override_keys, value_overrides=compaction_value_overrides or None
+    )
     config_path.write_text(content)
     print(f"Codex hooks and settings configured in {config_path}")
 
@@ -530,11 +536,18 @@ def _remove_codex_top_level_key(content: str, key: str) -> str:
     return key_pattern.sub("", content)
 
 
-def _apply_codex_settings_overrides(content: str, *, skip_keys: frozenset[str] = frozenset()) -> str:
+def _apply_codex_settings_overrides(
+    content: str,
+    *,
+    skip_keys: frozenset[str] = frozenset(),
+    value_overrides: dict[str, object] | None = None,
+) -> str:
     """Apply settings overrides from settings/codex.json to TOML content.
 
     For each top-level key in the overrides, ensure it exists in the TOML.
     Replaces existing values; appends missing keys before the first section.
+    Callers may supply ``value_overrides`` to substitute specific key values
+    (e.g. to write an absolute path where codex.json stores a relative placeholder).
     """
     overrides = _load_settings_overrides("codex")
     if not overrides:
@@ -552,11 +565,12 @@ def _apply_codex_settings_overrides(content: str, *, skip_keys: frozenset[str] =
     for key, value in overrides.items():
         if key in skip_keys:
             continue
-        toml_value = json.dumps(value)
+        resolved_value = (value_overrides or {}).get(key, value)
+        toml_value = json.dumps(resolved_value)
         key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*$", re.MULTILINE)
 
         if key in config:
-            if config[key] == value:
+            if config[key] == resolved_value:
                 continue
             content = key_pattern.sub(f"{key} = {toml_value}", content)
         else:
