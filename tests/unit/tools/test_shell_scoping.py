@@ -19,10 +19,18 @@ _TEST_SH = _REPO_ROOT / "tools" / "test.sh"
 _PRECOMMIT_SH = _REPO_ROOT / "tools" / "lint" / "precommit-hook.sh"
 _PRECOMMIT_CONFIG = _REPO_ROOT / ".pre-commit-config.yaml"
 
-_EXPECTED_COMPONENTS = frozenset({
-    "guardrails", "ruff-check", "pyright", "mypy", "pylint",
-    "parallel-typecheck", "markdown", "docs-validate",
-})
+_EXPECTED_COMPONENTS = frozenset(
+    {
+        "guardrails",
+        "ruff-check",
+        "pyright",
+        "mypy",
+        "pylint",
+        "parallel-typecheck",
+        "markdown",
+        "docs-validate",
+    }
+)
 
 
 def _syntax_check(script: Path) -> subprocess.CompletedProcess[str]:
@@ -39,7 +47,9 @@ class TestLintShWiring:
     def test_lint_sh_dry_run_exits_cleanly(self) -> None:
         result = subprocess.run(
             ["sh", str(_LINT_SH), "--dry-run"],
-            check=False, capture_output=True, text=True,
+            check=False,
+            capture_output=True,
+            text=True,
             cwd=str(_REPO_ROOT),
         )
         assert result.returncode == 0, result.stderr
@@ -63,11 +73,16 @@ class TestPrecommitHookWiring:
     def test_precommit_rejects_unknown_component(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
-                args=[], returncode=1, stdout="", stderr="Unknown lint component: bogus\n",
+                args=[],
+                returncode=1,
+                stdout="",
+                stderr="Unknown lint component: bogus\n",
             )
             result = subprocess.run(
                 ["sh", str(_PRECOMMIT_SH), "bogus"],
-                check=False, capture_output=True, text=True,
+                check=False,
+                capture_output=True,
+                text=True,
             )
         assert result.returncode != 0
 
@@ -81,7 +96,7 @@ class TestPrecommitHookWiring:
     def test_precommit_config_passes_filenames_to_key_hooks(self) -> None:
         """Guardrails, docs validation, and typecheck hooks must have pass_filenames: true."""
         config = yaml.safe_load(_PRECOMMIT_CONFIG.read_text(encoding="utf-8"))
-        hooks_by_id: dict[str, dict[str, object]] = {}
+        hooks_by_id: dict[str, dict[str, object]] = {}  # guard: loose-dict - YAML hook entries have dynamic keys.
         for repo in config.get("repos", []):
             for hook in repo.get("hooks", []):
                 hooks_by_id[hook["id"]] = hook

@@ -168,6 +168,10 @@ class TestCreateFromMainSkeleton:
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
             patch(f"{_SI}.mark_phase"),
+            patch(
+                "teleclaude.core.next_machine.state_io.resolve_main_repo_root",
+                return_value=Path(project),
+            ),
         ):
             create_from_main_skeleton(str(project), "test-slug", description="DB bootstrap test")
 

@@ -31,6 +31,9 @@ class _SessionsView:
         self.pending_applied: int = 0
         self.select_requests: list[tuple[str, bool]] = []
 
+    def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
+        self._availability = availability
+
     def update_activity(self, session_id: str, activity_type: str, detail: str | None = None) -> None:
         self.activity_calls.append((session_id, activity_type, detail))
 
@@ -63,6 +66,9 @@ class _Footer:
 class _PreparationView:
     def __init__(self) -> None:
         self._availability: dict[str, AgentAvailabilityDTO] = {}
+
+    def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
+        self._availability = availability
 
 
 class _WsApp(app_ws.TelecAppWsMixin):

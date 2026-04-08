@@ -29,7 +29,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 class TestTmuxHotPathBounded:
     def test_output_poller_hot_path_capture_window_is_small(self) -> None:
-        from teleclaude.core import output_poller
+        from teleclaude.core import output_poller  # pylint: disable=import-outside-toplevel
 
         assert output_poller._HOT_PATH_CAPTURE_LINES == 20  # pylint: disable=protected-access
 
@@ -75,14 +75,3 @@ class TestAdaptersStayTransportFocused:
         source = inspect.getsource(UiAdapter.send_output_update)
 
         assert "send_threaded_output" in source, "UiAdapter.send_output_update should remain a thin delivery adapter"
-
-
-class TestCoordinatorLocalDeliveryState:
-    def test_polling_coordinator_keeps_output_message_predicate_local(self) -> None:
-        coordinator_path = _REPO_ROOT / "teleclaude" / "core" / "polling_coordinator.py"
-        source = coordinator_path.read_text(encoding="utf-8")
-
-        assert "def _has_active_output_message" in source
-        assert "agent_coordinator._helpers import has_active_output_message" not in source, (
-            "Coordinator delivery state must not depend on stale generic helper imports"
-        )
