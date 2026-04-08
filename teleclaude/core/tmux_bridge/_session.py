@@ -11,6 +11,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.paths import BIN_DIR, TMP_SESSIONS_DIR
 from teleclaude.session_identity import write_session_identity_to
 
 from ._pane import session_exists
@@ -23,7 +24,7 @@ def _get_session_tmp_basedir() -> Path:
     override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
     if override:
         return Path(override).expanduser()
-    return Path(os.path.expanduser("~/.teleclaude/tmp/sessions"))
+    return TMP_SESSIONS_DIR
 
 
 def _safe_path_component(value: str) -> str:
@@ -105,7 +106,7 @@ async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing e
         # enforce version-control guardrails in every tmux-created session.
         # Always set PATH explicitly for the session; tmux server env can differ
         # from daemon env, so conditional omission is unsafe.
-        teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
+        teleclaude_bin = str(BIN_DIR)
         current_path = os.environ.get("PATH", "/usr/bin:/bin")
         path_parts = [part for part in current_path.split(os.pathsep) if part]
         # Always prepend teleclaude_bin to first position, removing duplicates.

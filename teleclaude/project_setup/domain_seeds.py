@@ -9,10 +9,11 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.events.domain_seeds import DEFAULT_EVENT_DOMAINS
+from teleclaude.paths import GLOBAL_CONFIG_PATH
 
 logger = get_logger(__name__)
 
-_GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml")
+_GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH
 
 
 # guard: loose-dict-func - YAML global config is untyped; dict[str, Any] is the appropriate boundary type

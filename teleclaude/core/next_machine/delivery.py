@@ -13,6 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.git import GitCommandError, Repo
+from teleclaude.paths import STORAGE_DIR
 
 logger = get_logger(__name__)
 
@@ -33,7 +34,7 @@ def _run_git_cmd(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int
 
 _BINARY_ARTIFACT_DIRS = ("art", "html", "input")
 
-_STORAGE_ROOT = Path("~/.teleclaude/storage").expanduser()
+_STORAGE_ROOT = STORAGE_DIR
 
 
 def _archive_binary_artifacts(project_root: Path, slug: str) -> None:

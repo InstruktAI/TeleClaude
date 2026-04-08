@@ -84,7 +84,9 @@ def save_project_config(path: Path, config: ProjectConfig) -> None:
 def load_global_config(path: Path | None = None) -> GlobalConfig:
     """Load global-level configuration."""
     if path is None:
-        path = Path("~/.teleclaude/teleclaude.yml").expanduser()
+        from teleclaude.paths import GLOBAL_CONFIG_PATH  # pylint: disable=import-outside-toplevel
+
+        path = GLOBAL_CONFIG_PATH
     return load_config(path, GlobalConfig)
 
 

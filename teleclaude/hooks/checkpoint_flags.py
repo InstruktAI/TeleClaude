@@ -23,7 +23,7 @@ def session_tmp_base_dir() -> Path:
     base_override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
     if base_override:
         return Path(base_override).expanduser().resolve()
-    return Path(os.path.expanduser("~/.teleclaude/tmp/sessions")).resolve()
+    return TMP_SESSIONS_DIR.resolve()
 
 
 def _safe_session_path_component(value: str) -> str:

@@ -23,7 +23,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from teleclaude.events.lifecycle import LifecycleManager
 
-_DEFAULT_SANDBOX_DIR = Path("~/.teleclaude/sandbox-cartridges")
+from teleclaude.paths import COMPANY_DIR, PERSONAL_DIR, SANDBOX_CARTRIDGES_DIR
+
+_DEFAULT_SANDBOX_DIR = SANDBOX_CARTRIDGES_DIR
 
 
 def _get_lifecycle_manager() -> LifecycleManager:
@@ -38,8 +40,8 @@ def _get_lifecycle_manager() -> LifecycleManager:
         base_path = Path(event_domains.base_path).expanduser()
         personal_base = Path(event_domains.personal_base_path).expanduser()
     else:
-        base_path = Path("~/.teleclaude/company").expanduser()
-        personal_base = Path("~/.teleclaude/personal").expanduser()
+        base_path = COMPANY_DIR
+        personal_base = PERSONAL_DIR
 
     return LifecycleManager(
         personal_base_path=personal_base,
@@ -140,9 +142,9 @@ def _promote_from_sandbox(parsed: argparse.Namespace, use_json: bool) -> None:
         if event_domains is not None:
             domain_base = Path(event_domains.base_path).expanduser()
         else:
-            domain_base = Path("~/.teleclaude/company").expanduser()
+            domain_base = COMPANY_DIR
     except Exception:
-        domain_base = Path("~/.teleclaude/company").expanduser()
+        domain_base = COMPANY_DIR
 
     dest_dir = domain_base / "domains" / target_domain / "cartridges"
     dest_dir.mkdir(parents=True, exist_ok=True)

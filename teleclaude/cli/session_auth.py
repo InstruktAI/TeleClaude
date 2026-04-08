@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-SESSION_AUTH_DIR = Path("~/.teleclaude/session-auth").expanduser()
+from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
+
+SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
 
 

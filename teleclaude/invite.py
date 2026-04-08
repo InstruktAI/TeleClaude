@@ -16,10 +16,12 @@ from pathlib import Path
 import httpx
 from instrukt_ai_logging import get_logger
 
+from teleclaude.paths import PEOPLE_DIR, TELECLAUDE_HOME
+
 logger = get_logger(__name__)
 
-_TELECLAUDE_DIR = Path("~/.teleclaude").expanduser()
-_PEOPLE_DIR = _TELECLAUDE_DIR / "people"
+_TELECLAUDE_DIR = TELECLAUDE_HOME
+_PEOPLE_DIR = PEOPLE_DIR
 _PROJECT_ROOT = Path(__file__).parent.parent  # teleclaude package parent
 _TEMPLATES_DIR = _PROJECT_ROOT / "templates" / "emails"
 

@@ -8,7 +8,9 @@ from typing import TypedDict, cast
 
 import yaml
 
-MANIFEST_PATH = Path("~/.teleclaude/projects.yaml")
+from teleclaude.paths import PROJECTS_MANIFEST_PATH
+
+MANIFEST_PATH = PROJECTS_MANIFEST_PATH
 
 
 @dataclass(frozen=True)

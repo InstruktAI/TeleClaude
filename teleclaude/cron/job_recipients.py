@@ -7,6 +7,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
+from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.config.schema import (
     CredsConfig,
     JobSubscription,
@@ -28,7 +29,7 @@ def discover_job_recipients(  # pylint: disable=too-many-branches,too-many-local
     For system jobs: returns all admins plus any explicit enabled subscribers (deduped).
     """
     if root is None:
-        root = Path.home() / ".teleclaude"
+        root = TELECLAUDE_HOME
 
     global_cfg_path = root / "teleclaude.yml"
     if not global_cfg_path.exists():

@@ -57,6 +57,7 @@ from teleclaude.hooks.normalizers import register_builtin_normalizers
 from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
+from teleclaude.paths import PEOPLE_DIR
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -113,7 +114,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]  # pylint
             load_person_config,
         )
 
-        people_dir = Path("~/.teleclaude/people").expanduser()
+        people_dir = PEOPLE_DIR
         global_cfg = load_global_config()
         admin_configs: list[tuple[str, PersonConfig]] = []
         for person in global_cfg.people:

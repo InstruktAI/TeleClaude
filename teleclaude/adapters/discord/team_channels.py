@@ -90,7 +90,9 @@ class TeamChannelsMixin:
 
             ch_id = await self._find_or_create_private_text_channel(guild, category, slug, discord_user_id)
             if ch_id is not None:
-                person_folder = os.path.join(os.path.expanduser("~"), ".teleclaude", "people", name)
+                from teleclaude.paths import PEOPLE_DIR  # pylint: disable=import-outside-toplevel
+
+                person_folder = str(PEOPLE_DIR / name)
                 self._team_channel_map[ch_id] = person_folder
                 logger.info("Team channel mapped: %s -> channel_id=%d discord_user=%s", name, ch_id, discord_user_id)
             else:

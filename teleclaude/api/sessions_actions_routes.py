@@ -267,7 +267,9 @@ def _resolve_run_session_agent(request: RunSessionRequest) -> str:
 
 def _build_codex_loader_message(command_name: str, slug: str) -> str:
     """Build the generic Codex loader message for a compiled prompt file."""
-    prompt_path = Path.home() / ".teleclaude" / "commands" / f"{command_name}.md"
+    from teleclaude.paths import COMMANDS_DIR  # pylint: disable=import-outside-toplevel
+
+    prompt_path = COMMANDS_DIR / f"{command_name}.md"
     return (
         f"Read {prompt_path} and follow it exactly as the active instruction set for this session.\n\n"
         "Treat the following as provided inputs to that instruction set:\n"

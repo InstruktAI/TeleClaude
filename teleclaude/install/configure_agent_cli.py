@@ -652,7 +652,9 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
         print(f"Warning: wrapper source missing: {source_path}")
         return
 
-    bin_dir = Path.home() / ".teleclaude" / "bin"
+    from teleclaude.paths import BIN_DIR  # pylint: disable=import-outside-toplevel
+
+    bin_dir = BIN_DIR
     bin_dir.mkdir(parents=True, exist_ok=True)
     target_path = bin_dir / wrapper_name
 
@@ -672,7 +674,9 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
 def install_env_symlink(repo_root: Path) -> None:
     """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
     project_env = repo_root / ".env"
-    target = Path.home() / ".teleclaude" / ".env"
+    from teleclaude.paths import ENV_PATH  # pylint: disable=import-outside-toplevel
+
+    target = ENV_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
 
     if not project_env.exists():

@@ -300,12 +300,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
-    root = Path.home() / ".teleclaude"
+    from teleclaude.paths import TELECLAUDE_HOME  # pylint: disable=import-outside-toplevel
+
     if args.scope == "global":
-        return root / "teleclaude.yml", root / "subscriptions" / "youtube.csv"
+        return TELECLAUDE_HOME / "teleclaude.yml", TELECLAUDE_HOME / "subscriptions" / "youtube.csv"
     return (
-        root / "people" / args.person / "teleclaude.yml",
-        root / "people" / args.person / "subscriptions" / "youtube.csv",
+        TELECLAUDE_HOME / "people" / args.person / "teleclaude.yml",
+        TELECLAUDE_HOME / "people" / args.person / "subscriptions" / "youtube.csv",
     )
 
 

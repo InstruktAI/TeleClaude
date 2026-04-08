@@ -13,9 +13,11 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.paths import GIT_MAIN_LOCK_PATH
+
 logger = get_logger(__name__)
 
-_LOCK_PATH = Path.home() / ".teleclaude" / "git-main.lock"
+_LOCK_PATH = GIT_MAIN_LOCK_PATH
 
 
 @contextmanager

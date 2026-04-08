@@ -16,7 +16,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-_WRAPPER_DIR = str(Path("~/.teleclaude/bin").expanduser())
+from teleclaude.paths import BIN_DIR
+
+_WRAPPER_DIR = str(BIN_DIR)
 
 
 def _find_real_git() -> str:

@@ -22,6 +22,7 @@ from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAML
 
 from teleclaude.config.loader import load_global_config, load_person_config
+from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.config.schema import (
     CredsConfig,
     GlobalConfig,
@@ -31,9 +32,9 @@ from teleclaude.config.schema import (
 
 logger = get_logger(__name__)
 
-_TELECLAUDE_DIR = Path("~/.teleclaude").expanduser()
-_GLOBAL_CONFIG_PATH = _TELECLAUDE_DIR / "teleclaude.yml"
-_PEOPLE_DIR = _TELECLAUDE_DIR / "people"
+_TELECLAUDE_DIR = TELECLAUDE_HOME
+_GLOBAL_CONFIG_PATH = TELECLAUDE_HOME / "teleclaude.yml"
+_PEOPLE_DIR = TELECLAUDE_HOME / "people"
 _DEFAULT_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
 

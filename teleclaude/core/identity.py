@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import PersonEntry
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
+from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR
 
 if TYPE_CHECKING:
     pass
@@ -42,8 +43,8 @@ class IdentityContext:
         return result
 
 
-_GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
-_PEOPLE_DIR = Path("~/.teleclaude/people").expanduser()
+_GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH
+_PEOPLE_DIR = PEOPLE_DIR
 
 
 class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-instance-attributes
@@ -120,8 +121,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
             if person.username:
                 people_by_key[self._normalize_key(person.username)] = person
 
-        people_dir = Path("~/.teleclaude/people").expanduser()
-        for person_config_path in sorted(people_dir.glob("*/teleclaude.yml")):
+        for person_config_path in sorted(PEOPLE_DIR.glob("*/teleclaude.yml")):
             person_key = self._normalize_key(person_config_path.parent.name)
             person = people_by_key.get(person_key)
             if not person:

@@ -35,11 +35,12 @@ import time
 from pathlib import Path
 
 from teleclaude.chiptunes.player import ChiptunesPlayer
+from teleclaude.paths import CHIPTUNES_STATE_PATH
 
 SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
 PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 _RSID_MAGIC = b"RSID"
-STATE_PATH = Path.home() / ".teleclaude" / "state" / "chiptunes_state.json"
+STATE_PATH = CHIPTUNES_STATE_PATH
 _PERSIST_INTERVAL_SECONDS = 2.0
 
 

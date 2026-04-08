@@ -7,6 +7,7 @@ from pathlib import Path
 
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import YoutubeSubscription
+from teleclaude.paths import TELECLAUDE_HOME
 
 
 @dataclass
@@ -35,7 +36,7 @@ def discover_youtube_subscribers(root: Path | None = None) -> list[Subscriber]:
     Returns subscribers for each config that declares ``subscriptions.youtube``.
     """
     if root is None:
-        root = Path.home() / ".teleclaude"
+        root = TELECLAUDE_HOME
 
     subscribers: list[Subscriber] = []
 

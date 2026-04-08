@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.constants import DOMAIN_SCOPES, TAXONOMY_TYPES
+from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 _DOMAINS = frozenset(DOMAIN_SCOPES)
@@ -177,7 +178,7 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
         return "missing_at_prefix"
     if ref.startswith("@docs/"):
         return _validate_project_ref(ref[len("@docs/") :], domains)
-    abs_prefix = f"@{Path.home()}/.teleclaude/docs/"
+    abs_prefix = f"@{GLOBAL_SNIPPETS_DIR}/"
     if ref.startswith(abs_prefix):
         return _validate_global_ref(ref[len(abs_prefix) :], domains)
     return "invalid_prefix"

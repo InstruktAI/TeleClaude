@@ -336,15 +336,19 @@ def _is_global_doc(path: Path) -> bool:
 
 
 def _global_docs_prefixes() -> tuple[str, str]:
-    home_docs = str(Path.home() / ".teleclaude" / "docs")
+    from teleclaude.paths import GLOBAL_SNIPPETS_DIR  # pylint: disable=import-outside-toplevel
+
+    home_docs = str(GLOBAL_SNIPPETS_DIR)
     return "~/.teleclaude/docs/", f"{home_docs}/"
 
 
 def _resolve_see_also_ref(ref: str, project_root: Path) -> Path | None:
     """Resolve a See Also soft reference to an absolute path for existence check."""
     if ref.startswith("~"):
+        from teleclaude.paths import GLOBAL_SNIPPETS_DIR  # pylint: disable=import-outside-toplevel
+
         expanded = str(Path(ref).expanduser())
-        home_prefix = str(Path.home() / ".teleclaude" / "docs") + "/"
+        home_prefix = str(GLOBAL_SNIPPETS_DIR) + "/"
         if expanded.startswith(home_prefix):
             tail = expanded[len(home_prefix) :]
             return (project_root / "docs" / "global" / tail).resolve()

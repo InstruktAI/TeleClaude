@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.paths import CHIPTUNES_WORKER_LOG_PATH
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
@@ -141,7 +143,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
             ],
             stdin=subprocess.DEVNULL,
             stdout=open(  # noqa: SIM115
-                Path.home() / ".teleclaude" / "logs" / "chiptunes_worker.log", "a", encoding="utf-8"
+                CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8"
             ),
             stderr=subprocess.STDOUT,
             start_new_session=True,

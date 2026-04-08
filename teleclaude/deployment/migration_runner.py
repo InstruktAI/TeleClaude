@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 from teleclaude.deployment import parse_version, version_cmp, version_in_range
+from teleclaude.paths import MIGRATION_STATE_PATH
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS_DIR = _REPO_ROOT / "migrations"
-MIGRATION_STATE_FILE = Path.home() / ".teleclaude" / "migration_state.json"
+MIGRATION_STATE_FILE = MIGRATION_STATE_PATH
 
 _VERSION_DIR_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 _MIGRATION_FILE_RE = re.compile(r"^(\d{3})_[a-zA-Z0-9_]+\.py$")

@@ -28,7 +28,9 @@ class IntegrationQueueError(RuntimeError):
 
 def default_integration_state_dir() -> Path:
     """Return the canonical state directory shared by the trigger and integrator."""
-    return Path.home() / ".teleclaude" / "integration"
+    from teleclaude.paths import INTEGRATION_DIR  # pylint: disable=import-outside-toplevel
+
+    return INTEGRATION_DIR
 
 
 def default_integration_queue_path() -> Path:

@@ -37,6 +37,7 @@ from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import JobScheduleConfig
 from teleclaude.cron.notification_scan import find_undelivered_reports
 from teleclaude.cron.state import CronState
+from teleclaude.paths import CRON_PID_PATH, TELECLAUDE_HOME
 
 logger = get_logger(__name__)
 
@@ -261,7 +262,7 @@ def _is_legacy_schedule_due(
 
 
 _DEFAULT_JOB_TIMEOUT_S = 1800  # 30 minutes
-_PIDFILE = Path.home() / ".teleclaude" / "cron_runner.pid"
+_PIDFILE = CRON_PID_PATH
 
 
 @dataclass(frozen=True)
@@ -380,7 +381,7 @@ def _should_run_subscription_job(
     from teleclaude.config.schema import JobSubscription  # pylint: disable=import-outside-toplevel
 
     if root is None:
-        root = Path.home() / ".teleclaude"
+        root = TELECLAUDE_HOME
 
     people_dir = root / "people"
     if not people_dir.is_dir():
@@ -427,7 +428,7 @@ def _scan_and_notify(
 ) -> None:
     """Scan for undelivered reports and mark them notified. Delivery is via event platform."""
     if root is None:
-        root = Path.home() / ".teleclaude"
+        root = TELECLAUDE_HOME
 
     jobs_dir = root / "jobs"
     undelivered = find_undelivered_reports(jobs_dir, state)
