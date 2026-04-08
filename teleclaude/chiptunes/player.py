@@ -428,7 +428,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                     writes = driver.play_frame()
                     pcm = renderer.render_frame(writes, frame_duration)
                     if max_duration is not None:
-                        fade_start = max_duration - _FADE_DURATION_S
+                        fade_start = max_duration  # fade AFTER the listed duration, not before
                         if playback_elapsed >= fade_start:
                             factor = max(0.0, 1.0 - (playback_elapsed - fade_start) / _FADE_DURATION_S)
                             if factor <= 0.0:
