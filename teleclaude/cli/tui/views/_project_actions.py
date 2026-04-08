@@ -67,11 +67,40 @@ def _load_raw_config(path: Path) -> RootConfigData:
     return cast(RootConfigData, raw_config)
 
 
-def _build_trusted_dir_entry(result: NewProjectResultLike) -> TrustedDirEntryData:
+def _normalize_project_path(raw_path: str) -> Path:
+    """Normalize user input into a stable absolute path."""
+    return Path(os.path.expandvars(raw_path)).expanduser().resolve(strict=False)
+
+
+def _get_trusted_dirs(raw_config: RootConfigData) -> list[TrustedDirEntryData]:
+    """Return the mutable trusted_dirs list, creating missing containers as needed."""
+    computer_obj = raw_config.get("computer")
+    if computer_obj is None:
+        computer_raw: ComputerConfigData = {}
+        raw_config["computer"] = computer_raw
+    elif not isinstance(computer_obj, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+        raise ValueError("Config key `computer` must be a YAML mapping.")
+    else:
+        computer_raw = computer_obj
+
+    trusted_dirs_obj = computer_raw.get("trusted_dirs")
+    if trusted_dirs_obj is None:
+        trusted_dirs_raw: list[TrustedDirEntryData] = []
+        computer_raw["trusted_dirs"] = trusted_dirs_raw
+        return trusted_dirs_raw
+    if not isinstance(trusted_dirs_obj, list):  # pyright: ignore[reportUnnecessaryIsInstance]
+        raise ValueError("Config key `computer.trusted_dirs` must be a YAML list.")
+    for item in trusted_dirs_obj:
+        if not isinstance(item, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise ValueError("Config key `computer.trusted_dirs` must contain YAML mappings.")
+    return trusted_dirs_obj
+
+
+def _build_trusted_dir_entry(result: NewProjectResultLike, *, path: str | None = None) -> TrustedDirEntryData:
     """Serialize the modal result to the config.yml trusted_dirs shape."""
     entry: TrustedDirEntryData = {
         "name": result.name,
-        "path": result.path,
+        "path": path or result.path,
     }
     description = result.description.strip() if result.description else ""
     if description:
@@ -92,35 +121,42 @@ def _write_raw_config(path: Path, raw_config: RootConfigData) -> None:
         raise
 
 
+def _ensure_project_directory(raw_path: str) -> tuple[Path, bool]:
+    """Ensure the project path exists as a directory."""
+    project_path = _normalize_project_path(raw_path)
+    if project_path.exists():
+        if not project_path.is_dir():
+            raise ValueError(f"Path exists and is not a directory: {project_path}")
+        return project_path, False
+
+    project_path.mkdir(parents=True, exist_ok=True)
+    return project_path, True
+
+
+def _rollback_created_directory(project_path: Path | None, created_project_dir: bool) -> None:
+    """Best-effort cleanup for a freshly created empty project directory."""
+    if not created_project_dir or project_path is None:
+        return
+    try:
+        project_path.rmdir()
+    except OSError:
+        pass
+
+
 def save_new_project(app: ProjectNotifier, result: NewProjectResultLike) -> bool:
     """Persist a new trusted project and notify the user about the outcome."""
+    project_path: Path | None = None
+    created_project_dir = False
     try:
         config_path = _resolve_config_path()
         raw_config = _load_raw_config(config_path)
-        computer_obj = raw_config.get("computer")
-        if computer_obj is None:
-            computer_raw: ComputerConfigData = {}
-            raw_config["computer"] = computer_raw
-        elif not isinstance(computer_obj, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
-            raise ValueError("Config key `computer` must be a YAML mapping.")
-        else:
-            computer_raw = computer_obj
+        trusted_dirs_raw = _get_trusted_dirs(raw_config)
+        project_path, created_project_dir = _ensure_project_directory(result.path)
 
-        trusted_dirs_obj = computer_raw.get("trusted_dirs")
-        if trusted_dirs_obj is None:
-            trusted_dirs_raw: list[TrustedDirEntryData] = []
-            computer_raw["trusted_dirs"] = trusted_dirs_raw
-        elif not isinstance(trusted_dirs_obj, list):  # pyright: ignore[reportUnnecessaryIsInstance]
-            raise ValueError("Config key `computer.trusted_dirs` must be a YAML list.")
-        else:
-            for item in trusted_dirs_obj:
-                if not isinstance(item, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
-                    raise ValueError("Config key `computer.trusted_dirs` must contain YAML mappings.")
-            trusted_dirs_raw = trusted_dirs_obj
-
-        trusted_dirs_raw.append(_build_trusted_dir_entry(result))
+        trusted_dirs_raw.append(_build_trusted_dir_entry(result, path=str(project_path)))
         _write_raw_config(config_path, raw_config)
     except Exception as exc:  # pylint: disable=broad-exception-caught
+        _rollback_created_directory(project_path, created_project_dir)
         app.notify(f"Failed to save project: {str(exc)[:80]}", severity="error")
         return False
 

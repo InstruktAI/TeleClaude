@@ -44,12 +44,14 @@ computer:
     )
     monkeypatch.setenv("TELECLAUDE_CONFIG_PATH", str(config_path))
     app = _FakeApp()
+    project_path = tmp_path / "work" / "gamma"
 
-    result = SimpleNamespace(name="gamma", description="new project", path="/work/gamma")
+    result = SimpleNamespace(name="gamma", description="new project", path=str(project_path))
 
     assert save_new_project(app, result) is True
 
     updated = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert project_path.is_dir()
     assert updated["computer"]["trusted_dirs"] == [
         {
             "name": "alpha",
@@ -64,7 +66,7 @@ computer:
         {
             "name": "gamma",
             "desc": "new project",
-            "path": "/work/gamma",
+            "path": str(project_path.resolve()),
         },
     ]
     assert app.notifications == [("Project 'gamma' added", "information")]
@@ -91,3 +93,23 @@ computer:
     assert app.notifications == [
         ("Failed to save project: Config key `computer.trusted_dirs` must be a YAML list.", "error")
     ]
+
+
+@pytest.mark.unit
+def test_save_new_project_rejects_existing_file_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An existing file target is rejected without mutating config."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("computer:\n  trusted_dirs: []\n", encoding="utf-8")
+    monkeypatch.setenv("TELECLAUDE_CONFIG_PATH", str(config_path))
+    app = _FakeApp()
+
+    target = tmp_path / "gamma"
+    target.write_text("not a directory", encoding="utf-8")
+    result = SimpleNamespace(name="gamma", description="", path=str(target))
+
+    assert save_new_project(app, result) is False
+
+    updated = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    error = f"Path exists and is not a directory: {target.resolve()}"
+    assert updated == {"computer": {"trusted_dirs": []}}
+    assert app.notifications == [(f"Failed to save project: {error[:80]}", "error")]

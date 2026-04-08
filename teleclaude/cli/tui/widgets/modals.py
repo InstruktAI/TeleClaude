@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TypeVar
 
 from rich.style import Style
@@ -601,7 +602,7 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
     """New project modal with name, description, and path fields.
 
     Validates:
-    - Path resolves via os.path.expanduser() and must be an existing directory.
+    - Path resolves to an absolute directory path; missing directories are created when saved.
     - Name and path must not duplicate an existing project on this computer.
     """
 
@@ -617,7 +618,9 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
     ) -> None:
         super().__init__(**kwargs)
         self._existing_names = existing_names or set()
-        self._existing_paths = existing_paths or set()
+        self._existing_paths = {
+            str(Path(os.path.expandvars(path)).expanduser().resolve(strict=False)) for path in (existing_paths or set())
+        }
 
     def compose(self) -> ComposeResult:
         with Vertical(id="modal-box") as box:
@@ -630,7 +633,7 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
                 dg.border_title = "Description (optional)"
                 yield Input(placeholder="Short description", id="desc-input")
             with Vertical(id="path-group") as pg:
-                pg.border_title = "Path"
+                pg.border_title = "Path (created if missing)"
                 yield Input(placeholder="~/path/to/project", id="path-input")
                 yield Label("", id="path-error")
             with Horizontal(id="modal-actions"):
@@ -677,12 +680,12 @@ class NewProjectModal(ModalScreen[NewProjectResult | None]):
         if not raw_path:
             path_error.update("Path is required")
             return
-        resolved = os.path.expanduser(raw_path)
-        if not os.path.isdir(resolved):
-            path_error.update("Path does not exist or is not a directory")
-            return
+        resolved = str(Path(os.path.expandvars(raw_path)).expanduser().resolve(strict=False))
         if resolved in self._existing_paths:
             path_error.update("A project at this path already exists")
+            return
+        if os.path.exists(resolved) and not os.path.isdir(resolved):
+            path_error.update("Path exists and is not a directory")
             return
         path_error.update("")
 

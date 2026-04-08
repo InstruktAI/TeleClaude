@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.widgets.modals import (
     ModeSelector,
+    NewProjectModal,
+    NewProjectResult,
     SessionIdTypeSelector,
     _is_agent_selectable,
 )
@@ -115,3 +120,79 @@ def test_session_id_type_selector_types_has_two_entries() -> None:
 @pytest.mark.unit
 def test_session_id_type_selector_cell_width_is_16() -> None:
     assert SessionIdTypeSelector._CELL_WIDTH == 16
+
+
+class _FakeInput:  # pylint: disable=too-few-public-methods
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+class _FakeLabel:  # pylint: disable=too-few-public-methods
+    def __init__(self) -> None:
+        self.message = ""
+
+    def update(self, message: str) -> None:
+        self.message = message
+
+
+@pytest.mark.unit
+def test_new_project_modal_accepts_missing_directory_path(tmp_path: Path) -> None:
+    modal = NewProjectModal(existing_names=set(), existing_paths=set())
+
+    name_input = _FakeInput("gamma")
+    desc_input = _FakeInput("new project")
+    path_input = _FakeInput(str(tmp_path / "gamma"))
+    name_error = _FakeLabel()
+    path_error = _FakeLabel()
+
+    def _query_one(selector: str, _expected: object) -> object:
+        mapping = {
+            "#name-input": name_input,
+            "#name-error": name_error,
+            "#path-input": path_input,
+            "#path-error": path_error,
+            "#desc-input": desc_input,
+        }
+        return mapping[selector]
+
+    with patch.object(modal, "query_one", side_effect=_query_one), patch.object(modal, "dismiss") as dismiss:
+        modal._do_create()
+
+    dismiss.assert_called_once()
+    result = dismiss.call_args.args[0]
+    assert isinstance(result, NewProjectResult)
+    assert result.name == "gamma"
+    assert result.description == "new project"
+    assert result.path == str((tmp_path / "gamma").resolve())
+    assert name_error.message == ""
+    assert path_error.message == ""
+
+
+@pytest.mark.unit
+def test_new_project_modal_rejects_existing_file_path(tmp_path: Path) -> None:
+    modal = NewProjectModal(existing_names=set(), existing_paths=set())
+    target = tmp_path / "gamma"
+    target.write_text("not a directory", encoding="utf-8")
+
+    name_input = _FakeInput("gamma")
+    desc_input = _FakeInput("")
+    path_input = _FakeInput(str(target))
+    name_error = _FakeLabel()
+    path_error = _FakeLabel()
+
+    def _query_one(selector: str, _expected: object) -> object:
+        mapping = {
+            "#name-input": name_input,
+            "#name-error": name_error,
+            "#path-input": path_input,
+            "#path-error": path_error,
+            "#desc-input": desc_input,
+        }
+        return mapping[selector]
+
+    with patch.object(modal, "query_one", side_effect=_query_one), patch.object(modal, "dismiss") as dismiss:
+        modal._do_create()
+
+    dismiss.assert_not_called()
+    assert name_error.message == ""
+    assert path_error.message == "Path exists and is not a directory"
