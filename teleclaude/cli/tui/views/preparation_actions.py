@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
+from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views._footer_actions import (
     refresh_footer_bindings,
     sync_default_footer_action,
@@ -165,6 +166,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             "start_work",
             "refine",
             "freeze",
+            "unfreeze",
             "move_todo_up",
             "move_todo_down",
         }
@@ -177,10 +179,19 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             "start_work",
             "refine",
             "freeze",
+            "unfreeze",
             "move_todo_up",
             "move_todo_down",
         }
-        file_disallowed = {"new_todo", "new_bug", "new_project", "freeze", "move_todo_up", "move_todo_down"}
+        file_disallowed = {
+            "new_todo",
+            "new_bug",
+            "new_project",
+            "freeze",
+            "unfreeze",
+            "move_todo_up",
+            "move_todo_down",
+        }
 
         if isinstance(item, ComputerHeader):
             return action not in computer_only
@@ -191,6 +202,10 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
         if isinstance(item, TodoRow):
             if action in {"preview_file", "new_project"}:
                 return False
+            if action == "unfreeze":
+                return item.todo.status == TodoStatus.ICEBOX
+            if action == "freeze":
+                return item.todo.status != TodoStatus.ICEBOX
             return action not in {"move_todo_up", "move_todo_down"} or not item._tree_lines
 
         if isinstance(item, TodoFileRow):
@@ -515,3 +530,62 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             ),
             _on_confirm,
         )
+
+    def action_toggle_icebox(self) -> None:
+        """i: toggle icebox visibility, scoped to computer or project."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        if isinstance(item, ComputerHeader):
+            comp_name = item.data.computer.name
+            project_paths = [
+                p.path
+                for p in self._projects_with_todos  # type: ignore[attr-defined]
+                if (p.computer or "local") == comp_name
+            ]
+            # Toggle: if all are visible, hide all; otherwise show all
+            all_visible = all(p in self._icebox_projects for p in project_paths)  # type: ignore[attr-defined]
+            for path in project_paths:
+                if all_visible:
+                    self._icebox_projects.discard(path)  # type: ignore[attr-defined]
+                else:
+                    self._icebox_projects.add(path)  # type: ignore[attr-defined]
+        else:
+            # Resolve project path from cursor context
+            context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+            if not context:
+                return
+            _, project_path, _ = context
+            if project_path in self._icebox_projects:  # type: ignore[attr-defined]
+                self._icebox_projects.discard(project_path)  # type: ignore[attr-defined]
+            else:
+                self._icebox_projects.add(project_path)  # type: ignore[attr-defined]
+
+        from teleclaude.cli.tui.messages import StateChanged  # pylint: disable=import-outside-toplevel
+
+        self.post_message(StateChanged())  # type: ignore[attr-defined]
+        self._rebuild()  # type: ignore[attr-defined]
+
+    def action_unfreeze(self) -> None:
+        """u: unfreeze an icebox todo back to active roadmap."""
+        row = self._current_todo_row()  # type: ignore[attr-defined]
+        if not row or row.todo.status != TodoStatus.ICEBOX:
+            return
+
+        slug = row.slug
+        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        if not project_path:
+            return
+
+        try:
+            result = tool_api_request(
+                "POST",
+                f"/todos/unfreeze/{slug}",
+                json_body={"cwd": project_path},
+                timeout=10.0,
+            )
+            if isinstance(result, dict) and result.get("status") == "ok":
+                self.app.notify(f"Unfrozen '{slug}' to roadmap")  # type: ignore[attr-defined]
+                self.app._refresh_data()  # type: ignore[attr-defined]
+            elif isinstance(result, dict) and result.get("detail"):
+                self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]

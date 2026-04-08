@@ -340,7 +340,7 @@ class TelecFooter(Widget):
         stop_button.icon = "\u23f9"
         next_button.icon = "\u23ed"
         fav_button.icon = "\u2705" if self.chiptunes_favorited else "\u2b50"
-        dislike_button.icon = "\u2717" if self.chiptunes_disliked else "\u2193"
+        dislike_button.icon = "\U0001f6ab" if self.chiptunes_disliked else "\U0001f44e"
 
         controls_loaded = self.chiptunes_loaded
         pending = bool(self.chiptunes_pending_command_id)

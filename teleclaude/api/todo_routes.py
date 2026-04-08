@@ -581,6 +581,19 @@ async def todo_freeze(
     return _SlugStatusResponse(status="ok", slug=slug)
 
 
+@router.post("/unfreeze/{slug}")
+async def todo_unfreeze(
+    slug: str,
+    cwd: Annotated[str | None, Body(embed=True)] = None,
+) -> _SlugStatusResponse:
+    """Restore a todo from icebox to active roadmap."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    if not await todos_db.unfreeze(slug):
+        raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found in icebox")
+    return _SlugStatusResponse(status="ok", slug=slug)
+
+
 @router.post("/stamp/{slug}")
 async def stamp(  # pylint: disable=too-many-locals,too-many-branches
     slug: str,

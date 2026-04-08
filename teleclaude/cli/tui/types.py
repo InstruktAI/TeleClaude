@@ -48,6 +48,7 @@ class TodoStatus(str, Enum):
     READY = "ready"
     IN_PROGRESS = "in_progress"
     DELIVERED = "delivered"
+    ICEBOX = "icebox"
 
     @property
     def display_label(self) -> str:
@@ -60,6 +61,7 @@ _TODO_STATUS_LABELS: dict[TodoStatus, str] = {
     TodoStatus.READY: "ready",
     TodoStatus.IN_PROGRESS: "active",
     TodoStatus.DELIVERED: "delivered",
+    TodoStatus.ICEBOX: "icebox",
 }
 
 

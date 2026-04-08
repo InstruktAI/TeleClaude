@@ -25,6 +25,7 @@ from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
+from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
@@ -71,6 +72,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("r", "refine", "Refine"),
         Binding("R", "remove_todo", "Remove"),
         Binding("f", "freeze", "Freeze"),
+        Binding("i", "toggle_icebox", "Icebox"),
+        Binding("u", "unfreeze", "Unfreeze"),
         Binding("shift+up", "move_todo_up", "Move Up", key_display="Shift+↑"),
         Binding("shift+down", "move_todo_down", "Move Down", key_display="Shift+↓"),
     ]
@@ -82,6 +85,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         super().__init__(**kwargs)
         self._projects_with_todos: list[ProjectWithTodosDTO] = []
         self._expanded_todos: set[str] = set()
+        self._icebox_projects: set[str] = set()
         self._nav_items: list[Widget] = []
         self._slug_to_project_path: dict[str, str] = {}
         self._slug_to_computer: dict[str, str] = {}
@@ -141,12 +145,15 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._availability = availability
 
     def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
-        """Restore persisted expanded state."""
+        """Restore persisted expanded and icebox state."""
         expanded_todos = data.get("expanded_todos", [])
         if isinstance(expanded_todos, list):
             self._expanded_todos = {str(item) for item in expanded_todos}
+        icebox_projects = data.get("icebox_projects", [])
+        if isinstance(icebox_projects, list):
+            self._icebox_projects = {str(item) for item in icebox_projects}
 
-    def _rebuild(self) -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    def _rebuild(self) -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         """Rebuild the todo display from current data (Computer → Project → Todo)."""
         _rb0 = _t.monotonic()
         self._logger.trace("[PERF] PrepView._rebuild START t=%.3f", _rb0)
@@ -164,42 +171,46 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
         # Build all TodoItems once for width computation and reuse
         all_todo_items: list[TodoItem] = []
+        icebox_items_by_project: dict[str, list[TodoItem]] = {}
         for p in self._projects_with_todos:
             for t in p.todos or []:
-                all_todo_items.append(
-                    TodoItem(
-                        slug=t.slug,
-                        status=TodoStatus(t.status)
-                        if t.status in {s.value for s in TodoStatus}
-                        else TodoStatus.PENDING,
-                        description=t.description,
-                        has_requirements=t.has_requirements,
-                        has_impl_plan=t.has_impl_plan,
-                        build_status=t.build_status,
-                        review_status=t.review_status,
-                        dor_score=t.dor_score,
-                        deferrals_status=t.deferrals_status,
-                        findings_count=t.findings_count,
-                        files=t.files,
-                        after=t.after,
-                        group=t.group,
-                        prepare_phase=t.prepare_phase,
-                        integration_phase=t.integration_phase,
-                        finalize_status=t.finalize_status,
-                        project_path=t.project_path or p.path,
-                    )
+                item = TodoItem(
+                    slug=t.slug,
+                    status=TodoStatus(t.status)
+                    if t.status in {s.value for s in TodoStatus}
+                    else TodoStatus.PENDING,
+                    description=t.description,
+                    has_requirements=t.has_requirements,
+                    has_impl_plan=t.has_impl_plan,
+                    build_status=t.build_status,
+                    review_status=t.review_status,
+                    dor_score=t.dor_score,
+                    deferrals_status=t.deferrals_status,
+                    findings_count=t.findings_count,
+                    files=t.files,
+                    after=t.after,
+                    group=t.group,
+                    prepare_phase=t.prepare_phase,
+                    integration_phase=t.integration_phase,
+                    finalize_status=t.finalize_status,
+                    project_path=t.project_path or p.path,
                 )
-        # Populate children_statuses for holder todos
-        item_by_slug = {t.slug: t for t in all_todo_items}
-        for item in all_todo_items:
+                all_todo_items.append(item)
+                if item.status == TodoStatus.ICEBOX:
+                    icebox_items_by_project.setdefault(p.path, []).append(item)
+
+        # Populate children_statuses for holder todos (active only)
+        active_items = [t for t in all_todo_items if t.status != TodoStatus.ICEBOX]
+        item_by_slug = {t.slug: t for t in active_items}
+        for item in active_items:
             if item.group and item.group in item_by_slug:
                 item_by_slug[item.group].children_statuses.append(item.status.value)
 
         slug_width = max((len(t.slug) for t in all_todo_items), default=0)
         col_widths = TodoRow.compute_col_widths(all_todo_items)
 
-        # Build dependency tree from `after` graph
-        tree_nodes = build_dep_tree(all_todo_items)
+        # Build dependency tree from `after` graph (active items only)
+        tree_nodes = build_dep_tree(active_items)
         max_depth = max((node.depth for node in tree_nodes), default=0) if tree_nodes else 0
 
         # Group projects by computer, preserving trusted_dirs order from config
@@ -219,8 +230,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         for comp_name in computer_order:
             projects_in_comp = computer_to_projects[comp_name]
 
-            # Count todos across all projects under this computer
-            comp_todo_count = sum(len(p.todos or []) for p in projects_in_comp)
+            # Count active todos (exclude icebox) across all projects under this computer
+            comp_todo_count = sum(
+                sum(1 for t in (p.todos or []) if t.status != "icebox") for p in projects_in_comp
+            )
             comp_info = ComputerDTO(
                 name=comp_name,
                 status="online",
@@ -249,8 +262,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 widgets_to_mount.append(header)
                 self._nav_items.append(header)
 
-                # Filter tree nodes to this project's todos
-                project_slugs = {td.slug for td in (project.todos or [])}
+                # Filter tree nodes to this project's active todos
+                project_slugs = {td.slug for td in (project.todos or []) if td.status != "icebox"}
                 project_nodes = [node for node in tree_nodes if node.slug in project_slugs]
 
                 for node in project_nodes:
@@ -288,7 +301,25 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                             widgets_to_mount.append(file_row)
                         expanded_file_rows.append((row, file_widgets))
 
-                if project_nodes:
+                # Render icebox section when toggled on for this project
+                project_icebox = icebox_items_by_project.get(project.path, [])
+                show_icebox = project.path in self._icebox_projects and project_icebox
+                if show_icebox:
+                    widgets_to_mount.append(IceboxSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
+                    for ice_item in project_icebox:
+                        # Depth-0: use ├─ (GroupSeparator closes the tree)
+                        ice_row = TodoRow(
+                            todo=ice_item,
+                            is_last=False,
+                            slug_width=slug_width,
+                            col_widths=col_widths,
+                            tree_lines=[],
+                            max_depth=max_depth,
+                        )
+                        widgets_to_mount.append(ice_row)
+                        self._nav_items.append(ice_row)
+
+                if project_nodes or show_icebox:
                     widgets_to_mount.append(GroupSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
 
         # Single batch mount - one layout reflow instead of N
@@ -549,8 +580,11 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     # --- State export ---
 
     def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict
-        """Export the current expanded-todo state for persistence."""
-        return {"expanded_todos": sorted(self._expanded_todos)}
+        """Export the current expanded-todo and icebox state for persistence."""
+        return {
+            "expanded_todos": sorted(self._expanded_todos),
+            "icebox_projects": sorted(self._icebox_projects),
+        }
 
 
 # Legacy stub for tests

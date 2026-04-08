@@ -11,6 +11,7 @@ from textual.widget import Widget
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
+from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.core.integration.state_machine import IntegrationPhase
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD, PreparePhase
 
@@ -39,6 +40,7 @@ _TODO_STATUS_PENDING = "pending"
 _TODO_STATUS_COMPLETE = "complete"
 _TODO_STATUS_APPROVED = "approved"
 _TODO_STATUS_DELIVERED = "delivered"
+_TODO_STATUS_ICEBOX = "icebox"
 
 _PREPARE_PHASE_LABELS: dict[PreparePhase, str] = {
     PreparePhase.INPUT_ASSESSMENT: _PREPARE_LABEL_DISCOVERY,
@@ -133,12 +135,14 @@ _STATUS_COLORS_DARK = {
     _TODO_STATUS_READY: "color(71)",
     _TODO_STATUS_ACTIVE: "color(178)",
     _TODO_STATUS_DELIVERED: "color(244)",
+    _TODO_STATUS_ICEBOX: "color(74)",
 }
 _STATUS_COLORS_LIGHT = {
     _TODO_STATUS_DRAFT: "color(244)",
     _TODO_STATUS_READY: "color(28)",
     _TODO_STATUS_ACTIVE: "color(136)",
     _TODO_STATUS_DELIVERED: "color(102)",
+    _TODO_STATUS_ICEBOX: "color(31)",
 }
 
 # Phase value colors
@@ -151,6 +155,10 @@ _RED_LIGHT = "color(160)"
 
 # Column gap between aligned properties
 _COL_GAP = 2
+
+# Icebox color (light blue)
+_ICEBOX_DARK = "color(74)"
+_ICEBOX_LIGHT = "color(31)"
 
 # Muted slug color (missing artifacts)
 _MUTED_DARK = "color(244)"
@@ -170,6 +178,11 @@ def _gold_color() -> str:
 def _red_color() -> str:
     """Return the theme-aware error color."""
     return _RED_DARK if is_dark_mode() else _RED_LIGHT
+
+
+def _icebox_color() -> str:
+    """Return the theme-aware icebox color (light blue)."""
+    return _ICEBOX_DARK if is_dark_mode() else _ICEBOX_LIGHT
 
 
 def _muted_color() -> str:
@@ -230,6 +243,9 @@ class TodoRow(TelecMixin, Widget):
         """
         maxes: dict[str, int] = {"P": 0, "I": 0, "DOR": 0, "B": 0, "R": 0, "F": 0, "D": 0}
         for t in todos:
+            if t.status == TodoStatus.ICEBOX:
+                maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_PREPARE}:icebox"))
+                continue
             p_result = prepare_phase_label(t.prepare_phase)
             if p_result is not None:
                 p_prefix, p_value, _ = p_result
@@ -303,6 +319,20 @@ class TodoRow(TelecMixin, Widget):
         # Holders show no phase columns — their status block derives from children
         if self.todo.children_statuses:
             return _pad(Text(), target)
+
+        # Icebox items show P:icebox only — no DOR or work-phase columns
+        if self.todo.status == TodoStatus.ICEBOX:
+            result = Text()
+            result.append_text(self._build_col("", "", self._col_widths.get("DOR", 0), Style()))
+            result.append_text(
+                self._build_col(
+                    _PHASE_PREFIX_PREPARE,
+                    "icebox",
+                    self._col_widths.get("P", 0),
+                    Style(color=_icebox_color(), bold=True),
+                )
+            )
+            return _pad(result, target)
 
         result = Text()
         ok = _ok_color()
