@@ -57,7 +57,7 @@ def _get_default_output_device() -> int | None:  # used by ChiptunesPlayer._open
 class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
     """Plays a SID file in a background thread via sounddevice."""
 
-    def __init__(self, volume: float = 0.5) -> None:
+    def __init__(self, volume: float = 1.0) -> None:
         self._volume = max(0.0, min(1.0, volume))
         self._stop_event = threading.Event()
         self._resume_event = threading.Event()

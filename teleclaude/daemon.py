@@ -302,7 +302,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             if chiptunes_cfg and chiptunes_cfg.music_dir
             else project_root / "assets" / "audio" / "C64Music"
         )
-        chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 0.5
+        chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 1.0
         self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
         self.chiptunes_manager.on_state_change = self._on_chiptunes_state_change

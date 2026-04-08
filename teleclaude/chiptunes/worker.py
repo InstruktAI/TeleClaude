@@ -556,7 +556,7 @@ def _run() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--music-dir", required=True)
-    parser.add_argument("--volume", type=float, default=0.5)
+    parser.add_argument("--volume", type=float, default=1.0)
     args = parser.parse_args()
 
     worker = _WorkerProcess(Path(args.music_dir), args.volume)

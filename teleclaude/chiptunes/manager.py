@@ -40,7 +40,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
     the sole authority on playback state.
     """
 
-    def __init__(self, music_dir: Path, volume: float = 0.5) -> None:
+    def __init__(self, music_dir: Path, volume: float = 1.0) -> None:
         self._music_dir = music_dir
         self._volume = volume
         self._enabled = False
