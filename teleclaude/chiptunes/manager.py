@@ -140,8 +140,10 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
                 str(self._volume),
             ],
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=open(  # noqa: SIM115
+                Path.home() / ".teleclaude" / "logs" / "chiptunes_worker.log", "a", encoding="utf-8"
+            ),
+            stderr=subprocess.STDOUT,
             start_new_session=True,
         )
         for _ in range(50):

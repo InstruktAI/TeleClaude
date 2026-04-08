@@ -39,7 +39,7 @@ from teleclaude.chiptunes.player import ChiptunesPlayer
 SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
 PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 _RSID_MAGIC = b"RSID"
-STATE_PATH = Path.home() / ".teleclaude" / "chiptunes_state.json"
+STATE_PATH = Path.home() / ".teleclaude" / "state" / "chiptunes_state.json"
 _PERSIST_INTERVAL_SECONDS = 2.0
 
 

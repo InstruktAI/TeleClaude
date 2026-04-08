@@ -16,7 +16,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session as SqlSession
 
 from teleclaude.config import config
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS, is_internal_user_text
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+from teleclaude.output_projection.visibility import is_internal_user_text
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import should_persist_codex_native_metadata
