@@ -120,6 +120,47 @@ class TestLastMessageExtraction:
         assert turns == [("user", "u2"), ("assistant", "a2"), ("user", "u3"), ("assistant", "a3")]
 
 
+class TestSystemMessageFiltering:
+    """System-injected user messages are filtered at the extraction source."""
+
+    def test_extract_last_user_message_skips_teleclaude_system_prefix(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        entries = [
+            {"timestamp": "2024-01-01T12:00:00Z", "message": {"role": "user", "content": "Real prompt"}},
+            {
+                "timestamp": "2024-01-01T12:00:01Z",
+                "message": {"role": "user", "content": "[TeleClaude Notification]\n\nInternal message"},
+            },
+        ]
+        monkeypatch.setattr(
+            transcript_extraction, "_get_entries_for_agent", lambda transcript_path, agent_name: entries
+        )
+
+        assert transcript_extraction.extract_last_user_message("/tmp/demo.jsonl", AgentName.CLAUDE) == "Real prompt"
+
+    def test_block_based_user_content_with_system_prefix_is_filtered(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        entries = [
+            {"timestamp": "2024-01-01T12:00:00Z", "message": {"role": "user", "content": "Real prompt"}},
+            {
+                "timestamp": "2024-01-01T12:00:01Z",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "[TeleClaude Linked output from peer]"}],
+                },
+            },
+        ]
+        monkeypatch.setattr(
+            transcript_extraction, "_get_entries_for_agent", lambda transcript_path, agent_name: entries
+        )
+
+        assert transcript_extraction.extract_last_user_message("/tmp/demo.jsonl", AgentName.CLAUDE) == "Real prompt"
+
+
 class TestSessionParsing:
     def test_parse_session_transcript_uses_codex_tail_limit_and_escapes_backticks(
         self,
@@ -132,11 +173,11 @@ class TestSessionParsing:
         monkeypatch.setattr(transcript_extraction, "_iter_codex_entries", lambda path: iter(()))
 
         def fake_render(
-            entries: object,
-            title: str,
-            since_timestamp: datetime | None,
-            until_timestamp: datetime | None,
-            tail_chars: int | None,
+            _entries: object,
+            _title: str,
+            _since_timestamp: datetime | None,
+            _until_timestamp: datetime | None,
+            _tail_chars: int | None,
             **kwargs: object,
         ) -> str:
             captured["tail_limit_fn"] = kwargs["tail_limit_fn"]

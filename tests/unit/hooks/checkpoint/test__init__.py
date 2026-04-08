@@ -11,7 +11,13 @@ from unittest.mock import patch
 import pytest
 
 from teleclaude.core.agents import AgentName
-from teleclaude.hooks.checkpoint import CheckpointResult, TurnTimeline, get_checkpoint_content
+from teleclaude.hooks.checkpoint import (
+    CheckpointContext,
+    CheckpointResult,
+    TurnTimeline,
+    get_checkpoint_content,
+    run_heuristics,
+)
 
 
 class TestGetCheckpointContent:
@@ -55,3 +61,14 @@ class TestGetCheckpointContent:
         extract_files_mock.assert_called_once_with(timeline, "/repo")
         assert checkpoint_text is not None
         assert "Run targeted tests for changed behavior" in checkpoint_text
+
+
+class TestRunHeuristics:
+    @pytest.mark.unit
+    def test_test_quality_review_gate_fires_for_test_only_diffs(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        result = run_heuristics(["tests/unit/test_foo.py"], timeline, context)
+
+        assert any("test policy" in action for action in result.required_actions)

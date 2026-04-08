@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from teleclaude.constants import is_internal_user_text
 from teleclaude.core.agents import AgentName
 
 from ._iterators import (
@@ -109,11 +110,16 @@ def count_renderable_assistant_blocks(
 def _extract_text_from_content(content: object, role: str) -> str | None:
     """Extract text from message content based on role.
 
+    System-injected user messages (``[TeleClaude …]``, ``<task-notification>``,
+    ``<system-reminder>``) are filtered at this level so every extraction
+    consumer receives only real user input.
+
     guard: allow-string-compare
     """
     if isinstance(content, str):
-        normalized = content.strip()
-        return content if normalized else None
+        if not content.strip() or (role == "user" and is_internal_user_text(content)):
+            return None
+        return content
 
     if isinstance(content, list):
         # User messages use "input_text" or "text", assistant uses "text" or "output_text"
@@ -123,7 +129,11 @@ def _extract_text_from_content(content: object, role: str) -> str | None:
             if isinstance(block, dict) and block.get("type") in valid_types:
                 text = str(block.get("text", ""))
                 normalized = text.strip()
-                return text if normalized else None
+                if not normalized:
+                    return None
+                if role == "user" and is_internal_user_text(text):
+                    return None
+                return text
 
     return None
 

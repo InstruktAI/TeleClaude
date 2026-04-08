@@ -171,6 +171,13 @@ def run_heuristics(
     if categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
         append_required_action("Run targeted tests for changed behavior")
 
+    # Test quality review gate: point to policy, not inline rules
+    if any(c.name == "tests only" for c in categories):
+        append_required_action(
+            "Test files were modified — review against test policy before committing: "
+            "`telec docs get software-development/policy/testing`. Remove tests that violate policy."
+        )
+
     # 3. Error state detection
     result.observations.extend(_check_error_state(timeline))
 
