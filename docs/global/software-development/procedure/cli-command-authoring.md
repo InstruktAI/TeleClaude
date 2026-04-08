@@ -15,7 +15,7 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 
 1. **Define the REST resource model.** Use nouns with action subcommands: `artifacts {list|read|write}`, not verbs like `read-artifact`. Group related actions under a parent.
 
-2. **Register in `CLI_SURFACE`.** Add a `CommandDef` entry in `teleclaude/cli/telec/surface.py` with description, args, flags, auth, and examples. This is the canonical surface definition.
+2. **Register in `CLI_SURFACE`.** Add a `CommandDef` entry in `teleclaude/cli/telec/surface.py` with description, args, flags, auth, and examples. This is the canonical surface definition. **The `args` field must list every parameter on the usage line** — required positionals as `<name>`, optional positionals as `[<name>]`, and every optional flag as `[--flag <value>]` (or `[--flag]` for booleans). Agent artifacts render only this first line; flags listed only in the `flags` array are invisible in `telec -h` and AGENTS.md output.
 
 3. **Write the handler.** Add a function in the appropriate `teleclaude/cli/telec/handlers/` module. Handlers parse args, call the daemon API via `tool_api_request()`, and print output. Handlers are sync.
 

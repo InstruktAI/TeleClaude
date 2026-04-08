@@ -78,6 +78,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List sessions (default: spawned by current, --all for all)",
+                args="[--all] [--closed] [--job <value>]",
                 flags=[
                     _H,
                     Flag("--all", desc="Show all sessions"),
@@ -88,6 +89,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "start": CommandDef(
                 desc="Start a new agent session",
+                args=(
+                    "[--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>]"
+                    " [--message <msg>] [--title <title>] [--direct] [--detach]"
+                ),
                 flags=[
                     _H,
                     Flag("--computer", desc="Target computer (optional; defaults to local)"),
@@ -119,7 +124,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "send": CommandDef(
                 desc="Send a message to a running session",
-                args="<session_id> [<message>]",
+                args="<session_id> [<message>] [--direct] [--close-link]",
                 flags=[
                     _H,
                     Flag("--session", "-s", "Session ID (compatibility form)"),
@@ -144,7 +149,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "tail": CommandDef(
                 desc="Get recent messages from a session's transcript",
-                args="<session_id>",
+                args="<session_id> [--since <ts>] [--tools] [--thinking]",
                 flags=[
                     _H,
                     Flag("--session", "-s", "Session ID"),
@@ -156,6 +161,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "run": CommandDef(
                 desc="Run a slash command on a new agent session",
+                args=(
+                    "[--command <cmd>] [--project <path>] [--args <val>] [--agent <name>]"
+                    " [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--detach]"
+                    " [--additional-context <ctx>]"
+                ),
                 flags=[
                     _H,
                     Flag("--command", desc="Slash command (e.g. /next-build)"),
@@ -181,7 +191,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "revive": CommandDef(
                 desc="Revive session by TeleClaude session ID",
-                args="<session_id>",
+                args="<session_id> [--agent <name>] [--attach]",
                 flags=[
                     _H,
                     Flag("--agent", desc="Treat session_id as native agent session ID for the given agent"),
@@ -199,7 +209,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "end": CommandDef(
                 desc="End (terminate) a session",
-                args="<session_id>",
+                args="<session_id> [--computer <host>]",
                 flags=[
                     _H,
                     Flag("--session", "-s", "Session ID"),
@@ -221,12 +231,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "result": CommandDef(
                 desc="Send a formatted result to the session's user",
-                args="<content>",
+                args="<content> [--format <fmt>]",
                 flags=[_H, Flag("--format", desc="Output format: markdown, html")],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB),
             ),
             "file": CommandDef(
                 desc="Send a file to the session's user",
+                args="[--path <path>] [--filename <name>] [--caption <text>]",
                 flags=[
                     _H,
                     Flag("--path", desc="File path on the daemon host"),
@@ -237,11 +248,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "widget": CommandDef(
                 desc="Render a rich widget to the session's user",
+                args="[--data <json>]",
                 flags=[_H, Flag("--data", desc="Widget expression as JSON")],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "escalate": CommandDef(
                 desc="Escalate to an admin via Discord",
+                args="[--customer <name>] [--reason <text>] [--summary <text>]",
                 flags=[
                     _H,
                     Flag("--customer", desc="Customer name"),
@@ -270,6 +283,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List projects on local and remote computers",
+                args="[--computer <host>]",
                 flags=[_H, Flag("--computer", desc="Filter to a specific computer")],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -284,7 +298,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "status": CommandDef(
                 desc="Set dispatch status for a specific agent",
-                args="<agent>",
+                args="<agent> [--status <val>] [--reason <text>] [--until <ts>] [--clear]",
                 flags=[
                     _H,
                     Flag("--status", desc="Status: available, unavailable, degraded"),
@@ -301,12 +315,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List active channels",
+                args="[--project <name>]",
                 flags=[_H, Flag("--project", desc="Filter by project name")],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
             "publish": CommandDef(
                 desc="Publish a message to a channel",
-                args="<channel>",
+                args="<channel> [--data <json>]",
                 flags=[_H, Flag("--data", desc="JSON payload to publish")],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
@@ -339,6 +354,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "sync": CommandDef(
         desc="Validate, build indexes, and deploy artifacts",
+        args="[--warn-only] [--validate-only]",
         flags=[
             _H,
             Flag("--warn-only", desc="Warn but don't fail"),
@@ -357,6 +373,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
+                args="[--baseline-only] [--third-party] [--areas <types>] [--domains <names>]",
                 flags=[
                     _H,
                     Flag("--baseline-only", "-b", "Show only baseline snippets"),
@@ -403,7 +420,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "prepare": CommandDef(
                 desc="Run the Phase A (prepare) state machine",
-                args="[<slug>]",
+                args="[<slug>] [--invalidate-check] [--changed-paths <paths>]",
                 flags=[
                     _H,
                     Flag("--invalidate-check", desc="Scan all active todos and invalidate stale preparations"),
@@ -425,7 +442,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "mark-phase": CommandDef(
                 desc="Mark a work or prepare phase in state.yaml",
-                args="<slug>",
+                args="<slug> [--target <name>] [--phase <phase>] [--status <status>] [--force]",
                 flags=[
                     _H,
                     Flag("--target", desc="Target state name (e.g. build_complete, review_approved, prepared)"),
@@ -455,7 +472,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "set-deps": CommandDef(
                 desc="Set dependencies for a work item in the roadmap",
-                args="<slug>",
+                args="<slug> [--after <slugs>]",
                 flags=[
                     _H,
                     Flag("--after", desc="Dependency slug (repeatable)"),
@@ -464,7 +481,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "verify-artifacts": CommandDef(
                 desc="Mechanically verify artifacts for a phase (build or review)",
-                args="<slug>",
+                args="<slug> [--phase <phase>]",
                 flags=[
                     _H,
                     Flag("--phase", desc="Phase: build or review"),
@@ -491,7 +508,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "split": CommandDef(
                 desc="Split a todo into child items (container transition)",
-                args="<slug>",
+                args="<slug> [--into <child>]",
                 flags=[
                     Flag("--into", desc="Child slug (repeatable, at least one required)"),
                 ],
@@ -556,7 +573,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "stamp": CommandDef(
                 desc="Stamp a verdict, build status, or DOR result into todo state",
-                args="<slug>",
+                args=(
+                    "<slug> [--verdict <v>] [--build <b>] [--dor-score <n>]"
+                    " [--dor-status <s>] [--grounding-invalidated]"
+                ),
                 flags=[
                     _H,
                     Flag("--verdict", desc="approve | needs_work | needs_decision"),
@@ -575,6 +595,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List roadmap entries (source of truth for todo status)",
+                args="[--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--json]",
                 flags=[
                     Flag("--include-icebox", "-i", "Include icebox items"),
                     Flag("--icebox-only", "-o", "Show only icebox items"),
@@ -586,7 +607,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "add": CommandDef(
                 desc="Add entry to the roadmap",
-                args="<slug>",
+                args="<slug> [--group <label>] [--after <slugs>] [--before <slug>] [--description <text>]",
                 flags=[
                     Flag("--group", desc="Visual grouping label"),
                     Flag("--after", desc="Comma-separated dependency slugs"),
@@ -603,7 +624,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "move": CommandDef(
                 desc="Reorder an entry in the roadmap",
-                args="<slug>",
+                args="<slug> [--before <slug>] [--after <slug>]",
                 flags=[
                     Flag("--before", desc="Move before this slug"),
                     Flag("--after", desc="Move after this slug"),
@@ -612,7 +633,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "deps": CommandDef(
                 desc="Set dependencies for an entry",
-                args="<slug>",
+                args="<slug> [--after <slugs>]",
                 flags=[
                     Flag("--after", desc="Comma-separated dependency slugs"),
                 ],
@@ -638,7 +659,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "deliver": CommandDef(
                 desc="Move entry to delivered",
-                args="<slug>",
+                args="<slug> [--commit <hash>]",
                 flags=[
                     Flag("--commit", desc="Commit hash (auto-detects HEAD if omitted)"),
                 ],
@@ -651,7 +672,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "report": CommandDef(
                 desc="Report a bug, scaffold, and dispatch fix",
-                args="<description>",
+                args="<description> [--slug <slug>] [--body <text>] [--project <name>]",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
                     Flag("--body", desc="Detailed description body for bug.md"),
@@ -661,7 +682,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "create": CommandDef(
                 desc="Scaffold bug files for a slug",
-                args="<slug>",
+                args="<slug> [--project <name>]",
                 flags=[
                     Flag("--project", desc="Project name (from trusted_dirs)"),
                 ],
@@ -679,7 +700,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "dump": CommandDef(
                 desc="Fire-and-forget content dump to publications inbox",
-                args="<description-or-text>",
+                args="<description-or-text> [--slug <slug>] [--tags <tags>] [--author <name>]",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated from text)"),
                     Flag("--tags", desc="Comma-separated tags"),
@@ -705,6 +726,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List event schemas: type, level, domain, visibility, description, actionable",
+                args="[--domain <name>]",
                 flags=[
                     Flag("--domain", desc="Filter by domain"),
                 ],
@@ -842,6 +864,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List session summaries from mirrors",
+                args="[--identity <email>] [--project <name>] [--limit <n>]",
                 flags=[
                     _H,
                     Flag("--identity", desc="Filter by human identity (email or key)"),
@@ -852,7 +875,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "search": CommandDef(
                 desc="Search agent session transcripts",
-                args="[terms...]",
+                args="[terms...] [--agent <name>] [--computer <host>] [--limit <n>]",
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name(s) or 'all' (default: all)"),
@@ -868,7 +891,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "show": CommandDef(
                 desc="Show full transcript for a session",
-                args="<session-id>",
+                args="<session-id> [--agent <name>] [--computer <host>] [--thinking] [--raw] [--tail <n>]",
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name or 'all' (default: all)"),
@@ -891,6 +914,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List memory observations",
+                args="[--limit <n>] [--type <type>] [--project <name>]",
                 flags=[
                     _H,
                     Flag("--limit", desc="Max results (default: 50)"),
@@ -908,7 +932,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "search": CommandDef(
                 desc="Search memory observations",
-                args="<query>",
+                args="<query> [--limit <n>] [--type <type>] [--project <name>]",
                 flags=[
                     _H,
                     Flag("--limit", desc="Max results (default: 20)"),
@@ -926,7 +950,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "save": CommandDef(
                 desc="Save a memory observation",
-                args="<text>",
+                args="<text> [--title <title>] [--type <type>] [--project <name>]",
                 flags=[
                     _H,
                     Flag("--title", desc="Observation title"),
@@ -950,7 +974,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "timeline": CommandDef(
                 desc="Show observations around an anchor ID",
-                args="<id>",
+                args="<id> [--before <n>] [--after <n>] [--project <name>]",
                 flags=[
                     _H,
                     Flag("--before", desc="Observations before anchor (default: 3)"),
