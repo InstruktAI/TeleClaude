@@ -459,6 +459,9 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 self._stop_event.wait(frame_duration * _BATCH_FRAMES * 0.5)
 
         self._playing = False
+        reason = self._last_track_end_reason or ("stopped" if self._stop_event.is_set() else "track_completed")
+        logger.info("ChipTunes: END reason=%s elapsed=%.1fs max_duration=%s",
+                     reason, playback_elapsed, max_duration)
         if not self._stop_event.is_set() and self._last_track_end_reason is None:
             self._notify_track_end("track_completed")
 

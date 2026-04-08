@@ -322,13 +322,15 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 )
 
             track_label = track.stem.replace("_", " ")
+            duration = lookup_duration(self._songlengths, track, subtune=0)
+            print(f"[CHIPTUNES] START: {track_label} | duration={duration:.1f}s" if duration else f"[CHIPTUNES] START: {track_label} | duration=UNKNOWN", flush=True)  # noqa: E501
             self._emit("track_start", track=track_label, sid_path=str(track))
 
             player.play(
                 track,
                 start_paused=start_paused,
                 start_position_seconds=max(0.0, start_position),
-                max_duration=lookup_duration(self._songlengths, track, subtune=0),
+                max_duration=duration,
             )
             with self._lock:
                 paused_requested = self._paused_requested
