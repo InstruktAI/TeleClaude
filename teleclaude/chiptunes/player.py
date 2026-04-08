@@ -25,7 +25,7 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-_PREBUFFER_SECONDS = 5.0  # seconds of audio pre-buffered before stream starts
+_PREBUFFER_SECONDS = 1.0  # seconds of audio pre-buffered before stream starts (emulation runs ~9x realtime)
 _QUEUE_MAX_CHUNKS = 200  # maximum queue depth (each chunk is a batch of frames)
 _BATCH_FRAMES = 25  # render 25 frames (~500ms at 50Hz) per queue chunk to reduce GIL contention
 _SAMPLE_RATE = 48000
