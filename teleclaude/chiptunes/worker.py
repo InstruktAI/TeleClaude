@@ -322,7 +322,15 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 )
 
             track_label = track.stem.replace("_", " ")
-            duration = lookup_duration(self._songlengths, track, subtune=0)
+            # Use the SID's default subtune (start_song is 1-based)
+            from teleclaude.chiptunes.sid_parser import parse_sid_file  # pylint: disable=import-outside-toplevel
+
+            try:
+                sid_header = parse_sid_file(track)
+                default_subtune = max(0, sid_header.start_song - 1)
+            except (ValueError, OSError):
+                default_subtune = 0
+            duration = lookup_duration(self._songlengths, track, subtune=default_subtune)
             print(f"[CHIPTUNES] START: {track_label} | duration={duration:.1f}s" if duration else f"[CHIPTUNES] START: {track_label} | duration=UNKNOWN", flush=True)  # noqa: E501
             self._emit("track_start", track=track_label, sid_path=str(track))
 
