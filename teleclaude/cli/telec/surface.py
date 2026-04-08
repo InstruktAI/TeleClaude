@@ -478,7 +478,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "dump": CommandDef(
                 desc="Fire-and-forget brain dump with notification trigger",
-                args="<slug> <content>",
+                args="<slug> <content> [--after <deps>] [--draft]",
                 flags=[
                     Flag("--after", desc="Comma-separated dependency slugs"),
                     Flag("--draft", desc="Create silently — skip domain event so no cartridge picks it up"),
