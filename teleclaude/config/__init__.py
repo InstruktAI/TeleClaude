@@ -266,7 +266,7 @@ class ChiptunesConfig:
     """ChipTunes background music configuration."""
 
     music_dir: str | None = None  # default: assets/audio/C64Music
-    volume: float = 0.5
+    volume: float = 1.0
 
 
 @dataclass
