@@ -43,7 +43,6 @@ PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 _RSID_MAGIC = b"RSID"
 STATE_PATH = CHIPTUNES_STATE_PATH
 _PERSIST_INTERVAL_SECONDS = 2.0
-_MAX_TRACK_DURATION_S = 360.0  # 6-minute absolute ceiling
 
 
 def _is_rsid(path: Path) -> bool:
@@ -325,14 +324,11 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
             track_label = track.stem.replace("_", " ")
             self._emit("track_start", track=track_label, sid_path=str(track))
 
-            hvsc_duration = lookup_duration(self._songlengths, track, subtune=0)
-            effective_duration = min(hvsc_duration or _MAX_TRACK_DURATION_S, _MAX_TRACK_DURATION_S)
-
             player.play(
                 track,
                 start_paused=start_paused,
                 start_position_seconds=max(0.0, start_position),
-                max_duration=effective_duration,
+                max_duration=lookup_duration(self._songlengths, track, subtune=0),
             )
             with self._lock:
                 paused_requested = self._paused_requested

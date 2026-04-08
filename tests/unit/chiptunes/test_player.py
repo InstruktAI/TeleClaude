@@ -10,7 +10,6 @@ from types import SimpleNamespace
 import pytest
 
 import teleclaude.chiptunes.player as player_module
-from teleclaude.chiptunes.player import _is_silence
 from teleclaude.chiptunes.sid_parser import SIDHeader
 
 
@@ -189,31 +188,6 @@ class TestChiptunesPlayer:
         assert player.track_end_reason == "emulation_error"
         assert reasons == ["emulation_error"]
 
-    def test_silence_detection_triggers_track_completion(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Sustained silence in rendered PCM should end the track."""
-
-        class _SilentRenderer(_FakeRenderer):
-            def render_frame(self, writes: list[tuple[int, int]], frame_duration_s: float) -> bytes:
-                self.frames.append((writes, frame_duration_s))
-                return array.array("h", [0] * 960).tobytes()
-
-        driver = _FakeDriver(_header(flags=4))
-        renderer = _SilentRenderer(sample_rate=48000, pal=True, volume=0.5)
-        monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
-        monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
-
-        player = player_module.ChiptunesPlayer()
-        reasons: list[str | None] = []
-        player.on_track_end = reasons.append
-        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
-
-        player._emulation_loop(_header(flags=4))
-
-        assert player.track_end_reason == "track_completed"
-        assert reasons == ["track_completed"]
-        # 3s * 50Hz = 150 silent frames triggers completion
-        assert driver.play_calls == 150
-
     def test_max_duration_triggers_fade_and_completion(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Track ends with fade-out when max_duration is reached."""
 
@@ -240,62 +214,3 @@ class TestChiptunesPlayer:
         # Should have run ~250 frames (5s * 50fps), give or take frame boundaries
         assert 245 <= driver.play_calls <= 255
 
-    def test_non_silent_frames_reset_silence_counter(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Non-silent audio resets the silence counter — no premature track end."""
-        frame_count = 0
-
-        class _IntermittentRenderer(_FakeRenderer):
-            def render_frame(self, writes: list[tuple[int, int]], frame_duration_s: float) -> bytes:
-                nonlocal frame_count
-                self.frames.append((writes, frame_duration_s))
-                frame_count += 1
-                if frame_count % 100 == 0:
-                    return array.array("h", [1000] * 960).tobytes()
-                return array.array("h", [0] * 960).tobytes()
-
-        class _BoundedDriver(_FakeDriver):
-            def play_frame(self) -> list[tuple[int, int]]:
-                self.play_calls += 1
-                if self.play_calls > 400:
-                    raise RuntimeError("test limit reached")
-                return [(0, self.play_calls)]
-
-        driver = _BoundedDriver(_header(flags=4))
-        renderer = _IntermittentRenderer(sample_rate=48000, pal=True, volume=0.5)
-        monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
-        monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
-
-        player = player_module.ChiptunesPlayer()
-        reasons: list[str | None] = []
-        player.on_track_end = reasons.append
-        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
-
-        player._emulation_loop(_header(flags=4))
-
-        # Non-silent frame every 100 frames resets counter. Ends at 401 via exception.
-        assert driver.play_calls == 401
-        assert reasons == ["emulation_error"]
-
-
-@pytest.mark.unit
-class TestIsSilence:
-    """Tests for the _is_silence PCM helper."""
-
-    def test_empty_bytes_is_silence(self) -> None:
-        assert _is_silence(b"") is True
-
-    def test_all_zeros_is_silence(self) -> None:
-        pcm = array.array("h", [0, 0, 0]).tobytes()
-        assert _is_silence(pcm) is True
-
-    def test_loud_sample_is_not_silence(self) -> None:
-        pcm = array.array("h", [0, 100, 0]).tobytes()
-        assert _is_silence(pcm) is False
-
-    def test_below_threshold_is_silence(self) -> None:
-        pcm = array.array("h", [31, -31, 0]).tobytes()
-        assert _is_silence(pcm) is True
-
-    def test_at_threshold_is_not_silence(self) -> None:
-        pcm = array.array("h", [32, 0, 0]).tobytes()
-        assert _is_silence(pcm) is False

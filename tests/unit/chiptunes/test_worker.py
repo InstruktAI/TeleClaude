@@ -49,7 +49,14 @@ class _FakePlayer:
         self.on_track_end: Callable[[str | None], None] | None = None
         type(self).instances.append(self)
 
-    def play(self, track: Path, *, start_paused: bool = False, start_position_seconds: float = 0.0) -> None:
+    def play(  # pylint: disable=too-many-positional-arguments
+        self,
+        track: Path,
+        *,
+        start_paused: bool = False,
+        start_position_seconds: float = 0.0,
+        max_duration: float | None = None,
+    ) -> None:
         self.play_calls.append((track, start_paused, start_position_seconds))
         self.is_paused = start_paused
         self.is_playing = not start_paused
