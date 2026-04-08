@@ -127,10 +127,6 @@ class RuntimeSettings:
             )
         self._state.chiptunes.pending_command_id = ""
         self._state.chiptunes.pending_action = ""
-        # If the worker isn't running, the persisted position is from a dead
-        # session — reset to 0 so we don't spend minutes seeking to a stale offset.
-        if not manager._worker_alive():  # pylint: disable=protected-access
-            self._state.chiptunes.position_seconds = 0.0
         manager.restore_runtime_state(self._state.chiptunes)
         if self._state.chiptunes.playback == "playing":
             manager.start_from_runtime_state(self._state.chiptunes)
