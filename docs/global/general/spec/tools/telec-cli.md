@@ -39,10 +39,6 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec docs -h -->
 
-### `telec memories`
-
-<!-- @exec: telec memories -h -->
-
 ### `telec history`
 
 <!-- @exec: telec history -h -->
