@@ -684,9 +684,8 @@ telec bugs list
 # From teleclaude.yml:
 jobs:
   help_desk_intelligence:
-    schedule: daily
-    preferred_hour: 6
-    job: help-desk-intelligence
+    when:
+      at: '06:00'
     agent: claude
     thinking_mode: fast
 

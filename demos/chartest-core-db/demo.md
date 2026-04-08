@@ -1,1 +1,0 @@
-<!-- no-demo: pure internal characterization-test delivery for teleclaude/core/db. The change adds source-mapped unit coverage only, with no CLI, TUI, API, config, or runtime behavior to present beyond the test suite itself. -->
