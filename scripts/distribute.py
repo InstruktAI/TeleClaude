@@ -91,8 +91,7 @@ def dump_frontmatter(post: Post) -> str:
     parameters = post.metadata.pop("parameters", None)
     if parameters:
         post.content = _inject_parameter_preamble(post.content, parameters)
-    rendered = frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)
-    return wrap_with_context_markers(rendered, is_markdown=True)
+    return frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)
 
 
 def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
@@ -123,12 +122,7 @@ def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:  # pyli
     Remove this Codex-only compatibility path once upstream frontmatter parsing
     false positives are fixed.
     """
-    marker_prefix = f"{CONTEXT_PRESERVATION_START}\n"
-    marker_suffix = f"\n{CONTEXT_PRESERVATION_END}\n"
-    wrapped = content.startswith(marker_prefix) and content.endswith(marker_suffix)
-    body_to_normalize = content[len(marker_prefix) : -len(marker_suffix)] if wrapped else content
-
-    header, body, has_frontmatter = _split_frontmatter_block(body_to_normalize)
+    header, body, has_frontmatter = _split_frontmatter_block(content)
     if not has_frontmatter:
         return content
 
@@ -163,8 +157,6 @@ def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:  # pyli
     rendered_header = "\n".join(rendered_lines) + "\n"
 
     normalized = rendered_header + body
-    if wrapped:
-        normalized = f"{marker_prefix}{normalized}{marker_suffix}"
     return normalized if normalized != content else content
 
 
@@ -1025,7 +1017,7 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
                 if master_dest_dir:
                     os.makedirs(master_dest_dir, exist_ok=True)
                 with open(master_dest_path, "w", encoding="utf-8") as f:
-                    f.write(combined_agents_content)
+                    f.write(wrap_with_context_markers(combined_agents_content, is_markdown=True))
                 markdown_outputs.append(master_dest_path)
                 if emit_repo_codex and agent_name == "codex":
                     repo_override_path = os.path.join(project_root, "AGENTS.override.md")

@@ -3,8 +3,9 @@
 """Test specifications for scripts/distribute.py — context-preservation marker wrapping.
 
 Covers:
-  R5 — Markdown outputs produced by the distribution pipeline are wrapped with
-       TELECLAUDE_CONTEXT_PRESERVATION_START/END markers. TOML outputs are not.
+  R5 — Only the AGENTS.md master output is wrapped with context-preservation markers.
+       Individual commands and skills must NOT be wrapped — markers at the final
+       write boundary only, never inside serialization functions.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts.distribute import dump_frontmatter, transform_to_codex, transform_to_gemini, wrap_with_context_markers
+from scripts.distribute import transform_to_codex, transform_to_gemini, wrap_with_context_markers
 
 pytestmark = pytest.mark.unit
 
@@ -85,20 +86,6 @@ def test_original_content_preserved_inside_markers() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_claude_transform_output_contains_preservation_markers() -> None:
-    post = frontmatter.loads("---\nname: test-cmd\ndescription: Test.\n---\nDo the thing.\n")
-    output = dump_frontmatter(post)
-
-    assert MARKER_START in output, "Claude markdown output must contain start marker"
-    assert MARKER_END in output, "Claude markdown output must contain end marker"
-
-
-def test_codex_transform_output_contains_preservation_markers() -> None:
-    post = frontmatter.loads("---\nname: test-cmd\ndescription: Test.\n---\nDo the thing.\n")
-    output = transform_to_codex(post)
-
-    assert MARKER_START in output, "Codex markdown output must contain start marker"
-    assert MARKER_END in output, "Codex markdown output must contain end marker"
 
 
 def test_codex_transform_output_keeps_single_quoted_frontmatter_scalars() -> None:
