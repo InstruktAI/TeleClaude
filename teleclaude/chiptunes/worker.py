@@ -35,6 +35,7 @@ import time
 from pathlib import Path
 
 from teleclaude.chiptunes.player import ChiptunesPlayer
+from teleclaude.chiptunes.songlengths import load_songlengths, lookup_duration
 from teleclaude.paths import CHIPTUNES_STATE_PATH
 
 SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
@@ -42,6 +43,7 @@ PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 _RSID_MAGIC = b"RSID"
 STATE_PATH = CHIPTUNES_STATE_PATH
 _PERSIST_INTERVAL_SECONDS = 2.0
+_MAX_TRACK_DURATION_S = 360.0  # 6-minute absolute ceiling
 
 
 def _is_rsid(path: Path) -> bool:
@@ -79,6 +81,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
         self._playback_lock = threading.Lock()
         self._playback_gen = 0
         self._lock = threading.RLock()
+        self._songlengths: dict[str, list[float]] = {}
         # Command queue for serial processing
         self._command_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self._command_worker = threading.Thread(target=self._command_loop, daemon=True, name="chiptunes-commands")
@@ -94,6 +97,8 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
     def run(self) -> None:
         """Main loop: accept connections and process commands."""
         Path(PID_PATH).write_text(str(os.getpid()), encoding="utf-8")
+
+        self._songlengths = load_songlengths(self._music_dir / "DOCUMENTS" / "Songlengths.md5")
 
         if os.path.exists(SOCKET_PATH):
             os.unlink(SOCKET_PATH)
@@ -320,10 +325,14 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
             track_label = track.stem.replace("_", " ")
             self._emit("track_start", track=track_label, sid_path=str(track))
 
+            hvsc_duration = lookup_duration(self._songlengths, track, subtune=0)
+            effective_duration = min(hvsc_duration or _MAX_TRACK_DURATION_S, _MAX_TRACK_DURATION_S)
+
             player.play(
                 track,
                 start_paused=start_paused,
                 start_position_seconds=max(0.0, start_position),
+                max_duration=effective_duration,
             )
             with self._lock:
                 paused_requested = self._paused_requested

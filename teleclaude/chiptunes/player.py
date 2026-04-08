@@ -31,6 +31,15 @@ _SAMPLE_RATE = 48000
 _DEVICE_POLL_INTERVAL_S = 2.0  # how often to check for default output device changes
 _SILENCE_THRESHOLD = 32  # int16 amplitude (~-60dB noise floor)
 _SILENCE_TIMEOUT_S = 3.0  # seconds of consecutive silence before track is considered done
+_FADE_DURATION_S = 3.0  # fade-out window before track end
+
+
+def _apply_fade(pcm: bytes, factor: float) -> bytes:
+    """Scale all int16 samples by factor (0.0–1.0)."""
+    samples = array.array("h")
+    samples.frombytes(pcm)
+    samples = array.array("h", [int(s * factor) for s in samples])
+    return samples.tobytes()
 
 
 def _is_silence(pcm: bytes, threshold: int = _SILENCE_THRESHOLD) -> bool:
@@ -104,7 +113,14 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         with self._position_lock:
             return self._playback_position_seconds
 
-    def play(self, sid_path: Path, *, start_paused: bool = False, start_position_seconds: float = 0.0) -> None:
+    def play(
+        self,
+        sid_path: Path,
+        *,
+        start_paused: bool = False,
+        start_position_seconds: float = 0.0,
+        max_duration: float | None = None,
+    ) -> None:
         """Parse and start playing a SID file in the background."""
         if not _sounddevice_available:
             raise ImportError(
@@ -137,10 +153,11 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._stream_blocksize = samples_per_frame * 4
         self._pcm_queue = queue.Queue(maxsize=_QUEUE_MAX_CHUNKS)
         self._callback_remainder = b""
+        self._max_duration = max_duration
 
         self._thread = threading.Thread(
             target=self._emulation_loop,
-            args=(header, max(0.0, start_position_seconds)),
+            args=(header, max(0.0, start_position_seconds), max_duration),
             daemon=True,
             name="chiptunes-emulator",
         )
@@ -364,6 +381,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self,
         header: SIDHeader,
         start_position_seconds: float = 0.0,
+        max_duration: float | None = None,
     ) -> None:
         """Background thread: emulate CPU + SID and push PCM chunks to the queue."""
         pal = is_pal(header)
@@ -422,6 +440,15 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                         break
                 else:
                     silent_frames = 0
+                # Duration limit with fade-out
+                if max_duration is not None:
+                    fade_start = max_duration - _FADE_DURATION_S
+                    if playback_elapsed >= fade_start:
+                        factor = max(0.0, 1.0 - (playback_elapsed - fade_start) / _FADE_DURATION_S)
+                        if factor <= 0.0:
+                            logger.info("ChipTunes: track duration reached (%.1fs), advancing", max_duration)
+                            break
+                        pcm = _apply_fade(pcm, factor)
                 playback_elapsed += frame_duration
                 with self._position_lock:
                     self._playback_position_seconds = playback_elapsed

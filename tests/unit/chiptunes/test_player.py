@@ -118,7 +118,7 @@ class TestChiptunesPlayer:
 
         assert isinstance(player._thread, _RecordingThread)
         assert player._thread.started is True  # pylint: disable=no-member
-        assert player._thread.args == (_header(flags=4), 1.5)  # pylint: disable=no-member
+        assert player._thread.args == (_header(flags=4), 1.5, None)  # pylint: disable=no-member
         assert player.is_paused is True
         assert player.playback_position_seconds == 1.5
         assert player._stream_blocksize == int(48000 * (1.0 / 50.0)) * 4
@@ -213,6 +213,32 @@ class TestChiptunesPlayer:
         assert reasons == ["track_completed"]
         # 3s * 50Hz = 150 silent frames triggers completion
         assert driver.play_calls == 150
+
+    def test_max_duration_triggers_fade_and_completion(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Track ends with fade-out when max_duration is reached."""
+
+        class _TimedRenderer(_FakeRenderer):
+            def render_frame(self, writes: list[tuple[int, int]], frame_duration_s: float) -> bytes:
+                self.frames.append((writes, frame_duration_s))
+                return array.array("h", [1000] * 960).tobytes()  # non-silent
+
+        driver = _FakeDriver(_header(flags=4))
+        renderer = _TimedRenderer(sample_rate=48000, pal=True, volume=0.5)
+        monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
+        monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
+
+        player = player_module.ChiptunesPlayer()
+        reasons: list[str | None] = []
+        player.on_track_end = reasons.append
+        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
+
+        # 5 seconds max, 50Hz PAL = 250 frames max (fade starts at 2s = frame 100)
+        player._emulation_loop(_header(flags=4), max_duration=5.0)
+
+        assert player.track_end_reason == "track_completed"
+        assert reasons == ["track_completed"]
+        # Should have run ~250 frames (5s * 50fps), give or take frame boundaries
+        assert 245 <= driver.play_calls <= 255
 
     def test_non_silent_frames_reset_silence_counter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Non-silent audio resets the silence counter — no premature track end."""
