@@ -12,6 +12,8 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.paths import TMP_SESSIONS_DIR
+
 logger = get_logger("teleclaude.hooks.checkpoint_flags")
 
 CHECKPOINT_CLEAR_FLAG = "teleclaude_checkpoint_clear"

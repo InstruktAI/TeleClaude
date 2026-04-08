@@ -13,6 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config, config_path
+from teleclaude.paths import PEOPLE_DIR
 from teleclaude.config.loader import load_project_config
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -57,7 +58,6 @@ from teleclaude.hooks.normalizers import register_builtin_normalizers
 from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
-from teleclaude.paths import PEOPLE_DIR
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
